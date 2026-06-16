@@ -25,3 +25,10 @@ Constraints:
 - network location was present but not proven enabled for a normal app,
 - background survival depends on foreground service plus device/OEM power settings.
 
+## Galaxy A36
+
+- Model: `SM-A366E`
+- Serial: `RZGL11XCS9D`
+- Android 16 / API 36 / One UI 8
+- `arm64-v8a`
+- Phone validation target.

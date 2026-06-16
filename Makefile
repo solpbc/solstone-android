@@ -16,7 +16,7 @@ test:
 	$(GRADLE) test
 
 ci:
-	$(GRADLE) test :apps:validation-rogbid:assembleDebug
+	$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :testing:test :apps:watch:assembleMockDebug :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleRealDebug :apps:validation-rogbid:assembleDebug
 
 format:
 	@echo "No formatter is configured yet."

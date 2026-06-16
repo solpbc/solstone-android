@@ -17,4 +17,14 @@ dependencyResolutionManagement {
 rootProject.name = "solstone-android"
 
 include(":apps:validation-rogbid")
-
+include(":apps:watch")
+include(":apps:phone")
+include(":core:model")
+include(":core:sources")
+include(":core:segment")
+include(":core:spool")
+include(":core:queue")
+include(":core:diagnostics")
+include(":testing")
+include(":formfactor:watch")
+include(":formfactor:phone")
