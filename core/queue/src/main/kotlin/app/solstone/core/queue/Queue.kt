@@ -17,6 +17,8 @@ fun transition(from: QueueState, event: QueueEvent): QueueState =
         QueueState.UPLOADING to QueueEvent.MARK_FAILED -> QueueState.FAILED
         QueueState.FAILED to QueueEvent.RETRY -> QueueState.UPLOADING
         QueueState.SEALED to QueueEvent.EVICT -> QueueState.EVICTED
+        QueueState.UPLOADED to QueueEvent.EVICT -> QueueState.EVICTED
+        QueueState.FAILED to QueueEvent.EVICT -> QueueState.EVICTED
         else -> throw IllegalStateException("Illegal queue transition from $from on $event")
     }
 

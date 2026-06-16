@@ -6,9 +6,11 @@ package app.solstone.core.spool
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SegmentKey
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import java.io.InputStream
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
@@ -24,6 +26,14 @@ fun interface PayloadBytesProvider {
 }
 
 data class SealResult(val manifest: BundleManifest, val directory: Path?, val state: SealState)
+
+data class ParsedManifest(
+    val manifest: BundleManifest,
+    val startEpochMs: Long,
+    val endEpochMs: Long,
+    val zoneId: String,
+    val utcOffsetSeconds: Int,
+)
 
 interface SpoolWriter {
     fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult
@@ -170,6 +180,59 @@ fun serializeManifest(segment: SealedSegment, manifest: BundleManifest): String 
     return builder.toString()
 }
 
+fun parseManifest(text: String): ParsedManifest {
+    val lines = text.lineSequence().filter { it.isNotEmpty() }.toList()
+    require(lines.firstOrNull() == "solstone-bundle-manifest-v1") { "missing solstone bundle manifest header" }
+
+    val filesIndex = lines.indexOf("[files]")
+    val gapsIndex = lines.indexOf("[gaps]")
+    require(filesIndex > 0 && gapsIndex > filesIndex) { "manifest sections are malformed" }
+
+    val headers = lines.subList(1, filesIndex).associate { line ->
+        val separator = line.indexOf('=')
+        require(separator > 0) { "manifest header is malformed: $line" }
+        line.substring(0, separator) to unescape(line.substring(separator + 1))
+    }
+
+    fun header(name: String): String =
+        headers[name] ?: throw IllegalArgumentException("manifest header missing: $name")
+
+    val key = SegmentKey(
+        day = header("day"),
+        segment = header("segment"),
+    )
+    val files = lines.subList(filesIndex + 1, gapsIndex).map { line ->
+        val fields = tabFields(line, expected = 7)
+        require(fields.size == 7) { "manifest file row is malformed" }
+        BundleFile(
+            sourceId = fields[0],
+            name = fields[1],
+            sha256 = fields[2],
+            byteSize = fields[3].toLong(),
+            mediaType = fields[4],
+            captureStartEpochMs = fields[5].toLong(),
+            captureEndEpochMs = fields[6].toLong(),
+        )
+    }
+    val gaps = lines.subList(gapsIndex + 1, lines.size).map { line ->
+        val fields = tabFields(line, expected = 3)
+        require(fields.size == 3) { "manifest gap row is malformed" }
+        GapEvent(
+            kind = fields[0],
+            atEpochMs = fields[1].toLong(),
+            detail = fields[2].ifEmpty { null },
+        )
+    }
+
+    return ParsedManifest(
+        manifest = BundleManifest(key = key, files = files, gaps = gaps),
+        startEpochMs = header("startEpochMs").toLong(),
+        endEpochMs = header("endEpochMs").toLong(),
+        zoneId = header("zoneId"),
+        utcOffsetSeconds = header("utcOffsetSeconds").toInt(),
+    )
+}
+
 private val bundleFileComparator = compareBy<BundleFile> { it.sourceId }
     .thenBy { it.name }
     .thenBy { it.captureStartEpochMs }
@@ -180,6 +243,14 @@ private val gapComparator = compareBy<GapEvent> { it.atEpochMs }
     .thenBy { it.detail ?: "" }
 
 private fun escape(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+private fun unescape(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
+
+private fun tabFields(line: String, expected: Int): List<String> {
+    val fields = line.split('\t').toMutableList()
+    while (fields.size < expected && line.endsWith('\t')) fields += ""
+    return fields.map(::unescape)
+}
 
 private fun Path.deleteRecursively() {
     Files.walk(this).use { paths ->

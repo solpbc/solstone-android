@@ -30,10 +30,20 @@ class QueueTest {
         assertEquals(QueueState.FAILED, transition(QueueState.UPLOADING, QueueEvent.MARK_FAILED))
         assertEquals(QueueState.UPLOADING, transition(QueueState.FAILED, QueueEvent.RETRY))
         assertEquals(QueueState.EVICTED, transition(QueueState.SEALED, QueueEvent.EVICT))
+        assertEquals(QueueState.EVICTED, transition(QueueState.UPLOADED, QueueEvent.EVICT))
+        assertEquals(QueueState.EVICTED, transition(QueueState.FAILED, QueueEvent.EVICT))
         assertTrue(canTransition(QueueState.SEALED, QueueEvent.EVICT))
+        assertFalse(canTransition(QueueState.UPLOADED, QueueEvent.START_UPLOAD))
+        assertFalse(canTransition(QueueState.RECORDING, QueueEvent.EVICT))
         assertFalse(canTransition(QueueState.RECORDING, QueueEvent.MARK_UPLOADED))
         assertFailsWith<IllegalStateException> {
             transition(QueueState.RECORDING, QueueEvent.MARK_UPLOADED)
+        }
+        assertFailsWith<IllegalStateException> {
+            transition(QueueState.UPLOADED, QueueEvent.START_UPLOAD)
+        }
+        assertFailsWith<IllegalStateException> {
+            transition(QueueState.RECORDING, QueueEvent.EVICT)
         }
     }
 }
