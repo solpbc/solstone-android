@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="hello_status" type="id" />
+    <item name="hello_button" type="id" />
+    <item name="media_button" type="id" />
+    <item name="upload_button" type="id" />
+    <item name="deferred_upload_button" type="id" />
+    <item name="qr_button" type="id" />
+    <item name="qr_status" type="id" />
+</resources>
