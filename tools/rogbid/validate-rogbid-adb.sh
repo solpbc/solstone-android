@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SERIAL="${1:-46734915123233}"
+PACKAGE="app.solstone.validation.rogbid"
 APK="apps/validation-rogbid/build/outputs/apk/debug/validation-rogbid-debug.apk"
 SCREENSHOT="/tmp/rogbid-hello-after-tap.png"
 
@@ -12,10 +13,10 @@ SCREENSHOT="/tmp/rogbid-hello-after-tap.png"
 adb -s "$SERIAL" install -r "$APK"
 adb -s "$SERIAL" shell input keyevent 224 >/dev/null 2>&1 || true
 adb -s "$SERIAL" shell wm dismiss-keyguard >/dev/null 2>&1 || true
-adb -s "$SERIAL" shell am start -S -W -n org.solpbc.rogbidhello/.MainActivity
+adb -s "$SERIAL" shell am start -S -W -n "$PACKAGE/.MainActivity"
 
 echo "--- evidence after launch ---"
-adb -s "$SERIAL" shell run-as org.solpbc.rogbidhello cat files/tap-evidence.txt
+adb -s "$SERIAL" shell run-as "$PACKAGE" cat files/tap-evidence.txt
 
 echo "--- initial UI ---"
 adb -s "$SERIAL" shell uiautomator dump /sdcard/rogbid-hello-window.xml >/dev/null
@@ -27,7 +28,7 @@ adb -s "$SERIAL" shell input tap 200 151
 sleep 1
 
 echo "--- evidence after tap ---"
-adb -s "$SERIAL" shell run-as org.solpbc.rogbidhello cat files/tap-evidence.txt
+adb -s "$SERIAL" shell run-as "$PACKAGE" cat files/tap-evidence.txt
 
 adb -s "$SERIAL" exec-out screencap -p > "$SCREENSHOT"
 file "$SCREENSHOT"

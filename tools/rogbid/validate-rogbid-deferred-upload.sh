@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SERIAL="${1:-46734915123233}"
-PACKAGE="org.solpbc.rogbidhello"
+PACKAGE="app.solstone.validation.rogbid"
 APK="apps/validation-rogbid/build/outputs/apk/debug/validation-rogbid-debug.apk"
 PORT="${ROGBID_UPLOAD_PORT:-8443}"
 BASE_DIR="/tmp/rogbid-deferred-upload-server"

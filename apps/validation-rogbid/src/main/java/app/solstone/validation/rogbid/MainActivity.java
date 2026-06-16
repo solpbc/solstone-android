@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 sol pbc
 
-package org.solpbc.rogbidhello;
+package app.solstone.validation.rogbid;
 
 import android.Manifest;
 import android.app.Activity;
@@ -40,7 +40,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public final class MainActivity extends Activity {
-    private static final String TAG = "RogbidHello";
+    private static final String TAG = "RogbidValidation";
     private static final int PERMISSION_REQUEST = 7;
 
     private int tapCount = 0;

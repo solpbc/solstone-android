@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SERIAL="${1:-46734915123233}"
-PACKAGE="org.solpbc.rogbidhello"
+PACKAGE="app.solstone.validation.rogbid"
 APK="apps/validation-rogbid/build/outputs/apk/debug/validation-rogbid-debug.apk"
 OUT_DIR="/tmp/rogbid-media"
 

@@ -5,7 +5,7 @@
 - Android 9 / API 28
 - `arm64-v8a`
 - Display: 400x456
-- Package used by validation app: `org.solpbc.rogbidhello`
+- Package used by validation app: `app.solstone.validation.rogbid`
 - ADB serial used during spike: `46734915123233`
 
 Validated:

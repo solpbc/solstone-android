@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SERIAL="${1:-46734915123233}"
-PACKAGE="org.solpbc.rogbidhello"
+PACKAGE="app.solstone.validation.rogbid"
 OUT_ROOT="${ROGBID_BATTERY_OUT:-/tmp/rogbid-battery-trials}"
 
 adb -s "$SERIAL" get-state >/dev/null

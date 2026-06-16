@@ -18,7 +18,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="RogbidHello"
+        android:label="Rogbid Validation"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"

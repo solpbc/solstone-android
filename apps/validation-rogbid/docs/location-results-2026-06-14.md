@@ -4,7 +4,7 @@
 
 - Device: Rogbid Model X, serial `46734915123233`.
 - Box: the Linux build host, wired ADB.
-- App: `org.solpbc.rogbidhello`, debug APK built from this spike tree with
+- App: `app.solstone.validation.rogbid`, debug APK built from this spike tree with
   `LocationProbeActivity`.
 - Permissions granted: `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`.
 - Connectivity during probe: Wi-Fi connected and validated; telephony present

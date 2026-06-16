@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 sol pbc
 
-package org.solpbc.rogbidhello;
+package app.solstone.validation.rogbid;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -39,8 +39,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class BatteryTrialService extends Service {
-    public static final String ACTION_START = "org.solpbc.rogbidhello.BATTERY_TRIAL_START";
-    public static final String ACTION_STOP = "org.solpbc.rogbidhello.BATTERY_TRIAL_STOP";
+    public static final String ACTION_START = "app.solstone.validation.rogbid.BATTERY_TRIAL_START";
+    public static final String ACTION_STOP = "app.solstone.validation.rogbid.BATTERY_TRIAL_STOP";
     public static final String EXTRA_MODE = "mode";
     public static final String EXTRA_DURATION_SECONDS = "duration_seconds";
     public static final String EXTRA_SAMPLE_INTERVAL_SECONDS = "sample_interval_seconds";
@@ -470,7 +470,7 @@ public final class BatteryTrialService extends Service {
             }
             wakeLock = powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
-                    "RogbidHello:BatteryTrial");
+                    "RogbidValidation:BatteryTrial");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire();
             UploadSupport.appendEvidence(this, EVIDENCE_FILE,

@@ -11,7 +11,7 @@
 - App: foreground service with partial wake lock, starting only after `plugged=0`.
 
 The first attempted idle run was invalid: `com.wiite.cleantask` force-stopped
-`org.solpbc.rogbidhello` shortly after `SCREEN_OFF` while `isClear=1`. After
+`app.solstone.validation.rogbid` shortly after `SCREEN_OFF` while `isClear=1`. After
 setting `isClear=0`, a 35-second screen-off synthetic run completed cleanly.
 
 ## Valid Idle Baseline

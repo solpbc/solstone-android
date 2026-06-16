@@ -7,7 +7,7 @@ SERIAL="${1:-192.168.4.69:5555}"
 MODE="${2:-idle}"
 DURATION_SECONDS="${3:-1800}"
 INTERVAL_SECONDS="${4:-60}"
-PACKAGE="org.solpbc.rogbidhello"
+PACKAGE="app.solstone.validation.rogbid"
 OUT_ROOT="${ROGBID_BATTERY_OUT:-/tmp/rogbid-battery-trials}"
 
 if ! [[ "$DURATION_SECONDS" =~ ^[0-9]+$ ]] || (( DURATION_SECONDS < 30 )); then

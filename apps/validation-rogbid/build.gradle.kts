@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "org.solpbc.rogbidhello"
+    namespace = "app.solstone.validation.rogbid"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "org.solpbc.rogbidhello"
+        applicationId = "app.solstone.validation.rogbid"
         minSdk = 23
         targetSdk = 35
         versionCode = 1

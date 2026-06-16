@@ -1,4 +1,4 @@
-# RogbidHello — Model X ADB smoke spike
+# Rogbid Validation — Model X ADB smoke spike
 
 Minimal Android app for validating the full Linux build host -> ADB -> Rogbid Model X loop,
 then proving foreground access to the watch cameras, microphone, and HTTPS upload path.
@@ -89,7 +89,7 @@ description `hello_status`. A successful tap changes the visible status from
 evidence readable with:
 
 ```bash
-adb -s 46734915123233 shell run-as org.solpbc.rogbidhello cat files/tap-evidence.txt
+adb -s 46734915123233 shell run-as app.solstone.validation.rogbid cat files/tap-evidence.txt
 ```
 
 ## Media validation
@@ -262,7 +262,7 @@ Morning manual test:
 ADB evidence pull:
 
 ```bash
-adb -s 46734915123233 shell run-as org.solpbc.rogbidhello cat files/qr-evidence.txt
+adb -s 46734915123233 shell run-as app.solstone.validation.rogbid cat files/qr-evidence.txt
 ```
 
 Smoke result from the build installed 2026-06-14:
@@ -276,11 +276,10 @@ zoom=0
 first_frame_ms=1024
 ```
 
-Physical QR validation: **PASS** (founder-tested morning 2026-06-15). The
+Physical QR validation: **PASS** (manual watch test morning 2026-06-15). The
 side-camera preview + local ZXing decode flow worked and was easy to use. No
-distance/lighting matrix was captured in that founder check, so fixed-focus
-range characterization remains optional follow-up rather than a feasibility
-blocker.
+distance/lighting matrix was captured in that manual check, so fixed-focus range
+characterization remains optional follow-up rather than a feasibility blocker.
 
 ## PL QR link validation
 
@@ -311,13 +310,13 @@ api_status_http=200
 pl_link=success
 ```
 
-The debug injection path is only for repeatable ADB validation. The founder path
-is still scanning the on-screen solstone QR with the side camera.
+The debug injection path is only for repeatable ADB validation. The normal path
+is scanning the on-screen solstone QR with the side camera.
 
 ## Handoff for next test app
 
 - Watch serial used for all trials: `46734915123233`.
-- Android package: `org.solpbc.rogbidhello`.
+- Android package: `app.solstone.validation.rogbid`.
 - Debug APK on the validation host after build:
   `apps/validation-rogbid/build/outputs/apk/debug/validation-rogbid-debug.apk`.
 - Build command on the validation host:
@@ -351,7 +350,7 @@ Useful carry-forward findings:
   location was present as a feature/overlay but not enabled/requestable through
   the standard provider settings during the probe.
 - QR preview/scanning is validated. `camera_0` opened as the side/back camera
-  with a 640x480 preview and delivered a first frame in 1024 ms; founder-tested
+  with a 640x480 preview and delivered a first frame in 1024 ms; manual
   physical QR scanning passed morning 2026-06-15. QR decode is local via ZXing.
   A distance sweep remains optional because both cameras report fixed focus, but
   it is no longer a feasibility blocker.

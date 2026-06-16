@@ -4,7 +4,7 @@ Android observers and clients for [solstone](https://solstone.app): watch, phone
 
 ## Status
 
-Private bootstrap. The only runnable app target today is the Rogbid Model X validation app imported from the hardware spike. Production observer modules will be added after the Android observer scope is approved.
+Public bootstrap. The only runnable app target today is the Rogbid Model X validation app imported from the hardware spike. Production observer modules will be added after the Android observer scope is approved.
 
 ## Layout
 
@@ -37,10 +37,22 @@ source ~/android-dev/env.sh
 make install
 ```
 
+From a development machine with SSH access to an Android build host, the root Makefile can sync the tree and run the same gate remotely:
+
+```bash
+ANDROID_REMOTE_HOST=host.local make android-host-ci
+```
+
 ## Build
 
 ```bash
 make assemble-validation-rogbid
+```
+
+To build on a remote Android host from this checkout:
+
+```bash
+ANDROID_REMOTE_HOST=host.local make android-host-assemble-validation-rogbid
 ```
 
 The APK is produced at:
@@ -69,9 +81,8 @@ make validate-rogbid-qr
 PAIR_LINK='https://link.solpbc.org/p#...' make validate-rogbid-pl
 ```
 
-The validation app keeps its original package name, `org.solpbc.rogbidhello`, so existing watch installs, grants, and evidence paths remain compatible.
+The validation app package is `app.solstone.validation.rogbid`. Future installable solstone Android artifacts should use the same `app.solstone.*` namespace.
 
 ## License
 
 AGPL-3.0-only. See [LICENSE](LICENSE).
-

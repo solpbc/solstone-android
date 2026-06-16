@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 sol pbc
 
-package org.solpbc.rogbidhello;
+package app.solstone.validation.rogbid;
 
 import android.Manifest;
 import android.app.Activity;

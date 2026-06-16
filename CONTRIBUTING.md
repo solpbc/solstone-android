@@ -1,6 +1,6 @@
 # Contributing
 
-`solstone-android` is early and private during bootstrap. Contributions are reviewed for correctness, safety, privacy, and fit with solstone's owner-controlled data model.
+`solstone-android` is early public open-source software. Contributions are reviewed for correctness, safety, privacy, and fit with solstone's owner-controlled data model.
 
 ## Development
 
@@ -22,4 +22,3 @@ Use focused commits. Run `make ci` before asking for review.
 ## License
 
 By contributing, you agree that your contribution is licensed under AGPL-3.0-only.
-

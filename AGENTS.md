@@ -6,7 +6,7 @@ Development guidelines for Android solstone observers, clients, and validation t
 
 `solstone-android` is the Android family repo for solstone surfaces: a watch-focused observer, a full Android phone observer/importer/client, and future Android accessories such as smart glasses. The repo also carries hardware validation targets that prove what a device can do before that code graduates into production observer modules.
 
-The repo is private during bootstrap but is on the open-source product path. Keep all visible files clean of private operational context, internal paths, personal machine names, and unreleasable implementation history.
+The repo is public open source. Keep all visible files clean of private operational context, internal paths, personal machine names, and unreleasable implementation history.
 
 ## Current Targets
 
@@ -21,6 +21,7 @@ The repo is private during bootstrap but is on the open-source product path. Kee
 - **Fail gap-honest.** Never render an observing/synced/linked state unless the underlying durable fact is true. Android background survival is best-effort and must surface gaps.
 - **Use proven hardware paths.** The Rogbid app validated legacy `Camera`, `AudioRecord`, GPS, ZXing QR, Conscrypt TLS 1.3, and WorkManager retry on the watch. Preserve those facts until production code replaces them with tested equivalents.
 - **No GitHub Actions release path.** Builds and releases are operator-driven from known local machines. Local `make` and Gradle automation are encouraged; hosted CI/CD and release credentials in GitHub are not.
+- **Use the solstone app namespace.** Installable Android artifacts use `app.solstone.*`; the current validation target is `app.solstone.validation.rogbid`.
 
 ## Commands
 
@@ -30,6 +31,9 @@ make test
 make ci
 make format
 make clean
+ANDROID_REMOTE_HOST=host.local make sync-android-host
+ANDROID_REMOTE_HOST=host.local make android-host-ci
+ANDROID_REMOTE_HOST=host.local make android-host-assemble-validation-rogbid
 make assemble-validation-rogbid
 make validate-rogbid-adb
 make validate-rogbid-media
@@ -76,4 +80,3 @@ Use the comment syntax native to the file type. Do not add headers to generated 
 ## License
 
 AGPL-3.0-only.
-
