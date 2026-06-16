@@ -16,7 +16,7 @@ test:
 	$(GRADLE) test
 
 ci:
-	$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :testing:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:identity-file:assembleDebug :apps:watch:assembleMockDebug :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleRealDebug :apps:validation-rogbid:assembleDebug
+	$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :testing:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:identity-file:assembleDebug :apps:watch:assembleMockDebug :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleRealDebug :apps:validation-rogbid:assembleDebug
 
 format:
 	@echo "No formatter is configured yet."
