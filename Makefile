@@ -3,7 +3,10 @@
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
 ANDROID_REMOTE_HOST ?=
-ANDROID_REMOTE_PROJECT ?= ~/projects/solstone-android
+# Dedicated remote build tree for `sync-android-host` (which rsyncs with --delete).
+# Kept separate from any working clone at ~/projects/solstone-android so the
+# destructive sync can never clobber a checkout in use on the build host.
+ANDROID_REMOTE_PROJECT ?= ~/android-host/solstone-android
 RSYNC_EXCLUDES := --exclude .git --exclude .gradle --exclude '**/build' --exclude artifacts --exclude captures
 
 install:
