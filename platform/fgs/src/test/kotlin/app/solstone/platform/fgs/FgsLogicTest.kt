@@ -16,9 +16,22 @@ class FgsLogicTest {
     }
 
     @Test
-    fun permissionStatusRequiresMicrophoneAndNotifications() {
-        assertTrue(PermissionStatus(microphoneGranted = true, notificationsGranted = true).allRequiredGranted)
-        assertFalse(PermissionStatus(microphoneGranted = false, notificationsGranted = true).allRequiredGranted)
-        assertFalse(PermissionStatus(microphoneGranted = true, notificationsGranted = false).allRequiredGranted)
+    fun permissionStatusRequiresStartPermissions() {
+        assertTrue(granted().allRequiredGranted)
+        assertFalse(granted().copy(microphoneGranted = false).allRequiredGranted)
+        assertFalse(granted().copy(cameraGranted = false).allRequiredGranted)
+        assertFalse(granted().copy(fineLocationGranted = false, coarseLocationGranted = false).allRequiredGranted)
+        assertFalse(granted().copy(notificationsGranted = false).allRequiredGranted)
+        assertTrue(granted().copy(backgroundLocationGranted = false).allRequiredGranted)
     }
+
+    private fun granted(): PermissionStatus =
+        PermissionStatus(
+            microphoneGranted = true,
+            cameraGranted = true,
+            fineLocationGranted = true,
+            coarseLocationGranted = false,
+            backgroundLocationGranted = true,
+            notificationsGranted = true,
+        )
 }

@@ -13,6 +13,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -33,9 +34,23 @@ android {
             dimension = "mode"
         }
     }
+
+    testOptions {
+        managedDevices {
+            localDevices {
+                create("pixel5api35") {
+                    device = "Pixel 5"
+                    apiLevel = 35
+                    systemImageSource = "google_apis"
+                }
+            }
+        }
+    }
 }
 
 dependencies {
+    implementation(project(":harness"))
+    implementation(project(":formfactor:watch"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))
     implementation(project(":core:segment"))
@@ -50,10 +65,16 @@ dependencies {
     implementation(project(":platform:persistence-room"))
     implementation(project(":platform:identity-file"))
     implementation(project(":platform:work"))
+    implementation(project(":platform:camera-still"))
     add("realImplementation", project(":platform:audio"))
     add("realImplementation", project(":platform:location"))
-    add("realImplementation", project(":platform:camera-still"))
     add("realImplementation", project(":platform:camera-legacy"))
     add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
+
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }

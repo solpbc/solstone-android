@@ -10,7 +10,7 @@ import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.audio.AudioContinuousSourceEngine
 import app.solstone.platform.camera.camera2.Camera2StillCamera
 import app.solstone.platform.camera.legacy.LegacyStillCamera
-import app.solstone.platform.camera.still.SingleHolderCameraLock
+import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
 import app.solstone.platform.location.AndroidLocationSource
@@ -18,13 +18,12 @@ import app.solstone.platform.location.LocationContinuousSourceEngine
 import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
 
-fun createCaptureSetup(context: Context): CaptureSetup {
+fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val audio = AudioContinuousSourceEngine(
         outputDirectory = context.cacheDir.resolve("audio-source"),
         storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES),
     )
     val location = LocationContinuousSourceEngine(AndroidLocationSource(context))
-    val cameraLock = SingleHolderCameraLock()
     val camera = StillCaptureEngine(
         stillCamera = selectStillCamera(context),
         cameraLock = cameraLock,

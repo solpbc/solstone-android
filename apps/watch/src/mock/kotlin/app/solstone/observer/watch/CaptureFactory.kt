@@ -8,11 +8,12 @@ import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.spool.PayloadBytesProvider
+import app.solstone.platform.camera.still.CameraLock
 import app.solstone.testing.FakeContinuousSource
 import app.solstone.testing.fakePayloadBytes
 import java.io.ByteArrayInputStream
 
-fun createCaptureSetup(context: Context): CaptureSetup {
+fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val audio = FakeContinuousSource(
         sourceId = "audio",
         stream = MAIN_STREAM,

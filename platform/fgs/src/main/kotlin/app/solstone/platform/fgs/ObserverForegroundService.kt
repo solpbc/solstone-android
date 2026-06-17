@@ -35,6 +35,7 @@ class ObserverForegroundService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(heartbeat)
+        invalidateHeartbeat()
         super.onDestroy()
     }
 
@@ -57,10 +58,19 @@ class ObserverForegroundService : Service() {
             }
         }
 
+        fun stop(context: Context) {
+            invalidateHeartbeat()
+            context.stopService(Intent(context, ObserverForegroundService::class.java))
+        }
+
         fun lastHeartbeatNanos(): Long? =
             lastBeatNanos.get().takeIf { it > 0L }
 
         fun isHeartbeatFresh(nowNanos: Long = System.nanoTime(), staleAfterNanos: Long = 15_000_000_000L): Boolean =
             HeartbeatMonitor.isFresh(nowNanos, lastHeartbeatNanos(), staleAfterNanos)
+
+        private fun invalidateHeartbeat() {
+            lastBeatNanos.set(0L)
+        }
     }
 }
