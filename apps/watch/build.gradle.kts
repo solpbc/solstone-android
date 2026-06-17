@@ -42,4 +42,9 @@ dependencies {
     implementation(project(":core:spool"))
     implementation(project(":core:queue"))
     implementation(project(":core:diagnostics"))
+    implementation(project(":platform:fgs"))
+    implementation(project(":platform:power"))
+    implementation(project(":platform:persistence-room"))
+    add("realImplementation", project(":platform:audio"))
+    add("mockImplementation", project(":testing"))
 }

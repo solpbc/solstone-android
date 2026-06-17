@@ -153,6 +153,46 @@ tasks.named("check") {
     dependsOn("checkPrivacyDeps", "checkCorePurity", "privacyGuardSelfTest", "purityGuardSelfTest")
 }
 
+fun Project.registerMicrophoneManifestCheck() {
+    tasks.register("checkRealDebugMicrophoneManifest") {
+        group = "verification"
+        description = "Checks the realDebug merged manifest for microphone foreground service declarations."
+        dependsOn("processRealDebugManifest")
+
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val text = manifest.readText()
+            val failures = mutableListOf<String>()
+            if (!text.contains("android.permission.FOREGROUND_SERVICE_MICROPHONE")) {
+                failures += "missing FOREGROUND_SERVICE_MICROPHONE permission"
+            }
+            if (!Regex("""foregroundServiceType\s*=\s*["']microphone["']""").containsMatchIn(text)) {
+                failures += "missing foregroundServiceType=\"microphone\""
+            }
+            if (text.contains("dataSync")) {
+                failures += "must not declare dataSync"
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException("${project.path} realDebug microphone manifest check failed:\n${failures.joinToString("\n")}")
+            }
+        }
+    }
+}
+
+project(":apps:watch") {
+    registerMicrophoneManifestCheck()
+}
+
+project(":apps:phone") {
+    registerMicrophoneManifestCheck()
+}
+
 project(":apps:validation-rogbid") {
     tasks.configureEach {
         if (name.startsWith("lint")) {

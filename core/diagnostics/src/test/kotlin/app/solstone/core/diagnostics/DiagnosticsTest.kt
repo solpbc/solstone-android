@@ -29,6 +29,15 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun reduceMapsS1HonestStateFactsIndividually() {
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT, reduce(healthy().copy(providerEmitting = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(healthy().copy(storageOk = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.EXEMPTION_UNVERIFIED, reduce(healthy().copy(exemptionVerified = false)))
+    }
+
+    @Test
     fun reduceMapsOffAndHealthyOn() {
         assertEquals(SourceState.OFF to ReasonCode.NONE, reduce(healthy().copy(desiredOn = false)))
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))

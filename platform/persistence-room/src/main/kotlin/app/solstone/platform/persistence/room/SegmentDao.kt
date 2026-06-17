@@ -40,6 +40,9 @@ abstract class SegmentDao {
     @Query("SELECT * FROM segment WHERE day = :day ORDER BY sealed_at ASC, id ASC")
     abstract fun segmentsByDay(day: String): List<SegmentRow>
 
+    @Query("SELECT * FROM segment WHERE id = :id")
+    abstract fun segmentById(id: String): SegmentRow?
+
     @Query("SELECT * FROM segment_file WHERE sha256 = :sha256 ORDER BY segment_id ASC, rowId ASC")
     abstract fun duplicateBySha256(sha256: String): List<SegmentFileRow>
 

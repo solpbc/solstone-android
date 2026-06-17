@@ -13,6 +13,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -33,6 +34,18 @@ android {
             dimension = "mode"
         }
     }
+
+    testOptions {
+        managedDevices {
+            localDevices {
+                create("pixel5api35") {
+                    device = "Pixel 5"
+                    apiLevel = 35
+                    systemImageSource = "google_apis"
+                }
+            }
+        }
+    }
 }
 
 dependencies {
@@ -42,4 +55,15 @@ dependencies {
     implementation(project(":core:spool"))
     implementation(project(":core:queue"))
     implementation(project(":core:diagnostics"))
+    implementation(project(":platform:fgs"))
+    implementation(project(":platform:power"))
+    implementation(project(":platform:persistence-room"))
+    add("realImplementation", project(":platform:audio"))
+    add("mockImplementation", project(":testing"))
+
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }

@@ -4,6 +4,7 @@
 package app.solstone.testing
 
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.SegmenterAnchor
 import app.solstone.core.segment.SegmentPayload
@@ -12,6 +13,8 @@ import app.solstone.core.spool.CountingSpoolWriter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.sources.EmissionSink
+import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SourceEmission
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -65,6 +68,37 @@ class ObserverPipelineTest {
         assertEquals(288, writer.sealedCount)
         assertEquals(288, writer.manifests.size)
         assertTrue(writer.manifests.all { it.key.segment.endsWith("_300") })
+    }
+
+    @Test
+    fun fullAudioWindowSealsWithSingleM4aPayload() {
+        val clock = VirtualMonotonicClock(0)
+        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")))
+
+        segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 300_000))
+        clock.advanceByMillis(300_000)
+        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
+
+        assertEquals("000000_300", sealed.key.segment)
+        assertEquals(1, sealed.payloads.size)
+        assertEquals("audio.m4a", sealed.payloads.single().ref.name)
+        assertEquals("audio/mp4", sealed.payloads.single().ref.mediaType)
+        assertTrue(sealed.gaps.isEmpty())
+    }
+
+    @Test
+    fun failedAudioWindowSealsWithGapAndNoPayloads() {
+        val clock = VirtualMonotonicClock(0)
+        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")))
+        val gap = GapEvent("capture_gap", BASE_CAPTURE_EPOCH_MS + 1_000, "storage")
+
+        segmenter.feed(audioGapEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 1_000, gap))
+        clock.advanceByMillis(300_000)
+        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
+
+        assertEquals("000000_300", sealed.key.segment)
+        assertTrue(sealed.payloads.isEmpty())
+        assertEquals(listOf(gap), sealed.gaps)
     }
 
     @Test
@@ -131,6 +165,28 @@ class ObserverPipelineTest {
             relativePayloadHashes = payloadHashes(base),
         )
     }
+
+    private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
+        SourceEmission(
+            sourceId = "audio",
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = startEpochMs,
+            captureEndEpochMs = endEpochMs,
+            payloadRefs = listOf(PayloadRef("audio.m4a", "audio/mp4", 16, null)),
+            metadata = emptyMap(),
+            gaps = emptyList(),
+        )
+
+    private fun audioGapEmission(startEpochMs: Long, endEpochMs: Long, gap: GapEvent): SourceEmission =
+        SourceEmission(
+            sourceId = "audio",
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = startEpochMs,
+            captureEndEpochMs = endEpochMs,
+            payloadRefs = emptyList(),
+            metadata = emptyMap(),
+            gaps = listOf(gap),
+        )
 
     private fun manifestBytes(base: Path): Map<String, String> =
         Files.walk(base).use { paths ->
