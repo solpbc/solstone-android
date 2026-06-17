@@ -81,7 +81,7 @@ class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
             files = files,
             gaps = segment.gaps.sortedWith(gapComparator),
         )
-        Files.writeString(draftDir.resolve("manifest"), serializeManifest(segment, manifest), StandardCharsets.UTF_8)
+        Files.write(draftDir.resolve("manifest"), serializeManifest(segment, manifest).toByteArray(StandardCharsets.UTF_8))
         Files.createDirectories(finalDir.parent)
         try {
             Files.move(draftDir, finalDir, StandardCopyOption.ATOMIC_MOVE)
@@ -242,9 +242,9 @@ private val gapComparator = compareBy<GapEvent> { it.atEpochMs }
     .thenBy { it.kind }
     .thenBy { it.detail ?: "" }
 
-private fun escape(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+private fun escape(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
-private fun unescape(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
+private fun unescape(value: String): String = URLDecoder.decode(value, "UTF-8")
 
 private fun tabFields(line: String, expected: Int): List<String> {
     val fields = line.split('\t').toMutableList()

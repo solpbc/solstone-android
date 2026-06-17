@@ -16,6 +16,7 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
 import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.ZoneId
@@ -193,7 +194,7 @@ class ObserverPipelineTest {
             paths.filter { Files.isRegularFile(it) && it.fileName.toString() == "manifest" }
                 .sorted()
                 .toList()
-                .associate { base.relativize(it).toString() to Files.readString(it) }
+                .associate { base.relativize(it).toString() to String(Files.readAllBytes(it), StandardCharsets.UTF_8) }
         }
 
     private fun payloadHashes(base: Path): Map<String, String> =

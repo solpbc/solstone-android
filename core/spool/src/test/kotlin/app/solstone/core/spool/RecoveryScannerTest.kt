@@ -52,7 +52,7 @@ class RecoveryScannerTest {
     fun missingOrShortPayloadDiscardsPartialSegment() {
         withTempDir { baseDir ->
             val draftDir = writeDraft(baseDir, payload = "complete bytes")
-            Files.writeString(draftDir.resolve("payload.bin"), "short", StandardCharsets.UTF_8)
+            Files.write(draftDir.resolve("payload.bin"), "short".toByteArray(StandardCharsets.UTF_8))
 
             val actions = RecoveryScanner(baseDir).scan(nowEpochMs = 9)
 
@@ -91,7 +91,7 @@ class RecoveryScannerTest {
         val draftDir = baseDir.resolve(".draft/20260616/camera/120000_300")
         Files.createDirectories(draftDir)
         val payloadPath = draftDir.resolve("payload.bin")
-        Files.writeString(payloadPath, payload, StandardCharsets.UTF_8)
+        Files.write(payloadPath, payload.toByteArray(StandardCharsets.UTF_8))
         val file = BundleFile(
             sourceId = "camera",
             name = "payload.bin",
@@ -116,7 +116,7 @@ class RecoveryScannerTest {
             gaps = emptyList(),
         )
         val manifest = BundleManifest(segment.key, files = listOf(file), gaps = emptyList())
-        Files.writeString(draftDir.resolve("manifest"), serializeManifest(segment, manifest), StandardCharsets.UTF_8)
+        Files.write(draftDir.resolve("manifest"), serializeManifest(segment, manifest).toByteArray(StandardCharsets.UTF_8))
         return draftDir
     }
 

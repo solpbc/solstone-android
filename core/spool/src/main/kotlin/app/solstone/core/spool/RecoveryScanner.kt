@@ -37,7 +37,7 @@ class RecoveryScanner(private val baseDir: Path) {
         }
 
         val parsed = runCatching {
-            parseManifest(Files.readString(manifestPath, StandardCharsets.UTF_8))
+            parseManifest(String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8))
         }.getOrElse {
             return discard(draftDir, nowEpochMs, "malformed manifest")
         }
