@@ -5,7 +5,6 @@ package app.solstone.observer.harness
 
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
-import app.solstone.core.model.IdentityState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parseDirectPairLink
@@ -135,8 +134,9 @@ class HarnessController(
                 fgsHeartbeatFresh = heartbeatFreshness.isFresh(),
                 providerEmitting = snapshot.providerEmitting,
                 storageOk = snapshot.storageOk,
-                linkPaired = endpointPresent && credentialPresent && identity?.state == IdentityState.PAIRED,
-                authValid = credentialPresent && identity?.state == IdentityState.PAIRED,
+                credentialPresent = credentialPresent,
+                endpointPresent = endpointPresent,
+                identityState = identity?.state,
                 exemptionVerified = snapshot.exemptionVerified,
             ),
         )

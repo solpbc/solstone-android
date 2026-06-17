@@ -44,6 +44,19 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun neverPairedDeviceTurnedOnMapsUnpaired() {
+        val f = fixture(
+            endpointStore = FakeEndpointStore(),
+            credentialStore = FakeCredentialStore(),
+            identityStore = FakeIdentityStore(),
+        )
+        assertTrue(f.controller.start())
+        val diagnostics = f.controller.diagnostics()
+        assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
+        assertEquals(ReasonCode.UNPAIRED, diagnostics.reason)
+    }
+
+    @Test
     fun syncNowEnqueuesExactlyOnce() {
         val f = fixture()
         f.controller.syncNow()

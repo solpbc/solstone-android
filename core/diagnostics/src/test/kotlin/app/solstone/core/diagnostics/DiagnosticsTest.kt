@@ -3,6 +3,7 @@
 
 package app.solstone.core.diagnostics
 
+import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
@@ -15,10 +16,10 @@ class DiagnosticsTest {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
-        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(linkPaired = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(healthy().copy(storageOk = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT, reduce(healthy().copy(providerEmitting = false)))
-        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED, reduce(healthy().copy(authValid = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED, reduce(healthy().copy(pairing = PairingFact.REVOKED)))
     }
 
     @Test
@@ -43,6 +44,22 @@ class DiagnosticsTest {
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))
     }
 
+    @Test
+    fun reduceMapsPairingFacts() {
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED, reduce(healthy().copy(pairing = PairingFact.REVOKED)))
+    }
+
+    @Test
+    fun pairingFactOfClassifiesEachCombination() {
+        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = false, identityState = null))
+        assertEquals(PairingFact.REVOKED, pairingFactOf(credentialPresent = true, endpointPresent = true, identityState = IdentityState.REVOKED))
+        assertEquals(PairingFact.PAIRED, pairingFactOf(credentialPresent = true, endpointPresent = true, identityState = IdentityState.PAIRED))
+        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = true, endpointPresent = false, identityState = IdentityState.PAIRED))
+        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = true, identityState = IdentityState.PAIRED))
+        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = false, identityState = IdentityState.UNPAIRED))
+    }
+
     private fun healthy() = SourceFacts(
         desiredOn = true,
         engineRunning = true,
@@ -50,8 +67,7 @@ class DiagnosticsTest {
         fgsHeartbeatFresh = true,
         providerEmitting = true,
         storageOk = true,
-        linkPaired = true,
-        authValid = true,
+        pairing = PairingFact.PAIRED,
         exemptionVerified = true,
     )
 }

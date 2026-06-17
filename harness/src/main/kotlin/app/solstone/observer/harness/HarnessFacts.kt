@@ -4,7 +4,9 @@
 package app.solstone.observer.harness
 
 import app.solstone.core.diagnostics.SourceFacts
+import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.diagnostics.reduce
+import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.platform.fgs.PermissionStatus
@@ -16,8 +18,9 @@ data class HarnessFactInputs(
     val fgsHeartbeatFresh: Boolean,
     val providerEmitting: Boolean,
     val storageOk: Boolean,
-    val linkPaired: Boolean,
-    val authValid: Boolean,
+    val credentialPresent: Boolean,
+    val endpointPresent: Boolean,
+    val identityState: IdentityState?,
     val exemptionVerified: Boolean,
 )
 
@@ -29,8 +32,7 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
         fgsHeartbeatFresh = inputs.fgsHeartbeatFresh,
         providerEmitting = inputs.providerEmitting,
         storageOk = inputs.storageOk,
-        linkPaired = inputs.linkPaired,
-        authValid = inputs.authValid,
+        pairing = pairingFactOf(inputs.credentialPresent, inputs.endpointPresent, inputs.identityState),
         exemptionVerified = inputs.exemptionVerified,
     )
     val (state, reason) = reduce(facts)
