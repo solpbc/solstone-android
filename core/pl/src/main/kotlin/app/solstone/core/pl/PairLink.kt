@@ -14,33 +14,47 @@ const val PAIR_LINK_PATH = "/p"
 data class DirectEndpoint(val host: String, val port: Int)
 
 class DirectPairLink(
-    val host: String,
-    val port: Int,
+    candidates: List<DirectEndpoint>,
     val nonce: String,
     val caFingerprintPrefix: ByteArray,
 ) {
-    fun endpoint(): DirectEndpoint = DirectEndpoint(host, if (port <= 0) DEFAULT_DIRECT_PORT else port)
+    val candidates: List<DirectEndpoint> = candidates.map { candidate ->
+        DirectEndpoint(candidate.host, if (candidate.port <= 0) DEFAULT_DIRECT_PORT else candidate.port)
+    }
+
+    val host: String get() = candidates.first().host
+    val port: Int get() = candidates.first().port
+
+    fun endpoint(): DirectEndpoint = candidates.first()
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is DirectPairLink) return false
-        return host == other.host &&
-            port == other.port &&
+        return candidates == other.candidates &&
             nonce == other.nonce &&
             caFingerprintPrefix.contentEquals(other.caFingerprintPrefix)
     }
 
     override fun hashCode(): Int {
-        var result = host.hashCode()
-        result = 31 * result + port
+        var result = candidates.hashCode()
         result = 31 * result + nonce.hashCode()
         result = 31 * result + caFingerprintPrefix.contentHashCode()
         return result
     }
 
     override fun toString(): String =
-        "DirectPairLink(host=$host, port=$port, nonce=$nonce, caFingerprintPrefix=${caFingerprintPrefix.contentToString()})"
+        "DirectPairLink(candidates=$candidates, nonce=$nonce, caFingerprintPrefix=${caFingerprintPrefix.contentToString()})"
 }
+
+enum class DialDecision { SUCCEED, ADVANCE, TERMINAL }
+
+fun classifyPairResponseStatus(status: Int): DialDecision = when (status) {
+    200 -> DialDecision.SUCCEED
+    410 -> DialDecision.TERMINAL
+    else -> DialDecision.ADVANCE
+}
+
+data class LocalIPv4Interface(val address: String, val prefixLength: Int)
 
 fun looksLikePairLink(text: String?): Boolean {
     if (text == null) {
@@ -69,21 +83,50 @@ fun parseDirectPairLink(pairLink: String): DirectPairLink {
     }
     val decoded = decodeCrockford32(fragment)
     // The decoded blob bytes are authoritative; host/path only route to the pair payload.
-    if (decoded.size != 40 || decoded[0] != 0x04.toByte() || decoded[1] != 0x01.toByte()) {
-        throw IllegalArgumentException("unsupported pair link payload")
+    if (decoded.size == 40 && decoded[0] == 0x04.toByte() && decoded[1] == 0x01.toByte()) {
+        val a = decoded[2].toInt() and 0xff
+        val b = decoded[3].toInt() and 0xff
+        val c = decoded[4].toInt() and 0xff
+        val d = decoded[5].toInt() and 0xff
+        if (!isPrivateOrLinkLocal(a, b)) {
+            throw IllegalArgumentException("pair link is not local/private IPv4")
+        }
+        val host = "$a.$b.$c.$d"
+        val port = ((decoded[6].toInt() and 0xff) shl 8) or (decoded[7].toInt() and 0xff)
+        val normPort = if (port <= 0) DEFAULT_DIRECT_PORT else port
+        val nonceBytes = decoded.copyOfRange(8, 24)
+        val caFp = decoded.copyOfRange(24, 40)
+        return DirectPairLink(listOf(DirectEndpoint(host, normPort)), hex(nonceBytes), caFp)
     }
-    val a = decoded[2].toInt() and 0xff
-    val b = decoded[3].toInt() and 0xff
-    val c = decoded[4].toInt() and 0xff
-    val d = decoded[5].toInt() and 0xff
-    if (!isPrivateOrLinkLocal(a, b)) {
-        throw IllegalArgumentException("pair link is not local/private IPv4")
+
+    if (decoded.size >= 3 && decoded[0] == 0x05.toByte() && decoded[1] == 0x01.toByte()) {
+        val count = decoded[2].toInt() and 0xff
+        if (count < 1 || decoded.size != 37 + 4 * count) {
+            throw IllegalArgumentException("unsupported pair link payload")
+        }
+        val port = ((decoded[3].toInt() and 0xff) shl 8) or (decoded[4].toInt() and 0xff)
+        val normPort = if (port <= 0) DEFAULT_DIRECT_PORT else port
+        val candidates = mutableListOf<DirectEndpoint>()
+        for (i in 0 until count) {
+            val offset = 5 + 4 * i
+            val a = decoded[offset].toInt() and 0xff
+            val b = decoded[offset + 1].toInt() and 0xff
+            val c = decoded[offset + 2].toInt() and 0xff
+            val d = decoded[offset + 3].toInt() and 0xff
+            if (a != 127) {
+                candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
+            }
+        }
+        if (candidates.isEmpty()) {
+            throw IllegalArgumentException("pair link has no usable direct candidates")
+        }
+        val nonceOffset = 5 + 4 * count
+        val nonceBytes = decoded.copyOfRange(nonceOffset, nonceOffset + 16)
+        val caFp = decoded.copyOfRange(nonceOffset + 16, nonceOffset + 32)
+        return DirectPairLink(candidates, hex(nonceBytes), caFp)
     }
-    val host = "$a.$b.$c.$d"
-    val port = ((decoded[6].toInt() and 0xff) shl 8) or (decoded[7].toInt() and 0xff)
-    val nonceBytes = decoded.copyOfRange(8, 24)
-    val caFp = decoded.copyOfRange(24, 40)
-    return DirectPairLink(host, port, hex(nonceBytes), caFp)
+
+    throw IllegalArgumentException("unsupported pair link payload")
 }
 
 fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
@@ -91,6 +134,48 @@ fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
         (a == 172 && b >= 16 && b <= 31) ||
         (a == 192 && b == 168) ||
         (a == 169 && b == 254)
+
+fun orderCandidatesBySubnet(
+    candidates: List<DirectEndpoint>,
+    interfaces: List<LocalIPv4Interface>,
+): List<DirectEndpoint> {
+    val usable = interfaces.mapNotNull { iface ->
+        val packed = packDottedIPv4(iface.address)
+        if (packed != null && iface.prefixLength in 1..32) {
+            iface to packed
+        } else {
+            null
+        }
+    }
+    if (usable.isEmpty()) {
+        return candidates
+    }
+
+    val (onSubnet, offSubnet) = candidates.partition { candidate ->
+        val target = packDottedIPv4(candidate.host) ?: return@partition false
+        usable.any { (iface, ifacePacked) ->
+            val mask = -1 shl (32 - iface.prefixLength)
+            (target and mask) == (ifacePacked and mask)
+        }
+    }
+    return onSubnet + offSubnet
+}
+
+private fun packDottedIPv4(address: String): Int? {
+    val parts = address.split(".")
+    if (parts.size != 4) {
+        return null
+    }
+    var packed = 0
+    for (part in parts) {
+        val octet = part.toIntOrNull() ?: return null
+        if (octet !in 0..255) {
+            return null
+        }
+        packed = (packed shl 8) or octet
+    }
+    return packed
+}
 
 fun decodeCrockford32(text: String): ByteArray {
     val out = ByteArrayOutputStream()

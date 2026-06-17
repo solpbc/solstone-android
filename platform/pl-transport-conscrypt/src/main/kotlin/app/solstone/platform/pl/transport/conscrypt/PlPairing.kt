@@ -18,13 +18,22 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DirectEndpoint
-import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
+import app.solstone.core.pl.classifyPairResponseStatus
+import app.solstone.core.pl.orderCandidatesBySubnet
 import app.solstone.core.pl.parseDirectPairLink
 import java.io.IOException
+import java.net.Inet4Address
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.Socket
+import java.net.SocketException
 import javax.net.ssl.SSLException
+import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.SSLSocket
 
 data class PairProbeResult(
@@ -42,48 +51,78 @@ fun pairAndProbe(
     identityStore: IdentityStore,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
+    val ordered = orderCandidatesBySubnet(link.candidates, readLocalIPv4Interfaces())
     val keyPair = generateP256KeyPair()
     val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
     val csr = buildCsrPem(deviceLabel, keyPair)
     val body = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
 
-    val pairSession = openCertlessSession(link)
-    val pinned = pairSession.handshakePinned
-    val pairHttp = pairSession.session.use { session ->
-        session.request("POST", "/app/link/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
-    }
-    if (pairHttp.status != 200) {
-        throw IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
+    var lastError: Exception? = null
+    var sawCaMismatch = false
+
+    for (endpoint in ordered) {
+        val pairSession = try {
+            openCertlessSession(endpoint, link.caFingerprintPrefix)
+        } catch (e: Exception) {
+            if (e is SSLException && e.message == PAIR_TLS_CA_PIN_MISMATCH) {
+                sawCaMismatch = true
+            }
+            lastError = e
+            continue
+        }
+        val pinned = pairSession.handshakePinned
+        val pairHttp = try {
+            pairSession.session.use { session ->
+                session.request("POST", "/app/link/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
+            }
+        } catch (e: Exception) {
+            lastError = e
+            continue
+        }
+
+        when (classifyPairResponseStatus(pairHttp.status)) {
+            DialDecision.SUCCEED -> {
+                val resp = PairResponse.fromJson(pairHttp.bodyText())
+                val caDer = pemToDer(resp.caChain.first(), "CERTIFICATE")
+                if (!startsWith(sha256(caDer), link.caFingerprintPrefix)) {
+                    throw SSLException("pair response CA fingerprint did not match QR pin")
+                }
+                val clientDer = certificateFromPem(resp.clientCert).encoded
+                if ("sha256:" + sha256Hex(clientDer) != resp.fingerprint) {
+                    throw SSLException("pair response client fingerprint mismatch")
+                }
+
+                val credential = ClientCredential(privateKeyPem, resp.clientCert, resp.caChain)
+                credentialStore.save(credential)
+                val home = PairedHome(
+                    instanceId = resp.instanceId,
+                    homeLabel = resp.homeLabel,
+                    relayOrigin = null,
+                    caChainFingerprint = "sha256:" + sha256Hex(caDer),
+                    clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
+                    observerHandle = null,
+                    state = IdentityState.PAIRED,
+                )
+                identityStore.save(home)
+
+                val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
+                    client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
+                }
+                return PairProbeResult(pinned, pairHttp.status, statusHttp.status, statusHttp.bodyText(), endpoint)
+            }
+            DialDecision.TERMINAL -> {
+                throw IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
+            }
+            DialDecision.ADVANCE -> {
+                lastError = IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
+            }
+        }
     }
 
-    val resp = PairResponse.fromJson(pairHttp.bodyText())
-    val caDer = pemToDer(resp.caChain.first(), "CERTIFICATE")
-    if (!startsWith(sha256(caDer), link.caFingerprintPrefix)) {
-        throw SSLException("pair response CA fingerprint did not match QR pin")
+    if (sawCaMismatch) {
+        throw SSLException("scanned a pair link whose host did not match its CA pin")
     }
-    val clientDer = certificateFromPem(resp.clientCert).encoded
-    if ("sha256:" + sha256Hex(clientDer) != resp.fingerprint) {
-        throw SSLException("pair response client fingerprint mismatch")
-    }
-
-    val credential = ClientCredential(privateKeyPem, resp.clientCert, resp.caChain)
-    credentialStore.save(credential)
-    val home = PairedHome(
-        instanceId = resp.instanceId,
-        homeLabel = resp.homeLabel,
-        relayOrigin = null,
-        caChainFingerprint = "sha256:" + sha256Hex(caDer),
-        clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
-        observerHandle = null,
-        state = IdentityState.PAIRED,
-    )
-    identityStore.save(home)
-
-    val endpoint = link.endpoint()
-    val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
-        client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
-    }
-    return PairProbeResult(pinned, pairHttp.status, statusHttp.status, statusHttp.bodyText(), endpoint)
+    throw lastError ?: IOException("all pair candidates exhausted")
 }
 
 /**
@@ -98,18 +137,17 @@ fun openAuthenticatedClient(endpoint: DirectEndpoint, credential: ClientCredenti
 
 private data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 
-private fun openCertlessSession(link: DirectPairLink): CertlessSession {
-    val endpoint = link.endpoint()
-    val socket = certlessFactory().createSocket(endpoint.host, endpoint.port) as SSLSocket
+private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: ByteArray): CertlessSession {
+    val socket = connectedSslSocket(certlessFactory(), endpoint.host, endpoint.port)
     try {
         configureSocket(socket)
         socket.startHandshake()
         val pinned = chainMatchesPrefix(
             socket.session.peerCertificates.map { it.encoded },
-            link.caFingerprintPrefix,
+            caFingerprintPrefix,
         )
         if (!pinned) {
-            throw SSLException("pair TLS peer chain did not match QR CA pin")
+            throw SSLException(PAIR_TLS_CA_PIN_MISMATCH)
         }
         return CertlessSession(MuxSession(socket), pinned)
     } catch (e: Exception) {
@@ -119,7 +157,7 @@ private fun openCertlessSession(link: DirectPairLink): CertlessSession {
 }
 
 private fun openAuthenticatedSession(endpoint: DirectEndpoint, credential: ClientCredential): MuxSession {
-    val socket = authenticatedFactory(credential).createSocket(endpoint.host, endpoint.port) as SSLSocket
+    val socket = connectedSslSocket(authenticatedFactory(credential), endpoint.host, endpoint.port)
     try {
         configureSocket(socket)
         socket.startHandshake()
@@ -130,7 +168,46 @@ private fun openAuthenticatedSession(endpoint: DirectEndpoint, credential: Clien
     }
 }
 
+private fun connectedSslSocket(factory: SSLSocketFactory, host: String, port: Int): SSLSocket {
+    val plainSocket = Socket()
+    try {
+        plainSocket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        return factory.createSocket(plainSocket, host, port, true) as SSLSocket
+    } catch (e: Exception) {
+        plainSocket.close()
+        throw e
+    }
+}
+
+fun readLocalIPv4Interfaces(): List<LocalIPv4Interface> {
+    return try {
+        val out = mutableListOf<LocalIPv4Interface>()
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return emptyList()
+        while (interfaces.hasMoreElements()) {
+            val networkInterface = interfaces.nextElement()
+            if (!networkInterface.isUp || networkInterface.isLoopback) {
+                continue
+            }
+            networkInterface.interfaceAddresses.forEach { interfaceAddress ->
+                val address = interfaceAddress.address
+                if (address is Inet4Address) {
+                    val hostAddress = address.hostAddress ?: return@forEach
+                    if (!hostAddress.startsWith("127.") && !hostAddress.startsWith("169.254.")) {
+                        out.add(LocalIPv4Interface(hostAddress, interfaceAddress.networkPrefixLength.toInt()))
+                    }
+                }
+            }
+        }
+        out
+    } catch (_: SocketException) {
+        emptyList()
+    }
+}
+
 private fun configureSocket(socket: SSLSocket) {
     socket.soTimeout = SOCKET_TIMEOUT_MS
     socket.enabledProtocols = requireTls13(socket.supportedProtocols)
 }
+
+private const val CONNECT_TIMEOUT_MS = 5000
+private const val PAIR_TLS_CA_PIN_MISMATCH = "pair TLS peer chain did not match QR CA pin"
