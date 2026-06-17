@@ -19,7 +19,6 @@ data class SourceEmission(
 )
 
 const val MAIN_STREAM = "observer"
-const val LOCATION_STREAM = "location"
 
 data class PayloadRef(val name: String, val mediaType: String, val byteSize: Long, val sha256: String?)
 

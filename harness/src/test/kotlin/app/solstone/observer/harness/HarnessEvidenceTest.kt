@@ -3,7 +3,6 @@
 
 package app.solstone.observer.harness
 
-import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,7 +11,7 @@ class HarnessEvidenceTest {
     @Test
     fun evidenceListsPerFileProvenance() {
         val reader = FakeEvidenceReader(
-            segments = listOf(evidenceSegment("main", MAIN_STREAM), evidenceSegment("loc", LOCATION_STREAM)),
+            segments = listOf(evidenceSegment("main", MAIN_STREAM), evidenceSegment("loc", MAIN_STREAM)),
             sync = HarnessSyncState(pendingCount = 1, lastSuccessAt = 2, lastFailureAt = null),
         )
         val f = fixture(evidenceReader = reader)

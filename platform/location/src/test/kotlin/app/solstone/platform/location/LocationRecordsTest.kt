@@ -5,7 +5,7 @@ package app.solstone.platform.location
 
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.Segmenter
-import app.solstone.core.sources.LOCATION_STREAM
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.CountingSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
@@ -56,7 +56,7 @@ class LocationRecordsTest {
         segmenter.feed(
             SourceEmission(
                 sourceId = LocationContinuousSourceEngine.SOURCE_ID,
-                stream = LOCATION_STREAM,
+                stream = MAIN_STREAM,
                 sourceKind = SourceKind.OBSERVER,
                 captureStartEpochMs = BASE_EPOCH_MS,
                 captureEndEpochMs = BASE_EPOCH_MS + 300_000L,
@@ -69,7 +69,7 @@ class LocationRecordsTest {
         val writer = CountingSpoolWriter()
         writer.seal(sealed, PayloadBytesProvider { ByteArrayInputStream(ByteArray(it.ref.byteSize.toInt())) })
 
-        assertEquals(LOCATION_STREAM, sealed.stream)
+        assertEquals(MAIN_STREAM, sealed.stream)
         assertTrue(sealed.payloads.isEmpty())
         assertEquals(listOf(gap), sealed.gaps)
         assertEquals(0L, writer.bytesWritten)

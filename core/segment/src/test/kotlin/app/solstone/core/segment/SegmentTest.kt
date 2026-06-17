@@ -12,6 +12,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -111,6 +112,68 @@ class SegmentTest {
         )
     }
 
+    @Test
+    fun audioAndLocationOffsetStartsJoinSameObserverWindow() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+
+        // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
+        segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L))
+        val sealed = segmenter.flush().single()
+
+        assertEquals(MAIN_STREAM, sealed.stream)
+        assertEquals(2, sealed.payloads.size)
+        assertEquals(setOf("audio", "location"), sealed.payloads.map { it.sourceId }.toSet())
+        assertEquals(setOf("audio.m4a", "location.jsonl"), sealed.payloads.map { it.ref.name }.toSet())
+    }
+
+    @Test
+    fun adjacentCellsSealWithOnlyTheirOwnSourcesNoCrossTruncation() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+
+        // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
+        val sealedCell0 = segmenter.feed(locationEmission(BASE_EPOCH_MS + 347_000L, BASE_EPOCH_MS + 360_000L)).single()
+
+        assertEquals(listOf("audio"), sealedCell0.payloads.map { it.sourceId })
+        assertEquals(BASE_EPOCH_MS + 300_000L, sealedCell0.wireKeys.endEpochMs)
+
+        val sealedCell1 = segmenter.flush().single()
+        assertEquals(listOf("location"), sealedCell1.payloads.map { it.sourceId })
+    }
+
+    @Test
+    fun lateLocationAfterSharedWatermarkAdvancedIsVisibleGapNotSilentDrop() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+
+        // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
+        val cell0 = segmenter.feed(audioEmission(BASE_EPOCH_MS + 312_000L, BASE_EPOCH_MS + 600_000L)).single()
+        segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L))
+
+        val cell1 = segmenter.flush().single()
+        val lateGap = cell1.gaps.single { it.kind == "late_emission" }
+        assertEquals(BASE_EPOCH_MS.toString(), lateGap.detail)
+        assertFalse(listOf(cell0, cell1).flatMap { it.payloads }.any { it.ref.name == "location.jsonl" })
+        assertTrue(cell1.payloads.any { it.sourceId == "audio" })
+    }
+
+    @Test
+    fun gapOnlyLocationDoesNotPrematurelySealOrTruncateAudioWindow() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        val locationGap = GapEvent("location_gap", BASE_EPOCH_MS + 107_000L, "no_fix")
+
+        // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
+        val sealed = segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L, gaps = listOf(locationGap)))
+        assertTrue(sealed.isEmpty())
+
+        val flushed = segmenter.flush().single()
+        assertEquals(listOf("audio"), flushed.payloads.map { it.sourceId })
+        assertEquals(BASE_EPOCH_MS + 300_000L, flushed.wireKeys.endEpochMs)
+        assertTrue(locationGap in flushed.gaps)
+    }
+
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
         SourceEmission(
             sourceId = "audio",
@@ -121,6 +184,26 @@ class SegmentTest {
             payloadRefs = listOf(PayloadRef("audio.m4a", "audio/mp4", 16, null)),
             metadata = emptyMap(),
             gaps = emptyList(),
+        )
+
+    private fun locationEmission(
+        startEpochMs: Long,
+        endEpochMs: Long,
+        gaps: List<GapEvent> = emptyList(),
+    ): SourceEmission =
+        SourceEmission(
+            sourceId = "location",
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = startEpochMs,
+            captureEndEpochMs = endEpochMs,
+            payloadRefs = if (gaps.isEmpty()) {
+                listOf(PayloadRef("location.jsonl", "application/x-ndjson", 24, null))
+            } else {
+                emptyList()
+            },
+            metadata = emptyMap(),
+            gaps = gaps,
         )
 
     private companion object {

@@ -7,7 +7,7 @@ import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
-import app.solstone.core.sources.LOCATION_STREAM
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
@@ -99,7 +99,7 @@ class LocationContinuousSourceEngine(
         }
         return SourceEmission(
             sourceId = sourceId,
-            stream = LOCATION_STREAM,
+            stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
             captureStartEpochMs = captureStartEpochMs,
             captureEndEpochMs = captureEndEpochMs,

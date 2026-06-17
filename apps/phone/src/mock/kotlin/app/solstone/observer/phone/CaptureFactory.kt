@@ -5,7 +5,6 @@ package app.solstone.observer.phone
 
 import android.content.Context
 import app.solstone.core.segment.SegmentPayload
-import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.camera.still.CameraLock
@@ -23,7 +22,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     )
     val location = FakeContinuousSource(
         sourceId = "location",
-        stream = LOCATION_STREAM,
+        stream = MAIN_STREAM,
         frameEveryMillis = 300_000,
         frameSizeBytes = 24,
         frameCount = 3,

@@ -12,9 +12,8 @@ production code changes are intentionally not included here.
 - Add `stream` to `SourceEmission` immediately after `sourceId`.
 - Add shared stream constants in `core:sources`:
   - `MAIN_STREAM = "observer"`
-  - `LOCATION_STREAM = "location"`
 - Every `SourceEmission` construction must pass `stream`.
-- Audio uses `stream = MAIN_STREAM`; location uses `stream = LOCATION_STREAM`.
+- Audio and location use `stream = MAIN_STREAM`.
 
 ### Segmenter
 
@@ -134,7 +133,7 @@ production code changes are intentionally not included here.
   - `"audio"` to audio engine
   - `"location"` to location engine
   - otherwise error
-- Mock factories construct a fake audio source on `MAIN_STREAM` and a fake location source on `LOCATION_STREAM`.
+- Mock factories construct fake audio and location sources on `MAIN_STREAM`.
 - `FakeContinuousSource` gains a `stream` parameter defaulting to `MAIN_STREAM`.
 - `VirtualMonotonicClock` is removed if no remaining caller needs `MonotonicClock`.
 - Both `MainActivity` classes construct `Segmenter(ZoneId.systemDefault())` and `CapturePipeline(...)`.

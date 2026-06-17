@@ -11,8 +11,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import app.solstone.core.model.QueueState
-import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
@@ -140,11 +138,6 @@ class PhoneHarnessUi(
                 "${segment.day}/${segment.stream}/${segment.segment}",
                 "state=${segment.state}",
                 "bytes=${segment.byteSize}",
-                if (segment.stream == LOCATION_STREAM && segment.state == QueueState.SEALED) {
-                    "captured-but-not-uploaded"
-                } else {
-                    null
-                },
             ).filterNotNull().joinToString("\n"),
         )
         segment.files.forEach { file ->

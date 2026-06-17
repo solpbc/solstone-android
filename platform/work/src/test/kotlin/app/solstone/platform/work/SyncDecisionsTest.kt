@@ -9,7 +9,6 @@ import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
-import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -21,15 +20,16 @@ import kotlin.test.assertTrue
 
 class SyncDecisionsTest {
     @Test
-    fun selectDrainSegmentsKeepsOnlySealedMainStream() {
+    fun selectDrainSegmentsDrainsObserverSealedIncludingLocationAndExcludesOtherStreams() {
         val rows = listOf(
             segment("main-sealed", MAIN_STREAM, QueueState.SEALED),
-            segment("location-sealed", LOCATION_STREAM, QueueState.SEALED),
+            segment("observer-location", MAIN_STREAM, QueueState.SEALED),
+            segment("import-sealed", "import.share", QueueState.SEALED),
             segment("main-uploading", MAIN_STREAM, QueueState.UPLOADING),
             segment("main-failed", MAIN_STREAM, QueueState.FAILED),
         )
 
-        assertEquals(listOf("main-sealed"), selectDrainSegments(rows).map { it.id })
+        assertEquals(listOf("main-sealed", "observer-location"), selectDrainSegments(rows).map { it.id })
     }
 
     @Test

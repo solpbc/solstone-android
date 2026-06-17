@@ -12,7 +12,6 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.CountingSpoolWriter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.sources.LOCATION_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
@@ -26,29 +25,23 @@ import kotlin.test.assertNotNull
 
 class RoomSealedSegmentSinkTest {
     @Test
-    fun persistsMultipleSourceFilesInOneStreamSegmentAndSeparatesStreams() {
+    fun persistsAudioAndLocationFilesInOneObserverSegment() {
         val dao = FakeSegmentDao()
         val sink = RoomSealedSegmentSink(dao)
         val writer = CountingSpoolWriter()
-        val main = Segmenter(ZoneId.of("UTC")).run {
-            feed(emission(sourceId = "audio-a", stream = MAIN_STREAM, name = "a.m4a"))
-            feed(emission(sourceId = "audio-b", stream = MAIN_STREAM, name = "b.m4a"))
-            flush().single()
-        }
-        val location = Segmenter(ZoneId.of("UTC")).run {
-            feed(emission(sourceId = "location", stream = LOCATION_STREAM, name = "location.jsonl"))
+        val segment = Segmenter(ZoneId.of("UTC")).run {
+            feed(emission(sourceId = "audio", stream = MAIN_STREAM, name = "audio.m4a", captureStartEpochMs = BASE_EPOCH_MS + 12_000L))
+            feed(emission(sourceId = "location", stream = MAIN_STREAM, name = "location.jsonl", captureStartEpochMs = BASE_EPOCH_MS + 47_000L))
             flush().single()
         }
 
-        sink.persistSealed(main, writer.seal(main, provider()), sealedAtEpochMs = 1L)
-        sink.persistSealed(location, writer.seal(location, provider()), sealedAtEpochMs = 2L)
+        sink.persistSealed(segment, writer.seal(segment, provider()), sealedAtEpochMs = 1L)
 
-        assertEquals(2, dao.segments.size)
-        assertNotNull(dao.segmentById("${main.key.day}/$MAIN_STREAM/${main.key.segment}"))
-        assertNotNull(dao.segmentById("${location.key.day}/$LOCATION_STREAM/${location.key.segment}"))
-        val mainFiles = dao.files.filter { it.segmentId == main.id() }
-        assertEquals(listOf("audio-a", "audio-b"), mainFiles.map { it.sourceId }.sorted())
-        assertEquals(2, mainFiles.size)
+        assertEquals(1, dao.segments.size)
+        assertNotNull(dao.segmentById("${segment.key.day}/$MAIN_STREAM/${segment.key.segment}"))
+        val files = dao.files.filter { it.segmentId == segment.id() }
+        assertEquals(listOf("audio", "location"), files.map { it.sourceId }.sorted())
+        assertEquals(listOf("audio.m4a", "location.jsonl"), files.map { it.name }.sorted())
     }
 
     @Test
@@ -75,13 +68,18 @@ class RoomSealedSegmentSinkTest {
         }
     }
 
-    private fun emission(sourceId: String, stream: String, name: String): SourceEmission =
+    private fun emission(
+        sourceId: String,
+        stream: String,
+        name: String,
+        captureStartEpochMs: Long = BASE_EPOCH_MS,
+    ): SourceEmission =
         SourceEmission(
             sourceId = sourceId,
             stream = stream,
             sourceKind = SourceKind.OBSERVER,
-            captureStartEpochMs = BASE_EPOCH_MS,
-            captureEndEpochMs = BASE_EPOCH_MS + 300_000L,
+            captureStartEpochMs = captureStartEpochMs,
+            captureEndEpochMs = captureStartEpochMs + 300_000L,
             payloadRefs = listOf(PayloadRef(name, "application/octet-stream", 4, null)),
             metadata = emptyMap(),
             gaps = emptyList(),

@@ -126,8 +126,8 @@ The ongoing FGS notification is the always-on control center; the status surface
   visible error state distinct from an empty queue.
 - **Evidence + export** lists sealed segments with per-file provenance (source id, name, media type,
   sha256, size). Export copies a selected bundle into the app's external files area.
-- `location`-stream segments are honestly shown as captured-but-not-uploaded — v1 syncs only the
-  `observer` stream.
+- Location rows appear as ordinary `observer`-stream evidence and sync with the rest of the
+  observer segment.
 
 ### 7. Background sync + journal-side visibility
 
