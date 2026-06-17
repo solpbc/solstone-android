@@ -49,6 +49,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":harness"))
+    implementation(project(":formfactor:phone"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))
     implementation(project(":core:segment"))
@@ -63,9 +65,9 @@ dependencies {
     implementation(project(":platform:persistence-room"))
     implementation(project(":platform:identity-file"))
     implementation(project(":platform:work"))
+    implementation(project(":platform:camera-still"))
     add("realImplementation", project(":platform:audio"))
     add("realImplementation", project(":platform:location"))
-    add("realImplementation", project(":platform:camera-still"))
     add("realImplementation", project(":platform:camera-legacy"))
     add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
