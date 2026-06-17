@@ -76,7 +76,12 @@ class LocationContinuousSourceEngine(
             source.lastFix(now)?.let { records.append(buildLocationRecord(it)) }
             val remaining = WINDOW_MS - (nowProvider() - captureStartEpochMs)
             if (remaining <= 0L) break
-            Thread.sleep(minOf(sampleEveryMs, remaining))
+            try {
+                Thread.sleep(minOf(sampleEveryMs, remaining))
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
         }
 
         val captureEndEpochMs = maxOf(nowProvider(), captureStartEpochMs)
