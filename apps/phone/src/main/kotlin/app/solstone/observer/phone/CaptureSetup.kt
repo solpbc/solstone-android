@@ -3,14 +3,10 @@
 
 package app.solstone.observer.phone
 
-import app.solstone.core.segment.MonotonicClock
-import app.solstone.core.segment.SegmenterAnchor
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.spool.PayloadBytesProvider
 
 data class CaptureSetup(
-    val engine: ContinuousSourceEngine,
-    val clock: MonotonicClock,
-    val anchor: SegmenterAnchor,
+    val engines: List<ContinuousSourceEngine>,
     val payloadBytesProvider: PayloadBytesProvider,
 )

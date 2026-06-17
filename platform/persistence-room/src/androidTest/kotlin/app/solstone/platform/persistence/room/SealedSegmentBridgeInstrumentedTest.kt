@@ -10,12 +10,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.model.SourceKind
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.model.QueueState
-import app.solstone.core.segment.MonotonicClock
 import app.solstone.core.segment.Segmenter
-import app.solstone.core.segment.SegmenterAnchor
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
 import java.io.ByteArrayInputStream
@@ -81,11 +80,9 @@ class SealedSegmentBridgeInstrumentedTest {
     }
 
     private fun sealOneFullAudioWindow(): SealedResult {
-        val clock = MutableClock(0)
-        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_EPOCH_MS, 0, ZoneId.of("UTC")))
+        val segmenter = Segmenter(ZoneId.of("UTC"))
         val first = audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000)
         segmenter.feed(first)
-        clock.nanos = 300_000_000_000L
         val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000, BASE_EPOCH_MS + 600_000)).single()
         val writer = FileSpoolWriter(baseDir)
         val result = writer.seal(
@@ -101,6 +98,7 @@ class SealedSegmentBridgeInstrumentedTest {
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
         SourceEmission(
             sourceId = "audio",
+            stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
             captureStartEpochMs = startEpochMs,
             captureEndEpochMs = endEpochMs,
@@ -113,10 +111,6 @@ class SealedSegmentBridgeInstrumentedTest {
         val segment: app.solstone.core.segment.SealedSegment,
         val result: app.solstone.core.spool.SealResult,
     )
-
-    private class MutableClock(var nanos: Long) : MonotonicClock {
-        override fun nanos(): Long = nanos
-    }
 
     private fun Path.deleteRecursively() {
         if (!Files.exists(this)) return

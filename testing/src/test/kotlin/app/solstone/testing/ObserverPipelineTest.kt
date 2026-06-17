@@ -6,13 +6,13 @@ package app.solstone.testing
 import app.solstone.core.model.GapEvent
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.Segmenter
-import app.solstone.core.segment.SegmenterAnchor
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.sha256
 import app.solstone.core.spool.CountingSpoolWriter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.sources.EmissionSink
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
 import java.io.ByteArrayInputStream
@@ -37,7 +37,7 @@ class ObserverPipelineTest {
 
             assertEquals(firstRun.relativeManifestBytes, secondRun.relativeManifestBytes)
             assertEquals(firstRun.relativePayloadHashes, secondRun.relativePayloadHashes)
-            assertTrue(firstRun.relativeManifestBytes.keys.any { it.contains("/source-a/") })
+            assertTrue(firstRun.relativeManifestBytes.keys.any { it.contains("/$MAIN_STREAM/") })
             firstRun.finalDirs.forEach { sealed ->
                 val dir = sealed.directory
                 assertEquals(first.resolve(sealed.day).resolve(sealed.stream).resolve(sealed.segment), dir)
@@ -54,9 +54,8 @@ class ObserverPipelineTest {
 
     @Test
     fun countingSpoolWriterCountsExactlyTwoHundredEightyEightFullWindows() {
-        val clock = VirtualMonotonicClock(0)
-        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")))
-        val source = FakeContinuousSource("source-a", clock, frameEveryMillis = 300_000, frameSizeBytes = 8, frameCount = 289)
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        val source = FakeContinuousSource("source-a", frameEveryMillis = 300_000, frameSizeBytes = 8, frameCount = 289)
         val writer = CountingSpoolWriter()
         val provider = PayloadBytesProvider { payload ->
             ByteArrayInputStream(bytesForPayload(payload))
@@ -73,11 +72,9 @@ class ObserverPipelineTest {
 
     @Test
     fun fullAudioWindowSealsWithSingleM4aPayload() {
-        val clock = VirtualMonotonicClock(0)
-        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")))
+        val segmenter = Segmenter(ZoneId.of("UTC"))
 
         segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 300_000))
-        clock.advanceByMillis(300_000)
         val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
 
         assertEquals("000000_300", sealed.key.segment)
@@ -89,15 +86,13 @@ class ObserverPipelineTest {
 
     @Test
     fun failedAudioWindowSealsWithGapAndNoPayloads() {
-        val clock = VirtualMonotonicClock(0)
-        val segmenter = Segmenter(clock, SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")))
+        val segmenter = Segmenter(ZoneId.of("UTC"))
         val gap = GapEvent("capture_gap", BASE_CAPTURE_EPOCH_MS + 1_000, "storage")
 
         segmenter.feed(audioGapEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 1_000, gap))
-        clock.advanceByMillis(300_000)
         val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
 
-        assertEquals("000000_300", sealed.key.segment)
+        assertEquals("000000_1", sealed.key.segment)
         assertTrue(sealed.payloads.isEmpty())
         assertEquals(listOf(gap), sealed.gaps)
     }
@@ -108,8 +103,7 @@ class ObserverPipelineTest {
         val captureStart = receiptEpochMs - 600_000L
         val captureEnd = captureStart + 10_000L
         val import = FakeImportSource(listOf(fakeImportEmission("import-a", "calendar-item.bin", captureStart, captureEnd)))
-        val clock = VirtualMonotonicClock(0)
-        val segmenter = Segmenter(clock, SegmenterAnchor(receiptEpochMs, 0, ZoneId.of("UTC")))
+        val segmenter = Segmenter(ZoneId.of("UTC"))
         val writer = CountingSpoolWriter()
         val provider = PayloadBytesProvider { payload -> ByteArrayInputStream(bytesForPayload(payload)) }
 
@@ -124,14 +118,9 @@ class ObserverPipelineTest {
     }
 
     private fun runFilePipeline(base: Path): PipelineSnapshot {
-        val clock = VirtualMonotonicClock(0)
-        val segmenter = Segmenter(
-            clock = clock,
-            anchor = SegmenterAnchor(BASE_CAPTURE_EPOCH_MS, 0, ZoneId.of("UTC")),
-        )
+        val segmenter = Segmenter(ZoneId.of("UTC"))
         val source = FakeContinuousSource(
             sourceId = "source-a",
-            clock = clock,
             frameEveryMillis = 300_000,
             frameSizeBytes = 12,
             frameCount = 3,
@@ -170,6 +159,7 @@ class ObserverPipelineTest {
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
         SourceEmission(
             sourceId = "audio",
+            stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
             captureStartEpochMs = startEpochMs,
             captureEndEpochMs = endEpochMs,
@@ -181,6 +171,7 @@ class ObserverPipelineTest {
     private fun audioGapEmission(startEpochMs: Long, endEpochMs: Long, gap: GapEvent): SourceEmission =
         SourceEmission(
             sourceId = "audio",
+            stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
             captureStartEpochMs = startEpochMs,
             captureEndEpochMs = endEpochMs,

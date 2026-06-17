@@ -40,11 +40,13 @@ dependencies {
     implementation(project(":core:sources"))
     implementation(project(":core:segment"))
     implementation(project(":core:spool"))
+    implementation(project(":core:observer"))
     implementation(project(":core:queue"))
     implementation(project(":core:diagnostics"))
     implementation(project(":platform:fgs"))
     implementation(project(":platform:power"))
     implementation(project(":platform:persistence-room"))
     add("realImplementation", project(":platform:audio"))
+    add("realImplementation", project(":platform:location"))
     add("mockImplementation", project(":testing"))
 }

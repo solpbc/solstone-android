@@ -4,22 +4,29 @@
 package app.solstone.observer.watch
 
 import android.content.Context
-import app.solstone.core.segment.SegmenterAnchor
+import app.solstone.core.segment.SegmentPayload
+import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.audio.AudioContinuousSourceEngine
+import app.solstone.platform.location.AndroidLocationSource
+import app.solstone.platform.location.LocationContinuousSourceEngine
 import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
-import java.time.ZoneId
 
 fun createCaptureSetup(context: Context): CaptureSetup {
-    val engine = AudioContinuousSourceEngine(
+    val audio = AudioContinuousSourceEngine(
         outputDirectory = context.cacheDir.resolve("audio-source"),
         storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES),
     )
+    val location = LocationContinuousSourceEngine(AndroidLocationSource(context))
     return CaptureSetup(
-        engine = engine,
-        clock = engine.clock,
-        anchor = SegmenterAnchor(System.currentTimeMillis(), 0, ZoneId.systemDefault()),
-        payloadBytesProvider = engine,
+        engines = listOf(audio, location),
+        payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
+            when (payload.sourceId) {
+                AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
+                LocationContinuousSourceEngine.SOURCE_ID -> location.open(payload)
+                else -> error("unknown payload source: ${payload.sourceId}")
+            }
+        },
     )
 }
 

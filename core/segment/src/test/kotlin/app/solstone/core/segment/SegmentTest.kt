@@ -3,6 +3,11 @@
 
 package app.solstone.core.segment
 
+import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SourceKind
+import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SourceEmission
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.test.Test
@@ -54,5 +59,71 @@ class SegmentTest {
             wireKeys(start, start + 20_000L, zone).segment,
             wireKeys(start + 30_000L, start + 50_000L, zone).segment,
         )
+    }
+
+    @Test
+    fun segmenterUsesCaptureTimeGridAndLenForFullAndPartialWindows() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000L, BASE_EPOCH_MS + 600_000L))
+        segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+        val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 600_000L, BASE_EPOCH_MS + 900_000L))
+
+        val first = sealed.single { it.wireKeys.startEpochMs == BASE_EPOCH_MS }
+        assertEquals("000000_300", first.key.segment)
+        assertEquals(BASE_EPOCH_MS, first.wireKeys.startEpochMs)
+        assertEquals(BASE_EPOCH_MS + 300_000L, first.wireKeys.endEpochMs)
+
+        val partialSegmenter = Segmenter(ZoneId.of("UTC"))
+        partialSegmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 70_000L))
+        val partial = partialSegmenter.flush().single()
+        assertEquals("000000_70", partial.key.segment)
+        assertEquals(BASE_EPOCH_MS + 70_000L, partial.wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun segmenterSealDueSealsQuietWindow() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+
+        val sealed = segmenter.sealDue(BASE_EPOCH_MS + 305_000L).single()
+
+        assertEquals("000000_300", sealed.key.segment)
+        assertEquals(BASE_EPOCH_MS, sealed.wireKeys.startEpochMs)
+    }
+
+    @Test
+    fun segmenterRecordsLateEmissionInDurableLaterWindow() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        val original = audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L)
+        segmenter.feed(original)
+        val sealedOriginal = segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000L, BASE_EPOCH_MS + 600_000L)).single()
+        assertTrue(sealedOriginal.gaps.isEmpty())
+
+        val lateResult = segmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 20_000L))
+        assertTrue(lateResult.isEmpty())
+
+        val later = segmenter.flush().single()
+        assertEquals("000500_300", later.key.segment)
+        assertEquals(
+            listOf(GapEvent("late_emission", BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS.toString())),
+            later.gaps,
+        )
+    }
+
+    private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
+        SourceEmission(
+            sourceId = "audio",
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = startEpochMs,
+            captureEndEpochMs = endEpochMs,
+            payloadRefs = listOf(PayloadRef("audio.m4a", "audio/mp4", 16, null)),
+            metadata = emptyMap(),
+            gaps = emptyList(),
+        )
+
+    private companion object {
+        const val BASE_EPOCH_MS = 1_772_582_400_000L
     }
 }

@@ -79,6 +79,14 @@ fun scanCorePurity(rootDir: File): List<String> {
     return violations
 }
 
+fun foregroundServiceTypeTokens(manifestText: String): Set<String> =
+    Regex("""foregroundServiceType\s*=\s*["']([^"']+)["']""")
+        .findAll(manifestText)
+        .flatMap { match -> match.groupValues[1].split('|').asSequence() }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
 tasks.register("checkPrivacyDeps") {
     group = "verification"
     description = "Fails if a denylisted analytics, telemetry, crash, or tracking dependency is resolved."
@@ -149,8 +157,20 @@ tasks.register("purityGuardSelfTest") {
     }
 }
 
+tasks.register("manifestGuardSelfTest") {
+    group = "verification"
+    description = "Exercises manifest foreground service type token parsing."
+
+    doLast {
+        val tokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|location" />""")
+        check("microphone" in tokens)
+        check("location" in tokens)
+        check("dataSync" !in tokens)
+    }
+}
+
 tasks.named("check") {
-    dependsOn("checkPrivacyDeps", "checkCorePurity", "privacyGuardSelfTest", "purityGuardSelfTest")
+    dependsOn("checkPrivacyDeps", "checkCorePurity", "privacyGuardSelfTest", "purityGuardSelfTest", "manifestGuardSelfTest")
 }
 
 fun Project.registerMicrophoneManifestCheck() {
@@ -172,8 +192,15 @@ fun Project.registerMicrophoneManifestCheck() {
             if (!text.contains("android.permission.FOREGROUND_SERVICE_MICROPHONE")) {
                 failures += "missing FOREGROUND_SERVICE_MICROPHONE permission"
             }
-            if (!Regex("""foregroundServiceType\s*=\s*["']microphone["']""").containsMatchIn(text)) {
-                failures += "missing foregroundServiceType=\"microphone\""
+            if (!text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
+                failures += "missing FOREGROUND_SERVICE_LOCATION permission"
+            }
+            val foregroundServiceTypes = foregroundServiceTypeTokens(text)
+            if ("microphone" !in foregroundServiceTypes) {
+                failures += "foregroundServiceType must include microphone"
+            }
+            if ("location" !in foregroundServiceTypes) {
+                failures += "foregroundServiceType must include location"
             }
             if (text.contains("dataSync")) {
                 failures += "must not declare dataSync"

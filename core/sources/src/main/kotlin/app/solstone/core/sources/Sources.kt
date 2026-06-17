@@ -9,6 +9,7 @@ import app.solstone.core.model.SourceState
 
 data class SourceEmission(
   val sourceId: String,
+  val stream: String,
   val sourceKind: SourceKind,
   val captureStartEpochMs: Long,
   val captureEndEpochMs: Long,
@@ -16,6 +17,9 @@ data class SourceEmission(
   val metadata: Map<String, String>,
   val gaps: List<GapEvent>,
 )
+
+const val MAIN_STREAM = "observer"
+const val LOCATION_STREAM = "location"
 
 data class PayloadRef(val name: String, val mediaType: String, val byteSize: Long, val sha256: String?)
 

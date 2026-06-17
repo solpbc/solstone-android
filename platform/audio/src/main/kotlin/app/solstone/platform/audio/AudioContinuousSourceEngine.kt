@@ -9,6 +9,7 @@ import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
@@ -23,7 +24,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AudioContinuousSourceEngine(
     private val outputDirectory: File,
     private val storageStatus: StorageStatus,
-    val clock: WindowClock = WindowClock(WINDOW_NANOS),
     private val sourceId: String = SOURCE_ID,
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
@@ -37,8 +37,10 @@ class AudioContinuousSourceEngine(
     }
 
     override fun stop() {
+        val localWorker = worker
         running.set(false)
-        worker?.interrupt()
+        localWorker?.interrupt()
+        localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
     }
 
@@ -69,7 +71,6 @@ class AudioContinuousSourceEngine(
                 recordWindow(captureStartEpochMs, nextRestartGap)
             }
             sink.emit(emission)
-            clock.advanceWindow()
             nextRestartGap = restartGap(emission.captureEndEpochMs)
         }
     }
@@ -99,6 +100,7 @@ class AudioContinuousSourceEngine(
             payloadFiles[key] = output
             SourceEmission(
                 sourceId = sourceId,
+                stream = MAIN_STREAM,
                 sourceKind = SourceKind.OBSERVER,
                 captureStartEpochMs = captureStartEpochMs,
                 captureEndEpochMs = captureEndEpochMs,
@@ -130,6 +132,7 @@ class AudioContinuousSourceEngine(
     private fun gapEmission(captureStartEpochMs: Long, captureEndEpochMs: Long, reason: String): SourceEmission =
         SourceEmission(
             sourceId = sourceId,
+            stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
             captureStartEpochMs = captureStartEpochMs,
             captureEndEpochMs = captureEndEpochMs,
@@ -169,9 +172,9 @@ class AudioContinuousSourceEngine(
         const val PAYLOAD_NAME = "audio.m4a"
         const val MEDIA_TYPE = "audio/mp4"
         const val WINDOW_MS = 300_000L
-        const val WINDOW_NANOS = WINDOW_MS * 1_000_000L
         const val SAMPLE_RATE_HZ = 16_000
         private const val CHANNELS = 1
         private const val BIT_RATE = 64_000
+        private const val JOIN_TIMEOUT_MS = 5_000L
     }
 }

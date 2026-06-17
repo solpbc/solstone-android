@@ -16,10 +16,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-fun interface MonotonicClock {
-    fun nanos(): Long
-}
-
 fun wireKeys(startEpochMs: Long, endEpochMs: Long, zoneId: ZoneId): WireKeys {
     val start = Instant.ofEpochMilli(startEpochMs).atZone(zoneId)
     val lenSeconds = ((endEpochMs - startEpochMs).coerceAtLeast(0L)) / 1000L
@@ -50,12 +46,6 @@ fun sha256(input: InputStream): String {
 
 fun sha256(path: Path): String = Files.newInputStream(path).use { sha256(it) }
 
-data class SegmenterAnchor(
-    val epochMs: Long,
-    val monotonicNanos: Long,
-    val zoneId: ZoneId,
-)
-
 data class SegmentPayload(
     val sourceId: String,
     val ref: PayloadRef,
@@ -72,24 +62,40 @@ data class SealedSegment(
 )
 
 class Segmenter(
-    private val clock: MonotonicClock,
-    private val anchor: SegmenterAnchor,
-    private val windowSeconds: Long = 300,
+    private val zoneId: ZoneId,
+    private val windowMs: Long = 300_000L,
+    private val graceMs: Long = 5_000L,
 ) {
-    private val windowNanos = windowSeconds * 1_000_000_000L
     private val open = linkedMapOf<WindowKey, WindowBucket>()
+    private val sealedWatermark = mutableMapOf<String, Long>()
 
     init {
-        require(windowSeconds > 0) { "windowSeconds must be positive" }
+        require(windowMs > 0) { "windowMs must be positive" }
+        require(graceMs >= 0) { "graceMs must not be negative" }
     }
 
     fun feed(emission: SourceEmission): List<SealedSegment> {
-        val sampleNanos = clock.nanos()
-        val windowIndex = Math.floorDiv(sampleNanos - anchor.monotonicNanos, windowNanos)
-        val sealed = sealWindowsBefore(windowIndex)
-        val key = WindowKey(emission.sourceId, windowIndex)
-        val bucket = open.getOrPut(key) { WindowBucket(emission.sourceId, windowIndex) }
-        bucket.lastSampleNanos = maxOf(bucket.lastSampleNanos ?: sampleNanos, sampleNanos)
+        val stream = emission.stream
+        val windowStartEpochMs = windowStart(emission.captureStartEpochMs)
+        val watermark = sealedWatermark[stream]
+        if (watermark != null && windowStartEpochMs <= watermark) {
+            val lateGap = GapEvent(
+                kind = "late_emission",
+                atEpochMs = emission.captureStartEpochMs,
+                detail = windowStartEpochMs.toString(),
+            )
+            val lateWindowStart = watermark + windowMs
+            val bucket = open.getOrPut(WindowKey(stream, lateWindowStart)) {
+                WindowBucket(stream = stream, windowStartEpochMs = lateWindowStart)
+            }
+            bucket.gaps += lateGap
+            bucket.maxCaptureEndEpochMs = maxOf(bucket.maxCaptureEndEpochMs, lateWindowStart)
+            return sealWindowsBefore(stream, windowStartEpochMs)
+        }
+
+        val key = WindowKey(stream, windowStartEpochMs)
+        val bucket = open.getOrPut(key) { WindowBucket(stream = stream, windowStartEpochMs = windowStartEpochMs) }
+        bucket.maxCaptureEndEpochMs = maxOf(bucket.maxCaptureEndEpochMs, emission.captureEndEpochMs)
         bucket.payloads += emission.payloadRefs.map { ref ->
             SegmentPayload(
                 sourceId = emission.sourceId,
@@ -99,29 +105,40 @@ class Segmenter(
             )
         }
         bucket.gaps += emission.gaps
-        return sealed
+        return sealWindowsBefore(stream, windowStartEpochMs)
+    }
+
+    fun sealDue(nowEpochMs: Long): List<SealedSegment> {
+        val toSeal = open.keys
+            .filter { key -> key.windowStartEpochMs + windowMs + graceMs <= nowEpochMs }
+            .sortedWith(windowKeyComparator)
+        return toSeal.mapNotNull { key -> seal(key) }
     }
 
     fun flush(): List<SealedSegment> =
-        open.values.sortedWith(compareBy<WindowBucket> { it.windowIndex }.thenBy { it.stream })
-            .map { it.toSegment(fullWindow = false) }
+        open.keys.sortedWith(windowKeyComparator)
+            .mapNotNull { key -> seal(key) }
             .also { open.clear() }
 
-    private fun sealWindowsBefore(windowIndex: Long): List<SealedSegment> {
-        val toSeal = open.keys.filter { it.windowIndex < windowIndex }.sortedWith(compareBy<WindowKey> { it.windowIndex }.thenBy { it.stream })
-        return toSeal.mapNotNull { key -> open.remove(key)?.toSegment(fullWindow = true) }
+    private fun windowStart(epochMs: Long): Long =
+        Math.floorDiv(epochMs, windowMs) * windowMs
+
+    private fun sealWindowsBefore(stream: String, windowStartEpochMs: Long): List<SealedSegment> {
+        val toSeal = open.keys
+            .filter { it.stream == stream && it.windowStartEpochMs < windowStartEpochMs }
+            .sortedWith(windowKeyComparator)
+        return toSeal.mapNotNull { key -> seal(key) }
     }
 
-    private fun WindowBucket.toSegment(fullWindow: Boolean): SealedSegment {
-        val windowStartEpochMs = anchor.epochMs + (windowIndex * windowSeconds * 1000L)
-        val coveredSeconds = if (fullWindow) {
-            windowSeconds
-        } else {
-            val windowStartNanos = anchor.monotonicNanos + (windowIndex * windowNanos)
-            val last = lastSampleNanos ?: windowStartNanos
-            ((last - windowStartNanos).coerceAtLeast(0L)) / 1_000_000_000L
-        }
-        val keys = wireKeys(windowStartEpochMs, windowStartEpochMs + (coveredSeconds * 1000L), anchor.zoneId)
+    private fun seal(key: WindowKey): SealedSegment? {
+        val bucket = open.remove(key) ?: return null
+        sealedWatermark[key.stream] = maxOf(sealedWatermark[key.stream] ?: Long.MIN_VALUE, key.windowStartEpochMs)
+        return bucket.toSegment()
+    }
+
+    private fun WindowBucket.toSegment(): SealedSegment {
+        val coveredMs = (maxCaptureEndEpochMs - windowStartEpochMs).coerceIn(0L, windowMs)
+        val keys = wireKeys(windowStartEpochMs, windowStartEpochMs + coveredMs, zoneId)
         return SealedSegment(
             stream = stream,
             key = SegmentKey(keys.day, keys.segment),
@@ -131,13 +148,18 @@ class Segmenter(
         )
     }
 
-    private data class WindowKey(val stream: String, val windowIndex: Long)
+    private data class WindowKey(val stream: String, val windowStartEpochMs: Long)
 
     private data class WindowBucket(
         val stream: String,
-        val windowIndex: Long,
+        val windowStartEpochMs: Long,
         val payloads: MutableList<SegmentPayload> = mutableListOf(),
         val gaps: MutableList<GapEvent> = mutableListOf(),
-        var lastSampleNanos: Long? = null,
+        var maxCaptureEndEpochMs: Long = windowStartEpochMs,
     )
+
+    private companion object {
+        val windowKeyComparator: Comparator<WindowKey> =
+            compareBy<WindowKey> { it.windowStartEpochMs }.thenBy { it.stream }
+    }
 }
