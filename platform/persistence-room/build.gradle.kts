@@ -37,6 +37,12 @@ android {
             }
         }
     }
+
+    // MigrationTestHelper loads exported schemas from the androidTest APK assets at
+    // runtime; the schemas live where room.schemaLocation exports them.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 ksp {
