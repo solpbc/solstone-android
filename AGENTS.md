@@ -46,16 +46,17 @@ Use `ROGBID_SERIAL=<serial>` to target a different watch.
 ## Source Layout
 
 ```text
-apps/validation-rogbid/   Current hardware validation target
-apps/watch/               Future watch app
-apps/phone/               Future phone app
+apps/validation-rogbid/   Imported Rogbid hardware-probe target
+apps/watch/               Watch observer app — installable functional-testing UI over the shared harness
+apps/phone/               Phone observer harness app — shares the watch harness; minimal functional UI
 apps/glasses/             Future Android glasses/accessory app
+harness/                  Form-factor-agnostic observer UI logic (controller, state, seams, async-load)
 core/                     Shared domain/protocol/observer modules
 platform/                 Android framework adapters
-formfactor/               Form-factor-specific UI/policy helpers
+formfactor/               Form-factor-specific UI/policy helpers (watch, phone)
 testing/                  Fake sensor streams and protocol fixtures
 tools/rogbid/             Hardware validation scripts
-docs/                     Architecture and device notes
+docs/                     Architecture, device notes, and docs/observer-hardware-validation-runbook.md (on-device validation)
 ```
 
 ## Safety Rails
