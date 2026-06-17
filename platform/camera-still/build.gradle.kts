@@ -8,10 +8,9 @@ kotlin {
 }
 
 dependencies {
-    api(project(":core:sources"))
     implementation(project(":core:model"))
+    api(project(":core:sources"))
     implementation(project(":core:segment"))
-    implementation(project(":core:spool"))
-    implementation(project(":platform:camera-still"))
+    api(project(":core:spool"))
     testImplementation(kotlin("test"))
 }

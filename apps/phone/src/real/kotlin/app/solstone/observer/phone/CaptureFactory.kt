@@ -4,9 +4,15 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import android.os.Build
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.audio.AudioContinuousSourceEngine
+import app.solstone.platform.camera.camera2.Camera2StillCamera
+import app.solstone.platform.camera.legacy.LegacyStillCamera
+import app.solstone.platform.camera.still.SingleHolderCameraLock
+import app.solstone.platform.camera.still.StillCamera
+import app.solstone.platform.camera.still.StillCaptureEngine
 import app.solstone.platform.location.AndroidLocationSource
 import app.solstone.platform.location.LocationContinuousSourceEngine
 import app.solstone.platform.power.FileUsableSpaceProvider
@@ -18,16 +24,25 @@ fun createCaptureSetup(context: Context): CaptureSetup {
         storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES),
     )
     val location = LocationContinuousSourceEngine(AndroidLocationSource(context))
+    val cameraLock = SingleHolderCameraLock()
+    val camera = StillCaptureEngine(
+        stillCamera = selectStillCamera(context),
+        cameraLock = cameraLock,
+    )
     return CaptureSetup(
-        engines = listOf(audio, location),
+        engines = listOf(audio, location, camera),
         payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
             when (payload.sourceId) {
                 AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
                 LocationContinuousSourceEngine.SOURCE_ID -> location.open(payload)
+                StillCaptureEngine.SOURCE_ID -> camera.open(payload)
                 else -> error("unknown payload source: ${payload.sourceId}")
             }
         },
     )
 }
+
+private fun selectStillCamera(context: Context): StillCamera =
+    if (Build.VERSION.SDK_INT >= 29) Camera2StillCamera(context) else LegacyStillCamera(context)
 
 private const val MIN_FREE_BYTES = 50L * 1024L * 1024L

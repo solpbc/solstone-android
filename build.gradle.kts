@@ -162,9 +162,10 @@ tasks.register("manifestGuardSelfTest") {
     description = "Exercises manifest foreground service type token parsing."
 
     doLast {
-        val tokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|location" />""")
+        val tokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|location|camera" />""")
         check("microphone" in tokens)
         check("location" in tokens)
+        check("camera" in tokens)
         check("dataSync" !in tokens)
     }
 }
@@ -195,12 +196,18 @@ fun Project.registerMicrophoneManifestCheck() {
             if (!text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
                 failures += "missing FOREGROUND_SERVICE_LOCATION permission"
             }
+            if (!text.contains("android.permission.FOREGROUND_SERVICE_CAMERA")) {
+                failures += "missing FOREGROUND_SERVICE_CAMERA permission"
+            }
             val foregroundServiceTypes = foregroundServiceTypeTokens(text)
             if ("microphone" !in foregroundServiceTypes) {
                 failures += "foregroundServiceType must include microphone"
             }
             if ("location" !in foregroundServiceTypes) {
                 failures += "foregroundServiceType must include location"
+            }
+            if ("camera" !in foregroundServiceTypes) {
+                failures += "foregroundServiceType must include camera"
             }
             if (text.contains("dataSync")) {
                 failures += "must not declare dataSync"

@@ -61,6 +61,9 @@ dependencies {
     implementation(project(":platform:persistence-room"))
     add("realImplementation", project(":platform:audio"))
     add("realImplementation", project(":platform:location"))
+    add("realImplementation", project(":platform:camera-still"))
+    add("realImplementation", project(":platform:camera-legacy"))
+    add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
 
     androidTestImplementation("junit:junit:4.13.2")

@@ -123,6 +123,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA,
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.POST_NOTIFICATIONS,
@@ -130,6 +131,7 @@ class MainActivity : Activity() {
         } else {
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA,
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             )
