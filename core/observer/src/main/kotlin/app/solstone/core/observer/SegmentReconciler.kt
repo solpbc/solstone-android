@@ -8,12 +8,15 @@ import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
 
-class SegmentReconciler(private val http: PlHttpClient) {
+class SegmentReconciler(private val http: PlHttpClient, private val observerHandle: String) {
     fun fetch(day: String): List<ServerSegment> {
         val response = http.request(
             method = "GET",
             path = "$SEGMENTS_PATH/$day",
-            headers = mapOf(PROTOCOL_VERSION_HEADER to OBSERVER_PROTOCOL_VERSION.toString()),
+            headers = mapOf(
+                OBSERVER_HANDLE_HEADER to observerHandle,
+                PROTOCOL_VERSION_HEADER to OBSERVER_PROTOCOL_VERSION.toString(),
+            ),
             body = null,
         )
         val root = parseJson(response.bodyText()) as? Map<*, *> ?: throw IllegalArgumentException("segments response must be an object")

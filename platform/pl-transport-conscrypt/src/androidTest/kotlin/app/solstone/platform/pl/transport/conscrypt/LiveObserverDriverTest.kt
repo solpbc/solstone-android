@@ -204,7 +204,8 @@ class LiveObserverDriverTest {
     @Test
     fun t4_reconcileSegments() {
         val credential = credStore().load()
-        assumeTrue("t3 must ingest first (no ingest record)", credential != null && ingestFile.exists())
+        val handle = idStore().load()?.observerHandle
+        assumeTrue("t3 must ingest first (no ingest record)", credential != null && handle != null && ingestFile.exists())
         try {
             val record = ingestFile.readLines().filter { it.contains('=') }.associate {
                 val (k, v) = it.split('=', limit = 2); k to v
@@ -214,7 +215,7 @@ class LiveObserverDriverTest {
             val expectedSha = record.getValue("sha")
 
             val segments = openAuthenticatedClient(endpoint(), credential!!).use { client ->
-                SegmentReconciler(client).fetch(day)
+                SegmentReconciler(client, handle!!).fetch(day)
             }
             result("t4.day=$day")
             result("t4.segmentCount=${segments.size}")

@@ -12,14 +12,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class SegmentReconcilerTest {
+    private val testHandle = "obs-test-handle"
+
     @Test
     fun fetchSendsProtocolHeaderAndParsesEnvelope() {
         val http = RecordingPlHttpClient(envelopeResponse())
-        val segments = SegmentReconciler(http).fetch("20260616")
+        val segments = SegmentReconciler(http, testHandle).fetch("20260616")
 
         assertEquals("GET", http.lastRequest.method)
         assertEquals("$SEGMENTS_PATH/20260616", http.lastRequest.path)
         assertEquals("2", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])
+        assertEquals(testHandle, http.lastRequest.headers[OBSERVER_HANDLE_HEADER])
         assertEquals(
             listOf(
                 ServerSegment("093000_60", mapOf("audio.wav" to "sha-audio", "photo.jpg" to "sha-photo")),
@@ -33,7 +36,7 @@ class SegmentReconcilerTest {
     @Test
     fun diffMarksOnlyExactNameAndShaMatchPresent() {
         val http = RecordingPlHttpClient(envelopeResponse())
-        val verdicts = SegmentReconciler(http).diff(
+        val verdicts = SegmentReconciler(http, testHandle).diff(
             localManifests = listOf(
                 manifest("093000_60", "audio.wav" to "sha-audio", "photo.jpg" to "sha-photo"),
                 manifest("094000_60", "audio.wav" to "sha-different"),
@@ -59,7 +62,7 @@ class SegmentReconcilerTest {
         val http = RecordingPlHttpClient(HttpResponse(200, emptyMap(), "[]".toByteArray()))
 
         assertFailsWith<IllegalArgumentException> {
-            SegmentReconciler(http).fetch("20260616")
+            SegmentReconciler(http, testHandle).fetch("20260616")
         }
     }
 
@@ -68,7 +71,7 @@ class SegmentReconcilerTest {
         val http = RecordingPlHttpClient(HttpResponse(200, emptyMap(), """[{"key":"093000_60","files":[]}]""".toByteArray()))
 
         assertFailsWith<IllegalArgumentException> {
-            SegmentReconciler(http).diff(listOf(manifest("093000_60", "audio.wav" to "sha-audio")), "20260616")
+            SegmentReconciler(http, testHandle).diff(listOf(manifest("093000_60", "audio.wav" to "sha-audio")), "20260616")
         }
     }
 
