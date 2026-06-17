@@ -29,10 +29,12 @@ The repo is public open source. Keep all visible files clean of private operatio
 make install
 make test
 make ci
+make ci-device
 make format
 make clean
 ANDROID_REMOTE_HOST=host.local make sync-android-host
 ANDROID_REMOTE_HOST=host.local make android-host-ci
+ANDROID_REMOTE_HOST=host.local make android-host-ci-device
 ANDROID_REMOTE_HOST=host.local make android-host-assemble-validation-rogbid
 make assemble-validation-rogbid
 make validate-rogbid-adb
@@ -42,6 +44,12 @@ PAIR_LINK='https://link.solpbc.org/p#...' make validate-rogbid-pl
 ```
 
 Use `ROGBID_SERIAL=<serial>` to target a different watch.
+
+## CI gates
+
+There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, and assembles, with **no instrumented tests** — and it must stay fast (it is the inner-loop gate). **`make ci-device` is the slower device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for the three modules that carry real `androidTest` coverage (`platform/persistence-room`, `apps/watch`, `apps/phone`), on a headless emulator. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host.
+
+**`make ci-device` green is a required ship-stage acceptance criterion** for any lode that touches an on-device surface: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `make ci` structurally cannot catch two defect classes that have already shipped green through it — host-JDK-API-absent-on-Android (e.g. a `core/*` module calling a JDK method missing from the Android runtime) and instrumented-tests-authored-but-never-run. If a lode touches those surfaces, run the device gate green before declaring it shipped.
 
 ## Source Layout
 

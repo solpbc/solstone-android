@@ -1,4 +1,4 @@
-.PHONY: install test ci format clean require-android-remote-host sync-android-host android-host-ci android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl
+.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -18,6 +18,15 @@ test:
 ci:
 		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :testing:test :harness:test :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:audio:assembleDebug :platform:location:assembleDebug :platform:camera-legacy:assembleDebug :platform:camera2:assembleDebug :platform:fgs:assembleDebug :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:validation-rogbid:assembleDebug
 
+# Slower device gate: GMD (pixel5api35) instrumented tests for the modules that
+# carry real androidTest coverage. Always host-GL — the default GMD GPU path
+# segfaults on the headless build box. Kept separate from `ci` so `ci` stays fast.
+ci-device:
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  :platform:persistence-room:pixel5api35DebugAndroidTest \
+	  :apps:watch:pixel5api35MockDebugAndroidTest \
+	  :apps:phone:pixel5api35MockDebugAndroidTest
+
 format:
 	@echo "No formatter is configured yet."
 
@@ -34,6 +43,9 @@ sync-android-host: require-android-remote-host
 
 android-host-ci: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make ci'
+
+android-host-ci-device: sync-android-host
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make ci-device'
 
 android-host-assemble-validation-rogbid: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make assemble-validation-rogbid'
