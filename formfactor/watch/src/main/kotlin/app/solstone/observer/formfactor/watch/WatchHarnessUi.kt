@@ -13,14 +13,19 @@ import android.widget.ScrollView
 import android.widget.TextView
 import app.solstone.core.model.QueueState
 import app.solstone.core.sources.LOCATION_STREAM
+import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.harness.LoadState
 
 class WatchHarnessUi(
     private val context: Context,
     private val controller: HarnessController,
     private val permissionRequester: () -> Unit,
+    private val asyncLoad: AsyncLoad,
+    private val onEvidenceLoaded: () -> Unit = {},
+    private val onSyncLoaded: () -> Unit = {},
 ) {
     private val container = FrameLayout(context)
 
@@ -89,29 +94,43 @@ class WatchHarnessUi(
 
     fun showStatusQueueSync() {
         setScreen {
-            val status = text(statusText())
-            button("Refresh") {
-                status.text = statusText()
-            }
+            val content = column()
+            button("Refresh") { loadStatus(content) }
             button("Sync now") {
                 controller.syncNow()
-                status.text = statusText()
+                loadStatus(content)
             }
             backButton()
+            loadStatus(content)
         }
     }
 
     fun showEvidenceExport() {
         setScreen {
-            val evidence = controller.listEvidence()
-            if (evidence.isEmpty()) {
-                text("No sealed segments")
-            } else {
-                evidence.forEach { segment ->
-                    segmentView(segment)
+            val content = column()
+            backButton()
+            loadEvidence(content)
+        }
+    }
+
+    private fun loadEvidence(content: LinearLayout) {
+        asyncLoad.load({ controller.listEvidence() }) { state ->
+            content.removeAllViews()
+            when (state) {
+                LoadState.Loading -> content.text("Loading…")
+                is LoadState.Loaded -> {
+                    if (state.value.isEmpty()) {
+                        content.text("No sealed segments")
+                    } else {
+                        state.value.forEach { content.segmentView(it) }
+                    }
+                    onEvidenceLoaded()
+                }
+                is LoadState.Failed -> {
+                    content.text("Couldn't load evidence")
+                    onEvidenceLoaded()
                 }
             }
-            backButton()
         }
     }
 
@@ -138,14 +157,29 @@ class WatchHarnessUi(
         }
     }
 
-    private fun statusText(): String {
-        val sync = controller.syncState()
-        return listOf(
-            controller.diagnostics().display,
-            "Pending: ${sync.pendingCount}",
-            "Last success: ${sync.lastSuccessAt ?: "none"}",
-            "Last failure: ${sync.lastFailureAt ?: "none"}",
-        ).joinToString("\n")
+    private fun loadStatus(content: LinearLayout) {
+        asyncLoad.load({ controller.syncState() }) { state ->
+            content.removeAllViews()
+            when (state) {
+                LoadState.Loading -> content.text("Loading…")
+                is LoadState.Loaded -> {
+                    val sync = state.value
+                    content.text(
+                        listOf(
+                            controller.diagnostics().display,
+                            "Pending: ${sync.pendingCount}",
+                            "Last success: ${sync.lastSuccessAt ?: "none"}",
+                            "Last failure: ${sync.lastFailureAt ?: "none"}",
+                        ).joinToString("\n"),
+                    )
+                    onSyncLoaded()
+                }
+                is LoadState.Failed -> {
+                    content.text("Couldn't load status")
+                    onSyncLoaded()
+                }
+            }
+        }
     }
 
     private fun permissionText(): String {
@@ -186,6 +220,12 @@ class WatchHarnessUi(
     private fun LinearLayout.text(value: String): TextView =
         TextView(context).also {
             it.text = value
+            addView(it)
+        }
+
+    private fun LinearLayout.column(): LinearLayout =
+        LinearLayout(context).also {
+            it.orientation = LinearLayout.VERTICAL
             addView(it)
         }
 

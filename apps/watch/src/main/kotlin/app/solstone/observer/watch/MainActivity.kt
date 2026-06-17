@@ -21,6 +21,9 @@ class MainActivity : Activity() {
                 context = this,
                 controller = container.controller,
                 permissionRequester = { requestPermissions(requiredPermissions(), PERMISSION_REQUEST) },
+                asyncLoad = container.asyncLoad,
+                onEvidenceLoaded = { WatchHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
+                onSyncLoaded = { WatchHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
             ).view(),
         )
     }

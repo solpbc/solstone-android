@@ -4,11 +4,14 @@
 package app.solstone.observer.watch
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
+import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
@@ -20,12 +23,20 @@ import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import java.time.ZoneId
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class WatchAppContainer(private val context: Context) {
     val cameraLock = SingleHolderCameraLock()
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
+    private val background = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    val asyncLoad = AsyncLoad(
+        background = { task -> background.execute { task() } },
+        main = { task -> mainHandler.post { task() } },
+    )
     private var activePipeline: CapturePipeline? = null
     private val lifecycle = object : ObserverLifecycle {
         override fun start() {
@@ -53,12 +64,17 @@ class WatchAppContainer(private val context: Context) {
     val controller: HarnessController = flavor.controller
 
     init {
-        applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
-        SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
+        background.execute {
+            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
+            SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
+            WatchHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
+        }
     }
 
     fun close() {
         runCatching { controller.stop() }
+        background.shutdown()
+        runCatching { background.awaitTermination(2, TimeUnit.SECONDS) }
         database.close()
     }
 
@@ -107,4 +123,11 @@ interface SyncControl {
 
 object WatchHarnessRuntime {
     var container: WatchAppContainer? = null
+    var hooks: WatchRuntimeHooks? = null
+}
+
+class WatchRuntimeHooks {
+    @Volatile var onRecoveryComplete: (() -> Unit)? = null
+    @Volatile var onEvidenceLoadComplete: (() -> Unit)? = null
+    @Volatile var onSyncLoadComplete: (() -> Unit)? = null
 }

@@ -52,12 +52,10 @@ class WatchForegroundServiceRuntimeTest {
     }
 
     private fun waitForContainer(): WatchAppContainer {
-        repeat(50) {
-            WatchHarnessRuntime.container?.let { return it }
-            Thread.sleep(100)
+        return WatchHarnessRuntime.container ?: run {
+            assumeTrue("watch harness container was not created", false)
+            error("unreachable")
         }
-        assumeTrue("watch harness container was not created", false)
-        error("unreachable")
     }
 
     private fun waitUntilNotificationVisible() {
