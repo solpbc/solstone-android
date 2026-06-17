@@ -10,6 +10,7 @@ android {
 
     defaultConfig {
         minSdk = 23
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -19,6 +20,21 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // Gradle Managed Device for the instrumented RoomQueueStore coverage.
+    // Run with `-Pandroid.testoptions.manageddevices.emulator.gpu=host` on the
+    // headless build box (host-GL under Xvfb :99); the default GPU path segfaults there.
+    testOptions {
+        managedDevices {
+            localDevices {
+                create("pixel5api35") {
+                    device = "Pixel 5"
+                    apiLevel = 35
+                    systemImageSource = "google_apis"
+                }
+            }
+        }
     }
 }
 
@@ -32,4 +48,10 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }

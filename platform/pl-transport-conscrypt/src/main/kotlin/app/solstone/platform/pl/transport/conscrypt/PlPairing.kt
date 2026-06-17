@@ -80,11 +80,21 @@ fun pairAndProbe(
     identityStore.save(home)
 
     val endpoint = link.endpoint()
-    val statusHttp = ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential)).use { client ->
+    val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
         client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
     }
     return PairProbeResult(pinned, pairHttp.status, statusHttp.status, statusHttp.bodyText(), endpoint)
 }
+
+/**
+ * Open an authenticated mTLS PL session to [endpoint] using a previously persisted
+ * [credential] and wrap it as a reusable [ConscryptPlHttpClient]. This is the seam a
+ * paired observer reuses across process restarts to register, ingest, and reconcile —
+ * pairing happens once (see [pairAndProbe]); every later request opens an authenticated
+ * client from the stored credential. Caller owns the returned client and must close it.
+ */
+fun openAuthenticatedClient(endpoint: DirectEndpoint, credential: ClientCredential): ConscryptPlHttpClient =
+    ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential))
 
 private data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 

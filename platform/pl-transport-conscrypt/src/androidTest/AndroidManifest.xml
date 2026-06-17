@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (c) 2026 sol pbc -->
+<!-- The live observer driver (LiveObserverDriverTest) opens mTLS sockets to a real
+     journal over the LAN; the instrumented test APK needs INTERNET to do so. This
+     manifest applies to the androidTest APK only and never ships in a product app. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>
