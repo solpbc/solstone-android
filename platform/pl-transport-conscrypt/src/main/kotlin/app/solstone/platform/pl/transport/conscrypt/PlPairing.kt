@@ -20,6 +20,7 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
@@ -49,6 +50,7 @@ fun pairAndProbe(
     deviceLabel: String,
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
+    endpointStore: EndpointStore,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, readLocalIPv4Interfaces())
@@ -104,6 +106,7 @@ fun pairAndProbe(
                     state = IdentityState.PAIRED,
                 )
                 identityStore.save(home)
+                endpointStore.save(endpoint)
 
                 val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
                     client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))

@@ -19,6 +19,12 @@ data class SegmentRow(
     @ColumnInfo(name = "sealed_at") val sealedAt: Long,
     @ColumnInfo(name = "home_instance_id") val homeInstanceId: String?,
     @ColumnInfo(name = "observer_handle") val observerHandle: String?,
+    @ColumnInfo(name = "server_key") val serverKey: String? = null,
+    @ColumnInfo(name = "attempt_count") val attemptCount: Int = 0,
+    @ColumnInfo(name = "last_status_code") val lastStatusCode: Int? = null,
+    @ColumnInfo(name = "last_attempt_at") val lastAttemptAt: Long? = null,
+    @ColumnInfo(name = "dedupe_checked_at") val dedupeCheckedAt: Long? = null,
+    @ColumnInfo(name = "last_error") val lastError: String? = null,
 )
 
 @Entity(tableName = "segment_file")

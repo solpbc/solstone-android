@@ -46,6 +46,30 @@ abstract class SegmentDao {
     @Query("SELECT * FROM segment_file WHERE sha256 = :sha256 ORDER BY segment_id ASC, rowId ASC")
     abstract fun duplicateBySha256(sha256: String): List<SegmentFileRow>
 
+    @Query("SELECT * FROM segment_file WHERE segment_id = :segmentId ORDER BY rowId ASC")
+    abstract fun filesBySegmentId(segmentId: String): List<SegmentFileRow>
+
+    @Query("UPDATE segment SET attempt_count = :attempts, last_attempt_at = :at WHERE id = :id")
+    abstract fun recordAttempt(id: String, attempts: Int, at: Long): Int
+
+    @Query("UPDATE segment SET server_key = :serverKey, last_error = NULL WHERE id = :id")
+    abstract fun recordUploaded(id: String, serverKey: String?): Int
+
+    @Query("UPDATE segment SET last_status_code = :code, last_error = :error WHERE id = :id")
+    abstract fun recordFailure(id: String, code: Int?, error: String?): Int
+
+    @Query("UPDATE segment SET dedupe_checked_at = :at WHERE id = :id")
+    abstract fun recordDedupeChecked(id: String, at: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract fun upsertSyncState(row: SyncStateRow)
+
+    @Query("SELECT * FROM sync_state WHERE id = 0")
+    abstract fun syncState(): SyncStateRow?
+
+    @Query("SELECT COUNT(*) FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED')")
+    abstract fun pendingCount(stream: String): Int
+
     @Transaction
     open fun advanceState(id: String, event: QueueEvent): QueueState {
         val current = segmentState(id) ?: throw NoSuchElementException("segment not found: $id")

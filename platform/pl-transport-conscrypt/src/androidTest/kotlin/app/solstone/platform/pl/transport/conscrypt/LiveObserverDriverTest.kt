@@ -18,6 +18,7 @@ import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileIdentityStore
 import org.junit.Assert.assertEquals
@@ -73,6 +74,7 @@ class LiveObserverDriverTest {
     private val plDir: File get() = File(ctx.filesDir, "pl-driver").apply { mkdirs() }
     private fun credStore(): ClientCredentialStore = FileClientCredentialStore(File(plDir, "credential.pem"))
     private fun idStore(): IdentityStore = FileIdentityStore(File(plDir, "identity.tsv"))
+    private fun endpointStore(): FileEndpointStore = FileEndpointStore(endpointFile)
     private val endpointFile: File get() = File(plDir, "endpoint.txt")
     private val ingestFile: File get() = File(plDir, "ingest.txt")
     private val resultFile: File get() = File(plDir, "driver-result.txt")
@@ -88,8 +90,8 @@ class LiveObserverDriverTest {
                 deviceLabel = arg("deviceLabel", "android-validation"),
                 credentialStore = credStore(),
                 identityStore = idStore(),
+                endpointStore = endpointStore(),
             )
-            endpointFile.writeText("${probe.endpoint.host}\n${probe.endpoint.port}\n")
             result("t1.handshakePinned=${probe.handshakePinned}")
             result("t1.pairStatus=${probe.pairStatus}")
             result("t1.plStatusStatus=${probe.statusStatus}")
@@ -253,8 +255,7 @@ class LiveObserverDriverTest {
     }
 
     private fun endpoint(): DirectEndpoint {
-        val lines = endpointFile.readLines()
-        return DirectEndpoint(lines[0].trim(), lines[1].trim().toInt())
+        return endpointStore().load() ?: throw IllegalStateException("missing endpoint")
     }
 
     private fun hostOf(link: String): String = runCatching { java.net.URL(link).host }.getOrDefault("?")

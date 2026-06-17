@@ -8,6 +8,8 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import app.solstone.core.diagnostics.SourceFacts
 import app.solstone.core.diagnostics.reduce
@@ -26,11 +28,17 @@ import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
 import app.solstone.platform.power.ExemptionVerifier
 import app.solstone.platform.power.SharedPreferencesAutostartConfirmationStore
+import app.solstone.platform.work.SyncCredentials
+import app.solstone.platform.work.SyncScheduler
+import app.solstone.platform.work.recoverSyncCredentials
+import app.solstone.platform.work.syncStores
+import app.solstone.core.sources.MAIN_STREAM
 import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
     private lateinit var labelView: TextView
+    private lateinit var syncView: TextView
     private var setup: CaptureSetup? = null
     private var pipeline: CapturePipeline? = null
     private var database: SolstonePersistenceDatabase? = null
@@ -38,8 +46,22 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         labelView = TextView(this)
-        setContentView(labelView)
+        syncView = TextView(this)
+        val syncButton = Button(this).apply {
+            text = "Sync now"
+            setOnClickListener {
+                SyncScheduler.enqueueNow(this@MainActivity)
+                updateLabel()
+            }
+        }
+        layout.addView(labelView)
+        layout.addView(syncView)
+        layout.addView(syncButton)
+        setContentView(layout)
         updateLabel()
         setupPipeline()
         if (hasRequiredPermissions()) {
@@ -86,6 +108,7 @@ class MainActivity : Activity() {
     private fun startVisibleWork() {
         if (!started.compareAndSet(false, true)) return
         ObserverForegroundService.startFromVisibleContext(this)
+        SyncScheduler.enqueuePeriodic(this)
         pipeline?.start()
         updateLabel()
     }
@@ -93,11 +116,13 @@ class MainActivity : Activity() {
     private fun updateLabel() {
         val state = reduce(sourceFacts()).first
         labelView.text = state.label()
+        syncView.text = syncStatusText()
     }
 
     private fun sourceFacts(): SourceFacts {
         val permissionStatus = AndroidPermissionStatusReader(this).read()
         val condition = setup?.engines?.firstOrNull()?.condition()
+        val credentials = syncCredentials()
         val exemptionVerified = ExemptionVerifier(
             AndroidBatteryExemptionStatus(this),
             SharedPreferencesAutostartConfirmationStore(this),
@@ -110,10 +135,31 @@ class MainActivity : Activity() {
             providerEmitting = pipeline?.lastEmissionEpochMs()
                 ?.let { System.currentTimeMillis() - it <= PROVIDER_STALE_MS } == true,
             storageOk = condition?.available != false,
-            linkPaired = true,
-            authValid = true,
+            linkPaired = credentials is SyncCredentials.Ready,
+            authValid = credentials is SyncCredentials.Ready,
             exemptionVerified = exemptionVerified,
         )
+    }
+
+    private fun syncCredentials(): SyncCredentials {
+        val stores = syncStores(this)
+        return recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)
+    }
+
+    private fun syncStatusText(): String {
+        val dao = database?.segmentDao()
+        val row = dao?.syncState()
+        val pending = dao?.pendingCount(MAIN_STREAM) ?: 0
+        val credentials = syncCredentials()
+        val lines = mutableListOf(
+            "Pending: $pending",
+            "Last success: ${row?.lastSuccessAt?.toString() ?: "none"}",
+            "Last failure: ${row?.lastFailureAt?.toString() ?: "none"}",
+        )
+        if (credentials is SyncCredentials.NeedsRepair) {
+            lines += "Attention needed: re-pair"
+        }
+        return lines.joinToString("\n")
     }
 
     private fun hasRequiredPermissions(): Boolean =
