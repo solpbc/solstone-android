@@ -27,9 +27,9 @@ internal class MuxSession(private val socket: SSLSocket) : Closeable {
     private val output = socket.outputStream
     private val dialer = FrameDialer()
 
-    fun request(method: String, path: String, contentType: String?, body: ByteArray?): HttpResponse {
+    fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
         val streamId = dialer.allocate()
-        writeFrame(streamId, FLAG_OPEN or FLAG_DATA, httpRequestBytes(method, path, contentType, body))
+        writeFrame(streamId, FLAG_OPEN or FLAG_DATA, httpRequestBytes(method, path, headers, body))
         writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
         val response = ByteArrayOutputStream()
         while (true) {

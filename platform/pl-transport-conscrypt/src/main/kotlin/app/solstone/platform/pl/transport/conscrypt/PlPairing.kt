@@ -50,7 +50,7 @@ fun pairAndProbe(
     val pairSession = openCertlessSession(link)
     val pinned = pairSession.handshakePinned
     val pairHttp = pairSession.session.use { session ->
-        session.request("POST", "/app/link/pair?token=" + link.nonce, "application/json", body)
+        session.request("POST", "/app/link/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
     }
     if (pairHttp.status != 200) {
         throw IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())

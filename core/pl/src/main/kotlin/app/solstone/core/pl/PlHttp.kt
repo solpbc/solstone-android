@@ -10,14 +10,25 @@ data class HttpResponse(val status: Int, val headers: Map<String, String>, val b
     fun bodyText(): String = body.toString(Charsets.UTF_8)
 }
 
-fun httpRequestBytes(method: String, path: String, contentType: String?, body: ByteArray?): ByteArray {
+fun httpRequestBytes(method: String, path: String, headers: Map<String, String>, body: ByteArray?): ByteArray {
     val bodyBytes = body ?: ByteArray(0)
+    val acceptHeader = headers.entries.firstOrNull { it.key.equals("accept", ignoreCase = true) }
     val head = StringBuilder()
     head.append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
     head.append("host: spl.local\r\n")
-    head.append("accept: application/json\r\n")
-    if (contentType != null && contentType.isNotEmpty()) {
-        head.append("content-type: ").append(contentType).append("\r\n")
+    if (acceptHeader != null) {
+        head.append(acceptHeader.key).append(": ").append(acceptHeader.value).append("\r\n")
+    } else {
+        head.append("accept: application/json\r\n")
+    }
+    headers.forEach { (name, value) ->
+        if (
+            !name.equals("host", ignoreCase = true) &&
+            !name.equals("content-length", ignoreCase = true) &&
+            !name.equals("accept", ignoreCase = true)
+        ) {
+            head.append(name).append(": ").append(value).append("\r\n")
+        }
     }
     head.append("content-length: ").append(bodyBytes.size).append("\r\n")
     head.append("\r\n")
