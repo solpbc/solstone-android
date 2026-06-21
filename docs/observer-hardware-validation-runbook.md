@@ -81,7 +81,7 @@ each permission's grant state.
 Mint a pair link on the journal host (single-homed host emits a v04 link the parser accepts):
 
 ```bash
-curl -s -X POST http://127.0.0.1:5015/app/link/pair-start \
+curl -s -X POST http://127.0.0.1:5015/app/network/pair-start \
   -H 'Content-Type: application/json' \
   -d '{"device_label":"<label>","role":"observer"}'
 # -> { "pair_link": "https://go.solstone.app/p#<blob>", "nonce", "ca_fingerprint", "expires_in": 300, ... }

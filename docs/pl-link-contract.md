@@ -11,7 +11,7 @@ The validation app currently proves:
 - certless TLS pair request,
 - persisted client certificate bundle,
 - mTLS reconnect,
-- framed `GET /app/link/api/status`.
+- framed `GET /app/network/api/status`.
 
 Production modules should turn those behaviors into host-testable parser and state-machine tests plus a device-gated Rogbid validation path.
 

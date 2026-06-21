@@ -244,7 +244,7 @@ class LiveObserverDriverTest {
         assumeTrue("needs a stored credential + endpoint from a prior pairing", credential != null && endpointFile.exists())
         try {
             val status = openAuthenticatedClient(endpoint(), credential!!).use { client ->
-                client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
+                client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
             }
             result("t5.rehandshakeStatus=${status.status}")
             assertEquals("re-handshake from stored credential must return 200", 200, status.status)

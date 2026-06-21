@@ -41,7 +41,7 @@ class SyncWorker(
         try {
             openAuthenticatedClient(credentials.endpoint, credentials.credential).use { client ->
                 val status = try {
-                    client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0)).status
+                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
                 } catch (_: IOException) {
                     return Result.retry()
                 }

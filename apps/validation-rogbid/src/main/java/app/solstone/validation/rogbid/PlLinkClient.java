@@ -126,7 +126,7 @@ final class PlLinkClient {
             handshakePinned = client.handshakePinned;
             pairHttp = client.request(
                     "POST",
-                    "/app/link/pair?token=" + link.nonce,
+                    "/app/network/pair?token=" + link.nonce,
                     "application/json",
                     body);
         }
@@ -152,7 +152,7 @@ final class PlLinkClient {
         DirectEndpoint endpoint = state.firstEndpointOr(link.endpoint());
         HttpResponse statusHttp;
         try (MuxHttpClient client = MuxHttpClient.connectAuthenticated(endpoint, state)) {
-            statusHttp = client.request("GET", "/app/link/api/status", null, new byte[0]);
+            statusHttp = client.request("GET", "/app/network/api/status", null, new byte[0]);
         }
 
         return new PlResult(

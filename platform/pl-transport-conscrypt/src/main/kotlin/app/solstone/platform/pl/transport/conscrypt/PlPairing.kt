@@ -75,7 +75,7 @@ fun pairAndProbe(
         val pinned = pairSession.handshakePinned
         val pairHttp = try {
             pairSession.session.use { session ->
-                session.request("POST", "/app/link/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
+                session.request("POST", "/app/network/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
             }
         } catch (e: Exception) {
             lastError = e
@@ -109,7 +109,7 @@ fun pairAndProbe(
                 endpointStore.save(endpoint)
 
                 val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
-                    client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
+                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
                 }
                 return PairProbeResult(pinned, pairHttp.status, statusHttp.status, statusHttp.bodyText(), endpoint)
             }

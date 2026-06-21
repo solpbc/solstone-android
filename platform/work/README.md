@@ -124,7 +124,7 @@ fun nextSyncState(
 1. Build PL stores with the Context factory and call `recoverSyncCredentials`.
 2. `NeedsRepair` records the condition and returns `Result.failure()`; re-pairing re-enqueues.
 3. Open the authenticated PL client with the recovered endpoint and credential.
-4. Probe `/app/link/api/status`; `status == 200` is reachable. Use `decideReachability(true, reachable)`.
+4. Probe `/app/network/api/status`; `status == 200` is reachable. Use `decideReachability(true, reachable)`.
 5. Load `dao.segmentsByState(QueueState.SEALED)`, then `selectDrainSegments`.
 6. Group by day. For each day, build `SegmentReconciler(client, handle)`, reconstruct manifests from DB rows, call `reconciler.diff(manifests, day)`, and record `dedupe_checked_at = now` for checked rows.
 7. For each segment:

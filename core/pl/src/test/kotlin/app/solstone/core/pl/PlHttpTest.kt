@@ -14,12 +14,12 @@ class PlHttpTest {
     fun requestBytesMatchReferenceFraming() {
         val request = httpRequestBytes(
             "POST",
-            "/app/link/pair?token=abc",
+            "/app/network/pair?token=abc",
             mapOf("content-type" to "application/json"),
             """{"x":1}""".toByteArray(),
         )
         assertEquals(
-            "POST /app/link/pair?token=abc HTTP/1.1\r\n" +
+            "POST /app/network/pair?token=abc HTTP/1.1\r\n" +
                 "host: spl.local\r\n" +
                 "accept: application/json\r\n" +
                 "content-type: application/json\r\n" +
@@ -94,11 +94,11 @@ class PlHttpTest {
 
     @Test
     fun requestBytesWithEmptyHeaders() {
-        val request = httpRequestBytes("GET", "/app/link/api/status", emptyMap(), ByteArray(0))
+        val request = httpRequestBytes("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
             .toString(Charsets.US_ASCII)
 
         assertEquals(
-            "GET /app/link/api/status HTTP/1.1\r\n" +
+            "GET /app/network/api/status HTTP/1.1\r\n" +
                 "host: spl.local\r\n" +
                 "accept: application/json\r\n" +
                 "content-length: 0\r\n" +

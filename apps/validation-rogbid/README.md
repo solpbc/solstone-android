@@ -66,8 +66,8 @@ Its eighth job is to validate direct LAN private-link pairing:
 1. parse a `https://link.solpbc.org/p#...` direct PL QR payload;
 2. generate an on-watch ECDSA-P256 keypair and PKCS#10 CSR;
 3. connect to the solstone secure listener with TLS 1.3 + PL framing;
-4. submit `/app/link/pair`, persist the returned PL bundle, reconnect with the
-   client cert, and call `/app/link/api/status` over the tunnel.
+4. submit `/app/network/pair`, persist the returned PL bundle, reconnect with the
+   client cert, and call `/app/network/api/status` over the tunnel.
 
 ## Build
 
@@ -287,7 +287,7 @@ The same `QR scan` activity now recognizes direct solstone PL pair links. When a
 valid direct pair QR is decoded, it closes the camera, generates a local
 ECDSA-P256 keypair/CSR, pairs through the secure listener, stores the returned
 bundle under app-private `files/pl-link/`, reconnects with the client
-certificate, and calls `/app/link/api/status`. Evidence is written to
+certificate, and calls `/app/network/api/status`. Evidence is written to
 `files/pl-link-evidence.txt`.
 
 The Rogbid Android 9 firmware's platform TLS provider only advertised
@@ -357,7 +357,7 @@ Useful carry-forward findings:
 - Direct LAN PL linking is validated against the current solstone link code via
   ADB-injected pair link. The watch needs packaged Conscrypt for TLS 1.3; with
   that in place it paired, stored a PL bundle, reconnected with mTLS, and got a
-  200 response from `/app/link/api/status`.
+  200 response from `/app/network/api/status`.
 
 The legacy `tools/rogbid/run-rogbid-battery-trial.sh` still exists for live
 ADB-over-Wi-Fi sampling of `dumpsys wifi` / `deviceidle`, but it is no longer the

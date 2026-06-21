@@ -142,9 +142,9 @@ class SyncDecisionsTest {
     fun fakePlHttpClientRecordsRequestsForDecisionSeams() {
         val client = FakePlHttpClient(HttpResponse(200, emptyMap(), ByteArray(0)))
 
-        client.request("GET", "/app/link/api/status", emptyMap(), null)
+        client.request("GET", "/app/network/api/status", emptyMap(), null)
 
-        assertEquals(listOf("/app/link/api/status"), client.paths)
+        assertEquals(listOf("/app/network/api/status"), client.paths)
         assertEquals(0, client.ingestCount)
     }
 

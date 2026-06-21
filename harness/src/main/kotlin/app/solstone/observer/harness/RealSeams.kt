@@ -83,7 +83,7 @@ class RealPlStatusProbe(
         return try {
             openAuthenticatedClient(endpoint, credential).use { client ->
                 HarnessPlStatus.Reachable(
-                    client.request("GET", "/app/link/api/status", emptyMap(), ByteArray(0)).status,
+                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status,
                 )
             }
         } catch (e: IOException) {
