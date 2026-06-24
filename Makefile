@@ -16,7 +16,7 @@ test:
 	$(GRADLE) test
 
 ci:
-		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :testing:test :harness:test :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:audio:assembleDebug :platform:location:assembleDebug :platform:camera-legacy:assembleDebug :platform:camera2:assembleDebug :platform:fgs:assembleDebug :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:validation-rogbid:assembleDebug
+		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :testing:test :harness:test :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:audio:assembleDebug :platform:location:assembleDebug :platform:camera-legacy:assembleDebug :platform:camera2:assembleDebug :platform:fgs:assembleDebug :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:glasses:checkRealDebugMicrophoneManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:glasses:assembleMockDebug :apps:glasses:assembleMockDebugAndroidTest :apps:glasses:assembleRealDebug :apps:validation-rogbid:assembleDebug
 
 # Slower device gate: GMD (pixel5api35) instrumented tests for the modules that
 # carry real androidTest coverage. Always host-GL — the default GMD GPU path
@@ -25,7 +25,8 @@ ci-device:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :platform:persistence-room:pixel5api35DebugAndroidTest \
 	  :apps:watch:pixel5api35MockDebugAndroidTest \
-	  :apps:phone:pixel5api35MockDebugAndroidTest
+	  :apps:phone:pixel5api35MockDebugAndroidTest \
+	  :apps:glasses:pixel5api35MockDebugAndroidTest
 
 format:
 	@echo "No formatter is configured yet."

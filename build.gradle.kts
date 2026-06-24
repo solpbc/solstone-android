@@ -167,6 +167,11 @@ tasks.register("manifestGuardSelfTest") {
         check("location" in tokens)
         check("camera" in tokens)
         check("dataSync" !in tokens)
+
+        val noLocationTokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|camera" />""")
+        check("microphone" in noLocationTokens)
+        check("camera" in noLocationTokens)
+        check("location" !in noLocationTokens)
     }
 }
 
@@ -174,7 +179,7 @@ tasks.named("check") {
     dependsOn("checkPrivacyDeps", "checkCorePurity", "privacyGuardSelfTest", "purityGuardSelfTest", "manifestGuardSelfTest")
 }
 
-fun Project.registerMicrophoneManifestCheck() {
+fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true) {
     tasks.register("checkRealDebugMicrophoneManifest") {
         group = "verification"
         description = "Checks the realDebug merged manifest for microphone foreground service declarations."
@@ -193,9 +198,6 @@ fun Project.registerMicrophoneManifestCheck() {
             if (!text.contains("android.permission.FOREGROUND_SERVICE_MICROPHONE")) {
                 failures += "missing FOREGROUND_SERVICE_MICROPHONE permission"
             }
-            if (!text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
-                failures += "missing FOREGROUND_SERVICE_LOCATION permission"
-            }
             if (!text.contains("android.permission.FOREGROUND_SERVICE_CAMERA")) {
                 failures += "missing FOREGROUND_SERVICE_CAMERA permission"
             }
@@ -203,11 +205,23 @@ fun Project.registerMicrophoneManifestCheck() {
             if ("microphone" !in foregroundServiceTypes) {
                 failures += "foregroundServiceType must include microphone"
             }
-            if ("location" !in foregroundServiceTypes) {
-                failures += "foregroundServiceType must include location"
-            }
             if ("camera" !in foregroundServiceTypes) {
                 failures += "foregroundServiceType must include camera"
+            }
+            if (requireLocation) {
+                if (!text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
+                    failures += "missing FOREGROUND_SERVICE_LOCATION permission"
+                }
+                if ("location" !in foregroundServiceTypes) {
+                    failures += "foregroundServiceType must include location"
+                }
+            } else {
+                if (text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
+                    failures += "must not declare FOREGROUND_SERVICE_LOCATION permission"
+                }
+                if ("location" in foregroundServiceTypes) {
+                    failures += "foregroundServiceType must not include location"
+                }
             }
             if (text.contains("dataSync")) {
                 failures += "must not declare dataSync"
@@ -225,6 +239,10 @@ project(":apps:watch") {
 
 project(":apps:phone") {
     registerMicrophoneManifestCheck()
+}
+
+project(":apps:glasses") {
+    registerMicrophoneManifestCheck(requireLocation = false)
 }
 
 project(":apps:validation-rogbid") {
