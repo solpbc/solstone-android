@@ -118,6 +118,7 @@ interface HeartbeatControl {
 }
 
 interface SyncControl {
+    val enqueuePeriodicCalls: Int
     val enqueueNowCalls: Int
 }
 

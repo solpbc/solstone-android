@@ -37,7 +37,7 @@ fun createPhoneHarnessFlavor(
     )
     return PhoneHarnessFlavor(
         controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context),
+            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),

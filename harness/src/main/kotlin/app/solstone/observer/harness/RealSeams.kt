@@ -95,6 +95,10 @@ class RealPlStatusProbe(
 }
 
 class RealSyncEnqueue(private val context: Context) : SyncEnqueue {
+    override fun enqueuePeriodic() {
+        SyncScheduler.enqueuePeriodic(context)
+    }
+
     override fun enqueueNow() {
         SyncScheduler.enqueueNow(context)
     }

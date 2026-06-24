@@ -20,7 +20,8 @@ fun interface PlStatusProbe {
     fun probe(): HarnessPlStatus
 }
 
-fun interface SyncEnqueue {
+interface SyncEnqueue {
+    fun enqueuePeriodic()
     fun enqueueNow()
 }
 

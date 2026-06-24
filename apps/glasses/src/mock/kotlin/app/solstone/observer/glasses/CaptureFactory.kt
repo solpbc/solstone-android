@@ -18,10 +18,21 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         stream = MAIN_STREAM,
         frameEveryMillis = 300_000,
         frameSizeBytes = 16,
-        frameCount = 3,
+        frameCount = 1,
+        fixedPayloadName = "audio.m4a",
+        mediaType = "audio/mp4",
+    )
+    val camera = FakeContinuousSource(
+        sourceId = "camera",
+        stream = MAIN_STREAM,
+        frameEveryMillis = 15_000,
+        frameSizeBytes = 16,
+        frameCount = 1,
+        fixedPayloadName = "camera-0.jpg",
+        mediaType = "image/jpeg",
     )
     return CaptureSetup(
-        engines = listOf(audio),
+        engines = listOf(audio, camera),
         payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
             ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
         },

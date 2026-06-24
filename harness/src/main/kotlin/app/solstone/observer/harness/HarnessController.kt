@@ -115,6 +115,10 @@ class HarnessController(
         syncEnqueue.enqueueNow()
     }
 
+    fun schedulePeriodicSync() {
+        syncEnqueue.enqueuePeriodic()
+    }
+
     fun listEvidence(): List<HarnessEvidenceSegment> = evidenceReader.listEvidence()
 
     fun syncState(): HarnessSyncState = evidenceReader.syncState()

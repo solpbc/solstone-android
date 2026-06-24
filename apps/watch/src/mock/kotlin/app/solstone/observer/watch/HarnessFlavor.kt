@@ -42,7 +42,7 @@ fun createWatchHarnessFlavor(
     val sync = MockSyncEnqueue()
     return WatchHarnessFlavor(
         controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context),
+            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = heartbeat,
@@ -96,8 +96,15 @@ class MockHeartbeat : HeartbeatFreshness, HeartbeatControl {
 }
 
 class MockSyncEnqueue : SyncEnqueue, SyncControl {
+    override var enqueuePeriodicCalls: Int = 0
+        private set
+
     override var enqueueNowCalls: Int = 0
         private set
+
+    override fun enqueuePeriodic() {
+        enqueuePeriodicCalls += 1
+    }
 
     override fun enqueueNow() {
         enqueueNowCalls += 1

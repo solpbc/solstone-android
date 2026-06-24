@@ -64,6 +64,7 @@ class GlassesAppContainer(private val context: Context) {
     val controller: HarnessController = flavor.controller
 
     init {
+        controller.schedulePeriodicSync()
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
@@ -118,6 +119,7 @@ interface HeartbeatControl {
 }
 
 interface SyncControl {
+    val enqueuePeriodicCalls: Int
     val enqueueNowCalls: Int
 }
 

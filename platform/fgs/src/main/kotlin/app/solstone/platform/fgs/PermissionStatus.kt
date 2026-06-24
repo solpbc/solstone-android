@@ -15,11 +15,12 @@ data class PermissionStatus(
     val coarseLocationGranted: Boolean,
     val backgroundLocationGranted: Boolean,
     val notificationsGranted: Boolean,
+    val requireLocation: Boolean = true,
 ) {
     val allRequiredGranted: Boolean
         get() = microphoneGranted &&
             cameraGranted &&
-            (fineLocationGranted || coarseLocationGranted) &&
+            (!requireLocation || fineLocationGranted || coarseLocationGranted) &&
             notificationsGranted
 }
 
@@ -27,7 +28,10 @@ fun interface PermissionStatusReader {
     fun read(): PermissionStatus
 }
 
-class AndroidPermissionStatusReader(private val context: Context) : PermissionStatusReader {
+class AndroidPermissionStatusReader(
+    private val context: Context,
+    private val requireLocation: Boolean = true,
+) : PermissionStatusReader {
     override fun read(): PermissionStatus =
         PermissionStatus(
             microphoneGranted = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
@@ -38,5 +42,6 @@ class AndroidPermissionStatusReader(private val context: Context) : PermissionSt
                 context.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED,
             notificationsGranted = Build.VERSION.SDK_INT < 33 ||
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+            requireLocation = requireLocation,
         )
 }

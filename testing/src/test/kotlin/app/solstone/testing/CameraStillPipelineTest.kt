@@ -5,6 +5,7 @@ package app.solstone.testing
 
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
+import app.solstone.core.model.GapEvent
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.sources.EmissionSink
@@ -103,11 +104,130 @@ class CameraStillPipelineTest {
         }
     }
 
+    @Test
+    fun partialSourceGapStillSealsSegmentWithSurvivingPayload() {
+        val base = Files.createTempDirectory("solstone-camera-still-partial-gap")
+        val cameraBytes = "jpeg-survives".encodeToByteArray()
+        val audioBytes = "audio-window".encodeToByteArray()
+        val sink = CapturingSink()
+        val sleeps = mutableListOf<Long>()
+        val camera = StillCaptureEngine(
+            stillCamera = FakeStillCamera(listOf(cameraBytes)),
+            nowProvider = { BASE_CAPTURE_EPOCH_MS },
+            sleeper = { millis ->
+                sleeps += millis
+                throw InterruptedException()
+            },
+        )
+
+        try {
+            camera.start(sink)
+            waitForEmissions(sink, 1)
+            camera.stop()
+
+            val gap = GapEvent("capture_gap", BASE_CAPTURE_EPOCH_MS + 1_000L, "storage")
+            val audio = FakeContinuousSource(
+                sourceId = "audio",
+                stream = MAIN_STREAM,
+                frameEveryMillis = 300_000L,
+                frameSizeBytes = audioBytes.size,
+                frameCount = 1,
+                gaps = listOf(ScriptedGap(afterEmissionIndex = 0, gap = gap)),
+                fixedPayloadName = "audio.m4a",
+                mediaType = "audio/mp4",
+            )
+            val audioEmissions = CapturingSink().also { audio.emitAll(it) }.emissions
+            val segmenter = Segmenter(ZoneId.of("UTC"))
+            segmenter.feed(audioEmissions.single())
+            sink.emissions.forEach { emission -> segmenter.feed(emission) }
+            val sealed = segmenter.flush().single()
+
+            assertEquals(listOf(gap), sealed.gaps)
+            assertTrue(sealed.payloads.any { it.sourceId == StillCaptureEngine.SOURCE_ID })
+
+            val provider = PayloadBytesProvider { payload: SegmentPayload ->
+                when (payload.sourceId) {
+                    "audio" -> ByteArrayInputStream(audioBytes)
+                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
+            }
+            val result = FileSpoolWriter(base).seal(sealed, provider)
+            val files = result.manifest.files
+
+            assertTrue(files.any { it.sourceId == StillCaptureEngine.SOURCE_ID && it.mediaType == StillCaptureEngine.MEDIA_TYPE })
+            assertTrue(files.any { it.sourceId == "audio" && it.name == "audio.m4a" })
+        } finally {
+            camera.stop()
+            base.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedCameraCaptureStillSealsSegmentWithAudioAndGapOnly() {
+        val base = Files.createTempDirectory("solstone-camera-still-failed-capture")
+        val audioBytes = "audio-window".encodeToByteArray()
+        val sink = CapturingSink()
+        val camera = StillCaptureEngine(
+            stillCamera = FailingStillCamera(),
+            nowProvider = { BASE_CAPTURE_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+        )
+
+        try {
+            camera.start(sink)
+            waitForEmissions(sink, 1)
+            camera.stop()
+
+            val audio = FakeContinuousSource(
+                sourceId = "audio",
+                stream = MAIN_STREAM,
+                frameEveryMillis = 300_000L,
+                frameSizeBytes = audioBytes.size,
+                frameCount = 1,
+                fixedPayloadName = "audio.m4a",
+                mediaType = "audio/mp4",
+            )
+            val audioEmissions = CapturingSink().also { audio.emitAll(it) }.emissions
+            val segmenter = Segmenter(ZoneId.of("UTC"))
+            segmenter.feed(audioEmissions.single())
+            sink.emissions.forEach { emission -> segmenter.feed(emission) }
+            val sealed = segmenter.flush().single()
+
+            assertTrue(sealed.payloads.any { it.sourceId == "audio" && it.ref.name == "audio.m4a" })
+            assertTrue(sealed.payloads.none { it.sourceId == StillCaptureEngine.SOURCE_ID })
+            val cameraGap = sealed.gaps.single { it.kind == "capture_gap" }
+            assertEquals(BASE_CAPTURE_EPOCH_MS, cameraGap.atEpochMs)
+            assertEquals("capture_failed", cameraGap.detail)
+
+            val result = FileSpoolWriter(base).seal(
+                sealed,
+                PayloadBytesProvider { payload: SegmentPayload ->
+                    when (payload.sourceId) {
+                        "audio" -> ByteArrayInputStream(audioBytes)
+                        else -> error("unexpected payload source: ${payload.sourceId}")
+                    }
+                },
+            )
+            val files = result.manifest.files
+
+            assertEquals(listOf("audio.m4a"), files.map { it.name })
+            assertTrue(files.none { it.sourceId == StillCaptureEngine.SOURCE_ID || it.name.startsWith("camera-") })
+        } finally {
+            camera.stop()
+            base.deleteRecursively()
+        }
+    }
+
     private class FakeStillCamera(private val stills: List<ByteArray>) : StillCamera {
         private var index = 0
 
         override fun takeStill(): ByteArray? =
             stills.getOrNull(index++)
+    }
+
+    private class FailingStillCamera : StillCamera {
+        override fun takeStill(): ByteArray? = null
     }
 
     private class CapturingSink : EmissionSink {

@@ -64,6 +64,13 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun schedulePeriodicSyncEnqueuesExactlyOnce() {
+        val f = fixture()
+        f.controller.schedulePeriodicSync()
+        assertEquals(1, f.sync.enqueuePeriodicCalls)
+    }
+
+    @Test
     fun invalidPairLinkDoesNothing() {
         val f = fixture()
         assertNull(f.controller.onScannedPairLink("nope"))

@@ -109,6 +109,11 @@ internal class FakeEvidenceReader(
 
 internal class RecordingSyncEnqueue : SyncEnqueue {
     var calls = 0
+    var enqueuePeriodicCalls = 0
+
+    override fun enqueuePeriodic() {
+        enqueuePeriodicCalls += 1
+    }
 
     override fun enqueueNow() {
         calls += 1

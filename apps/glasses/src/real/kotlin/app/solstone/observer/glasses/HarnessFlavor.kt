@@ -37,7 +37,7 @@ fun createGlassesHarnessFlavor(
     )
     return GlassesHarnessFlavor(
         controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context),
+            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),
