@@ -30,6 +30,16 @@ class MainActivity : Activity() {
         )
     }
 
+    override fun onResume() {
+        super.onResume()
+        container.startPhotoPairWatch()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        container.stopPhotoPairWatch()
+    }
+
     override fun onDestroy() {
         if (isFinishing) {
             container.close()
@@ -64,11 +74,13 @@ class MainActivity : Activity() {
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
                 Manifest.permission.POST_NOTIFICATIONS,
+                Manifest.permission.READ_MEDIA_IMAGES,
             )
         } else {
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
+                Manifest.permission.READ_EXTERNAL_STORAGE,
             )
         }
 
