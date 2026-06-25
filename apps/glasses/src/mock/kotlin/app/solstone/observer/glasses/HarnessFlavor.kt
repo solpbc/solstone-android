@@ -78,6 +78,7 @@ fun createGlassesHarnessFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "mock glasses",
         ),
+        audioFeedback = FakeAudioFeedback(),
         heartbeatControl = heartbeat,
         syncControl = sync,
         exemptionVerified = { true },

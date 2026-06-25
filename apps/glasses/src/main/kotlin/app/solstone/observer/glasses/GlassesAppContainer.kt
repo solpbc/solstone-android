@@ -11,6 +11,7 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
+import app.solstone.core.diagnostics.statusCueFor
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HeartbeatFreshness
@@ -62,9 +63,17 @@ class GlassesAppContainer(private val context: Context) {
     )
 
     val controller: HarnessController = flavor.controller
+    private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            background.execute { runCatching { cuePoller.tick() } }
+            mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
+        }
+    }
 
     init {
         controller.schedulePeriodicSync()
+        mainHandler.post(pollRunnable)
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
@@ -73,10 +82,19 @@ class GlassesAppContainer(private val context: Context) {
     }
 
     fun close() {
+        mainHandler.removeCallbacks(pollRunnable)
         runCatching { controller.stop() }
         background.shutdown()
         runCatching { background.awaitTermination(2, TimeUnit.SECONDS) }
         database.close()
+    }
+
+    fun speakCurrentStatus() {
+        background.execute {
+            runCatching {
+                flavor.audioFeedback.play(rawResFor(statusCueFor(cueSnapshot(controller))))
+            }
+        }
     }
 
     private fun newPipeline(): CapturePipeline =
@@ -103,12 +121,14 @@ class GlassesAppContainer(private val context: Context) {
 
     private companion object {
         const val TICK_INTERVAL_MS = 5_000L
+        const val STATUS_POLL_INTERVAL_MS = 5_000L
         const val PROVIDER_STALE_MS = 310_000L
     }
 }
 
 data class GlassesHarnessFlavor(
     val controller: HarnessController,
+    val audioFeedback: AudioFeedback,
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
     val exemptionVerified: () -> Boolean = { true },

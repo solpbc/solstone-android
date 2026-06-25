@@ -7,6 +7,8 @@ import android.Manifest
 import android.app.Activity
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.view.KeyEvent
 import app.solstone.observer.formfactor.glasses.GlassesHarnessUi
 
 class MainActivity : Activity() {
@@ -38,6 +40,16 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    // Phase-1a limitation: button cues require Activity window focus; background capture is out of scope.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        Log.i(TAG, "temple KeyEvent keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
+        if (isTempleButtonKey(keyCode)) {
+            container.speakCurrentStatus()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     private fun requiredPermissions(): Array<String> =
         if (Build.VERSION.SDK_INT >= 33) {
             arrayOf(
@@ -53,6 +65,7 @@ class MainActivity : Activity() {
         }
 
     private companion object {
+        const val TAG = "GlassesStatus"
         const val PERMISSION_REQUEST = 10
     }
 }

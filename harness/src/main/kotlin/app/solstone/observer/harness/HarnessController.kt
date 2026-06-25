@@ -3,6 +3,8 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.diagnostics.PairingFact
+import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.pl.EndpointStore
@@ -122,6 +124,13 @@ class HarnessController(
     fun listEvidence(): List<HarnessEvidenceSegment> = evidenceReader.listEvidence()
 
     fun syncState(): HarnessSyncState = evidenceReader.syncState()
+
+    fun pairingFact(): PairingFact =
+        pairingFactOf(
+            credentialPresent = credentialStore.load() != null,
+            endpointPresent = endpointStore.load() != null,
+            identityState = identityStore.load()?.state,
+        )
 
     fun exportSegment(segment: HarnessEvidenceSegment): HarnessExportResult = bundleExport.export(segment)
 

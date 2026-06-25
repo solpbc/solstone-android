@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 sol pbc
+
+package app.solstone.observer.glasses
+
+import android.content.Context
+import android.media.MediaPlayer
+import androidx.annotation.RawRes
+
+class RealAudioFeedback(private val context: Context) : AudioFeedback {
+    override fun play(@RawRes resId: Int) {
+        MediaPlayer.create(context, resId)?.apply {
+            setOnCompletionListener { it.release() }
+            start()
+        }
+    }
+}
