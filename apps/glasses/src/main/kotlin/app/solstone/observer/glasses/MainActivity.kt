@@ -40,14 +40,22 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    // Phase-1a limitation: button cues require Activity window focus; background capture is out of scope.
+    // Swipe forward/back arrive as VOLUME_UP/VOLUME_DOWN; we consume ONLY those so the harness UI keeps
+    // DPAD_CENTER/ENTER for its own activation (the Phase-1a key-hijack regression fix).
+    // AC5 caveat: consuming here does not stop system/MediaSession-level volume routing to the paired
+    // BT phone; full suppression needs a registered MediaSession/VolumeProvider (noted follow-up, not done).
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         Log.i(TAG, "temple KeyEvent keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
-        if (isTempleButtonKey(keyCode)) {
-            container.speakCurrentStatus()
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
+        val action = swipeAction(keyCode, container.controller.desiredOn)
+            ?: return super.onKeyDown(keyCode, event)
+        dispatchSwipe(
+            action,
+            start = container.controller::start,
+            stop = container.controller::stop,
+            announce = container::speakCurrentStatus,
+            attention = container::speakNeedsAttention,
+        )
+        return true
     }
 
     private fun requiredPermissions(): Array<String> =

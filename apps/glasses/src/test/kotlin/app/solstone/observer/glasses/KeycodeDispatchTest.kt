@@ -13,18 +13,88 @@ import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KeycodeDispatchTest {
     @Test
-    fun acceptsTempleButtonCandidateKeys() {
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_STEM_PRIMARY))
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_HEADSETHOOK))
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_ENTER))
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_DPAD_CENTER))
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-        assertTrue(isTempleButtonKey(KeyEvent.KEYCODE_BUTTON_1))
-        assertFalse(isTempleButtonKey(KeyEvent.KEYCODE_VOLUME_UP))
+    fun mapsSwipeActions() {
+        assertEquals(SwipeAction.Start, swipeAction(KeyEvent.KEYCODE_VOLUME_UP, desiredOn = false))
+        assertEquals(SwipeAction.AnnounceStatus, swipeAction(KeyEvent.KEYCODE_VOLUME_UP, desiredOn = true))
+        assertEquals(SwipeAction.Stop, swipeAction(KeyEvent.KEYCODE_VOLUME_DOWN, desiredOn = true))
+        assertEquals(SwipeAction.AnnounceStatus, swipeAction(KeyEvent.KEYCODE_VOLUME_DOWN, desiredOn = false))
+    }
+
+    @Test
+    fun leavesNonVolumeKeysUnhandled() {
+        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_CENTER, desiredOn = false))
+        assertNull(swipeAction(KeyEvent.KEYCODE_ENTER, desiredOn = false))
+        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_DOWN, desiredOn = false))
+    }
+
+    @Test
+    fun dispatchesStartWithoutAttentionWhenAccepted() {
+        var started = false
+        var attention = false
+
+        dispatchSwipe(
+            SwipeAction.Start,
+            start = {
+                started = true
+                true
+            },
+            stop = {},
+            announce = {},
+            attention = { attention = true },
+        )
+
+        assertTrue(started)
+        assertFalse(attention)
+    }
+
+    @Test
+    fun dispatchesStartWithAttentionWhenRefused() {
+        var attention = false
+
+        dispatchSwipe(
+            SwipeAction.Start,
+            start = { false },
+            stop = {},
+            announce = {},
+            attention = { attention = true },
+        )
+
+        assertTrue(attention)
+    }
+
+    @Test
+    fun dispatchesStop() {
+        var stopped = false
+
+        dispatchSwipe(
+            SwipeAction.Stop,
+            start = { true },
+            stop = { stopped = true },
+            announce = {},
+            attention = {},
+        )
+
+        assertTrue(stopped)
+    }
+
+    @Test
+    fun dispatchesAnnounceStatus() {
+        var announced = false
+
+        dispatchSwipe(
+            SwipeAction.AnnounceStatus,
+            start = { true },
+            stop = {},
+            announce = { announced = true },
+            attention = {},
+        )
+
+        assertTrue(announced)
     }
 
     @Test

@@ -6,12 +6,13 @@ package app.solstone.observer.glasses
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import app.solstone.core.diagnostics.StatusCue
+import app.solstone.core.diagnostics.statusCueFor
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
-import app.solstone.core.diagnostics.statusCueFor
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HeartbeatFreshness
@@ -93,6 +94,14 @@ class GlassesAppContainer(private val context: Context) {
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(rawResFor(statusCueFor(cueSnapshot(controller))))
+            }
+        }
+    }
+
+    fun speakNeedsAttention() {
+        background.execute {
+            runCatching {
+                flavor.audioFeedback.play(rawResFor(StatusCue.NEEDS_ATTENTION))
             }
         }
     }

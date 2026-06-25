@@ -34,14 +34,31 @@ fun cueSnapshot(controller: HarnessController): CueSnapshot {
     )
 }
 
-fun isTempleButtonKey(keyCode: Int): Boolean =
-    // Candidate set is finalized on-device from the KeyEvent log.
-    keyCode == KeyEvent.KEYCODE_STEM_PRIMARY ||
-        keyCode == KeyEvent.KEYCODE_HEADSETHOOK ||
-        keyCode == KeyEvent.KEYCODE_ENTER ||
-        keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
-        keyCode == KeyEvent.KEYCODE_BUTTON_1
+enum class SwipeAction { Start, Stop, AnnounceStatus }
+
+// Swipe forward = VOLUME_UP (24), swipe back = VOLUME_DOWN (25), decided on-device from the KeyEvent log.
+// Re-swipe in the already-current direction speaks live status; the opposite direction toggles observing.
+fun swipeAction(keyCode: Int, desiredOn: Boolean): SwipeAction? =
+    when (keyCode) {
+        KeyEvent.KEYCODE_VOLUME_UP -> if (desiredOn) SwipeAction.AnnounceStatus else SwipeAction.Start
+        KeyEvent.KEYCODE_VOLUME_DOWN -> if (desiredOn) SwipeAction.Stop else SwipeAction.AnnounceStatus
+        else -> null
+    }
+
+// Seam-based dispatcher so the start-refused -> attention-cue branch is unit-testable without an Activity.
+fun dispatchSwipe(
+    action: SwipeAction,
+    start: () -> Boolean,
+    stop: () -> Unit,
+    announce: () -> Unit,
+    attention: () -> Unit,
+) {
+    when (action) {
+        SwipeAction.Start -> if (!start()) attention()
+        SwipeAction.Stop -> stop()
+        SwipeAction.AnnounceStatus -> announce()
+    }
+}
 
 class StatusCuePoller(
     private val snapshotProvider: () -> CueSnapshot,
