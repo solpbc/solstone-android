@@ -20,8 +20,7 @@ fun decidePhotoPair(
         } else {
             PhotoPairOutcome.PAIRED
         }
-    } catch (e: Exception) {
-        android.util.Log.w("GlassesPair", "onScannedPairLink threw", e)
+    } catch (_: Exception) {
         PhotoPairOutcome.FAILED
     }
 }
