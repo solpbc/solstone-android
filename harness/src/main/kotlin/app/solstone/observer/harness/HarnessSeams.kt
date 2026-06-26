@@ -3,6 +3,8 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.pl.RelayPairLink
+
 interface ObserverLifecycle {
     fun start()
     fun stop()
@@ -14,6 +16,10 @@ fun interface HeartbeatFreshness {
 
 fun interface PairProbe {
     fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult
+}
+
+fun interface RelayPairProbe {
+    fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult
 }
 
 fun interface PlStatusProbe {

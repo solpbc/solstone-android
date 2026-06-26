@@ -15,4 +15,4 @@ data class WireKeys(val day: String, val segment: String, val startEpochMs: Long
 data class BundleFile(val sourceId: String, val name: String, val sha256: String, val byteSize: Long, val mediaType: String, val captureStartEpochMs: Long, val captureEndEpochMs: Long)
 data class BundleManifest(val key: SegmentKey, val files: List<BundleFile>, val gaps: List<GapEvent>)
 enum class IdentityState { UNPAIRED, PAIRED, REVOKED }
-data class PairedHome(val instanceId: String, val homeLabel: String, val relayOrigin: String?, val caChainFingerprint: String, val clientCertFingerprint: String, val observerHandle: String?, val state: IdentityState)
+data class PairedHome(val instanceId: String, val homeLabel: String, val relayOrigin: String?, val caChainFingerprint: String, val clientCertFingerprint: String, val observerHandle: String?, val deviceToken: String?, val state: IdentityState)

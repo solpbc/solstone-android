@@ -10,11 +10,18 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.QueueState
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
+import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
+import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
+import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe as conscryptPairAndProbe
+import app.solstone.platform.pl.transport.conscrypt.pairOverRelay as conscryptPairOverRelay
+import app.solstone.platform.work.SyncTransport
+import app.solstone.platform.work.selectSyncTransport
 import app.solstone.platform.work.SyncScheduler
 import java.io.IOException
 import java.nio.file.Files
@@ -65,23 +72,63 @@ class RealPairProbe(
     }
 }
 
+class RealRelayPairProbe(
+    private val credentialStore: ClientCredentialStore,
+    private val identityStore: IdentityStore,
+) : RelayPairProbe {
+    override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
+        val result = conscryptPairOverRelay(
+            link = link,
+            deviceLabel = deviceLabel,
+            httpsPoster = defaultHttpsPoster(),
+            relayPairDialer = defaultRelayPairDialer(),
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+        )
+        return HarnessPairProbeResult(
+            handshakePinned = result.handshakePinned,
+            pairStatus = result.pairStatus,
+            statusStatus = result.enrollStatus,
+            statusBody = "",
+            homeLabel = result.homeLabel,
+            endpointHost = result.relayHost,
+            endpointPort = 443,
+        )
+    }
+}
+
 class RealPlStatusProbe(
     private val endpointStore: EndpointStore,
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
 ) : PlStatusProbe {
     override fun probe(): HarnessPlStatus {
-        val endpoint = endpointStore.load()
         val credential = credentialStore.load()
         val identity = identityStore.load()
-        if (endpoint == null && credential == null && identity == null) {
+        if (credential == null && identity == null && endpointStore.load() == null) {
             return HarnessPlStatus.NotPaired
         }
-        if (endpoint == null || credential == null || identity == null || identity.state != IdentityState.PAIRED) {
-            return HarnessPlStatus.PairedButUnreachable("stored pairing is incomplete or revoked")
+        if (credential == null) {
+            return HarnessPlStatus.PairedButUnreachable("missing credential")
         }
+        if (identity == null) {
+            return HarnessPlStatus.PairedButUnreachable("missing identity")
+        }
+        if (identity.state != IdentityState.PAIRED) {
+            return HarnessPlStatus.PairedButUnreachable("identity not paired")
+        }
+        val transport = selectSyncTransport(identity, endpointStore)
+            ?: return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
         return try {
-            openAuthenticatedClient(endpoint, credential).use { client ->
+            when (transport) {
+                is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
+                is SyncTransport.Relay -> openRelaySyncClient(
+                    transport.relayOrigin,
+                    transport.instanceId,
+                    transport.deviceToken,
+                    credential,
+                )
+            }.use { client ->
                 HarnessPlStatus.Reachable(
                     client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status,
                 )

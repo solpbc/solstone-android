@@ -142,6 +142,9 @@ internal fun fixture(
     pairProbe: PairProbe = PairProbe { _, _ ->
         HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657)
     },
+    relayPairProbe: RelayPairProbe = RelayPairProbe { link, _ ->
+        HarnessPairProbeResult(true, 200, 200, "", "home", link.relayOrigin ?: "link.solstone.app", 443)
+    },
     plStatusProbe: PlStatusProbe = PlStatusProbe { HarnessPlStatus.NotPaired },
     evidenceReader: EvidenceReader = FakeEvidenceReader(),
     bundleExport: BundleExport = BundleExport { HarnessExportResult("source", "dest", 0) },
@@ -166,6 +169,7 @@ internal fun fixture(
             observerLifecycle = lifecycle,
             heartbeatFreshness = heartbeat,
             pairProbe = pairProbe,
+            relayPairProbe = relayPairProbe,
             plStatusProbe = plStatusProbe,
             syncEnqueue = sync,
             evidenceReader = evidenceReader,
@@ -195,6 +199,7 @@ internal fun pairedHome(state: IdentityState = IdentityState.PAIRED): PairedHome
         caChainFingerprint = "sha256:ca",
         clientCertFingerprint = "sha256:client",
         observerHandle = "watch-1",
+        deviceToken = null,
         state = state,
     )
 

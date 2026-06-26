@@ -18,6 +18,7 @@ import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
+import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +40,7 @@ class SyncWorker(
     private fun drain(credentials: SyncCredentials.Ready): Result {
         val db = openSolstonePersistenceDatabase(applicationContext)
         try {
-            openAuthenticatedClient(credentials.endpoint, credentials.credential).use { client ->
+            openSyncClient(credentials).use { client ->
                 val status = try {
                     client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
                 } catch (_: IOException) {
@@ -61,6 +62,17 @@ class SyncWorker(
             db.close()
         }
     }
+
+    private fun openSyncClient(credentials: SyncCredentials.Ready) =
+        when (val transport = credentials.transport) {
+            is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credentials.credential)
+            is SyncTransport.Relay -> openRelaySyncClient(
+                transport.relayOrigin,
+                transport.instanceId,
+                transport.deviceToken,
+                credentials.credential,
+            )
+        }
 
     private fun drainSegments(
         dao: SegmentDao,

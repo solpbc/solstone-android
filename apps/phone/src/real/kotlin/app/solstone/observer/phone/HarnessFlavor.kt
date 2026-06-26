@@ -10,6 +10,7 @@ import app.solstone.observer.harness.RealEvidenceReader
 import app.solstone.observer.harness.RealHeartbeatFreshness
 import app.solstone.observer.harness.RealPairProbe
 import app.solstone.observer.harness.RealPlStatusProbe
+import app.solstone.observer.harness.RealRelayPairProbe
 import app.solstone.observer.harness.RealSyncEnqueue
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.platform.camera.still.SingleHolderCameraLock
@@ -42,6 +43,7 @@ fun createPhoneHarnessFlavor(
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),
             pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
+            relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
             plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
             syncEnqueue = RealSyncEnqueue(context),
             evidenceReader = RealEvidenceReader(database.segmentDao()),

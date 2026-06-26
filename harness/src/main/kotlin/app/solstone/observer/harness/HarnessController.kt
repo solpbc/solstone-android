@@ -8,8 +8,10 @@ import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
-import app.solstone.core.pl.parseDirectPairLink
+import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
@@ -20,6 +22,7 @@ class HarnessController(
     private val observerLifecycle: ObserverLifecycle,
     private val heartbeatFreshness: HeartbeatFreshness,
     private val pairProbe: PairProbe,
+    private val relayPairProbe: RelayPairProbe,
     private val plStatusProbe: PlStatusProbe,
     private val syncEnqueue: SyncEnqueue,
     private val evidenceReader: EvidenceReader,
@@ -96,15 +99,12 @@ class HarnessController(
 
     fun onScannedPairLink(rawText: String): HarnessPairProbeResult? {
         if (!looksLikePairLink(rawText)) return null
-        parseDirectPairLink(rawText)
-        if (scanSessionHeld) {
-            return runPairProbe(rawText)
-        }
-        if (!cameraLock.tryAcquire()) return null
-        return try {
-            runPairProbe(rawText)
-        } finally {
-            cameraLock.release()
+        val link = parsePairLink(rawText)
+        return withPairLock {
+            when (link) {
+                is DirectPairLink -> runPairProbe(rawText)
+                is RelayPairLink -> runRelayPairProbe(link)
+            }
         }
     }
 
@@ -159,6 +159,24 @@ class HarnessController(
         val result = pairProbe.pairAndProbe(rawText, deviceLabel)
         lastPairProbe = result
         return result
+    }
+
+    private fun runRelayPairProbe(link: RelayPairLink): HarnessPairProbeResult {
+        val result = relayPairProbe.pairOverRelay(link, deviceLabel)
+        lastPairProbe = result
+        return result
+    }
+
+    private fun withPairLock(block: () -> HarnessPairProbeResult): HarnessPairProbeResult? {
+        if (scanSessionHeld) {
+            return block()
+        }
+        if (!cameraLock.tryAcquire()) return null
+        return try {
+            block()
+        } finally {
+            cameraLock.release()
+        }
     }
 }
 

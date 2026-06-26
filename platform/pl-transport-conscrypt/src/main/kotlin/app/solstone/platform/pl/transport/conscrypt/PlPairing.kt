@@ -105,6 +105,7 @@ fun pairAndProbe(
                     caChainFingerprint = "sha256:" + sha256Hex(caDer),
                     clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
                     observerHandle = null,
+                    deviceToken = null,
                     state = IdentityState.PAIRED,
                 )
                 identityStore.save(home)

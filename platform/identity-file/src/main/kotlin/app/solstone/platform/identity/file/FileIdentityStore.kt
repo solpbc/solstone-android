@@ -15,6 +15,7 @@ class FileIdentityStore(private val file: File) : IdentityStore {
             add("instanceId\t${home.instanceId}")
             add("homeLabel\t${home.homeLabel}")
             home.relayOrigin?.let { add("relayOrigin\t$it") }
+            home.deviceToken?.let { add("deviceToken\t$it") }
             add("caChainFingerprint\t${home.caChainFingerprint}")
             add("clientCertFingerprint\t${home.clientCertFingerprint}")
             home.observerHandle?.let { add("observerHandle\t$it") }
@@ -41,6 +42,7 @@ class FileIdentityStore(private val file: File) : IdentityStore {
             caChainFingerprint = values.getValue("caChainFingerprint"),
             clientCertFingerprint = values.getValue("clientCertFingerprint"),
             observerHandle = values["observerHandle"],
+            deviceToken = values["deviceToken"],
             state = IdentityState.valueOf(values.getValue("state")),
         )
     }

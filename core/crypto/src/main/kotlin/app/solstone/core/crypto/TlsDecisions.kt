@@ -5,6 +5,7 @@ package app.solstone.core.crypto
 
 import javax.net.ssl.SSLException
 
+// Direct v04/v05 links pin certificate DER; relay v03 pins CA SPKI in SpkiPin.kt.
 fun chainMatchesPrefix(chain: List<ByteArray>, expectedPrefix: ByteArray): Boolean =
     chain.any { startsWith(sha256(it), expectedPrefix) }
 

@@ -24,8 +24,47 @@ class SyncCredentialsTest {
         )
 
         val ready = assertIs<SyncCredentials.Ready>(result)
-        assertEquals(endpoint(), ready.endpoint)
+        assertEquals(SyncTransport.Direct(endpoint()), ready.transport)
         assertEquals("obs_123", ready.handle)
+    }
+
+    @Test
+    fun readyForRelayWhenIdentityHasRelayOriginAndDeviceToken() {
+        val result = recoverSyncCredentials(
+            endpointStore = FakeEndpointStore(null),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(
+                identity(
+                    observerHandle = "obs_123",
+                    state = IdentityState.PAIRED,
+                    relayOrigin = "https://link.solstone.app",
+                    deviceToken = "device-token",
+                ),
+            ),
+        )
+
+        val ready = assertIs<SyncCredentials.Ready>(result)
+        assertEquals(SyncTransport.Relay("https://link.solstone.app", "home", "device-token"), ready.transport)
+        assertEquals("obs_123", ready.handle)
+    }
+
+    @Test
+    fun relayOriginSelectsRelayEvenWhenDirectEndpointExists() {
+        val result = recoverSyncCredentials(
+            endpointStore = FakeEndpointStore(endpoint()),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(
+                identity(
+                    observerHandle = "obs_123",
+                    state = IdentityState.PAIRED,
+                    relayOrigin = "https://link.solstone.app",
+                    deviceToken = "device-token",
+                ),
+            ),
+        )
+
+        val ready = assertIs<SyncCredentials.Ready>(result)
+        assertEquals(SyncTransport.Relay("https://link.solstone.app", "home", "device-token"), ready.transport)
     }
 
     @Test
@@ -60,6 +99,17 @@ class SyncCredentialsTest {
             credential = credential(),
             identity = identity(observerHandle = "obs_123", state = IdentityState.REVOKED),
         )
+        assertRepair(
+            "missing device token",
+            endpoint = null,
+            credential = credential(),
+            identity = identity(
+                observerHandle = "obs_123",
+                state = IdentityState.PAIRED,
+                relayOrigin = "https://link.solstone.app",
+                deviceToken = null,
+            ),
+        )
     }
 
     private fun assertRepair(
@@ -81,14 +131,20 @@ class SyncCredentialsTest {
     private fun credential(): ClientCredential =
         ClientCredential("private", "client", listOf("ca"))
 
-    private fun identity(observerHandle: String?, state: IdentityState): PairedHome =
+    private fun identity(
+        observerHandle: String?,
+        state: IdentityState,
+        relayOrigin: String? = null,
+        deviceToken: String? = null,
+    ): PairedHome =
         PairedHome(
             instanceId = "home",
             homeLabel = "Home",
-            relayOrigin = null,
+            relayOrigin = relayOrigin,
             caChainFingerprint = "sha256:ca",
             clientCertFingerprint = "sha256:client",
             observerHandle = observerHandle,
+            deviceToken = deviceToken,
             state = state,
         )
 

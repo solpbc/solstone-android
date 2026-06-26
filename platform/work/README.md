@@ -55,7 +55,7 @@ import app.solstone.platform.persistence.room.SyncStateRow
 
 sealed interface SyncCredentials {
     data class Ready(
-        val endpoint: DirectEndpoint,
+        val transport: SyncTransport,
         val credential: ClientCredential,
         val handle: String,
     ) : SyncCredentials
@@ -106,8 +106,10 @@ fun nextSyncState(
 ## Pure Decisions
 
 - `recoverSyncCredentials` is fail-closed:
-  - `NeedsRepair` if endpoint, credential, identity, observer handle, or paired state is missing.
-  - `Ready` only when endpoint, credential, observer handle, and `IdentityState.PAIRED` are all durable facts.
+  - `NeedsRepair` if credential, identity, observer handle, or paired state is missing.
+  - Direct transport also requires a durable endpoint.
+  - Relay transport requires durable `relayOrigin`, `instanceId`, and `deviceToken` on the identity record.
+  - `Ready` only when the selected transport, credential, observer handle, and `IdentityState.PAIRED` are all durable facts.
 - `selectDrainSegments` keeps only `QueueState.SEALED` and `MAIN_STREAM`; import `MAIN_STREAM` from `core:sources`, do not hardcode it. Location stream rows are excluded.
 - `reconstructManifest` maps one `SegmentRow` plus its `SegmentFileRow`s to `BundleManifest(SegmentKey(segment.day, segment.segment), files, gaps = emptyList())`.
 - `decideReachability`: not paired -> `SKIP`; paired and unreachable -> `RESCHEDULE`; paired and reachable -> `DRAIN`.
@@ -123,7 +125,7 @@ fun nextSyncState(
 
 1. Build PL stores with the Context factory and call `recoverSyncCredentials`.
 2. `NeedsRepair` records the condition and returns `Result.failure()`; re-pairing re-enqueues.
-3. Open the authenticated PL client with the recovered endpoint and credential.
+3. Open the authenticated PL client with the recovered transport and credential.
 4. Probe `/app/network/api/status`; `status == 200` is reachable. Use `decideReachability(true, reachable)`.
 5. Load `dao.segmentsByState(QueueState.SEALED)`, then `selectDrainSegments`.
 6. Group by day. For each day, build `SegmentReconciler(client, handle)`, reconstruct manifests from DB rows, call `reconciler.diff(manifests, day)`, and record `dedupe_checked_at = now` for checked rows.

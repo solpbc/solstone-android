@@ -28,6 +28,79 @@ class PairLinkTest {
     }
 
     @Test
+    fun parsesRelaySelectorZeroConformanceVector() {
+        val parsed = parsePairLink(
+            "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY00",
+        ) as RelayPairLink
+
+        assertEquals("12345678-1234-5678-1234-567812345678", parsed.instanceId)
+        assertEquals("123456", parsed.totp)
+        assertEquals("0123456789abcdef0123456789abcdef", parsed.nonce)
+        assertEquals(1, parsed.caFpTag)
+        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpPrefix)
+        assertEquals(null, parsed.relayOrigin)
+    }
+
+    @Test
+    fun parsesRelayWithOriginConformanceVector() {
+        val parsed = parsePairLink(
+            "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY5B8EHT70WST5WQQ4SBCC5WJWSBRC5PQ0V35",
+        ) as RelayPairLink
+
+        assertEquals("12345678-1234-5678-1234-567812345678", parsed.instanceId)
+        assertEquals("123456", parsed.totp)
+        assertEquals("0123456789abcdef0123456789abcdef", parsed.nonce)
+        assertEquals(1, parsed.caFpTag)
+        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpPrefix)
+        assertEquals("https://relay.example", parsed.relayOrigin)
+    }
+
+    @Test
+    fun parsePairLinkDispatchesDirectButParseDirectRejectsRelay() {
+        val direct = parsePairLink(pairLink(byteArrayOf(10, 1, 2, 3), 7657))
+        assertTrue(direct is DirectPairLink)
+        assertFailsWith<IllegalArgumentException> {
+            parseDirectPairLink(
+                "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY00",
+            )
+        }
+    }
+
+    @Test
+    fun rejectsMalformedRelayPayloadLengths() {
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(withBlob(ByteArray(53).also { it[0] = 0x03 }))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(
+                withBlob(
+                    ByteArray(54).also {
+                        it[0] = 0x03
+                        it[53] = 0x05
+                    },
+                ),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(
+                withBlob(
+                    ByteArray(55).also {
+                        it[0] = 0x03
+                        it[53] = 0x00
+                    },
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun rejectsNonZeroCrockfordPadBits() {
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink("https://go.solstone.app/p#1")
+        }
+    }
+
+    @Test
     fun rejectsMalformedPayloadsAndUnrecognizedHost() {
         assertTrue(looksLikePairLink("https://go.solstone.app/p#abc"))
         val retiredHost = listOf("link", "solpbc", "org").joinToString(".")
@@ -224,6 +297,14 @@ class PairLinkTest {
     }
 
     private fun caFingerprint(): ByteArray = ByteArray(16) { (0xa0 + it).toByte() }
+
+    private fun hexBytes(value: String): ByteArray {
+        val out = ByteArray(value.length / 2)
+        for (index in out.indices) {
+            out[index] = value.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
+        return out
+    }
 
     private fun crockfordEncode(bytes: ByteArray): String {
         val alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"

@@ -20,6 +20,7 @@ import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
 import app.solstone.observer.harness.RealEvidenceReader
+import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.platform.camera.still.SingleHolderCameraLock
@@ -50,12 +51,29 @@ fun createGlassesHarnessFlavor(
                 endpointStore.save(DirectEndpoint("10.0.0.2", 7657))
                 credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
                 identityStore.save(
-                    PairedHome("home", "home", null, "sha256:ca", "sha256:client", "glasses", IdentityState.PAIRED),
+                    PairedHome("home", "home", null, "sha256:ca", "sha256:client", "glasses", null, IdentityState.PAIRED),
                 )
                 HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657)
             },
+            relayPairProbe = RelayPairProbe { _, _ ->
+                credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
+                identityStore.save(
+                    PairedHome(
+                        "home",
+                        "home",
+                        "https://link.solstone.app",
+                        "sha256:ca",
+                        "sha256:client",
+                        "glasses",
+                        "mock-device-token",
+                        IdentityState.PAIRED,
+                    ),
+                )
+                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443)
+            },
             plStatusProbe = PlStatusProbe {
-                if (credentialStore.load() == null || identityStore.load() == null || endpointStore.load() == null) {
+                val identity = identityStore.load()
+                if (credentialStore.load() == null || identity == null || (identity.relayOrigin == null && endpointStore.load() == null)) {
                     HarnessPlStatus.NotPaired
                 } else if (heartbeat.fresh) {
                     HarnessPlStatus.Reachable(200)

@@ -13,11 +13,13 @@ const val PAIR_LINK_PATH = "/p"
 
 data class DirectEndpoint(val host: String, val port: Int)
 
+sealed interface PairLink
+
 class DirectPairLink(
     candidates: List<DirectEndpoint>,
     val nonce: String,
     val caFingerprintPrefix: ByteArray,
-) {
+) : PairLink {
     val candidates: List<DirectEndpoint> = candidates.map { candidate ->
         DirectEndpoint(candidate.host, if (candidate.port <= 0) DEFAULT_DIRECT_PORT else candidate.port)
     }
@@ -44,6 +46,39 @@ class DirectPairLink(
 
     override fun toString(): String =
         "DirectPairLink(candidates=$candidates, nonce=$nonce, caFingerprintPrefix=${caFingerprintPrefix.contentToString()})"
+}
+
+class RelayPairLink(
+    val instanceId: String,
+    val totp: String,
+    val nonce: String,
+    val caFpTag: Int,
+    val caFpPrefix: ByteArray,
+    val relayOrigin: String?,
+) : PairLink {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is RelayPairLink) return false
+        return instanceId == other.instanceId &&
+            totp == other.totp &&
+            nonce == other.nonce &&
+            caFpTag == other.caFpTag &&
+            caFpPrefix.contentEquals(other.caFpPrefix) &&
+            relayOrigin == other.relayOrigin
+    }
+
+    override fun hashCode(): Int {
+        var result = instanceId.hashCode()
+        result = 31 * result + totp.hashCode()
+        result = 31 * result + nonce.hashCode()
+        result = 31 * result + caFpTag
+        result = 31 * result + caFpPrefix.contentHashCode()
+        result = 31 * result + (relayOrigin?.hashCode() ?: 0)
+        return result
+    }
+
+    override fun toString(): String =
+        "RelayPairLink(instanceId=$instanceId, totp=$totp, nonce=$nonce, caFpTag=$caFpTag, caFpPrefix=${caFpPrefix.contentToString()}, relayOrigin=$relayOrigin)"
 }
 
 enum class DialDecision { SUCCEED, ADVANCE, TERMINAL }
@@ -73,6 +108,19 @@ fun looksLikePairLink(text: String?): Boolean {
 }
 
 fun parseDirectPairLink(pairLink: String): DirectPairLink {
+    val decoded = decodePairLinkPayload(pairLink)
+    return parseDirectFromDecoded(decoded)
+}
+
+fun parsePairLink(pairLink: String): PairLink {
+    val decoded = decodePairLinkPayload(pairLink)
+    return when (decoded.firstOrNull()) {
+        0x03.toByte() -> parseRelayFromDecoded(decoded)
+        else -> parseDirectFromDecoded(decoded)
+    }
+}
+
+private fun decodePairLinkPayload(pairLink: String): ByteArray {
     val url = URL(pairLink.trim())
     if (url.protocol != "https" || url.host !in RECOGNIZED_PAIR_HOSTS || url.path != PAIR_LINK_PATH) {
         throw IllegalArgumentException("not a solstone pair link")
@@ -81,7 +129,10 @@ fun parseDirectPairLink(pairLink: String): DirectPairLink {
     if (fragment == null || fragment.isEmpty()) {
         throw IllegalArgumentException("pair link missing fragment")
     }
-    val decoded = decodeCrockford32(fragment)
+    return decodeCrockford32(fragment)
+}
+
+private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
     // The decoded blob bytes are authoritative; host/path only route to the pair payload.
     if (decoded.size == 40 && decoded[0] == 0x04.toByte() && decoded[1] == 0x01.toByte()) {
         val a = decoded[2].toInt() and 0xff
@@ -127,6 +178,38 @@ fun parseDirectPairLink(pairLink: String): DirectPairLink {
     }
 
     throw IllegalArgumentException("unsupported pair link payload")
+}
+
+private fun parseRelayFromDecoded(decoded: ByteArray): RelayPairLink {
+    if (decoded.size < 54) {
+        throw IllegalArgumentException("unsupported relay pair link payload")
+    }
+    val selector = decoded[53].toInt() and 0xff
+    val expectedLength = if (selector == 0) 54 else 54 + selector
+    if (decoded.size != expectedLength) {
+        throw IllegalArgumentException("unsupported relay pair link payload")
+    }
+    val instanceBytes = decoded.copyOfRange(1, 17)
+    val totp = (
+        ((decoded[17].toInt() and 0xff) shl 16) or
+            ((decoded[18].toInt() and 0xff) shl 8) or
+            (decoded[19].toInt() and 0xff)
+        ).toString().padStart(6, '0')
+    val nonce = hex(decoded.copyOfRange(20, 36))
+    val caFpTag = decoded[36].toInt() and 0xff
+    val caFp = decoded.copyOfRange(37, 53)
+    val relayOrigin = if (selector == 0) null else decoded.copyOfRange(54, 54 + selector).toString(Charsets.UTF_8)
+    return RelayPairLink(uuidString(instanceBytes), totp, nonce, caFpTag, caFp, relayOrigin)
+}
+
+private fun uuidString(bytes: ByteArray): String {
+    require(bytes.size == 16) { "UUID requires 16 bytes" }
+    val value = hex(bytes)
+    return value.substring(0, 8) + "-" +
+        value.substring(8, 12) + "-" +
+        value.substring(12, 16) + "-" +
+        value.substring(16, 20) + "-" +
+        value.substring(20, 32)
 }
 
 fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
