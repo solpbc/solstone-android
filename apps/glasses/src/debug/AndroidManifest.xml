@@ -7,6 +7,6 @@ Copyright (c) 2026 sol pbc
     <application>
         <receiver
             android:name=".DebugPairLinkReceiver"
-            android:exported="false" />
+            android:exported="true" />
     </application>
 </manifest>
