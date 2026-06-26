@@ -69,9 +69,13 @@ dependencies {
     implementation(project(":platform:identity-file"))
     implementation(project(":platform:work"))
     implementation(project(":platform:camera-still"))
+    implementation("androidx.annotation:annotation:1.7.1")
     add("realImplementation", project(":platform:audio"))
     add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation(kotlin("test"))
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")

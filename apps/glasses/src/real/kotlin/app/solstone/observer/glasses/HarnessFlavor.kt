@@ -52,6 +52,7 @@ fun createGlassesHarnessFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone glasses",
         ),
+        audioFeedback = RealAudioFeedback(context),
         exemptionVerified = verifier::isExemptionVerified,
     )
 }
