@@ -32,12 +32,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        container.startPhotoPairWatch()
     }
 
     override fun onPause() {
         super.onPause()
-        container.stopPhotoPairWatch()
     }
 
     override fun onDestroy() {

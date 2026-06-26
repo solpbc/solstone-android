@@ -8,8 +8,12 @@ import android.media.MediaPlayer
 import androidx.annotation.RawRes
 
 class RealAudioFeedback(private val context: Context) : AudioFeedback {
+    private var current: MediaPlayer? = null
+
+    @Synchronized
     override fun play(@RawRes resId: Int) {
-        MediaPlayer.create(context, resId)?.apply {
+        current?.let { runCatching { it.reset() }; runCatching { it.release() } }
+        current = MediaPlayer.create(context, resId)?.apply {
             setOnCompletionListener { it.release() }
             start()
         }

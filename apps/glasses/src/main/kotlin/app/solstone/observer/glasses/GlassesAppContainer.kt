@@ -83,6 +83,7 @@ class GlassesAppContainer(private val context: Context) {
     init {
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
+        startPhotoPairWatch()
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
@@ -123,7 +124,7 @@ class GlassesAppContainer(private val context: Context) {
             }
         }
         context.contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
             true,
             observer,
         )
@@ -167,6 +168,10 @@ class GlassesAppContainer(private val context: Context) {
                 }
             } catch (_: Exception) {
                 null
+            }
+            android.util.Log.i("GlassesPair", "photo uri=$uri decoded=" + (decoded?.take(60) ?: "null"))
+            if (decoded != null && looksLikePairLink(decoded)) {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_READY)) } }
             }
             when (decidePhotoPair(decoded, ::looksLikePairLink, controller::onScannedPairLink)) {
                 PhotoPairOutcome.FAILED -> mainHandler.post {
