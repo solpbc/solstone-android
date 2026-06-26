@@ -20,7 +20,7 @@ sealed interface SyncCredentials {
     data class Ready(
         val transport: SyncTransport,
         val credential: ClientCredential,
-        val handle: String,
+        val identity: PairedHome,
     ) : SyncCredentials
 
     data class NeedsRepair(val reason: String) : SyncCredentials
@@ -42,11 +42,10 @@ fun recoverSyncCredentials(
 ): SyncCredentials {
     val credential = credentialStore.load() ?: return SyncCredentials.NeedsRepair("missing credential")
     val identity = identityStore.load() ?: return SyncCredentials.NeedsRepair("missing identity")
-    val handle = identity.observerHandle ?: return SyncCredentials.NeedsRepair("missing observer handle")
     if (identity.state != IdentityState.PAIRED) {
         return SyncCredentials.NeedsRepair("identity not paired")
     }
     val transport = selectSyncTransport(identity, endpointStore)
         ?: return SyncCredentials.NeedsRepair(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
-    return SyncCredentials.Ready(transport, credential, handle)
+    return SyncCredentials.Ready(transport, credential, identity)
 }

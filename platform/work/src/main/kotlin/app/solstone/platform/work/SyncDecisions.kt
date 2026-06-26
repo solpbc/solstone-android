@@ -9,6 +9,7 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.MAIN_STREAM
@@ -50,6 +51,44 @@ fun decideReachability(
         !reachable -> ReachabilityVerdict.RESCHEDULE
         else -> ReachabilityVerdict.DRAIN
     }
+
+sealed interface RegisterDrainOutcome<out R> {
+    data class Drained<R>(val result: R) : RegisterDrainOutcome<R>
+    data object Retry : RegisterDrainOutcome<Nothing>
+}
+
+/**
+ * Resolve the observer handle over a single client, registering only when missing, persisting
+ * before any drain. Register/persist failures are transient (caller retries); the SAME client is
+ * threaded to both register and drain.
+ */
+fun <R> registerThenDrain(
+    client: PlHttpClient,
+    existingHandle: String?,
+    register: (PlHttpClient) -> String,
+    persist: (String) -> Unit,
+    drain: (PlHttpClient, String) -> R,
+    onError: (Throwable) -> Unit,
+): RegisterDrainOutcome<R> {
+    val handle = if (existingHandle != null) {
+        existingHandle
+    } else {
+        val registered = try {
+            register(client)
+        } catch (e: Exception) {
+            onError(e)
+            return RegisterDrainOutcome.Retry
+        }
+        try {
+            persist(registered)
+        } catch (e: Exception) {
+            onError(e)
+            return RegisterDrainOutcome.Retry
+        }
+        registered
+    }
+    return RegisterDrainOutcome.Drained(drain(client, handle))
+}
 
 sealed interface SegmentSyncResult {
     data class Uploaded(val serverKey: String?) : SegmentSyncResult

@@ -5,11 +5,13 @@ package app.solstone.platform.work
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.QueueState
 import app.solstone.core.observer.ObserverIngestClient
+import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.queue.QueueEvent
@@ -24,6 +26,8 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val TAG = "SyncWorker"
+
 class SyncWorker(
     context: Context,
     params: WorkerParameters,
@@ -33,11 +37,11 @@ class SyncWorker(
             val stores = syncStores(applicationContext)
             when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
                 is SyncCredentials.NeedsRepair -> Result.failure()
-                is SyncCredentials.Ready -> drain(credentials)
+                is SyncCredentials.Ready -> sync(stores, credentials)
             }
         }
 
-    private fun drain(credentials: SyncCredentials.Ready): Result {
+    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): Result {
         val db = openSolstonePersistenceDatabase(applicationContext)
         try {
             openSyncClient(credentials).use { client ->
@@ -49,9 +53,33 @@ class SyncWorker(
                 return when (decideReachability(paired = true, reachable = status == 200)) {
                     ReachabilityVerdict.SKIP -> Result.failure()
                     ReachabilityVerdict.RESCHEDULE -> Result.retry()
-                    ReachabilityVerdict.DRAIN -> drainSegments(db.segmentDao(), SegmentReconciler(client, credentials.handle), ObserverIngestClient(client) {
-                        "solstoneSync${System.nanoTime()}"
-                    }, credentials.handle)
+                    ReachabilityVerdict.DRAIN -> when (
+                        val outcome = registerThenDrain(
+                            client = client,
+                            existingHandle = credentials.identity.observerHandle,
+                            register = { c ->
+                                ObserverRegistration(c).register(
+                                    platform = "android",
+                                    hostname = deviceLabel(),
+                                    streamType = MAIN_STREAM,
+                                    version = appVersion(),
+                                ).handle
+                            },
+                            persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
+                            drain = { c, handle ->
+                                drainSegments(
+                                    db.segmentDao(),
+                                    SegmentReconciler(c, handle),
+                                    ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" },
+                                    handle,
+                                )
+                            },
+                            onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
+                        )
+                    ) {
+                        RegisterDrainOutcome.Retry -> Result.retry()
+                        is RegisterDrainOutcome.Drained -> outcome.result
+                    }
                 }
             }
         } catch (_: IOException) {
@@ -118,10 +146,7 @@ class SyncWorker(
                                     manifest = manifest,
                                     handle = handle,
                                     fileBytes = { file -> readPayloadFor(spoolDir, segment, file) },
-                                    host = listOf(Build.MANUFACTURER, Build.MODEL)
-                                        .filter { it.isNotBlank() }
-                                        .joinToString(" ")
-                                        .ifBlank { "android" },
+                                    host = deviceLabel(),
                                     platform = "android",
                                 ),
                             )
@@ -185,4 +210,15 @@ class SyncWorker(
         }
         return payload.readBytes()
     }
+
+    private fun deviceLabel(): String =
+        listOf(Build.MANUFACTURER, Build.MODEL)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "android" }
+
+    private fun appVersion(): String =
+        runCatching {
+            applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0).versionName
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.1"
 }

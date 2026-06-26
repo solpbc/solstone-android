@@ -25,7 +25,20 @@ class SyncCredentialsTest {
 
         val ready = assertIs<SyncCredentials.Ready>(result)
         assertEquals(SyncTransport.Direct(endpoint()), ready.transport)
-        assertEquals("obs_123", ready.handle)
+        assertEquals("obs_123", ready.identity.observerHandle)
+    }
+
+    @Test
+    fun readyWhenPairedButObserverHandleNotYetRegistered() {
+        val result = recoverSyncCredentials(
+            endpointStore = FakeEndpointStore(endpoint()),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(identity(observerHandle = null, state = IdentityState.PAIRED)),
+        )
+
+        val ready = assertIs<SyncCredentials.Ready>(result)
+        assertEquals(SyncTransport.Direct(endpoint()), ready.transport)
+        assertEquals(null, ready.identity.observerHandle)
     }
 
     @Test
@@ -45,7 +58,7 @@ class SyncCredentialsTest {
 
         val ready = assertIs<SyncCredentials.Ready>(result)
         assertEquals(SyncTransport.Relay("https://link.solstone.app", "home", "device-token"), ready.transport)
-        assertEquals("obs_123", ready.handle)
+        assertEquals("obs_123", ready.identity.observerHandle)
     }
 
     @Test
@@ -86,12 +99,6 @@ class SyncCredentialsTest {
             endpoint = endpoint(),
             credential = credential(),
             identity = null,
-        )
-        assertRepair(
-            "missing observer handle",
-            endpoint = endpoint(),
-            credential = credential(),
-            identity = identity(observerHandle = null, state = IdentityState.PAIRED),
         )
         assertRepair(
             "identity not paired",
