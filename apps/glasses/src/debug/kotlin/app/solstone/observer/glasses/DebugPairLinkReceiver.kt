@@ -6,20 +6,36 @@ package app.solstone.observer.glasses
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import java.util.concurrent.Executors
 
 /**
- * Debug-only adb entry point:
- * adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e pair_link '<url>'
+ * Debug-only adb entry point (compiled into the debug build only, absent from release).
+ *   pair:    adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e pair_link <url>
+ *   observe: adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action observe_start
+ *   stop:    adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action observe_stop
+ *   sync:    adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action sync_now
+ * Mirrors the temple-swipe gestures (start/stop) + manual sync for on-device validation
+ * where injected volume keys never reach MainActivity.onKeyDown.
  */
 class DebugPairLinkReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
         val pairLink = intent.getStringExtra(EXTRA_PAIR_LINK)
+        val action = intent.getStringExtra(EXTRA_ACTION)
         executor.execute {
             try {
-                if (!pairLink.isNullOrBlank()) {
-                    GlassesHarnessRuntime.container?.controller?.onScannedPairLink(pairLink)
+                val controller = GlassesHarnessRuntime.container?.controller
+                if (controller == null) {
+                    Log.w(TAG, "no live container; ignoring debug intent")
+                    return@execute
+                }
+                when {
+                    !pairLink.isNullOrBlank() -> controller.onScannedPairLink(pairLink)
+                    action == "observe_start" -> Log.i(TAG, "observe_start -> started=${controller.start()}")
+                    action == "observe_stop" -> { controller.stop(); Log.i(TAG, "observe_stop") }
+                    action == "sync_now" -> { controller.syncNow(); Log.i(TAG, "sync_now enqueued") }
+                    else -> Log.w(TAG, "no recognized extra (pair_link / action)")
                 }
             } finally {
                 pending.finish()
@@ -28,7 +44,9 @@ class DebugPairLinkReceiver : BroadcastReceiver() {
     }
 
     private companion object {
+        const val TAG = "GlassesDebug"
         const val EXTRA_PAIR_LINK = "pair_link"
+        const val EXTRA_ACTION = "action"
         val executor = Executors.newSingleThreadExecutor()
     }
 }
