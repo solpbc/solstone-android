@@ -17,5 +17,5 @@ This repo implements owner-side Android surfaces for solstone. The product rule 
 - explicit owner-visible permission flows,
 - honest state when a source is unavailable, paused, killed, unlinked, or unsynced,
 - delete-by-source design for future observer modules,
+- battery and IMU telemetry in `metadata.jsonl` treated as owner data under the same local-first and delete-by-source covenant,
 - redacted diagnostics that are useful without exposing owner data.
-

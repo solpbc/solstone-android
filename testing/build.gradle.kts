@@ -9,6 +9,7 @@ kotlin {
 
 dependencies {
     api(project(":core:sources"))
+    api(project(":core:metadata"))
     implementation(project(":core:model"))
     implementation(project(":core:segment"))
     implementation(project(":core:spool"))

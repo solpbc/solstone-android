@@ -9,12 +9,14 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import app.solstone.core.metadata.PhotoMetadataContract
 import app.solstone.core.model.QueueState
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -37,7 +39,7 @@ class GlassesCaptureRuntimeTest {
     }
 
     @Test
-    fun noLocationReadySchedulesPeriodicAndSealsAudioAndCamera() {
+    fun sealsMetadataWithBatteryAndDegradedMotionWhenNoSensors() {
         clearPersistence()
 
         ActivityScenario.launch(MainActivity::class.java).use {
@@ -57,8 +59,22 @@ class GlassesCaptureRuntimeTest {
                         it.name.startsWith("camera-") &&
                         it.name.endsWith(".jpg") &&
                         it.mediaType == "image/jpeg"
+                    },
+            )
+            assertTrue(
+                files.any {
+                    it.sourceId == PhotoMetadataContract.SOURCE_ID &&
+                        it.name == PhotoMetadataContract.PAYLOAD_NAME &&
+                        it.mediaType == PhotoMetadataContract.MEDIA_TYPE
                 },
             )
+            val metadataLines = metadataLines()
+            assertTrue(metadataLines.isNotEmpty())
+            metadataLines.forEach { line ->
+                assertTrue(line.contains("\"ts\":"))
+                assertTrue(line.contains("\"battery\":{\"level\":88,\"status\":\"discharging\",\"tempC\":30.0}"))
+                assertFalse(line.contains("\"motion\""))
+            }
         }
     }
 
@@ -85,10 +101,27 @@ class GlassesCaptureRuntimeTest {
             val segments = db.segmentDao().segmentsByState(QueueState.SEALED)
             if (segments.size != 1) return null
             val files = db.segmentDao().filesBySegmentId(segments.single().id)
-            if (files.any { it.sourceId == "audio" } && files.any { it.sourceId == "camera" }) files else null
+            if (
+                files.any { it.sourceId == "audio" } &&
+                files.any { it.sourceId == "camera" } &&
+                files.any { it.sourceId == PhotoMetadataContract.SOURCE_ID }
+            ) {
+                files
+            } else {
+                null
+            }
         } finally {
             db.close()
         }
+    }
+
+    private fun metadataLines(): List<String> {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = context.filesDir.resolve("spool")
+            .walkTopDown()
+            .firstOrNull { it.isFile && it.name == PhotoMetadataContract.PAYLOAD_NAME }
+            ?: error("metadata payload not found")
+        return file.readLines().filter { it.isNotEmpty() }
     }
 
     private fun clearPersistence() {

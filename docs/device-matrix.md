@@ -25,6 +25,30 @@ Constraints:
 - network location was present but not proven enabled for a normal app,
 - background survival depends on foreground service plus device/OEM power settings.
 
+## RV203
+
+- Sensor inventory confirmed 2026-06-26.
+
+Present:
+
+- accelerometer,
+- gyroscope,
+- linear acceleration,
+- game rotation vector.
+
+Absent:
+
+- step counter,
+- significant motion,
+- activity recognition,
+- magnetometer,
+- GPS.
+
+Constraints:
+
+- no OS-precomputed motion summary; duty-cycled metadata snapshots are the low-power path,
+- no compass/heading; tilt is pitch/roll only.
+
 ## Galaxy A36
 
 - Model: `SM-A366E`
