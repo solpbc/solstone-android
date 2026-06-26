@@ -1,30 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 sol pbc
 
-package app.solstone.platform.pl.transport.conscrypt
+package app.solstone.core.pl
 
-import app.solstone.core.pl.FLAG_CLOSE
-import app.solstone.core.pl.FLAG_DATA
-import app.solstone.core.pl.FLAG_OPEN
-import app.solstone.core.pl.FLAG_RESET
-import app.solstone.core.pl.FLAG_WINDOW
-import app.solstone.core.pl.Frame
-import app.solstone.core.pl.FrameDialer
-import app.solstone.core.pl.HttpResponse
-import app.solstone.core.pl.controlPong
-import app.solstone.core.pl.decodeFrame
-import app.solstone.core.pl.encodeFrame
-import app.solstone.core.pl.httpRequestBytes
-import app.solstone.core.pl.parseHttpResponse
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
 import java.net.SocketTimeoutException
-import javax.net.ssl.SSLSocket
 
-internal class MuxSession(private val socket: SSLSocket) : Closeable {
-    private val input = socket.inputStream
-    private val output = socket.outputStream
+class MuxSession(private val duplex: ByteDuplex) : Closeable {
+    private val input = duplex.input
+    private val output = duplex.output
     private val dialer = FrameDialer()
 
     fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
@@ -95,7 +81,7 @@ internal class MuxSession(private val socket: SSLSocket) : Closeable {
     }
 
     override fun close() {
-        socket.close()
+        duplex.close()
     }
 
     private fun resetReason(payload: ByteArray): String =

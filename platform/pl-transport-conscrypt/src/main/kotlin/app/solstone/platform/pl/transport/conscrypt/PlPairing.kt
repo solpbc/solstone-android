@@ -22,8 +22,10 @@ import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.LocalIPv4Interface
+import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
+import app.solstone.core.pl.SOCKET_TIMEOUT_MS
 import app.solstone.core.pl.classifyPairResponseStatus
 import app.solstone.core.pl.orderCandidatesBySubnet
 import app.solstone.core.pl.parseDirectPairLink
@@ -152,7 +154,7 @@ private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: B
         if (!pinned) {
             throw SSLException(PAIR_TLS_CA_PIN_MISMATCH)
         }
-        return CertlessSession(MuxSession(socket), pinned)
+        return CertlessSession(MuxSession(SocketByteDuplex(socket)), pinned)
     } catch (e: Exception) {
         socket.close()
         throw e
@@ -164,7 +166,7 @@ private fun openAuthenticatedSession(endpoint: DirectEndpoint, credential: Clien
     try {
         configureSocket(socket)
         socket.startHandshake()
-        return MuxSession(socket)
+        return MuxSession(SocketByteDuplex(socket))
     } catch (e: Exception) {
         socket.close()
         throw e

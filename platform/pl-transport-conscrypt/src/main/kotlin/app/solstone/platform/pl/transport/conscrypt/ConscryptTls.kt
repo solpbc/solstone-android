@@ -4,6 +4,7 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.crypto.certificateFromPem
+import app.solstone.core.crypto.requireTls13
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.CredentialCodec
 import java.security.KeyStore
@@ -12,6 +13,7 @@ import java.security.Security
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManager
 import javax.net.ssl.TrustManagerFactory
@@ -37,15 +39,40 @@ private fun newTlsContext(): SSLContext {
 }
 
 fun certlessFactory(): SSLSocketFactory {
-    val context = newTlsContext()
-    context.init(null, arrayOf<TrustManager>(TrustAllManager), SecureRandom())
-    return context.socketFactory
+    return certlessContext().socketFactory
 }
 
 fun authenticatedFactory(credential: ClientCredential): SSLSocketFactory {
+    return authenticatedContext(credential).socketFactory
+}
+
+fun certlessEngine(host: String, port: Int): SSLEngine {
+    val engine = certlessContext().createSSLEngine(host, port)
+    configureClientEngine(engine)
+    return engine
+}
+
+fun authenticatedEngine(credential: ClientCredential, host: String, port: Int): SSLEngine {
+    val engine = authenticatedContext(credential).createSSLEngine(host, port)
+    configureClientEngine(engine)
+    return engine
+}
+
+private fun certlessContext(): SSLContext {
+    val context = newTlsContext()
+    context.init(null, arrayOf<TrustManager>(TrustAllManager), SecureRandom())
+    return context
+}
+
+private fun authenticatedContext(credential: ClientCredential): SSLContext {
     val context = newTlsContext()
     context.init(CredentialCodec.keyManagers(credential), trustManagersFor(credential), SecureRandom())
-    return context.socketFactory
+    return context
+}
+
+private fun configureClientEngine(engine: SSLEngine) {
+    engine.useClientMode = true
+    engine.enabledProtocols = requireTls13(engine.supportedProtocols)
 }
 
 private fun trustManagersFor(credential: ClientCredential): Array<TrustManager> {

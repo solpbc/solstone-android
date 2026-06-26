@@ -4,6 +4,7 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PlHttpClient
 import java.io.Closeable
 

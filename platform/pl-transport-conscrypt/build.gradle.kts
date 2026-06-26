@@ -16,6 +16,15 @@ android {
     // (the A36 / API 36 bench target). Applies to the test APK only; the AAR ignores it.
     testOptions {
         targetSdk = 35
+        managedDevices {
+            localDevices {
+                create("pixel5api35") {
+                    device = "Pixel 5"
+                    apiLevel = 35
+                    systemImageSource = "google_apis"
+                }
+            }
+        }
     }
 
     compileOptions {
@@ -34,6 +43,10 @@ dependencies {
     implementation(project(":core:identity"))
     implementation(project(":core:model"))
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
 
     // Live on-device driver (VPE-direct validation): wires this transport to the
     // observer client + a file-backed credential store. Skips itself (JUnit Assume)
