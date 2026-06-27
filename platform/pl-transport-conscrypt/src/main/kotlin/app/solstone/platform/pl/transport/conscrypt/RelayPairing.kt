@@ -162,6 +162,7 @@ fun pairOverRelay(
             clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
             observerHandle = null,
             deviceToken = deviceToken,
+            expiresAt = null,
             state = IdentityState.PAIRED,
         ),
     )
@@ -192,7 +193,7 @@ private fun relayWebSocketRequest(host: String, path: String, instanceId: String
         .url("wss://$host$path?instance=$instanceId&token=$token")
         .build()
 
-private fun normalizeRelayOrigin(relayOrigin: String): String = relayOrigin.trimEnd('/')
+internal fun normalizeRelayOrigin(relayOrigin: String): String = relayOrigin.trimEnd('/')
 
 private fun requiredJsonString(text: String, key: String): String {
     val root = parseJson(text) as? Map<*, *> ?: throw IllegalArgumentException("JSON response must be an object")
@@ -208,5 +209,5 @@ private class RelayPlClientDialSession(private val relayClient: RelayPlClient) :
     }
 }
 
-private val JSON_HEADERS = mapOf("content-type" to "application/json")
+internal val JSON_HEADERS = mapOf("content-type" to "application/json")
 private const val DEFAULT_RELAY_ORIGIN = "https://link.solstone.app"

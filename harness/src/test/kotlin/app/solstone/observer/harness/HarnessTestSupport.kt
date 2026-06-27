@@ -191,15 +191,20 @@ internal fun fixture(
     )
 }
 
-internal fun pairedHome(state: IdentityState = IdentityState.PAIRED): PairedHome =
+internal fun pairedHome(
+    state: IdentityState = IdentityState.PAIRED,
+    instanceId: String = "home-1",
+    relayOrigin: String? = null,
+): PairedHome =
     PairedHome(
-        instanceId = "home-1",
+        instanceId = instanceId,
         homeLabel = "home",
-        relayOrigin = null,
+        relayOrigin = relayOrigin,
         caChainFingerprint = "sha256:ca",
         clientCertFingerprint = "sha256:client",
         observerHandle = "watch-1",
         deviceToken = null,
+        expiresAt = null,
         state = state,
     )
 

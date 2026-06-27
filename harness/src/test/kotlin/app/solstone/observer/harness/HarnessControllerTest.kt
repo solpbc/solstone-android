@@ -110,7 +110,68 @@ class HarnessControllerTest {
         assertEquals(0, directCalls)
         assertEquals(1, relayCalls)
         assertEquals(443, result?.endpointPort)
+        assertEquals(PairConnectionMode.PAIRING, result?.connectionMode)
         assertEquals(listOf("acquire", "release"), f.cameraLock.events)
+    }
+
+    @Test
+    fun scannedRelayPairLinkAlreadyConnectedShortCircuitsProbe() {
+        var relayCalls = 0
+        val prior = pairedHome(
+            instanceId = RELAY_INSTANCE_ID,
+            relayOrigin = "https://link.solstone.app",
+        )
+        val identity = FakeIdentityStore(prior)
+        val f = fixture(
+            identityStore = identity,
+            relayPairProbe = RelayPairProbe { _, _ ->
+                relayCalls += 1
+                error("relay probe should not run")
+            },
+        )
+
+        val result = f.controller.onScannedPairLink(validRelayPairLink())
+
+        assertEquals(0, relayCalls)
+        assertEquals(PairConnectionMode.ALREADY_CONNECTED, result?.connectionMode)
+        assertEquals(false, result?.handshakePinned)
+        assertEquals("home", result?.homeLabel)
+        assertEquals("link.solstone.app", result?.endpointHost)
+        assertEquals(prior, identity.load())
+    }
+
+    @Test
+    fun scannedRelayPairLinkSameNonPairedInstanceRunsReconnectMode() {
+        var relayCalls = 0
+        val f = fixture(
+            identityStore = FakeIdentityStore(pairedHome(state = IdentityState.REVOKED, instanceId = RELAY_INSTANCE_ID)),
+            relayPairProbe = RelayPairProbe { _, _ ->
+                relayCalls += 1
+                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443)
+            },
+        )
+
+        val result = f.controller.onScannedPairLink(validRelayPairLink())
+
+        assertEquals(1, relayCalls)
+        assertEquals(PairConnectionMode.RECONNECTING, result?.connectionMode)
+    }
+
+    @Test
+    fun scannedRelayPairLinkDifferentInstanceRunsPairingMode() {
+        var relayCalls = 0
+        val f = fixture(
+            identityStore = FakeIdentityStore(pairedHome(instanceId = "different")),
+            relayPairProbe = RelayPairProbe { _, _ ->
+                relayCalls += 1
+                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443)
+            },
+        )
+
+        val result = f.controller.onScannedPairLink(validRelayPairLink())
+
+        assertEquals(1, relayCalls)
+        assertEquals(PairConnectionMode.PAIRING, result?.connectionMode)
     }
 
     @Test
@@ -145,4 +206,8 @@ class HarnessControllerTest {
 
     private fun validRelayPairLink(): String =
         "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY00"
+
+    private companion object {
+        const val RELAY_INSTANCE_ID = "12345678-1234-5678-1234-567812345678"
+    }
 }

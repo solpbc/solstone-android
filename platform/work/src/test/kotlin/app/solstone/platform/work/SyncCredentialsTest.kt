@@ -152,6 +152,7 @@ class SyncCredentialsTest {
             clientCertFingerprint = "sha256:client",
             observerHandle = observerHandle,
             deviceToken = deviceToken,
+            expiresAt = null,
             state = state,
         )
 

@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.QueueState
 import app.solstone.core.observer.ObserverIngestClient
@@ -19,6 +20,8 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
+import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
+import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import java.io.File
@@ -43,45 +46,38 @@ class SyncWorker(
 
     private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): Result {
         val db = openSolstonePersistenceDatabase(applicationContext)
+        val poster = defaultHttpsPoster()
         try {
-            openSyncClient(credentials).use { client ->
-                val status = try {
-                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
-                } catch (_: IOException) {
-                    return Result.retry()
-                }
-                return when (decideReachability(paired = true, reachable = status == 200)) {
-                    ReachabilityVerdict.SKIP -> Result.failure()
-                    ReachabilityVerdict.RESCHEDULE -> Result.retry()
-                    ReachabilityVerdict.DRAIN -> when (
-                        val outcome = registerThenDrain(
-                            client = client,
-                            existingHandle = credentials.identity.observerHandle,
-                            register = { c ->
-                                ObserverRegistration(c).register(
-                                    platform = "android",
-                                    hostname = deviceLabel(),
-                                    streamType = MAIN_STREAM,
-                                    version = appVersion(),
-                                ).handle
-                            },
-                            persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
-                            drain = { c, handle ->
-                                drainSegments(
-                                    db.segmentDao(),
-                                    SegmentReconciler(c, handle),
-                                    ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" },
-                                    handle,
-                                )
-                            },
-                            onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
-                        )
-                    ) {
-                        RegisterDrainOutcome.Retry -> Result.retry()
-                        is RegisterDrainOutcome.Drained -> outcome.result
-                    }
+            val transport = when (val current = credentials.transport) {
+                is SyncTransport.Direct -> current
+                is SyncTransport.Relay -> when (
+                    val maintained = maintainRelayToken(
+                        identity = credentials.identity,
+                        transport = current,
+                        poster = poster,
+                        identityStore = stores.identityStore,
+                        nowEpochMs = System.currentTimeMillis(),
+                    )
+                ) {
+                    is RelayTokenResult.Ready -> maintained.transport
+                    RelayTokenResult.ReconnectNeeded -> return Result.failure()
                 }
             }
+            val outcome = when (transport) {
+                is SyncTransport.Direct -> syncWithTransport(db.segmentDao(), stores, credentials, transport)
+                is SyncTransport.Relay -> dialWithReactiveRefresh(
+                    identity = credentials.identity,
+                    transport = transport,
+                    poster = poster,
+                    identityStore = stores.identityStore,
+                    dial = RelayDial { relayTransport ->
+                        syncWithTransport(db.segmentDao(), stores, credentials, relayTransport)
+                    },
+                )
+            }
+            return outcome.toWorkResult()
+        } catch (_: RelayWebSocketClosedException) {
+            return Result.retry()
         } catch (_: IOException) {
             return Result.retry()
         } catch (_: Exception) {
@@ -91,14 +87,62 @@ class SyncWorker(
         }
     }
 
-    private fun openSyncClient(credentials: SyncCredentials.Ready) =
-        when (val transport = credentials.transport) {
-            is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credentials.credential)
+    private fun syncWithTransport(
+        dao: SegmentDao,
+        stores: SyncStores,
+        credentials: SyncCredentials.Ready,
+        transport: SyncTransport,
+    ): SyncOutcome {
+        openSyncClient(transport, credentials.credential).use { client ->
+            val status = try {
+                client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+            } catch (e: RelayWebSocketClosedException) {
+                throw e
+            } catch (_: IOException) {
+                return SyncOutcome.RETRY
+            }
+            return when (decideReachability(paired = true, reachable = status == 200)) {
+                ReachabilityVerdict.SKIP -> SyncOutcome.FAILURE
+                ReachabilityVerdict.RESCHEDULE -> SyncOutcome.RETRY
+                ReachabilityVerdict.DRAIN -> when (
+                    val outcome = registerThenDrain(
+                        client = client,
+                        existingHandle = credentials.identity.observerHandle,
+                        register = { c ->
+                            ObserverRegistration(c).register(
+                                platform = "android",
+                                hostname = deviceLabel(),
+                                streamType = MAIN_STREAM,
+                                version = appVersion(),
+                            ).handle
+                        },
+                        persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
+                        drain = { c, handle ->
+                            drainSegments(
+                                dao,
+                                SegmentReconciler(c, handle),
+                                ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" },
+                                handle,
+                            )
+                        },
+                        onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
+                    )
+                ) {
+                    RegisterDrainOutcome.Retry -> SyncOutcome.RETRY
+                    is RegisterDrainOutcome.Drained -> outcome.result
+                }
+            }
+        }
+    }
+
+    private fun openSyncClient(transport: SyncTransport, credential: ClientCredential) =
+        when (transport) {
+            is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
             is SyncTransport.Relay -> openRelaySyncClient(
                 transport.relayOrigin,
                 transport.instanceId,
                 transport.deviceToken,
-                credentials.credential,
+                credential,
             )
         }
 
@@ -107,7 +151,7 @@ class SyncWorker(
         reconciler: SegmentReconciler,
         ingestClient: ObserverIngestClient,
         handle: String,
-    ): Result {
+    ): SyncOutcome {
         var shouldRetry = false
         var halted = false
         var lastSuccessAt = dao.syncState()?.lastSuccessAt
@@ -150,6 +194,8 @@ class SyncWorker(
                                     platform = "android",
                                 ),
                             )
+                        } catch (e: RelayWebSocketClosedException) {
+                            throw e
                         } catch (_: IOException) {
                             resolveIoError()
                         }
@@ -196,11 +242,18 @@ class SyncWorker(
         )
 
         return when {
-            halted -> Result.failure()
-            shouldRetry -> Result.retry()
-            else -> Result.success()
+            halted -> SyncOutcome.FAILURE
+            shouldRetry -> SyncOutcome.RETRY
+            else -> SyncOutcome.SUCCESS
         }
     }
+
+    private fun SyncOutcome.toWorkResult(): Result =
+        when (this) {
+            SyncOutcome.SUCCESS -> Result.success()
+            SyncOutcome.RETRY -> Result.retry()
+            SyncOutcome.FAILURE -> Result.failure()
+        }
 
     private fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {
         val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.segment)

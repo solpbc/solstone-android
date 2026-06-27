@@ -17,6 +17,7 @@ import app.solstone.observer.harness.HarnessExportResult
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HeartbeatFreshness
+import app.solstone.observer.harness.PairConnectionMode
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
 import app.solstone.observer.harness.RealEvidenceReader
@@ -51,9 +52,9 @@ fun createWatchHarnessFlavor(
                 endpointStore.save(DirectEndpoint("10.0.0.2", 7657))
                 credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
                 identityStore.save(
-                    PairedHome("home", "home", null, "sha256:ca", "sha256:client", "watch", null, IdentityState.PAIRED),
+                    PairedHome("home", "home", null, "sha256:ca", "sha256:client", "watch", null, null, IdentityState.PAIRED),
                 )
-                HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657)
+                HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657, PairConnectionMode.PAIRING)
             },
             relayPairProbe = RelayPairProbe { _, _ ->
                 credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
@@ -66,10 +67,11 @@ fun createWatchHarnessFlavor(
                         "sha256:client",
                         "watch",
                         "mock-device-token",
+                        null,
                         IdentityState.PAIRED,
                     ),
                 )
-                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443)
+                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443, PairConnectionMode.PAIRING)
             },
             plStatusProbe = PlStatusProbe {
                 val identity = identityStore.load()

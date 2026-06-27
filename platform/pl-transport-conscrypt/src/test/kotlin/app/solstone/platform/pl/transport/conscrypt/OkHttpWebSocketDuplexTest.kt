@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
@@ -61,9 +62,23 @@ class OkHttpWebSocketDuplexTest {
         val socket = FakeWebSocket()
         val duplex = OkHttpWebSocketDuplex(socket)
 
-        duplex.closeInbound()
+        duplex.closeFromWebSocket(1000, "normal")
 
         assertEquals(-1, duplex.input.read())
+    }
+
+    @Test
+    fun nonNormalClosePropagatesTypedException() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket())
+
+        duplex.closeFromWebSocket(4401, "expired")
+
+        val readFailure = assertFailsWith<RelayWebSocketClosedException> { duplex.input.read() }
+        assertEquals(4401, readFailure.code)
+        assertEquals("expired", readFailure.reason)
+        val writeFailure = assertFailsWith<RelayWebSocketClosedException> { duplex.output.write(1) }
+        assertEquals(4401, writeFailure.code)
+        assertEquals("expired", writeFailure.reason)
     }
 
     @Test
@@ -72,8 +87,10 @@ class OkHttpWebSocketDuplexTest {
 
         duplex.fail(IOException("boom"))
 
-        assertFailsWith<IOException> { duplex.input.read() }
-        assertFailsWith<IOException> { duplex.output.write(1) }
+        val readFailure = assertFailsWith<IOException> { duplex.input.read() }
+        val writeFailure = assertFailsWith<IOException> { duplex.output.write(1) }
+        assertFalse(readFailure is RelayWebSocketClosedException)
+        assertFalse(writeFailure is RelayWebSocketClosedException)
     }
 
     private class FakeWebSocket : BinaryWebSocket {

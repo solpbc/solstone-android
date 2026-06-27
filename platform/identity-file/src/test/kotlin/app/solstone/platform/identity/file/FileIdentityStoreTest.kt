@@ -23,6 +23,7 @@ class FileIdentityStoreTest {
             clientCertFingerprint = "sha256:client",
             observerHandle = "obs",
             deviceToken = "device-token",
+            expiresAt = "2026-01-01T00:00:00Z",
             state = IdentityState.PAIRED,
         )
 
@@ -47,5 +48,28 @@ class FileIdentityStoreTest {
         )
 
         assertNull(FileIdentityStore(file).load()?.deviceToken)
+        assertNull(FileIdentityStore(file).load()?.expiresAt)
+    }
+
+    @Test
+    fun nullExpiresAtIsNotWritten() {
+        val file = Files.createTempDirectory("identity-store-test").resolve("identity.tsv").toFile()
+        val store = FileIdentityStore(file)
+        val home = PairedHome(
+            instanceId = "home",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "obs",
+            deviceToken = "device-token",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+
+        store.save(home)
+
+        assertEquals(home, store.load())
+        assertEquals(false, file.readText().contains("expiresAt\t"))
     }
 }

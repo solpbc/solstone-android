@@ -21,6 +21,7 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PairRequest
@@ -45,7 +46,10 @@ data class PairProbeResult(
     val statusStatus: Int,
     val statusBody: String,
     val endpoint: DirectEndpoint,
+    val connectionMode: DirectPairConnectionMode = DirectPairConnectionMode.PAIRING,
 )
+
+enum class DirectPairConnectionMode { PAIRING, ALREADY_CONNECTED, RECONNECTING }
 
 fun pairAndProbe(
     pairLink: String,
@@ -97,7 +101,6 @@ fun pairAndProbe(
                 }
 
                 val credential = ClientCredential(privateKeyPem, resp.clientCert, resp.caChain)
-                credentialStore.save(credential)
                 val home = PairedHome(
                     instanceId = resp.instanceId,
                     homeLabel = resp.homeLabel,
@@ -106,15 +109,24 @@ fun pairAndProbe(
                     clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
                     observerHandle = null,
                     deviceToken = null,
+                    expiresAt = null,
                     state = IdentityState.PAIRED,
                 )
-                identityStore.save(home)
-                endpointStore.save(endpoint)
-
-                val statusHttp = openAuthenticatedClient(endpoint, credential).use { client ->
-                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
-                }
-                return PairProbeResult(pinned, pairHttp.status, statusHttp.status, statusHttp.bodyText(), endpoint)
+                return persistOrReturnDirectPairResult(
+                    home = home,
+                    credential = credential,
+                    endpoint = endpoint,
+                    handshakePinned = pinned,
+                    pairStatus = pairHttp.status,
+                    credentialStore = credentialStore,
+                    identityStore = identityStore,
+                    endpointStore = endpointStore,
+                    statusProbe = { statusEndpoint, statusCredential ->
+                        openAuthenticatedClient(statusEndpoint, statusCredential).use { client ->
+                            client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+                        }
+                    },
+                )
             }
             DialDecision.TERMINAL -> {
                 throw IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
@@ -129,6 +141,47 @@ fun pairAndProbe(
         throw SSLException("scanned a pair link whose host did not match its CA pin")
     }
     throw lastError ?: IOException("all pair candidates exhausted")
+}
+
+internal fun persistOrReturnDirectPairResult(
+    home: PairedHome,
+    credential: ClientCredential,
+    endpoint: DirectEndpoint,
+    handshakePinned: Boolean,
+    pairStatus: Int,
+    credentialStore: ClientCredentialStore,
+    identityStore: IdentityStore,
+    endpointStore: EndpointStore,
+    statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse,
+): PairProbeResult {
+    val prior = identityStore.load()
+    if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
+        return PairProbeResult(
+            handshakePinned = handshakePinned,
+            pairStatus = pairStatus,
+            statusStatus = 200,
+            statusBody = "",
+            endpoint = endpointStore.load() ?: endpoint,
+            connectionMode = DirectPairConnectionMode.ALREADY_CONNECTED,
+        )
+    }
+    val connectionMode = if (prior?.instanceId == home.instanceId) {
+        DirectPairConnectionMode.RECONNECTING
+    } else {
+        DirectPairConnectionMode.PAIRING
+    }
+    credentialStore.save(credential)
+    identityStore.save(home)
+    endpointStore.save(endpoint)
+    val statusHttp = statusProbe(endpoint, credential)
+    return PairProbeResult(
+        handshakePinned = handshakePinned,
+        pairStatus = pairStatus,
+        statusStatus = statusHttp.status,
+        statusBody = statusHttp.bodyText(),
+        endpoint = endpoint,
+        connectionMode = connectionMode,
+    )
 }
 
 /**

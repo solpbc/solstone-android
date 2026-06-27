@@ -4,6 +4,7 @@
 package app.solstone.observer.glasses
 
 import app.solstone.observer.harness.HarnessPairProbeResult
+import app.solstone.observer.harness.PairConnectionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -75,7 +76,32 @@ class PhotoPairDecisionTest {
         assertEquals(PhotoPairOutcome.PAIRED, outcome)
     }
 
-    private fun successResult(statusStatus: Int = 200) =
+    @Test
+    fun mapsAlreadyConnectedResult() {
+        val outcome = decidePhotoPair(
+            decoded = "https://link.solpbc.org/p#abc",
+            looksLikePairLink = { true },
+            onScannedPairLink = { successResult(connectionMode = PairConnectionMode.ALREADY_CONNECTED) },
+        )
+
+        assertEquals(PhotoPairOutcome.ALREADY_CONNECTED, outcome)
+    }
+
+    @Test
+    fun mapsReconnectingResult() {
+        val outcome = decidePhotoPair(
+            decoded = "https://link.solpbc.org/p#abc",
+            looksLikePairLink = { true },
+            onScannedPairLink = { successResult(connectionMode = PairConnectionMode.RECONNECTING) },
+        )
+
+        assertEquals(PhotoPairOutcome.RECONNECTING, outcome)
+    }
+
+    private fun successResult(
+        statusStatus: Int = 200,
+        connectionMode: PairConnectionMode = PairConnectionMode.PAIRING,
+    ) =
         HarnessPairProbeResult(
             handshakePinned = true,
             pairStatus = 200,
@@ -84,5 +110,6 @@ class PhotoPairDecisionTest {
             homeLabel = "home",
             endpointHost = "10.0.0.2",
             endpointPort = 7657,
+            connectionMode = connectionMode,
         )
 }

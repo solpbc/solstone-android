@@ -7,6 +7,8 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 
+enum class PairConnectionMode { PAIRING, ALREADY_CONNECTED, RECONNECTING }
+
 data class HarnessPairProbeResult(
     val handshakePinned: Boolean,
     val pairStatus: Int,
@@ -15,6 +17,7 @@ data class HarnessPairProbeResult(
     val homeLabel: String?,
     val endpointHost: String,
     val endpointPort: Int,
+    val connectionMode: PairConnectionMode = PairConnectionMode.PAIRING,
 )
 
 sealed interface HarnessPlStatus {

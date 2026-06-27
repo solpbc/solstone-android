@@ -23,6 +23,9 @@ internal interface BinaryWebSocket {
     fun close(code: Int, reason: String?)
 }
 
+class RelayWebSocketClosedException(val code: Int, val reason: String) :
+    IOException("relay websocket closed: $code $reason")
+
 class OkHttpWebSocketDuplex internal constructor(
     socket: BinaryWebSocket,
     private val capacityBytes: Int = DEFAULT_BUFFER_BYTES,
@@ -70,6 +73,14 @@ class OkHttpWebSocketDuplex internal constructor(
         synchronized(lock) {
             inboundClosed = true
             lock.notifyAll()
+        }
+    }
+
+    internal fun closeFromWebSocket(code: Int, reason: String) {
+        if (code == 1000) {
+            closeInbound()
+        } else {
+            fail(RelayWebSocketClosedException(code, reason))
         }
     }
 
@@ -194,11 +205,11 @@ class OkHttpWebSocketDuplex internal constructor(
                     }
 
                     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                        duplex.closeInbound()
+                        duplex.closeFromWebSocket(code, reason)
                     }
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        duplex.closeInbound()
+                        duplex.closeFromWebSocket(code, reason)
                     }
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

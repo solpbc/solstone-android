@@ -16,6 +16,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
+import java.io.IOException
 
 fun selectDrainSegments(segments: List<SegmentRow>): List<SegmentRow> =
     segments.filter { it.state == QueueState.SEALED && it.stream == MAIN_STREAM }
@@ -75,6 +76,8 @@ fun <R> registerThenDrain(
     } else {
         val registered = try {
             register(client)
+        } catch (e: IOException) {
+            throw e
         } catch (e: Exception) {
             onError(e)
             return RegisterDrainOutcome.Retry

@@ -41,6 +41,7 @@ class CredentialCodecTest {
             clientCertFingerprint = "sha256:client",
             observerHandle = null,
             deviceToken = null,
+            expiresAt = null,
             state = IdentityState.PAIRED,
         )
         assertEquals(IdentityState.PAIRED, home.state)

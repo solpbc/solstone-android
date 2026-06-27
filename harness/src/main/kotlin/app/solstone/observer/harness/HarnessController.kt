@@ -7,6 +7,7 @@ import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.model.IdentityState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.DirectPairLink
 import app.solstone.core.pl.RelayPairLink
@@ -15,6 +16,7 @@ import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import java.net.URL
 
 class HarnessController(
     private val permissionStatusReader: PermissionStatusReader,
@@ -162,7 +164,25 @@ class HarnessController(
     }
 
     private fun runRelayPairProbe(link: RelayPairLink): HarnessPairProbeResult {
-        val result = relayPairProbe.pairOverRelay(link, deviceLabel)
+        val prior = identityStore.load()
+        val priorMatches = prior?.instanceId == link.instanceId
+        if (priorMatches && prior?.state == IdentityState.PAIRED) {
+            val origin = prior.relayOrigin ?: link.relayOrigin ?: "https://link.solstone.app"
+            val result = HarnessPairProbeResult(
+                handshakePinned = false,
+                pairStatus = 200,
+                statusStatus = 200,
+                statusBody = "",
+                homeLabel = prior.homeLabel,
+                endpointHost = URL(origin.trimEnd('/')).host,
+                endpointPort = 443,
+                connectionMode = PairConnectionMode.ALREADY_CONNECTED,
+            )
+            lastPairProbe = result
+            return result
+        }
+        val mode = if (priorMatches) PairConnectionMode.RECONNECTING else PairConnectionMode.PAIRING
+        val result = relayPairProbe.pairOverRelay(link, deviceLabel).copy(connectionMode = mode)
         lastPairProbe = result
         return result
     }

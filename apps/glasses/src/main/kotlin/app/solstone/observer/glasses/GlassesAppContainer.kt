@@ -179,6 +179,8 @@ class GlassesAppContainer(private val context: Context) {
                 }
                 PhotoPairOutcome.IGNORED,
                 PhotoPairOutcome.PAIRED,
+                PhotoPairOutcome.ALREADY_CONNECTED,
+                PhotoPairOutcome.RECONNECTING,
                 PhotoPairOutcome.RETRY,
                 -> Unit
             }

@@ -15,6 +15,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
+import app.solstone.platform.pl.transport.conscrypt.DirectPairConnectionMode
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
@@ -68,6 +69,11 @@ class RealPairProbe(
             homeLabel = identityStore.load()?.homeLabel,
             endpointHost = result.endpoint.host,
             endpointPort = result.endpoint.port,
+            connectionMode = when (result.connectionMode) {
+                DirectPairConnectionMode.PAIRING -> PairConnectionMode.PAIRING
+                DirectPairConnectionMode.ALREADY_CONNECTED -> PairConnectionMode.ALREADY_CONNECTED
+                DirectPairConnectionMode.RECONNECTING -> PairConnectionMode.RECONNECTING
+            },
         )
     }
 }
@@ -93,6 +99,7 @@ class RealRelayPairProbe(
             homeLabel = result.homeLabel,
             endpointHost = result.relayHost,
             endpointPort = 443,
+            connectionMode = PairConnectionMode.PAIRING,
         )
     }
 }
