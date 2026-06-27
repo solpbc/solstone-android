@@ -29,4 +29,5 @@ dependencies {
     implementation(project(":core:spool"))
     implementation(project(":platform:power"))
     testImplementation(kotlin("test"))
+    testImplementation(project(":testing"))
 }
