@@ -52,12 +52,64 @@ class DiagnosticsTest {
 
     @Test
     fun pairingFactOfClassifiesEachCombination() {
-        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = false, identityState = null))
-        assertEquals(PairingFact.REVOKED, pairingFactOf(credentialPresent = true, endpointPresent = true, identityState = IdentityState.REVOKED))
-        assertEquals(PairingFact.PAIRED, pairingFactOf(credentialPresent = true, endpointPresent = true, identityState = IdentityState.PAIRED))
-        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = true, endpointPresent = false, identityState = IdentityState.PAIRED))
-        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = true, identityState = IdentityState.PAIRED))
-        assertEquals(PairingFact.UNPAIRED, pairingFactOf(credentialPresent = false, endpointPresent = false, identityState = IdentityState.UNPAIRED))
+        assertEquals(
+            PairingFact.UNPAIRED,
+            pairingFactOf(credentialPresent = false, endpointPresent = false, relayOriginPresent = false, identityState = null),
+        )
+        assertEquals(
+            PairingFact.REVOKED,
+            pairingFactOf(
+                credentialPresent = true,
+                endpointPresent = false,
+                relayOriginPresent = true,
+                identityState = IdentityState.REVOKED,
+            ),
+        )
+        assertEquals(
+            PairingFact.PAIRED,
+            pairingFactOf(
+                credentialPresent = true,
+                endpointPresent = true,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+            ),
+        )
+        assertEquals(
+            PairingFact.PAIRED,
+            pairingFactOf(
+                credentialPresent = true,
+                endpointPresent = false,
+                relayOriginPresent = true,
+                identityState = IdentityState.PAIRED,
+            ),
+        )
+        assertEquals(
+            PairingFact.UNPAIRED,
+            pairingFactOf(
+                credentialPresent = true,
+                endpointPresent = false,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+            ),
+        )
+        assertEquals(
+            PairingFact.UNPAIRED,
+            pairingFactOf(
+                credentialPresent = false,
+                endpointPresent = true,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+            ),
+        )
+        assertEquals(
+            PairingFact.UNPAIRED,
+            pairingFactOf(
+                credentialPresent = false,
+                endpointPresent = false,
+                relayOriginPresent = false,
+                identityState = IdentityState.UNPAIRED,
+            ),
+        )
     }
 
     private fun healthy() = SourceFacts(

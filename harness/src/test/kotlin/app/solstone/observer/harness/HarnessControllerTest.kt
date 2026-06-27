@@ -3,6 +3,7 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -54,6 +55,17 @@ class HarnessControllerTest {
         val diagnostics = f.controller.diagnostics()
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.UNPAIRED, diagnostics.reason)
+    }
+
+    @Test
+    fun relayPairedIdentityWithoutDirectEndpointIsPaired() {
+        val f = fixture(
+            endpointStore = FakeEndpointStore(null),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(pairedHome(relayOrigin = "https://link.solstone.app")),
+        )
+
+        assertEquals(PairingFact.PAIRED, f.controller.pairingFact())
     }
 
     @Test

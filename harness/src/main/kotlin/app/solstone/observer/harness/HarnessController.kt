@@ -127,12 +127,15 @@ class HarnessController(
 
     fun syncState(): HarnessSyncState = evidenceReader.syncState()
 
-    fun pairingFact(): PairingFact =
-        pairingFactOf(
+    fun pairingFact(): PairingFact {
+        val identity = identityStore.load()
+        return pairingFactOf(
             credentialPresent = credentialStore.load() != null,
             endpointPresent = endpointStore.load() != null,
-            identityState = identityStore.load()?.state,
+            relayOriginPresent = identity?.relayOrigin != null,
+            identityState = identity?.state,
         )
+    }
 
     fun exportSegment(segment: HarnessEvidenceSegment): HarnessExportResult = bundleExport.export(segment)
 
@@ -151,6 +154,7 @@ class HarnessController(
                 storageOk = snapshot.storageOk,
                 credentialPresent = credentialPresent,
                 endpointPresent = endpointPresent,
+                relayOriginPresent = identity?.relayOrigin != null,
                 identityState = identity?.state,
                 exemptionVerified = snapshot.exemptionVerified,
             ),

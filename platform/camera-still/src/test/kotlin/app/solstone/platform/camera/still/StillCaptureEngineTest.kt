@@ -143,6 +143,7 @@ class StillCaptureEngineTest {
         val names = sink.emissions.map { it.payloadRefs.single().name }
         assertEquals(listOf("camera-$BASE_EPOCH_MS-0.jpg", "camera-$BASE_EPOCH_MS-1.jpg"), names)
         assertEquals(2, names.distinct().size)
+        assertEquals(60_000L, StillCaptureEngine.STILL_EVERY_MS)
         assertEquals(listOf(StillCaptureEngine.STILL_EVERY_MS, StillCaptureEngine.STILL_EVERY_MS), sleeps)
     }
 
@@ -198,6 +199,6 @@ class StillCaptureEngineTest {
 
     private companion object {
         const val BASE_EPOCH_MS = 1_772_582_400_000L
-        const val STILL_EVERY_MS = 15_000L
+        const val STILL_EVERY_MS = 60_000L
     }
 }

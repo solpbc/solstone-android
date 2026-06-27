@@ -20,6 +20,7 @@ data class HarnessFactInputs(
     val storageOk: Boolean,
     val credentialPresent: Boolean,
     val endpointPresent: Boolean,
+    val relayOriginPresent: Boolean,
     val identityState: IdentityState?,
     val exemptionVerified: Boolean,
 )
@@ -32,7 +33,12 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
         fgsHeartbeatFresh = inputs.fgsHeartbeatFresh,
         providerEmitting = inputs.providerEmitting,
         storageOk = inputs.storageOk,
-        pairing = pairingFactOf(inputs.credentialPresent, inputs.endpointPresent, inputs.identityState),
+        pairing = pairingFactOf(
+            inputs.credentialPresent,
+            inputs.endpointPresent,
+            inputs.relayOriginPresent,
+            inputs.identityState,
+        ),
         exemptionVerified = inputs.exemptionVerified,
     )
     val (state, reason) = reduce(facts)

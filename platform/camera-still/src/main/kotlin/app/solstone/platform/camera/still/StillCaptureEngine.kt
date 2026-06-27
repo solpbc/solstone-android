@@ -153,7 +153,7 @@ class StillCaptureEngine(
     companion object {
         const val SOURCE_ID = "camera"
         const val MEDIA_TYPE = "image/jpeg"
-        const val STILL_EVERY_MS = 15_000L
+        const val STILL_EVERY_MS = 60_000L
         const val JOIN_TIMEOUT_MS = 5_000L
         const val WORKER_THREAD_NAME = "solstone-camera-source"
     }

@@ -9,10 +9,15 @@ import app.solstone.core.model.SourceState
 
 enum class PairingFact { UNPAIRED, PAIRED, REVOKED }
 
-fun pairingFactOf(credentialPresent: Boolean, endpointPresent: Boolean, identityState: IdentityState?): PairingFact =
+fun pairingFactOf(
+    credentialPresent: Boolean,
+    endpointPresent: Boolean,
+    relayOriginPresent: Boolean,
+    identityState: IdentityState?,
+): PairingFact =
     when {
         identityState == IdentityState.REVOKED -> PairingFact.REVOKED
-        identityState == IdentityState.PAIRED && credentialPresent && endpointPresent -> PairingFact.PAIRED
+        identityState == IdentityState.PAIRED && credentialPresent && (endpointPresent || relayOriginPresent) -> PairingFact.PAIRED
         else -> PairingFact.UNPAIRED
     }
 

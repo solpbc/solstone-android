@@ -103,6 +103,14 @@ class StatusCueTest {
         )
     }
 
+    @Test
+    fun pairedCurrentStatusNeverMapsToNotPaired() {
+        assertEquals(
+            StatusCue.NEEDS_ATTENTION,
+            statusCueFor(snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.PROVIDER_SILENT, PairingFact.PAIRED)),
+        )
+    }
+
     private fun snapshot(
         state: SourceState = SourceState.OFF,
         reason: ReasonCode = ReasonCode.NONE,

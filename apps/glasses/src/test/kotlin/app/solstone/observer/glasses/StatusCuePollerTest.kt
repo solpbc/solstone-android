@@ -47,6 +47,35 @@ class StatusCuePollerTest {
         assertEquals(listOf(StatusCue.OBSERVING.ordinal, StatusCue.OBSERVER_PAUSED.ordinal), audio.played)
     }
 
+    @Test
+    fun relayPairedTransitionPlaysPairedOnce() {
+        val snapshots = ArrayDeque(
+            listOf(
+                snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.UNPAIRED, PairingFact.UNPAIRED),
+                snapshot(SourceState.ON, pairing = PairingFact.PAIRED),
+                snapshot(SourceState.ON, pairing = PairingFact.PAIRED),
+            ),
+        )
+        val audio = RecordingAudio()
+        val poller = StatusCuePoller(
+            snapshotProvider = { snapshots.removeFirst() },
+            audio = audio,
+            rawResFor = { cue -> cue.ordinal },
+        )
+
+        poller.tick()
+        assertNull(audio.last)
+        assertEquals(emptyList(), audio.played)
+
+        poller.tick()
+        assertEquals(StatusCue.PAIRED.ordinal, audio.last)
+        assertEquals(listOf(StatusCue.PAIRED.ordinal), audio.played)
+
+        poller.tick()
+        assertEquals(StatusCue.PAIRED.ordinal, audio.last)
+        assertEquals(listOf(StatusCue.PAIRED.ordinal), audio.played)
+    }
+
     private class RecordingAudio : AudioFeedback {
         var last: Int? = null
         val played = mutableListOf<Int>()

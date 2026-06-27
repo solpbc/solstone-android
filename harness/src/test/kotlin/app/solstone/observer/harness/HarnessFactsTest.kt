@@ -3,6 +3,7 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
@@ -21,5 +22,27 @@ class HarnessFactsTest {
         val diagnostics = f.controller.diagnostics()
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.SERVICE_KILLED, diagnostics.reason)
+    }
+
+    @Test
+    fun relayPairedHealthyInputsReduceToOn() {
+        val diagnostics = assembleDiagnostics(
+            HarnessFactInputs(
+                desiredOn = true,
+                engineRunning = true,
+                permissionStatus = grantedPermissions(),
+                fgsHeartbeatFresh = true,
+                providerEmitting = true,
+                storageOk = true,
+                credentialPresent = true,
+                endpointPresent = false,
+                relayOriginPresent = true,
+                identityState = IdentityState.PAIRED,
+                exemptionVerified = true,
+            ),
+        )
+
+        assertEquals(SourceState.ON, diagnostics.state)
+        assertEquals(ReasonCode.NONE, diagnostics.reason)
     }
 }
