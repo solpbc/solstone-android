@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone
+.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -101,3 +101,58 @@ dist-phone: require-dist-env
 
 android-host-dist-phone: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make dist-phone RELEASE_REV=$(RELEASE_REV) RELEASE_NOTES="$(RELEASE_NOTES)"'
+
+# --- Versioning + changelog + GitHub release (the release-notes spine) ---
+# Version lives in apps/phone/build.gradle.kts (versionName = semver, versionCode =
+# monotonic int). CHANGELOG.md is Keep-a-Changelog; each release cuts the
+# [Unreleased] section to [VERSION] and that section becomes the GitHub release body
+# (which solstone.app/releases/android renders). Full sequence:
+# vpe/playbooks/solstone-android-release.md (in the extro Org).
+PHONE_GRADLE := apps/phone/build.gradle.kts
+ARTIFACTS := artifacts
+PHONE_RELEASE_APK_LOCAL := $(ARTIFACTS)/phone-real-release.apk
+
+phone-version:
+	@grep -E 'versionName = ' $(PHONE_GRADLE) | sed -E 's/.*versionName = "([^"]+)".*/\1/'
+
+# Set phone versionName=<VERSION> and auto-increment versionCode. Usage: make phone-bump VERSION=0.1.1
+phone-bump:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@code=$$(grep -E 'versionCode = ' $(PHONE_GRADLE) | sed -E 's/.*versionCode = ([0-9]+).*/\1/'); \
+	newcode=$$((code + 1)); \
+	sed -i -E "s/versionCode = [0-9]+/versionCode = $$newcode/" $(PHONE_GRADLE); \
+	sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$(VERSION)\"/" $(PHONE_GRADLE); \
+	echo "phone -> versionName $(VERSION), versionCode $$newcode"
+
+# Cut CHANGELOG [Unreleased] -> [VERSION] - <today>. Usage: make changelog-cut VERSION=0.1.1
+changelog-cut:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	tools/release/changelog-cut.sh $(VERSION)
+
+# Print the CHANGELOG section for VERSION (the GitHub release body).
+changelog-notes:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@tools/release/changelog-notes.sh $(VERSION)
+
+# Build the signed phone APK on the remote host and pull it back to ./artifacts/.
+# (The release/sign toolchain lives on the build host; gh + git live on the caller.)
+pull-phone-apk: sync-android-host
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:assembleRealRelease'
+	mkdir -p $(ARTIFACTS)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk/real/release/phone-real-release.apk $(PHONE_RELEASE_APK_LOCAL)
+
+# Cut the GitHub release: tag v<VERSION> at HEAD, body = the CHANGELOG section,
+# attach the signed APK. Run from the caller (gh-authed); requires the version-bump
+# + changelog commit to be pushed first (the tag points at HEAD). Usage:
+#   make github-release VERSION=0.1.1   (after `make pull-phone-apk ANDROID_REMOTE_HOST=...`)
+github-release:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@test -f $(PHONE_RELEASE_APK_LOCAL) || { echo "No $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
+	mkdir -p $(ARTIFACTS)
+	tools/release/changelog-notes.sh $(VERSION) > $(ARTIFACTS)/notes-$(VERSION).md
+	gh release create v$(VERSION) \
+	  --repo solpbc/solstone-android \
+	  --title "solstone for Android v$(VERSION)" \
+	  --notes-file $(ARTIFACTS)/notes-$(VERSION).md \
+	  $(PHONE_RELEASE_APK_LOCAL)
