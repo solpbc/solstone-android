@@ -16,6 +16,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Release signing via the Play upload keystore, ingested from the
+        // environment (never hard-coded). Configured only when the keystore env
+        // var is present, so debug builds and keystore-less machines (the CI /
+        // pure-JVM gate) are unaffected and release stays unsigned there.
+        System.getenv("ANDROID_UPLOAD_KEYSTORE")?.let { storePath ->
+            create("release") {
+                storeFile = file(storePath)
+                storePassword = System.getenv("ANDROID_UPLOAD_KEYSTORE_PASS")
+                keyAlias = System.getenv("ANDROID_UPLOAD_KEY_ALIAS") ?: "upload"
+                keyPassword = System.getenv("ANDROID_UPLOAD_KEY_PASS")
+                    ?: System.getenv("ANDROID_UPLOAD_KEYSTORE_PASS")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
