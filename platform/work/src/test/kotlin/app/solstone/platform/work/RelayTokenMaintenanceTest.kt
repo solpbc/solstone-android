@@ -8,12 +8,13 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.HttpResponse
 import app.solstone.platform.pl.transport.conscrypt.HttpsPoster
+import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 class RelayTokenMaintenanceTest {
     @Test
@@ -141,6 +142,21 @@ class RelayTokenMaintenanceTest {
         assertEquals(listOf("old"), dial.tokens)
     }
 
+    @Test
+    fun waitingExceptionPropagatesWithoutTokenRefresh() {
+        val store = FakeIdentityStore(home())
+        val poster = FakePoster()
+        val dial = FakeDial(RelayDialWaitingException(30_000L))
+
+        assertFailsWith<RelayDialWaitingException> {
+            dialWithReactiveRefresh(home(), transport(token = "old"), poster, store, dial)
+        }
+
+        assertEquals(0, poster.calls)
+        assertEquals(listOf("old"), dial.tokens)
+        assertEquals(home(), store.load())
+    }
+
     private class FakePoster(
         private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"new"}""".toByteArray()),
     ) : HttpsPoster {
@@ -158,6 +174,9 @@ class RelayTokenMaintenanceTest {
         override fun dial(transport: SyncTransport.Relay): SyncOutcome {
             tokens += transport.deviceToken
             val outcome = outcomes.getOrElse(index++) { SyncOutcome.SUCCESS }
+            if (outcome is RelayDialWaitingException) {
+                throw outcome
+            }
             if (outcome is Close) {
                 throw RelayWebSocketClosedException(outcome.code, "closed")
             }

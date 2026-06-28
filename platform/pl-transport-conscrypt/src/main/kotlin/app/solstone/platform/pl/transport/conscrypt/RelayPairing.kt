@@ -25,6 +25,7 @@ import app.solstone.core.pl.toJson
 import java.io.Closeable
 import java.io.IOException
 import java.net.URL
+import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -177,6 +178,8 @@ fun pairOverRelay(
     )
 }
 
+private const val RELAY_SYNC_WAITING_TIMEOUT_MS = 30_000L
+
 fun openRelaySyncClient(
     relayOrigin: String,
     instanceId: String,
@@ -185,7 +188,19 @@ fun openRelaySyncClient(
 ): ConscryptPlHttpClient {
     val host = URL(normalizeRelayOrigin(relayOrigin)).host
     val request = relayWebSocketRequest(host, "/session/dial", instanceId, deviceToken)
-    return openRelayClient(host, 443, OkHttpTunnelOpener(OkHttpClient(), request), RelayTlsMode.Authenticated(credential)).client
+    return openRelayClient(
+        host,
+        443,
+        OkHttpTunnelOpener(
+            OkHttpClient.Builder()
+                .pingInterval(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build(),
+            request,
+            RELAY_SYNC_WAITING_TIMEOUT_MS,
+        ),
+        RelayTlsMode.Authenticated(credential),
+    ).client
 }
 
 private fun relayWebSocketRequest(host: String, path: String, instanceId: String, token: String): Request =

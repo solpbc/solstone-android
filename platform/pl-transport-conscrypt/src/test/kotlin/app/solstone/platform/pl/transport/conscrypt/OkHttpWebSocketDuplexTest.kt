@@ -4,6 +4,8 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -91,6 +93,76 @@ class OkHttpWebSocketDuplexTest {
         val writeFailure = assertFailsWith<IOException> { duplex.output.write(1) }
         assertFalse(readFailure is RelayWebSocketClosedException)
         assertFalse(writeFailure is RelayWebSocketClosedException)
+    }
+
+    @Test
+    fun heldFirstReadTimesOutToWaitingException() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket(), waitingTimeoutMillis = 30L)
+        val failure = AtomicReference<Throwable?>()
+
+        val reader = thread(start = true) {
+            try {
+                duplex.input.read()
+            } catch (t: Throwable) {
+                failure.set(t)
+            }
+        }
+
+        reader.join(1000)
+        assertFalse(reader.isAlive)
+        assertTrue(failure.get() is RelayDialWaitingException)
+        assertFalse(failure.get() is RelayWebSocketClosedException)
+    }
+
+    @Test
+    fun disabledWaitingTimeoutKeepsBlocking() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket(), waitingTimeoutMillis = 0L)
+        val failure = AtomicReference<Throwable?>()
+        val readResult = AtomicInteger(Int.MIN_VALUE)
+
+        val reader = thread(start = true) {
+            try {
+                readResult.set(duplex.input.read())
+            } catch (t: Throwable) {
+                failure.set(t)
+            }
+        }
+        Thread.sleep(100)
+        assertTrue(reader.isAlive)
+
+        duplex.close()
+        reader.join(1000)
+        assertFalse(reader.isAlive)
+        assertFalse(failure.get() is RelayDialWaitingException)
+        assertEquals(-1, readResult.get())
+    }
+
+    @Test
+    fun brokerWithinWindowReturnsData() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket(), waitingTimeoutMillis = 1000L)
+        val failure = AtomicReference<Throwable?>()
+        val readResult = AtomicInteger(Int.MIN_VALUE)
+        val bytes = AtomicReference<ByteArray?>()
+
+        val reader = thread(start = true) {
+            try {
+                val buffer = ByteArray(2)
+                val read = duplex.input.read(buffer)
+                readResult.set(read)
+                bytes.set(buffer.copyOf(read))
+            } catch (t: Throwable) {
+                failure.set(t)
+            }
+        }
+        Thread.sleep(100)
+
+        duplex.receive(byteArrayOf(4, 5).toByteString())
+
+        reader.join(1000)
+        assertFalse(reader.isAlive)
+        assertEquals(2, readResult.get())
+        assertContentEquals(byteArrayOf(4, 5), bytes.get())
+        assertEquals(null, failure.get())
     }
 
     private class FakeWebSocket : BinaryWebSocket {

@@ -52,6 +52,7 @@ fun openRelayClient(
 class OkHttpTunnelOpener(
     private val client: OkHttpClient,
     private val request: Request,
+    private val waitingTimeoutMillis: Long = 0L,
 ) : TunnelOpener {
-    override fun open(): ByteDuplex = OkHttpWebSocketDuplex.open(client, request)
+    override fun open(): ByteDuplex = OkHttpWebSocketDuplex.open(client, request, waitingTimeoutMillis)
 }

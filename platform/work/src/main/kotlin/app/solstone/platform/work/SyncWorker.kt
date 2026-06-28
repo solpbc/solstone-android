@@ -20,6 +20,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
+import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
 import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
@@ -76,6 +77,9 @@ class SyncWorker(
                 )
             }
             return outcome.toWorkResult()
+        } catch (_: RelayDialWaitingException) {
+            Log.i(TAG, "home offline, waiting; will retry")
+            return Result.retry()
         } catch (_: RelayWebSocketClosedException) {
             return Result.retry()
         } catch (_: IOException) {
