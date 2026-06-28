@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import app.solstone.core.sources.PHONE_STREAM
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.RealBundleExport
 import app.solstone.observer.harness.RealEvidenceReader
@@ -45,7 +46,7 @@ fun createPhoneHarnessFlavor(
             pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
             relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
             plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
-            syncEnqueue = RealSyncEnqueue(context),
+            syncEnqueue = RealSyncEnqueue(context, PHONE_STREAM),
             evidenceReader = RealEvidenceReader(database.segmentDao()),
             bundleExport = RealBundleExport(spoolDir, external),
             endpointStore = stores.endpointStore,

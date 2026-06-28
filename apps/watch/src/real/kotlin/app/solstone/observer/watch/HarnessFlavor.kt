@@ -4,6 +4,7 @@
 package app.solstone.observer.watch
 
 import android.content.Context
+import app.solstone.core.sources.WATCH_STREAM
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.RealBundleExport
 import app.solstone.observer.harness.RealEvidenceReader
@@ -45,7 +46,7 @@ fun createWatchHarnessFlavor(
             pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
             relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
             plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
-            syncEnqueue = RealSyncEnqueue(context),
+            syncEnqueue = RealSyncEnqueue(context, WATCH_STREAM),
             evidenceReader = RealEvidenceReader(database.segmentDao()),
             bundleExport = RealBundleExport(spoolDir, external),
             endpointStore = stores.endpointStore,

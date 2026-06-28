@@ -7,6 +7,7 @@ import android.content.Context
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.pl.EndpointStore
+import app.solstone.platform.identity.file.FileBeaconStateStore
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
@@ -16,6 +17,7 @@ data class SyncStores(
     val endpointStore: EndpointStore,
     val credentialStore: ClientCredentialStore,
     val identityStore: IdentityStore,
+    val beaconStateStore: FileBeaconStateStore,
 )
 
 fun plStoreDir(context: Context): File = File(context.filesDir, "pl")
@@ -26,5 +28,6 @@ fun syncStores(context: Context): SyncStores {
         endpointStore = FileEndpointStore(File(dir, "endpoint.txt")),
         credentialStore = FileClientCredentialStore(File(dir, "credential.pem")),
         identityStore = FileIdentityStore(File(dir, "identity.tsv")),
+        beaconStateStore = FileBeaconStateStore(File(dir, "beacon.txt")),
     )
 }

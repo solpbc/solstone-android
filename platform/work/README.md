@@ -166,6 +166,31 @@ context.filesDir.toPath()
 
 `file.name` must remain a single path segment, matching `FileSpoolWriter`'s existing separator guard.
 
+## Health Beacon
+
+The worker emits a diagnostics-only observer health beacon only on the reachable `DRAIN` path, after segment drain completes and after the fresh sync state is available. It uses the already-open authenticated `PlHttpClient`; it does not create a new identity or run when credential repair, reachability reschedule, or observer registration retry prevents drain.
+
+The local Android-side contract is a JSON POST to `/app/observer/health` with exactly these fields:
+
+- `name`
+- `stream_type`
+- `version`
+- `uptime`
+- `last_successful_sync`
+- `pending_queue_depth`
+- `recent_error_count`
+- `last_error_reason`
+
+Encodings are local source of truth until a journal-side contract is published: `uptime` is integer seconds, `last_successful_sync` is epoch milliseconds or null, and counts are integers. `recent_error_count` is bounded to 0-99. `last_error_reason` is a short redacted reason string derived from outcome words and status codes only. Receiver compatibility remains an integration check until journal-side support is confirmed.
+
+`BeaconDecisions.kt` stays pure: it builds the payload, redacts the reason, advances the durable started-at anchor, updates the bounded error count, and exposes a non-throwing emit seam for JVM tests. `SyncWorker` remains the thin shell that reads WorkManager input data, calls drain, reads `dao.syncState()`, invokes the emit seam, and logs only `observer health beacon not delivered` if delivery fails.
+
+The durable beacon state lives in `File(context.filesDir, "pl/beacon.txt")` via `FileBeaconStateStore`. It stores only `startedAt` and `recent_error_count`; no Room schema change is required.
+
+`stream_type` is threaded per form factor through `SyncScheduler` WorkManager input data. Pre-existing unique periodic work kept by `ExistingPeriodicWorkPolicy.KEEP` may not have input data and falls back to `MAIN_STREAM` until recreated; that fallback is acceptable for this lode.
+
+Journal-side ingest rejections are a separate health source; this beacon does not replace them.
+
 ## Persistence Changes
 
 - Add six nullable/additive segment columns:
@@ -182,11 +207,11 @@ context.filesDir.toPath()
 
 ## Scheduling And Status
 
-- `SyncScheduler.enqueuePeriodic(context)` creates unique periodic work with `ExistingPeriodicWorkPolicy.KEEP` and `NetworkType.CONNECTED`.
-- `SyncScheduler.enqueueNow(context)` creates expedited unique one-time work with `ExistingWorkPolicy.KEEP` and `OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST`.
+- `SyncScheduler.enqueuePeriodic(context, streamType)` creates unique periodic work with `ExistingPeriodicWorkPolicy.KEEP`, `NetworkType.CONNECTED`, and form-factor stream input data.
+- `SyncScheduler.enqueueNow(context, streamType)` creates expedited unique one-time work with `ExistingWorkPolicy.KEEP`, `OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST`, and form-factor stream input data.
 - Keep unique work names as constants.
 - Worker holds no sensor lock.
-- Phone and watch MainActivity use the store factory and `recoverSyncCredentials` for honest `linkPaired` / `authValid` facts.
+- Phone and wearable MainActivity use the store factory and `recoverSyncCredentials` for honest `linkPaired` / `authValid` facts.
 - Replace hardcoded auth booleans minimally.
 - Add a small status surface for pending count, last success, last failure, and auth-needs-attention, plus a `Sync now` button.
 - Enqueue periodic sync on start.
@@ -202,5 +227,5 @@ context.filesDir.toPath()
 3. Add pure decision types/functions and JVM tests.
 4. Add Room v2 rows, DAO methods, migration, schema export, and migration test.
 5. Add worker shell, path/store factory, and scheduler.
-6. Wire phone/watch status and sync actions.
+6. Wire phone and wearable status and sync actions.
 7. Update Makefile CI targets.

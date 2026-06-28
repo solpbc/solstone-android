@@ -38,14 +38,15 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
+            val streamType = inputData.getString(SyncScheduler.STREAM_TYPE_KEY) ?: MAIN_STREAM
             val stores = syncStores(applicationContext)
             when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
                 is SyncCredentials.NeedsRepair -> Result.failure()
-                is SyncCredentials.Ready -> sync(stores, credentials)
+                is SyncCredentials.Ready -> sync(stores, credentials, streamType)
             }
         }
 
-    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): Result {
+    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready, streamType: String): Result {
         val db = openSolstonePersistenceDatabase(applicationContext)
         val poster = defaultHttpsPoster()
         try {
@@ -65,14 +66,14 @@ class SyncWorker(
                 }
             }
             val outcome = when (transport) {
-                is SyncTransport.Direct -> syncWithTransport(db.segmentDao(), stores, credentials, transport)
+                is SyncTransport.Direct -> syncWithTransport(db.segmentDao(), stores, credentials, transport, streamType)
                 is SyncTransport.Relay -> dialWithReactiveRefresh(
                     identity = credentials.identity,
                     transport = transport,
                     poster = poster,
                     identityStore = stores.identityStore,
                     dial = RelayDial { relayTransport ->
-                        syncWithTransport(db.segmentDao(), stores, credentials, relayTransport)
+                        syncWithTransport(db.segmentDao(), stores, credentials, relayTransport, streamType)
                     },
                 )
             }
@@ -96,6 +97,7 @@ class SyncWorker(
         stores: SyncStores,
         credentials: SyncCredentials.Ready,
         transport: SyncTransport,
+        streamType: String,
     ): SyncOutcome {
         openSyncClient(transport, credentials.credential).use { client ->
             val status = try {
@@ -122,12 +124,28 @@ class SyncWorker(
                         },
                         persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
                         drain = { c, handle ->
-                            drainSegments(
+                            val report = drainSegments(
                                 dao,
                                 SegmentReconciler(c, handle),
                                 ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" },
                                 handle,
                             )
+                            val emit = emitObserverHealth(
+                                client = c,
+                                priorState = stores.beaconStateStore.load(),
+                                persist = stores.beaconStateStore::save,
+                                streamType = streamType,
+                                handle = handle,
+                                version = appVersion(),
+                                now = System.currentTimeMillis(),
+                                syncRow = dao.syncState(),
+                                outcome = report.outcome,
+                                rawErrorReason = report.lastErrorReason,
+                            )
+                            if (emit == BeaconEmitResult.FAILED) {
+                                Log.w(TAG, "observer health beacon not delivered")
+                            }
+                            report.outcome
                         },
                         onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
                     )
@@ -155,11 +173,12 @@ class SyncWorker(
         reconciler: SegmentReconciler,
         ingestClient: ObserverIngestClient,
         handle: String,
-    ): SyncOutcome {
+    ): DrainReport {
         var shouldRetry = false
         var halted = false
         var lastSuccessAt = dao.syncState()?.lastSuccessAt
         var lastFailureAt = dao.syncState()?.lastFailureAt
+        var lastErrorReason: String? = null
         val spoolDir = File(applicationContext.filesDir, "spool")
         val sealed = selectDrainSegments(dao.segmentsByState(QueueState.SEALED))
         val now = System.currentTimeMillis()
@@ -214,17 +233,20 @@ class SyncWorker(
                                 dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
                                 dao.recordFailure(segment.id, result.status, "retry")
                                 lastFailureAt = System.currentTimeMillis()
+                                lastErrorReason = "retry" + (result.status?.let { " ($it)" } ?: "")
                                 shouldRetry = true
                             }
                             is SegmentSyncResult.HardFail -> {
                                 dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
                                 dao.recordFailure(segment.id, result.status, "hard failure")
                                 lastFailureAt = System.currentTimeMillis()
+                                lastErrorReason = "hard failure (${result.status})"
                             }
                             is SegmentSyncResult.AuthHalt -> {
                                 dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
                                 dao.recordFailure(segment.id, result.status, "auth halted")
                                 lastFailureAt = System.currentTimeMillis()
+                                lastErrorReason = "auth halted (${result.status})"
                                 halted = haltsDrain(result)
                             }
                         }
@@ -237,6 +259,12 @@ class SyncWorker(
             if (halted) break
         }
 
+        val outcome = when {
+            halted -> SyncOutcome.FAILURE
+            shouldRetry -> SyncOutcome.RETRY
+            else -> SyncOutcome.SUCCESS
+        }
+        lastSuccessAt = advanceLastSuccess(lastSuccessAt, outcome == SyncOutcome.SUCCESS, System.currentTimeMillis())
         dao.upsertSyncState(
             nextSyncState(
                 pendingCount = dao.pendingCount(MAIN_STREAM),
@@ -245,11 +273,7 @@ class SyncWorker(
             ),
         )
 
-        return when {
-            halted -> SyncOutcome.FAILURE
-            shouldRetry -> SyncOutcome.RETRY
-            else -> SyncOutcome.SUCCESS
-        }
+        return DrainReport(outcome, lastErrorReason)
     }
 
     private fun SyncOutcome.toWorkResult(): Result =

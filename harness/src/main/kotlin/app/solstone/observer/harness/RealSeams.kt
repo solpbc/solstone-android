@@ -148,13 +148,13 @@ class RealPlStatusProbe(
     }
 }
 
-class RealSyncEnqueue(private val context: Context) : SyncEnqueue {
+class RealSyncEnqueue(private val context: Context, private val streamType: String) : SyncEnqueue {
     override fun enqueuePeriodic() {
-        SyncScheduler.enqueuePeriodic(context)
+        SyncScheduler.enqueuePeriodic(context, streamType)
     }
 
     override fun enqueueNow() {
-        SyncScheduler.enqueueNow(context)
+        SyncScheduler.enqueueNow(context, streamType)
     }
 }
 

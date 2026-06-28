@@ -9,3 +9,4 @@ const val OBSERVER_PROTOCOL_VERSION = 2
 const val REGISTER_PATH = "/app/observer/register"
 const val INGEST_PATH = "/app/observer/ingest"
 const val SEGMENTS_PATH = "/app/observer/ingest/segments"
+const val HEALTH_PATH = "/app/observer/health"
