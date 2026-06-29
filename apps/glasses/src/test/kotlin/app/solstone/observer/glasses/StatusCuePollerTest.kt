@@ -27,7 +27,6 @@ class StatusCuePollerTest {
         val poller = StatusCuePoller(
             snapshotProvider = { snapshots.removeFirst() },
             audio = audio,
-            rawResFor = { cue -> cue.ordinal },
         )
 
         poller.tick()
@@ -35,16 +34,16 @@ class StatusCuePollerTest {
         assertEquals(emptyList(), audio.played)
 
         poller.tick()
-        assertEquals(StatusCue.OBSERVING.ordinal, audio.last)
-        assertEquals(listOf(StatusCue.OBSERVING.ordinal), audio.played)
+        assertEquals(StatusCue.OBSERVING, audio.last)
+        assertEquals(listOf(StatusCue.OBSERVING), audio.played)
 
         poller.tick()
-        assertEquals(StatusCue.OBSERVING.ordinal, audio.last)
-        assertEquals(listOf(StatusCue.OBSERVING.ordinal), audio.played)
+        assertEquals(StatusCue.OBSERVING, audio.last)
+        assertEquals(listOf(StatusCue.OBSERVING), audio.played)
 
         poller.tick()
-        assertEquals(StatusCue.OBSERVER_PAUSED.ordinal, audio.last)
-        assertEquals(listOf(StatusCue.OBSERVING.ordinal, StatusCue.OBSERVER_PAUSED.ordinal), audio.played)
+        assertEquals(StatusCue.OBSERVER_PAUSED, audio.last)
+        assertEquals(listOf(StatusCue.OBSERVING, StatusCue.OBSERVER_PAUSED), audio.played)
     }
 
     @Test
@@ -60,7 +59,6 @@ class StatusCuePollerTest {
         val poller = StatusCuePoller(
             snapshotProvider = { snapshots.removeFirst() },
             audio = audio,
-            rawResFor = { cue -> cue.ordinal },
         )
 
         poller.tick()
@@ -68,21 +66,21 @@ class StatusCuePollerTest {
         assertEquals(emptyList(), audio.played)
 
         poller.tick()
-        assertEquals(StatusCue.PAIRED.ordinal, audio.last)
-        assertEquals(listOf(StatusCue.PAIRED.ordinal), audio.played)
+        assertEquals(StatusCue.PAIRED, audio.last)
+        assertEquals(listOf(StatusCue.PAIRED), audio.played)
 
         poller.tick()
-        assertEquals(StatusCue.PAIRED.ordinal, audio.last)
-        assertEquals(listOf(StatusCue.PAIRED.ordinal), audio.played)
+        assertEquals(StatusCue.PAIRED, audio.last)
+        assertEquals(listOf(StatusCue.PAIRED), audio.played)
     }
 
     private class RecordingAudio : AudioFeedback {
-        var last: Int? = null
-        val played = mutableListOf<Int>()
+        var last: StatusCue? = null
+        val played = mutableListOf<StatusCue>()
 
-        override fun play(resId: Int) {
-            last = resId
-            played.add(resId)
+        override fun play(cue: StatusCue) {
+            last = cue
+            played.add(cue)
         }
     }
 

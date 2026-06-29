@@ -3,8 +3,8 @@
 
 package app.solstone.observer.glasses
 
-import androidx.annotation.RawRes
+import app.solstone.core.diagnostics.StatusCue
 
 fun interface AudioFeedback {
-    fun play(@RawRes resId: Int)
+    fun play(cue: StatusCue)
 }

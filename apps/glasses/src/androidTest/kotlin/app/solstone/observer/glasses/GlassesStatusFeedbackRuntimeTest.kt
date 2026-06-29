@@ -4,6 +4,7 @@
 package app.solstone.observer.glasses
 
 import android.Manifest
+import app.solstone.core.diagnostics.StatusCue
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
@@ -41,13 +42,13 @@ class GlassesStatusFeedbackRuntimeTest {
 
             container.speakCurrentStatus()
 
-            assertEquals(R.raw.fb_observer_paused, waitForPlayedResId(audio))
+            assertEquals(StatusCue.OBSERVER_PAUSED, waitForPlayedCue(audio))
         }
     }
 
-    private fun waitForPlayedResId(audio: FakeAudioFeedback): Int? {
+    private fun waitForPlayedCue(audio: FakeAudioFeedback): StatusCue? {
         repeat(30) {
-            audio.lastPlayedResId?.let { return it }
+            audio.lastPlayedCue?.let { return it }
             Thread.sleep(100L)
         }
         return null

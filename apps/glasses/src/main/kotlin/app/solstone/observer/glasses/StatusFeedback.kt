@@ -24,6 +24,20 @@ fun rawResFor(cue: StatusCue): Int =
         StatusCue.BATTERY_LOW -> R.raw.fb_battery_low
     }
 
+fun phraseFor(cue: StatusCue): String =
+    when (cue) {
+        StatusCue.OBSERVING -> "Observing"
+        StatusCue.OBSERVER_PAUSED -> "Observing paused"
+        StatusCue.NEEDS_ATTENTION -> "Needs attention"
+        StatusCue.NOT_PAIRED -> "Not paired"
+        StatusCue.PAIRED -> "Paired"
+        StatusCue.SYNC_FAILED -> "Sync failed"
+        StatusCue.PAIRING_READY -> "Pairing ready"
+        StatusCue.HANDSHAKE_VALID -> "Handshake valid"
+        StatusCue.PAIRING_FAILED -> "Pairing failed"
+        StatusCue.BATTERY_LOW -> "Battery low"
+    }
+
 fun cueSnapshot(controller: HarnessController): CueSnapshot {
     val diagnostics = controller.diagnostics()
     return CueSnapshot(
@@ -63,7 +77,6 @@ fun dispatchSwipe(
 class StatusCuePoller(
     private val snapshotProvider: () -> CueSnapshot,
     private val audio: AudioFeedback,
-    private val rawResFor: (StatusCue) -> Int = ::rawResFor,
 ) {
     private var previous: CueSnapshot? = null
 
@@ -71,6 +84,6 @@ class StatusCuePoller(
         val current = snapshotProvider()
         val cue = cueFor(previous, current)
         previous = current
-        if (cue != null) audio.play(rawResFor(cue))
+        if (cue != null) audio.play(cue)
     }
 }

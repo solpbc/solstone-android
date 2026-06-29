@@ -21,8 +21,10 @@ import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import app.solstone.platform.power.AndroidDeviceFingerprintProvider
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
 import app.solstone.platform.power.ExemptionVerifier
+import app.solstone.platform.power.OemGuidanceCatalog
 import app.solstone.platform.power.SharedPreferencesAutostartConfirmationStore
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
@@ -37,12 +39,15 @@ fun createGlassesHarnessFlavor(
 ): GlassesHarnessFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
+    val guidance = OemGuidanceCatalog.select(AndroidDeviceFingerprintProvider().fingerprint())
     val verifier = ExemptionVerifier(
-        AndroidBatteryExemptionStatus(context),
-        SharedPreferencesAutostartConfirmationStore(context),
+        batteryExemptionStatus = AndroidBatteryExemptionStatus(context),
+        autostartConfirmationStore = SharedPreferencesAutostartConfirmationStore(context),
+        autostartRequired = guidance.autostartAvailable,
     )
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val syncEnqueue = RealSyncEnqueue(context, GLASSES_STREAM)
+    val packaged = RealAudioFeedback(context)
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,
         syncEnqueue = syncEnqueue,
@@ -69,7 +74,12 @@ fun createGlassesHarnessFlavor(
             deviceLabel = "solstone glasses",
             opportunisticSync = opportunisticSync,
         ),
-        audioFeedback = RealAudioFeedback(context),
+        audioFeedback = if (guidance.id == "rokid") {
+            RokidTtsAudioFeedback(AndroidRokidTtsSpeaker(context), packaged)
+        } else {
+            packaged
+        },
+        oemGuidance = guidance,
         exemptionVerified = verifier::isExemptionVerified,
     )
 }

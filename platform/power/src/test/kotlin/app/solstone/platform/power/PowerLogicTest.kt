@@ -17,6 +17,20 @@ class PowerLogicTest {
     }
 
     @Test
+    fun guidanceSelectsRokidByBrand() {
+        val selected = OemGuidanceCatalog.select(DeviceFingerprint("unknown", "Rokid", "unknown"))
+
+        assertEquals("rokid", selected.id)
+    }
+
+    @Test
+    fun guidanceSelectsRokidByRv203Model() {
+        val selected = OemGuidanceCatalog.select(DeviceFingerprint("unknown", "unknown", "RV203 glasses"))
+
+        assertEquals("rokid", selected.id)
+    }
+
+    @Test
     fun guidanceSelectsSamsungByManufacturer() {
         val selected = OemGuidanceCatalog.select(DeviceFingerprint("Samsung", "galaxy", "phone"))
 
@@ -32,12 +46,20 @@ class PowerLogicTest {
 
     @Test
     fun everyGuidanceEntryHasBatteryAndAutostartActions() {
-        listOf(OemGuidanceCatalog.generic, OemGuidanceCatalog.rogbid, OemGuidanceCatalog.samsung).forEach { entry ->
+        listOf(OemGuidanceCatalog.generic, OemGuidanceCatalog.rokid, OemGuidanceCatalog.rogbid, OemGuidanceCatalog.samsung).forEach { entry ->
             assertTrue(entry.batteryExemption.instructionText.isNotBlank())
             assertTrue(entry.autostart.instructionText.isNotBlank())
             assertTrue(entry.batteryExemption.intentAction.isNotBlank())
             assertTrue(entry.autostart.intentAction.isNotBlank())
         }
+    }
+
+    @Test
+    fun onlyRokidMarksAutostartUnavailable() {
+        assertTrue(OemGuidanceCatalog.generic.autostartAvailable)
+        assertTrue(OemGuidanceCatalog.rogbid.autostartAvailable)
+        assertTrue(OemGuidanceCatalog.samsung.autostartAvailable)
+        assertFalse(OemGuidanceCatalog.rokid.autostartAvailable)
     }
 
     @Test
@@ -49,15 +71,24 @@ class PowerLogicTest {
     }
 
     @Test
+    fun exemptionCanUseBatteryOnlyWhenAutostartIsUnavailable() {
+        assertFalse(verifier(battery = false, autostart = false, autostartRequired = false).isExemptionVerified())
+        assertFalse(verifier(battery = false, autostart = true, autostartRequired = false).isExemptionVerified())
+        assertTrue(verifier(battery = true, autostart = false, autostartRequired = false).isExemptionVerified())
+        assertTrue(verifier(battery = true, autostart = true, autostartRequired = false).isExemptionVerified())
+    }
+
+    @Test
     fun storageStatusUsesThreshold() {
         assertFalse(StorageStatus(UsableSpaceProvider { 99L }, minimumFreeBytes = 100L).isStorageOk())
         assertTrue(StorageStatus(UsableSpaceProvider { 100L }, minimumFreeBytes = 100L).isStorageOk())
     }
 
-    private fun verifier(battery: Boolean, autostart: Boolean): ExemptionVerifier =
+    private fun verifier(battery: Boolean, autostart: Boolean, autostartRequired: Boolean = true): ExemptionVerifier =
         ExemptionVerifier(
             batteryExemptionStatus = BatteryExemptionStatus { battery },
             autostartConfirmationStore = FakeAutostartConfirmationStore(autostart),
+            autostartRequired = autostartRequired,
         )
 
     private class FakeAutostartConfirmationStore(initial: Boolean) : AutostartConfirmationStore {

@@ -3,17 +3,17 @@
 
 package app.solstone.observer.glasses
 
-import androidx.annotation.RawRes
+import app.solstone.core.diagnostics.StatusCue
 import java.util.concurrent.CopyOnWriteArrayList
 
 class FakeAudioFeedback : AudioFeedback {
     @Volatile
-    var lastPlayedResId: Int? = null
+    var lastPlayedCue: StatusCue? = null
         private set
-    val played = CopyOnWriteArrayList<Int>()
+    val played = CopyOnWriteArrayList<StatusCue>()
 
-    override fun play(@RawRes resId: Int) {
-        lastPlayedResId = resId
-        played.add(resId)
+    override fun play(cue: StatusCue) {
+        lastPlayedCue = cue
+        played.add(cue)
     }
 }

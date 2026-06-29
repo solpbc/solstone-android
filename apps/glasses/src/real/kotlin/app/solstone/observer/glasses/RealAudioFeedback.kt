@@ -5,13 +5,14 @@ package app.solstone.observer.glasses
 
 import android.content.Context
 import android.media.MediaPlayer
-import androidx.annotation.RawRes
+import app.solstone.core.diagnostics.StatusCue
 
 class RealAudioFeedback(private val context: Context) : AudioFeedback {
     private var current: MediaPlayer? = null
 
     @Synchronized
-    override fun play(@RawRes resId: Int) {
+    override fun play(cue: StatusCue) {
+        val resId = rawResFor(cue)
         current?.let { runCatching { it.reset() }; runCatching { it.release() } }
         current = MediaPlayer.create(context, resId)?.apply {
             setOnCompletionListener { it.release() }

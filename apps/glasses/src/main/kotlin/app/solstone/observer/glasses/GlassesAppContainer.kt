@@ -34,6 +34,8 @@ import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
+import app.solstone.platform.power.OemGuidance
+import app.solstone.platform.power.OemGuidanceCatalog
 import java.time.ZoneId
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -89,10 +91,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             looksLikePairLink = ::looksLikePairLink,
             unregisterWatcher = ::stopPhotoPairWatch,
             onPairingReadyCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_READY)) } }
+                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_READY) } }
             },
             onPairingFailedCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_FAILED)) } }
+                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_FAILED) } }
             },
             log = { android.util.Log.i("GlassesPair", it) },
             nowSeconds = ::nowSeconds,
@@ -109,6 +111,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     init {
         // Keep the flavor seam observable for mock tests; WorkManager UPDATE keeps this idempotent.
         controller.schedulePeriodicSync()
+        android.util.Log.i(
+            "GlassesPower",
+            "oem guidance ${flavor.oemGuidance.id} autostartAvailable=${flavor.oemGuidance.autostartAvailable}",
+        )
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
         if (imageReadGranted()) {
@@ -133,7 +139,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     override fun speakCurrentStatus() {
         background.execute {
             runCatching {
-                flavor.audioFeedback.play(rawResFor(statusCueFor(cueSnapshot(controller))))
+                flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller)))
             }
         }
     }
@@ -141,7 +147,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     override fun speakNeedsAttention() {
         background.execute {
             runCatching {
-                flavor.audioFeedback.play(rawResFor(StatusCue.NEEDS_ATTENTION))
+                flavor.audioFeedback.play(StatusCue.NEEDS_ATTENTION)
             }
         }
     }
@@ -261,6 +267,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
 data class GlassesHarnessFlavor(
     val controller: HarnessController,
     val audioFeedback: AudioFeedback,
+    val oemGuidance: OemGuidance = OemGuidanceCatalog.generic,
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
     val exemptionVerified: () -> Boolean = { true },

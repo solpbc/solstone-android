@@ -22,12 +22,17 @@ data class OemGuidance(
     val id: String,
     val batteryExemption: GuidanceAction,
     val autostart: GuidanceAction,
+    val autostartAvailable: Boolean = true,
 )
 
 object OemGuidanceCatalog {
     fun select(fingerprint: DeviceFingerprint): OemGuidance {
         val normalized = fingerprint.normalized()
         return when {
+            // ASSUMED/UNVERIFIED Build strings: docs/device-matrix.md confirms RV203 hardware only.
+            normalized.manufacturer.contains("rokid") ||
+                normalized.brand.contains("rokid") ||
+                normalized.model.contains("rv203") -> rokid
             normalized.manufacturer.contains("rogbid") ||
                 normalized.brand.contains("rogbid") ||
                 normalized.model.contains("model x") -> rogbid
@@ -49,6 +54,21 @@ object OemGuidanceCatalog {
             intentData = packageUri,
             instructionText = "Open app settings and enable autostart or auto-launch if your device offers it.",
         ),
+    )
+
+    val rokid: OemGuidance = OemGuidance(
+        id = "rokid",
+        batteryExemption = GuidanceAction(
+            intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            intentData = packageUri,
+            instructionText = "Open app settings and allow Solstone to keep running where the OS permits it. Battery and background survival are best-effort.",
+        ),
+        autostart = GuidanceAction(
+            intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            intentData = packageUri,
+            instructionText = "No reliable normal-app or ADB autostart path is known, and Solstone cannot toggle Wi-Fi as a normal app. After reboot, start Solstone explicitly if the OS did not preserve it.",
+        ),
+        autostartAvailable = false,
     )
 
     val rogbid: OemGuidance = OemGuidance(
