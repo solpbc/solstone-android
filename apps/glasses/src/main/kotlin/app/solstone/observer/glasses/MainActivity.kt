@@ -16,8 +16,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        container = GlassesAppContainer(this)
-        GlassesHarnessRuntime.container = container
+        val runtime = GlassesHarnessRuntime.runtime ?: (application as GlassesApplication).runtime.also {
+            GlassesHarnessRuntime.runtime = it
+        }
+        container = runtime.container()
         setContentView(
             GlassesHarnessUi(
                 context = this,
@@ -39,12 +41,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) {
-            container.close()
-            if (GlassesHarnessRuntime.container === container) {
-                GlassesHarnessRuntime.container = null
-            }
-        }
         super.onDestroy()
     }
 

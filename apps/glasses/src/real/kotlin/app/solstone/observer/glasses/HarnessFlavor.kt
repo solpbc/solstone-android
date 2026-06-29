@@ -13,8 +13,10 @@ import app.solstone.observer.harness.RealPairProbe
 import app.solstone.observer.harness.RealPlStatusProbe
 import app.solstone.observer.harness.RealRelayPairProbe
 import app.solstone.observer.harness.RealSyncEnqueue
+import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.platform.camera.still.SingleHolderCameraLock
+import app.solstone.platform.fgs.AndroidForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
@@ -40,6 +42,8 @@ fun createGlassesHarnessFlavor(
     return GlassesHarnessFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
+            desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
+            foregroundStartAllowed = AndroidForegroundStartAllowed(),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),

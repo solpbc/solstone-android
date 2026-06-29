@@ -39,6 +39,31 @@ class FgsLogicTest {
         )
     }
 
+    @Test
+    fun nullRehydratorIsNoOp() {
+        ObserverForegroundService.dispatchRehydrate(null)
+    }
+
+    @Test
+    fun nonNullRehydratorInvokedOnce() {
+        var calls = 0
+
+        ObserverForegroundService.dispatchRehydrate(
+            ObserverForegroundService.ObserverServiceRehydrator { calls += 1 },
+        )
+
+        assertTrue(calls == 1)
+    }
+
+    @Test
+    fun bootActionDoesNotStartForegroundServiceOrCapture() {
+        val action = observerBootAction()
+
+        assertTrue(action.postNotification)
+        assertFalse(action.startForegroundService)
+        assertFalse(action.startCapture)
+    }
+
     private fun granted(): PermissionStatus =
         PermissionStatus(
             microphoneGranted = true,

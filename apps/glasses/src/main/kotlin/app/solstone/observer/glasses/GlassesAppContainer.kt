@@ -34,7 +34,14 @@ import java.time.ZoneId
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class GlassesAppContainer(private val context: Context) {
+interface GlassesRuntimeContainer {
+    val controller: HarnessController
+    fun speakCurrentStatus()
+    fun speakNeedsAttention()
+    fun close()
+}
+
+class GlassesAppContainer(private val context: Context) : GlassesRuntimeContainer {
     val cameraLock = SingleHolderCameraLock()
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
@@ -46,21 +53,18 @@ class GlassesAppContainer(private val context: Context) {
         main = { task -> mainHandler.post { task() } },
     )
     private var activePipeline: CapturePipeline? = null
+    var pipelineBuildCount: Int = 0
+        private set
     private val stillQrDecoder = StillQrDecoder()
     private var photoPairObserver: ContentObserver? = null
-    private val lifecycle = object : ObserverLifecycle {
-        override fun start() {
-            ObserverForegroundService.startFromVisibleContext(context)
-            val pipeline = newPipeline().also { activePipeline = it }
-            pipeline.start()
-        }
-
-        override fun stop() {
-            activePipeline?.stop()
-            activePipeline = null
-            ObserverForegroundService.stop(context)
-        }
-    }
+    private val lifecycle = IdempotentPipelineLifecycle(
+        startForeground = { ObserverForegroundService.startFromVisibleContext(context) },
+        stopForeground = { ObserverForegroundService.stop(context) },
+        buildPipeline = ::newPipeline,
+        startPipeline = { it.start() },
+        stopPipeline = { it.stop() },
+        onActiveChanged = { activePipeline = it },
+    )
 
     val flavor: GlassesHarnessFlavor = createGlassesHarnessFlavor(
         context = context,
@@ -71,7 +75,7 @@ class GlassesAppContainer(private val context: Context) {
         spoolDir = spoolDir,
     )
 
-    val controller: HarnessController = flavor.controller
+    override val controller: HarnessController = flavor.controller
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
     private val pollRunnable = object : Runnable {
         override fun run() {
@@ -91,7 +95,7 @@ class GlassesAppContainer(private val context: Context) {
         }
     }
 
-    fun close() {
+    override fun close() {
         stopPhotoPairWatch()
         mainHandler.removeCallbacks(pollRunnable)
         runCatching { controller.stop() }
@@ -100,7 +104,7 @@ class GlassesAppContainer(private val context: Context) {
         database.close()
     }
 
-    fun speakCurrentStatus() {
+    override fun speakCurrentStatus() {
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(rawResFor(statusCueFor(cueSnapshot(controller))))
@@ -108,7 +112,7 @@ class GlassesAppContainer(private val context: Context) {
         }
     }
 
-    fun speakNeedsAttention() {
+    override fun speakNeedsAttention() {
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(rawResFor(StatusCue.NEEDS_ATTENTION))
@@ -137,8 +141,9 @@ class GlassesAppContainer(private val context: Context) {
         photoPairObserver = null
     }
 
-    private fun newPipeline(): CapturePipeline =
-        CapturePipeline(
+    private fun newPipeline(): CapturePipeline {
+        pipelineBuildCount += 1
+        return CapturePipeline(
             segmenter = Segmenter(ZoneId.systemDefault()),
             spoolWriter = FileSpoolWriter(spoolDir),
             sealedSink = RoomSealedSegmentSink(database.segmentDao()),
@@ -147,6 +152,7 @@ class GlassesAppContainer(private val context: Context) {
             nowProvider = System::currentTimeMillis,
             tickIntervalMs = TICK_INTERVAL_MS,
         )
+    }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
         val condition = captureSetup.engines.firstOrNull()?.condition()
@@ -212,7 +218,9 @@ interface SyncControl {
 }
 
 object GlassesHarnessRuntime {
-    var container: GlassesAppContainer? = null
+    @Volatile var runtime: GlassesObserverRuntime? = null
+    val container: GlassesRuntimeContainer?
+        get() = runtime?.containerIfInitialized
     var hooks: GlassesRuntimeHooks? = null
 }
 
@@ -220,4 +228,33 @@ class GlassesRuntimeHooks {
     @Volatile var onRecoveryComplete: (() -> Unit)? = null
     @Volatile var onEvidenceLoadComplete: (() -> Unit)? = null
     @Volatile var onSyncLoadComplete: (() -> Unit)? = null
+}
+
+internal class IdempotentPipelineLifecycle<T>(
+    private val startForeground: () -> Unit,
+    private val stopForeground: () -> Unit,
+    private val buildPipeline: () -> T,
+    private val startPipeline: (T) -> Unit,
+    private val stopPipeline: (T) -> Unit,
+    private val onActiveChanged: (T?) -> Unit,
+) : ObserverLifecycle {
+    private var active: T? = null
+
+    override fun start() {
+        startForeground()
+        if (active != null) return
+        val pipeline = buildPipeline()
+        active = pipeline
+        onActiveChanged(pipeline)
+        startPipeline(pipeline)
+    }
+
+    override fun stop() {
+        active?.let { pipeline ->
+            stopPipeline(pipeline)
+            active = null
+            onActiveChanged(null)
+        }
+        stopForeground()
+    }
 }

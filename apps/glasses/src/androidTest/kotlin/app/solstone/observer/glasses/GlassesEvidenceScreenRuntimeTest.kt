@@ -147,7 +147,7 @@ class GlassesEvidenceScreenRuntimeTest {
     }
 
     private fun waitForContainer(): GlassesAppContainer {
-        return GlassesHarnessRuntime.container ?: run {
+        return GlassesHarnessRuntime.container as? GlassesAppContainer ?: run {
             assumeTrue("glasses harness container was not created", false)
             error("unreachable")
         }

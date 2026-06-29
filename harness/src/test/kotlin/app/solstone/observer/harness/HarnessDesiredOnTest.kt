@@ -23,4 +23,28 @@ class HarnessDesiredOnTest {
         assertFalse(f.controller.desiredOn)
         assertEquals(SourceState.OFF, f.controller.diagnostics().state)
     }
+
+    @Test
+    fun startSetsDesiredOnStopSetsDesiredOff() {
+        val f = fixture()
+
+        f.controller.start()
+        assertEquals(true, f.desiredStore.current)
+        assertEquals(true, f.controller.desiredOn)
+
+        f.controller.stop()
+        assertEquals(false, f.desiredStore.current)
+        assertEquals(false, f.controller.desiredOn)
+    }
+
+    @Test
+    fun sharedStoreSurvivesControllerRecreation() {
+        val store = FakeDesiredObservingStore()
+        val first = fixture(desiredStore = store)
+
+        first.controller.start()
+        val second = fixture(desiredStore = store)
+
+        assertEquals(true, second.controller.desiredOn)
+    }
 }

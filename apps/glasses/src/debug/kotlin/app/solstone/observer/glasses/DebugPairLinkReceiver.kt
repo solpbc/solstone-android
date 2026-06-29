@@ -25,17 +25,24 @@ class DebugPairLinkReceiver : BroadcastReceiver() {
         val action = intent.getStringExtra(EXTRA_ACTION)
         executor.execute {
             try {
-                val controller = GlassesHarnessRuntime.container?.controller
-                if (controller == null) {
-                    Log.w(TAG, "no live container; ignoring debug intent")
+                val runtime = GlassesHarnessRuntime.runtime
+                    ?: (context.applicationContext as? GlassesApplication)?.runtime
+                if (runtime == null) {
+                    Log.w(TAG, "debug command result=${CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)}")
                     return@execute
                 }
-                when {
-                    !pairLink.isNullOrBlank() -> controller.onScannedPairLink(pairLink)
-                    action == "observe_start" -> Log.i(TAG, "observe_start -> started=${controller.start()}")
-                    action == "observe_stop" -> { controller.stop(); Log.i(TAG, "observe_stop") }
-                    action == "sync_now" -> { controller.syncNow(); Log.i(TAG, "sync_now enqueued") }
-                    else -> Log.w(TAG, "no recognized extra (pair_link / action)")
+                val result = when {
+                    !pairLink.isNullOrBlank() -> runtime.pairLink(pairLink)
+                    action == "observe_start" -> runtime.observeStart()
+                    action == "observe_stop" -> runtime.observeStop()
+                    action == "sync_now" -> runtime.syncNow()
+                    else -> {
+                        Log.w(TAG, "no recognized extra (pair_link / action)")
+                        null
+                    }
+                }
+                if (result != null) {
+                    Log.i(TAG, "debug command result=$result")
                 }
             } finally {
                 pending.finish()

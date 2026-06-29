@@ -30,6 +30,11 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun desiredOnWithoutRuntimeFactsNeedsAttention() {
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
+    }
+
+    @Test
     fun reduceMapsS1HonestStateFactsIndividually() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))

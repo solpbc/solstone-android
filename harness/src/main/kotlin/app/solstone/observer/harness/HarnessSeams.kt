@@ -10,6 +10,21 @@ interface ObserverLifecycle {
     fun stop()
 }
 
+interface DesiredObservingStore {
+    fun isDesiredOn(): Boolean
+    fun setDesiredOn(on: Boolean)
+}
+
+class InMemoryDesiredObservingStore(initial: Boolean = false) : DesiredObservingStore {
+    private var desiredOn = initial
+
+    override fun isDesiredOn(): Boolean = desiredOn
+
+    override fun setDesiredOn(on: Boolean) {
+        desiredOn = on
+    }
+}
+
 fun interface HeartbeatFreshness {
     fun isFresh(): Boolean
 }

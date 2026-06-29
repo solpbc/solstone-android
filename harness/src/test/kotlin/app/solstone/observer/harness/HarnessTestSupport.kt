@@ -12,6 +12,7 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.platform.camera.still.CameraLock
+import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 
@@ -40,6 +41,20 @@ internal class FakeLifecycle : ObserverLifecycle {
 
 internal class MutablePermissionReader(var status: PermissionStatus) : PermissionStatusReader {
     override fun read(): PermissionStatus = status
+}
+
+internal class FakeDesiredObservingStore(initial: Boolean = false) : DesiredObservingStore {
+    var current = initial
+
+    override fun isDesiredOn(): Boolean = current
+
+    override fun setDesiredOn(on: Boolean) {
+        current = on
+    }
+}
+
+internal class FakeForegroundStartAllowed(var allowed: Boolean = true) : ForegroundStartAllowed {
+    override fun isForegroundStartAllowed(): Boolean = allowed
 }
 
 internal class FakeEndpointStore(var endpoint: DirectEndpoint? = null) : EndpointStore {
@@ -125,6 +140,8 @@ internal data class Fixture(
     val permissions: MutablePermissionReader,
     val lifecycle: FakeLifecycle,
     val heartbeat: MutableHeartbeat,
+    val desiredStore: FakeDesiredObservingStore,
+    val foregroundStartAllowed: FakeForegroundStartAllowed,
     val cameraLock: RecordingCameraLock,
     val sync: RecordingSyncEnqueue,
     val endpointStore: FakeEndpointStore,
@@ -157,6 +174,8 @@ internal fun fixture(
     endpointStore: FakeEndpointStore = FakeEndpointStore(DirectEndpoint("10.0.0.2", 7657)),
     credentialStore: FakeCredentialStore = FakeCredentialStore(credential()),
     identityStore: FakeIdentityStore = FakeIdentityStore(pairedHome()),
+    desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
+    foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -165,6 +184,8 @@ internal fun fixture(
     return Fixture(
         controller = HarnessController(
             permissionStatusReader = permissions,
+            desiredObservingStore = desiredStore,
+            foregroundStartAllowed = foregroundStartAllowed,
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = heartbeat,
@@ -183,6 +204,8 @@ internal fun fixture(
         permissions = permissions,
         lifecycle = lifecycle,
         heartbeat = heartbeat,
+        desiredStore = desiredStore,
+        foregroundStartAllowed = foregroundStartAllowed,
         cameraLock = cameraLock,
         sync = sync,
         endpointStore = endpointStore,

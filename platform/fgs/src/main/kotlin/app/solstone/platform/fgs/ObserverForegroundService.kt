@@ -30,6 +30,7 @@ class ObserverForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(ObserverNotification.SERVICE_NOTIFICATION_ID, ObserverNotification.ongoing(this))
         refreshHeartbeat()
+        dispatchRehydrate(rehydrator)
         return START_STICKY
     }
 
@@ -48,6 +49,12 @@ class ObserverForegroundService : Service() {
     companion object {
         private const val HEARTBEAT_INTERVAL_MS = 5_000L
         private val lastBeatNanos = AtomicLong(0L)
+
+        @Volatile var rehydrator: ObserverServiceRehydrator? = null
+
+        fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
+            hook?.onForegroundServiceStarted()
+        }
 
         fun startFromVisibleContext(context: Context) {
             val intent = Intent(context, ObserverForegroundService::class.java)
@@ -72,5 +79,9 @@ class ObserverForegroundService : Service() {
         private fun invalidateHeartbeat() {
             lastBeatNanos.set(0L)
         }
+    }
+
+    fun interface ObserverServiceRehydrator {
+        fun onForegroundServiceStarted()
     }
 }

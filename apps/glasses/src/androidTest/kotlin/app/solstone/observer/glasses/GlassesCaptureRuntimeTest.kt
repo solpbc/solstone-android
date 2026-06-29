@@ -35,7 +35,8 @@ class GlassesCaptureRuntimeTest {
     @After
     fun resetRuntime() {
         GlassesHarnessRuntime.hooks = null
-        GlassesHarnessRuntime.container = null
+        GlassesHarnessRuntime.runtime?.closeForTest()
+        GlassesHarnessRuntime.runtime = null
     }
 
     @Test
@@ -79,7 +80,7 @@ class GlassesCaptureRuntimeTest {
     }
 
     private fun waitForContainer(): GlassesAppContainer {
-        return GlassesHarnessRuntime.container ?: run {
+        return GlassesHarnessRuntime.container as? GlassesAppContainer ?: run {
             assumeTrue("glasses harness container was not created", false)
             error("unreachable")
         }

@@ -11,6 +11,8 @@ import android.content.Intent
 class ObserverBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val action = observerBootAction()
+        if (!action.postNotification) return
         ObserverNotification.ensureChannel(context)
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.notify(
@@ -19,3 +21,18 @@ class ObserverBootReceiver : BroadcastReceiver() {
         )
     }
 }
+
+data class ObserverBootAction(
+    val postNotification: Boolean,
+    val startForegroundService: Boolean,
+    val startCapture: Boolean,
+    val scheduleSync: Boolean,
+)
+
+fun observerBootAction(): ObserverBootAction =
+    ObserverBootAction(
+        postNotification = true,
+        startForegroundService = false,
+        startCapture = false,
+        scheduleSync = false,
+    )

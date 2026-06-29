@@ -26,13 +26,14 @@ class GlassesStatusFeedbackRuntimeTest {
     @After
     fun resetRuntime() {
         GlassesHarnessRuntime.hooks = null
-        GlassesHarnessRuntime.container = null
+        GlassesHarnessRuntime.runtime?.closeForTest()
+        GlassesHarnessRuntime.runtime = null
     }
 
     @Test
     fun speakCurrentStatusUsesFakeAudioFeedback() {
         ActivityScenario.launch(MainActivity::class.java).use {
-            val container = GlassesHarnessRuntime.container ?: run {
+            val container = GlassesHarnessRuntime.container as? GlassesAppContainer ?: run {
                 assumeTrue("glasses harness container was not created", false)
                 error("unreachable")
             }

@@ -14,12 +14,30 @@ import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.camera.still.CameraLock
+import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import java.net.URL
 
+enum class ObserverStartMode { VisibleStart, Rehydrate }
+
+enum class ObserverStartBlocker {
+    NotDesired,
+    PermissionsMissing,
+    Unpaired,
+    TransportUnavailable,
+    ForegroundStartNotAllowed,
+}
+
+data class ObserverStartReadiness(
+    val allowed: Boolean,
+    val blockers: Set<ObserverStartBlocker>,
+)
+
 class HarnessController(
     private val permissionStatusReader: PermissionStatusReader,
+    private val desiredObservingStore: DesiredObservingStore,
+    private val foregroundStartAllowed: ForegroundStartAllowed,
     private val cameraLock: CameraLock,
     private val observerLifecycle: ObserverLifecycle,
     private val heartbeatFreshness: HeartbeatFreshness,
@@ -35,8 +53,11 @@ class HarnessController(
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
 ) {
-    var desiredOn: Boolean = false
-        private set
+    var desiredOn: Boolean
+        get() = desiredObservingStore.isDesiredOn()
+        private set(value) {
+            desiredObservingStore.setDesiredOn(value)
+        }
 
     var permissionStatus: PermissionStatus = permissionStatusReader.read()
         private set
@@ -59,9 +80,31 @@ class HarnessController(
 
     fun onPermissionsRequested(): PermissionStatus = refreshPermissions()
 
-    fun start(): Boolean {
+    fun startReadiness(mode: ObserverStartMode): ObserverStartReadiness {
         refreshPermissions()
+        val blockers = linkedSetOf<ObserverStartBlocker>()
         if (!permissionStatus.allRequiredGranted) {
+            blockers += ObserverStartBlocker.PermissionsMissing
+        }
+        if (mode == ObserverStartMode.Rehydrate) {
+            if (!desiredOn) {
+                blockers += ObserverStartBlocker.NotDesired
+            }
+            if (pairingFact() != PairingFact.PAIRED) {
+                blockers += ObserverStartBlocker.Unpaired
+            }
+            if (probePlStatus() !is HarnessPlStatus.Reachable) {
+                blockers += ObserverStartBlocker.TransportUnavailable
+            }
+            if (!foregroundStartAllowed.isForegroundStartAllowed()) {
+                blockers += ObserverStartBlocker.ForegroundStartNotAllowed
+            }
+        }
+        return ObserverStartReadiness(allowed = blockers.isEmpty(), blockers = blockers)
+    }
+
+    fun start(): Boolean {
+        if (!startReadiness(ObserverStartMode.VisibleStart).allowed) {
             lastStartRefused = true
             return false
         }
@@ -74,6 +117,17 @@ class HarnessController(
     fun stop() {
         observerLifecycle.stop()
         desiredOn = false
+    }
+
+    fun rehydrate(): ObserverStartReadiness {
+        if (!desiredOn) {
+            return ObserverStartReadiness(false, setOf(ObserverStartBlocker.NotDesired))
+        }
+        val readiness = startReadiness(ObserverStartMode.Rehydrate)
+        if (readiness.allowed) {
+            observerLifecycle.start()
+        }
+        return readiness
     }
 
     fun withScanSession(block: () -> Unit): Boolean {

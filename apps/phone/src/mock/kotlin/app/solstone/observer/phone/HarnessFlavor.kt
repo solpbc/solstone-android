@@ -17,6 +17,7 @@ import app.solstone.observer.harness.HarnessExportResult
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HeartbeatFreshness
+import app.solstone.observer.harness.InMemoryDesiredObservingStore
 import app.solstone.observer.harness.PairConnectionMode
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
@@ -25,6 +26,7 @@ import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.platform.camera.still.SingleHolderCameraLock
+import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import java.nio.file.Path
@@ -45,6 +47,8 @@ fun createPhoneHarnessFlavor(
     return PhoneHarnessFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
+            desiredObservingStore = InMemoryDesiredObservingStore(),
+            foregroundStartAllowed = ForegroundStartAllowed { true },
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = heartbeat,
