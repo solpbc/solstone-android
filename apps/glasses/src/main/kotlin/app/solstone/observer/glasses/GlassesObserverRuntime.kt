@@ -9,7 +9,7 @@ import app.solstone.core.model.SourceState
 class GlassesObserverRuntime(
     private val appContext: Context?,
     private val containerFactory: (Context) -> GlassesAppContainer = ::GlassesAppContainer,
-) {
+) : GlassesRuntimeCommands {
     private val lock = Any()
     private var container: GlassesAppContainer? = null
     private var testContainer: GlassesRuntimeContainer? = null
@@ -43,7 +43,7 @@ class GlassesObserverRuntime(
         runCatching { runtimeContainer().controller.rehydrate() }
     }
 
-    fun observeStart(): RuntimeCommandResult {
+    override fun observeStart(): RuntimeCommandResult {
         val controller = runtimeContainer().controller
         if (!controller.start()) {
             return CommandBlocked(RuntimeCommandBlockReason.MissingPermissions)
@@ -51,17 +51,17 @@ class GlassesObserverRuntime(
         return verdictFromDiagnostics()
     }
 
-    fun observeStop(): RuntimeCommandResult {
+    override fun observeStop(): RuntimeCommandResult {
         runtimeContainer().controller.stop()
         return CommandSucceeded
     }
 
-    fun syncNow(): RuntimeCommandResult {
+    override fun syncNow(): RuntimeCommandResult {
         runtimeContainer().controller.syncNow()
         return CommandSucceeded
     }
 
-    fun pairLink(raw: String): RuntimeCommandResult =
+    override fun pairLink(raw: String): RuntimeCommandResult =
         try {
             val result = runtimeContainer().controller.onScannedPairLink(raw)
                 ?: return CommandBlocked(RuntimeCommandBlockReason.InvalidPairLinkOrCameraBusy)
@@ -74,12 +74,12 @@ class GlassesObserverRuntime(
             CommandBlocked(RuntimeCommandBlockReason.PairingProbeFailed)
         }
 
-    fun speakStatus(): RuntimeCommandResult {
+    override fun speakStatus(): RuntimeCommandResult {
         runtimeContainer().speakCurrentStatus()
         return verdictFromDiagnostics()
     }
 
-    fun speakNeedsAttention(): RuntimeCommandResult {
+    override fun speakNeedsAttention(): RuntimeCommandResult {
         runtimeContainer().speakNeedsAttention()
         return CommandSucceeded
     }

@@ -15,6 +15,9 @@ import java.util.concurrent.Executors
  *   observe: adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action observe_start
  *   stop:    adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action observe_stop
  *   sync:    adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action sync_now
+ *   status:  adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action status
+ *   attention: adb shell am broadcast -n app.solstone.observer.glasses/.DebugPairLinkReceiver -e action speak_needs_attention
+ * The status action also accepts speak_status as an alias.
  * Mirrors the temple-swipe gestures (start/stop) + manual sync for on-device validation
  * where injected volume keys never reach MainActivity.onKeyDown.
  */
@@ -31,17 +34,10 @@ class DebugPairLinkReceiver : BroadcastReceiver() {
                     Log.w(TAG, "debug command result=${CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)}")
                     return@execute
                 }
-                val result = when {
-                    !pairLink.isNullOrBlank() -> runtime.pairLink(pairLink)
-                    action == "observe_start" -> runtime.observeStart()
-                    action == "observe_stop" -> runtime.observeStop()
-                    action == "sync_now" -> runtime.syncNow()
-                    else -> {
-                        Log.w(TAG, "no recognized extra (pair_link / action)")
-                        null
-                    }
-                }
-                if (result != null) {
+                val result = routeDebugRuntimeCommand(runtime, pairLink, action)
+                if (result == null) {
+                    Log.w(TAG, "no recognized extra (pair_link / action)")
+                } else {
                     Log.i(TAG, "debug command result=$result")
                 }
             } finally {
