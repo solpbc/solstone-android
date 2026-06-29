@@ -16,6 +16,14 @@ class FgsLogicTest {
     }
 
     @Test
+    fun startRequestOptimisticallyRefreshesHeartbeat() {
+        ObserverForegroundService.markStartRequested(nowNanos = 10)
+
+        assertTrue(ObserverForegroundService.isHeartbeatFresh(nowNanos = 10, staleAfterNanos = 5))
+        assertFalse(ObserverForegroundService.isHeartbeatFresh(nowNanos = 16, staleAfterNanos = 5))
+    }
+
+    @Test
     fun permissionStatusRequiresStartPermissions() {
         assertTrue(granted().allRequiredGranted)
         assertFalse(granted().copy(microphoneGranted = false).allRequiredGranted)

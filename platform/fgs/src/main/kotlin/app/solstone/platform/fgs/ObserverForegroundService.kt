@@ -57,6 +57,7 @@ class ObserverForegroundService : Service() {
         }
 
         fun startFromVisibleContext(context: Context) {
+            markStartRequested()
             val intent = Intent(context, ObserverForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= 26) {
                 context.startForegroundService(intent)
@@ -75,6 +76,10 @@ class ObserverForegroundService : Service() {
 
         fun isHeartbeatFresh(nowNanos: Long = System.nanoTime(), staleAfterNanos: Long = 15_000_000_000L): Boolean =
             HeartbeatMonitor.isFresh(nowNanos, lastHeartbeatNanos(), staleAfterNanos)
+
+        internal fun markStartRequested(nowNanos: Long = System.nanoTime()) {
+            lastBeatNanos.set(nowNanos)
+        }
 
         private fun invalidateHeartbeat() {
             lastBeatNanos.set(0L)

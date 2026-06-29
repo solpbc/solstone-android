@@ -83,8 +83,18 @@ class PhoneHarnessUi(
                 status.text = if (started) controller.diagnostics().display else "Start refused"
             }
             button("Stop") {
-                controller.stop()
-                status.text = controller.diagnostics().display
+                asyncLoad.load(
+                    {
+                        controller.stop()
+                        controller.diagnostics().display
+                    },
+                ) { state ->
+                    status.text = when (state) {
+                        LoadState.Loading -> "Stopping..."
+                        is LoadState.Loaded -> state.value
+                        is LoadState.Failed -> "Stop failed"
+                    }
+                }
             }
             backButton()
         }
