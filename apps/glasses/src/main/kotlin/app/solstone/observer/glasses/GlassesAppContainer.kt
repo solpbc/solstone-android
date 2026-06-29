@@ -85,6 +85,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     init {
+        // Keep the flavor seam observable for mock tests; WorkManager UPDATE keeps this idempotent.
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()

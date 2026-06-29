@@ -19,6 +19,7 @@ object SyncScheduler {
     const val PERIODIC_WORK_NAME = "solstone-sync-periodic"
     const val NOW_WORK_NAME = "solstone-sync-now"
     const val STREAM_TYPE_KEY = "stream_type"
+    internal val PERIODIC_WORK_POLICY = ExistingPeriodicWorkPolicy.UPDATE
 
     fun enqueuePeriodic(context: Context, streamType: String) {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
@@ -27,7 +28,7 @@ object SyncScheduler {
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            PERIODIC_WORK_POLICY,
             request,
         )
     }
@@ -45,12 +46,12 @@ object SyncScheduler {
         )
     }
 
-    private fun networkConstraints(): Constraints =
+    internal fun networkConstraints(): Constraints =
         Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-    private fun streamInputData(streamType: String): Data =
+    internal fun streamInputData(streamType: String): Data =
         Data.Builder()
             .putString(STREAM_TYPE_KEY, streamType)
             .build()

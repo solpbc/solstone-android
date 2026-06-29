@@ -187,7 +187,7 @@ Encodings are local source of truth until a journal-side contract is published: 
 
 The durable beacon state lives in `File(context.filesDir, "pl/beacon.txt")` via `FileBeaconStateStore`. It stores only `startedAt` and `recent_error_count`; no Room schema change is required.
 
-`stream_type` is threaded per form factor through `SyncScheduler` WorkManager input data. Pre-existing unique periodic work kept by `ExistingPeriodicWorkPolicy.KEEP` may not have input data and falls back to `MAIN_STREAM` until recreated; that fallback is acceptable for this lode.
+`stream_type` is threaded per form factor through `SyncScheduler` WorkManager input data. Periodic work uses `ExistingPeriodicWorkPolicy.UPDATE`, so later app starts refresh the unique periodic work's input data and constraints while preserving its schedule identity.
 
 Journal-side ingest rejections are a separate health source; this beacon does not replace them.
 
@@ -207,7 +207,7 @@ Journal-side ingest rejections are a separate health source; this beacon does no
 
 ## Scheduling And Status
 
-- `SyncScheduler.enqueuePeriodic(context, streamType)` creates unique periodic work with `ExistingPeriodicWorkPolicy.KEEP`, `NetworkType.CONNECTED`, and form-factor stream input data.
+- `SyncScheduler.enqueuePeriodic(context, streamType)` creates unique periodic work with `ExistingPeriodicWorkPolicy.UPDATE`, `NetworkType.CONNECTED`, and form-factor stream input data.
 - `SyncScheduler.enqueueNow(context, streamType)` creates expedited unique one-time work with `ExistingWorkPolicy.KEEP`, `OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST`, and form-factor stream input data.
 - Keep unique work names as constants.
 - Worker holds no sensor lock.

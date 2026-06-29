@@ -3,7 +3,12 @@
 
 package app.solstone.observer.harness
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
@@ -155,6 +160,45 @@ class RealSyncEnqueue(private val context: Context, private val streamType: Stri
 
     override fun enqueueNow() {
         SyncScheduler.enqueueNow(context, streamType)
+    }
+}
+
+@SuppressLint("MissingPermission")
+class AndroidNetworkAvailability(context: Context) : NetworkAvailability {
+    private val connectivityManager = context.applicationContext.getSystemService(ConnectivityManager::class.java)
+    private var callback: ConnectivityManager.NetworkCallback? = null
+
+    override fun start(onUsableNetwork: () -> Unit) {
+        val manager = connectivityManager ?: error("connectivity manager unavailable")
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                signalIfUsable(manager.getNetworkCapabilities(network), onUsableNetwork)
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                signalIfUsable(networkCapabilities, onUsableNetwork)
+            }
+        }
+        manager.registerNetworkCallback(
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(),
+            networkCallback,
+        )
+        callback = networkCallback
+    }
+
+    override fun stop() {
+        val manager = connectivityManager ?: return
+        val registered = callback ?: return
+        callback = null
+        runCatching { manager.unregisterNetworkCallback(registered) }
+    }
+
+    private fun signalIfUsable(capabilities: NetworkCapabilities?, onUsableNetwork: () -> Unit) {
+        if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
+            onUsableNetwork()
+        }
     }
 }
 

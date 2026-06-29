@@ -115,11 +115,20 @@ internal open class RecordingCameraLock : CameraLock {
 
 internal class FakeEvidenceReader(
     private val segments: List<HarnessEvidenceSegment> = emptyList(),
-    private val sync: HarnessSyncState = HarnessSyncState(0, null, null),
+    sync: HarnessSyncState = HarnessSyncState(0, null, null),
 ) : EvidenceReader {
+    var pendingCountValue: Int = sync.pendingCount
+    var failPendingCount: Boolean = false
+    private val syncState = sync
+
     override fun listEvidence(): List<HarnessEvidenceSegment> = segments
-    override fun pendingCount(): Int = sync.pendingCount
-    override fun syncState(): HarnessSyncState = sync
+
+    override fun pendingCount(): Int {
+        if (failPendingCount) error("pending failed")
+        return pendingCountValue
+    }
+
+    override fun syncState(): HarnessSyncState = syncState.copy(pendingCount = pendingCountValue)
 }
 
 internal class RecordingSyncEnqueue : SyncEnqueue {
@@ -135,6 +144,28 @@ internal class RecordingSyncEnqueue : SyncEnqueue {
     }
 }
 
+internal class FakeNetworkAvailability : NetworkAvailability {
+    var startCalls = 0
+    var stopCalls = 0
+    var failOnStart = false
+    private var callback: (() -> Unit)? = null
+
+    override fun start(onUsableNetwork: () -> Unit) {
+        startCalls += 1
+        if (failOnStart) error("network registration failed")
+        callback = onUsableNetwork
+    }
+
+    override fun stop() {
+        stopCalls += 1
+        callback = null
+    }
+
+    fun triggerUsableNetwork() {
+        callback?.invoke()
+    }
+}
+
 internal data class Fixture(
     val controller: HarnessController,
     val permissions: MutablePermissionReader,
@@ -147,6 +178,8 @@ internal data class Fixture(
     val endpointStore: FakeEndpointStore,
     val credentialStore: FakeCredentialStore,
     val identityStore: FakeIdentityStore,
+    val networkAvailability: FakeNetworkAvailability?,
+    val opportunisticSync: OpportunisticSync?,
 )
 
 internal class MutableHeartbeat(var fresh: Boolean = true) : HeartbeatFreshness {
@@ -176,11 +209,15 @@ internal fun fixture(
     identityStore: FakeIdentityStore = FakeIdentityStore(pairedHome()),
     desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
     foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
+    networkAvailability: FakeNetworkAvailability? = null,
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
     val heartbeat = MutableHeartbeat()
     val sync = RecordingSyncEnqueue()
+    val opportunisticSync = networkAvailability?.let {
+        OpportunisticSync(evidenceReader, sync, it)
+    }
     return Fixture(
         controller = HarnessController(
             permissionStatusReader = permissions,
@@ -200,6 +237,7 @@ internal fun fixture(
             identityStore = identityStore,
             sourceSnapshot = { snapshot },
             deviceLabel = "watch",
+            opportunisticSync = opportunisticSync,
         ),
         permissions = permissions,
         lifecycle = lifecycle,
@@ -211,6 +249,8 @@ internal fun fixture(
         endpointStore = endpointStore,
         credentialStore = credentialStore,
         identityStore = identityStore,
+        networkAvailability = networkAvailability,
+        opportunisticSync = opportunisticSync,
     )
 }
 

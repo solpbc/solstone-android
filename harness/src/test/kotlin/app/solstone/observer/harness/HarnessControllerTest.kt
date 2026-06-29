@@ -45,6 +45,27 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun successfulStartStartsOpportunisticSync() {
+        val f = fixture(networkAvailability = FakeNetworkAvailability())
+
+        assertTrue(f.controller.start())
+
+        assertEquals(1, f.networkAvailability?.startCalls)
+    }
+
+    @Test
+    fun refusedStartDoesNotStartOpportunisticSync() {
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        assertFalse(f.controller.start())
+
+        assertEquals(0, f.networkAvailability?.startCalls)
+    }
+
+    @Test
     fun neverPairedDeviceTurnedOnMapsUnpaired() {
         val f = fixture(
             endpointStore = FakeEndpointStore(),
@@ -87,6 +108,80 @@ class HarnessControllerTest {
         val f = fixture()
         assertNull(f.controller.onScannedPairLink("nope"))
         assertTrue(f.cameraLock.events.isEmpty())
+    }
+
+    @Test
+    fun scannedPairLinkSuccessFlushesPendingAfterPairLock() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(2, null, null))
+        val f = fixture(
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        assertTrue(f.controller.onScannedPairLink(validPairLink()) != null)
+
+        assertEquals(1, f.sync.calls)
+        assertEquals(listOf("acquire", "release"), f.cameraLock.events)
+    }
+
+    @Test
+    fun pairSuccessWithNoPendingEvidenceEnqueuesNothing() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        val f = fixture(
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        assertTrue(f.controller.onScannedPairLink(validPairLink()) != null)
+
+        assertEquals(0, f.sync.calls)
+    }
+
+    @Test
+    fun scannedPairLinkNonSuccessDoesNotFlushPending() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(2, null, null))
+        val f = fixture(
+            pairProbe = PairProbe { _, _ ->
+                HarnessPairProbeResult(true, 200, 503, "nope", "home", "10.0.0.2", 7657)
+            },
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        assertTrue(f.controller.onScannedPairLink(validPairLink()) != null)
+
+        assertEquals(0, f.sync.calls)
+    }
+
+    @Test
+    fun stopFlushesOpportunisticSyncBeforeStoppingLifecycle() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(2, null, null))
+        val f = fixture(
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        f.controller.start()
+        f.controller.stop()
+
+        assertEquals(1, f.sync.calls)
+        assertEquals(1, f.networkAvailability?.stopCalls)
+        assertEquals(1, f.lifecycle.stops)
+        assertFalse(f.controller.desiredOn)
+    }
+
+    @Test
+    fun ownerStopWithNoPendingEvidenceEnqueuesNothing() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        val f = fixture(
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        f.controller.start()
+        f.controller.stop()
+
+        assertEquals(0, f.sync.calls)
     }
 
     @Test

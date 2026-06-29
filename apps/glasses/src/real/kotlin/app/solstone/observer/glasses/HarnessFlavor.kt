@@ -5,7 +5,9 @@ package app.solstone.observer.glasses
 
 import android.content.Context
 import app.solstone.core.sources.GLASSES_STREAM
+import app.solstone.observer.harness.AndroidNetworkAvailability
 import app.solstone.observer.harness.HarnessController
+import app.solstone.observer.harness.OpportunisticSync
 import app.solstone.observer.harness.RealBundleExport
 import app.solstone.observer.harness.RealEvidenceReader
 import app.solstone.observer.harness.RealHeartbeatFreshness
@@ -39,6 +41,13 @@ fun createGlassesHarnessFlavor(
         AndroidBatteryExemptionStatus(context),
         SharedPreferencesAutostartConfirmationStore(context),
     )
+    val evidenceReader = RealEvidenceReader(database.segmentDao())
+    val syncEnqueue = RealSyncEnqueue(context, GLASSES_STREAM)
+    val opportunisticSync = OpportunisticSync(
+        evidenceReader = evidenceReader,
+        syncEnqueue = syncEnqueue,
+        networkAvailability = AndroidNetworkAvailability(context),
+    )
     return GlassesHarnessFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
@@ -50,14 +59,15 @@ fun createGlassesHarnessFlavor(
             pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
             relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
             plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
-            syncEnqueue = RealSyncEnqueue(context, GLASSES_STREAM),
-            evidenceReader = RealEvidenceReader(database.segmentDao()),
+            syncEnqueue = syncEnqueue,
+            evidenceReader = evidenceReader,
             bundleExport = RealBundleExport(spoolDir, external),
             endpointStore = stores.endpointStore,
             credentialStore = stores.credentialStore,
             identityStore = stores.identityStore,
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone glasses",
+            opportunisticSync = opportunisticSync,
         ),
         audioFeedback = RealAudioFeedback(context),
         exemptionVerified = verifier::isExemptionVerified,

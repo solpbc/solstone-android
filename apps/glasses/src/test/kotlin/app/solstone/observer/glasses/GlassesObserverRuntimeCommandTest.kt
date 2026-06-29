@@ -22,7 +22,9 @@ import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
 import app.solstone.observer.harness.HeartbeatFreshness
+import app.solstone.observer.harness.NetworkAvailability
 import app.solstone.observer.harness.ObserverLifecycle
+import app.solstone.observer.harness.OpportunisticSync
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
 import app.solstone.observer.harness.RelayPairProbe
@@ -90,6 +92,16 @@ class GlassesObserverRuntimeCommandTest {
             CommandBlocked(RuntimeCommandBlockReason.InvalidPairLinkOrCameraBusy),
             runtime.pairLink("not a pair link"),
         )
+    }
+
+    @Test
+    fun successfulPairLinkTriggersOpportunisticFlushWhenPendingExists() {
+        val container = FakeRuntimeContainer(controller = controller(pendingCount = 2, opportunisticSyncEnabled = true))
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandSucceeded, runtime.pairLink(validPairLink()))
+
+        assertEquals(1, container.sync.enqueueNowCalls)
     }
 
     @Test
@@ -171,10 +183,15 @@ class GlassesObserverRuntimeCommandTest {
         }
     }
 
-    private class FakeEvidenceReader : EvidenceReader {
+    private class FakeNetworkAvailability : NetworkAvailability {
+        override fun start(onUsableNetwork: () -> Unit) = Unit
+        override fun stop() = Unit
+    }
+
+    private class FakeEvidenceReader(private val pendingCount: Int = 0) : EvidenceReader {
         override fun listEvidence(): List<HarnessEvidenceSegment> = emptyList()
-        override fun pendingCount(): Int = 0
-        override fun syncState(): HarnessSyncState = HarnessSyncState(0, null, null)
+        override fun pendingCount(): Int = pendingCount
+        override fun syncState(): HarnessSyncState = HarnessSyncState(pendingCount, null, null)
     }
 
     private class FakeEndpointStore(var endpoint: DirectEndpoint? = DirectEndpoint("10.0.0.2", 7657)) : EndpointStore {
@@ -212,8 +229,16 @@ class GlassesObserverRuntimeCommandTest {
         endpointStore: FakeEndpointStore = FakeEndpointStore(),
         credentialStore: FakeCredentialStore = FakeCredentialStore(),
         identityStore: FakeIdentityStore = FakeIdentityStore(),
+        pendingCount: Int = 0,
+        opportunisticSyncEnabled: Boolean = false,
     ): HarnessController {
         val sync = RecordingSync()
+        val evidenceReader = FakeEvidenceReader(pendingCount)
+        val opportunisticSync = if (opportunisticSyncEnabled) {
+            OpportunisticSync(evidenceReader, sync, FakeNetworkAvailability())
+        } else {
+            null
+        }
         return HarnessController(
             permissionStatusReader = MutablePermissionReader(permissionStatus),
             desiredObservingStore = MemoryDesiredStore(),
@@ -225,7 +250,7 @@ class GlassesObserverRuntimeCommandTest {
             relayPairProbe = RelayPairProbe { _, _ -> HarnessPairProbeResult(true, 200, 200, "ok", "home", "link.solstone.app", 443) },
             plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
             syncEnqueue = sync,
-            evidenceReader = FakeEvidenceReader(),
+            evidenceReader = evidenceReader,
             bundleExport = BundleExport { HarnessExportResult("source", "dest", 0) },
             endpointStore = endpointStore,
             credentialStore = credentialStore,
@@ -239,6 +264,7 @@ class GlassesObserverRuntimeCommandTest {
                 )
             },
             deviceLabel = "test glasses",
+            opportunisticSync = opportunisticSync,
         ).also { syncByController[it] = sync }
     }
 

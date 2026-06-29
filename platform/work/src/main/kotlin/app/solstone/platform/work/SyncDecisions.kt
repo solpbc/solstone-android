@@ -8,6 +8,7 @@ import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
+import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.RetryDecision
@@ -17,6 +18,22 @@ import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.io.IOException
+
+fun streamTypeFromInput(raw: String?): String = raw ?: MAIN_STREAM
+
+fun registerObserverHandle(
+    client: PlHttpClient,
+    platform: String,
+    hostname: String,
+    streamType: String,
+    version: String,
+): String =
+    ObserverRegistration(client).register(
+        platform = platform,
+        hostname = hostname,
+        streamType = streamType,
+        version = version,
+    ).handle
 
 fun selectDrainSegments(segments: List<SegmentRow>): List<SegmentRow> =
     segments.filter { it.state == QueueState.SEALED && it.stream == MAIN_STREAM }

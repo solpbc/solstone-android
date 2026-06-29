@@ -12,7 +12,6 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.QueueState
 import app.solstone.core.observer.ObserverIngestClient
-import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.queue.QueueEvent
@@ -38,7 +37,7 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
-            val streamType = inputData.getString(SyncScheduler.STREAM_TYPE_KEY) ?: MAIN_STREAM
+            val streamType = streamTypeFromInput(inputData.getString(SyncScheduler.STREAM_TYPE_KEY))
             val stores = syncStores(applicationContext)
             when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
                 is SyncCredentials.NeedsRepair -> Result.failure()
@@ -115,12 +114,13 @@ class SyncWorker(
                         client = client,
                         existingHandle = credentials.identity.observerHandle,
                         register = { c ->
-                            ObserverRegistration(c).register(
+                            registerObserverHandle(
+                                client = c,
                                 platform = "android",
                                 hostname = deviceLabel(),
-                                streamType = MAIN_STREAM,
+                                streamType = streamType,
                                 version = appVersion(),
-                            ).handle
+                            )
                         },
                         persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
                         drain = { c, handle ->

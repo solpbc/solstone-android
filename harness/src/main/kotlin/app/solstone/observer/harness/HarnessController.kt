@@ -52,6 +52,7 @@ class HarnessController(
     private val identityStore: IdentityStore,
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
+    private val opportunisticSync: OpportunisticSync? = null,
 ) {
     var desiredOn: Boolean
         get() = desiredObservingStore.isDesiredOn()
@@ -111,10 +112,12 @@ class HarnessController(
         observerLifecycle.start()
         desiredOn = true
         lastStartRefused = false
+        opportunisticSync?.start()
         return true
     }
 
     fun stop() {
+        opportunisticSync?.stop()
         observerLifecycle.stop()
         desiredOn = false
     }
@@ -156,12 +159,16 @@ class HarnessController(
     fun onScannedPairLink(rawText: String): HarnessPairProbeResult? {
         if (!looksLikePairLink(rawText)) return null
         val link = parsePairLink(rawText)
-        return withPairLock {
+        val result = withPairLock {
             when (link) {
                 is DirectPairLink -> runPairProbe(rawText)
                 is RelayPairLink -> runRelayPairProbe(link)
             }
         }
+        if (result != null && result.pairStatus in 200..299 && result.statusStatus in 200..299) {
+            opportunisticSync?.onPairingSuccess()
+        }
+        return result
     }
 
     fun probePlStatus(): HarnessPlStatus {

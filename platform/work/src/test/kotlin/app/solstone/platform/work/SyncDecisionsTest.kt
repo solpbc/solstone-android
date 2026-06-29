@@ -9,6 +9,7 @@ import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.parseJson
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -19,6 +20,49 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SyncDecisionsTest {
+    @Test
+    fun streamTypeFromInputDefaultsMissingValueToMainStream() {
+        assertEquals(MAIN_STREAM, streamTypeFromInput(null))
+    }
+
+    @Test
+    fun streamTypeFromInputUsesProvidedValue() {
+        assertEquals("glasses", streamTypeFromInput("glasses"))
+    }
+
+    @Test
+    fun registerObserverHandleSendsProvidedStreamType() {
+        val client = FakePlHttpClient(registrationResponse(name = "glasses"))
+
+        val handle = registerObserverHandle(
+            client = client,
+            platform = "android",
+            hostname = "device",
+            streamType = "glasses",
+            version = "0.1",
+        )
+
+        assertEquals("observer-handle", handle)
+        val body = parseJson(client.lastBodyText()) as Map<*, *>
+        assertEquals("glasses", body["stream_type"])
+    }
+
+    @Test
+    fun registerObserverHandleSendsMainStreamType() {
+        val client = FakePlHttpClient(registrationResponse(name = MAIN_STREAM))
+
+        registerObserverHandle(
+            client = client,
+            platform = "android",
+            hostname = "device",
+            streamType = MAIN_STREAM,
+            version = "0.1",
+        )
+
+        val body = parseJson(client.lastBodyText()) as Map<*, *>
+        assertEquals(MAIN_STREAM, body["stream_type"])
+    }
+
     @Test
     fun selectDrainSegmentsDrainsObserverSealedIncludingLocationAndExcludesOtherStreams() {
         val rows = listOf(
@@ -187,14 +231,26 @@ class SyncDecisionsTest {
 
         override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
             paths += path
+            lastBody = body
             if (method == "POST") {
                 ingestCount += 1
             }
             return scripted.removeFirst()
         }
+
+        private var lastBody: ByteArray? = null
+
+        fun lastBodyText(): String = lastBody?.toString(Charsets.UTF_8) ?: error("no request body")
     }
 
     private companion object {
         const val DAY = "20260617"
+
+        fun registrationResponse(name: String): HttpResponse =
+            HttpResponse(
+                200,
+                emptyMap(),
+                """{"key":"observer-handle","name":"$name","ingest_url":"https://home.example/ingest"}""".toByteArray(),
+            )
     }
 }

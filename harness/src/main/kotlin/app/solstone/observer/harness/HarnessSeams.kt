@@ -46,6 +46,11 @@ interface SyncEnqueue {
     fun enqueueNow()
 }
 
+interface NetworkAvailability {
+    fun start(onUsableNetwork: () -> Unit)
+    fun stop()
+}
+
 interface EvidenceReader {
     fun listEvidence(): List<HarnessEvidenceSegment>
     fun pendingCount(): Int
