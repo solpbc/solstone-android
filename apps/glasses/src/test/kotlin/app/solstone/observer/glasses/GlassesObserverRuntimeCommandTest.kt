@@ -37,6 +37,7 @@ import app.solstone.platform.fgs.PermissionStatusReader
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 
 class GlassesObserverRuntimeCommandTest {
@@ -54,6 +55,16 @@ class GlassesObserverRuntimeCommandTest {
         assertEquals(1, container.sync.enqueueNowCalls)
         assertEquals(1, container.speakStatusCalls)
         assertEquals(1, container.speakAttentionCalls)
+    }
+
+    @Test
+    fun debugPairLinkCommandRoutesThroughPairingWithoutActivity() {
+        val container = FakeRuntimeContainer(controller = controller())
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandSucceeded, routeDebugRuntimeCommand(runtime, validPairLink(), action = null))
+
+        assertNotNull(container.controller.lastPairProbe)
     }
 
     @Test

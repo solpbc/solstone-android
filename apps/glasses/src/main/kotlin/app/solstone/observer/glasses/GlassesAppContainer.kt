@@ -3,9 +3,13 @@
 
 package app.solstone.observer.glasses
 
+import android.Manifest
+import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -76,6 +80,24 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     )
 
     override val controller: HarnessController = flavor.controller
+    private val photoPairCoordinator = PhotoPairCoordinator(
+        PhotoPairSeams(
+            recentImageCandidates = ::recentImageCandidates,
+            decode = ::decodePhotoPairCandidate,
+            pairingFact = controller::pairingFact,
+            onScannedPairLink = controller::onScannedPairLink,
+            looksLikePairLink = ::looksLikePairLink,
+            unregisterWatcher = ::stopPhotoPairWatch,
+            onPairingReadyCue = {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_READY)) } }
+            },
+            onPairingFailedCue = {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_FAILED)) } }
+            },
+            log = { android.util.Log.i("GlassesPair", it) },
+            nowSeconds = ::nowSeconds,
+        ),
+    )
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
     private val pollRunnable = object : Runnable {
         override fun run() {
@@ -89,6 +111,9 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
+        if (imageReadGranted()) {
+            background.execute { photoPairCoordinator.onStartup() }
+        }
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
@@ -125,11 +150,11 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         if (photoPairObserver != null || controller.pairingFact() == PairingFact.PAIRED) return
         val observer = object : ContentObserver(mainHandler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                handlePhotoPairChange(uri)
+                background.execute { handlePhotoPairChange() }
             }
         }
         context.contentResolver.registerContentObserver(
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             true,
             observer,
         )
@@ -166,33 +191,65 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         )
     }
 
-    private fun handlePhotoPairChange(uri: Uri?) {
-        if (controller.pairingFact() == PairingFact.PAIRED || uri == null) return
-        background.execute {
-            val decoded = try {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    stillQrDecoder.decode(stream)
+    private fun handlePhotoPairChange() {
+        if (controller.pairingFact() == PairingFact.PAIRED) {
+            stopPhotoPairWatch()
+            return
+        }
+        if (!imageReadGranted()) return
+        photoPairCoordinator.onChange()
+    }
+
+    private fun recentImageCandidates(): List<ImageRef> {
+        val cutoffSeconds = nowSeconds() - PhotoPairCoordinator.MAX_AGE_SECONDS
+        return try {
+            context.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED),
+                "${MediaStore.Images.Media.DATE_ADDED} >= ?",
+                arrayOf(cutoffSeconds.toString()),
+                "${MediaStore.Images.Media.DATE_ADDED} DESC",
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                buildList {
+                    while (cursor.moveToNext()) {
+                        if (size >= PhotoPairCoordinator.MAX_CANDIDATES) break
+                        add(
+                            ImageRef(
+                                id = cursor.getLong(idColumn),
+                                dateAddedSeconds = cursor.getLong(dateAddedColumn),
+                            ),
+                        )
+                    }
                 }
-            } catch (_: Exception) {
-                null
-            }
-            android.util.Log.i("GlassesPair", "photo uri=$uri decoded=" + (decoded?.take(60) ?: "null"))
-            if (decoded != null && looksLikePairLink(decoded)) {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_READY)) } }
-            }
-            when (decidePhotoPair(decoded, ::looksLikePairLink, controller::onScannedPairLink)) {
-                PhotoPairOutcome.FAILED -> mainHandler.post {
-                    runCatching { flavor.audioFeedback.play(rawResFor(StatusCue.PAIRING_FAILED)) }
-                }
-                PhotoPairOutcome.IGNORED,
-                PhotoPairOutcome.PAIRED,
-                PhotoPairOutcome.ALREADY_CONNECTED,
-                PhotoPairOutcome.RECONNECTING,
-                PhotoPairOutcome.RETRY,
-                -> Unit
-            }
+            } ?: emptyList()
+        } catch (exception: Exception) {
+            android.util.Log.i("GlassesPair", "recent image query failed: ${exception.javaClass.simpleName}")
+            emptyList()
         }
     }
+
+    private fun decodePhotoPairCandidate(ref: ImageRef): String? =
+        try {
+            val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ref.id)
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                stillQrDecoder.decode(stream)
+            }
+        } catch (_: Exception) {
+            null
+        }
+
+    private fun imageReadGranted(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun nowSeconds(): Long = System.currentTimeMillis() / 1000
 
     private companion object {
         const val TICK_INTERVAL_MS = 5_000L
