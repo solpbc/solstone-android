@@ -56,6 +56,20 @@ class FgsLogicTest {
     }
 
     @Test
+    fun nullNotificationDecorationIsNoOp() {
+        ObserverNotification.dispatchDecoration(null)
+    }
+
+    @Test
+    fun notificationDecorationInvokedOnce() {
+        var calls = 0
+
+        ObserverNotification.dispatchDecoration { calls += 1 }
+
+        assertTrue(calls == 1)
+    }
+
+    @Test
     fun bootActionDoesNotStartForegroundServiceOrCapture() {
         val action = observerBootAction()
 

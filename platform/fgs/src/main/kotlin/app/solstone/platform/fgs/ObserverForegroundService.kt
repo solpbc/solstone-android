@@ -28,7 +28,7 @@ class ObserverForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(ObserverNotification.SERVICE_NOTIFICATION_ID, ObserverNotification.ongoing(this))
+        startForeground(ObserverNotification.SERVICE_NOTIFICATION_ID, ObserverNotification.ongoing(this, decorate = true))
         refreshHeartbeat()
         dispatchRehydrate(rehydrator)
         return START_STICKY

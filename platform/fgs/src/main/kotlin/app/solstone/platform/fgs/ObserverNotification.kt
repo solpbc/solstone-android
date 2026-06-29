@@ -16,6 +16,8 @@ object ObserverNotification {
     const val TEXT_ON = "Observer — On"
     const val TEXT_NEEDS_ATTENTION = "Observer — Needs attention"
 
+    @Volatile var decorator: ObserverNotificationDecorator? = null
+
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -23,14 +25,22 @@ object ObserverNotification {
         manager.createNotificationChannel(channel)
     }
 
-    fun ongoing(context: Context, needsAttention: Boolean = false): Notification {
+    fun ongoing(context: Context, needsAttention: Boolean = false, decorate: Boolean = false): Notification {
         ensureChannel(context)
-        return builder(context)
+        val builder = builder(context)
             .setContentTitle("solstone")
             .setContentText(if (needsAttention) TEXT_NEEDS_ATTENTION else TEXT_ON)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
+        if (decorate) {
+            dispatchDecoration { decorator?.decorate(context, builder) }
+        }
+        return builder
             .build()
+    }
+
+    fun dispatchDecoration(hook: (() -> Unit)?) {
+        hook?.invoke()
     }
 
     private fun builder(context: Context): Notification.Builder =
@@ -40,4 +50,8 @@ object ObserverNotification {
             @Suppress("DEPRECATION")
             Notification.Builder(context)
         }
+}
+
+fun interface ObserverNotificationDecorator {
+    fun decorate(context: Context, builder: Notification.Builder)
 }
