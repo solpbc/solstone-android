@@ -129,6 +129,7 @@ class HarnessController(
         val readiness = startReadiness(ObserverStartMode.Rehydrate)
         if (readiness.allowed) {
             observerLifecycle.start()
+            opportunisticSync?.start()
         }
         return readiness
     }

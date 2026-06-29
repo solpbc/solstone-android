@@ -26,6 +26,21 @@ class HarnessControllerRehydrateTest {
     }
 
     @Test
+    fun allowedRehydrateStartsOpportunisticSync() {
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            networkAvailability = FakeNetworkAvailability(),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        val readiness = f.controller.rehydrate()
+
+        assertTrue(readiness.allowed)
+        assertEquals(1, f.lifecycle.starts)
+        assertEquals(1, f.networkAvailability?.startCalls)
+    }
+
+    @Test
     fun rehydrateBlockedLeavesDesiredOnAndDoesNotStart() {
         val cases = listOf(
             blockedFixture(
@@ -71,6 +86,33 @@ class HarnessControllerRehydrateTest {
     }
 
     @Test
+    fun blockedRehydrateDoesNotStartOpportunisticSync() {
+        val blocked = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            foregroundStartAllowed = FakeForegroundStartAllowed(false),
+            networkAvailability = FakeNetworkAvailability(),
+        )
+        blocked.desiredStore.setDesiredOn(true)
+
+        val blockedReadiness = blocked.controller.rehydrate()
+
+        assertFalse(blockedReadiness.allowed)
+        assertEquals(0, blocked.lifecycle.starts)
+        assertEquals(0, blocked.networkAvailability?.startCalls)
+
+        val notDesired = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            networkAvailability = FakeNetworkAvailability(),
+        )
+
+        val notDesiredReadiness = notDesired.controller.rehydrate()
+
+        assertFalse(notDesiredReadiness.allowed)
+        assertEquals(0, notDesired.lifecycle.starts)
+        assertEquals(0, notDesired.networkAvailability?.startCalls)
+    }
+
+    @Test
     fun rehydrateNoopsWhenNotDesired() {
         val f = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
 
@@ -79,6 +121,20 @@ class HarnessControllerRehydrateTest {
         assertFalse(readiness.allowed)
         assertEquals(setOf(ObserverStartBlocker.NotDesired), readiness.blockers)
         assertEquals(0, f.lifecycle.starts)
+    }
+
+    @Test
+    fun repeatedAllowedRehydrateRegistersNetworkOnce() {
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            networkAvailability = FakeNetworkAvailability(),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        assertTrue(f.controller.rehydrate().allowed)
+        assertTrue(f.controller.rehydrate().allowed)
+
+        assertEquals(1, f.networkAvailability?.startCalls)
     }
 
     @Test
