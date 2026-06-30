@@ -14,6 +14,11 @@ class SpkiPinTest {
     }
 
     @Test
+    fun caSpkiFp16MatchesRelayCaVector() {
+        assertContentEquals(hexBytes("eb57e58bb0ca6de03aa69a0888966e4c"), caSpkiFp16(TEST_CA_PEM))
+    }
+
+    @Test
     fun assertCaPinAcceptsLeafSignedByPinnedCa() {
         assertCaPin(TEST_CA_PEM, caSpkiFp16(TEST_CA_PEM), certificateFromPem(TEST_LEAF_PEM).encoded)
     }

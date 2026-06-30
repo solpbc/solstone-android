@@ -17,7 +17,6 @@ import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
-import java.net.URL
 
 enum class ObserverStartMode { VisibleStart, Rehydrate }
 
@@ -230,25 +229,7 @@ class HarnessController(
     }
 
     private fun runRelayPairProbe(link: RelayPairLink): HarnessPairProbeResult {
-        val prior = identityStore.load()
-        val priorMatches = prior?.instanceId == link.instanceId
-        if (priorMatches && prior?.state == IdentityState.PAIRED) {
-            val origin = prior.relayOrigin ?: link.relayOrigin ?: "https://link.solstone.app"
-            val result = HarnessPairProbeResult(
-                handshakePinned = false,
-                pairStatus = 200,
-                statusStatus = 200,
-                statusBody = "",
-                homeLabel = prior.homeLabel,
-                endpointHost = URL(origin.trimEnd('/')).host,
-                endpointPort = 443,
-                connectionMode = PairConnectionMode.ALREADY_CONNECTED,
-            )
-            lastPairProbe = result
-            return result
-        }
-        val mode = if (priorMatches) PairConnectionMode.RECONNECTING else PairConnectionMode.PAIRING
-        val result = relayPairProbe.pairOverRelay(link, deviceLabel).copy(connectionMode = mode)
+        val result = relayPairProbe.pairOverRelay(link, deviceLabel)
         lastPairProbe = result
         return result
     }

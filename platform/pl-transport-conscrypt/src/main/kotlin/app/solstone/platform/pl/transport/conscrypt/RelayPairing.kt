@@ -6,7 +6,10 @@ package app.solstone.platform.pl.transport.conscrypt
 import app.solstone.core.crypto.assertCaPin
 import app.solstone.core.crypto.buildCsrPem
 import app.solstone.core.crypto.certificateFromPem
+import app.solstone.core.crypto.deriveRk
 import app.solstone.core.crypto.generateP256KeyPair
+import app.solstone.core.crypto.hex
+import app.solstone.core.crypto.jidFromSpki
 import app.solstone.core.crypto.pem
 import app.solstone.core.crypto.pemToDer
 import app.solstone.core.crypto.sha256Hex
@@ -59,12 +62,12 @@ interface RelayDialSession : Closeable {
 }
 
 fun interface RelayPairDialer {
-    fun open(host: String, port: Int, instanceId: String, pairTicket: String): RelayDialSession
+    fun open(host: String, port: Int, rk: ByteArray): RelayDialSession
 }
 
 class OkHttpRelayPairDialer(private val client: OkHttpClient = OkHttpClient()) : RelayPairDialer {
-    override fun open(host: String, port: Int, instanceId: String, pairTicket: String): RelayDialSession {
-        val request = relayWebSocketRequest(host, "/session/pair-dial", instanceId, pairTicket)
+    override fun open(host: String, port: Int, rk: ByteArray): RelayDialSession {
+        val request = relayPairDialRequest(host, rk)
         val relayClient = openRelayClient(host, port, OkHttpTunnelOpener(client, request), RelayTlsMode.Certless)
         return RelayPlClientDialSession(relayClient)
     }
@@ -81,7 +84,13 @@ data class RelayPairResult(
     val homeLabel: String,
     val relayOrigin: String,
     val relayHost: String,
+    val connectionMode: RelayPairConnectionMode = RelayPairConnectionMode.PAIRING,
 )
+
+enum class RelayPairConnectionMode { PAIRING, ALREADY_CONNECTED, RECONNECTING }
+
+class RelayPairWindowClosedException(cause: Throwable? = null) :
+    IOException("The pairing window is closed, expired, or was already used. Ask for a fresh pair link and try again.", cause)
 
 fun pairOverRelay(
     link: RelayPairLink,
@@ -93,16 +102,7 @@ fun pairOverRelay(
 ): RelayPairResult {
     val relayOrigin = normalizeRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
     val relayHost = URL(relayOrigin).host
-    val ticketBody = toJson(mapOf("instance_id" to link.instanceId, "totp" to link.totp)).toByteArray(Charsets.UTF_8)
-    val ticketHttp = httpsPoster.post(
-        "$relayOrigin/session/pair-ticket?instance=${link.instanceId}",
-        ticketBody,
-        JSON_HEADERS,
-    )
-    if (ticketHttp.status != 200) {
-        throw IOException("relay pair ticket failed HTTP ${ticketHttp.status}: ${ticketHttp.bodyText()}")
-    }
-    val pairTicket = requiredJsonString(ticketHttp.bodyText(), "pair_ticket")
+    val rk = deriveRk(link.s)
 
     val keyPair = generateP256KeyPair()
     val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
@@ -110,11 +110,18 @@ fun pairOverRelay(
     val pairBody = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
     val pairResponse: PairResponse
     val pairStatus: Int
-    val session = relayPairDialer.open(relayHost, 443, link.instanceId, pairTicket)
+    val session = try {
+        relayPairDialer.open(relayHost, 443, rk)
+    } catch (e: RelayPairWindowUnavailableException) {
+        if (e.statusCode == 401) {
+            throw RelayPairWindowClosedException(e)
+        }
+        throw e
+    }
     try {
         val pairHttp = session.client.request(
             "POST",
-            "/app/network/pair?token=${link.nonce}",
+            "/app/network/pair?token=${hex(link.s)}",
             JSON_HEADERS,
             pairBody,
         )
@@ -123,12 +130,10 @@ fun pairOverRelay(
             throw IOException("relay inner pair failed HTTP ${pairHttp.status}: ${pairHttp.bodyText()}")
         }
         pairResponse = PairResponse.fromJson(pairHttp.bodyText())
-        if (link.caFpTag != 0x01) {
-            throw IOException("unsupported relay CA fingerprint tag: ${link.caFpTag}")
-        }
-        assertCaPin(pairResponse.caChain.first(), link.caFpPrefix, session.peerLeafCertificateDer)
-        if (pairResponse.instanceId != link.instanceId) {
-            throw IOException("relay pair response instance_id mismatch")
+        assertCaPin(pairResponse.caChain.first(), link.caFpSpki, session.peerLeafCertificateDer)
+        val expectedJid = jidFromSpki(pairResponse.caChain.first())
+        if (pairResponse.instanceId != expectedJid) {
+            throw IOException("relay pair response instance_id did not match pinned CA identity")
         }
         val clientDer = certificateFromPem(pairResponse.clientCert).encoded
         if ("sha256:" + sha256Hex(clientDer) != pairResponse.fingerprint) {
@@ -138,9 +143,27 @@ fun pairOverRelay(
         session.close()
     }
 
+    val prior = identityStore.load()
+    if (prior?.instanceId == pairResponse.instanceId && prior.state == IdentityState.PAIRED) {
+        return RelayPairResult(
+            handshakePinned = true,
+            pairStatus = pairStatus,
+            enrollStatus = 200,
+            homeLabel = prior.homeLabel,
+            relayOrigin = relayOrigin,
+            relayHost = relayHost,
+            connectionMode = RelayPairConnectionMode.ALREADY_CONNECTED,
+        )
+    }
+    val connectionMode = if (prior?.instanceId == pairResponse.instanceId) {
+        RelayPairConnectionMode.RECONNECTING
+    } else {
+        RelayPairConnectionMode.PAIRING
+    }
+
     val enrollBody = toJson(
         mapOf(
-            "instance_id" to link.instanceId,
+            "instance_id" to pairResponse.instanceId,
             // Python client.py:583 includes client_cert; TS SOT omits it, resolved against live relay in VPE-direct.
             "home_attestation" to pairResponse.homeAttestation,
         ),
@@ -175,6 +198,7 @@ fun pairOverRelay(
         homeLabel = pairResponse.homeLabel,
         relayOrigin = relayOrigin,
         relayHost = relayHost,
+        connectionMode = connectionMode,
     )
 }
 
@@ -206,6 +230,12 @@ fun openRelaySyncClient(
 private fun relayWebSocketRequest(host: String, path: String, instanceId: String, token: String): Request =
     Request.Builder()
         .url("wss://$host$path?instance=$instanceId&token=$token")
+        .build()
+
+private fun relayPairDialRequest(host: String, rk: ByteArray): Request =
+    Request.Builder()
+        .url("wss://$host/session/pair-dial")
+        .header("Sec-Pair-Key", hex(rk))
         .build()
 
 internal fun normalizeRelayOrigin(relayOrigin: String): String = relayOrigin.trimEnd('/')

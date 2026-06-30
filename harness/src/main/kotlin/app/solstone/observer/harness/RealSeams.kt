@@ -21,6 +21,7 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.DirectPairConnectionMode
+import app.solstone.platform.pl.transport.conscrypt.RelayPairConnectionMode
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
@@ -104,7 +105,11 @@ class RealRelayPairProbe(
             homeLabel = result.homeLabel,
             endpointHost = result.relayHost,
             endpointPort = 443,
-            connectionMode = PairConnectionMode.PAIRING,
+            connectionMode = when (result.connectionMode) {
+                RelayPairConnectionMode.PAIRING -> PairConnectionMode.PAIRING
+                RelayPairConnectionMode.ALREADY_CONNECTED -> PairConnectionMode.ALREADY_CONNECTED
+                RelayPairConnectionMode.RECONNECTING -> PairConnectionMode.RECONNECTING
+            },
         )
     }
 }

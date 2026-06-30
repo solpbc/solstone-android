@@ -49,36 +49,28 @@ class DirectPairLink(
 }
 
 class RelayPairLink(
-    val instanceId: String,
-    val totp: String,
-    val nonce: String,
-    val caFpTag: Int,
-    val caFpPrefix: ByteArray,
+    val s: ByteArray,
+    val caFpSpki: ByteArray,
     val relayOrigin: String?,
 ) : PairLink {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is RelayPairLink) return false
-        return instanceId == other.instanceId &&
-            totp == other.totp &&
-            nonce == other.nonce &&
-            caFpTag == other.caFpTag &&
-            caFpPrefix.contentEquals(other.caFpPrefix) &&
+        return s.contentEquals(other.s) &&
+            caFpSpki.contentEquals(other.caFpSpki) &&
             relayOrigin == other.relayOrigin
     }
 
     override fun hashCode(): Int {
-        var result = instanceId.hashCode()
-        result = 31 * result + totp.hashCode()
-        result = 31 * result + nonce.hashCode()
-        result = 31 * result + caFpTag
-        result = 31 * result + caFpPrefix.contentHashCode()
+        var result = s.contentHashCode()
+        result = 31 * result + caFpSpki.contentHashCode()
         result = 31 * result + (relayOrigin?.hashCode() ?: 0)
         return result
     }
 
+    // S is a pairing secret. Keep this stable for diagnostics/tests, but do not log pair links.
     override fun toString(): String =
-        "RelayPairLink(instanceId=$instanceId, totp=$totp, nonce=$nonce, caFpTag=$caFpTag, caFpPrefix=${caFpPrefix.contentToString()}, relayOrigin=$relayOrigin)"
+        "RelayPairLink(s=${s.contentToString()}, caFpSpki=${caFpSpki.contentToString()}, relayOrigin=$relayOrigin)"
 }
 
 enum class DialDecision { SUCCEED, ADVANCE, TERMINAL }
@@ -115,7 +107,7 @@ fun parseDirectPairLink(pairLink: String): DirectPairLink {
 fun parsePairLink(pairLink: String): PairLink {
     val decoded = decodePairLinkPayload(pairLink)
     return when (decoded.firstOrNull()) {
-        0x03.toByte() -> parseRelayFromDecoded(decoded)
+        0x06.toByte() -> parseRelayFromDecoded(decoded)
         else -> parseDirectFromDecoded(decoded)
     }
 }
@@ -181,35 +173,31 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
 }
 
 private fun parseRelayFromDecoded(decoded: ByteArray): RelayPairLink {
-    if (decoded.size < 54) {
+    if (decoded.size < 27) {
         throw IllegalArgumentException("unsupported relay pair link payload")
     }
-    val selector = decoded[53].toInt() and 0xff
-    val expectedLength = if (selector == 0) 54 else 54 + selector
-    if (decoded.size != expectedLength) {
+    if (decoded[0] != 0x06.toByte()) {
         throw IllegalArgumentException("unsupported relay pair link payload")
     }
-    val instanceBytes = decoded.copyOfRange(1, 17)
-    val totp = (
-        ((decoded[17].toInt() and 0xff) shl 16) or
-            ((decoded[18].toInt() and 0xff) shl 8) or
-            (decoded[19].toInt() and 0xff)
-        ).toString().padStart(6, '0')
-    val nonce = hex(decoded.copyOfRange(20, 36))
-    val caFpTag = decoded[36].toInt() and 0xff
-    val caFp = decoded.copyOfRange(37, 53)
-    val relayOrigin = if (selector == 0) null else decoded.copyOfRange(54, 54 + selector).toString(Charsets.UTF_8)
-    return RelayPairLink(uuidString(instanceBytes), totp, nonce, caFpTag, caFp, relayOrigin)
-}
-
-private fun uuidString(bytes: ByteArray): String {
-    require(bytes.size == 16) { "UUID requires 16 bytes" }
-    val value = hex(bytes)
-    return value.substring(0, 8) + "-" +
-        value.substring(8, 12) + "-" +
-        value.substring(12, 16) + "-" +
-        value.substring(16, 20) + "-" +
-        value.substring(20, 32)
+    val s = decoded.copyOfRange(1, 9)
+    val caFpTag = decoded[9].toInt() and 0xff
+    if (caFpTag != 0x01) {
+        throw IllegalArgumentException("unsupported relay CA fingerprint tag")
+    }
+    val caFpSpki = decoded.copyOfRange(10, 26)
+    val selector = decoded[26].toInt() and 0xff
+    val relayOrigin = if (selector == 0) {
+        if (decoded.size != 27) {
+            throw IllegalArgumentException("unsupported relay pair link payload")
+        }
+        null
+    } else {
+        if (decoded.size != 27 + selector) {
+            throw IllegalArgumentException("unsupported relay pair link payload")
+        }
+        decoded.copyOfRange(27, 27 + selector).toString(Charsets.UTF_8)
+    }
+    return RelayPairLink(s, caFpSpki, relayOrigin)
 }
 
 fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =

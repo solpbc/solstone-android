@@ -28,30 +28,24 @@ class PairLinkTest {
     }
 
     @Test
-    fun parsesRelaySelectorZeroConformanceVector() {
+    fun parsesRelayPairWindowDefaultOriginConformanceVector() {
         val parsed = parsePairLink(
-            "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY00",
+            "https://go.solstone.app/p#0R0J6HB7H6NWVVR1VTPVXVYAZTXBW0938NKRKAYDXW00",
         ) as RelayPairLink
 
-        assertEquals("12345678-1234-5678-1234-567812345678", parsed.instanceId)
-        assertEquals("123456", parsed.totp)
-        assertEquals("0123456789abcdef0123456789abcdef", parsed.nonce)
-        assertEquals(1, parsed.caFpTag)
-        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpPrefix)
+        assertContentEquals(hexBytes("0123456789abcdef"), parsed.s)
+        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpSpki)
         assertEquals(null, parsed.relayOrigin)
     }
 
     @Test
-    fun parsesRelayWithOriginConformanceVector() {
+    fun parsesRelayPairWindowCustomOriginConformanceVector() {
         val parsed = parsePairLink(
-            "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY5B8EHT70WST5WQQ4SBCC5WJWSBRC5PQ0V35",
+            "https://go.solstone.app/p#0R0J6HB7H6NWVVR1VTPVXVYAZTXBW0938NKRKAYDXWAPGX3ME1SKMBSFE9JPRRBS5SJQGRBDE1P6A",
         ) as RelayPairLink
 
-        assertEquals("12345678-1234-5678-1234-567812345678", parsed.instanceId)
-        assertEquals("123456", parsed.totp)
-        assertEquals("0123456789abcdef0123456789abcdef", parsed.nonce)
-        assertEquals(1, parsed.caFpTag)
-        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpPrefix)
+        assertContentEquals(hexBytes("0123456789abcdef"), parsed.s)
+        assertContentEquals(hexBytes("deadbeefcafebabe0123456789abcdef"), parsed.caFpSpki)
         assertEquals("https://relay.example", parsed.relayOrigin)
     }
 
@@ -61,35 +55,36 @@ class PairLinkTest {
         assertTrue(direct is DirectPairLink)
         assertFailsWith<IllegalArgumentException> {
             parseDirectPairLink(
-                "https://go.solstone.app/p#0C938NKR28T5CY0J6HB7G4HMASW03RJ004HMASW9NF6YY0938NKRKAYDXW0XXBDYXZ5FXENY04HMASW9NF6YY00",
+                "https://go.solstone.app/p#0R0J6HB7H6NWVVR1VTPVXVYAZTXBW0938NKRKAYDXW00",
             )
         }
     }
 
     @Test
-    fun rejectsMalformedRelayPayloadLengths() {
+    fun rejectsRetiredRelayPayloadAndMalformedPairWindowPayloads() {
         assertFailsWith<IllegalArgumentException> {
-            parsePairLink(withBlob(ByteArray(53).also { it[0] = 0x03 }))
+            parsePairLink(withBlob(ByteArray(54).also { it[0] = 0x03 }))
         }
         assertFailsWith<IllegalArgumentException> {
             parsePairLink(
                 withBlob(
-                    ByteArray(54).also {
-                        it[0] = 0x03
-                        it[53] = 0x05
+                    relayWindowBlob().also {
+                        it[9] = 0x02
                     },
                 ),
             )
         }
         assertFailsWith<IllegalArgumentException> {
-            parsePairLink(
-                withBlob(
-                    ByteArray(55).also {
-                        it[0] = 0x03
-                        it[53] = 0x00
-                    },
-                ),
-            )
+            parsePairLink(withBlob(ByteArray(26).also { it[0] = 0x06 }))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(withBlob(relayWindowBlob().copyOf(28)))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(withBlob(relayWindowBlob("abc").copyOf(29)))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parsePairLink(withBlob(relayWindowBlob("abc") + 0x00.toByte()))
         }
     }
 
@@ -293,6 +288,22 @@ class PairLinkTest {
         out[7] = (port and 0xff).toByte()
         nonce.copyInto(out, 8)
         ca.copyInto(out, 24)
+        return out
+    }
+
+    private fun relayWindowBlob(origin: String? = null): ByteArray {
+        val originBytes = origin?.toByteArray(Charsets.UTF_8)
+        val out = ByteArray(27 + (originBytes?.size ?: 0))
+        out[0] = 0x06
+        hexBytes("0123456789abcdef").copyInto(out, 1)
+        out[9] = 0x01
+        hexBytes("deadbeefcafebabe0123456789abcdef").copyInto(out, 10)
+        if (originBytes == null) {
+            out[26] = 0x00
+        } else {
+            out[26] = originBytes.size.toByte()
+            originBytes.copyInto(out, 27)
+        }
         return out
     }
 

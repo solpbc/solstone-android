@@ -29,6 +29,9 @@ class RelayWebSocketClosedException(val code: Int, val reason: String) :
 class RelayDialWaitingException(waitingTimeoutMillis: Long) :
     IOException("relay dial waiting: home offline (no inner data within ${waitingTimeoutMillis}ms)")
 
+class RelayPairWindowUnavailableException(val statusCode: Int, cause: Throwable? = null) :
+    IOException("relay pairing window unavailable (HTTP $statusCode)", cause)
+
 class OkHttpWebSocketDuplex internal constructor(
     socket: BinaryWebSocket,
     private val capacityBytes: Int = DEFAULT_BUFFER_BYTES,
@@ -246,7 +249,13 @@ class OkHttpWebSocketDuplex internal constructor(
                     }
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                        duplex.fail(IOException("WebSocket failed", t))
+                        duplex.fail(
+                            if (response != null) {
+                                RelayPairWindowUnavailableException(response.code, t)
+                            } else {
+                                IOException("WebSocket failed", t)
+                            },
+                        )
                         opened.countDown()
                     }
                 },
