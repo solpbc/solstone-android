@@ -10,6 +10,7 @@ data class ImageRef(val id: Long, val dateAddedSeconds: Long)
 
 data class PhotoPairSeams(
     val recentImageCandidates: () -> List<ImageRef>,
+    val appStartSeconds: () -> Long,
     val decode: (ImageRef) -> String?,
     val pairingFact: () -> PairingFact,
     val onScannedPairLink: (String) -> HarnessPairProbeResult?,
@@ -24,20 +25,12 @@ data class PhotoPairSeams(
 /**
  * Threading contract: every entry point is invoked on the glasses single background executor.
  * State is plain non-atomic state and must only be mutated on that executor. The Android adapter
- * must dispatch to background.execute before calling onStartup() or onChange().
+ * must dispatch to background.execute before calling onChange().
  */
 class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
     private var scanInFlight = false
     private var rescanRequested = false
     private val attemptedLinks = mutableSetOf<String>()
-
-    fun onStartup() {
-        if (seams.pairingFact() == PairingFact.PAIRED) {
-            seams.unregisterWatcher()
-            return
-        }
-        scan()
-    }
 
     fun onChange() {
         scan()
@@ -63,9 +56,10 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
 
     private fun runOneScan() {
         val cutoffSeconds = seams.nowSeconds() - MAX_AGE_SECONDS
+        val appStart = seams.appStartSeconds()
         val candidates = seams.recentImageCandidates()
             .take(MAX_CANDIDATES)
-            .filter { it.dateAddedSeconds >= cutoffSeconds }
+            .filter { it.dateAddedSeconds >= cutoffSeconds && it.dateAddedSeconds > appStart }
         for (candidate in candidates) {
             val decoded = seams.decode(candidate)
             if (decoded == null) {

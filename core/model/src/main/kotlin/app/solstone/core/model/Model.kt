@@ -6,7 +6,7 @@ package app.solstone.core.model
 enum class SourceKind { OBSERVER, IMPORTER, BOTH }
 enum class SourceGroup { EXPERIENCING_ALONGSIDE, BRINGING_IN }
 enum class SourceState { OFF, SETTING_UP, ON, PAUSED, NEEDS_ATTENTION }
-enum class ReasonCode { NONE, PERMISSION_REVOKED, SERVICE_KILLED, REBOOTED, UNPAIRED, STORAGE_FULL, PROVIDER_SILENT, AUTH_REVOKED, EXEMPTION_UNVERIFIED }
+enum class ReasonCode { NONE, PERMISSION_REVOKED, SERVICE_KILLED, REBOOTED, UNPAIRED, STORAGE_FULL, PROVIDER_SILENT, AUTH_REVOKED, EXEMPTION_UNVERIFIED, TRANSPORT_UNAVAILABLE, FOREGROUND_START_NOT_ALLOWED }
 enum class QueueState { RECORDING, SEALED, UPLOADING, UPLOADED, FAILED, EVICTED }
 data class Source(val id: String, val kind: SourceKind, val group: SourceGroup, val label: String)
 data class SegmentKey(val day: String /* YYYYMMDD */, val segment: String /* HHMMSS_LEN */)

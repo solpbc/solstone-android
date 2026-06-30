@@ -48,30 +48,28 @@ fun cueSnapshot(controller: HarnessController): CueSnapshot {
     )
 }
 
-enum class SwipeAction { Start, Stop, AnnounceStatus }
+enum class SwipeAction { EnsureObserving, Stop }
 
 // Swipe forward = VOLUME_UP (24), swipe back = VOLUME_DOWN (25), decided on-device from the KeyEvent log.
-// Re-swipe in the already-current direction speaks live status; the opposite direction toggles observing.
-fun swipeAction(keyCode: Int, desiredOn: Boolean): SwipeAction? =
+// Forward ensures observing, back stops observing, and either gesture speaks live status.
+fun swipeAction(keyCode: Int): SwipeAction? =
     when (keyCode) {
-        KeyEvent.KEYCODE_VOLUME_UP -> if (desiredOn) SwipeAction.AnnounceStatus else SwipeAction.Start
-        KeyEvent.KEYCODE_VOLUME_DOWN -> if (desiredOn) SwipeAction.Stop else SwipeAction.AnnounceStatus
+        KeyEvent.KEYCODE_VOLUME_UP -> SwipeAction.EnsureObserving
+        KeyEvent.KEYCODE_VOLUME_DOWN -> SwipeAction.Stop
         else -> null
     }
 
-// Seam-based dispatcher so the start-refused -> attention-cue branch is unit-testable without an Activity.
 fun dispatchSwipe(
     action: SwipeAction,
-    start: () -> Boolean,
+    ensureObserving: () -> Unit,
     stop: () -> Unit,
     announce: () -> Unit,
-    attention: () -> Unit,
 ) {
     when (action) {
-        SwipeAction.Start -> if (!start()) attention()
+        SwipeAction.EnsureObserving -> ensureObserving()
         SwipeAction.Stop -> stop()
-        SwipeAction.AnnounceStatus -> announce()
     }
+    announce()
 }
 
 class StatusCuePoller(

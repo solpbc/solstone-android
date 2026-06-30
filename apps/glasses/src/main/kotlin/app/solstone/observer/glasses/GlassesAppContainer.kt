@@ -63,12 +63,14 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         private set
     private val stillQrDecoder = StillQrDecoder()
     private var photoPairObserver: ContentObserver? = null
+    private val appStartSeconds: Long = System.currentTimeMillis() / 1000
     private val lifecycle = IdempotentPipelineLifecycle(
         startForeground = { ObserverForegroundService.startFromVisibleContext(context) },
         stopForeground = { ObserverForegroundService.stop(context) },
         buildPipeline = ::newPipeline,
         startPipeline = { it.start() },
         stopPipeline = { it.stop() },
+        isRunning = { sourceSnapshot().engineRunning },
         onActiveChanged = { activePipeline = it },
     )
 
@@ -85,6 +87,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val photoPairCoordinator = PhotoPairCoordinator(
         PhotoPairSeams(
             recentImageCandidates = ::recentImageCandidates,
+            appStartSeconds = { appStartSeconds },
             decode = ::decodePhotoPairCandidate,
             pairingFact = controller::pairingFact,
             onScannedPairLink = controller::onScannedPairLink,
@@ -103,7 +106,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
     private val pollRunnable = object : Runnable {
         override fun run() {
-            background.execute { runCatching { cuePoller.tick() } }
+            background.execute {
+                runCatching { controller.reconcile() }
+                runCatching { cuePoller.tick() }
+            }
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
         }
     }
@@ -117,9 +123,6 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         )
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
-        if (imageReadGranted()) {
-            background.execute { photoPairCoordinator.onStartup() }
-        }
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
@@ -140,6 +143,19 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller)))
+            }
+        }
+    }
+
+    fun handleSwipe(action: SwipeAction) {
+        background.execute {
+            runCatching {
+                dispatchSwipe(
+                    action,
+                    ensureObserving = controller::ensureObserving,
+                    stop = controller::stop,
+                    announce = { flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller))) },
+                )
             }
         }
     }
@@ -207,13 +223,12 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     private fun recentImageCandidates(): List<ImageRef> {
-        val cutoffSeconds = nowSeconds() - PhotoPairCoordinator.MAX_AGE_SECONDS
         return try {
             context.contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED),
-                "${MediaStore.Images.Media.DATE_ADDED} >= ?",
-                arrayOf(cutoffSeconds.toString()),
+                "${MediaStore.Images.Media.DATE_ADDED} > ?",
+                arrayOf(appStartSeconds.toString()),
                 "${MediaStore.Images.Media.DATE_ADDED} DESC",
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
@@ -301,13 +316,20 @@ internal class IdempotentPipelineLifecycle<T>(
     private val buildPipeline: () -> T,
     private val startPipeline: (T) -> Unit,
     private val stopPipeline: (T) -> Unit,
+    private val isRunning: (T) -> Boolean,
     private val onActiveChanged: (T?) -> Unit,
 ) : ObserverLifecycle {
     private var active: T? = null
 
     override fun start() {
         startForeground()
-        if (active != null) return
+        val current = active
+        if (current != null && isRunning(current)) return
+        if (current != null) {
+            stopPipeline(current)
+            active = null
+            onActiveChanged(null)
+        }
         val pipeline = buildPipeline()
         active = pipeline
         onActiveChanged(pipeline)

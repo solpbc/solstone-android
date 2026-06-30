@@ -11,30 +11,6 @@ import kotlin.test.assertEquals
 
 class PhotoPairCoordinatorTest {
     @Test
-    fun startupUnregistersAndDoesNotScanWhenAlreadyPaired() {
-        val f = fixture(pairing = PairingFact.PAIRED)
-
-        f.coordinator.onStartup()
-
-        assertEquals(1, f.unregisterCalls)
-        assertEquals(0, f.candidateCalls)
-        assertEquals(emptyList(), f.decodedIds)
-    }
-
-    @Test
-    fun startupScansBoundedRecentCandidatesWhenUnpaired() {
-        val f = fixture(
-            candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
-            decodedById = mutableMapOf(1L to null, 2L to null),
-        )
-
-        f.coordinator.onStartup()
-
-        assertEquals(1, f.candidateCalls)
-        assertEquals(listOf(1L, 2L), f.decodedIds)
-    }
-
-    @Test
     fun onChangeScansBoundedRecentCandidates() {
         val f = fixture(
             candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
@@ -109,6 +85,21 @@ class PhotoPairCoordinatorTest {
         f.coordinator.onChange()
 
         assertEquals(listOf(2L), f.decodedIds)
+    }
+
+    @Test
+    fun imageBeforeAppStartIsNeverACandidate() {
+        val appStart = NOW - 10
+        val f = fixture(
+            candidates = listOf(ImageRef(1, appStart - 1), ImageRef(2, appStart + 1)),
+            decodedById = mutableMapOf(1L to PAIR_A, 2L to PAIR_B),
+            appStartSeconds = appStart,
+        )
+
+        f.coordinator.onChange()
+
+        assertEquals(listOf(2L), f.decodedIds)
+        assertEquals(listOf(PAIR_B), f.pairCalls)
     }
 
     @Test
@@ -250,6 +241,7 @@ class PhotoPairCoordinatorTest {
         var candidates: List<ImageRef>,
         var pairing: PairingFact,
         var nowSeconds: Long,
+        var appStartSeconds: Long,
         val decodedById: MutableMap<Long, String?>,
         val resultByLink: MutableMap<String, HarnessPairProbeResult?>,
         val throwingLinks: MutableSet<String>,
@@ -270,6 +262,7 @@ class PhotoPairCoordinatorTest {
                     candidateCalls += 1
                     candidates
                 },
+                appStartSeconds = { appStartSeconds },
                 decode = { ref ->
                     decodedIds += ref.id
                     decodeHook?.invoke(ref)
@@ -307,6 +300,7 @@ class PhotoPairCoordinatorTest {
             candidates: List<ImageRef> = listOf(ImageRef(1, NOW)),
             pairing: PairingFact = PairingFact.UNPAIRED,
             nowSeconds: Long = NOW,
+            appStartSeconds: Long = 0L,
             decodedById: MutableMap<Long, String?> = mutableMapOf(1L to PAIR_A),
             resultByLink: MutableMap<String, HarnessPairProbeResult?> = mutableMapOf(
                 PAIR_A to successResult(),
@@ -314,7 +308,7 @@ class PhotoPairCoordinatorTest {
             ),
             throwingLinks: MutableSet<String> = mutableSetOf(),
         ): Fixture =
-            Fixture(candidates, pairing, nowSeconds, decodedById, resultByLink, throwingLinks)
+            Fixture(candidates, pairing, nowSeconds, appStartSeconds, decodedById, resultByLink, throwingLinks)
 
         fun successResult(connectionMode: PairConnectionMode = PairConnectionMode.PAIRING): HarnessPairProbeResult =
             HarnessPairProbeResult(

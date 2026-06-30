@@ -12,88 +12,52 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KeycodeDispatchTest {
     @Test
     fun mapsSwipeActions() {
-        assertEquals(SwipeAction.Start, swipeAction(KeyEvent.KEYCODE_VOLUME_UP, desiredOn = false))
-        assertEquals(SwipeAction.AnnounceStatus, swipeAction(KeyEvent.KEYCODE_VOLUME_UP, desiredOn = true))
-        assertEquals(SwipeAction.Stop, swipeAction(KeyEvent.KEYCODE_VOLUME_DOWN, desiredOn = true))
-        assertEquals(SwipeAction.AnnounceStatus, swipeAction(KeyEvent.KEYCODE_VOLUME_DOWN, desiredOn = false))
+        assertEquals(SwipeAction.EnsureObserving, swipeAction(KeyEvent.KEYCODE_VOLUME_UP))
+        assertEquals(SwipeAction.Stop, swipeAction(KeyEvent.KEYCODE_VOLUME_DOWN))
     }
 
     @Test
     fun leavesNonVolumeKeysUnhandled() {
-        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_CENTER, desiredOn = false))
-        assertNull(swipeAction(KeyEvent.KEYCODE_ENTER, desiredOn = false))
-        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_DOWN, desiredOn = false))
+        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_CENTER))
+        assertNull(swipeAction(KeyEvent.KEYCODE_ENTER))
+        assertNull(swipeAction(KeyEvent.KEYCODE_DPAD_DOWN))
     }
 
     @Test
-    fun dispatchesStartWithoutAttentionWhenAccepted() {
-        var started = false
-        var attention = false
-
-        dispatchSwipe(
-            SwipeAction.Start,
-            start = {
-                started = true
-                true
-            },
-            stop = {},
-            announce = {},
-            attention = { attention = true },
-        )
-
-        assertTrue(started)
-        assertFalse(attention)
-    }
-
-    @Test
-    fun dispatchesStartWithAttentionWhenRefused() {
-        var attention = false
-
-        dispatchSwipe(
-            SwipeAction.Start,
-            start = { false },
-            stop = {},
-            announce = {},
-            attention = { attention = true },
-        )
-
-        assertTrue(attention)
-    }
-
-    @Test
-    fun dispatchesStop() {
-        var stopped = false
-
-        dispatchSwipe(
-            SwipeAction.Stop,
-            start = { true },
-            stop = { stopped = true },
-            announce = {},
-            attention = {},
-        )
-
-        assertTrue(stopped)
-    }
-
-    @Test
-    fun dispatchesAnnounceStatus() {
+    fun dispatchesEnsureObservingAndAnnounces() {
+        var ensured = false
         var announced = false
 
         dispatchSwipe(
-            SwipeAction.AnnounceStatus,
-            start = { true },
+            SwipeAction.EnsureObserving,
+            ensureObserving = { ensured = true },
             stop = {},
             announce = { announced = true },
-            attention = {},
         )
 
+        assertTrue(ensured)
+        assertTrue(announced)
+    }
+
+    @Test
+    fun dispatchesStopAndAnnounces() {
+        var stopped = false
+        var announced = false
+
+        dispatchSwipe(
+            SwipeAction.Stop,
+            ensureObserving = {},
+            stop = { stopped = true },
+            announce = { announced = true },
+        )
+
+        assertTrue(stopped)
         assertTrue(announced)
     }
 

@@ -210,6 +210,7 @@ internal fun fixture(
     desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
     foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
     networkAvailability: FakeNetworkAvailability? = null,
+    sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -235,7 +236,7 @@ internal fun fixture(
             endpointStore = endpointStore,
             credentialStore = credentialStore,
             identityStore = identityStore,
-            sourceSnapshot = { snapshot },
+            sourceSnapshot = sourceSnapshotProvider ?: { snapshot },
             deviceLabel = "watch",
             opportunisticSync = opportunisticSync,
         ),

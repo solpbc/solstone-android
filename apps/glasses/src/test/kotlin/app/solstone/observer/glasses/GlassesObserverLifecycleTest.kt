@@ -12,6 +12,7 @@ class GlassesObserverLifecycleTest {
         var foregroundStarts = 0
         var builds = 0
         var pipelineStarts = 0
+        var running = false
         var active: String? = null
         val lifecycle = IdempotentPipelineLifecycle(
             startForeground = { foregroundStarts += 1 },
@@ -20,8 +21,12 @@ class GlassesObserverLifecycleTest {
                 builds += 1
                 "pipeline-$builds"
             },
-            startPipeline = { pipelineStarts += 1 },
+            startPipeline = {
+                running = true
+                pipelineStarts += 1
+            },
             stopPipeline = {},
+            isRunning = { running },
             onActiveChanged = { active = it },
         )
 
@@ -32,5 +37,39 @@ class GlassesObserverLifecycleTest {
         assertEquals(1, builds)
         assertEquals(1, pipelineStarts)
         assertEquals("pipeline-1", active)
+    }
+
+    @Test
+    fun pipelineDiedRebuildsOnNextStart() {
+        var builds = 0
+        var pipelineStarts = 0
+        var pipelineStops = 0
+        var running = false
+        val lifecycle = IdempotentPipelineLifecycle(
+            startForeground = {},
+            stopForeground = {},
+            buildPipeline = {
+                builds += 1
+                "pipeline-$builds"
+            },
+            startPipeline = {
+                running = true
+                pipelineStarts += 1
+            },
+            stopPipeline = {
+                pipelineStops += 1
+                running = false
+            },
+            isRunning = { running },
+            onActiveChanged = {},
+        )
+
+        lifecycle.start()
+        running = false
+        lifecycle.start()
+
+        assertEquals(2, builds)
+        assertEquals(1, pipelineStops)
+        assertEquals(2, pipelineStarts)
     }
 }

@@ -50,15 +50,8 @@ class MainActivity : Activity() {
     // BT phone; full suppression needs a registered MediaSession/VolumeProvider (noted follow-up, not done).
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         Log.i(TAG, "temple KeyEvent keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
-        val action = swipeAction(keyCode, container.controller.desiredOn)
-            ?: return super.onKeyDown(keyCode, event)
-        dispatchSwipe(
-            action,
-            start = container.controller::start,
-            stop = container.controller::stop,
-            announce = container::speakCurrentStatus,
-            attention = container::speakNeedsAttention,
-        )
+        val action = swipeAction(keyCode) ?: return super.onKeyDown(keyCode, event)
+        container.handleSwipe(action)
         return true
     }
 

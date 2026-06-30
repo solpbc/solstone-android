@@ -8,6 +8,8 @@ import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
+import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SourceState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.DirectPairLink
 import app.solstone.core.pl.RelayPairLink
@@ -20,17 +22,9 @@ import app.solstone.platform.fgs.PermissionStatusReader
 
 enum class ObserverStartMode { VisibleStart, Rehydrate }
 
-enum class ObserverStartBlocker {
-    NotDesired,
-    PermissionsMissing,
-    Unpaired,
-    TransportUnavailable,
-    ForegroundStartNotAllowed,
-}
-
 data class ObserverStartReadiness(
     val allowed: Boolean,
-    val blockers: Set<ObserverStartBlocker>,
+    val blockers: Set<ReasonCode>,
 )
 
 class HarnessController(
@@ -72,6 +66,8 @@ class HarnessController(
         private set
 
     private var scanSessionHeld = false
+    private var reconcileInFlight = false
+    private var reconcileRerunRequested = false
 
     fun refreshPermissions(): PermissionStatus {
         permissionStatus = permissionStatusReader.read()
@@ -82,22 +78,22 @@ class HarnessController(
 
     fun startReadiness(mode: ObserverStartMode): ObserverStartReadiness {
         refreshPermissions()
-        val blockers = linkedSetOf<ObserverStartBlocker>()
+        val blockers = linkedSetOf<ReasonCode>()
         if (!permissionStatus.allRequiredGranted) {
-            blockers += ObserverStartBlocker.PermissionsMissing
+            blockers += ReasonCode.PERMISSION_REVOKED
         }
         if (mode == ObserverStartMode.Rehydrate) {
             if (!desiredOn) {
-                blockers += ObserverStartBlocker.NotDesired
+                blockers += ReasonCode.NONE
             }
             if (pairingFact() != PairingFact.PAIRED) {
-                blockers += ObserverStartBlocker.Unpaired
+                blockers += ReasonCode.UNPAIRED
             }
             if (probePlStatus() !is HarnessPlStatus.Reachable) {
-                blockers += ObserverStartBlocker.TransportUnavailable
+                blockers += ReasonCode.TRANSPORT_UNAVAILABLE
             }
             if (!foregroundStartAllowed.isForegroundStartAllowed()) {
-                blockers += ObserverStartBlocker.ForegroundStartNotAllowed
+                blockers += ReasonCode.FOREGROUND_START_NOT_ALLOWED
             }
         }
         return ObserverStartReadiness(allowed = blockers.isEmpty(), blockers = blockers)
@@ -121,16 +117,34 @@ class HarnessController(
         desiredOn = false
     }
 
-    fun rehydrate(): ObserverStartReadiness {
-        if (!desiredOn) {
-            return ObserverStartReadiness(false, setOf(ObserverStartBlocker.NotDesired))
+    fun reconcile() {
+        if (reconcileInFlight) {
+            reconcileRerunRequested = true
+            return
         }
-        val readiness = startReadiness(ObserverStartMode.Rehydrate)
-        if (readiness.allowed) {
-            observerLifecycle.start()
-            opportunisticSync?.start()
+        reconcileInFlight = true
+        try {
+            do {
+                reconcileRerunRequested = false
+                reconcileOnce()
+            } while (reconcileRerunRequested)
+        } finally {
+            reconcileInFlight = false
+            reconcileRerunRequested = false
         }
-        return readiness
+    }
+
+    private fun reconcileOnce() {
+        if (!desiredOn) return
+        if (!startReadiness(ObserverStartMode.Rehydrate).allowed) return
+        if (diagnostics().state == SourceState.ON) return
+        observerLifecycle.start()
+        opportunisticSync?.start()
+    }
+
+    fun ensureObserving() {
+        desiredOn = true
+        reconcile()
     }
 
     fun withScanSession(block: () -> Unit): Boolean {

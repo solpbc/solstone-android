@@ -40,7 +40,7 @@ class GlassesObserverRuntime(
     }
 
     fun rehydrateFromForegroundServiceStart() {
-        runCatching { runtimeContainer().controller.rehydrate() }
+        runCatching { runtimeContainer().controller.reconcile() }
     }
 
     override fun observeStart(): RuntimeCommandResult {

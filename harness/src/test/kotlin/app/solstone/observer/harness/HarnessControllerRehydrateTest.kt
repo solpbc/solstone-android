@@ -13,128 +13,141 @@ import kotlin.test.assertTrue
 
 class HarnessControllerRehydrateTest {
     @Test
-    fun rehydrateStartsWhenAllGatesPass() {
-        val f = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
+    fun reconcileSelfHealsWhenTransportBlockerClears() {
+        var pl: HarnessPlStatus = HarnessPlStatus.PairedButUnreachable("down")
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { pl },
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
+        )
         f.desiredStore.setDesiredOn(true)
 
-        val readiness = f.controller.rehydrate()
+        f.controller.reconcile()
 
-        assertTrue(readiness.allowed)
-        assertEquals(emptySet(), readiness.blockers)
+        assertEquals(0, f.lifecycle.starts)
+
+        // No-permanent-stranding regression: RED on current main, where only FGS-triggered
+        // rehydrate exists, so a blocker that clears later never recovers.
+        pl = HarnessPlStatus.Reachable(200)
+        f.controller.reconcile()
+
         assertEquals(1, f.lifecycle.starts)
         assertTrue(f.controller.desiredOn)
     }
 
     @Test
-    fun allowedRehydrateStartsOpportunisticSync() {
-        val f = fixture(
-            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            networkAvailability = FakeNetworkAvailability(),
-        )
-        f.desiredStore.setDesiredOn(true)
-
-        val readiness = f.controller.rehydrate()
-
-        assertTrue(readiness.allowed)
-        assertEquals(1, f.lifecycle.starts)
-        assertEquals(1, f.networkAvailability?.startCalls)
-    }
-
-    @Test
-    fun rehydrateBlockedLeavesDesiredOnAndDoesNotStart() {
-        val cases = listOf(
-            blockedFixture(
-                blocker = ObserverStartBlocker.PermissionsMissing,
-                fixture = fixture(
-                    permissionStatus = grantedPermissions().copy(cameraGranted = false),
-                    plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-                ),
-            ),
-            blockedFixture(
-                blocker = ObserverStartBlocker.Unpaired,
-                fixture = fixture(
-                    endpointStore = FakeEndpointStore(null),
-                    credentialStore = FakeCredentialStore(null),
-                    identityStore = FakeIdentityStore(null),
-                    plStatusProbe = PlStatusProbe { HarnessPlStatus.NotPaired },
-                ),
-            ),
-            blockedFixture(
-                blocker = ObserverStartBlocker.TransportUnavailable,
-                fixture = fixture(
-                    plStatusProbe = PlStatusProbe { HarnessPlStatus.PairedButUnreachable("down") },
-                ),
-            ),
-            blockedFixture(
-                blocker = ObserverStartBlocker.ForegroundStartNotAllowed,
-                fixture = fixture(
-                    plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-                    foregroundStartAllowed = FakeForegroundStartAllowed(false),
-                ),
-            ),
-        )
-
-        cases.forEach { case ->
-            case.fixture.desiredStore.setDesiredOn(true)
-            val readiness = case.fixture.controller.rehydrate()
-
-            assertFalse(readiness.allowed)
-            assertTrue(case.blocker in readiness.blockers)
-            assertEquals(0, case.fixture.lifecycle.starts)
-            assertTrue(case.fixture.controller.desiredOn)
-        }
-    }
-
-    @Test
-    fun blockedRehydrateDoesNotStartOpportunisticSync() {
-        val blocked = fixture(
-            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            foregroundStartAllowed = FakeForegroundStartAllowed(false),
-            networkAvailability = FakeNetworkAvailability(),
-        )
-        blocked.desiredStore.setDesiredOn(true)
-
-        val blockedReadiness = blocked.controller.rehydrate()
-
-        assertFalse(blockedReadiness.allowed)
-        assertEquals(0, blocked.lifecycle.starts)
-        assertEquals(0, blocked.networkAvailability?.startCalls)
-
-        val notDesired = fixture(
-            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            networkAvailability = FakeNetworkAvailability(),
-        )
-
-        val notDesiredReadiness = notDesired.controller.rehydrate()
-
-        assertFalse(notDesiredReadiness.allowed)
-        assertEquals(0, notDesired.lifecycle.starts)
-        assertEquals(0, notDesired.networkAvailability?.startCalls)
-    }
-
-    @Test
-    fun rehydrateNoopsWhenNotDesired() {
+    fun reconcileNoopsWhenNotDesired() {
         val f = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
 
-        val readiness = f.controller.rehydrate()
+        f.controller.reconcile()
 
-        assertFalse(readiness.allowed)
-        assertEquals(setOf(ObserverStartBlocker.NotDesired), readiness.blockers)
         assertEquals(0, f.lifecycle.starts)
     }
 
     @Test
-    fun repeatedAllowedRehydrateRegistersNetworkOnce() {
+    fun reconcilePipelineDiedAttemptsStart() {
         val f = fixture(
             plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            networkAvailability = FakeNetworkAvailability(),
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
         )
         f.desiredStore.setDesiredOn(true)
 
-        assertTrue(f.controller.rehydrate().allowed)
-        assertTrue(f.controller.rehydrate().allowed)
+        f.controller.reconcile()
+
+        assertEquals(1, f.lifecycle.starts)
+    }
+
+    @Test
+    fun reconcileIsIdempotentAcrossTwoTriggers() {
+        lateinit var f: Fixture
+        f = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            sourceSnapshotProvider = {
+                SourceRuntimeSnapshot(
+                    engineRunning = f.lifecycle.starts > 0,
+                    providerEmitting = true,
+                    storageOk = true,
+                    exemptionVerified = true,
+                )
+            },
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile()
+        f.controller.reconcile()
+
+        assertEquals(1, f.lifecycle.starts)
+    }
+
+    @Test
+    fun reconcileRegistersNetworkOnceAcrossRepeats() {
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            networkAvailability = FakeNetworkAvailability(),
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile()
+        f.controller.reconcile()
 
         assertEquals(1, f.networkAvailability?.startCalls)
+    }
+
+    @Test
+    fun startReadinessSurfacesCanonicalReasons() {
+        val permission = fixture(
+            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+        )
+        permission.desiredStore.setDesiredOn(true)
+        assertTrue(
+            ReasonCode.PERMISSION_REVOKED in
+                permission.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
+        )
+
+        val unpaired = fixture(
+            endpointStore = FakeEndpointStore(null),
+            credentialStore = FakeCredentialStore(null),
+            identityStore = FakeIdentityStore(null),
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.NotPaired },
+        )
+        unpaired.desiredStore.setDesiredOn(true)
+        assertTrue(ReasonCode.UNPAIRED in unpaired.controller.startReadiness(ObserverStartMode.Rehydrate).blockers)
+
+        val transport = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.PairedButUnreachable("down") })
+        transport.desiredStore.setDesiredOn(true)
+        assertTrue(
+            ReasonCode.TRANSPORT_UNAVAILABLE in
+                transport.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
+        )
+
+        val foreground = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            foregroundStartAllowed = FakeForegroundStartAllowed(false),
+        )
+        foreground.desiredStore.setDesiredOn(true)
+        assertTrue(
+            ReasonCode.FOREGROUND_START_NOT_ALLOWED in
+                foreground.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
+        )
+
+        val notDesired = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
+        assertTrue(ReasonCode.NONE in notDesired.controller.startReadiness(ObserverStartMode.Rehydrate).blockers)
     }
 
     @Test
@@ -157,12 +170,4 @@ class HarnessControllerRehydrateTest {
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.REBOOTED, diagnostics.reason)
     }
-
-    private data class BlockedCase(
-        val blocker: ObserverStartBlocker,
-        val fixture: Fixture,
-    )
-
-    private fun blockedFixture(blocker: ObserverStartBlocker, fixture: Fixture): BlockedCase =
-        BlockedCase(blocker, fixture)
 }
