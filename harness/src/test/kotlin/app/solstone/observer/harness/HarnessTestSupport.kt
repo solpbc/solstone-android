@@ -148,6 +148,7 @@ internal class FakeNetworkAvailability : NetworkAvailability {
     var startCalls = 0
     var stopCalls = 0
     var failOnStart = false
+    var usableNow = true
     private var callback: (() -> Unit)? = null
 
     override fun start(onUsableNetwork: () -> Unit) {
@@ -160,6 +161,8 @@ internal class FakeNetworkAvailability : NetworkAvailability {
         stopCalls += 1
         callback = null
     }
+
+    override fun isUsableNow(): Boolean = usableNow
 
     fun triggerUsableNetwork() {
         callback?.invoke()

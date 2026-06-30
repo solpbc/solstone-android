@@ -185,6 +185,29 @@ class HarnessController(
         return result
     }
 
+    fun onScannedPairLinkClassified(rawText: String): PairAttemptOutcome {
+        if (!looksLikePairLink(rawText)) return PairAttemptOutcome.Retry
+        val link = parsePairLink(rawText)
+        val outcome = withPairLock {
+            when (link) {
+                is RelayPairLink -> try {
+                    PairAttemptOutcome.Linked(runRelayPairProbe(link))
+                } catch (e: Throwable) {
+                    classifyRelayPairException(e)
+                }
+                is DirectPairLink -> PairAttemptOutcome.Linked(runPairProbe(rawText))
+            }
+        } ?: return PairAttemptOutcome.Retry
+        if (
+            outcome is PairAttemptOutcome.Linked &&
+            outcome.result.pairStatus in 200..299 &&
+            outcome.result.statusStatus in 200..299
+        ) {
+            opportunisticSync?.onPairingSuccess()
+        }
+        return outcome
+    }
+
     fun probePlStatus(): HarnessPlStatus {
         lastPlStatus = plStatusProbe.probe()
         return lastPlStatus
@@ -248,7 +271,7 @@ class HarnessController(
         return result
     }
 
-    private fun withPairLock(block: () -> HarnessPairProbeResult): HarnessPairProbeResult? {
+    private fun <T> withPairLock(block: () -> T): T? {
         if (scanSessionHeld) {
             return block()
         }

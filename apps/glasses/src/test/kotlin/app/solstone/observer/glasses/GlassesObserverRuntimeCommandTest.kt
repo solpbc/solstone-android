@@ -197,6 +197,7 @@ class GlassesObserverRuntimeCommandTest {
     private class FakeNetworkAvailability : NetworkAvailability {
         override fun start(onUsableNetwork: () -> Unit) = Unit
         override fun stop() = Unit
+        override fun isUsableNow(): Boolean = true
     }
 
     private class FakeEvidenceReader(private val pendingCount: Int = 0) : EvidenceReader {

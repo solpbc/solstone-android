@@ -18,7 +18,9 @@ fun rawResFor(cue: StatusCue): Int =
         StatusCue.PAIRED -> R.raw.fb_paired
         StatusCue.SYNC_FAILED -> R.raw.fb_sync_failed
         // Exhaustive references keep UnusedResources lint green for reserved Phase-1b clips.
-        StatusCue.PAIRING_READY -> R.raw.fb_pairing_ready
+        StatusCue.PAIRING_STARTED -> R.raw.fb_pairing_started
+        StatusCue.NETWORK_UNAVAILABLE -> R.raw.fb_network_unavailable
+        StatusCue.REFRESH_CODE -> R.raw.fb_refresh_code
         StatusCue.HANDSHAKE_VALID -> R.raw.fb_handshake_valid
         StatusCue.PAIRING_FAILED -> R.raw.fb_pairing_failed
         StatusCue.BATTERY_LOW -> R.raw.fb_battery_low
@@ -32,7 +34,9 @@ fun phraseFor(cue: StatusCue): String =
         StatusCue.NOT_PAIRED -> "Not paired"
         StatusCue.PAIRED -> "Paired"
         StatusCue.SYNC_FAILED -> "Sync failed"
-        StatusCue.PAIRING_READY -> "Pairing ready"
+        StatusCue.PAIRING_STARTED -> "Pairing started"
+        StatusCue.NETWORK_UNAVAILABLE -> "Network unavailable"
+        StatusCue.REFRESH_CODE -> "Refresh code"
         StatusCue.HANDSHAKE_VALID -> "Handshake valid"
         StatusCue.PAIRING_FAILED -> "Pairing failed"
         StatusCue.BATTERY_LOW -> "Battery low"

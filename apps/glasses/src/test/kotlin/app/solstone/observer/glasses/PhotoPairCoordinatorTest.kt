@@ -5,9 +5,11 @@ package app.solstone.observer.glasses
 
 import app.solstone.core.diagnostics.PairingFact
 import app.solstone.observer.harness.HarnessPairProbeResult
+import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class PhotoPairCoordinatorTest {
     @Test
@@ -30,7 +32,7 @@ class PhotoPairCoordinatorTest {
         f.coordinator.onChange()
 
         assertEquals(emptyList(), f.pairCalls)
-        assertEquals(0, f.readyCueCalls)
+        assertEquals(0, f.startedCueCalls)
         assertEquals(0, f.failedCueCalls)
         assertEquals(0, f.unregisterCalls)
 
@@ -118,7 +120,7 @@ class PhotoPairCoordinatorTest {
     fun alreadyConnectedOutcomeDedupsUnregistersAndStops() {
         val f = fixture(
             decodedById = mutableMapOf(1L to PAIR_A),
-            resultByLink = mutableMapOf(PAIR_A to successResult(connectionMode = PairConnectionMode.ALREADY_CONNECTED)),
+            outcomeByLink = mutableMapOf(PAIR_A to linked(connectionMode = PairConnectionMode.ALREADY_CONNECTED)),
         )
 
         f.coordinator.onChange()
@@ -132,7 +134,7 @@ class PhotoPairCoordinatorTest {
         val f = fixture(
             candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
             decodedById = mutableMapOf(1L to PAIR_A, 2L to PAIR_B),
-            resultByLink = mutableMapOf(PAIR_A to null, PAIR_B to successResult()),
+            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.Retry, PAIR_B to linked()),
         )
 
         f.coordinator.onChange()
@@ -144,18 +146,19 @@ class PhotoPairCoordinatorTest {
     }
 
     @Test
-    fun failedOutcomeDedupsEmitsFailedCueAndContinues() {
+    fun otherFailureOutcomeDedupsEmitsFailedCueAndContinues() {
         val f = fixture(
             candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
             decodedById = mutableMapOf(1L to PAIR_A, 2L to null),
-            throwingLinks = mutableSetOf(PAIR_A),
+            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.OtherFailure("IOException", null)),
         )
 
+        f.coordinator.onChange()
         f.coordinator.onChange()
 
         assertEquals(listOf(PAIR_A), f.pairCalls)
         assertEquals(1, f.failedCueCalls)
-        assertEquals(listOf(1L, 2L), f.decodedIds)
+        assertEquals(listOf(1L, 2L, 1L, 2L), f.decodedIds)
     }
 
     @Test
@@ -163,7 +166,7 @@ class PhotoPairCoordinatorTest {
         val f = fixture(
             candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
             decodedById = mutableMapOf(1L to PAIR_A, 2L to null),
-            resultByLink = mutableMapOf(PAIR_A to successResult(connectionMode = PairConnectionMode.RECONNECTING)),
+            outcomeByLink = mutableMapOf(PAIR_A to linked(connectionMode = PairConnectionMode.RECONNECTING)),
         )
 
         f.coordinator.onChange()
@@ -182,8 +185,8 @@ class PhotoPairCoordinatorTest {
         f.coordinator.onChange()
 
         assertEquals(emptyList(), f.pairCalls)
-        assertEquals(2, f.looksLikeCalls)
-        assertEquals(0, f.readyCueCalls)
+        assertEquals(1, f.looksLikeCalls)
+        assertEquals(0, f.startedCueCalls)
         assertEquals(0, f.failedCueCalls)
     }
 
@@ -198,24 +201,24 @@ class PhotoPairCoordinatorTest {
         f.coordinator.onChange()
 
         assertEquals(listOf(1L, 2L, 1L, 2L), f.decodedIds)
-        assertEquals(0, f.readyCueCalls)
+        assertEquals(0, f.startedCueCalls)
         assertEquals(0, f.failedCueCalls)
     }
 
     @Test
-    fun readyCueEmittedBeforePairAttemptForPairLink() {
+    fun startedCueEmittedBeforePairAttemptForPairLink() {
         val f = fixture(decodedById = mutableMapOf(1L to PAIR_A))
 
         f.coordinator.onChange()
 
-        assertEquals(listOf("ready:$PAIR_A", "pair:$PAIR_A"), f.events)
+        assertEquals(listOf("started:$PAIR_A", "pair:$PAIR_A"), f.events)
     }
 
     @Test
     fun attemptedPairLinksAreSkippedOnFutureScans() {
         val f = fixture(
             decodedById = mutableMapOf(1L to PAIR_A),
-            throwingLinks = mutableSetOf(PAIR_A),
+            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.OtherFailure("IOException", null)),
         )
 
         f.coordinator.onChange()
@@ -237,23 +240,121 @@ class PhotoPairCoordinatorTest {
         assertEquals(2, f.unregisterCalls)
     }
 
+    @Test
+    fun preflightOfflineCuesDoesNotPairOrBurnAndLaterUsableNetworkAttemptsSameLink() {
+        val f = fixture(decodedById = mutableMapOf(1L to PAIR_A), networkUsable = false)
+
+        f.coordinator.onChange()
+
+        assertEquals(1, f.networkCueCalls)
+        assertEquals(emptyList(), f.pairCalls)
+
+        f.networkUsable = true
+        f.coordinator.onChange()
+
+        assertEquals(listOf(PAIR_A), f.pairCalls)
+        assertEquals(1, f.unregisterCalls)
+    }
+
+    @Test
+    fun repeatedOfflineScansAnnounceOnceUntilUsableNetworkReturns() {
+        val f = fixture(decodedById = mutableMapOf(1L to PAIR_A), networkUsable = false)
+
+        f.coordinator.onChange()
+        f.coordinator.onChange()
+
+        assertEquals(1, f.networkCueCalls)
+        assertEquals(emptyList(), f.pairCalls)
+
+        f.networkUsable = true
+        f.outcomeByLink[PAIR_A] = PairAttemptOutcome.NetworkUnavailable
+        f.coordinator.onChange()
+
+        assertEquals(2, f.networkCueCalls)
+        assertEquals(listOf(PAIR_A), f.pairCalls)
+    }
+
+    @Test
+    fun postAttemptNetworkUnavailableCuesAndDoesNotBurn() {
+        val f = fixture(
+            decodedById = mutableMapOf(1L to PAIR_A),
+            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.NetworkUnavailable),
+        )
+
+        f.coordinator.onChange()
+        f.outcomeByLink[PAIR_A] = linked()
+        f.coordinator.onChange()
+
+        assertEquals(listOf(PAIR_A, PAIR_A), f.pairCalls)
+        assertEquals(1, f.networkCueCalls)
+        assertEquals(1, f.unregisterCalls)
+    }
+
+    @Test
+    fun windowClosedOutcomeEmitsRefreshCodeCueAndBurns() {
+        val f = fixture(
+            decodedById = mutableMapOf(1L to PAIR_A),
+            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.WindowClosed(401)),
+        )
+
+        f.coordinator.onChange()
+        f.coordinator.onChange()
+
+        assertEquals(listOf(PAIR_A), f.pairCalls)
+        assertEquals(1, f.refreshCueCalls)
+    }
+
+    @Test
+    fun outcomeLogsAreRedactedAndUseCarriedFields() {
+        val cases = listOf(
+            linked() to "relay-pair outcome=Linked mode=PAIRING",
+            PairAttemptOutcome.NetworkUnavailable to "relay-pair outcome=NetworkUnavailable",
+            PairAttemptOutcome.WindowClosed(401) to "relay-pair outcome=WindowClosed status=401",
+            PairAttemptOutcome.OtherFailure("IOException", 503) to
+                "relay-pair outcome=OtherFailure type=IOException status=503",
+            PairAttemptOutcome.Retry to "relay-pair outcome=Retry",
+        )
+        val logs = mutableListOf<String>()
+
+        cases.forEachIndexed { index, (outcome, _) ->
+            val secretLink = "pair:ticket-$index-token-cert-exception-message"
+            val f = fixture(
+                decodedById = mutableMapOf(1L to secretLink),
+                outcomeByLink = mutableMapOf(secretLink to outcome),
+            )
+            f.coordinator.onChange()
+            logs += f.logs
+        }
+
+        assertEquals(cases.map { it.second }, logs)
+        val captured = logs.joinToString("\n")
+        assertFalse(captured.contains("pair:ticket"))
+        assertFalse(captured.contains("ticket"))
+        assertFalse(captured.contains("token"))
+        assertFalse(captured.contains("cert"))
+        assertFalse(captured.contains("exception-message"))
+    }
+
     private class Fixture(
         var candidates: List<ImageRef>,
         var pairing: PairingFact,
         var nowSeconds: Long,
         var appStartSeconds: Long,
         val decodedById: MutableMap<Long, String?>,
-        val resultByLink: MutableMap<String, HarnessPairProbeResult?>,
-        val throwingLinks: MutableSet<String>,
+        val outcomeByLink: MutableMap<String, PairAttemptOutcome>,
+        var networkUsable: Boolean,
     ) {
         var candidateCalls = 0
         var unregisterCalls = 0
-        var readyCueCalls = 0
+        var startedCueCalls = 0
+        var networkCueCalls = 0
+        var refreshCueCalls = 0
         var failedCueCalls = 0
         var looksLikeCalls = 0
         val decodedIds = mutableListOf<Long>()
         val pairCalls = mutableListOf<String>()
         val events = mutableListOf<String>()
+        val logs = mutableListOf<String>()
         var decodeHook: ((ImageRef) -> Unit)? = null
 
         val coordinator = PhotoPairCoordinator(
@@ -272,20 +373,22 @@ class PhotoPairCoordinatorTest {
                 onScannedPairLink = { raw ->
                     pairCalls += raw
                     events += "pair:$raw"
-                    if (raw in throwingLinks) throw IllegalArgumentException("bad link")
-                    resultByLink[raw]
+                    outcomeByLink.getValue(raw)
                 },
                 looksLikePairLink = {
                     looksLikeCalls += 1
                     it.startsWith("pair:")
                 },
                 unregisterWatcher = { unregisterCalls += 1 },
-                onPairingReadyCue = {
-                    readyCueCalls += 1
-                    events += "ready:${decodedById[decodedIds.last()]}"
+                onPairingStartedCue = {
+                    startedCueCalls += 1
+                    events += "started:${decodedById[decodedIds.last()]}"
                 },
+                onNetworkUnavailableCue = { networkCueCalls += 1 },
+                onRefreshCodeCue = { refreshCueCalls += 1 },
                 onPairingFailedCue = { failedCueCalls += 1 },
-                log = {},
+                log = { logs += it },
+                isUsableNetworkPresent = { networkUsable },
                 nowSeconds = { nowSeconds },
             ),
         )
@@ -302,13 +405,16 @@ class PhotoPairCoordinatorTest {
             nowSeconds: Long = NOW,
             appStartSeconds: Long = 0L,
             decodedById: MutableMap<Long, String?> = mutableMapOf(1L to PAIR_A),
-            resultByLink: MutableMap<String, HarnessPairProbeResult?> = mutableMapOf(
-                PAIR_A to successResult(),
-                PAIR_B to successResult(),
+            outcomeByLink: MutableMap<String, PairAttemptOutcome> = mutableMapOf(
+                PAIR_A to linked(),
+                PAIR_B to linked(),
             ),
-            throwingLinks: MutableSet<String> = mutableSetOf(),
+            networkUsable: Boolean = true,
         ): Fixture =
-            Fixture(candidates, pairing, nowSeconds, appStartSeconds, decodedById, resultByLink, throwingLinks)
+            Fixture(candidates, pairing, nowSeconds, appStartSeconds, decodedById, outcomeByLink, networkUsable)
+
+        fun linked(connectionMode: PairConnectionMode = PairConnectionMode.PAIRING): PairAttemptOutcome =
+            PairAttemptOutcome.Linked(successResult(connectionMode))
 
         fun successResult(connectionMode: PairConnectionMode = PairConnectionMode.PAIRING): HarnessPairProbeResult =
             HarnessPairProbeResult(

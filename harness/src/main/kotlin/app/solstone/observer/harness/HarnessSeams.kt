@@ -49,6 +49,7 @@ interface SyncEnqueue {
 interface NetworkAvailability {
     fun start(onUsableNetwork: () -> Unit)
     fun stop()
+    fun isUsableNow(): Boolean
 }
 
 interface EvidenceReader {

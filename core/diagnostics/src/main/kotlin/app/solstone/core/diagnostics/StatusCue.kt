@@ -14,7 +14,9 @@ enum class StatusCue {
     PAIRED,
     SYNC_FAILED,
     // Reserved Phase-1b vocabulary; cueFor/statusCueFor must never return these.
-    PAIRING_READY,
+    PAIRING_STARTED,
+    NETWORK_UNAVAILABLE,
+    REFRESH_CODE,
     HANDSHAKE_VALID,
     PAIRING_FAILED,
     BATTERY_LOW,

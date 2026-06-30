@@ -90,16 +90,23 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             appStartSeconds = { appStartSeconds },
             decode = ::decodePhotoPairCandidate,
             pairingFact = controller::pairingFact,
-            onScannedPairLink = controller::onScannedPairLink,
+            onScannedPairLink = controller::onScannedPairLinkClassified,
             looksLikePairLink = ::looksLikePairLink,
             unregisterWatcher = ::stopPhotoPairWatch,
-            onPairingReadyCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_READY) } }
+            onPairingStartedCue = {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_STARTED) } }
+            },
+            onNetworkUnavailableCue = {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.NETWORK_UNAVAILABLE) } }
+            },
+            onRefreshCodeCue = {
+                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.REFRESH_CODE) } }
             },
             onPairingFailedCue = {
                 mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_FAILED) } }
             },
             log = { android.util.Log.i("GlassesPair", it) },
+            isUsableNetworkPresent = flavor.isUsableNetworkPresent,
             nowSeconds = ::nowSeconds,
         ),
     )
@@ -286,6 +293,7 @@ data class GlassesHarnessFlavor(
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
     val exemptionVerified: () -> Boolean = { true },
+    val isUsableNetworkPresent: () -> Boolean = { true },
 )
 
 interface HeartbeatControl {

@@ -107,6 +107,7 @@ fun createGlassesHarnessFlavor(
         heartbeatControl = heartbeat,
         syncControl = sync,
         exemptionVerified = { true },
+        isUsableNetworkPresent = { true },
     )
 }
 

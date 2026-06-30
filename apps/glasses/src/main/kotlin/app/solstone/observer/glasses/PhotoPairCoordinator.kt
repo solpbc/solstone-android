@@ -4,7 +4,7 @@
 package app.solstone.observer.glasses
 
 import app.solstone.core.diagnostics.PairingFact
-import app.solstone.observer.harness.HarnessPairProbeResult
+import app.solstone.observer.harness.PairAttemptOutcome
 
 data class ImageRef(val id: Long, val dateAddedSeconds: Long)
 
@@ -13,12 +13,15 @@ data class PhotoPairSeams(
     val appStartSeconds: () -> Long,
     val decode: (ImageRef) -> String?,
     val pairingFact: () -> PairingFact,
-    val onScannedPairLink: (String) -> HarnessPairProbeResult?,
+    val onScannedPairLink: (String) -> PairAttemptOutcome,
     val looksLikePairLink: (String) -> Boolean,
     val unregisterWatcher: () -> Unit,
-    val onPairingReadyCue: () -> Unit,
+    val onPairingStartedCue: () -> Unit,
+    val onNetworkUnavailableCue: () -> Unit,
+    val onRefreshCodeCue: () -> Unit,
     val onPairingFailedCue: () -> Unit,
     val log: (String) -> Unit,
+    val isUsableNetworkPresent: () -> Boolean,
     val nowSeconds: () -> Long,
 )
 
@@ -31,6 +34,7 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
     private var scanInFlight = false
     private var rescanRequested = false
     private val attemptedLinks = mutableSetOf<String>()
+    private val networkUnavailableAnnounced = mutableSetOf<String>()
 
     fun onChange() {
         scan()
@@ -67,10 +71,22 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
                 continue
             }
             if (decoded in attemptedLinks) continue
-            if (seams.looksLikePairLink(decoded)) {
-                seams.onPairingReadyCue()
+            if (!seams.looksLikePairLink(decoded)) {
+                attemptedLinks += decoded
+                continue
             }
-            when (decidePhotoPair(decoded, seams.looksLikePairLink, seams.onScannedPairLink)) {
+            if (!seams.isUsableNetworkPresent()) {
+                if (decoded !in networkUnavailableAnnounced) {
+                    seams.onNetworkUnavailableCue()
+                    networkUnavailableAnnounced += decoded
+                }
+                continue
+            }
+            networkUnavailableAnnounced.clear()
+            seams.onPairingStartedCue()
+            val outcome = seams.onScannedPairLink(decoded)
+            logOutcome(outcome)
+            when (decidePhotoPair(outcome)) {
                 PhotoPairOutcome.PAIRED,
                 PhotoPairOutcome.ALREADY_CONNECTED,
                 -> {
@@ -81,15 +97,34 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
                 PhotoPairOutcome.RECONNECTING -> {
                     attemptedLinks += decoded
                 }
+                PhotoPairOutcome.NETWORK_UNAVAILABLE -> {
+                    if (decoded !in networkUnavailableAnnounced) {
+                        seams.onNetworkUnavailableCue()
+                        networkUnavailableAnnounced += decoded
+                    }
+                }
+                PhotoPairOutcome.REFRESH_CODE -> {
+                    attemptedLinks += decoded
+                    seams.onRefreshCodeCue()
+                }
                 PhotoPairOutcome.FAILED -> {
                     attemptedLinks += decoded
                     seams.onPairingFailedCue()
                 }
-                PhotoPairOutcome.IGNORED -> {
-                    attemptedLinks += decoded
-                }
                 PhotoPairOutcome.RETRY -> return
             }
+        }
+    }
+
+    private fun logOutcome(outcome: PairAttemptOutcome) {
+        when (outcome) {
+            is PairAttemptOutcome.Linked -> seams.log("relay-pair outcome=Linked mode=${outcome.result.connectionMode}")
+            PairAttemptOutcome.NetworkUnavailable -> seams.log("relay-pair outcome=NetworkUnavailable")
+            is PairAttemptOutcome.WindowClosed -> seams.log("relay-pair outcome=WindowClosed status=${outcome.statusCode}")
+            is PairAttemptOutcome.OtherFailure -> {
+                seams.log("relay-pair outcome=OtherFailure type=${outcome.exceptionType} status=${outcome.statusCode}")
+            }
+            PairAttemptOutcome.Retry -> seams.log("relay-pair outcome=Retry")
         }
     }
 

@@ -48,10 +48,11 @@ fun createGlassesHarnessFlavor(
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val syncEnqueue = RealSyncEnqueue(context, GLASSES_STREAM)
     val packaged = RealAudioFeedback(context)
+    val networkAvailability = AndroidNetworkAvailability(context)
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,
         syncEnqueue = syncEnqueue,
-        networkAvailability = AndroidNetworkAvailability(context),
+        networkAvailability = networkAvailability,
     )
     return GlassesHarnessFlavor(
         controller = HarnessController(
@@ -81,5 +82,6 @@ fun createGlassesHarnessFlavor(
         },
         oemGuidance = guidance,
         exemptionVerified = verifier::isExemptionVerified,
+        isUsableNetworkPresent = networkAvailability::isUsableNow,
     )
 }

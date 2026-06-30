@@ -111,6 +111,35 @@ class StatusCueTest {
         )
     }
 
+    @Test
+    fun sourceStateCuesNeverReturnReservedPairOnlyCues() {
+        val reserved = setOf(
+            StatusCue.PAIRING_STARTED,
+            StatusCue.NETWORK_UNAVAILABLE,
+            StatusCue.REFRESH_CODE,
+            StatusCue.HANDSHAKE_VALID,
+            StatusCue.PAIRING_FAILED,
+            StatusCue.BATTERY_LOW,
+        )
+        val emitted = listOfNotNull(
+            cueFor(snapshot(pairing = PairingFact.UNPAIRED), snapshot(pairing = PairingFact.PAIRED)),
+            cueFor(snapshot(SourceState.OFF), snapshot(SourceState.ON)),
+            cueFor(snapshot(SourceState.ON), snapshot(SourceState.OFF)),
+            cueFor(snapshot(SourceState.ON), snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.PROVIDER_SILENT)),
+            cueFor(
+                snapshot(SourceState.ON),
+                snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.UNPAIRED, PairingFact.UNPAIRED),
+            ),
+            cueFor(snapshot(), snapshot(lastFailureAt = 1L)),
+            statusCueFor(snapshot(SourceState.ON)),
+            statusCueFor(snapshot(SourceState.OFF)),
+            statusCueFor(snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.UNPAIRED, PairingFact.UNPAIRED)),
+            statusCueFor(snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.PROVIDER_SILENT)),
+        )
+
+        assertEquals(emptySet(), emitted.toSet().intersect(reserved))
+    }
+
     private fun snapshot(
         state: SourceState = SourceState.OFF,
         reason: ReasonCode = ReasonCode.NONE,

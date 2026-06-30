@@ -21,5 +21,8 @@ class StatusFeedbackPhraseTest {
         assertEquals("Observing", phraseFor(StatusCue.OBSERVING))
         assertEquals("Not paired", phraseFor(StatusCue.NOT_PAIRED))
         assertEquals("Sync failed", phraseFor(StatusCue.SYNC_FAILED))
+        assertEquals("Pairing started", phraseFor(StatusCue.PAIRING_STARTED))
+        assertEquals("Network unavailable", phraseFor(StatusCue.NETWORK_UNAVAILABLE))
+        assertEquals("Refresh code", phraseFor(StatusCue.REFRESH_CODE))
     }
 }

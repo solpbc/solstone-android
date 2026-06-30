@@ -8,6 +8,9 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedException
+import java.io.IOException
+import java.net.UnknownHostException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -231,6 +234,47 @@ class HarnessControllerTest {
             fail("relay pair failure should propagate")
         } catch (_: IllegalStateException) {
         }
+        assertEquals(listOf("acquire", "release"), f.cameraLock.events)
+        assertFalse(f.cameraLock.held)
+    }
+
+    @Test
+    fun classifiedRelayPairWindowClosedMapsRefreshCode() {
+        val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw RelayPairWindowClosedException() })
+
+        val outcome = f.controller.onScannedPairLinkClassified(validRelayPairLink())
+
+        assertEquals(PairAttemptOutcome.WindowClosed(401), outcome)
+    }
+
+    @Test
+    fun classifiedRelayPairWebSocketFailedMapsNetworkUnavailable() {
+        val f = fixture(
+            relayPairProbe = RelayPairProbe { _, _ ->
+                throw IOException("WebSocket failed", UnknownHostException("h"))
+            },
+        )
+
+        val outcome = f.controller.onScannedPairLinkClassified(validRelayPairLink())
+
+        assertEquals(PairAttemptOutcome.NetworkUnavailable, outcome)
+    }
+
+    @Test
+    fun classifiedRelayPairGenericIoMapsOtherFailure() {
+        val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw IOException("boom") })
+
+        val outcome = f.controller.onScannedPairLinkClassified(validRelayPairLink())
+
+        assertEquals(PairAttemptOutcome.OtherFailure("IOException", null), outcome)
+    }
+
+    @Test
+    fun classifiedRelayPairFailureReleasesLock() {
+        val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw IOException("boom") })
+
+        f.controller.onScannedPairLinkClassified(validRelayPairLink())
+
         assertEquals(listOf("acquire", "release"), f.cameraLock.events)
         assertFalse(f.cameraLock.held)
     }
