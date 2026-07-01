@@ -23,21 +23,29 @@ class ObserverForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        dispatchLifecycle("fgs phase=create")
         refreshHeartbeat()
         handler.post(heartbeat)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(ObserverNotification.SERVICE_NOTIFICATION_ID, ObserverNotification.ongoing(this, decorate = true))
+        dispatchLifecycle("fgs phase=start startId=$startId flags=$flags")
         refreshHeartbeat()
         dispatchRehydrate(rehydrator)
         return START_STICKY
     }
 
     override fun onDestroy() {
+        dispatchLifecycle("fgs phase=destroy")
         handler.removeCallbacks(heartbeat)
         invalidateHeartbeat()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        dispatchLifecycle("fgs phase=task-removed")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -51,9 +59,14 @@ class ObserverForegroundService : Service() {
         private val lastBeatNanos = AtomicLong(0L)
 
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
+        @Volatile var lifecycleDiag: ((String) -> Unit)? = null
 
         fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
             hook?.onForegroundServiceStarted()
+        }
+
+        fun dispatchLifecycle(line: String) {
+            lifecycleDiag?.invoke(line)
         }
 
         fun startFromVisibleContext(context: Context) {

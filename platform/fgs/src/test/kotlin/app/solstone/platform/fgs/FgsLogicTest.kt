@@ -64,6 +64,19 @@ class FgsLogicTest {
     }
 
     @Test
+    fun lifecycleDiagHookReceivesRawLine() {
+        val lines = mutableListOf<String>()
+        ObserverForegroundService.lifecycleDiag = { lines += it }
+        try {
+            ObserverForegroundService.dispatchLifecycle("fgs phase=start startId=7 flags=0")
+        } finally {
+            ObserverForegroundService.lifecycleDiag = null
+        }
+
+        assertTrue(lines == listOf("fgs phase=start startId=7 flags=0"))
+    }
+
+    @Test
     fun nullNotificationDecorationIsNoOp() {
         ObserverNotification.dispatchDecoration(null)
     }

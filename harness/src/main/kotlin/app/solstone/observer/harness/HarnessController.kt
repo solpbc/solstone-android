@@ -46,11 +46,16 @@ class HarnessController(
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
     private val opportunisticSync: OpportunisticSync? = null,
+    private val diag: (String) -> Unit = {},
 ) {
     var desiredOn: Boolean
         get() = desiredObservingStore.isDesiredOn()
         private set(value) {
+            val old = desiredObservingStore.isDesiredOn()
             desiredObservingStore.setDesiredOn(value)
+            if (old != value) {
+                emitDiag("desired on=$value")
+            }
         }
 
     var permissionStatus: PermissionStatus = permissionStatusReader.read()
@@ -136,8 +141,13 @@ class HarnessController(
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
-        if (!startReadiness(mode).allowed) return
+        val readiness = startReadiness(mode)
+        if (!readiness.allowed) {
+            emitDiag("reconcile mode=$mode result=blocked blockers=${readiness.blockers.map { it.name }.sorted().joinToString(",")}")
+            return
+        }
         if (diagnostics().state == SourceState.ON) return
+        emitDiag("reconcile mode=$mode result=started")
         observerLifecycle.start()
         opportunisticSync?.start()
     }
@@ -281,6 +291,10 @@ class HarnessController(
         } finally {
             cameraLock.release()
         }
+    }
+
+    private fun emitDiag(line: String) {
+        runCatching { diag(line) }
     }
 }
 

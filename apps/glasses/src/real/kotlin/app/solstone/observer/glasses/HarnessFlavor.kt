@@ -74,6 +74,7 @@ fun createGlassesHarnessFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone glasses",
             opportunisticSync = opportunisticSync,
+            diag = { GlassesDiagLog.appendRaw(it) },
         ),
         audioFeedback = if (guidance.id == "rokid") {
             RokidTtsAudioFeedback(AndroidRokidTtsSpeaker(context), packaged)

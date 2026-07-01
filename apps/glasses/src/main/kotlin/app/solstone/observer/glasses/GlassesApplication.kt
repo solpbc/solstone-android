@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.sources.GLASSES_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverServiceRehydrator
@@ -26,6 +27,8 @@ class GlassesApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        GlassesDiagLog.install(applicationContext.filesDir)
+        ObserverForegroundService.lifecycleDiag = { GlassesDiagLog.appendRaw(it) }
         SyncScheduler.enqueuePeriodic(applicationContext, GLASSES_STREAM)
         runtime = GlassesObserverRuntime(applicationContext)
         GlassesHarnessRuntime.runtime = runtime
@@ -34,6 +37,16 @@ class GlassesApplication : Application() {
         }
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
         registerRokidButtonReceiverIfNeeded()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        GlassesDiagLog.emit(DiagEvent.MemoryPressure.Trim(level))
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        GlassesDiagLog.emit(DiagEvent.MemoryPressure.Low)
     }
 
     private fun decorateObserverNotification(context: Context, builder: Notification.Builder) {

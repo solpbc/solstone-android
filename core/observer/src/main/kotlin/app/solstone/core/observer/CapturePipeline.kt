@@ -23,6 +23,7 @@ class CapturePipeline(
     private val engines: List<ContinuousSourceEngine>,
     private val nowProvider: () -> Long,
     private val tickIntervalMs: Long,
+    private val diag: (String) -> Unit = {},
 ) {
     private val executor = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "solstone-capture-pipeline")
@@ -30,6 +31,7 @@ class CapturePipeline(
     private val started = AtomicBoolean(false)
     private var tick: ScheduledFuture<*>? = null
     @Volatile private var lastEmissionEpochMs: Long? = null
+    private var sealedCount: Long = 0
 
     init {
         require(tickIntervalMs > 0) { "tickIntervalMs must be positive" }
@@ -37,30 +39,44 @@ class CapturePipeline(
 
     fun start() {
         if (!started.compareAndSet(false, true)) return
+        emitDiag("capture event=start")
         tick = executor.scheduleAtFixedRate(
-            { drain(segmenter.sealDue(nowProvider())) },
+            { runDraining("engine") { segmenter.sealDue(nowProvider()) } },
             tickIntervalMs,
             tickIntervalMs,
             TimeUnit.MILLISECONDS,
         )
         engines.forEach { engine ->
-            engine.start(
-                EmissionSink { emission ->
-                    lastEmissionEpochMs = nowProvider()
-                    executor.execute {
-                        drain(segmenter.feed(emission))
-                    }
-                },
-            )
+            try {
+                engine.start(
+                    EmissionSink { emission ->
+                        lastEmissionEpochMs = nowProvider()
+                        executor.execute {
+                            runDraining(sourceLabel(emission.sourceId)) { segmenter.feed(emission) }
+                        }
+                    },
+                )
+            } catch (t: Throwable) {
+                emitError("engine", t)
+                throw t
+            }
         }
     }
 
     fun stop() {
         if (!started.compareAndSet(true, false)) return
-        engines.forEach { it.stop() }
+        emitDiag("capture event=stop")
+        engines.forEach {
+            try {
+                it.stop()
+            } catch (t: Throwable) {
+                emitError("engine", t)
+                throw t
+            }
+        }
         tick?.cancel(false)
         val flush = executor.submit {
-            drain(segmenter.flush())
+            runDraining("engine") { segmenter.flush() }
         }
         flush.get(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         executor.shutdown()
@@ -69,11 +85,37 @@ class CapturePipeline(
 
     fun lastEmissionEpochMs(): Long? = lastEmissionEpochMs
 
+    private fun runDraining(source: String, block: () -> List<SealedSegment>) {
+        try {
+            drain(block())
+        } catch (t: Throwable) {
+            emitError(source, t)
+            throw t
+        }
+    }
+
     private fun drain(sealed: List<SealedSegment>) {
         sealed.forEach { segment ->
             val result = spoolWriter.seal(segment, payloadBytes)
             sealedSink.persistSealed(segment, result, nowProvider())
+            sealedCount += 1
+            emitDiag("capture event=segment-sealed count=$sealedCount")
         }
+    }
+
+    private fun sourceLabel(sourceId: String): String =
+        when {
+            sourceId.contains("camera", ignoreCase = true) -> "camera"
+            sourceId.contains("audio", ignoreCase = true) -> "audio"
+            else -> "engine"
+        }
+
+    private fun emitError(source: String, throwable: Throwable) {
+        emitDiag("capture event=error source=$source type=${throwable.javaClass.simpleName}")
+    }
+
+    private fun emitDiag(line: String) {
+        runCatching { diag(line) }
     }
 
     private companion object {

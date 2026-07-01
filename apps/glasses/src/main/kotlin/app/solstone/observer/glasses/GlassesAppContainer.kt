@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.StatusCue
 import app.solstone.core.diagnostics.statusCueFor
@@ -25,6 +26,7 @@ import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.observer.formfactor.glasses.StillQrDecoder
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
+import app.solstone.observer.harness.HarnessDiagnostics
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
@@ -95,28 +97,50 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             looksLikePairLink = ::looksLikePairLink,
             unregisterWatcher = ::stopPhotoPairWatch,
             onPairingStartedCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_STARTED) } }
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_STARTED) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
             },
             onNetworkUnavailableCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.NETWORK_UNAVAILABLE) } }
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.NETWORK_UNAVAILABLE) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
             },
             onRefreshCodeCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.REFRESH_CODE) } }
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.REFRESH_CODE) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
             },
             onPairingFailedCue = {
-                mainHandler.post { runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_FAILED) } }
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_FAILED) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
             },
-            log = { android.util.Log.i("GlassesPair", it) },
+            log = { line ->
+                android.util.Log.i("GlassesPair", line)
+                GlassesDiagLog.appendRaw(line)
+            },
             isUsableNetworkPresent = flavor.isUsableNetworkPresent,
             nowSeconds = ::nowSeconds,
         ),
     )
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
+    private var previousDiagnostics: HarnessDiagnostics? = null
     private val pollRunnable = object : Runnable {
         override fun run() {
             background.execute {
                 runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
-                runCatching { cuePoller.tick() }
+                    .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName)) }
+                runCatching {
+                    emitStateTransition(controller.diagnostics())
+                    cuePoller.tick()
+                }.onFailure {
+                    GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName))
+                }
             }
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
         }
@@ -151,19 +175,24 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller)))
+            }.onFailure {
+                GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName))
             }
         }
     }
 
-    fun handleSwipe(action: SwipeAction) {
+    fun handleSwipe(action: SwipeAction, keyCode: Int) {
         background.execute {
             runCatching {
+                GlassesDiagLog.emit(DiagEvent.Swipe(keyCode, action.name))
                 dispatchSwipe(
                     action,
                     ensureObserving = controller::ensureObserving,
                     stop = controller::stop,
                     announce = { flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller))) },
                 )
+            }.onFailure {
+                GlassesDiagLog.emit(DiagEvent.CaughtException(site = "swipe", type = it.javaClass.simpleName))
             }
         }
     }
@@ -172,6 +201,8 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         background.execute {
             runCatching {
                 flavor.audioFeedback.play(StatusCue.NEEDS_ATTENTION)
+            }.onFailure {
+                GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName))
             }
         }
     }
@@ -207,7 +238,22 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             engines = captureSetup.engines,
             nowProvider = System::currentTimeMillis,
             tickIntervalMs = TICK_INTERVAL_MS,
+            diag = { GlassesDiagLog.appendRaw(it) },
         )
+    }
+
+    private fun emitStateTransition(current: HarnessDiagnostics) {
+        val previous = previousDiagnostics
+        if (previous != null && (previous.state != current.state || previous.reason != current.reason)) {
+            GlassesDiagLog.emit(
+                DiagEvent.StateTransition(
+                    from = previous.state,
+                    to = current.state,
+                    reason = current.reason,
+                ),
+            )
+        }
+        previousDiagnostics = current
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {

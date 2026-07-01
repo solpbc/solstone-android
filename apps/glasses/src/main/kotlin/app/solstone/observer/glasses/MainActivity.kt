@@ -51,7 +51,7 @@ class MainActivity : Activity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         Log.i(TAG, "temple KeyEvent keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
         val action = swipeAction(keyCode) ?: return super.onKeyDown(keyCode, event)
-        container.handleSwipe(action)
+        container.handleSwipe(action, keyCode)
         return true
     }
 
