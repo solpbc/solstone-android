@@ -27,6 +27,7 @@ import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
+import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -114,7 +115,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val pollRunnable = object : Runnable {
         override fun run() {
             background.execute {
-                runCatching { controller.reconcile() }
+                runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
                 runCatching { cuePoller.tick() }
             }
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)

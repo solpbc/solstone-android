@@ -26,14 +26,14 @@ class HarnessControllerRehydrateTest {
         )
         f.desiredStore.setDesiredOn(true)
 
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(0, f.lifecycle.starts)
 
         // No-permanent-stranding regression: RED on current main, where only FGS-triggered
         // rehydrate exists, so a blocker that clears later never recovers.
         pl = HarnessPlStatus.Reachable(200)
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(1, f.lifecycle.starts)
         assertTrue(f.controller.desiredOn)
@@ -43,7 +43,7 @@ class HarnessControllerRehydrateTest {
     fun reconcileNoopsWhenNotDesired() {
         val f = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
 
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(0, f.lifecycle.starts)
     }
@@ -61,7 +61,7 @@ class HarnessControllerRehydrateTest {
         )
         f.desiredStore.setDesiredOn(true)
 
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(1, f.lifecycle.starts)
     }
@@ -82,8 +82,8 @@ class HarnessControllerRehydrateTest {
         )
         f.desiredStore.setDesiredOn(true)
 
-        f.controller.reconcile()
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(1, f.lifecycle.starts)
     }
@@ -102,8 +102,8 @@ class HarnessControllerRehydrateTest {
         )
         f.desiredStore.setDesiredOn(true)
 
-        f.controller.reconcile()
-        f.controller.reconcile()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(1, f.networkAvailability?.startCalls)
     }

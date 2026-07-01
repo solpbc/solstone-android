@@ -117,7 +117,7 @@ class HarnessController(
         desiredOn = false
     }
 
-    fun reconcile() {
+    fun reconcile(mode: ObserverStartMode) {
         if (reconcileInFlight) {
             reconcileRerunRequested = true
             return
@@ -126,7 +126,7 @@ class HarnessController(
         try {
             do {
                 reconcileRerunRequested = false
-                reconcileOnce()
+                reconcileOnce(mode)
             } while (reconcileRerunRequested)
         } finally {
             reconcileInFlight = false
@@ -134,9 +134,9 @@ class HarnessController(
         }
     }
 
-    private fun reconcileOnce() {
+    private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
-        if (!startReadiness(ObserverStartMode.Rehydrate).allowed) return
+        if (!startReadiness(mode).allowed) return
         if (diagnostics().state == SourceState.ON) return
         observerLifecycle.start()
         opportunisticSync?.start()
@@ -144,7 +144,7 @@ class HarnessController(
 
     fun ensureObserving() {
         desiredOn = true
-        reconcile()
+        reconcile(ObserverStartMode.VisibleStart)
     }
 
     fun withScanSession(block: () -> Unit): Boolean {

@@ -5,6 +5,7 @@ package app.solstone.observer.glasses
 
 import android.content.Context
 import app.solstone.core.model.SourceState
+import app.solstone.observer.harness.ObserverStartMode
 
 class GlassesObserverRuntime(
     private val appContext: Context?,
@@ -40,7 +41,7 @@ class GlassesObserverRuntime(
     }
 
     fun rehydrateFromForegroundServiceStart() {
-        runCatching { runtimeContainer().controller.reconcile() }
+        runCatching { runtimeContainer().controller.reconcile(ObserverStartMode.Rehydrate) }
     }
 
     override fun observeStart(): RuntimeCommandResult {
