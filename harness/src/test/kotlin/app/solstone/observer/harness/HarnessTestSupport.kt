@@ -57,6 +57,10 @@ internal class FakeForegroundStartAllowed(var allowed: Boolean = true) : Foregro
     override fun isForegroundStartAllowed(): Boolean = allowed
 }
 
+internal class FakeVisibleCaptureAuthority(var present: Boolean = true) : VisibleCaptureAuthority {
+    override fun isVisibleOwnerPresent(): Boolean = present
+}
+
 internal class FakeEndpointStore(var endpoint: DirectEndpoint? = null) : EndpointStore {
     override fun save(endpoint: DirectEndpoint) {
         this.endpoint = endpoint
@@ -212,6 +216,7 @@ internal fun fixture(
     identityStore: FakeIdentityStore = FakeIdentityStore(pairedHome()),
     desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
     foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
+    visibleCaptureAuthority: VisibleCaptureAuthority = FakeVisibleCaptureAuthority(present = true),
     networkAvailability: FakeNetworkAvailability? = null,
     sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
 ): Fixture {
@@ -241,6 +246,7 @@ internal fun fixture(
             identityStore = identityStore,
             sourceSnapshot = sourceSnapshotProvider ?: { snapshot },
             deviceLabel = "watch",
+            visibleCaptureAuthority = visibleCaptureAuthority,
             opportunisticSync = opportunisticSync,
         ),
         permissions = permissions,

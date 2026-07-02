@@ -17,6 +17,7 @@ import app.solstone.observer.harness.RealRelayPairProbe
 import app.solstone.observer.harness.RealSyncEnqueue
 import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
 import app.solstone.observer.harness.SourceRuntimeSnapshot
+import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
@@ -36,6 +37,7 @@ fun createGlassesHarnessFlavor(
     sourceSnapshot: () -> SourceRuntimeSnapshot,
     database: SolstonePersistenceDatabase,
     spoolDir: Path,
+    visibleCaptureAuthority: VisibleCaptureAuthority,
 ): GlassesHarnessFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
@@ -73,6 +75,7 @@ fun createGlassesHarnessFlavor(
             identityStore = stores.identityStore,
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone glasses",
+            visibleCaptureAuthority = visibleCaptureAuthority,
             opportunisticSync = opportunisticSync,
             diag = { GlassesDiagLog.appendRaw(it) },
         ),

@@ -13,6 +13,30 @@ import kotlin.test.assertTrue
 
 class HarnessControllerRehydrateTest {
     @Test
+    fun rehydrateRefusedWhenNoOwnerEvenIfOtherwiseReady() {
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            foregroundStartAllowed = FakeForegroundStartAllowed(true),
+            visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(0, f.lifecycle.starts)
+        assertTrue(
+            ReasonCode.FOREGROUND_START_NOT_ALLOWED in
+                f.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
+        )
+    }
+
+    @Test
     fun reconcileSelfHealsWhenTransportBlockerClears() {
         var pl: HarnessPlStatus = HarnessPlStatus.PairedButUnreachable("down")
         val f = fixture(

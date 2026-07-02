@@ -31,6 +31,7 @@ import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
+import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
@@ -52,6 +53,7 @@ interface GlassesRuntimeContainer {
 
 class GlassesAppContainer(private val context: Context) : GlassesRuntimeContainer {
     val cameraLock = SingleHolderCameraLock()
+    val captureAuthority = VisibleCaptureOwnerRegistry()
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
@@ -84,6 +86,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         sourceSnapshot = ::sourceSnapshot,
         database = database,
         spoolDir = spoolDir,
+        visibleCaptureAuthority = captureAuthority,
     )
 
     override val controller: HarnessController = flavor.controller

@@ -15,6 +15,37 @@ interface DesiredObservingStore {
     fun setDesiredOn(on: Boolean)
 }
 
+fun interface VisibleCaptureAuthority {
+    fun isVisibleOwnerPresent(): Boolean
+}
+
+object AlwaysVisibleCaptureAuthority : VisibleCaptureAuthority {
+    override fun isVisibleOwnerPresent(): Boolean = true
+}
+
+class VisibleCaptureOwnerRegistry : VisibleCaptureAuthority {
+    private var current: Long? = null
+    private var generation: Long = 0
+
+    @Synchronized
+    fun acquire(): Long {
+        generation += 1
+        current = generation
+        return generation
+    }
+
+    @Synchronized
+    fun release(token: Long) {
+        if (current == token) current = null
+    }
+
+    @Synchronized
+    fun isCurrent(token: Long): Boolean = current == token
+
+    @Synchronized
+    override fun isVisibleOwnerPresent(): Boolean = current != null
+}
+
 class InMemoryDesiredObservingStore(initial: Boolean = false) : DesiredObservingStore {
     private var desiredOn = initial
 

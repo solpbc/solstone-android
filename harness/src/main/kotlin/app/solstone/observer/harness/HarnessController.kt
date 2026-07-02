@@ -45,6 +45,7 @@ class HarnessController(
     private val identityStore: IdentityStore,
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
+    private val visibleCaptureAuthority: VisibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
     private val opportunisticSync: OpportunisticSync? = null,
     private val diag: (String) -> Unit = {},
 ) {
@@ -81,11 +82,16 @@ class HarnessController(
 
     fun onPermissionsRequested(): PermissionStatus = refreshPermissions()
 
+    fun isVisibleCaptureOwnerPresent(): Boolean = visibleCaptureAuthority.isVisibleOwnerPresent()
+
     fun startReadiness(mode: ObserverStartMode): ObserverStartReadiness {
         refreshPermissions()
         val blockers = linkedSetOf<ReasonCode>()
         if (!permissionStatus.allRequiredGranted) {
             blockers += ReasonCode.PERMISSION_REVOKED
+        }
+        if (!visibleCaptureAuthority.isVisibleOwnerPresent()) {
+            blockers += ReasonCode.FOREGROUND_START_NOT_ALLOWED
         }
         if (mode == ObserverStartMode.Rehydrate) {
             if (!desiredOn) {

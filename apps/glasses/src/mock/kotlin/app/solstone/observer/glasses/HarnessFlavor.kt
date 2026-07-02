@@ -25,6 +25,7 @@ import app.solstone.observer.harness.RealEvidenceReader
 import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
+import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
@@ -38,6 +39,7 @@ fun createGlassesHarnessFlavor(
     sourceSnapshot: () -> SourceRuntimeSnapshot,
     database: SolstonePersistenceDatabase,
     spoolDir: Path,
+    visibleCaptureAuthority: VisibleCaptureAuthority,
 ): GlassesHarnessFlavor {
     val endpointStore = MemoryEndpointStore()
     val credentialStore = MemoryCredentialStore()
@@ -101,6 +103,7 @@ fun createGlassesHarnessFlavor(
             identityStore = identityStore,
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "mock glasses",
+            visibleCaptureAuthority = visibleCaptureAuthority,
             opportunisticSync = null,
         ),
         audioFeedback = FakeAudioFeedback(),

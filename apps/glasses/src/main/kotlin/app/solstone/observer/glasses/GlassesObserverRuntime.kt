@@ -4,6 +4,7 @@
 package app.solstone.observer.glasses
 
 import android.content.Context
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.ObserverStartMode
 
@@ -41,12 +42,47 @@ class GlassesObserverRuntime(
     }
 
     fun rehydrateFromForegroundServiceStart() {
-        runCatching { runtimeContainer().controller.reconcile(ObserverStartMode.Rehydrate) }
+        runCatching {
+            val controller = runtimeContainer().controller
+            if (!controller.isVisibleCaptureOwnerPresent()) {
+                GlassesDiagLog.emit(
+                    DiagEvent.CaptureRefused(
+                        source = DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
+                        reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                    ),
+                )
+            }
+            controller.reconcile(ObserverStartMode.Rehydrate)
+        }
     }
 
     override fun observeStart(): RuntimeCommandResult {
         val controller = runtimeContainer().controller
         if (!controller.start()) {
+            if (!controller.isVisibleCaptureOwnerPresent()) {
+                GlassesDiagLog.emit(
+                    DiagEvent.CaptureRefused(
+                        source = DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
+                        reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                    ),
+                )
+                return CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)
+            }
+            val permissions = controller.permissionStatus
+            when {
+                !permissions.cameraGranted -> GlassesDiagLog.emit(
+                    DiagEvent.CaptureRefused(
+                        source = DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
+                        reason = DiagEvent.CaptureRefusalReason.CAMERA_PERMISSION_MISSING,
+                    ),
+                )
+                !permissions.microphoneGranted -> GlassesDiagLog.emit(
+                    DiagEvent.CaptureRefused(
+                        source = DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
+                        reason = DiagEvent.CaptureRefusalReason.MIC_PERMISSION_MISSING,
+                    ),
+                )
+            }
             return CommandBlocked(RuntimeCommandBlockReason.MissingPermissions)
         }
         return verdictFromDiagnostics()

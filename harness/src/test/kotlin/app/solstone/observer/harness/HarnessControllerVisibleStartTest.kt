@@ -7,11 +7,39 @@ import app.solstone.core.diagnostics.CueSnapshot
 import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.StatusCue
 import app.solstone.core.diagnostics.cueFor
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class HarnessControllerVisibleStartTest {
+    @Test
+    fun visibleStartRefusedWhenNoOwner() {
+        val startFixture = fixture(
+            visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
+            snapshot = stoppedSnapshot(),
+        )
+
+        assertFalse(startFixture.controller.start())
+
+        assertEquals(0, startFixture.lifecycle.starts)
+        assertTrue(startFixture.controller.lastStartRefused)
+        assertTrue(
+            ReasonCode.FOREGROUND_START_NOT_ALLOWED in
+                startFixture.controller.startReadiness(ObserverStartMode.VisibleStart).blockers,
+        )
+
+        val ensureFixture = fixture(
+            visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
+            snapshot = stoppedSnapshot(),
+        )
+        ensureFixture.controller.ensureObserving()
+
+        assertEquals(0, ensureFixture.lifecycle.starts)
+    }
+
     @Test
     fun visibleStartIgnoresRehydrateOnlyBlockers() {
         val f = unpairedFixture(

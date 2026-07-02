@@ -30,24 +30,32 @@ import app.solstone.observer.harness.PlStatusProbe
 import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
+import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class GlassesObserverRuntimeCommandTest {
     @Test
-    fun pairStartStopSyncAndSpeakWorkWithoutActivity() {
-        val container = FakeRuntimeContainer(controller = controller())
+    fun nonCaptureCommandsWorkWithoutActivityOwnerAndObserveStartRefuses() {
+        val container = FakeRuntimeContainer(
+            controller = controller(
+                desiredStore = MemoryDesiredStore(initial = true),
+                visibleCaptureAuthority = FakeVisibleCaptureAuthority(false),
+            ),
+        )
         val runtime = GlassesObserverRuntime(container)
 
         assertEquals(CommandSucceeded, runtime.pairLink(validPairLink()))
-        assertEquals(CommandSucceeded, runtime.observeStart())
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable), runtime.observeStart())
         assertEquals(CommandSucceeded, runtime.syncNow())
         assertEquals(CommandSucceeded, runtime.speakStatus())
         assertEquals(CommandSucceeded, runtime.speakNeedsAttention())
@@ -55,6 +63,17 @@ class GlassesObserverRuntimeCommandTest {
         assertEquals(1, container.sync.enqueueNowCalls)
         assertEquals(1, container.speakStatusCalls)
         assertEquals(1, container.speakAttentionCalls)
+        assertEquals(0, container.lifecycle.starts)
+    }
+
+    @Test
+    fun observeStartSucceedsWithOwnerPresent() {
+        val container = FakeRuntimeContainer(controller = controller())
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandSucceeded, runtime.observeStart())
+
+        assertEquals(1, container.lifecycle.starts)
     }
 
     @Test
@@ -79,6 +98,40 @@ class GlassesObserverRuntimeCommandTest {
     }
 
     @Test
+    fun observeStartMissingCameraNamesCameraClass() {
+        val dir = Files.createTempDirectory("glasses-diag")
+        val sink = GlassesDiagLog.install(dir.toFile())
+        val runtime = GlassesObserverRuntime(
+            FakeRuntimeContainer(
+                controller = controller(permissionStatus = grantedPermissions().copy(cameraGranted = false)),
+            ),
+        )
+
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.MissingPermissions), runtime.observeStart())
+
+        assertTrue(
+            sink.readAll().contains("kind=capture-refused source=runtime-command reason=camera-permission-missing"),
+        )
+    }
+
+    @Test
+    fun observeStartMissingMicNamesMicClass() {
+        val dir = Files.createTempDirectory("glasses-diag")
+        val sink = GlassesDiagLog.install(dir.toFile())
+        val runtime = GlassesObserverRuntime(
+            FakeRuntimeContainer(
+                controller = controller(permissionStatus = grantedPermissions().copy(microphoneGranted = false)),
+            ),
+        )
+
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.MissingPermissions), runtime.observeStart())
+
+        assertTrue(
+            sink.readAll().contains("kind=capture-refused source=runtime-command reason=mic-permission-missing"),
+        )
+    }
+
+    @Test
     fun observeStartUnpairedReportsDiagnosticsNeedsAttention() {
         val runtime = GlassesObserverRuntime(
             FakeRuntimeContainer(
@@ -93,6 +146,16 @@ class GlassesObserverRuntimeCommandTest {
         val result = assertIs<CommandNeedsAttention>(runtime.observeStart())
         assertEquals(SourceState.NEEDS_ATTENTION, result.state)
         assertEquals(ReasonCode.UNPAIRED, result.reason)
+    }
+
+    @Test
+    fun rehydrateWithoutOwnerDoesNotStart() {
+        val container = FakeRuntimeContainer(controller = controller(visibleCaptureAuthority = FakeVisibleCaptureAuthority(false)))
+        val runtime = GlassesObserverRuntime(container)
+
+        runtime.rehydrateFromForegroundServiceStart()
+
+        assertEquals(0, container.lifecycle.starts)
     }
 
     @Test
@@ -128,6 +191,7 @@ class GlassesObserverRuntimeCommandTest {
         override val controller: HarnessController,
     ) : GlassesRuntimeContainer {
         val sync = controllerSync(controller)
+        val lifecycle = controllerLifecycle(controller)
         var speakStatusCalls = 0
         var speakAttentionCalls = 0
         var closeCalls = 0
@@ -166,6 +230,10 @@ class GlassesObserverRuntimeCommandTest {
         override fun stop() {
             stops += 1
         }
+    }
+
+    private class FakeVisibleCaptureAuthority(var present: Boolean = true) : VisibleCaptureAuthority {
+        override fun isVisibleOwnerPresent(): Boolean = present
     }
 
     private class RecordingCameraLock : CameraLock {
@@ -241,10 +309,13 @@ class GlassesObserverRuntimeCommandTest {
         endpointStore: FakeEndpointStore = FakeEndpointStore(),
         credentialStore: FakeCredentialStore = FakeCredentialStore(),
         identityStore: FakeIdentityStore = FakeIdentityStore(),
+        desiredStore: MemoryDesiredStore = MemoryDesiredStore(),
         pendingCount: Int = 0,
         opportunisticSyncEnabled: Boolean = false,
+        visibleCaptureAuthority: VisibleCaptureAuthority = FakeVisibleCaptureAuthority(),
     ): HarnessController {
         val sync = RecordingSync()
+        val lifecycle = RecordingLifecycle()
         val evidenceReader = FakeEvidenceReader(pendingCount)
         val opportunisticSync = if (opportunisticSyncEnabled) {
             OpportunisticSync(evidenceReader, sync, FakeNetworkAvailability())
@@ -253,10 +324,10 @@ class GlassesObserverRuntimeCommandTest {
         }
         return HarnessController(
             permissionStatusReader = MutablePermissionReader(permissionStatus),
-            desiredObservingStore = MemoryDesiredStore(),
+            desiredObservingStore = desiredStore,
             foregroundStartAllowed = ForegroundStartAllowed { true },
             cameraLock = RecordingCameraLock(),
-            observerLifecycle = RecordingLifecycle(),
+            observerLifecycle = lifecycle,
             heartbeatFreshness = FreshHeartbeat(),
             pairProbe = PairProbe { _, _ -> HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657) },
             relayPairProbe = RelayPairProbe { _, _ -> HarnessPairProbeResult(true, 200, 200, "ok", "home", "link.solstone.app", 443) },
@@ -276,13 +347,19 @@ class GlassesObserverRuntimeCommandTest {
                 )
             },
             deviceLabel = "test glasses",
+            visibleCaptureAuthority = visibleCaptureAuthority,
             opportunisticSync = opportunisticSync,
-        ).also { syncByController[it] = sync }
+        ).also {
+            syncByController[it] = sync
+            lifecycleByController[it] = lifecycle
+        }
     }
 
     private companion object {
         val syncByController = mutableMapOf<HarnessController, RecordingSync>()
+        val lifecycleByController = mutableMapOf<HarnessController, RecordingLifecycle>()
         fun controllerSync(controller: HarnessController): RecordingSync = syncByController.getValue(controller)
+        fun controllerLifecycle(controller: HarnessController): RecordingLifecycle = lifecycleByController.getValue(controller)
 
         fun grantedPermissions(): PermissionStatus =
             PermissionStatus(

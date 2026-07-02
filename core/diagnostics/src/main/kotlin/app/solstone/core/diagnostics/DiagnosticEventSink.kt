@@ -113,6 +113,25 @@ sealed interface DiagEvent {
         val type: String,
         val code: Int? = null,
     ) : DiagEvent
+
+    data class CaptureOwner(val transition: CaptureOwnerTransition) : DiagEvent
+
+    enum class CaptureOwnerTransition {
+        RESUMED_ACQUIRED,
+        STOPPED_RELEASED,
+        SCREEN_ON_SET,
+        SCREEN_ON_CLEARED,
+        START_ACCEPTED,
+    }
+
+    data class CaptureRefused(
+        val source: CaptureRefusalSource,
+        val reason: CaptureRefusalReason,
+    ) : DiagEvent
+
+    enum class CaptureRefusalSource { RUNTIME_COMMAND, FGS_REHYDRATE, POLL, SWIPE, OTHER }
+
+    enum class CaptureRefusalReason { NO_VISIBLE_OWNER, CAMERA_PERMISSION_MISSING, MIC_PERMISSION_MISSING }
 }
 
 fun formatDiagEvent(event: DiagEvent): String =
@@ -130,6 +149,8 @@ fun formatDiagEvent(event: DiagEvent): String =
             append("kind=caught site=${event.site} type=${event.type}")
             event.code?.let { append(" code=$it") }
         }
+        is DiagEvent.CaptureOwner -> "kind=capture-owner transition=${event.transition.key()}"
+        is DiagEvent.CaptureRefused -> "kind=capture-refused source=${event.source.key()} reason=${event.reason.key()}"
     }
 
 private fun DiagEvent.FgsPhase.key(): String =
@@ -139,3 +160,9 @@ private fun DiagEvent.FgsPhase.key(): String =
         DiagEvent.FgsPhase.DESTROY -> "destroy"
         DiagEvent.FgsPhase.TASK_REMOVED -> "task-removed"
     }
+
+private fun DiagEvent.CaptureOwnerTransition.key(): String = name.lowercase().replace('_', '-')
+
+private fun DiagEvent.CaptureRefusalSource.key(): String = name.lowercase().replace('_', '-')
+
+private fun DiagEvent.CaptureRefusalReason.key(): String = name.lowercase().replace('_', '-')

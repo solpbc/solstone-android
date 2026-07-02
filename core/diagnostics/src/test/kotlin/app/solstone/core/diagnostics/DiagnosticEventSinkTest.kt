@@ -101,6 +101,71 @@ class DiagnosticEventSinkTest {
             "kind=caught site=poll type=IllegalStateException code=7",
             formatDiagEvent(DiagEvent.CaughtException(site = "poll", type = "IllegalStateException", code = 7)),
         )
+        assertEquals(
+            "kind=capture-owner transition=resumed-acquired",
+            formatDiagEvent(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.RESUMED_ACQUIRED)),
+        )
+        assertEquals(
+            "kind=capture-owner transition=stopped-released",
+            formatDiagEvent(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.STOPPED_RELEASED)),
+        )
+        assertEquals(
+            "kind=capture-owner transition=screen-on-set",
+            formatDiagEvent(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_SET)),
+        )
+        assertEquals(
+            "kind=capture-owner transition=screen-on-cleared",
+            formatDiagEvent(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_CLEARED)),
+        )
+        assertEquals(
+            "kind=capture-owner transition=start-accepted",
+            formatDiagEvent(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.START_ACCEPTED)),
+        )
+        assertEquals(
+            "kind=capture-refused source=runtime-command reason=no-visible-owner",
+            formatDiagEvent(
+                DiagEvent.CaptureRefused(
+                    DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
+                    DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                ),
+            ),
+        )
+        assertEquals(
+            "kind=capture-refused source=fgs-rehydrate reason=camera-permission-missing",
+            formatDiagEvent(
+                DiagEvent.CaptureRefused(
+                    DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
+                    DiagEvent.CaptureRefusalReason.CAMERA_PERMISSION_MISSING,
+                ),
+            ),
+        )
+        assertEquals(
+            "kind=capture-refused source=poll reason=mic-permission-missing",
+            formatDiagEvent(
+                DiagEvent.CaptureRefused(
+                    DiagEvent.CaptureRefusalSource.POLL,
+                    DiagEvent.CaptureRefusalReason.MIC_PERMISSION_MISSING,
+                ),
+            ),
+        )
+        assertEquals(
+            "kind=capture-refused source=swipe reason=no-visible-owner",
+            formatDiagEvent(
+                DiagEvent.CaptureRefused(
+                    DiagEvent.CaptureRefusalSource.SWIPE,
+                    DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                ),
+            ),
+        )
+        assertEquals(
+            "kind=capture-refused source=other reason=no-visible-owner",
+            formatDiagEvent(
+                DiagEvent.CaptureRefused(
+                    DiagEvent.CaptureRefusalSource.OTHER,
+                    DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                ),
+            ),
+        )
 
         val exception = RuntimeException("https://go.solstone.app/p#ticket-token-cert-----BEGIN PRIVATE KEY-----")
         val formatted = formatDiagEvent(

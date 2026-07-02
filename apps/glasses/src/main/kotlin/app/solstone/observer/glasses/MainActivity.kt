@@ -9,10 +9,14 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
+import android.view.WindowManager
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.observer.formfactor.glasses.GlassesHarnessUi
 
 class MainActivity : Activity() {
     private lateinit var container: GlassesAppContainer
+    private var captureOwnerToken: Long = -1L
+    private var captureStartedForOwner: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,14 +38,40 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        captureOwnerToken = container.captureAuthority.acquire()
+        captureStartedForOwner = false
+        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.RESUMED_ACQUIRED))
+        startIfEligible()
     }
 
     override fun onPause() {
         super.onPause()
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!container.captureAuthority.isCurrent(captureOwnerToken)) return
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_CLEARED))
+        container.controller.stop()
+        container.captureAuthority.release(captureOwnerToken)
+        captureStartedForOwner = false
+        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.STOPPED_RELEASED))
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST && container.captureAuthority.isCurrent(captureOwnerToken)) {
+            startIfEligible()
+        }
     }
 
     // Swipe forward/back arrive as VOLUME_UP/VOLUME_DOWN; we consume ONLY those so the harness UI keeps
@@ -70,6 +100,15 @@ class MainActivity : Activity() {
                 Manifest.permission.READ_EXTERNAL_STORAGE,
             )
         }
+
+    private fun startIfEligible() {
+        if (captureStartedForOwner) return
+        if (!container.controller.start()) return
+        captureStartedForOwner = true
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_SET))
+        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.START_ACCEPTED))
+    }
 
     private companion object {
         const val TAG = "GlassesStatus"
