@@ -113,8 +113,6 @@ sealed interface DiagEvent {
         val type: String,
         val code: Int? = null,
     ) : DiagEvent
-
-    data class WatchdogProbe(val run: Long, val observingUp: Boolean, val expedited: Boolean) : DiagEvent
 }
 
 fun formatDiagEvent(event: DiagEvent): String =
@@ -132,7 +130,6 @@ fun formatDiagEvent(event: DiagEvent): String =
             append("kind=caught site=${event.site} type=${event.type}")
             event.code?.let { append(" code=$it") }
         }
-        is DiagEvent.WatchdogProbe -> "kind=watchdog-probe run=${event.run} observing=${if (event.observingUp) "up" else "down"} mode=${if (event.expedited) "expedited" else "deferred"}"
     }
 
 private fun DiagEvent.FgsPhase.key(): String =
