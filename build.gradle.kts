@@ -87,6 +87,17 @@ fun foregroundServiceTypeTokens(manifestText: String): Set<String> =
         .filter { it.isNotEmpty() }
         .toSet()
 
+fun intentFilterTokenGroups(manifestText: String): List<Set<String>> =
+    Regex("""<intent-filter[^>]*>(.*?)</intent-filter>""", RegexOption.DOT_MATCHES_ALL)
+        .findAll(manifestText)
+        .map { match ->
+            Regex("""android:name\s*=\s*["']([^"']+)["']""")
+                .findAll(match.groupValues[1])
+                .map { it.groupValues[1] }
+                .toSet()
+        }
+        .toList()
+
 tasks.register("checkPrivacyDeps") {
     group = "verification"
     description = "Fails if a denylisted analytics, telemetry, crash, or tracking dependency is resolved."
@@ -175,8 +186,48 @@ tasks.register("manifestGuardSelfTest") {
     }
 }
 
+tasks.register("launcherHomeGuardSelfTest") {
+    group = "verification"
+    description = "Exercises intent-filter token grouping for the launcher/HOME manifest guard."
+    doLast {
+        val main = "android.intent.action.MAIN"
+        val launcher = "android.intent.category.LAUNCHER"
+        val home = "android.intent.category.HOME"
+        val default = "android.intent.category.DEFAULT"
+        fun List<Set<String>>.hasFilter(vararg names: String) = any { g -> names.all { it in g } }
+
+        val both = intentFilterTokenGroups(
+            """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$home" /><category android:name="$default" /></intent-filter>"""
+        )
+        check(both.hasFilter(main, launcher))
+        check(both.hasFilter(main, home, default))
+
+        val launcherOnly = intentFilterTokenGroups(
+            """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>"""
+        )
+        check(launcherOnly.hasFilter(main, launcher))
+        check(!launcherOnly.hasFilter(main, home, default))
+        check(launcherOnly.none { home in it })
+
+        // HOME and DEFAULT on SEPARATE filters must NOT satisfy co-occurrence.
+        val split = intentFilterTokenGroups(
+            """<intent-filter><action android:name="$main" /><category android:name="$home" /></intent-filter>""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$default" /></intent-filter>"""
+        )
+        check(!split.hasFilter(main, home, default))
+    }
+}
+
 tasks.named("check") {
-    dependsOn("checkPrivacyDeps", "checkCorePurity", "privacyGuardSelfTest", "purityGuardSelfTest", "manifestGuardSelfTest")
+    dependsOn(
+        "checkPrivacyDeps",
+        "checkCorePurity",
+        "privacyGuardSelfTest",
+        "purityGuardSelfTest",
+        "manifestGuardSelfTest",
+        "launcherHomeGuardSelfTest",
+    )
 }
 
 fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true) {
@@ -233,16 +284,59 @@ fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true) {
     }
 }
 
+fun Project.registerLauncherHomeManifestCheck(requireHome: Boolean) {
+    tasks.register("checkRealDebugLauncherManifest") {
+        group = "verification"
+        description = "Checks the realDebug merged manifest for the launcher and (glasses only) HOME intent-filters."
+        dependsOn("processRealDebugManifest")
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val text = manifest.readText()
+            val main = "android.intent.action.MAIN"
+            val launcher = "android.intent.category.LAUNCHER"
+            val home = "android.intent.category.HOME"
+            val default = "android.intent.category.DEFAULT"
+            val groups = intentFilterTokenGroups(text)
+            fun hasFilter(vararg names: String) = groups.any { g -> names.all { it in g } }
+            val failures = mutableListOf<String>()
+            if (!hasFilter(main, launcher)) {
+                failures += "missing MAIN + LAUNCHER intent-filter"
+            }
+            if (requireHome) {
+                if (!hasFilter(main, home, default)) {
+                    failures += "missing MAIN + HOME + DEFAULT intent-filter"
+                }
+            } else {
+                if (groups.any { home in it }) {
+                    failures += "must not declare CATEGORY_HOME"
+                }
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException("${project.path} realDebug launcher manifest check failed:\n${failures.joinToString("\n")}")
+            }
+        }
+    }
+}
+
 project(":apps:watch") {
     registerMicrophoneManifestCheck()
+    registerLauncherHomeManifestCheck(requireHome = false)
 }
 
 project(":apps:phone") {
     registerMicrophoneManifestCheck()
+    registerLauncherHomeManifestCheck(requireHome = false)
 }
 
 project(":apps:glasses") {
     registerMicrophoneManifestCheck(requireLocation = false)
+    registerLauncherHomeManifestCheck(requireHome = true)
 }
 
 project(":apps:validation-rogbid") {
