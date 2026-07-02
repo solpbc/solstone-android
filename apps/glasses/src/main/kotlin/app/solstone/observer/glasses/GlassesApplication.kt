@@ -30,10 +30,12 @@ class GlassesApplication : Application() {
         GlassesDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { GlassesDiagLog.appendRaw(it) }
         SyncScheduler.enqueuePeriodic(applicationContext, GLASSES_STREAM)
+        WatchdogProbeScheduler.enqueue(applicationContext)
         runtime = GlassesObserverRuntime(applicationContext)
         GlassesHarnessRuntime.runtime = runtime
         ObserverForegroundService.rehydrator = ObserverServiceRehydrator {
             runtime.rehydrateFromForegroundServiceStart()
+            WatchdogProbeScheduler.enqueue(applicationContext)
         }
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
         registerRokidButtonReceiverIfNeeded()
