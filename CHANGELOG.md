@@ -1,13 +1,16 @@
 # Changelog
 
-All notable changes to the solstone Android app are recorded here. The format
+All notable changes to the sol Android app (part of solstone) are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
-- smart-glasses observer hardware milestone: on RV203 hardware, solstone can run as the default HOME/capture-mode app, resume after reboot through Android's HOME path, seal worn audio+camera segments, and sync them to the paired journal when Wi-Fi is available.
+- smart-glasses hardware milestone: sol runs as the default HOME app on the glasses, sealing worn audio+camera segments and syncing them to your paired journal when Wi-Fi is available.
+
+### Changed
+- the app now calls itself sol — sol is the app, your journal is the memory, solstone is the platform.
 
 ## [0.1.1] - 2026-06-29
 

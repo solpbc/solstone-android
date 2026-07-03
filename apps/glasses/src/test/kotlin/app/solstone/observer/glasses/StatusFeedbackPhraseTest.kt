@@ -18,7 +18,7 @@ class StatusFeedbackPhraseTest {
 
     @Test
     fun phrasesAreGenericStateSummaries() {
-        assertEquals("Observing", phraseFor(StatusCue.OBSERVING))
+        assertEquals("on", phraseFor(StatusCue.OBSERVING))
         assertEquals("Not paired", phraseFor(StatusCue.NOT_PAIRED))
         assertEquals("Sync failed", phraseFor(StatusCue.SYNC_FAILED))
         assertEquals("Pairing started", phraseFor(StatusCue.PAIRING_STARTED))

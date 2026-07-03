@@ -28,8 +28,8 @@ fun rawResFor(cue: StatusCue): Int =
 
 fun phraseFor(cue: StatusCue): String =
     when (cue) {
-        StatusCue.OBSERVING -> "Observing"
-        StatusCue.OBSERVER_PAUSED -> "Observing paused"
+        StatusCue.OBSERVING -> "on"
+        StatusCue.OBSERVER_PAUSED -> "paused"
         StatusCue.NEEDS_ATTENTION -> "Needs attention"
         StatusCue.NOT_PAIRED -> "Not paired"
         StatusCue.PAIRED -> "Paired"

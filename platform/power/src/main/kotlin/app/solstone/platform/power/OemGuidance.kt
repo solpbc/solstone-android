@@ -47,7 +47,7 @@ object OemGuidanceCatalog {
         batteryExemption = GuidanceAction(
             intentAction = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
             intentData = null,
-            instructionText = "Allow solstone to stay active in the background.",
+            instructionText = "Allow sol to stay active in the background.",
         ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -61,12 +61,12 @@ object OemGuidanceCatalog {
         batteryExemption = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open app settings and allow Solstone to keep running where the OS permits it. Battery and background survival are best-effort.",
+            instructionText = "Open app settings and allow sol to keep running where the OS permits it. Battery and background survival are best-effort.",
         ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "No reliable normal-app or ADB autostart path is known, and Solstone cannot toggle Wi-Fi as a normal app. After reboot, start Solstone explicitly if the OS did not preserve it.",
+            instructionText = "No reliable normal-app or ADB autostart path is known, and sol cannot toggle Wi-Fi as a normal app. After reboot, start sol explicitly if the OS did not preserve it.",
         ),
         autostartAvailable = false,
     )
@@ -76,12 +76,12 @@ object OemGuidanceCatalog {
         batteryExemption = GuidanceAction(
             intentAction = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
             intentData = null,
-            instructionText = "Open battery settings and allow solstone to stay active after the screen turns off.",
+            instructionText = "Open battery settings and allow sol to stay active after the screen turns off.",
         ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open Rogbid app management and enable auto-launch for solstone.",
+            instructionText = "Open Rogbid app management and enable auto-launch for sol.",
         ),
     )
 
@@ -90,12 +90,12 @@ object OemGuidanceCatalog {
         batteryExemption = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open Battery, set solstone to unrestricted, and leave background use allowed.",
+            instructionText = "Open Battery, set sol to unrestricted, and leave background use allowed.",
         ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open Samsung app settings and leave auto-run behavior allowed for solstone.",
+            instructionText = "Open Samsung app settings and leave auto-run behavior allowed for sol.",
         ),
     )
 

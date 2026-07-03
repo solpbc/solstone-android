@@ -13,22 +13,22 @@ object ObserverNotification {
     const val CHANNEL_ID = "solstone_observer"
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
-    const val TEXT_ON = "Observer — On"
-    const val TEXT_NEEDS_ATTENTION = "Observer — Needs attention"
+    const val TEXT_ON = "on"
+    const val TEXT_NEEDS_ATTENTION = "needs attention"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(CHANNEL_ID, "solstone", NotificationManager.IMPORTANCE_LOW)
+        val channel = NotificationChannel(CHANNEL_ID, "sol", NotificationManager.IMPORTANCE_LOW)
         manager.createNotificationChannel(channel)
     }
 
     fun ongoing(context: Context, needsAttention: Boolean = false, decorate: Boolean = false): Notification {
         ensureChannel(context)
         val builder = builder(context)
-            .setContentTitle("solstone")
+            .setContentTitle("sol")
             .setContentText(if (needsAttention) TEXT_NEEDS_ATTENTION else TEXT_ON)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
