@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- smart-glasses observer hardware milestone: on RV203 hardware, solstone can run as the default HOME/capture-mode app, resume after reboot through Android's HOME path, seal worn audio+camera segments, and sync them to the paired journal when Wi-Fi is available.
+
 ## [0.1.1] - 2026-06-29
 
 ### Added

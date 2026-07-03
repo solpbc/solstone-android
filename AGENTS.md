@@ -4,14 +4,14 @@ Development guidelines for Android solstone observers, clients, and validation t
 
 ## Project Overview
 
-`solstone-android` is the Android family repo for solstone surfaces: a watch-focused observer, a full Android phone observer/importer/client, and future Android accessories such as smart glasses. The repo also carries hardware validation targets that prove what a device can do before that code graduates into production observer modules.
+`solstone-android` is the Android family repo for solstone surfaces: a watch-focused observer, a full Android phone observer/importer/client, and Android accessories such as smart glasses. The repo also carries hardware validation targets that prove what a device can do before that code graduates into production observer modules.
 
 The repo is public open source. Keep all visible files clean of private operational context, internal paths, personal machine names, and unreleasable implementation history.
 
 ## Current Targets
 
 - `:apps:validation-rogbid` is the imported Rogbid Model X validation app. It exercises camera, microphone, GPS, QR preview/scan, PL QR linking, upload/retry, and battery trials on Android 9/API 28 hardware.
-- Production `watch`, `phone`, and `glasses` apps are not implemented yet. Keep placeholders light until a real scope needs them.
+- `:apps:watch`, `:apps:phone`, and `:apps:glasses` are installable observer apps over the shared harness. Phone has the beta release channel wired today; watch and glasses are hardware-validation surfaces until their release channels are explicitly added.
 
 ## Principles
 
@@ -56,8 +56,8 @@ There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, an
 ```text
 apps/validation-rogbid/   Imported Rogbid hardware-probe target
 apps/watch/               Watch observer app — installable functional-testing UI over the shared harness
-apps/phone/               Phone observer harness app — shares the watch harness; minimal functional UI
-apps/glasses/             Future Android glasses/accessory app
+apps/phone/               Phone observer harness app — shares the watch harness; beta distribution target
+apps/glasses/             Smart-glasses observer app — RV203 hardware-validation surface
 harness/                  Form-factor-agnostic observer UI logic (controller, state, seams, async-load)
 core/                     Shared domain/protocol/observer modules
 platform/                 Android framework adapters

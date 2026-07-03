@@ -1,19 +1,19 @@
 # solstone-android
 
-Android observers and clients for [solstone](https://solstone.app): watch, phone, and future Android accessory surfaces that help the owner's journal receive local, owner-controlled context.
+Android observers and clients for [solstone](https://solstone.app): watch, phone, and Android accessory surfaces that help the owner's journal receive local, owner-controlled context.
 
 ## Status
 
-Public bootstrap. The only runnable app target today is the Rogbid Model X validation app imported from the hardware spike. Production observer modules will be added after the Android observer scope is approved.
+Public beta and hardware-validation repo. The phone observer has a beta distribution path; watch and glasses are installable hardware-validation surfaces over the shared observer harness. The Rogbid Model X validation app remains as a hardware probe target.
 
 ## Layout
 
 ```text
 apps/
   validation-rogbid/   Android 9 watch validation app for camera, mic, GPS, QR, PL linking, upload, and battery trials
-  watch/               Future watch observer app
-  phone/               Future phone observer app
-  glasses/             Future glasses/accessory app
+  watch/               Watch observer app
+  phone/               Phone observer app and beta distribution target
+  glasses/             Smart-glasses observer app for RV203 hardware validation
 core/                  Shared observer/link/domain modules as they graduate from the validation app
 platform/              Android framework adapters: camera, audio, location, foreground service, permissions, power
 formfactor/            Watch/phone/glasses UI and policy helpers
@@ -49,6 +49,12 @@ ANDROID_REMOTE_HOST=host.local make android-host-ci
 make assemble-validation-rogbid
 ```
 
+The general CI gate also assembles the watch, phone, and glasses debug variants:
+
+```bash
+make ci
+```
+
 To build on a remote Android host from this checkout:
 
 ```bash
@@ -82,6 +88,10 @@ PAIR_LINK='https://link.solpbc.org/p#...' make validate-rogbid-pl
 ```
 
 The validation app package is `app.solstone.validation.rogbid`. Future installable solstone Android artifacts should use the same `app.solstone.*` namespace.
+
+## Hardware Milestones
+
+- [RV203 glasses HOME observer milestone](docs/glasses-home-observer-milestone-2026-07-02.md)
 
 ## License
 

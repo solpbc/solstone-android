@@ -27,6 +27,8 @@ Constraints:
 
 ## RV203
 
+- Rokid RV203 smart glasses.
+- Android 12L / API 32.
 - Sensor inventory confirmed 2026-06-26.
 
 Present:
@@ -48,6 +50,22 @@ Constraints:
 
 - no OS-precomputed motion summary; duty-cycled metadata snapshots are the low-power path,
 - no compass/heading; tilt is pitch/roll only.
+- consumer firmware restricts camera and microphone once the app is merely backgrounded; a usable observer needs an honest visible capture surface,
+- scheduled resurrection is not reliable on this firmware: WorkManager/JobScheduler, boot receivers, and alarm-style wakeups did not relaunch a killed observer process in hardware tests,
+- default-HOME capture mode is hardware-positive: when Solstone is set as HOME, Android relaunches the visible Solstone activity after reboot and preserves the media permission shape needed for capture.
+
+Validated:
+
+- SPL relay pairing and observer sync to the owner's journal,
+- durable app-private diagnostic log,
+- top/resumed HOME Activity plus typed camera+microphone foreground service,
+- reboot recovery through Android HOME resolution,
+- extended worn capture on hardware: 44 sealed segments, audio in all segments, 203 camera stills, one explicit camera capture gap,
+- docked Wi-Fi sync after wear: fresh journal segments included `audio.m4a`, `metadata.jsonl`, `stream.json`, and camera JPEGs.
+
+Reference:
+
+- [glasses HOME observer milestone](glasses-home-observer-milestone-2026-07-02.md)
 
 ## Galaxy A36
 

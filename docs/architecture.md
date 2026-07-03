@@ -10,12 +10,14 @@
 - `formfactor/*` modules hold watch/phone/glasses-specific UI and policy helpers.
 - `testing/*` holds fake sensor streams, protocol fixtures, and hardware-independent harnesses.
 
-## First Production Direction
+## Production Direction
 
-The Rogbid validation app is intentionally not production-shaped. It proves hardware and protocol feasibility. Production observer work should graduate pieces out of it in this order:
+The Rogbid validation app is intentionally not production-shaped. It proves hardware and protocol feasibility. Production observer work graduates shared pieces into the reusable layers:
 
-1. PL QR parsing, on-device identity, CSR, Conscrypt TLS 1.3, and mTLS status calls into `core/pl` and `core/identity`.
-2. Spool/segment/queue state machines into Android-light `core` modules.
-3. Camera, audio, location, and foreground-service behavior into `platform` adapters.
-4. Watch-specific UI and duty-cycle policy into the watch app and `formfactor/watch`.
+1. PL QR parsing, on-device identity, CSR, Conscrypt TLS 1.3, and mTLS status calls live in `core/pl`, `core/identity`, and the Conscrypt transport adapter.
+2. Spool, segment, queue, observer registration, and sync policy live in Android-light `core`, `harness`, and `platform/work` modules where practical.
+3. Camera, audio, location, foreground-service, metadata, and power behavior live behind `platform` adapters.
+4. Watch-, phone-, and glasses-specific UI and policy belong in their app modules and `formfactor/*`, while sharing the same harness/controller contracts.
 
+The RV203 glasses observer has a hardware-validated HOME/capture-mode path; see
+[glasses HOME observer milestone](glasses-home-observer-milestone-2026-07-02.md).
