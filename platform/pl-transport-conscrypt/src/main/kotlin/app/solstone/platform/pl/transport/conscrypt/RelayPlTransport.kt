@@ -22,6 +22,7 @@ sealed class RelayTlsMode {
 class RelayPlClient internal constructor(
     val client: ConscryptPlHttpClient,
     val peerLeafCertificateDer: ByteArray?,
+    val peerCertificateChainDer: List<ByteArray>?,
 ) : Closeable {
     override fun close() {
         client.close()
@@ -42,7 +43,7 @@ fun openRelayClient(
         }
         val tls = TlsEngineDuplex(engine, raw)
         val client = ConscryptPlHttpClient(MuxSession(tls))
-        return RelayPlClient(client, tls.peerLeafCertificateDer)
+        return RelayPlClient(client, tls.peerLeafCertificateDer, tls.peerCertificateChainDer)
     } catch (e: Exception) {
         raw.close()
         throw e

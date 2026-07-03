@@ -26,14 +26,17 @@ class TlsEngineDuplex(
     override val input: InputStream = TlsInputStream()
     override val output: OutputStream = TlsOutputStream()
     val peerLeafCertificateDer: ByteArray?
+    val peerCertificateChainDer: List<ByteArray>?
 
     init {
         handshake()
-        peerLeafCertificateDer = try {
-            engine.session.peerCertificates.firstOrNull()?.encoded
+        val chain = try {
+            engine.session.peerCertificates
         } catch (_: SSLPeerUnverifiedException) {
             null
         }
+        peerLeafCertificateDer = chain?.firstOrNull()?.encoded
+        peerCertificateChainDer = chain?.map { it.encoded }
     }
 
     private fun handshake() {

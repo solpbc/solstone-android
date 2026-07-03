@@ -4,6 +4,7 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.crypto.caSpkiFp16
+import app.solstone.core.crypto.CaPinException
 import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.hex
 import app.solstone.core.crypto.sha256Hex
@@ -208,6 +209,63 @@ class RelayPairingTest {
         assertEquals(1, stores.identityStore.saves)
     }
 
+    @Test
+    fun matchingCaAndSignedLeafSendsPairRequest() {
+        val stores = Stores()
+        val session = FakeSession()
+
+        pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
+
+        assertEquals("/app/network/pair?token=0123456789abcdef", session.requests.single().path)
+    }
+
+    @Test
+    fun noMatchingCaAbortsBeforeSendingS() {
+        val stores = Stores()
+        val session = FakeSession(
+            peerCertificateChainDer = listOf(certificateFromPem(TEST_RELAY_LEAF_PEM).encoded),
+        )
+
+        assertFailsWith<CaPinException> {
+            pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
+        }
+
+        assertTrue(session.requests.isEmpty())
+        assertTrue(session.closed)
+    }
+
+    @Test
+    fun emptyChainAbortsBeforeSendingS() {
+        val stores = Stores()
+        val session = FakeSession(peerCertificateChainDer = emptyList())
+
+        assertFailsWith<CaPinException> {
+            pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
+        }
+
+        assertTrue(session.requests.isEmpty())
+        assertTrue(session.closed)
+    }
+
+    @Test
+    fun wrongLeafAbortsBeforeSendingS() {
+        val stores = Stores()
+        val session = FakeSession(
+            peerLeafCertificateDer = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
+            peerCertificateChainDer = listOf(
+                certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
+                certificateFromPem(TEST_RELAY_CA_PEM).encoded,
+            ),
+        )
+
+        assertFailsWith<CaPinException> {
+            pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
+        }
+
+        assertTrue(session.requests.isEmpty())
+        assertTrue(session.closed)
+    }
+
     private fun assertNoPersist(label: String, block: (Stores) -> Unit) {
         val stores = Stores()
         assertFailsWith<Exception>(label) { block(stores) }
@@ -275,6 +333,10 @@ class RelayPairingTest {
     private class FakeSession(
         private val response: HttpResponse = HttpResponse(200, emptyMap(), pairResponseStatic().toByteArray()),
         override val peerLeafCertificateDer: ByteArray? = certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+        override val peerCertificateChainDer: List<ByteArray>? = listOf(
+            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            certificateFromPem(TEST_RELAY_CA_PEM).encoded,
+        ),
     ) : RelayDialSession {
         val requests = mutableListOf<RequestRecord>()
         var closed = false
@@ -391,5 +453,18 @@ hLYlDiZDvtKVl8CsEsIApDOeFKJN1MtSEMSf4kPFPq2V4h9co0IwQDAdBgNVHQ4E
 FgQUVMag2GDGNZBZyJQxAPY+GyNNxy0wHwYDVR0jBBgwFoAU5JS7pR98gG5FFWBa
 FQG1CyU+HqgwCgYIKoZIzj0EAwIDRwAwRAIgIMOGzfr8PMdgd8GpuqSEAW3TZXe9
 Vym9fT1BLkht+X0CIH3KLzz0foTyo+huJpyZpDUHbT3beeeWFhGhRkv9DjDv
+-----END CERTIFICATE-----
+"""
+
+private const val TEST_RELAY_UNRELATED_PEM = """-----BEGIN CERTIFICATE-----
+MIIBfTCCASOgAwIBAgIUNEpHEWWe11eXwZt02t864KjecoIwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJdW5yZWxhdGVkMB4XDTI2MDYyNjA2NTY1OVoXDTM2MDYyMzA2
+NTY1OVowFDESMBAGA1UEAwwJdW5yZWxhdGVkMFkwEwYHKoZIzj0CAQYIKoZIzj0D
+AQcDQgAE4reGbY4kAE3L6wmSS+a4RMYllEgptK61VYmNWGlsv/PnspbdOdzqQV9s
+xvm6Uz9PYK3V4m9ZipOsgauzk2JUg6NTMFEwHQYDVR0OBBYEFN2k2e7axl/ov3P1
+KsV7tkzP7/IXMB8GA1UdIwQYMBaAFN2k2e7axl/ov3P1KsV7tkzP7/IXMA8GA1Ud
+EwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhAJEYjZlTip4Pcp60CUS+WYRB
+a0nECXUP0fXOHAMWG6ZTAiB2VYdwJmKWrWzgLamJ6ZJU604ItE6KJ4rsYrsO+wVd
+Gw==
 -----END CERTIFICATE-----
 """

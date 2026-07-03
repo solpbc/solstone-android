@@ -5,6 +5,8 @@ package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.crypto.assertCaPin
 import app.solstone.core.crypto.buildCsrPem
+import app.solstone.core.crypto.CaPinException
+import app.solstone.core.crypto.caSpkiFp16
 import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.deriveRk
 import app.solstone.core.crypto.generateP256KeyPair
@@ -59,6 +61,7 @@ class OkHttpHttpsPoster(private val client: OkHttpClient = OkHttpClient()) : Htt
 interface RelayDialSession : Closeable {
     val client: PlHttpClient
     val peerLeafCertificateDer: ByteArray?
+    val peerCertificateChainDer: List<ByteArray>?
 }
 
 fun interface RelayPairDialer {
@@ -119,6 +122,7 @@ fun pairOverRelay(
         throw e
     }
     try {
+        pinInnerPeerBeforeSend(session.peerCertificateChainDer, session.peerLeafCertificateDer, link.caFpSpki)
         val pairHttp = session.client.request(
             "POST",
             "/app/network/pair?token=${hex(link.s)}",
@@ -248,10 +252,26 @@ private fun requiredJsonString(text: String, key: String): String {
 private class RelayPlClientDialSession(private val relayClient: RelayPlClient) : RelayDialSession {
     override val client: PlHttpClient = relayClient.client
     override val peerLeafCertificateDer: ByteArray? = relayClient.peerLeafCertificateDer
+    override val peerCertificateChainDer: List<ByteArray>? = relayClient.peerCertificateChainDer
 
     override fun close() {
         relayClient.close()
     }
+}
+
+private fun pinInnerPeerBeforeSend(
+    chainDer: List<ByteArray>?,
+    leafDer: ByteArray?,
+    caFpSpki: ByteArray,
+) {
+    if (chainDer.isNullOrEmpty()) {
+        throw CaPinException("relay inner TLS presented no peer certificate chain")
+    }
+    val matchedCaPem = chainDer
+        .map { pem("CERTIFICATE", it) }
+        .firstOrNull { caSpkiFp16(it).contentEquals(caFpSpki) }
+        ?: throw CaPinException("relay inner TLS chain contained no CA matching the QR pin")
+    assertCaPin(matchedCaPem, caFpSpki, leafDer)
 }
 
 internal val JSON_HEADERS = mapOf("content-type" to "application/json")
