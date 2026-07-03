@@ -228,7 +228,7 @@ class LiveObserverDriverTest {
             result("t4.matchedFiles=${found!!.files}")
             assertTrue(
                 "reconciled segment must carry the uploaded file's sha256",
-                found.files.values.any { it.equals(expectedSha, ignoreCase = true) },
+                found.files.any { it.sha256.equals(expectedSha, ignoreCase = true) },
             )
         } catch (t: Throwable) {
             result("t4.ERROR=${t.javaClass.simpleName}: ${t.message}")

@@ -25,9 +25,15 @@ class SegmentReconcilerTest {
         assertEquals(testHandle, http.lastRequest.headers[OBSERVER_HANDLE_HEADER])
         assertEquals(
             listOf(
-                ServerSegment("093000_60", mapOf("audio.wav" to "sha-audio", "photo.jpg" to "sha-photo")),
-                ServerSegment("094000_60", mapOf("audio.wav" to "sha-audio")),
-                ServerSegment("095000_60", mapOf("audio.wav" to "sha-audio")),
+                ServerSegment(
+                    "093000_60",
+                    listOf(
+                        ServerFile("audio.wav", "sha-audio", "present", null),
+                        ServerFile("photo.jpg", "sha-photo", "present", null),
+                    ),
+                ),
+                ServerSegment("094000_60", listOf(ServerFile("audio.wav", "sha-audio", "present", null))),
+                ServerSegment("095000_60", listOf(ServerFile("audio.wav", "sha-audio", "present", null))),
             ),
             segments,
         )
@@ -75,6 +81,136 @@ class SegmentReconcilerTest {
         }
     }
 
+    @Test
+    fun diffRequiresEveryLocalFileToBeProvenHeld() {
+        val http = RecordingPlHttpClient(
+            responseForFiles(
+                """{"name":"audio.wav","sha256":"sha-audio","status":"present"}""",
+                """{"name":"photo.jpg","sha256":"sha-photo","status":"missing"}""",
+            ),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio", "photo.jpg" to "sha-photo")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffAcceptsAllPresentLocalFiles() {
+        val http = RecordingPlHttpClient(
+            responseForFiles(
+                """{"name":"audio.wav","sha256":"sha-audio","status":"present"}""",
+                """{"name":"photo.jpg","sha256":"sha-photo","status":"present"}""",
+            ),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio", "photo.jpg" to "sha-photo")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffAcceptsRelocatedLocalFile() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"sha-audio","status":"relocated"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffRejectsMatchingFileWithoutStatus() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"sha-audio"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffRejectsUnrecognizedStoredStatus() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"sha-audio","status":"stored"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffIgnoresExtraRemoteOnlyFiles() {
+        val http = RecordingPlHttpClient(
+            responseForFiles(
+                """{"name":"audio.wav","sha256":"sha-audio","status":"present"}""",
+                """{"name":"photo.jpg","sha256":"sha-photo","status":"present"}""",
+            ),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun diffUsesSubmittedNameWhenServerNameDiffers() {
+        val http = RecordingPlHttpClient(
+            responseForFiles(
+                """{"name":"remote-audio.wav","submitted_name":"audio.wav","sha256":"sha-audio","status":"present"}""",
+            ),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
     private fun envelopeResponse(): HttpResponse = HttpResponse(
         200,
         emptyMap(),
@@ -82,17 +218,31 @@ class SegmentReconcilerTest {
         {
           "items":[
             {"key":"093000_60","files":[
-              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"stored"},
-              {"name":"photo.jpg","size":3,"sha256":"sha-photo","status":"stored"}
+              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"present"},
+              {"name":"photo.jpg","size":3,"sha256":"sha-photo","status":"present"}
             ]},
             {"key":"094000_60","files":[
-              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"stored"}
+              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"present"}
             ]},
             {"key":"095000_60","files":[
-              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"stored"}
+              {"name":"audio.wav","size":3,"sha256":"sha-audio","status":"present"}
             ]}
           ],
           "total":3,
+          "protocol_version":2
+        }
+        """.trimIndent().toByteArray(),
+    )
+
+    private fun responseForFiles(vararg files: String): HttpResponse = HttpResponse(
+        200,
+        emptyMap(),
+        """
+        {
+          "items":[
+            {"key":"093000_60","files":[${files.joinToString(",")}]}
+          ],
+          "total":1,
           "protocol_version":2
         }
         """.trimIndent().toByteArray(),
