@@ -18,8 +18,9 @@ import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.DirectEndpoint
-import app.solstone.platform.identity.file.FileEndpointStore
+import app.solstone.platform.identity.file.AndroidKeyStoreProtector
 import app.solstone.platform.identity.file.FileClientCredentialStore
+import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -72,8 +73,8 @@ class LiveObserverDriverTest {
     private val pairLink: String? get() = args.getString("pairLink")?.takeIf { it.isNotBlank() }
 
     private val plDir: File get() = File(ctx.filesDir, "pl-driver").apply { mkdirs() }
-    private fun credStore(): ClientCredentialStore = FileClientCredentialStore(File(plDir, "credential.pem"))
-    private fun idStore(): IdentityStore = FileIdentityStore(File(plDir, "identity.tsv"))
+    private fun credStore(): ClientCredentialStore = FileClientCredentialStore(File(plDir, "credential.pem"), AndroidKeyStoreProtector())
+    private fun idStore(): IdentityStore = FileIdentityStore(File(plDir, "identity.tsv"), AndroidKeyStoreProtector())
     private fun endpointStore(): FileEndpointStore = FileEndpointStore(endpointFile)
     private val endpointFile: File get() = File(plDir, "endpoint.txt")
     private val ingestFile: File get() = File(plDir, "ingest.txt")
