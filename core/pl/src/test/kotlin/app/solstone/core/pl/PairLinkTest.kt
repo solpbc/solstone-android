@@ -126,36 +126,54 @@ class PairLinkTest {
     }
 
     @Test
-    fun parsesV05CountTwoCanonicalVector() {
+    fun filtersV05ToPrivateCandidatesOrderPreserved() {
         val parsed = parseDirectPairLink(
-            "https://go.solstone.app/p#0M0G47F9R00042P66DJ18001081G81860W40J2GB1G6GW3X0M6HA7955MTKTHADANEPAVBNF",
+            withBlob(
+                v05Blob(
+                    listOf(
+                        byteArrayOf(10, 0, 0, 40),
+                        byteArrayOf(8, 8, 8, 8),
+                        byteArrayOf(127, 0, 0, 1),
+                        byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
+                    ),
+                ),
+            ),
         )
 
         assertEquals(
             listOf(
-                DirectEndpoint("192.0.2.10", 7657),
-                DirectEndpoint("198.51.100.20", 7657),
+                DirectEndpoint("10.0.0.40", 7657),
+                DirectEndpoint("192.168.1.90", 7657),
             ),
             parsed.candidates,
         )
-        assertEquals("192.0.2.10", parsed.host)
+        assertEquals("10.0.0.40", parsed.host)
         assertEquals(7657, parsed.port)
         assertEquals("000102030405060708090a0b0c0d0e0f", parsed.nonce)
         assertContentEquals(caFingerprint(), parsed.caFingerprintPrefix)
     }
 
     @Test
-    fun parsesV05CountFourCanonicalVector() {
+    fun parsesV05FourPrivateCandidates() {
         val parsed = parseDirectPairLink(
-            "https://go.solstone.app/p#0M0G87F9R00042P66DJ19JR0E4F0M000500020G30G2GC1R81450P30D1R7T18D2MEJAB9N7N2MTNAXCNPQAY",
+            withBlob(
+                v05Blob(
+                    listOf(
+                        byteArrayOf(10, 0, 0, 40),
+                        byteArrayOf(172.toByte(), 16, 0, 1),
+                        byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
+                        byteArrayOf(169.toByte(), 254.toByte(), 0, 1),
+                    ),
+                ),
+            ),
         )
 
         assertEquals(
             listOf(
-                DirectEndpoint("192.0.2.10", 7657),
-                DirectEndpoint("198.51.100.20", 7657),
-                DirectEndpoint("203.0.113.30", 7657),
                 DirectEndpoint("10.0.0.40", 7657),
+                DirectEndpoint("172.16.0.1", 7657),
+                DirectEndpoint("192.168.1.90", 7657),
+                DirectEndpoint("169.254.0.1", 7657),
             ),
             parsed.candidates,
         )
@@ -176,6 +194,9 @@ class PairLinkTest {
         }
         assertFailsWith<IllegalArgumentException> {
             parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(192.toByte(), 0, 2, 10))).also { it[0] = 0x06 }))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(8, 8, 8, 8)))))
         }
         assertFailsWith<IllegalArgumentException> {
             parseDirectPairLink(

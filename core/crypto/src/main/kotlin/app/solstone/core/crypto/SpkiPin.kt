@@ -3,10 +3,6 @@
 
 package app.solstone.core.crypto
 
-import java.io.ByteArrayInputStream
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
-
 class CaPinException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 fun caSpkiFp16(caPem: String): ByteArray =
@@ -31,9 +27,4 @@ fun assertCaPin(caPem: String, expectedFp16: ByteArray, peerLeafDer: ByteArray?)
     } catch (e: Exception) {
         throw CaPinException("relay CA certificate was not self-signed", e)
     }
-}
-
-private fun certificateFromDer(der: ByteArray): X509Certificate {
-    val factory = CertificateFactory.getInstance("X.509")
-    return factory.generateCertificate(ByteArrayInputStream(der)) as X509Certificate
 }

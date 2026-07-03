@@ -37,6 +37,11 @@ fun certificateFromPem(pem: String): X509Certificate {
     return factory.generateCertificate(ByteArrayInputStream(pem.toByteArray(Charsets.US_ASCII))) as X509Certificate
 }
 
+fun certificateFromDer(der: ByteArray): X509Certificate {
+    val factory = CertificateFactory.getInstance("X.509")
+    return factory.generateCertificate(ByteArrayInputStream(der)) as X509Certificate
+}
+
 fun privateKeyFromPem(pem: String): PrivateKey {
     val der = pemToDer(pem, "PRIVATE KEY")
     val factory = KeyFactory.getInstance("EC")

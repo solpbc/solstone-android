@@ -156,7 +156,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
             val b = decoded[offset + 1].toInt() and 0xff
             val c = decoded[offset + 2].toInt() and 0xff
             val d = decoded[offset + 3].toInt() and 0xff
-            if (a != 127) {
+            if (isPrivateOrLinkLocal(a, b)) {
                 candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
             }
         }

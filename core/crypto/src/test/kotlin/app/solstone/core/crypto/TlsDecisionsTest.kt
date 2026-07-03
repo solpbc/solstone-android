@@ -7,26 +7,53 @@ import javax.net.ssl.SSLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class TlsDecisionsTest {
     @Test
-    fun chainMatchesPrefixWhenCaIsNotLeaf() {
+    fun assertDirectCaPinAcceptsLeafSignedByPinnedCa() {
         val clientDer = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded
         val rootDer = certificateFromPem(TEST_ROOT_CERT_PEM).encoded
-        val prefix = sha256(rootDer).copyOf(4)
 
-        assertTrue(chainMatchesPrefix(listOf(clientDer, rootDer), prefix))
+        assertDirectCaPin(listOf(clientDer, rootDer), sha256(rootDer).copyOf(16))
     }
 
     @Test
-    fun chainDoesNotMatchAbsentCa() {
+    fun assertDirectCaPinRejectsLeafNotSignedByPinnedCa() {
+        val unrelatedDer = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded
+        val rootDer = certificateFromPem(TEST_ROOT_CERT_PEM).encoded
+
+        assertFailsWith<CaPinException> {
+            assertDirectCaPin(listOf(unrelatedDer, rootDer), sha256(rootDer).copyOf(16))
+        }
+    }
+
+    @Test
+    fun assertDirectCaPinRejectsChainWithNoPrefixMatch() {
         val clientDer = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded
         val rootDer = certificateFromPem(TEST_ROOT_CERT_PEM).encoded
-        val prefix = sha256(rootDer).copyOf(4)
+        val unrelatedDer = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded
 
-        assertFalse(chainMatchesPrefix(listOf(clientDer), prefix))
+        assertFailsWith<CaPinException> {
+            assertDirectCaPin(listOf(clientDer, rootDer), sha256(unrelatedDer).copyOf(16))
+        }
+    }
+
+    @Test
+    fun assertDirectCaPinRejectsPinnedNonSelfSignedCert() {
+        val clientDer = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded
+
+        assertFailsWith<CaPinException> {
+            assertDirectCaPin(listOf(clientDer), sha256(clientDer).copyOf(16))
+        }
+    }
+
+    @Test
+    fun assertDirectCaPinRejectsEmptyChain() {
+        val rootDer = certificateFromPem(TEST_ROOT_CERT_PEM).encoded
+
+        assertFailsWith<CaPinException> {
+            assertDirectCaPin(emptyList(), sha256(rootDer).copyOf(16))
+        }
     }
 
     @Test

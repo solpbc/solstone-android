@@ -3,9 +3,10 @@
 
 package app.solstone.platform.pl.transport.conscrypt
 
+import app.solstone.core.crypto.CaPinException
+import app.solstone.core.crypto.assertDirectCaPin
 import app.solstone.core.crypto.buildCsrPem
 import app.solstone.core.crypto.certificateFromPem
-import app.solstone.core.crypto.chainMatchesPrefix
 import app.solstone.core.crypto.generateP256KeyPair
 import app.solstone.core.crypto.pem
 import app.solstone.core.crypto.pemToDer
@@ -201,14 +202,15 @@ private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: B
     try {
         configureSocket(socket)
         socket.startHandshake()
-        val pinned = chainMatchesPrefix(
-            socket.session.peerCertificates.map { it.encoded },
-            caFingerprintPrefix,
-        )
-        if (!pinned) {
-            throw SSLException(PAIR_TLS_CA_PIN_MISMATCH)
+        try {
+            assertDirectCaPin(
+                socket.session.peerCertificates.map { it.encoded },
+                caFingerprintPrefix,
+            )
+        } catch (e: CaPinException) {
+            throw SSLException(PAIR_TLS_CA_PIN_MISMATCH, e)
         }
-        return CertlessSession(MuxSession(SocketByteDuplex(socket)), pinned)
+        return CertlessSession(MuxSession(SocketByteDuplex(socket)), true)
     } catch (e: Exception) {
         socket.close()
         throw e
