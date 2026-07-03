@@ -126,6 +126,23 @@ class PairLinkTest {
     }
 
     @Test
+    fun acceptsCgnatBoundaryRanges() {
+        listOf(
+            byteArrayOf(100, 64, 0, 0),
+            byteArrayOf(100, 127.toByte(), 255.toByte(), 255.toByte()),
+        ).forEach { ip ->
+            parseDirectPairLink(pairLink(ip, 0))
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            parseDirectPairLink(pairLink(byteArrayOf(100, 63, 0, 1), 0))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            parseDirectPairLink(pairLink(byteArrayOf(100, 128.toByte(), 0, 1), 0))
+        }
+    }
+
+    @Test
     fun filtersV05ToPrivateCandidatesOrderPreserved() {
         val parsed = parseDirectPairLink(
             withBlob(
@@ -134,6 +151,7 @@ class PairLinkTest {
                         byteArrayOf(10, 0, 0, 40),
                         byteArrayOf(8, 8, 8, 8),
                         byteArrayOf(127, 0, 0, 1),
+                        byteArrayOf(100, 64, 0, 5),
                         byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
                     ),
                 ),
@@ -143,6 +161,7 @@ class PairLinkTest {
         assertEquals(
             listOf(
                 DirectEndpoint("10.0.0.40", 7657),
+                DirectEndpoint("100.64.0.5", 7657),
                 DirectEndpoint("192.168.1.90", 7657),
             ),
             parsed.candidates,

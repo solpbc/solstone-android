@@ -131,7 +131,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
         val b = decoded[3].toInt() and 0xff
         val c = decoded[4].toInt() and 0xff
         val d = decoded[5].toInt() and 0xff
-        if (!isPrivateOrLinkLocal(a, b)) {
+        if (!isDirectDialCandidate(a, b)) {
             throw IllegalArgumentException("pair link is not local/private IPv4")
         }
         val host = "$a.$b.$c.$d"
@@ -156,7 +156,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
             val b = decoded[offset + 1].toInt() and 0xff
             val c = decoded[offset + 2].toInt() and 0xff
             val d = decoded[offset + 3].toInt() and 0xff
-            if (isPrivateOrLinkLocal(a, b)) {
+            if (isDirectDialCandidate(a, b)) {
                 candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
             }
         }
@@ -205,6 +205,12 @@ fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
         (a == 172 && b >= 16 && b <= 31) ||
         (a == 192 && b == 168) ||
         (a == 169 && b == 254)
+
+private fun isCgnat(a: Int, b: Int): Boolean =
+    a == 100 && b in 64..127
+
+private fun isDirectDialCandidate(a: Int, b: Int): Boolean =
+    isPrivateOrLinkLocal(a, b) || isCgnat(a, b)
 
 fun orderCandidatesBySubnet(
     candidates: List<DirectEndpoint>,
