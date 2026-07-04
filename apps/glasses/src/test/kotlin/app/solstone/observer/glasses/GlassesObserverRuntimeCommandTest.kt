@@ -32,7 +32,6 @@ import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.CameraLock
-import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import java.nio.file.Files
@@ -194,7 +193,13 @@ class GlassesObserverRuntimeCommandTest {
         val lifecycle = controllerLifecycle(controller)
         var speakStatusCalls = 0
         var speakAttentionCalls = 0
+        var rehydrateCalls = 0
         var closeCalls = 0
+
+        override fun rehydrateInBackground() {
+            rehydrateCalls += 1
+            controller.reconcile(app.solstone.observer.harness.ObserverStartMode.Rehydrate)
+        }
 
         override fun speakCurrentStatus() {
             speakStatusCalls += 1
@@ -325,7 +330,6 @@ class GlassesObserverRuntimeCommandTest {
         return HarnessController(
             permissionStatusReader = MutablePermissionReader(permissionStatus),
             desiredObservingStore = desiredStore,
-            foregroundStartAllowed = ForegroundStartAllowed { true },
             cameraLock = RecordingCameraLock(),
             observerLifecycle = lifecycle,
             heartbeatFreshness = FreshHeartbeat(),

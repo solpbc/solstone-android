@@ -40,8 +40,8 @@ import app.solstone.observer.harness.PlStatusProbe
 import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
+import app.solstone.observer.harness.AlwaysVisibleCaptureAuthority
 import app.solstone.platform.camera.still.CameraLock
-import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
@@ -108,7 +108,7 @@ class GlassesDiagnosticPlumbingTest {
         controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(
-            "reconcile mode=Rehydrate result=blocked blockers=FOREGROUND_START_NOT_ALLOWED,PERMISSION_REVOKED,TRANSPORT_UNAVAILABLE,UNPAIRED",
+            "reconcile mode=Rehydrate result=blocked blockers=PERMISSION_REVOKED,UNPAIRED",
             lines.single(),
         )
     }
@@ -132,7 +132,6 @@ class GlassesDiagnosticPlumbingTest {
                 )
             },
             desiredObservingStore = MemoryDesiredStore(initial = true),
-            foregroundStartAllowed = ForegroundStartAllowed { false },
             cameraLock = NoopCameraLock(),
             observerLifecycle = NoopLifecycle(),
             heartbeatFreshness = HeartbeatFreshness { true },
@@ -154,6 +153,7 @@ class GlassesDiagnosticPlumbingTest {
                 )
             },
             deviceLabel = "test glasses",
+            visibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
             diag = diag,
         )
 

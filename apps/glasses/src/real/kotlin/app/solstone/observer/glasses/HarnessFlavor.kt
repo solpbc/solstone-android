@@ -19,7 +19,6 @@ import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
-import app.solstone.platform.fgs.AndroidForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidDeviceFingerprintProvider
@@ -60,7 +59,6 @@ fun createGlassesHarnessFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
             desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
-            foregroundStartAllowed = AndroidForegroundStartAllowed(),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),

@@ -16,7 +16,6 @@ import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.camera.still.CameraLock
-import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 
@@ -30,7 +29,6 @@ data class ObserverStartReadiness(
 class HarnessController(
     private val permissionStatusReader: PermissionStatusReader,
     private val desiredObservingStore: DesiredObservingStore,
-    private val foregroundStartAllowed: ForegroundStartAllowed,
     private val cameraLock: CameraLock,
     private val observerLifecycle: ObserverLifecycle,
     private val heartbeatFreshness: HeartbeatFreshness,
@@ -45,7 +43,7 @@ class HarnessController(
     private val identityStore: IdentityStore,
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
-    private val visibleCaptureAuthority: VisibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
+    private val visibleCaptureAuthority: VisibleCaptureAuthority,
     private val opportunisticSync: OpportunisticSync? = null,
     private val diag: (String) -> Unit = {},
 ) {
@@ -95,16 +93,13 @@ class HarnessController(
         }
         if (mode == ObserverStartMode.Rehydrate) {
             if (!desiredOn) {
-                blockers += ReasonCode.NONE
+                blockers += ReasonCode.DESIRED_OFF
             }
             if (pairingFact() != PairingFact.PAIRED) {
                 blockers += ReasonCode.UNPAIRED
             }
-            if (probePlStatus() !is HarnessPlStatus.Reachable) {
+            if (blockers.isEmpty() && probePlStatus() !is HarnessPlStatus.Reachable) {
                 blockers += ReasonCode.TRANSPORT_UNAVAILABLE
-            }
-            if (!foregroundStartAllowed.isForegroundStartAllowed()) {
-                blockers += ReasonCode.FOREGROUND_START_NOT_ALLOWED
             }
         }
         return ObserverStartReadiness(allowed = blockers.isEmpty(), blockers = blockers)
@@ -147,12 +142,12 @@ class HarnessController(
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
+        if (diagnostics().state == SourceState.ON) return
         val readiness = startReadiness(mode)
         if (!readiness.allowed) {
             emitDiag("reconcile mode=$mode result=blocked blockers=${readiness.blockers.map { it.name }.sorted().joinToString(",")}")
             return
         }
-        if (diagnostics().state == SourceState.ON) return
         emitDiag("reconcile mode=$mode result=started")
         observerLifecycle.start()
         opportunisticSync?.start()

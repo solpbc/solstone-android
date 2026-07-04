@@ -14,9 +14,9 @@ import kotlin.test.assertTrue
 class HarnessControllerRehydrateTest {
     @Test
     fun rehydrateRefusedWhenNoOwnerEvenIfOtherwiseReady() {
+        val lines = mutableListOf<String>()
         val f = fixture(
             plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            foregroundStartAllowed = FakeForegroundStartAllowed(true),
             visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
             snapshot = SourceRuntimeSnapshot(
                 engineRunning = false,
@@ -24,12 +24,14 @@ class HarnessControllerRehydrateTest {
                 storageOk = true,
                 exemptionVerified = true,
             ),
+            diag = { lines += it },
         )
         f.desiredStore.setDesiredOn(true)
 
         f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(0, f.lifecycle.starts)
+        assertTrue(lines.single().contains("FOREGROUND_START_NOT_ALLOWED"))
         assertTrue(
             ReasonCode.FOREGROUND_START_NOT_ALLOWED in
                 f.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
@@ -160,18 +162,72 @@ class HarnessControllerRehydrateTest {
                 transport.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
         )
 
-        val foreground = fixture(
-            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
-            foregroundStartAllowed = FakeForegroundStartAllowed(false),
-        )
-        foreground.desiredStore.setDesiredOn(true)
-        assertTrue(
-            ReasonCode.FOREGROUND_START_NOT_ALLOWED in
-                foreground.controller.startReadiness(ObserverStartMode.Rehydrate).blockers,
-        )
-
         val notDesired = fixture(plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) })
-        assertTrue(ReasonCode.NONE in notDesired.controller.startReadiness(ObserverStartMode.Rehydrate).blockers)
+        assertTrue(ReasonCode.DESIRED_OFF in notDesired.controller.startReadiness(ObserverStartMode.Rehydrate).blockers)
+    }
+
+    @Test
+    fun reconcileAlreadyOnDoesNotProbeTransport() {
+        var probeCalls = 0
+        val f = fixture(
+            plStatusProbe = PlStatusProbe {
+                probeCalls += 1
+                HarnessPlStatus.Reachable(200)
+            },
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(0, probeCalls)
+        assertEquals(0, f.lifecycle.starts)
+    }
+
+    @Test
+    fun reconcileUnpairedDoesNotProbeTransport() {
+        var probeCalls = 0
+        val f = fixture(
+            endpointStore = FakeEndpointStore(null),
+            credentialStore = FakeCredentialStore(null),
+            identityStore = FakeIdentityStore(null),
+            plStatusProbe = PlStatusProbe {
+                probeCalls += 1
+                HarnessPlStatus.NotPaired
+            },
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(0, probeCalls)
+        assertEquals(0, f.lifecycle.starts)
+    }
+
+    @Test
+    fun productionWiringRehydrateSelfHealsWithVisibleOwner() {
+        val ownerRegistry = VisibleCaptureOwnerRegistry()
+        ownerRegistry.acquire()
+        val f = fixture(
+            visibleCaptureAuthority = ownerRegistry,
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = true,
+                storageOk = true,
+                exemptionVerified = true,
+            ),
+        )
+        f.desiredStore.setDesiredOn(true)
+
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(1, f.lifecycle.starts)
     }
 
     @Test

@@ -110,7 +110,7 @@ data class WatchHarnessFlavor(
     val controller: HarnessController,
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
-    val exemptionVerified: () -> Boolean = { true },
+    val exemptionVerified: () -> Boolean,
 )
 
 interface HeartbeatControl {

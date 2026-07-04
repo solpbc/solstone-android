@@ -34,6 +34,7 @@ import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
+import app.solstone.platform.fgs.needsAttentionForState
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
@@ -46,6 +47,7 @@ import java.util.concurrent.TimeUnit
 
 interface GlassesRuntimeContainer {
     val controller: HarnessController
+    fun rehydrateInBackground()
     fun speakCurrentStatus()
     fun speakNeedsAttention()
     fun close()
@@ -133,13 +135,16 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     )
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
     private var previousDiagnostics: HarnessDiagnostics? = null
+    private var lastPostedNeedsAttention: Boolean = true
     private val pollRunnable = object : Runnable {
         override fun run() {
             background.execute {
                 runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
                     .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName)) }
                 runCatching {
-                    emitStateTransition(controller.diagnostics())
+                    val current = controller.diagnostics()
+                    emitStateTransition(current)
+                    refreshServiceNotification(current)
                     cuePoller.tick()
                 }.onFailure {
                     GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName))
@@ -179,6 +184,24 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         background.shutdown()
         runCatching { background.awaitTermination(2, TimeUnit.SECONDS) }
         database.close()
+    }
+
+    override fun rehydrateInBackground() {
+        background.execute {
+            runCatching {
+                if (!controller.isVisibleCaptureOwnerPresent()) {
+                    GlassesDiagLog.emit(
+                        DiagEvent.CaptureRefused(
+                            source = DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
+                            reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                        ),
+                    )
+                }
+                controller.reconcile(ObserverStartMode.Rehydrate)
+            }.onFailure {
+                GlassesDiagLog.emit(DiagEvent.CaughtException(site = "fgs-rehydrate", type = it.javaClass.simpleName))
+            }
+        }
     }
 
     override fun speakCurrentStatus() {
@@ -266,6 +289,17 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         previousDiagnostics = current
     }
 
+    private fun refreshServiceNotification(current: HarnessDiagnostics) {
+        if (!controller.desiredOn) {
+            lastPostedNeedsAttention = true
+            return
+        }
+        val needsAttention = needsAttentionForState(current.state)
+        if (needsAttention == lastPostedNeedsAttention) return
+        ObserverForegroundService.refreshOngoingNotification(context, needsAttention)
+        lastPostedNeedsAttention = needsAttention
+    }
+
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
         val condition = captureSetup.engines.firstOrNull()?.condition()
         val lastEmission = activePipeline?.lastEmissionEpochMs()
@@ -349,8 +383,8 @@ data class GlassesHarnessFlavor(
     val oemGuidance: OemGuidance = OemGuidanceCatalog.generic,
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
-    val exemptionVerified: () -> Boolean = { true },
-    val isUsableNetworkPresent: () -> Boolean = { true },
+    val exemptionVerified: () -> Boolean,
+    val isUsableNetworkPresent: () -> Boolean,
 )
 
 interface HeartbeatControl {

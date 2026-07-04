@@ -23,5 +23,6 @@ Location behavior:
 - A no-fix window seals an honest zero-file location segment with a gap; it never fabricates a position.
 
 Boot behavior:
-- `BOOT_COMPLETED` may re-arm the notification only.
+- `BOOT_COMPLETED` may re-arm a tappable needs-attention notification only when observing was persisted as desired-on.
+- The service cancels that boot attention notification after a successful non-stopping foreground-service start.
 - Boot must not start the service or begin microphone input.

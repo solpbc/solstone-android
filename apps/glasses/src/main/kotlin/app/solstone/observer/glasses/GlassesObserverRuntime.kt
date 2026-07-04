@@ -6,7 +6,6 @@ package app.solstone.observer.glasses
 import android.content.Context
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.model.SourceState
-import app.solstone.observer.harness.ObserverStartMode
 
 class GlassesObserverRuntime(
     private val appContext: Context?,
@@ -43,16 +42,9 @@ class GlassesObserverRuntime(
 
     fun rehydrateFromForegroundServiceStart() {
         runCatching {
-            val controller = runtimeContainer().controller
-            if (!controller.isVisibleCaptureOwnerPresent()) {
-                GlassesDiagLog.emit(
-                    DiagEvent.CaptureRefused(
-                        source = DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
-                        reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
-                    ),
-                )
-            }
-            controller.reconcile(ObserverStartMode.Rehydrate)
+            runtimeContainer().rehydrateInBackground()
+        }.onFailure {
+            GlassesDiagLog.emit(DiagEvent.CaughtException(site = "fgs-rehydrate", type = it.javaClass.simpleName))
         }
     }
 

@@ -3,10 +3,13 @@
 
 package app.solstone.platform.fgs
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 
 object ObserverNotification {
@@ -25,19 +28,31 @@ object ObserverNotification {
         manager.createNotificationChannel(channel)
     }
 
-    fun ongoing(context: Context, needsAttention: Boolean = false, decorate: Boolean = false): Notification {
+    fun ongoing(
+        context: Context,
+        needsAttention: Boolean = false,
+        decorate: Boolean = false,
+        contentIntent: PendingIntent? = null,
+    ): Notification {
         ensureChannel(context)
         val builder = builder(context)
             .setContentTitle("sol")
             .setContentText(if (needsAttention) TEXT_NEEDS_ATTENTION else TEXT_ON)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
+        if (contentIntent != null) {
+            builder.setContentIntent(contentIntent)
+        }
         if (decorate) {
             dispatchDecoration { decorator?.decorate(context, builder) }
         }
         return builder
             .build()
     }
+
+    fun notificationsPermitted(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     fun dispatchDecoration(hook: (() -> Unit)?) {
         hook?.invoke()

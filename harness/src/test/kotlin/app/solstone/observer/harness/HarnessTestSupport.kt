@@ -12,7 +12,6 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.platform.camera.still.CameraLock
-import app.solstone.platform.fgs.ForegroundStartAllowed
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 
@@ -51,10 +50,6 @@ internal class FakeDesiredObservingStore(initial: Boolean = false) : DesiredObse
     override fun setDesiredOn(on: Boolean) {
         current = on
     }
-}
-
-internal class FakeForegroundStartAllowed(var allowed: Boolean = true) : ForegroundStartAllowed {
-    override fun isForegroundStartAllowed(): Boolean = allowed
 }
 
 internal class FakeVisibleCaptureAuthority(var present: Boolean = true) : VisibleCaptureAuthority {
@@ -179,7 +174,6 @@ internal data class Fixture(
     val lifecycle: FakeLifecycle,
     val heartbeat: MutableHeartbeat,
     val desiredStore: FakeDesiredObservingStore,
-    val foregroundStartAllowed: FakeForegroundStartAllowed,
     val cameraLock: RecordingCameraLock,
     val sync: RecordingSyncEnqueue,
     val endpointStore: FakeEndpointStore,
@@ -215,10 +209,10 @@ internal fun fixture(
     credentialStore: FakeCredentialStore = FakeCredentialStore(credential()),
     identityStore: FakeIdentityStore = FakeIdentityStore(pairedHome()),
     desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
-    foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
     visibleCaptureAuthority: VisibleCaptureAuthority = FakeVisibleCaptureAuthority(present = true),
     networkAvailability: FakeNetworkAvailability? = null,
     sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
+    diag: (String) -> Unit = {},
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -231,7 +225,6 @@ internal fun fixture(
         controller = HarnessController(
             permissionStatusReader = permissions,
             desiredObservingStore = desiredStore,
-            foregroundStartAllowed = foregroundStartAllowed,
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = heartbeat,
@@ -248,12 +241,12 @@ internal fun fixture(
             deviceLabel = "watch",
             visibleCaptureAuthority = visibleCaptureAuthority,
             opportunisticSync = opportunisticSync,
+            diag = diag,
         ),
         permissions = permissions,
         lifecycle = lifecycle,
         heartbeat = heartbeat,
         desiredStore = desiredStore,
-        foregroundStartAllowed = foregroundStartAllowed,
         cameraLock = cameraLock,
         sync = sync,
         endpointStore = endpointStore,

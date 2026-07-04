@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import android.content.Context
 import app.solstone.core.sources.PHONE_STREAM
+import app.solstone.observer.harness.AlwaysVisibleCaptureAuthority
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.InMemoryDesiredObservingStore
 import app.solstone.observer.harness.RealBundleExport
@@ -16,7 +17,6 @@ import app.solstone.observer.harness.RealRelayPairProbe
 import app.solstone.observer.harness.RealSyncEnqueue
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.platform.camera.still.SingleHolderCameraLock
-import app.solstone.platform.fgs.AndroidForegroundStartAllowed
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
@@ -43,7 +43,6 @@ fun createPhoneHarnessFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
             desiredObservingStore = InMemoryDesiredObservingStore(),
-            foregroundStartAllowed = AndroidForegroundStartAllowed(),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),
@@ -58,6 +57,7 @@ fun createPhoneHarnessFlavor(
             identityStore = stores.identityStore,
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone phone",
+            visibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
         ),
         exemptionVerified = verifier::isExemptionVerified,
     )

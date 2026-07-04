@@ -42,9 +42,7 @@ class HarnessControllerVisibleStartTest {
 
     @Test
     fun visibleStartIgnoresRehydrateOnlyBlockers() {
-        val f = unpairedFixture(
-            foregroundStartAllowed = FakeForegroundStartAllowed(false),
-        )
+        val f = unpairedFixture()
 
         f.controller.ensureObserving()
 
@@ -85,9 +83,7 @@ class HarnessControllerVisibleStartTest {
 
     @Test
     fun rehydrateAndVisibleStartModesDifferOnSameFixture() {
-        val f = unpairedFixture(
-            foregroundStartAllowed = FakeForegroundStartAllowed(false),
-        )
+        val f = unpairedFixture()
         f.desiredStore.setDesiredOn(true)
 
         f.controller.reconcile(ObserverStartMode.Rehydrate)
@@ -101,9 +97,7 @@ class HarnessControllerVisibleStartTest {
 
     @Test
     fun visibleStartWhileUnpairedStaysAudibleAsNotPaired() {
-        val f = unpairedFixture(
-            foregroundStartAllowed = FakeForegroundStartAllowed(false),
-        )
+        val f = unpairedFixture()
 
         f.controller.ensureObserving()
 
@@ -120,11 +114,8 @@ class HarnessControllerVisibleStartTest {
         assertEquals(StatusCue.NOT_PAIRED, cueFor(prev, current))
     }
 
-    private fun unpairedFixture(
-        foregroundStartAllowed: FakeForegroundStartAllowed = FakeForegroundStartAllowed(),
-    ): Fixture =
+    private fun unpairedFixture(): Fixture =
         fixture(
-            foregroundStartAllowed = foregroundStartAllowed,
             plStatusProbe = PlStatusProbe { HarnessPlStatus.NotPaired },
             endpointStore = FakeEndpointStore(null),
             credentialStore = FakeCredentialStore(null),

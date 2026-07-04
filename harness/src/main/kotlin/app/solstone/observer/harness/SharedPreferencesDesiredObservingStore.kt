@@ -4,21 +4,18 @@
 package app.solstone.observer.harness
 
 import android.content.Context
+import app.solstone.platform.fgs.ObserverRuntimePrefs
 
 class SharedPreferencesDesiredObservingStore(
     context: Context,
-    name: String = "solstone_observer_runtime",
+    name: String = ObserverRuntimePrefs.PREFS_NAME,
 ) : DesiredObservingStore {
     private val preferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     override fun isDesiredOn(): Boolean =
-        preferences.getBoolean(KEY_DESIRED_OBSERVING_ON, false)
+        preferences.getBoolean(ObserverRuntimePrefs.KEY_DESIRED_ON, false)
 
     override fun setDesiredOn(on: Boolean) {
-        preferences.edit().putBoolean(KEY_DESIRED_OBSERVING_ON, on).apply()
-    }
-
-    private companion object {
-        const val KEY_DESIRED_OBSERVING_ON = "desired_observing_on"
+        preferences.edit().putBoolean(ObserverRuntimePrefs.KEY_DESIRED_ON, on).apply()
     }
 }
