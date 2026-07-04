@@ -42,7 +42,8 @@ class GlassesStatusFeedbackRuntimeTest {
 
             container.speakCurrentStatus()
 
-            assertEquals(StatusCue.OBSERVER_PAUSED, waitForPlayedCue(audio))
+            // Fresh mock launch is unpaired (empty in-memory stores): the honest cue is NOT_PAIRED.
+            assertEquals(StatusCue.NOT_PAIRED, waitForPlayedCue(audio))
         }
     }
 

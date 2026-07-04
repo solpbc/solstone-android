@@ -149,6 +149,12 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         }
     }
 
+    // Recovery runs once on the container's background executor; the container may be built at
+    // Application scope, before any observer registers hooks, so expose the completed fact too.
+    @Volatile
+    var recoveryCompleted: Boolean = false
+        private set
+
     init {
         // Keep the flavor seam observable for mock tests; WorkManager UPDATE keeps this idempotent.
         controller.schedulePeriodicSync()
@@ -161,6 +167,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         background.execute {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
+            recoveryCompleted = true
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
         }
     }

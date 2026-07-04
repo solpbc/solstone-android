@@ -43,19 +43,18 @@ class GlassesEvidenceScreenRuntimeTest {
 
     @Test
     fun roomSeededEvidenceAndStatusRenderOnUiThread() {
-        val recoveryLatch = CountDownLatch(1)
         val evidenceLatch = CountDownLatch(1)
         val syncLatch = CountDownLatch(1)
         GlassesHarnessRuntime.hooks = GlassesRuntimeHooks().also { hooks ->
-            hooks.onRecoveryComplete = { recoveryLatch.countDown() }
             hooks.onEvidenceLoadComplete = { evidenceLatch.countDown() }
             hooks.onSyncLoadComplete = { syncLatch.countDown() }
         }
         seedEvidence()
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            waitForContainer()
-            assertTrue(recoveryLatch.await(10, TimeUnit.SECONDS))
+            // The container may predate this test's hooks (built at Application scope),
+            // so await the durable recovery fact, not the hook.
+            assertTrue(waitForRecovery(waitForContainer()))
             scenario.onActivity { activity ->
                 clickButton(activity.findViewById(android.R.id.content), "Evidence + export")
             }
@@ -85,16 +84,15 @@ class GlassesEvidenceScreenRuntimeTest {
 
     @Test
     fun failedEvidenceReadRendersDistinctErrorState() {
-        val recoveryLatch = CountDownLatch(1)
         var evidenceLatch = CountDownLatch(1)
         GlassesHarnessRuntime.hooks = GlassesRuntimeHooks().also { hooks ->
-            hooks.onRecoveryComplete = { recoveryLatch.countDown() }
             hooks.onEvidenceLoadComplete = { evidenceLatch.countDown() }
         }
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            waitForContainer()
-            assertTrue(recoveryLatch.await(10, TimeUnit.SECONDS))
+            // The container may predate this test's hooks (built at Application scope),
+            // so await the durable recovery fact, not the hook.
+            assertTrue(waitForRecovery(waitForContainer()))
             scenario.onActivity {
                 GlassesHarnessRuntime.container!!.close()
             }
@@ -151,6 +149,14 @@ class GlassesEvidenceScreenRuntimeTest {
             assumeTrue("glasses harness container was not created", false)
             error("unreachable")
         }
+    }
+
+    private fun waitForRecovery(container: GlassesAppContainer): Boolean {
+        repeat(100) {
+            if (container.recoveryCompleted) return true
+            Thread.sleep(100L)
+        }
+        return container.recoveryCompleted
     }
 
     private fun collectTexts(root: View): List<String> {
