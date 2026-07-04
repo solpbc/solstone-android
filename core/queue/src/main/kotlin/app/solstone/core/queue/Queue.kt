@@ -30,6 +30,7 @@ fun classify(httpStatus: Int?, ioError: Boolean): RetryDecision =
         httpStatus == 401 || httpStatus == 403 -> RetryDecision.STOP_AUTH
         ioError -> RetryDecision.RETRY
         httpStatus in 500..599 -> RetryDecision.RETRY
+        httpStatus == 408 || httpStatus == 425 || httpStatus == 429 -> RetryDecision.RETRY
         httpStatus in 400..499 -> RetryDecision.HARD_FAIL
         else -> RetryDecision.HARD_FAIL
     }

@@ -11,6 +11,13 @@ import app.solstone.core.pl.parseJson
 
 private val HELD_STATUSES = setOf("present", "relocated")
 
+sealed class ReconcileException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+class ReconcileAuthException(val status: Int) : ReconcileException("reconcile auth failed: $status")
+
+class ReconcileUnavailableException(val status: Int?, cause: Throwable? = null) :
+    ReconcileException("reconcile unavailable: $status", cause)
+
 class SegmentReconciler(private val http: PlHttpClient, private val observerHandle: String) {
     fun fetch(day: String): List<ServerSegment> {
         val response = http.request(
@@ -22,12 +29,20 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
             ),
             body = null,
         )
-        val root = parseJson(response.bodyText()) as? Map<*, *> ?: throw IllegalArgumentException("segments response must be an object")
-        val items = root["items"] as? List<*> ?: throw IllegalArgumentException("segments response missing items")
-        return items.map { item ->
-            val segment = item as? Map<*, *> ?: throw IllegalArgumentException("segment item must be an object")
-            val files = segmentFiles(segment)
-            ServerSegment(key = requiredString(segment, "key"), files = files)
+        when (response.status) {
+            200 -> return try {
+                val root = parseJson(response.bodyText()) as? Map<*, *> ?: throw IllegalArgumentException("segments response must be an object")
+                val items = root["items"] as? List<*> ?: throw IllegalArgumentException("segments response missing items")
+                items.map { item ->
+                    val segment = item as? Map<*, *> ?: throw IllegalArgumentException("segment item must be an object")
+                    val files = segmentFiles(segment)
+                    ServerSegment(key = requiredString(segment, "key"), files = files)
+                }
+            } catch (e: Exception) {
+                throw ReconcileUnavailableException(200, e)
+            }
+            401, 403 -> throw ReconcileAuthException(response.status)
+            else -> throw ReconcileUnavailableException(response.status)
         }
     }
 

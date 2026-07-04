@@ -29,13 +29,16 @@ abstract class SegmentDao {
 
     @Transaction
     open fun insertSegmentWithFiles(segment: SegmentRow, files: List<SegmentFileRow>) {
-        insertSegment(segment)
+        if (segmentById(segment.id) == null) insertSegment(segment)
         deleteFilesBySegmentId(segment.id)
         if (files.isNotEmpty()) insertFiles(files)
     }
 
     @Query("SELECT * FROM segment WHERE state = :state ORDER BY sealed_at ASC, id ASC")
     abstract fun segmentsByState(state: QueueState): List<SegmentRow>
+
+    @Query("SELECT * FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED') ORDER BY sealed_at ASC, id ASC")
+    abstract fun segmentsForDrain(stream: String): List<SegmentRow>
 
     @Query("SELECT * FROM segment WHERE day = :day ORDER BY sealed_at ASC, id ASC")
     abstract fun segmentsByDay(day: String): List<SegmentRow>

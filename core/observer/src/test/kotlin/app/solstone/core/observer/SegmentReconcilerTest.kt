@@ -67,7 +67,7 @@ class SegmentReconcilerTest {
     fun fetchRejectsBareV1Array() {
         val http = RecordingPlHttpClient(HttpResponse(200, emptyMap(), "[]".toByteArray()))
 
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ReconcileUnavailableException> {
             SegmentReconciler(http, testHandle).fetch("20260616")
         }
     }
@@ -76,9 +76,40 @@ class SegmentReconcilerTest {
     fun diffRejectsBareV1Array() {
         val http = RecordingPlHttpClient(HttpResponse(200, emptyMap(), """[{"key":"093000_60","files":[]}]""".toByteArray()))
 
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ReconcileUnavailableException> {
             SegmentReconciler(http, testHandle).diff(listOf(manifest("093000_60", "audio.wav" to "sha-audio")), "20260616")
         }
+    }
+
+    @Test
+    fun fetchAuthStatusThrowsAuthException() {
+        val unauthorized = RecordingPlHttpClient(HttpResponse(401, emptyMap(), "unauthorized".toByteArray()))
+        val forbidden = RecordingPlHttpClient(HttpResponse(403, emptyMap(), "forbidden".toByteArray()))
+
+        assertEquals(
+            401,
+            assertFailsWith<ReconcileAuthException> {
+                SegmentReconciler(unauthorized, testHandle).fetch("20260616")
+            }.status,
+        )
+        assertEquals(
+            403,
+            assertFailsWith<ReconcileAuthException> {
+                SegmentReconciler(forbidden, testHandle).fetch("20260616")
+            }.status,
+        )
+    }
+
+    @Test
+    fun fetchUnavailableStatusThrowsUnavailableException() {
+        val http = RecordingPlHttpClient(HttpResponse(500, emptyMap(), "nope".toByteArray()))
+
+        assertEquals(
+            500,
+            assertFailsWith<ReconcileUnavailableException> {
+                SegmentReconciler(http, testHandle).fetch("20260616")
+            }.status,
+        )
     }
 
     @Test

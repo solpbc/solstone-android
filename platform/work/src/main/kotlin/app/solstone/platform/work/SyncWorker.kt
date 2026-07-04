@@ -10,12 +10,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
-import app.solstone.core.model.QueueState
 import app.solstone.core.observer.ObserverIngestClient
-import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.observer.SegmentReconciler
-import app.solstone.core.queue.QueueEvent
-import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -40,8 +36,22 @@ class SyncWorker(
             val streamType = streamTypeFromInput(inputData.getString(SyncScheduler.STREAM_TYPE_KEY))
             val stores = syncStores(applicationContext)
             when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
-                is SyncCredentials.NeedsRepair -> Result.failure()
-                is SyncCredentials.Ready -> sync(stores, credentials, streamType)
+                is SyncCredentials.NeedsRepair -> {
+                    Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
+                    Result.failure()
+                }
+                is SyncCredentials.Ready -> {
+                    if (!SyncDrainGate.tryAcquire()) {
+                        Log.i(TAG, "drain already running; deferring")
+                        Result.retry()
+                    } else {
+                        try {
+                            sync(stores, credentials, streamType)
+                        } finally {
+                            SyncDrainGate.release()
+                        }
+                    }
+                }
             }
         }
 
@@ -74,17 +84,21 @@ class SyncWorker(
                     dial = RelayDial { relayTransport ->
                         syncWithTransport(db.segmentDao(), stores, credentials, relayTransport, streamType)
                     },
+                    log = { message, throwable -> Log.w(TAG, message, throwable) },
                 )
             }
             return outcome.toWorkResult()
-        } catch (_: RelayDialWaitingException) {
-            Log.i(TAG, "home offline, waiting; will retry")
+        } catch (e: RelayDialWaitingException) {
+            Log.i(TAG, "home offline, waiting; will retry", e)
             return Result.retry()
-        } catch (_: RelayWebSocketClosedException) {
+        } catch (e: RelayWebSocketClosedException) {
+            Log.w(TAG, "relay ws closed; retry", e)
             return Result.retry()
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Log.w(TAG, "sync io; retry", e)
             return Result.retry()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "sync failed", e)
             return Result.failure()
         } finally {
             db.close()
@@ -103,7 +117,8 @@ class SyncWorker(
                 client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
             } catch (e: RelayWebSocketClosedException) {
                 throw e
-            } catch (_: IOException) {
+            } catch (e: IOException) {
+                Log.w(TAG, "status probe io; retry", e)
                 return SyncOutcome.RETRY
             }
             return when (decideReachability(paired = true, reachable = status == 200)) {
@@ -124,11 +139,22 @@ class SyncWorker(
                         },
                         persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
                         drain = { c, handle ->
+                            val spoolDir = File(applicationContext.filesDir, "spool")
                             val report = drainSegments(
-                                dao,
-                                SegmentReconciler(c, handle),
-                                ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" },
-                                handle,
+                                store = RoomDrainStore(dao),
+                                reconcile = SegmentReconciler(c, handle)::diff,
+                                ingest = { manifest, fileBytes ->
+                                    ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(
+                                        manifest = manifest,
+                                        handle = handle,
+                                        fileBytes = fileBytes,
+                                        host = deviceLabel(),
+                                        platform = "android",
+                                    )
+                                },
+                                readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
+                                now = System::currentTimeMillis,
+                                log = { message, throwable -> Log.w(TAG, message, throwable) },
                             )
                             val emit = emitObserverHealth(
                                 client = c,
@@ -139,18 +165,21 @@ class SyncWorker(
                                 version = appVersion(),
                                 now = System.currentTimeMillis(),
                                 syncRow = dao.syncState(),
-                                outcome = report.outcome,
+                                cleanDrain = report.cleanDrain,
+                                failedThisRun = report.failedThisRun,
                                 rawErrorReason = report.lastErrorReason,
+                                log = { message, throwable -> Log.w(TAG, message, throwable) },
                             )
                             if (emit == BeaconEmitResult.FAILED) {
                                 Log.w(TAG, "observer health beacon not delivered")
                             }
-                            report.outcome
+                            report.workOutcome
                         },
                         onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
                     )
                 ) {
                     RegisterDrainOutcome.Retry -> SyncOutcome.RETRY
+                    RegisterDrainOutcome.Halt -> SyncOutcome.FAILURE
                     is RegisterDrainOutcome.Drained -> outcome.result
                 }
             }
@@ -167,114 +196,6 @@ class SyncWorker(
                 credential,
             )
         }
-
-    private fun drainSegments(
-        dao: SegmentDao,
-        reconciler: SegmentReconciler,
-        ingestClient: ObserverIngestClient,
-        handle: String,
-    ): DrainReport {
-        var shouldRetry = false
-        var halted = false
-        var lastSuccessAt = dao.syncState()?.lastSuccessAt
-        var lastFailureAt = dao.syncState()?.lastFailureAt
-        var lastErrorReason: String? = null
-        val spoolDir = File(applicationContext.filesDir, "spool")
-        val sealed = selectDrainSegments(dao.segmentsByState(QueueState.SEALED))
-        val now = System.currentTimeMillis()
-
-        for ((day, segments) in sealed.groupBy { it.day }) {
-            val manifests = segments.associateWith { segment ->
-                reconstructManifest(segment, dao.filesBySegmentId(segment.id))
-            }
-            val verdicts = reconciler.diff(manifests.values.toList(), day)
-            val actions = planDayDrain(verdicts, segments).associateBy { action ->
-                when (action) {
-                    is DrainAction.Skip -> action.id
-                    is DrainAction.Upload -> action.id
-                }
-            }
-            segments.forEach { dao.recordDedupeChecked(it.id, now) }
-
-            for (segment in segments) {
-                val manifest = manifests.getValue(segment)
-                dao.advanceState(segment.id, QueueEvent.START_UPLOAD)
-                dao.recordAttempt(segment.id, segment.attemptCount + 1, System.currentTimeMillis())
-
-                when (actions.getValue(segment.id)) {
-                    is DrainAction.Skip -> {
-                        dao.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
-                        lastSuccessAt = System.currentTimeMillis()
-                    }
-                    is DrainAction.Upload -> {
-                        val result = try {
-                            resolveIngestOutcome(
-                                ingestClient.ingest(
-                                    manifest = manifest,
-                                    handle = handle,
-                                    fileBytes = { file -> readPayloadFor(spoolDir, segment, file) },
-                                    host = deviceLabel(),
-                                    platform = "android",
-                                ),
-                            )
-                        } catch (e: RelayWebSocketClosedException) {
-                            throw e
-                        } catch (_: IOException) {
-                            resolveIoError()
-                        }
-
-                        when (result) {
-                            is SegmentSyncResult.Uploaded -> {
-                                dao.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
-                                dao.recordUploaded(segment.id, result.serverKey)
-                                lastSuccessAt = System.currentTimeMillis()
-                            }
-                            is SegmentSyncResult.Retry -> {
-                                dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                                dao.recordFailure(segment.id, result.status, "retry")
-                                lastFailureAt = System.currentTimeMillis()
-                                lastErrorReason = "retry" + (result.status?.let { " ($it)" } ?: "")
-                                shouldRetry = true
-                            }
-                            is SegmentSyncResult.HardFail -> {
-                                dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                                dao.recordFailure(segment.id, result.status, "hard failure")
-                                lastFailureAt = System.currentTimeMillis()
-                                lastErrorReason = "hard failure (${result.status})"
-                            }
-                            is SegmentSyncResult.AuthHalt -> {
-                                dao.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                                dao.recordFailure(segment.id, result.status, "auth halted")
-                                lastFailureAt = System.currentTimeMillis()
-                                lastErrorReason = "auth halted (${result.status})"
-                                halted = haltsDrain(result)
-                            }
-                        }
-                    }
-                }
-
-                if (halted) break
-            }
-
-            if (halted) break
-        }
-
-        val outcome = when {
-            halted -> SyncOutcome.FAILURE
-            shouldRetry -> SyncOutcome.RETRY
-            else -> SyncOutcome.SUCCESS
-        }
-        lastSuccessAt = advanceLastSuccess(lastSuccessAt, outcome == SyncOutcome.SUCCESS, System.currentTimeMillis())
-        dao.upsertSyncState(
-            nextSyncState(
-                pendingCount = dao.pendingCount(MAIN_STREAM),
-                lastSuccessAt = lastSuccessAt,
-                lastFailureAt = lastFailureAt,
-            ),
-        )
-
-        return DrainReport(outcome, lastErrorReason)
-    }
 
     private fun SyncOutcome.toWorkResult(): Result =
         when (this) {

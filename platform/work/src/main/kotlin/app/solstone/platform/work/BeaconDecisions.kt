@@ -9,16 +9,21 @@ import app.solstone.core.pl.BeaconState
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.platform.persistence.room.SyncStateRow
 
-data class DrainReport(val outcome: SyncOutcome, val lastErrorReason: String?)
+data class DrainReport(
+    val workOutcome: SyncOutcome,
+    val cleanDrain: Boolean,
+    val failedThisRun: Boolean,
+    val lastErrorReason: String?,
+)
 
-fun advanceLastSuccess(prior: Long?, drainSucceeded: Boolean, now: Long): Long? =
-    if (drainSucceeded) now else prior
+fun advanceLastSuccess(prior: Long?, cleanDrain: Boolean, now: Long): Long? =
+    if (cleanDrain) now else prior
 
-fun nextRecentErrorCount(previous: Int, outcome: SyncOutcome): Int =
-    when (outcome) {
-        SyncOutcome.SUCCESS -> 0
-        SyncOutcome.RETRY,
-        SyncOutcome.FAILURE -> (previous + 1).coerceIn(0, 99)
+fun nextRecentErrorCount(previous: Int, cleanDrain: Boolean, failedThisRun: Boolean): Int =
+    when {
+        cleanDrain -> 0
+        failedThisRun -> (previous + 1).coerceIn(0, 99)
+        else -> previous
     }
 
 fun redactErrorReason(raw: String?): String? {
@@ -79,12 +84,14 @@ fun emitObserverHealth(
     version: String,
     now: Long,
     syncRow: SyncStateRow?,
-    outcome: SyncOutcome,
+    cleanDrain: Boolean,
+    failedThisRun: Boolean,
     rawErrorReason: String?,
+    log: (String, Throwable?) -> Unit,
 ): BeaconEmitResult =
     try {
         val startedAt = priorState?.startedAt ?: now
-        val nextCount = nextRecentErrorCount(priorState?.recentErrorCount ?: 0, outcome)
+        val nextCount = nextRecentErrorCount(priorState?.recentErrorCount ?: 0, cleanDrain, failedThisRun)
         persist(BeaconState(startedAt, nextCount))
         val health = buildObserverHealth(
             name = handle,
@@ -99,6 +106,7 @@ fun emitObserverHealth(
         )
         ObserverHealthClient(client).report(health)
         BeaconEmitResult.DELIVERED
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        log("observer health emit failed", e)
         BeaconEmitResult.FAILED
     }

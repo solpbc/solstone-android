@@ -5,6 +5,7 @@ package app.solstone.platform.work
 
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.observer.ObserverAuthException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -98,6 +99,33 @@ class RegisterThenDrainTest {
         )
 
         assertSame(RegisterDrainOutcome.Retry, outcome)
+        assertEquals(0, persistCount)
+        assertEquals(0, drainCount)
+        assertEquals(1, errors.size)
+        assertSame(failure, errors.single())
+    }
+
+    @Test
+    fun registerAuthFailureReturnsHaltWithoutPersistOrDrain() {
+        val client = FakePlHttpClient()
+        val failure = ObserverAuthException(401)
+        var persistCount = 0
+        var drainCount = 0
+        val errors = mutableListOf<Throwable>()
+
+        val outcome = registerThenDrain(
+            client = client,
+            existingHandle = null,
+            register = { throw failure },
+            persist = { persistCount += 1 },
+            drain = { _, _ ->
+                drainCount += 1
+                "drained"
+            },
+            onError = { errors += it },
+        )
+
+        assertSame(RegisterDrainOutcome.Halt, outcome)
         assertEquals(0, persistCount)
         assertEquals(0, drainCount)
         assertEquals(1, errors.size)

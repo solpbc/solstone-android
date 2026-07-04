@@ -17,9 +17,13 @@ class QueueTest {
         assertEquals(RetryDecision.STOP_AUTH, classify(403, ioError = false))
         assertEquals(RetryDecision.RETRY, classify(500, ioError = false))
         assertEquals(RetryDecision.RETRY, classify(503, ioError = false))
+        assertEquals(RetryDecision.RETRY, classify(408, ioError = false))
+        assertEquals(RetryDecision.RETRY, classify(425, ioError = false))
+        assertEquals(RetryDecision.RETRY, classify(429, ioError = false))
         assertEquals(RetryDecision.RETRY, classify(null, ioError = true))
         assertEquals(RetryDecision.HARD_FAIL, classify(404, ioError = false))
         assertEquals(RetryDecision.HARD_FAIL, classify(400, ioError = false))
+        assertEquals(RetryDecision.HARD_FAIL, classify(422, ioError = false))
     }
 
     @Test

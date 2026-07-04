@@ -7,6 +7,7 @@ import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class ObserverHealthTest {
     @Test
@@ -56,21 +57,23 @@ class ObserverHealthTest {
     }
 
     @Test
-    fun reportIgnoresNon200Response() {
+    fun reportFailsOnNon2xxResponse() {
         val http = RecordingPlHttpClient(HttpResponse(500, emptyMap(), "nope".toByteArray()))
 
-        ObserverHealthClient(http).report(
-            ObserverHealth(
-                name = "observer-handle",
-                streamType = "watch",
-                version = "0.1",
-                uptime = 0,
-                lastSuccessfulSync = null,
-                pendingQueueDepth = 0,
-                recentErrorCount = 1,
-                lastErrorReason = "retry",
-            ),
-        )
+        assertFailsWith<IllegalStateException> {
+            ObserverHealthClient(http).report(
+                ObserverHealth(
+                    name = "observer-handle",
+                    streamType = "watch",
+                    version = "0.1",
+                    uptime = 0,
+                    lastSuccessfulSync = null,
+                    pendingQueueDepth = 0,
+                    recentErrorCount = 1,
+                    lastErrorReason = "retry",
+                ),
+            )
+        }
 
         assertEquals(1, http.requests.size)
     }

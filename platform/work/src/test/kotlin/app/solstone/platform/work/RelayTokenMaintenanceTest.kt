@@ -134,12 +134,21 @@ class RelayTokenMaintenanceTest {
     fun reactiveNon4401RetriesWithoutRefresh() {
         val poster = FakePoster()
         val dial = FakeDial(Close(4403))
+        val logs = mutableListOf<String>()
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, FakeIdentityStore(home()), dial)
+        val result = dialWithReactiveRefresh(
+            home(),
+            transport(token = "old"),
+            poster,
+            FakeIdentityStore(home()),
+            dial,
+            log = { message, _ -> logs += message },
+        )
 
         assertEquals(SyncOutcome.RETRY, result)
         assertEquals(0, poster.calls)
         assertEquals(listOf("old"), dial.tokens)
+        assertEquals(listOf("relay websocket closed"), logs)
     }
 
     @Test

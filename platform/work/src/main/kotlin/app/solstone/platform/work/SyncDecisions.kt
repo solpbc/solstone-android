@@ -8,6 +8,7 @@ import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
+import app.solstone.core.observer.ObserverAuthException
 import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.PlHttpClient
@@ -18,6 +19,13 @@ import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.io.IOException
+
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 60L * MINUTE_MS
+private const val RETRY_BACKOFF_BASE_MS = 15L * MINUTE_MS
+private const val RETRY_BACKOFF_CAP_MS = 4L * HOUR_MS
+private const val HARD_FAIL_BACKOFF_BASE_MS = 2L * HOUR_MS
+private const val HARD_FAIL_BACKOFF_CAP_MS = 6L * HOUR_MS
 
 fun streamTypeFromInput(raw: String?): String = raw ?: MAIN_STREAM
 
@@ -35,8 +43,37 @@ fun registerObserverHandle(
         version = version,
     ).handle
 
-fun selectDrainSegments(segments: List<SegmentRow>): List<SegmentRow> =
-    segments.filter { it.state == QueueState.SEALED && it.stream == MAIN_STREAM }
+fun isRetryDue(
+    state: QueueState,
+    attemptCount: Int,
+    lastAttemptAt: Long?,
+    lastStatusCode: Int?,
+    now: Long,
+): Boolean =
+    when (state) {
+        QueueState.SEALED,
+        QueueState.UPLOADING -> true
+        QueueState.FAILED -> {
+            val decision = classify(lastStatusCode, ioError = lastStatusCode == null)
+            now - (lastAttemptAt ?: 0L) >= retryBackoffMs(attemptCount, decision)
+        }
+        else -> false
+    }
+
+fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
+    val exponent = (attemptCount - 1).coerceAtLeast(0)
+    return when (decision) {
+        RetryDecision.RETRY -> (RETRY_BACKOFF_BASE_MS shl exponent.coerceAtMost(4)).coerceAtMost(RETRY_BACKOFF_CAP_MS)
+        RetryDecision.HARD_FAIL -> (HARD_FAIL_BACKOFF_BASE_MS shl exponent.coerceAtMost(2)).coerceAtMost(HARD_FAIL_BACKOFF_CAP_MS)
+        RetryDecision.STOP_AUTH -> Long.MAX_VALUE
+    }
+}
+
+fun selectDrainSegments(segments: List<SegmentRow>, now: Long): List<SegmentRow> =
+    segments.filter {
+        it.stream == MAIN_STREAM &&
+            isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, now)
+    }
 
 fun reconstructManifest(
     segment: SegmentRow,
@@ -73,6 +110,7 @@ fun decideReachability(
 sealed interface RegisterDrainOutcome<out R> {
     data class Drained<R>(val result: R) : RegisterDrainOutcome<R>
     data object Retry : RegisterDrainOutcome<Nothing>
+    data object Halt : RegisterDrainOutcome<Nothing>
 }
 
 /**
@@ -95,6 +133,9 @@ fun <R> registerThenDrain(
             register(client)
         } catch (e: IOException) {
             throw e
+        } catch (e: ObserverAuthException) {
+            onError(e)
+            return RegisterDrainOutcome.Halt
         } catch (e: Exception) {
             onError(e)
             return RegisterDrainOutcome.Retry

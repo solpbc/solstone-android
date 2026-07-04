@@ -10,6 +10,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
+import app.solstone.core.queue.RetryDecision
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -64,16 +65,58 @@ class SyncDecisionsTest {
     }
 
     @Test
-    fun selectDrainSegmentsDrainsObserverSealedIncludingLocationAndExcludesOtherStreams() {
+    fun selectDrainSegmentsKeepsDueMainStreamRowsAndExcludesOtherStreams() {
+        val now = 2_000_000L
         val rows = listOf(
             segment("main-sealed", MAIN_STREAM, QueueState.SEALED),
             segment("observer-location", MAIN_STREAM, QueueState.SEALED),
             segment("import-sealed", "import.share", QueueState.SEALED),
             segment("main-uploading", MAIN_STREAM, QueueState.UPLOADING),
-            segment("main-failed", MAIN_STREAM, QueueState.FAILED),
+            segment("main-failed-due", MAIN_STREAM, QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = 500),
+            segment(
+                "main-failed-backoff",
+                MAIN_STREAM,
+                QueueState.FAILED,
+                attemptCount = 1,
+                lastAttemptAt = now - 1_000,
+                lastStatusCode = 500,
+            ),
         )
 
-        assertEquals(listOf("main-sealed", "observer-location"), selectDrainSegments(rows).map { it.id })
+        assertEquals(
+            listOf("main-sealed", "observer-location", "main-uploading", "main-failed-due"),
+            selectDrainSegments(rows, now).map { it.id },
+        )
+    }
+
+    @Test
+    fun isRetryDueCoversStateAndBackoffPolicy() {
+        val now = 10 * HOUR_MS
+
+        assertTrue(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
+        assertTrue(isRetryDue(QueueState.UPLOADING, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
+        assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 15 * MINUTE_MS, lastStatusCode = 500, now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 14 * MINUTE_MS, lastStatusCode = 500, now = now))
+        assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 2 * HOUR_MS, lastStatusCode = 422, now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - HOUR_MS, lastStatusCode = 422, now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 10, lastAttemptAt = 0, lastStatusCode = 401, now = now))
+        assertFalse(isRetryDue(QueueState.UPLOADED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
+    }
+
+    @Test
+    fun retryBackoffMsUsesApprovedBoundaries() {
+        assertEquals(15 * MINUTE_MS, retryBackoffMs(1, RetryDecision.RETRY))
+        assertEquals(30 * MINUTE_MS, retryBackoffMs(2, RetryDecision.RETRY))
+        assertEquals(HOUR_MS, retryBackoffMs(3, RetryDecision.RETRY))
+        assertEquals(2 * HOUR_MS, retryBackoffMs(4, RetryDecision.RETRY))
+        assertEquals(4 * HOUR_MS, retryBackoffMs(5, RetryDecision.RETRY))
+        assertEquals(4 * HOUR_MS, retryBackoffMs(99, RetryDecision.RETRY))
+
+        assertEquals(2 * HOUR_MS, retryBackoffMs(1, RetryDecision.HARD_FAIL))
+        assertEquals(4 * HOUR_MS, retryBackoffMs(2, RetryDecision.HARD_FAIL))
+        assertEquals(6 * HOUR_MS, retryBackoffMs(3, RetryDecision.HARD_FAIL))
+        assertEquals(6 * HOUR_MS, retryBackoffMs(99, RetryDecision.HARD_FAIL))
+        assertEquals(Long.MAX_VALUE, retryBackoffMs(1, RetryDecision.STOP_AUTH))
     }
 
     @Test
@@ -198,6 +241,9 @@ class SyncDecisionsTest {
         state: QueueState,
         day: String = DAY,
         key: String = id,
+        attemptCount: Int = 0,
+        lastAttemptAt: Long? = null,
+        lastStatusCode: Int? = null,
     ): SegmentRow =
         SegmentRow(
             id = id,
@@ -209,6 +255,9 @@ class SyncDecisionsTest {
             sealedAt = 100,
             homeInstanceId = null,
             observerHandle = null,
+            attemptCount = attemptCount,
+            lastStatusCode = lastStatusCode,
+            lastAttemptAt = lastAttemptAt,
         )
 
     private fun file(segmentId: String, sourceId: String, name: String, sha: String): SegmentFileRow =
@@ -245,6 +294,8 @@ class SyncDecisionsTest {
 
     private companion object {
         const val DAY = "20260617"
+        const val MINUTE_MS = 60_000L
+        const val HOUR_MS = 60L * MINUTE_MS
 
         fun registrationResponse(name: String): HttpResponse =
             HttpResponse(

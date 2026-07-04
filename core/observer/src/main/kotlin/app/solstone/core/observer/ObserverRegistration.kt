@@ -7,6 +7,8 @@ import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 
+class ObserverAuthException(val status: Int) : RuntimeException("observer registration auth failed: $status")
+
 class ObserverRegistration(private val http: PlHttpClient) {
     fun register(platform: String, hostname: String, streamType: String, version: String): RegisteredObserver {
         val body = ObserverRegisterRequest(
@@ -22,6 +24,9 @@ class ObserverRegistration(private val http: PlHttpClient) {
             body = body,
         )
         if (response.status != 200) {
+            if (response.status == 401 || response.status == 403) {
+                throw ObserverAuthException(response.status)
+            }
             throw IllegalStateException("observer registration failed with status ${response.status}")
         }
         return RegisteredObserver.fromJson(response.bodyText())

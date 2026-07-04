@@ -55,7 +55,7 @@ class RoomQueueStoreInstrumentedTest {
     }
 
     @Test
-    fun insertSegmentWithFiles_persistsThenReplacesFilesOnReinsert() {
+    fun insertSegmentWithFiles_refreshesFilesWithoutReplacingExistingSegmentRow() {
         dao.insertSegmentWithFiles(
             segment("a", QueueState.RECORDING, sealedAt = 100),
             listOf(file("a", "audio", "sha-aud"), file("a", "camera", "sha-cam")),
@@ -65,18 +65,60 @@ class RoomQueueStoreInstrumentedTest {
         assertEquals(1, dao.duplicateBySha256("sha-aud").size)
         assertEquals(1, dao.duplicateBySha256("sha-cam").size)
 
-        // Re-inserting the same segment id replaces the row and clears its prior files
-        // (insertSegmentWithFiles deletes by segment id before inserting the new set).
+        // Re-inserting the same segment id preserves the row while refreshing its files.
         dao.insertSegmentWithFiles(
             segment("a", QueueState.SEALED, sealedAt = 100),
             listOf(file("a", "audio", "sha-aud-v2")),
         )
 
         assertEquals(1, dao.segmentsByDay(DAY).size)
-        assertEquals(QueueState.SEALED, stateOf("a"))
+        assertEquals(QueueState.RECORDING, stateOf("a"))
         assertTrue("stale file rows must be cleared", dao.duplicateBySha256("sha-aud").isEmpty())
         assertTrue("stale file rows must be cleared", dao.duplicateBySha256("sha-cam").isEmpty())
         assertEquals(1, dao.duplicateBySha256("sha-aud-v2").size)
+    }
+
+    @Test
+    fun insertSegmentWithFiles_preservesUploadedRowBookkeepingOnReseal() {
+        dao.insertSegmentWithFiles(
+            segment("u", QueueState.RECORDING, sealedAt = 100),
+            listOf(file("u", "audio", "sha-old")),
+        )
+        store.advance("u", QueueEvent.SEAL)
+        store.advance("u", QueueEvent.START_UPLOAD)
+        store.advance("u", QueueEvent.MARK_UPLOADED)
+        dao.recordUploaded("u", "srv-1")
+        dao.recordAttempt("u", 3, 999)
+
+        dao.insertSegmentWithFiles(
+            segment("u", QueueState.SEALED, sealedAt = 200),
+            listOf(file("u", "audio", "sha-new")),
+        )
+
+        val row = dao.segmentById("u")!!
+        assertEquals(QueueState.UPLOADED, row.state)
+        assertEquals("srv-1", row.serverKey)
+        assertEquals(3, row.attemptCount)
+        assertTrue("stale file rows must be cleared", dao.duplicateBySha256("sha-old").isEmpty())
+        assertEquals(1, dao.duplicateBySha256("sha-new").size)
+    }
+
+    @Test
+    fun segmentsForDrain_returnsMainDrainableRowsOldestFirst() {
+        insert("uploaded", QueueState.UPLOADED, sealedAt = 100)
+        insert("sealed", QueueState.SEALED, sealedAt = 200)
+        insert("uploading", QueueState.UPLOADING, sealedAt = 300)
+        insert("failed", QueueState.FAILED, sealedAt = 400)
+        insert("recording", QueueState.RECORDING, sealedAt = 500)
+        dao.insertSegmentWithFiles(
+            segment("other", QueueState.SEALED, sealedAt = 50).copy(stream = "other.stream"),
+            listOf(file("other", "audio", "sha-other")),
+        )
+
+        assertEquals(
+            listOf("sealed", "uploading", "failed"),
+            dao.segmentsForDrain("validation.watch").map { it.id },
+        )
     }
 
     @Test

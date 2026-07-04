@@ -15,10 +15,10 @@ import kotlin.test.assertNull
 class BeaconDecisionsTest {
     @Test
     fun nextRecentErrorCountResetsIncrementsAndClamps() {
-        assertEquals(0, nextRecentErrorCount(7, SyncOutcome.SUCCESS))
-        assertEquals(8, nextRecentErrorCount(7, SyncOutcome.RETRY))
-        assertEquals(8, nextRecentErrorCount(7, SyncOutcome.FAILURE))
-        assertEquals(99, nextRecentErrorCount(99, SyncOutcome.RETRY))
+        assertEquals(0, nextRecentErrorCount(7, cleanDrain = true, failedThisRun = false))
+        assertEquals(8, nextRecentErrorCount(7, cleanDrain = false, failedThisRun = true))
+        assertEquals(7, nextRecentErrorCount(7, cleanDrain = false, failedThisRun = false))
+        assertEquals(99, nextRecentErrorCount(99, cleanDrain = false, failedThisRun = true))
     }
 
     @Test
@@ -32,9 +32,9 @@ class BeaconDecisionsTest {
 
     @Test
     fun advanceLastSuccessOnlyAdvancesSuccessfulDrain() {
-        assertEquals(2000L, advanceLastSuccess(prior = 1000, drainSucceeded = true, now = 2000))
-        assertEquals(1000L, advanceLastSuccess(prior = 1000, drainSucceeded = false, now = 2000))
-        assertEquals(2000L, advanceLastSuccess(prior = null, drainSucceeded = true, now = 2000))
+        assertEquals(2000L, advanceLastSuccess(prior = 1000, cleanDrain = true, now = 2000))
+        assertEquals(1000L, advanceLastSuccess(prior = 1000, cleanDrain = false, now = 2000))
+        assertEquals(2000L, advanceLastSuccess(prior = null, cleanDrain = true, now = 2000))
     }
 
     @Test
@@ -75,8 +75,10 @@ class BeaconDecisionsTest {
             version = "0.1",
             now = 6500,
             syncRow = SyncStateRow(pendingCount = 7, lastSuccessAt = 2000, lastFailureAt = null),
-            outcome = SyncOutcome.RETRY,
+            cleanDrain = false,
+            failedThisRun = true,
             rawErrorReason = "retry (500)",
+            log = { _, _ -> error("unexpected log") },
         )
 
         assertEquals(BeaconEmitResult.DELIVERED, result)
@@ -117,8 +119,10 @@ class BeaconDecisionsTest {
             version = "0.1",
             now = 5000,
             syncRow = null,
-            outcome = SyncOutcome.SUCCESS,
+            cleanDrain = true,
+            failedThisRun = false,
             rawErrorReason = null,
+            log = { _, _ -> error("unexpected log") },
         )
 
         assertEquals(BeaconEmitResult.DELIVERED, result)
@@ -130,7 +134,8 @@ class BeaconDecisionsTest {
     }
 
     @Test
-    fun emitObserverHealthSwallowsClientFailure() {
+    fun emitObserverHealthLogsClientFailure() {
+        val logs = mutableListOf<String>()
         val result = emitObserverHealth(
             client = ThrowingPlHttpClient(),
             priorState = null,
@@ -140,11 +145,36 @@ class BeaconDecisionsTest {
             version = "0.1",
             now = 5000,
             syncRow = null,
-            outcome = SyncOutcome.SUCCESS,
+            cleanDrain = true,
+            failedThisRun = false,
             rawErrorReason = null,
+            log = { message, _ -> logs += message },
         )
 
         assertEquals(BeaconEmitResult.FAILED, result)
+        assertEquals(listOf("observer health emit failed"), logs)
+    }
+
+    @Test
+    fun emitObserverHealthReturnsFailedOnNon2xx() {
+        val logs = mutableListOf<String>()
+        val result = emitObserverHealth(
+            client = RecordingPlHttpClient(HttpResponse(500, emptyMap(), ByteArray(0))),
+            priorState = null,
+            persist = {},
+            streamType = "phone",
+            handle = "observer-handle",
+            version = "0.1",
+            now = 5000,
+            syncRow = null,
+            cleanDrain = true,
+            failedThisRun = false,
+            rawErrorReason = null,
+            log = { message, _ -> logs += message },
+        )
+
+        assertEquals(BeaconEmitResult.FAILED, result)
+        assertEquals(listOf("observer health emit failed"), logs)
     }
 
     private class RecordingPlHttpClient(private val response: HttpResponse) : PlHttpClient {

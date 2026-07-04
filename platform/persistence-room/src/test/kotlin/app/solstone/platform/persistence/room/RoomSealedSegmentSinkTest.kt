@@ -106,6 +106,12 @@ class RoomSealedSegmentSinkTest {
         override fun segmentsByState(state: QueueState): List<SegmentRow> =
             segments.filter { it.state == state }
 
+        override fun segmentsForDrain(stream: String): List<SegmentRow> =
+            segments.filter {
+                it.stream == stream &&
+                    (it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED)
+            }
+
         override fun segmentsByDay(day: String): List<SegmentRow> =
             segments.filter { it.day == day }
 

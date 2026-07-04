@@ -68,8 +68,26 @@ class ObserverRegistrationTest {
     }
 
     @Test
-    fun registerFailsOnNon200() {
+    fun registerAuthStatusThrowsAuthException() {
         val http = RecordingPlHttpClient(response = HttpResponse(401, emptyMap(), "nope".toByteArray()))
+
+        assertFailsWith<ObserverAuthException> {
+            ObserverRegistration(http).register("rogbid", "watch-one", "audio", "1.0.0")
+        }
+    }
+
+    @Test
+    fun registerForbiddenStatusThrowsAuthException() {
+        val http = RecordingPlHttpClient(response = HttpResponse(403, emptyMap(), "nope".toByteArray()))
+
+        assertFailsWith<ObserverAuthException> {
+            ObserverRegistration(http).register("rogbid", "watch-one", "audio", "1.0.0")
+        }
+    }
+
+    @Test
+    fun registerFailsOnNonAuthNon200() {
+        val http = RecordingPlHttpClient(response = HttpResponse(500, emptyMap(), "nope".toByteArray()))
 
         assertFailsWith<IllegalStateException> {
             ObserverRegistration(http).register("rogbid", "watch-one", "audio", "1.0.0")

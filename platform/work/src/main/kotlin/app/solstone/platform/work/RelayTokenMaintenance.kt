@@ -48,10 +48,12 @@ fun dialWithReactiveRefresh(
     poster: HttpsPoster,
     identityStore: IdentityStore,
     dial: RelayDial,
+    log: (String, Throwable?) -> Unit = { _, _ -> },
 ): SyncOutcome =
     try {
         dial.dial(transport)
     } catch (e: RelayWebSocketClosedException) {
+        log("relay websocket closed", e)
         if (e.code != 4401) {
             SyncOutcome.RETRY
         } else {
@@ -60,7 +62,8 @@ fun dialWithReactiveRefresh(
                     identityStore.save(identity.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt))
                     try {
                         dial.dial(transport.copy(deviceToken = refresh.deviceToken))
-                    } catch (_: RelayWebSocketClosedException) {
+                    } catch (retryClose: RelayWebSocketClosedException) {
+                        log("relay websocket closed after token refresh", retryClose)
                         SyncOutcome.RETRY
                     }
                 }

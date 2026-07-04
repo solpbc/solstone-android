@@ -31,7 +31,7 @@ class ObserverHealthClient(private val http: PlHttpClient) {
                 "last_error_reason" to health.lastErrorReason,
             ),
         ).toByteArray(Charsets.UTF_8)
-        http.request(
+        val response = http.request(
             method = "POST",
             path = HEALTH_PATH,
             headers = mapOf(
@@ -41,5 +41,8 @@ class ObserverHealthClient(private val http: PlHttpClient) {
             ),
             body = body,
         )
+        if (response.status !in 200..299) {
+            throw IllegalStateException("observer health report failed: ${response.status}")
+        }
     }
 }
