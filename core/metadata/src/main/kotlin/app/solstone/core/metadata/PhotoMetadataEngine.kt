@@ -15,6 +15,7 @@ import app.solstone.core.spool.PayloadBytesProvider
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.TreeMap
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,18 +24,19 @@ class PhotoMetadataEngine(
     private val scheduler: MetadataScheduler,
     private val battery: BatterySource,
     private val imu: ImuSensorPort,
+    private val diag: (String) -> Unit = {},
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
     private val accepting = AtomicBoolean(true)
     private val windows = TreeMap<Long, WindowBuffer>()
-    private val payloads = mutableMapOf<PayloadKey, ByteArray>()
+    private val payloads = ConcurrentHashMap<PayloadKey, ByteArray>()
     private var sink: EmissionSink? = null
     private var sequence = 0L
 
     override fun start(sink: EmissionSink) {
         if (!running.compareAndSet(false, true)) return
         accepting.set(true)
-        scheduler.execute {
+        execute("start") {
             this.sink = sink
             flushDueWindows()
         }
@@ -43,7 +45,7 @@ class PhotoMetadataEngine(
     override fun stop() {
         if (!running.compareAndSet(true, false)) return
         val stopped = CountDownLatch(1)
-        scheduler.execute {
+        execute("stop") {
             try {
                 windows.values.forEach { window ->
                     window.flushTask?.cancel()
@@ -60,7 +62,9 @@ class PhotoMetadataEngine(
                 stopped.countDown()
             }
         }
-        check(stopped.await(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)) { "metadata stop timed out" }
+        if (!stopped.await(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            emitDiag("capture event=metadata-stop-timeout")
+        }
     }
 
     override fun condition(): SourceCondition =
@@ -83,7 +87,7 @@ class PhotoMetadataEngine(
     }
 
     fun onCameraEmission(emission: SourceEmission) {
-        scheduler.execute {
+        execute("emission") {
             if (!accepting.get() || emission.payloadRefs.isEmpty()) return@execute
             val ts = emission.captureStartEpochMs
             val windowStart = windowStart(ts)
@@ -100,20 +104,20 @@ class PhotoMetadataEngine(
     private fun startSnapshot(record: PendingRecord) {
         val listener = object : ImuListener {
             override fun onRotationVector(sample: RotationVectorSample) {
-                scheduler.execute {
+                execute("snapshot") {
                     if (!record.finalized) record.rotationSamples += sample
                 }
             }
 
             override fun onLinearAcceleration(sample: LinearAccelerationSample) {
-                scheduler.execute {
+                execute("snapshot") {
                     if (!record.finalized) record.linearSamples += sample
                 }
             }
         }
         record.handle = runCatching { imu.start(listener) }.getOrNull()
-        record.snapshotTask = scheduler.schedule(PhotoMetadataContract.SNAPSHOT_MS) {
-            scheduler.execute {
+        record.snapshotTask = schedule(PhotoMetadataContract.SNAPSHOT_MS, "snapshot") {
+            execute("snapshot") {
                 record.stopHandle()
                 record.finalizeFromSamples()
             }
@@ -123,8 +127,8 @@ class PhotoMetadataEngine(
     private fun scheduleFlush(window: WindowBuffer) {
         val dueAt = window.windowStart + PhotoMetadataContract.WINDOW_MS
         val delay = (dueAt - scheduler.nowEpochMs()).coerceAtLeast(0L)
-        window.flushTask = scheduler.schedule(delay) {
-            scheduler.execute {
+        window.flushTask = schedule(delay, "flush") {
+            execute("flush") {
                 flushWindow(window.windowStart)
             }
         }
@@ -179,6 +183,29 @@ class PhotoMetadataEngine(
             .filter { windowStart -> windowStart + PhotoMetadataContract.WINDOW_MS <= now }
             .toList()
             .forEach(::flushWindow)
+    }
+
+    private fun execute(phase: String, task: () -> Unit) {
+        scheduler.execute {
+            runTask(phase, task)
+        }
+    }
+
+    private fun schedule(delayMs: Long, phase: String, task: () -> Unit): Cancellable =
+        scheduler.schedule(delayMs) {
+            runTask(phase, task)
+        }
+
+    private fun runTask(phase: String, task: () -> Unit) {
+        try {
+            task()
+        } catch (t: Throwable) {
+            emitDiag("capture event=metadata-task-failed phase=$phase type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+        }
+    }
+
+    private fun emitDiag(line: String) {
+        runCatching { diag(line) }
     }
 
     private data class PayloadKey(val captureStartEpochMs: Long, val captureEndEpochMs: Long)

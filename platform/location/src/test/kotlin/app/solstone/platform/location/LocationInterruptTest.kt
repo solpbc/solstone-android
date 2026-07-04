@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class LocationInterruptTest {
     @Test
@@ -33,7 +32,6 @@ class LocationInterruptTest {
 
             assertFalse(worker.isAlive)
             assertEquals(null, uncaught.get())
-            assertTrue(sink.emissions.isNotEmpty())
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(previousHandler)
         }

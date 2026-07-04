@@ -18,6 +18,7 @@ import java.io.File
 import java.nio.file.Files
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.RejectedExecutionException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -52,7 +53,7 @@ class AudioContinuousSourceEngineTest {
         engine.stop()
 
         val emission = sink.emissions.first()
-        assertEquals(BASE_CAPTURE_EPOCH_MS, emission.captureStartEpochMs)
+        assertEquals(OFF_BOUNDARY_EPOCH_MS, emission.captureStartEpochMs)
         assertEquals(BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS, emission.captureEndEpochMs)
         assertEquals(AudioContinuousSourceEngine.PAYLOAD_NAME, emission.payloadRefs.single().name)
         assertTrue(File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
@@ -222,6 +223,71 @@ class AudioContinuousSourceEngineTest {
         assertTrue(payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.ref.name == AudioContinuousSourceEngine.PAYLOAD_NAME })
     }
 
+    @Test
+    fun finishFailureEmitsGapDeletesFileAndDoesNotExposePayload() {
+        val outputDirectory = tempDirectory()
+        val sink = CapturingSink()
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = outputDirectory,
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(
+                bytesToWrite = AUDIO_BYTES,
+                finishError = IllegalStateException("stop failed"),
+            ),
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+
+        val emission = sink.emissions.single()
+        assertTrue(emission.payloadRefs.isEmpty())
+        assertEquals("finish_failed type=IllegalStateException message=stop failed", emission.gaps.single().detail)
+        assertFalse(File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
+    }
+
+    @Test
+    fun workerDeathEmitsTerminalGapAndDiagAndReportsNotRunning() {
+        val outputDirectory = tempDirectory()
+        val sink = CapturingSink()
+        val diags = CopyOnWriteArrayList<String>()
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = outputDirectory,
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = { throw IllegalStateException("sleep failed") },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+            diag = diags::add,
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+
+        assertFalse(engine.condition().running)
+        assertEquals("engine_failed type=IllegalStateException message=sleep failed", sink.emissions.single().gaps.single().detail)
+        assertTrue("capture event=engine-failed source=audio type=IllegalStateException message=sleep failed" in diags)
+    }
+
+    @Test
+    fun guardedEmitCapturesRejectedExecutionAndStopsWorker() {
+        val diags = CopyOnWriteArrayList<String>()
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+            diag = diags::add,
+        )
+
+        engine.start(ThrowingSink)
+        waitForDiag(diags, "capture event=emit-failed source=audio type=RejectedExecutionException message=closed")
+
+        assertFalse(engine.condition().running)
+    }
+
     private fun completedAudioEmission(outputDirectory: File): SourceEmission {
         val sink = CapturingSink()
         var now = OFF_BOUNDARY_EPOCH_MS
@@ -248,22 +314,26 @@ class AudioContinuousSourceEngineTest {
     private class FakeAudioRecorderFactory(
         private val bytesToWrite: ByteArray = AUDIO_BYTES,
         private val startError: RuntimeException? = null,
+        private val finishError: RuntimeException? = null,
     ) : AudioRecorderFactory {
         override fun create(output: File): AudioRecording =
-            FakeAudioRecording(output, bytesToWrite, startError)
+            FakeAudioRecording(output, bytesToWrite, startError, finishError)
     }
 
     private class FakeAudioRecording(
         private val output: File,
         private val bytesToWrite: ByteArray,
         private val startError: RuntimeException?,
+        private val finishError: RuntimeException?,
     ) : AudioRecording {
         override fun start() {
             startError?.let { throw it }
             output.writeBytes(bytesToWrite)
         }
 
-        override fun finish(): Long = output.length()
+        override fun finish(): RecordingFinishResult =
+            finishError?.let { RecordingFinishResult.Failure(it) }
+                ?: RecordingFinishResult.Success(output.length())
 
         override fun discard() {
             output.delete()
@@ -276,6 +346,20 @@ class AudioContinuousSourceEngineTest {
         override fun emit(emission: SourceEmission) {
             emissions += emission
         }
+    }
+
+    private object ThrowingSink : EmissionSink {
+        override fun emit(emission: SourceEmission) {
+            throw RejectedExecutionException("closed")
+        }
+    }
+
+    private fun waitForDiag(lines: List<String>, expected: String) {
+        repeat(200) {
+            if (expected in lines) return
+            Thread.sleep(5L)
+        }
+        throw AssertionError("missing diag: $expected in $lines")
     }
 
     private fun coSourceEmission(captureStartEpochMs: Long, captureEndEpochMs: Long): SourceEmission =

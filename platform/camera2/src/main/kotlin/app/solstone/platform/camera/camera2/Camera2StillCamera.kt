@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
 import app.solstone.platform.camera.still.StillCamera
+import app.solstone.platform.camera.still.StillCaptureResult
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -21,19 +22,21 @@ import java.util.concurrent.atomic.AtomicReference
 class Camera2StillCamera(context: Context) : StillCamera {
     private val appContext = context.applicationContext
 
-    override fun takeStill(): ByteArray? {
-        val manager = appContext.getSystemService(CameraManager::class.java) ?: return null
+    override fun takeStill(): StillCaptureResult {
+        val manager = appContext.getSystemService(CameraManager::class.java)
+            ?: return StillCaptureResult.Failure(IllegalStateException("camera manager unavailable"))
         var thread: HandlerThread? = null
         var reader: ImageReader? = null
         var device: CameraDevice? = null
         var session: CameraCaptureSession? = null
         return try {
-            val cameraId = chooseCameraId(manager) ?: return null
-            val size = chooseJpegSize(manager, cameraId) ?: return null
+            val cameraId = chooseCameraId(manager) ?: return StillCaptureResult.Failure(IllegalStateException("no camera available"))
+            val size = chooseJpegSize(manager, cameraId) ?: return StillCaptureResult.Failure(IllegalStateException("no jpeg size available"))
             reader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, MAX_IMAGES)
             thread = HandlerThread("solstone-camera2-still").also { it.start() }
             val handler = Handler(thread.looper)
             val bytes = AtomicReference<ByteArray?>()
+            val failure = AtomicReference<Throwable?>()
             val imageLatch = CountDownLatch(1)
             reader.setOnImageAvailableListener({ availableReader ->
                 try {
@@ -46,42 +49,39 @@ class Camera2StillCamera(context: Context) : StillCamera {
                             if (data.isNotEmpty()) bytes.set(data)
                         }
                     }
-                } catch (_: Exception) {
-                    bytes.set(null)
+                } catch (e: Exception) {
+                    failure.set(e)
                 } finally {
                     imageLatch.countDown()
                 }
             }, handler)
 
-            val deviceLatch = CountDownLatch(1)
             val sessionLatch = CountDownLatch(1)
-            val failure = AtomicReference<Throwable?>()
+            val coordinator = CameraOpenCoordinator<CameraDevice> { it.close() }
 
             @Suppress("MissingPermission")
             manager.openCamera(
                 cameraId,
                 object : CameraDevice.StateCallback() {
                     override fun onOpened(opened: CameraDevice) {
-                        device = opened
-                        deviceLatch.countDown()
+                        coordinator.onOpened(opened)
                     }
 
                     override fun onDisconnected(disconnected: CameraDevice) {
                         failure.set(IllegalStateException("camera disconnected"))
-                        disconnected.close()
-                        deviceLatch.countDown()
+                        coordinator.onFailed(disconnected)
                     }
 
                     override fun onError(errorDevice: CameraDevice, error: Int) {
                         failure.set(IllegalStateException("camera error $error"))
-                        errorDevice.close()
-                        deviceLatch.countDown()
+                        coordinator.onFailed(errorDevice)
                     }
                 },
                 handler,
             )
-            if (!deviceLatch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS) || failure.get() != null) return null
-            val openedDevice = device ?: return null
+            val openedDevice = coordinator.awaitOpen(CAPTURE_TIMEOUT_SECONDS * 1_000L)
+                ?: return StillCaptureResult.Failure(failure.get() ?: IllegalStateException("camera open timed out"))
+            device = openedDevice
 
             @Suppress("DEPRECATION")
             openedDevice.createCaptureSession(
@@ -99,15 +99,28 @@ class Camera2StillCamera(context: Context) : StillCamera {
                 },
                 handler,
             )
-            if (!sessionLatch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS) || failure.get() != null) return null
-            val configuredSession = session ?: return null
+            if (!sessionLatch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                return StillCaptureResult.Failure(IllegalStateException("camera session timed out"))
+            }
+            failure.get()?.let { return StillCaptureResult.Failure(it) }
+            val configuredSession = session ?: return StillCaptureResult.Failure(IllegalStateException("camera session unavailable"))
             val request = openedDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
                 .apply { addTarget(reader.surface) }
                 .build()
             configuredSession.capture(request, null, handler)
-            if (!imageLatch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) null else bytes.get()
-        } catch (_: Exception) {
-            null
+            if (!imageLatch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                StillCaptureResult.Failure(IllegalStateException("camera image timed out"))
+            } else {
+                failure.get()?.let { return StillCaptureResult.Failure(it) }
+                val data = bytes.get()
+                if (data == null) {
+                    StillCaptureResult.Failure(IllegalStateException("camera image unavailable"))
+                } else {
+                    StillCaptureResult.Image(data)
+                }
+            }
+        } catch (e: Exception) {
+            StillCaptureResult.Failure(e)
         } finally {
             session?.close()
             device?.close()

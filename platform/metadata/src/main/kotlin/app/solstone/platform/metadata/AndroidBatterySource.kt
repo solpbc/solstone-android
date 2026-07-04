@@ -44,7 +44,9 @@ class AndroidBatterySource(private val context: Context) : BatterySource {
 
     private fun Intent.batteryTemperatureC(): Double? =
         runCatching {
-            val tenthsC = getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
-            if (tenthsC < 0) null else tenthsC / 10.0
+            parseBatteryTemperatureC(
+                present = hasExtra(BatteryManager.EXTRA_TEMPERATURE),
+                tenthsC = getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0),
+            )
         }.getOrNull()
 }

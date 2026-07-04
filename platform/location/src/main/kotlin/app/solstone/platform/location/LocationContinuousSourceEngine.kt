@@ -16,6 +16,7 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 interface LocationSource {
     fun lastFix(nowEpochMs: Long): LocationFix?
@@ -28,19 +29,24 @@ class LocationContinuousSourceEngine(
     private val sourceId: String = SOURCE_ID,
     private val sampleEveryMs: Long = SAMPLE_EVERY_MS,
     private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
+    private val diag: (String) -> Unit = {},
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
+    private val currentToken = AtomicReference<Any?>(null)
     private val payloads = ConcurrentHashMap<PayloadKey, ByteArray>()
     private var worker: Thread? = null
 
     override fun start(sink: EmissionSink) {
         if (!running.compareAndSet(false, true)) return
-        worker = Thread({ runLoop(sink) }, "solstone-location-source").also { it.start() }
+        val token = Any()
+        currentToken.set(token)
+        worker = Thread({ runWorker(sink, token) }, WORKER_THREAD_NAME).also { it.start() }
     }
 
     override fun stop() {
         val localWorker = worker
         running.set(false)
+        currentToken.set(null)
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
@@ -67,21 +73,37 @@ class LocationContinuousSourceEngine(
         payloads.remove(PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs))
     }
 
-    private fun runLoop(sink: EmissionSink) {
-        while (running.get()) {
-            val windowStart = windowStart(nowProvider())
-            val windowEnd = windowStart + WINDOW_MS
-            sink.emit(captureWindow(windowStart, windowEnd))
+    private fun runWorker(sink: EmissionSink, token: Any) {
+        try {
+            runLoop(sink, token)
+        } catch (t: Throwable) {
+            if (currentToken.get() === token) {
+                val now = nowProvider()
+                emitSafely(sink, gapEmission(now, now, "engine_failed type=${t.javaClass.simpleName} message=${t.message ?: ""}"), token)
+                emitDiag("capture event=engine-failed source=$sourceId type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            }
+        } finally {
+            if (currentToken.compareAndSet(token, null)) {
+                running.set(false)
+            }
         }
     }
 
-    private fun captureWindow(windowStart: Long, windowEnd: Long): SourceEmission {
+    private fun runLoop(sink: EmissionSink, token: Any) {
+        while (running.get() && currentToken.get() === token) {
+            val windowStart = windowStart(nowProvider())
+            val windowEnd = windowStart + WINDOW_MS
+            if (!emitSafely(sink, captureWindow(windowStart, windowEnd, token), token)) break
+        }
+    }
+
+    private fun captureWindow(windowStart: Long, windowEnd: Long, token: Any): SourceEmission {
         val records = StringBuilder()
-        while (running.get()) {
+        while (running.get() && currentToken.get() === token) {
             val now = nowProvider()
             if (now >= windowEnd) break
             source.lastFix(now)?.let { records.append(buildLocationRecord(it)) }
-            if (!sleepUntilNextSampleOrWindowEnd(windowEnd)) break
+            if (!sleepUntilNextSampleOrWindowEnd(windowEnd, token)) break
         }
 
         val completed = nowProvider() >= windowEnd
@@ -111,8 +133,8 @@ class LocationContinuousSourceEngine(
         )
     }
 
-    private fun sleepUntilNextSampleOrWindowEnd(windowEnd: Long): Boolean {
-        while (running.get()) {
+    private fun sleepUntilNextSampleOrWindowEnd(windowEnd: Long, token: Any): Boolean {
+        while (running.get() && currentToken.get() === token) {
             val remaining = windowEnd - nowProvider()
             if (remaining <= 0L) return true
             try {
@@ -124,6 +146,36 @@ class LocationContinuousSourceEngine(
             }
         }
         return false
+    }
+
+    private fun gapEmission(captureStartEpochMs: Long, captureEndEpochMs: Long, reason: String): SourceEmission =
+        SourceEmission(
+            sourceId = sourceId,
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = captureStartEpochMs,
+            captureEndEpochMs = captureEndEpochMs,
+            payloadRefs = emptyList(),
+            metadata = emptyMap(),
+            gaps = listOf(app.solstone.core.model.GapEvent("capture_gap", captureEndEpochMs, reason)),
+        )
+
+    private fun emitSafely(sink: EmissionSink, emission: SourceEmission, token: Any): Boolean {
+        if (currentToken.get() !== token) return false
+        return try {
+            sink.emit(emission)
+            true
+        } catch (t: Throwable) {
+            emitDiag("capture event=emit-failed source=$sourceId type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            if (currentToken.compareAndSet(token, null)) {
+                running.set(false)
+            }
+            false
+        }
+    }
+
+    private fun emitDiag(line: String) {
+        runCatching { diag(line) }
     }
 
     private fun trimPayloadCache() {
@@ -145,6 +197,7 @@ class LocationContinuousSourceEngine(
         const val WINDOW_MS = 300_000L
         const val SAMPLE_EVERY_MS = 60_000L
         const val MAX_CACHED_WINDOWS = 3
+        const val WORKER_THREAD_NAME = "solstone-location-source"
         private const val SLEEP_SLICE_MS = 1_000L
         private const val JOIN_TIMEOUT_MS = 5_000L
     }

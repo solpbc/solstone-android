@@ -43,7 +43,7 @@ class StillCaptureInterruptTest {
     }
 
     private class FixedStillCamera : StillCamera {
-        override fun takeStill(): ByteArray = "jpeg".encodeToByteArray()
+        override fun takeStill(): StillCaptureResult = StillCaptureResult.Image("jpeg".encodeToByteArray())
     }
 
     private class RecordingCameraLock : CameraLock {

@@ -7,6 +7,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
+import app.solstone.platform.camera.still.StillCaptureResult
 import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -24,7 +25,7 @@ class WatchSharedCameraLockRuntimeTest {
             val sink = CapturingSink()
             val engine = StillCaptureEngine(
                 stillCamera = object : StillCamera {
-                    override fun takeStill(): ByteArray = "unused".encodeToByteArray()
+                    override fun takeStill(): StillCaptureResult = StillCaptureResult.Image("unused".encodeToByteArray())
                 },
                 cameraLock = container.cameraLock,
                 nowProvider = { 1_000L },

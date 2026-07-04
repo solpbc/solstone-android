@@ -111,6 +111,41 @@ class PhotoMetadataEngineTest {
         assertEquals(emissionsAfterStop, fixture.emissions.size)
     }
 
+    @Test
+    fun stopTimeoutDoesNotThrowAndEmitsDiag() {
+        val diags = mutableListOf<String>()
+        val engine = PhotoMetadataEngine(
+            scheduler = NeverExecutingScheduler,
+            battery = FakeBatterySource(null),
+            imu = FakeImuSensorPort(),
+            diag = diags::add,
+        )
+
+        engine.start { }
+        engine.stop()
+
+        assertTrue("capture event=metadata-stop-timeout" in diags)
+    }
+
+    @Test
+    fun scheduledFlushThrowEmitsMetadataTaskDiag() {
+        val scheduler = FakeMetadataScheduler(BASE)
+        val diags = mutableListOf<String>()
+        val engine = PhotoMetadataEngine(
+            scheduler = scheduler,
+            battery = FakeBatterySource(null),
+            imu = FakeImuSensorPort(),
+            diag = diags::add,
+        )
+        engine.start { throw IllegalStateException("emit boom") }
+
+        engine.onCameraEmission(cameraEmission(BASE + 1_000L))
+        scheduler.advanceBy(PhotoMetadataContract.SNAPSHOT_MS)
+        scheduler.advanceTo(BASE + PhotoMetadataContract.WINDOW_MS)
+
+        assertTrue("capture event=metadata-task-failed phase=flush type=IllegalStateException message=emit boom" in diags)
+    }
+
     private fun startedFixture(startEpochMs: Long): Fixture {
         val scheduler = FakeMetadataScheduler(startEpochMs)
         val battery = FakeBatterySource(BatterySnapshot(level = 77, status = BatteryStatus.FULL, tempC = 29.0))
@@ -165,6 +200,15 @@ class PhotoMetadataEngineTest {
         val imu: FakeImuSensorPort,
         val emissions: MutableList<SourceEmission>,
     )
+
+    private object NeverExecutingScheduler : MetadataScheduler {
+        override fun nowEpochMs(): Long = BASE
+
+        override fun execute(task: () -> Unit) = Unit
+
+        override fun schedule(delayMs: Long, task: () -> Unit): Cancellable =
+            Cancellable { }
+    }
 
     private companion object {
         const val BASE = 1_772_582_400_000L

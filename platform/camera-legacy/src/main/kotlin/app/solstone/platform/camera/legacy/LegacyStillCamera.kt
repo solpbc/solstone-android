@@ -8,12 +8,13 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.hardware.Camera
 import app.solstone.platform.camera.still.StillCamera
+import app.solstone.platform.camera.still.StillCaptureResult
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @Suppress("UNUSED_PARAMETER")
 class LegacyStillCamera(context: Context) : StillCamera {
-    override fun takeStill(): ByteArray? {
+    override fun takeStill(): StillCaptureResult {
         var camera: Camera? = null
         var texture: SurfaceTexture? = null
         return try {
@@ -28,7 +29,11 @@ class LegacyStillCamera(context: Context) : StillCamera {
             texture = SurfaceTexture(SURFACE_TEXTURE_NAME)
             camera.setPreviewTexture(texture)
             camera.startPreview()
-            Thread.sleep(PREVIEW_WARMUP_MS)
+            try {
+                Thread.sleep(PREVIEW_WARMUP_MS)
+            } catch (e: InterruptedException) {
+                return interruptedStillFailure(e)
+            }
 
             val latch = CountDownLatch(1)
             val holder = arrayOfNulls<ByteArray>(1)
@@ -38,9 +43,18 @@ class LegacyStillCamera(context: Context) : StillCamera {
                 }
                 latch.countDown()
             }
-            if (!latch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) null else holder[0]
-        } catch (_: Exception) {
-            null
+            if (!latch.await(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                StillCaptureResult.Failure(IllegalStateException("legacy camera capture timed out"))
+            } else {
+                val data = holder[0]
+                if (data == null) {
+                    StillCaptureResult.Failure(IllegalStateException("legacy camera image unavailable"))
+                } else {
+                    StillCaptureResult.Image(data)
+                }
+            }
+        } catch (e: Exception) {
+            StillCaptureResult.Failure(e)
         } finally {
             if (camera != null) {
                 try {
@@ -64,4 +78,9 @@ class LegacyStillCamera(context: Context) : StillCamera {
         const val PREVIEW_WARMUP_MS = 800L
         const val CAPTURE_TIMEOUT_SECONDS = 8L
     }
+}
+
+internal fun interruptedStillFailure(error: InterruptedException): StillCaptureResult {
+    Thread.currentThread().interrupt()
+    return StillCaptureResult.Failure(error)
 }

@@ -13,6 +13,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.SourceEmission
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
+import app.solstone.platform.camera.still.StillCaptureResult
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -186,7 +187,7 @@ class CameraStillPipelineTest {
             assertTrue(sealed.payloads.none { it.sourceId == StillCaptureEngine.SOURCE_ID })
             val cameraGap = sealed.gaps.single { it.kind == "capture_gap" }
             assertEquals(BASE_CAPTURE_EPOCH_MS, cameraGap.atEpochMs)
-            assertEquals("capture_failed", cameraGap.detail)
+            assertEquals("capture_failed type=IllegalStateException message=capture failed", cameraGap.detail)
 
             val result = FileSpoolWriter(base).seal(
                 sealed,
@@ -211,12 +212,15 @@ class CameraStillPipelineTest {
     private class FakeStillCamera(private val stills: List<ByteArray>) : StillCamera {
         private var index = 0
 
-        override fun takeStill(): ByteArray? =
+        override fun takeStill(): StillCaptureResult =
             stills.getOrNull(index++)
+                ?.let(StillCaptureResult::Image)
+                ?: StillCaptureResult.Failure(IllegalStateException("no still"))
     }
 
     private class FailingStillCamera : StillCamera {
-        override fun takeStill(): ByteArray? = null
+        override fun takeStill(): StillCaptureResult =
+            StillCaptureResult.Failure(IllegalStateException("capture failed"))
     }
 
     private class CapturingSink : EmissionSink {

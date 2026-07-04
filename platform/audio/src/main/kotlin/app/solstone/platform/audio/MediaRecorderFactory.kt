@@ -27,14 +27,15 @@ private class MediaRecording(private val output: File) : AudioRecording {
         localRecorder.start()
     }
 
-    override fun finish(): Long {
+    override fun finish(): RecordingFinishResult {
         val localRecorder = recorder
         if (localRecorder != null) {
-            runCatching { localRecorder.stop() }
+            val stopResult = runCatching { localRecorder.stop() }
             runCatching { localRecorder.release() }
             recorder = null
+            stopResult.exceptionOrNull()?.let { return RecordingFinishResult.Failure(it) }
         }
-        return output.length()
+        return RecordingFinishResult.Success(output.length())
     }
 
     override fun discard() {

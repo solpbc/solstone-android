@@ -6,6 +6,7 @@ package app.solstone.observer.harness
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
+import app.solstone.platform.camera.still.StillCaptureResult
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +22,7 @@ class HarnessCameraLockIdentityTest {
 
         val engine = StillCaptureEngine(
             stillCamera = object : StillCamera {
-                override fun takeStill(): ByteArray = "unused".encodeToByteArray()
+                override fun takeStill(): StillCaptureResult = StillCaptureResult.Image("unused".encodeToByteArray())
             },
             cameraLock = lock,
             nowProvider = { 1_000L },

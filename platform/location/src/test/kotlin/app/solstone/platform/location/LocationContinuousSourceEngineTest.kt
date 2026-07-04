@@ -127,6 +127,25 @@ class LocationContinuousSourceEngineTest {
         assertFailsWith<IllegalArgumentException> { engine.open(payload) }
     }
 
+    @Test
+    fun workerDeathEmitsTerminalGapAndDiagAndReportsNotRunning() {
+        val sink = CapturingSink()
+        val diags = CopyOnWriteArrayList<String>()
+        val engine = LocationContinuousSourceEngine(
+            source = FixedLocationSource(),
+            nowProvider = { BASE_EPOCH_MS },
+            sleeper = { throw IllegalStateException("sleep failed") },
+            diag = diags::add,
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+
+        assertFalse(engine.condition().running)
+        assertEquals("engine_failed type=IllegalStateException message=sleep failed", sink.emissions.single().gaps.single().detail)
+        assertTrue("capture event=engine-failed source=location type=IllegalStateException message=sleep failed" in diags)
+    }
+
     private fun payloadFor(emission: SourceEmission): SegmentPayload =
         SegmentPayload(
             sourceId = emission.sourceId,

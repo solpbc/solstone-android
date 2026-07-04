@@ -47,8 +47,9 @@ class CapturePipeline(
             tickIntervalMs,
             TimeUnit.MILLISECONDS,
         )
-        engines.forEach { engine ->
-            try {
+        val startedEngines = mutableListOf<ContinuousSourceEngine>()
+        try {
+            engines.forEach { engine ->
                 engine.start(
                     EmissionSink { emission ->
                         lastEmissionEpochMs = nowProvider()
@@ -57,31 +58,37 @@ class CapturePipeline(
                         }
                     },
                 )
-            } catch (t: Throwable) {
-                emitError("engine", t)
-                throw t
+                startedEngines += engine
             }
+        } catch (t: Throwable) {
+            emitDiag("capture event=start-failed source=engine type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            startedEngines.forEach { stopEngine(it) }
+            tick?.cancel(false)
+            tick = null
+            started.set(false)
+            throw t
         }
     }
 
     fun stop() {
         if (!started.compareAndSet(true, false)) return
         emitDiag("capture event=stop")
-        engines.forEach {
-            try {
-                it.stop()
-            } catch (t: Throwable) {
-                emitError("engine", t)
-                throw t
+        try {
+            engines.forEach(::stopEngine)
+            tick?.cancel(false)
+            tick = null
+            val flush = executor.submit {
+                runDraining("engine") { segmenter.flush() }
             }
+            try {
+                flush.get(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (t: Throwable) {
+                emitDiag("capture event=flush-timeout type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            }
+        } finally {
+            executor.shutdown()
+            executor.awaitTermination(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }
-        tick?.cancel(false)
-        val flush = executor.submit {
-            runDraining("engine") { segmenter.flush() }
-        }
-        flush.get(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        executor.shutdown()
-        executor.awaitTermination(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     }
 
     fun lastEmissionEpochMs(): Long? = lastEmissionEpochMs
@@ -93,7 +100,6 @@ class CapturePipeline(
             drain(result.sealed)
         } catch (t: Throwable) {
             emitError(source, t)
-            throw t
         }
     }
 
@@ -109,10 +115,35 @@ class CapturePipeline(
 
     private fun drain(sealed: List<SealedSegment>) {
         sealed.forEach { segment ->
-            val result = spoolWriter.seal(segment, payloadBytes)
-            sealedSink.persistSealed(segment, result, nowProvider())
+            val result = try {
+                spoolWriter.seal(segment, payloadBytes)
+            } catch (t: Throwable) {
+                emitDiag(
+                    "capture event=segment-seal-failed day=${segment.key.day} stream=${segment.stream} segment=${segment.key.segment} type=${t.javaClass.simpleName} message=${t.message ?: ""}",
+                )
+                releasePayloads(segment.payloads)
+                return@forEach
+            }
+            try {
+                sealedSink.persistSealed(segment, result, nowProvider())
+            } catch (t: Throwable) {
+                emitDiag(
+                    "capture event=segment-orphaned recovery=SpoolRoomReconciler day=${segment.key.day} stream=${segment.stream} segment=${segment.key.segment} type=${t.javaClass.simpleName} message=${t.message ?: ""}",
+                )
+                return@forEach
+            }
             sealedCount += 1
             emitDiag("capture event=segment-sealed count=$sealedCount")
+        }
+    }
+
+    private fun releasePayloads(payloads: List<app.solstone.core.segment.SegmentPayload>) {
+        payloads.forEach { payload ->
+            try {
+                payloadBytes.release(payload)
+            } catch (t: Throwable) {
+                emitDiag("capture event=payload-release-failed source=${payload.sourceId} type=${t.javaClass.simpleName}")
+            }
         }
     }
 
@@ -124,7 +155,15 @@ class CapturePipeline(
         }
 
     private fun emitError(source: String, throwable: Throwable) {
-        emitDiag("capture event=error source=$source type=${throwable.javaClass.simpleName}")
+        emitDiag("capture event=error source=$source type=${throwable.javaClass.simpleName} message=${throwable.message ?: ""}")
+    }
+
+    private fun stopEngine(engine: ContinuousSourceEngine) {
+        try {
+            engine.stop()
+        } catch (t: Throwable) {
+            emitDiag("capture event=engine-stop-failed type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+        }
     }
 
     private fun emitDiag(line: String) {

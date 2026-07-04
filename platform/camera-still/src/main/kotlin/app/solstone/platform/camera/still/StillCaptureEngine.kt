@@ -18,9 +18,15 @@ import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+
+sealed interface StillCaptureResult {
+    data class Image(val bytes: ByteArray) : StillCaptureResult
+    data class Failure(val cause: Throwable) : StillCaptureResult
+}
 
 interface StillCamera {
-    fun takeStill(): ByteArray?
+    fun takeStill(): StillCaptureResult
 }
 
 interface CameraLock {
@@ -45,20 +51,25 @@ class StillCaptureEngine(
     private val stillEveryMs: Long = STILL_EVERY_MS,
     private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
     private val sourceId: String = SOURCE_ID,
+    private val diag: (String) -> Unit = {},
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
+    private val currentToken = AtomicReference<Any?>(null)
     private val seq = AtomicLong(0)
     private val cache = ConcurrentHashMap<String, ByteArray>()
     private var worker: Thread? = null
 
     override fun start(sink: EmissionSink) {
         if (!running.compareAndSet(false, true)) return
-        worker = Thread({ runLoop(sink) }, WORKER_THREAD_NAME).also { it.start() }
+        val token = Any()
+        currentToken.set(token)
+        worker = Thread({ runWorker(sink, token) }, WORKER_THREAD_NAME).also { it.start() }
     }
 
     override fun stop() {
         val localWorker = worker
         running.set(false)
+        currentToken.set(null)
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
@@ -83,36 +94,66 @@ class StillCaptureEngine(
         cache.remove(payload.ref.name)
     }
 
-    private fun runLoop(sink: EmissionSink) {
-        while (running.get()) {
+    private fun runWorker(sink: EmissionSink, token: Any) {
+        try {
+            runLoop(sink, token)
+        } catch (t: Throwable) {
+            if (currentToken.get() === token) {
+                val now = nowProvider()
+                emitSafely(sink, gapEmission(now, now, "engine_failed type=${t.javaClass.simpleName} message=${t.message ?: ""}"), token)
+                emitDiag("capture event=engine-failed source=$sourceId type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            }
+        } finally {
+            if (currentToken.compareAndSet(token, null)) {
+                running.set(false)
+            }
+        }
+    }
+
+    private fun runLoop(sink: EmissionSink, token: Any) {
+        while (running.get() && currentToken.get() === token) {
             val start = nowProvider()
             if (!cameraLock.tryAcquire()) {
                 val end = nowProvider()
-                sink.emit(gapEmission(start, end, "camera_busy"))
-                if (!sleepUntilNext(start)) break
+                if (!emitSafely(sink, gapEmission(start, end, "camera_busy"), token)) break
+                if (!sleepUntilNext(start, token)) break
                 continue
             }
 
-            var bytes: ByteArray? = null
+            val result: StillCaptureResult
             try {
-                bytes = stillCamera.takeStill()
+                result = stillCamera.takeStill()
             } finally {
                 cameraLock.release()
             }
 
             val end = nowProvider()
-            if (bytes == null || bytes.isEmpty()) {
-                sink.emit(gapEmission(start, end, "capture_failed"))
-            } else {
-                val name = "camera-$start-${seq.getAndIncrement()}.jpg"
-                cache[name] = bytes
-                sink.emit(successEmission(start, end, name, bytes))
+            when (result) {
+                is StillCaptureResult.Failure -> {
+                    if (!emitSafely(
+                            sink,
+                            gapEmission(start, end, "capture_failed type=${result.cause.javaClass.simpleName} message=${result.cause.message ?: ""}"),
+                            token,
+                        )
+                    ) {
+                        break
+                    }
+                }
+                is StillCaptureResult.Image -> {
+                    if (result.bytes.isEmpty()) {
+                        if (!emitSafely(sink, gapEmission(start, end, "empty_image"), token)) break
+                    } else {
+                        val name = "camera-$start-${seq.getAndIncrement()}.jpg"
+                        cache[name] = result.bytes
+                        if (!emitSafely(sink, successEmission(start, end, name, result.bytes), token)) break
+                    }
+                }
             }
-            if (!sleepUntilNext(start)) break
+            if (!sleepUntilNext(start, token)) break
         }
     }
 
-    private fun sleepUntilNext(startEpochMs: Long): Boolean {
+    private fun sleepUntilNext(startEpochMs: Long, token: Any): Boolean {
         val remaining = stillEveryMs - (nowProvider() - startEpochMs)
         if (remaining > 0L) {
             try {
@@ -122,7 +163,25 @@ class StillCaptureEngine(
                 return false
             }
         }
-        return true
+        return running.get() && currentToken.get() === token
+    }
+
+    private fun emitSafely(sink: EmissionSink, emission: SourceEmission, token: Any): Boolean {
+        if (currentToken.get() !== token) return false
+        return try {
+            sink.emit(emission)
+            true
+        } catch (t: Throwable) {
+            emitDiag("capture event=emit-failed source=$sourceId type=${t.javaClass.simpleName} message=${t.message ?: ""}")
+            if (currentToken.compareAndSet(token, null)) {
+                running.set(false)
+            }
+            false
+        }
+    }
+
+    private fun emitDiag(line: String) {
+        runCatching { diag(line) }
     }
 
     private fun gapEmission(captureStartEpochMs: Long, captureEndEpochMs: Long, reason: String): SourceEmission =
