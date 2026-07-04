@@ -47,7 +47,7 @@ Use `ROGBID_SERIAL=<serial>` to target a different watch.
 
 ## CI gates
 
-There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, and assembles, with **no instrumented tests** — and it must stay fast (it is the inner-loop gate). **`make ci-device` is the slower device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for the three modules that carry real `androidTest` coverage (`platform/persistence-room`, `apps/watch`, `apps/phone`), on a headless emulator. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host.
+There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, and assembles, with **no instrumented tests** — and it must stay fast (it is the inner-loop gate). **`make ci-device` is the slower device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for the modules that carry real `androidTest` coverage (`platform/persistence-room`, `platform/pl-transport-conscrypt`, and the watch/phone/glasses apps' mock flavors, plus one narrowly-gated real-flavor phone test), on a headless emulator. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host.
 
 **`make ci-device` green is a required ship-stage acceptance criterion** for any lode that touches an on-device surface: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `make ci` structurally cannot catch two defect classes that have already shipped green through it — host-JDK-API-absent-on-Android (e.g. a `core/*` module calling a JDK method missing from the Android runtime) and instrumented-tests-authored-but-never-run. If a lode touches those surfaces, run the device gate green before declaring it shipped.
 
@@ -55,13 +55,14 @@ There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, an
 
 ```text
 apps/validation-rogbid/   Imported Rogbid hardware-probe target
-apps/watch/               Watch observer app — installable functional-testing UI over the shared harness
-apps/phone/               Phone observer harness app — shares the watch harness; beta distribution target
+apps/observer-scaffold/   Shared phone/watch app scaffold (application, activity, container, capture setup; real/mock flavors)
+apps/watch/               Watch observer app — spec + Application over the shared scaffold
+apps/phone/               Phone observer app — spec + Application over the shared scaffold; beta distribution target
 apps/glasses/             Smart-glasses observer app — RV203 hardware-validation surface
 harness/                  Form-factor-agnostic observer UI logic (controller, state, seams, async-load)
 core/                     Shared domain/protocol/observer modules
 platform/                 Android framework adapters
-formfactor/               Form-factor-specific UI/policy helpers (watch, phone)
+formfactor/               Form-factor UI helpers - shared QR/pairing/harness UI (shared), glasses-specific views (glasses)
 testing/                  Fake sensor streams and protocol fixtures
 tools/rogbid/             Hardware validation scripts
 docs/                     Architecture, device notes, and docs/observer-hardware-validation-runbook.md (on-device validation)
