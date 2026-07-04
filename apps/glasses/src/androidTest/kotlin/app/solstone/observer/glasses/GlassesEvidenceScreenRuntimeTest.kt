@@ -39,6 +39,9 @@ class GlassesEvidenceScreenRuntimeTest {
     @After
     fun resetHooks() {
         GlassesHarnessRuntime.hooks = null
+        // Evict the (possibly closed) container from the application-scoped runtime so the
+        // next test's launch rebuilds a fresh one instead of inheriting a closed database.
+        GlassesHarnessRuntime.runtime?.closeForTest()
     }
 
     @Test
