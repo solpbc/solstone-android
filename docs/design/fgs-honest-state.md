@@ -105,16 +105,16 @@ Make boot notification behavior depend on persisted desired state:
 - On API 33+ when notification permission suppresses boot notification, emit a diag line.
 - Update `platform/fgs/FGS_MATRIX.md` Boot behavior minimally if wording becomes stale.
 
-Accepted temporary regression: phone/watch currently use `InMemoryDesiredObservingStore`, so their persisted desired flag is never true at boot and boot notification cannot fire for them until the sibling store consolidation lode. Glasses uses `SharedPreferencesDesiredObservingStore`.
+Historical note: before scaffold consolidation, phone/watch used an in-memory desired store, so their persisted desired flag was never true at boot and boot notification could not fire for them. The shared real scaffold now uses `SharedPreferencesDesiredObservingStore`.
 
 ### H. Remove Default-True Trust Values
 
 Remove trust defaults and require explicit call-site choices:
 
-- Remove `visibleCaptureAuthority: VisibleCaptureAuthority = AlwaysVisibleCaptureAuthority` from `HarnessController`.
+- Remove the default always-visible capture authority from `HarnessController`.
 - Remove `exemptionVerified: () -> Boolean = { true }` defaults from `PhoneHarnessFlavor`, `WatchHarnessFlavor`, and `GlassesHarnessFlavor`.
 - Remove `isUsableNetworkPresent: () -> Boolean = { true }` default from `GlassesHarnessFlavor`.
-- Phone/watch may explicitly pass `AlwaysVisibleCaptureAuthority` for this lode; the improvement is making the trust choice visible.
+- Phone/watch temporarily passed an explicit always-visible capture authority in this lode; the later scaffold consolidation replaced that with a real visible-owner registry.
 - Chase compile errors for direct data-class construction and tests.
 
 ### I. Production-Wiring Self-Heal Tests
@@ -175,11 +175,9 @@ Delete `ForegroundStartAllowed.kt` and remove every reference in the same change
 
 Visible authority default removal requires explicit values at:
 
-- `apps/phone/src/real/kotlin/app/solstone/observer/phone/HarnessFlavor.kt:43`: pass `AlwaysVisibleCaptureAuthority`.
-- `apps/phone/src/mock/kotlin/app/solstone/observer/phone/HarnessFlavor.kt:48`: pass `AlwaysVisibleCaptureAuthority`.
-- `apps/watch/src/real/kotlin/app/solstone/observer/watch/HarnessFlavor.kt:43`: pass `AlwaysVisibleCaptureAuthority`.
-- `apps/watch/src/mock/kotlin/app/solstone/observer/watch/HarnessFlavor.kt:48`: pass `AlwaysVisibleCaptureAuthority`.
-- `apps/glasses/src/test/kotlin/app/solstone/observer/glasses/GlassesDiagnosticPlumbingTest.kt:122`: pass an explicit fake or `AlwaysVisibleCaptureAuthority`.
+- `apps/observer-scaffold/src/real/kotlin/app/solstone/observer/scaffold/RealFlavor.kt`: pass the shared visible-owner registry.
+- `apps/observer-scaffold/src/mock/kotlin/app/solstone/observer/scaffold/MockFlavor.kt`: pass the shared visible-owner registry.
+- `apps/glasses/src/test/kotlin/app/solstone/observer/glasses/GlassesDiagnosticPlumbingTest.kt`: pass an explicit visible-owner registry.
 
 Already explicit:
 

@@ -16,6 +16,7 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
 
 class GlassesHarnessUi(
     private val context: Context,
@@ -57,7 +58,7 @@ class GlassesHarnessUi(
     fun showScanPairQr() {
         setScreen {
             val status = text("Ready")
-            val preview = QrPreviewView(context, controller) { message ->
+            val preview = LegacyQrPreviewView(context, controller, "glasses") { message ->
                 status.text = message
             }
             addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 220))

@@ -12,6 +12,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.model.QueueState
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.observer.scaffold.ObserverActivity
+import app.solstone.observer.scaffold.ObserverHarnessRuntime
+import app.solstone.observer.scaffold.ObserverRuntimeHooks
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -20,32 +23,28 @@ import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WatchEvidenceScreenRuntimeTest {
     @After
-    fun resetHooks() {
-        WatchHarnessRuntime.hooks = null
+    fun tearDown() {
+        resetObserverRuntime()
     }
 
     @Test
     fun roomSeededEvidenceAndStatusRenderOnUiThread() {
-        val recoveryLatch = CountDownLatch(1)
         val evidenceLatch = CountDownLatch(1)
         val syncLatch = CountDownLatch(1)
-        WatchHarnessRuntime.hooks = WatchRuntimeHooks().also { hooks ->
-            hooks.onRecoveryComplete = { recoveryLatch.countDown() }
+        ObserverHarnessRuntime.hooks = ObserverRuntimeHooks().also { hooks ->
             hooks.onEvidenceLoadComplete = { evidenceLatch.countDown() }
             hooks.onSyncLoadComplete = { syncLatch.countDown() }
         }
         seedEvidence()
 
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            waitForContainer()
-            assertTrue(recoveryLatch.await(10, TimeUnit.SECONDS))
+        ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
+            assertTrue(waitForRecovery(waitForObserverContainer()))
             scenario.onActivity { activity ->
                 clickButton(activity.findViewById(android.R.id.content), "Evidence + export")
             }
@@ -75,21 +74,18 @@ class WatchEvidenceScreenRuntimeTest {
 
     @Test
     fun failedEvidenceReadRendersDistinctErrorState() {
-        val recoveryLatch = CountDownLatch(1)
         var evidenceLatch = CountDownLatch(1)
-        WatchHarnessRuntime.hooks = WatchRuntimeHooks().also { hooks ->
-            hooks.onRecoveryComplete = { recoveryLatch.countDown() }
+        ObserverHarnessRuntime.hooks = ObserverRuntimeHooks().also { hooks ->
             hooks.onEvidenceLoadComplete = { evidenceLatch.countDown() }
         }
 
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            waitForContainer()
-            assertTrue(recoveryLatch.await(10, TimeUnit.SECONDS))
+        ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
+            assertTrue(waitForRecovery(waitForObserverContainer()))
             scenario.onActivity {
-                WatchHarnessRuntime.container!!.close()
+                ObserverHarnessRuntime.container!!.close()
             }
             evidenceLatch = CountDownLatch(1)
-            WatchHarnessRuntime.hooks?.onEvidenceLoadComplete = { evidenceLatch.countDown() }
+            ObserverHarnessRuntime.hooks?.onEvidenceLoadComplete = { evidenceLatch.countDown() }
             scenario.onActivity { activity ->
                 clickButton(activity.findViewById(android.R.id.content), "Evidence + export")
             }
@@ -134,13 +130,6 @@ class WatchEvidenceScreenRuntimeTest {
             )
         } finally {
             db.close()
-        }
-    }
-
-    private fun waitForContainer(): WatchAppContainer {
-        return WatchHarnessRuntime.container ?: run {
-            assumeTrue("watch harness container was not created", false)
-            error("unreachable")
         }
     }
 

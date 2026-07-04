@@ -19,7 +19,7 @@ sealed interface PairAttemptOutcome {
     data class OtherFailure(val exceptionType: String, val statusCode: Int?) : PairAttemptOutcome
 }
 
-fun classifyRelayPairException(e: Throwable): PairAttemptOutcome {
+fun classifyPairException(e: Throwable): PairAttemptOutcome {
     if (e is RelayPairWindowClosedException) return PairAttemptOutcome.WindowClosed(401)
     val chain = generateSequence(e) { it.cause }.toList()
     if ((e is IOException && e.message == "WebSocket failed") || chain.any { it.isConnectivityFailure() }) {

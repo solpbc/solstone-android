@@ -12,10 +12,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.solstone.core.model.SourceState
+import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.fgs.ObserverNotification
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,10 +32,15 @@ class PhoneForegroundServiceRuntimeTest {
         Manifest.permission.POST_NOTIFICATIONS,
     )
 
+    @After
+    fun tearDown() {
+        resetObserverRuntime()
+    }
+
     @Test
     fun startStopStaleHeartbeatAndSyncNowAreHarnessBound() {
-        ActivityScenario.launch(MainActivity::class.java).use {
-            val container = waitForContainer()
+        ActivityScenario.launch(ObserverActivity::class.java).use {
+            val container = waitForObserverContainer()
             assertTrue(container.controller.refreshPermissions().allRequiredGranted)
 
             container.controller.start()
@@ -48,13 +54,6 @@ class PhoneForegroundServiceRuntimeTest {
             assertEquals(1, container.flavor.syncControl?.enqueueNowCalls)
 
             container.controller.stop()
-        }
-    }
-
-    private fun waitForContainer(): PhoneAppContainer {
-        return PhoneHarnessRuntime.container ?: run {
-            assumeTrue("phone harness container was not created", false)
-            error("unreachable")
         }
     }
 

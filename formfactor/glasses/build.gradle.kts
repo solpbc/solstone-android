@@ -25,11 +25,11 @@ android {
 }
 
 dependencies {
+    implementation(project(":formfactor:shared"))
     implementation(project(":harness"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))
     implementation(project(":core:pl"))
     implementation(project(":platform:fgs"))
-    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.zxing:core:3.5.3")
 }

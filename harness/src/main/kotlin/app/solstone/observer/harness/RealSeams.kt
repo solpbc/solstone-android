@@ -13,7 +13,6 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.QueueState
-import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.sources.MAIN_STREAM
@@ -36,25 +35,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
-
-class RealObserverLifecycle(
-    private val context: Context,
-    private val pipelineProvider: () -> CapturePipeline,
-) : ObserverLifecycle {
-    private var pipeline: CapturePipeline? = null
-
-    override fun start() {
-        ObserverForegroundService.startFromVisibleContext(context)
-        val current = pipeline ?: pipelineProvider().also { pipeline = it }
-        current.start()
-    }
-
-    override fun stop() {
-        pipeline?.stop()
-        pipeline = null
-        ObserverForegroundService.stop(context)
-    }
-}
 
 class RealHeartbeatFreshness : HeartbeatFreshness {
     override fun isFresh(): Boolean = ObserverForegroundService.isHeartbeatFresh()

@@ -5,22 +5,28 @@ package app.solstone.observer.watch
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
 import app.solstone.platform.camera.still.StillCaptureResult
 import java.util.concurrent.CopyOnWriteArrayList
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WatchSharedCameraLockRuntimeTest {
+    @After
+    fun tearDown() {
+        resetObserverRuntime()
+    }
+
     @Test
     fun scanHeldSharedLockMakesStillEngineEmitCameraBusyAndRelease() {
-        ActivityScenario.launch(MainActivity::class.java).use {
-            val container = waitForContainer()
+        ActivityScenario.launch(ObserverActivity::class.java).use {
+            val container = waitForObserverContainer()
             assertTrue(container.controller.beginScanSession())
             val sink = CapturingSink()
             val engine = StillCaptureEngine(
@@ -38,13 +44,6 @@ class WatchSharedCameraLockRuntimeTest {
             container.controller.endScanSession()
             assertTrue(container.cameraLock.tryAcquire())
             container.cameraLock.release()
-        }
-    }
-
-    private fun waitForContainer(): WatchAppContainer {
-        return WatchHarnessRuntime.container ?: run {
-            assumeTrue("watch harness container was not created", false)
-            error("unreachable")
         }
     }
 

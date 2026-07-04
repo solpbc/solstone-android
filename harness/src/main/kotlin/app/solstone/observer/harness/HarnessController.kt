@@ -204,9 +204,13 @@ class HarnessController(
                 is RelayPairLink -> try {
                     PairAttemptOutcome.Linked(runRelayPairProbe(link))
                 } catch (e: Throwable) {
-                    classifyRelayPairException(e)
+                    classifyPairException(e)
                 }
-                is DirectPairLink -> PairAttemptOutcome.Linked(runPairProbe(rawText))
+                is DirectPairLink -> try {
+                    PairAttemptOutcome.Linked(runPairProbe(rawText))
+                } catch (e: Throwable) {
+                    classifyPairException(e)
+                }
             }
         } ?: return PairAttemptOutcome.Retry
         if (

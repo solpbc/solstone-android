@@ -45,16 +45,3 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE
         else -> SourceState.ON to ReasonCode.NONE
     }
-
-/**
- * Redacted diagnostics carry only states, counts, short error codes, and hash prefixes.
- * They must never contain payload bytes, file contents, pair links, keys, or media.
- */
-data class RedactedDiagnostics(
-    val sourceStates: Map<String, SourceState>,
-    val reasonCounts: Map<ReasonCode, Int>,
-    val queuedBundleCount: Int,
-    val failedBundleCount: Int,
-    val lastErrorCode: String?,
-    val fingerprintHashPrefix: String?,
-)

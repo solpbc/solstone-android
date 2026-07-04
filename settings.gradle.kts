@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "solstone-android"
 
 include(":apps:validation-rogbid")
+include(":apps:observer-scaffold")
 include(":apps:watch")
 include(":apps:phone")
 include(":apps:glasses")
@@ -45,6 +46,5 @@ include(":platform:camera2")
 include(":platform:fgs")
 include(":platform:power")
 include(":harness")
-include(":formfactor:watch")
-include(":formfactor:phone")
+include(":formfactor:shared")
 include(":formfactor:glasses")

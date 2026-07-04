@@ -247,6 +247,9 @@ class HarnessControllerTest {
         assertEquals(PairAttemptOutcome.WindowClosed(401), outcome)
     }
 
+    /**
+     * AC4 relay-link red proof: relay connectivity failures must classify instead of escaping the scan callback.
+     */
     @Test
     fun classifiedRelayPairWebSocketFailedMapsNetworkUnavailable() {
         val f = fixture(
@@ -260,6 +263,9 @@ class HarnessControllerTest {
         assertEquals(PairAttemptOutcome.NetworkUnavailable, outcome)
     }
 
+    /**
+     * AC4 relay-link red proof: non-connectivity relay failures must classify as OtherFailure.
+     */
     @Test
     fun classifiedRelayPairGenericIoMapsOtherFailure() {
         val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw IOException("boom") })
@@ -277,6 +283,31 @@ class HarnessControllerTest {
 
         assertEquals(listOf("acquire", "release"), f.cameraLock.events)
         assertFalse(f.cameraLock.held)
+    }
+
+    /**
+     * AC4 direct-link red proof: before direct classified failures were caught, this path threw.
+     */
+    @Test
+    fun classifiedDirectPairConnectivityFailureMapsNetworkUnavailable() {
+        val f = fixture(
+            pairProbe = PairProbe { _, _ ->
+                throw IOException("direct failed", UnknownHostException("h"))
+            },
+        )
+
+        val outcome = f.controller.onScannedPairLinkClassified(validPairLink())
+
+        assertEquals(PairAttemptOutcome.NetworkUnavailable, outcome)
+    }
+
+    @Test
+    fun classifiedDirectPairGenericFailureMapsOtherFailure() {
+        val f = fixture(pairProbe = PairProbe { _, _ -> error("direct pair failed") })
+
+        val outcome = f.controller.onScannedPairLinkClassified(validPairLink())
+
+        assertEquals(PairAttemptOutcome.OtherFailure("IllegalStateException", null), outcome)
     }
 
     @Test

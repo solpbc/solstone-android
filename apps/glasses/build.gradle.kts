@@ -71,7 +71,6 @@ dependencies {
     implementation(project(":platform:work"))
     implementation(project(":platform:metadata"))
     implementation(project(":platform:camera-still"))
-    implementation("androidx.annotation:annotation:1.7.1")
     add("realImplementation", project(":platform:audio"))
     add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
