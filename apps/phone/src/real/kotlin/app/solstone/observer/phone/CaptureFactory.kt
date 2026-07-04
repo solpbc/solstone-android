@@ -30,12 +30,22 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     )
     return CaptureSetup(
         engines = listOf(audio, location, camera),
-        payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
-            when (payload.sourceId) {
-                AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
-                LocationContinuousSourceEngine.SOURCE_ID -> location.open(payload)
-                StillCaptureEngine.SOURCE_ID -> camera.open(payload)
-                else -> error("unknown payload source: ${payload.sourceId}")
+        payloadBytesProvider = object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) =
+                when (payload.sourceId) {
+                    AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
+                    LocationContinuousSourceEngine.SOURCE_ID -> location.open(payload)
+                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
+
+            override fun release(payload: SegmentPayload) {
+                when (payload.sourceId) {
+                    AudioContinuousSourceEngine.SOURCE_ID -> audio.release(payload)
+                    LocationContinuousSourceEngine.SOURCE_ID -> location.release(payload)
+                    StillCaptureEngine.SOURCE_ID -> camera.release(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
             }
         },
     )

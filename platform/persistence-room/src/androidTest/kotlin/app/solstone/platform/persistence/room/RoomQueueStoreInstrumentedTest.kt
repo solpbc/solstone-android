@@ -104,6 +104,26 @@ class RoomQueueStoreInstrumentedTest {
     }
 
     @Test
+    fun insertSegmentWithFilesPersistsRowsSharingWireKeyWhenDirSegmentDiffers() {
+        val wireKey = "011500_300"
+        val bare = segment("$DAY/validation.watch/$wireKey", QueueState.SEALED, sealedAt = 100)
+            .copy(segment = wireKey, dirSegment = wireKey)
+        val suffixedLeaf = "${wireKey}__ws1793519100000"
+        val suffixed = segment("$DAY/validation.watch/$suffixedLeaf", QueueState.SEALED, sealedAt = 200)
+            .copy(segment = wireKey, dirSegment = suffixedLeaf)
+
+        dao.insertSegmentWithFiles(bare, listOf(file(bare.id, "audio", "sha-bare")))
+        dao.insertSegmentWithFiles(suffixed, listOf(file(suffixed.id, "audio", "sha-suffixed")))
+
+        val rows = dao.segmentsByDay(DAY)
+        assertEquals(listOf(bare.id, suffixed.id), rows.map { it.id })
+        assertEquals(listOf(wireKey, wireKey), rows.map { it.segment })
+        assertEquals(listOf(wireKey, suffixedLeaf), rows.map { it.dirSegment })
+        assertEquals(1, dao.duplicateBySha256("sha-bare").size)
+        assertEquals(1, dao.duplicateBySha256("sha-suffixed").size)
+    }
+
+    @Test
     fun segmentsForDrain_returnsMainDrainableRowsOldestFirst() {
         insert("uploaded", QueueState.UPLOADED, sealedAt = 100)
         insert("sealed", QueueState.SEALED, sealedAt = 200)
@@ -251,6 +271,7 @@ class RoomQueueStoreInstrumentedTest {
             day = DAY,
             stream = "validation.watch",
             segment = id,
+            dirSegment = id,
             state = state,
             byteSize = SEGMENT_BYTES,
             sealedAt = sealedAt,

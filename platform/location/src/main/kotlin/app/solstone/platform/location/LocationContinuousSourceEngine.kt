@@ -27,6 +27,7 @@ class LocationContinuousSourceEngine(
     private val nowProvider: () -> Long = System::currentTimeMillis,
     private val sourceId: String = SOURCE_ID,
     private val sampleEveryMs: Long = SAMPLE_EVERY_MS,
+    private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
     private val payloads = ConcurrentHashMap<PayloadKey, ByteArray>()
@@ -62,34 +63,35 @@ class LocationContinuousSourceEngine(
         return ByteArrayInputStream(bytes)
     }
 
+    override fun release(payload: SegmentPayload) {
+        payloads.remove(PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs))
+    }
+
     private fun runLoop(sink: EmissionSink) {
         while (running.get()) {
-            val captureStartEpochMs = nowProvider()
-            sink.emit(captureWindow(captureStartEpochMs))
+            val windowStart = windowStart(nowProvider())
+            val windowEnd = windowStart + WINDOW_MS
+            sink.emit(captureWindow(windowStart, windowEnd))
         }
     }
 
-    private fun captureWindow(captureStartEpochMs: Long): SourceEmission {
+    private fun captureWindow(windowStart: Long, windowEnd: Long): SourceEmission {
         val records = StringBuilder()
         while (running.get()) {
             val now = nowProvider()
+            if (now >= windowEnd) break
             source.lastFix(now)?.let { records.append(buildLocationRecord(it)) }
-            val remaining = WINDOW_MS - (nowProvider() - captureStartEpochMs)
-            if (remaining <= 0L) break
-            try {
-                Thread.sleep(minOf(sampleEveryMs, remaining))
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                break
-            }
+            if (!sleepUntilNextSampleOrWindowEnd(windowEnd)) break
         }
 
-        val captureEndEpochMs = maxOf(nowProvider(), captureStartEpochMs)
+        val completed = nowProvider() >= windowEnd
+        val captureEndEpochMs = if (completed) windowEnd else maxOf(nowProvider(), windowStart)
         val bytes = records.toString().encodeToByteArray()
         val refs = if (bytes.isEmpty()) {
             emptyList()
         } else {
-            payloads[PayloadKey(captureStartEpochMs, captureEndEpochMs)] = bytes
+            payloads[PayloadKey(windowStart, captureEndEpochMs)] = bytes
+            trimPayloadCache()
             listOf(PayloadRef(PAYLOAD_NAME, MEDIA_TYPE, bytes.size.toLong(), null))
         }
         val gaps = if (bytes.isEmpty()) {
@@ -101,13 +103,38 @@ class LocationContinuousSourceEngine(
             sourceId = sourceId,
             stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
-            captureStartEpochMs = captureStartEpochMs,
+            captureStartEpochMs = windowStart,
             captureEndEpochMs = captureEndEpochMs,
             payloadRefs = refs,
             metadata = emptyMap(),
             gaps = gaps,
         )
     }
+
+    private fun sleepUntilNextSampleOrWindowEnd(windowEnd: Long): Boolean {
+        while (running.get()) {
+            val remaining = windowEnd - nowProvider()
+            if (remaining <= 0L) return true
+            try {
+                sleeper(minOf(sampleEveryMs, remaining, SLEEP_SLICE_MS))
+                return true
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        return false
+    }
+
+    private fun trimPayloadCache() {
+        while (payloads.size > MAX_CACHED_WINDOWS) {
+            val oldest = payloads.keys.minByOrNull { it.captureStartEpochMs } ?: return
+            payloads.remove(oldest)
+        }
+    }
+
+    private fun windowStart(epochMs: Long): Long =
+        Math.floorDiv(epochMs, WINDOW_MS) * WINDOW_MS
 
     private data class PayloadKey(val captureStartEpochMs: Long, val captureEndEpochMs: Long)
 
@@ -117,6 +144,8 @@ class LocationContinuousSourceEngine(
         const val MEDIA_TYPE = "application/x-ndjson"
         const val WINDOW_MS = 300_000L
         const val SAMPLE_EVERY_MS = 60_000L
+        const val MAX_CACHED_WINDOWS = 3
+        private const val SLEEP_SLICE_MS = 1_000L
         private const val JOIN_TIMEOUT_MS = 5_000L
     }
 }

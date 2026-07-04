@@ -72,6 +72,35 @@ class RecoveryApplierTest {
     }
 
     @Test
+    fun recoveryFinalizesSuffixedDraftLeafToSameFinalLeaf() {
+        val baseDir = Files.createTempDirectory("recovery-suffixed-finalize")
+        try {
+            val segment = emptySegment()
+            val suffixedLeaf = "${segment.key.segment}__ws${segment.wireKeys.startEpochMs + 3_600_000L}"
+            val draftDir = baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(suffixedLeaf)
+            val bareFinalDir = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(segment.key.segment)
+            val suffixedFinalDir = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(suffixedLeaf)
+            Files.createDirectories(draftDir)
+            Files.createDirectories(bareFinalDir)
+            Files.write(bareFinalDir.resolve("manifest"), "bare-final".toByteArray(StandardCharsets.UTF_8))
+            Files.write(
+                draftDir.resolve("manifest"),
+                serializeManifest(segment, app.solstone.core.model.BundleManifest(segment.key, emptyList(), emptyList()))
+                    .toByteArray(StandardCharsets.UTF_8),
+            )
+
+            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L))
+
+            assertTrue(Files.exists(bareFinalDir.resolve("manifest")))
+            assertTrue(Files.exists(suffixedFinalDir.resolve("manifest")))
+            assertFalse(Files.exists(draftDir))
+            assertEquals(listOf("finalized_segment"), events.map { it.kind })
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun applyRecoveryActionsDiscardsInvalidDraftAndReturnsEvent() {
         val baseDir = Files.createTempDirectory("recovery-discard")
         try {

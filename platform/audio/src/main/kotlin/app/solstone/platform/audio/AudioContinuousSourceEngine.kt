@@ -73,6 +73,11 @@ class AudioContinuousSourceEngine(
         }
     }
 
+    override fun release(payload: SegmentPayload) {
+        val key = PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs)
+        payloadFiles.remove(key)?.delete()
+    }
+
     private fun runLoop(sink: EmissionSink) {
         var nextRestartGap: GapEvent? = null
         while (running.get()) {

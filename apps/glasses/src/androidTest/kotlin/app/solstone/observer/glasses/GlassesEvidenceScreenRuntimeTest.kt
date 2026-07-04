@@ -123,6 +123,7 @@ class GlassesEvidenceScreenRuntimeTest {
                     day = "20260617",
                     stream = MAIN_STREAM,
                     segment = "120000_300",
+                    dirSegment = "120000_300",
                     state = QueueState.SEALED,
                     byteSize = 5,
                     sealedAt = 10,

@@ -58,7 +58,7 @@ class SealedSegmentBridgeInstrumentedTest {
 
         sink.persistSealed(sealed.segment, sealed.result, sealedAtEpochMs = 2000L)
 
-        val id = sealed.segment.id()
+        val id = sealed.segment.id(sealed.result.directoryLeaf())
         val row = dao.segmentById(id)
         assertNotNull(row)
         assertEquals(QueueState.SEALED, row!!.state)
@@ -69,7 +69,7 @@ class SealedSegmentBridgeInstrumentedTest {
     @Test
     fun reconcilerInsertsSealedDirectoryMissingFromRoom() {
         val sealed = sealOneFullAudioWindow()
-        val id = sealed.segment.id()
+        val id = sealed.segment.id(sealed.result.directoryLeaf())
         assertNull(dao.segmentById(id))
 
         val inserted = SpoolRoomReconciler(baseDir, dao).reconcile()
@@ -83,13 +83,15 @@ class SealedSegmentBridgeInstrumentedTest {
         val segmenter = Segmenter(ZoneId.of("UTC"))
         val first = audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000)
         segmenter.feed(first)
-        val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000, BASE_EPOCH_MS + 600_000)).single()
+        val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 305_000, BASE_EPOCH_MS + 600_000)).sealed.single()
         val writer = FileSpoolWriter(baseDir)
         val result = writer.seal(
             sealed,
-            PayloadBytesProvider { payload: SegmentPayload ->
-                require(payload.ref.name == "audio.m4a")
-                ByteArrayInputStream(SEALED_BYTES)
+            object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload): ByteArrayInputStream {
+                    require(payload.ref.name == "audio.m4a")
+                    return ByteArrayInputStream(SEALED_BYTES)
+                }
             },
         )
         return SealedResult(sealed, result)
@@ -111,6 +113,9 @@ class SealedSegmentBridgeInstrumentedTest {
         val segment: app.solstone.core.segment.SealedSegment,
         val result: app.solstone.core.spool.SealResult,
     )
+
+    private fun app.solstone.core.spool.SealResult.directoryLeaf(): String =
+        java.io.File(requireNotNull(directory).toString()).name
 
     private fun Path.deleteRecursively() {
         if (!Files.exists(this)) return

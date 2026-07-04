@@ -83,7 +83,10 @@ class GlassesDiagnosticPlumbingTest {
             segmenter = Segmenter(ZoneId.of("UTC")),
             spoolWriter = NoopSpoolWriter(),
             sealedSink = NoopSealedSink(),
-            payloadBytes = PayloadBytesProvider { ByteArrayInputStream(ByteArray(0)) },
+            payloadBytes = object : PayloadBytesProvider {
+                override fun open(payload: app.solstone.core.segment.SegmentPayload) =
+                    ByteArrayInputStream(ByteArray(0))
+            },
             engines = listOf(NoopEngine()),
             nowProvider = { 1L },
             tickIntervalMs = 10_000L,

@@ -417,6 +417,7 @@ class SegmentDrainerTest {
                 day = DAY,
                 stream = MAIN_STREAM,
                 segment = id,
+                dirSegment = id,
                 state = state,
                 byteSize = 1,
                 sealedAt = sealedAt,

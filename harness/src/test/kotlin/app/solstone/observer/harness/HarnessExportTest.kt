@@ -16,8 +16,8 @@ class HarnessExportTest {
         val root = Files.createTempDirectory("harness-export")
         val spool = root.resolve("spool")
         val external = root.resolve("external")
-        val segment = evidenceSegment("main", MAIN_STREAM)
-        val source = spool.resolve(segment.day).resolve(segment.stream).resolve(segment.segment)
+        val segment = evidenceSegment("main", MAIN_STREAM, dirSegment = "120000_300__ws1781712000000")
+        val source = spool.resolve(segment.day).resolve(segment.stream).resolve(segment.dirSegment)
         Files.createDirectories(source)
         Files.write(source.resolve("manifest"), "manifest".encodeToByteArray())
         Files.write(source.resolve("audio.m4a"), "audio".encodeToByteArray())
@@ -25,6 +25,6 @@ class HarnessExportTest {
         val result = RealBundleExport(spool, external).export(segment)
 
         assertEquals(2, result.copiedFileCount)
-        assertTrue(external.resolve("exports").resolve(segment.day).resolve(segment.stream).resolve(segment.segment).resolve("manifest").exists())
+        assertTrue(external.resolve("exports").resolve(segment.day).resolve(segment.stream).resolve(segment.dirSegment).resolve("manifest").exists())
     }
 }

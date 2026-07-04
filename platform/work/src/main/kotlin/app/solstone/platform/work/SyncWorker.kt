@@ -204,15 +204,6 @@ class SyncWorker(
             SyncOutcome.FAILURE -> Result.failure()
         }
 
-    private fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {
-        val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.segment)
-        val payload = File(segmentDir, file.name)
-        require(payload.canonicalFile.parentFile == segmentDir.canonicalFile) {
-            "payload name must not contain path separators: ${file.name}"
-        }
-        return payload.readBytes()
-    }
-
     private fun deviceLabel(): String =
         listOf(Build.MANUFACTURER, Build.MODEL)
             .filter { it.isNotBlank() }
@@ -222,5 +213,14 @@ class SyncWorker(
     private fun appVersion(): String =
         runCatching {
             applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0).versionName
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.1"
+	        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.1"
+}
+
+internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {
+    val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.dirSegment)
+    val payload = File(segmentDir, file.name)
+    require(payload.canonicalFile.parentFile == segmentDir.canonicalFile) {
+        "payload name must not contain path separators: ${file.name}"
+    }
+    return payload.readBytes()
 }

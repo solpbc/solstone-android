@@ -57,6 +57,27 @@ class StillCaptureEngineTest {
     }
 
     @Test
+    fun releaseRemovesDroppedBytes() {
+        val bytes = "jpeg-a".encodeToByteArray()
+        val sink = CapturingSink()
+        val engine = StillCaptureEngine(
+            stillCamera = FakeStillCamera(listOf(bytes)),
+            nowProvider = { BASE_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+
+        val emission = sink.emissions.single()
+        val payload = SegmentPayload(emission.sourceId, emission.payloadRefs.single(), emission.captureStartEpochMs, emission.captureEndEpochMs)
+        engine.release(payload)
+
+        assertFailsWith<IllegalArgumentException> { engine.open(payload) }
+    }
+
+    @Test
     fun heldLockEmitsBusyGapAndDoesNotReleaseUnacquiredLock() {
         val lock = RecordingCameraLock(acquireResult = false)
         val sink = CapturingSink()

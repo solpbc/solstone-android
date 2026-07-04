@@ -37,12 +37,22 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val tappedCamera = CameraTapEngine(camera, metadataEngine::onCameraEmission)
     return CaptureSetup(
         engines = listOf(audio, tappedCamera, metadataEngine),
-        payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
-            when (payload.sourceId) {
-                AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
-                StillCaptureEngine.SOURCE_ID -> camera.open(payload)
-                PhotoMetadataContract.SOURCE_ID -> metadataEngine.open(payload)
-                else -> error("unknown payload source: ${payload.sourceId}")
+        payloadBytesProvider = object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) =
+                when (payload.sourceId) {
+                    AudioContinuousSourceEngine.SOURCE_ID -> audio.open(payload)
+                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
+                    PhotoMetadataContract.SOURCE_ID -> metadataEngine.open(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
+
+            override fun release(payload: SegmentPayload) {
+                when (payload.sourceId) {
+                    AudioContinuousSourceEngine.SOURCE_ID -> audio.release(payload)
+                    StillCaptureEngine.SOURCE_ID -> camera.release(payload)
+                    PhotoMetadataContract.SOURCE_ID -> metadataEngine.release(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
             }
         },
     )

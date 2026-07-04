@@ -4,6 +4,7 @@
 package app.solstone.core.observer
 
 import app.solstone.core.segment.SealedSegment
+import app.solstone.core.segment.SegmenterResult
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
@@ -85,12 +86,24 @@ class CapturePipeline(
 
     fun lastEmissionEpochMs(): Long? = lastEmissionEpochMs
 
-    private fun runDraining(source: String, block: () -> List<SealedSegment>) {
+    private fun runDraining(source: String, block: () -> SegmenterResult) {
         try {
-            drain(block())
+            val result = block()
+            releaseDropped(result)
+            drain(result.sealed)
         } catch (t: Throwable) {
             emitError(source, t)
             throw t
+        }
+    }
+
+    private fun releaseDropped(result: SegmenterResult) {
+        result.droppedPayloads.forEach { payload ->
+            try {
+                payloadBytes.release(payload)
+            } catch (t: Throwable) {
+                emitDiag("capture event=payload-release-failed source=${payload.sourceId} type=${t.javaClass.simpleName}")
+            }
         }
     }
 

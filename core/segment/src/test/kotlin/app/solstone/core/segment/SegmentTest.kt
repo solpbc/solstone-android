@@ -68,7 +68,7 @@ class SegmentTest {
 
         segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000L, BASE_EPOCH_MS + 600_000L))
         segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
-        val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 600_000L, BASE_EPOCH_MS + 900_000L))
+        val sealed = segmenter.feed(audioEmission(BASE_EPOCH_MS + 600_000L, BASE_EPOCH_MS + 900_000L)).sealed
 
         val first = sealed.single { it.wireKeys.startEpochMs == BASE_EPOCH_MS }
         assertEquals("000000_300", first.key.segment)
@@ -77,7 +77,7 @@ class SegmentTest {
 
         val partialSegmenter = Segmenter(ZoneId.of("UTC"))
         partialSegmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 70_000L))
-        val partial = partialSegmenter.flush().single()
+        val partial = partialSegmenter.flush().sealed.single()
         assertEquals("000000_70", partial.key.segment)
         assertEquals(BASE_EPOCH_MS + 70_000L, partial.wireKeys.endEpochMs)
     }
@@ -87,10 +87,35 @@ class SegmentTest {
         val segmenter = Segmenter(ZoneId.of("UTC"))
         segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
 
-        val sealed = segmenter.sealDue(BASE_EPOCH_MS + 305_000L).single()
+        val sealed = segmenter.sealDue(BASE_EPOCH_MS + 305_000L).sealed.single()
 
         assertEquals("000000_300", sealed.key.segment)
         assertEquals(BASE_EPOCH_MS, sealed.wireKeys.startEpochMs)
+    }
+
+    @Test
+    fun feedSealsOnlyAfterWindowEndPlusGrace() {
+        val normalSegmenter = Segmenter(ZoneId.of("UTC"))
+        normalSegmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+
+        val beforeGrace = normalSegmenter.feed(
+            audioEmission(BASE_EPOCH_MS + 304_999L, BASE_EPOCH_MS + 305_000L),
+        )
+        assertTrue(beforeGrace.sealed.isEmpty())
+
+        val atGrace = normalSegmenter.feed(
+            audioEmission(BASE_EPOCH_MS + 305_000L, BASE_EPOCH_MS + 306_000L),
+        )
+        assertEquals(BASE_EPOCH_MS, atGrace.sealed.single().wireKeys.startEpochMs)
+
+        val lateSegmenter = Segmenter(ZoneId.of("UTC"))
+        lateSegmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+        lateSegmenter.feed(audioEmission(BASE_EPOCH_MS + 305_000L, BASE_EPOCH_MS + 306_000L))
+
+        val lateBeforeGrace = lateSegmenter.feed(
+            locationEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 20_000L),
+        )
+        assertTrue(lateBeforeGrace.sealed.isEmpty())
     }
 
     @Test
@@ -98,16 +123,42 @@ class SegmentTest {
         val segmenter = Segmenter(ZoneId.of("UTC"))
         val original = audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L)
         segmenter.feed(original)
-        val sealedOriginal = segmenter.feed(audioEmission(BASE_EPOCH_MS + 300_000L, BASE_EPOCH_MS + 600_000L)).single()
+        val sealedOriginal = segmenter.feed(audioEmission(BASE_EPOCH_MS + 305_000L, BASE_EPOCH_MS + 600_000L)).sealed.single()
         assertTrue(sealedOriginal.gaps.isEmpty())
 
         val lateResult = segmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 20_000L))
-        assertTrue(lateResult.isEmpty())
+        assertTrue(lateResult.sealed.isEmpty())
 
-        val later = segmenter.flush().single()
+        val later = segmenter.flush().sealed.single()
         assertEquals("000500_300", later.key.segment)
         assertEquals(
             listOf(GapEvent("late_emission", BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS.toString())),
+            later.gaps,
+        )
+    }
+
+    @Test
+    fun lateEmissionPreservesOriginalGapsAndLateMarker() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        val sourceGap = GapEvent("location_gap", BASE_EPOCH_MS + 20_000L, "no_fix")
+
+        segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 305_000L, BASE_EPOCH_MS + 306_000L))
+        val late = segmenter.feed(
+            locationEmission(
+                BASE_EPOCH_MS + 10_000L,
+                BASE_EPOCH_MS + 20_000L,
+                gaps = listOf(sourceGap),
+            ),
+        )
+
+        assertTrue(late.sealed.isEmpty())
+        val later = segmenter.flush().sealed.single()
+        assertEquals(
+            listOf(
+                GapEvent("late_emission", BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS.toString()),
+                sourceGap,
+            ).sortedWith(compareBy<GapEvent> { it.atEpochMs }.thenBy { it.kind }.thenBy { it.detail ?: "" }),
             later.gaps,
         )
     }
@@ -119,7 +170,7 @@ class SegmentTest {
         // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
         segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
         segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L))
-        val sealed = segmenter.flush().single()
+        val sealed = segmenter.flush().sealed.single()
 
         assertEquals(MAIN_STREAM, sealed.stream)
         assertEquals(2, sealed.payloads.size)
@@ -133,12 +184,12 @@ class SegmentTest {
 
         // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
         segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
-        val sealedCell0 = segmenter.feed(locationEmission(BASE_EPOCH_MS + 347_000L, BASE_EPOCH_MS + 360_000L)).single()
+        val sealedCell0 = segmenter.feed(locationEmission(BASE_EPOCH_MS + 347_000L, BASE_EPOCH_MS + 360_000L)).sealed.single()
 
         assertEquals(listOf("audio"), sealedCell0.payloads.map { it.sourceId })
         assertEquals(BASE_EPOCH_MS + 300_000L, sealedCell0.wireKeys.endEpochMs)
 
-        val sealedCell1 = segmenter.flush().single()
+        val sealedCell1 = segmenter.flush().sealed.single()
         assertEquals(listOf("location"), sealedCell1.payloads.map { it.sourceId })
     }
 
@@ -148,10 +199,10 @@ class SegmentTest {
 
         // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
         segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
-        val cell0 = segmenter.feed(audioEmission(BASE_EPOCH_MS + 312_000L, BASE_EPOCH_MS + 600_000L)).single()
+        val cell0 = segmenter.feed(audioEmission(BASE_EPOCH_MS + 312_000L, BASE_EPOCH_MS + 600_000L)).sealed.single()
         segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L))
 
-        val cell1 = segmenter.flush().single()
+        val cell1 = segmenter.flush().sealed.single()
         val lateGap = cell1.gaps.single { it.kind == "late_emission" }
         assertEquals(BASE_EPOCH_MS.toString(), lateGap.detail)
         assertFalse(listOf(cell0, cell1).flatMap { it.payloads }.any { it.ref.name == "location.jsonl" })
@@ -166,9 +217,9 @@ class SegmentTest {
         // cell0=[BASE,BASE+300k), cell1=[BASE+300k,BASE+600k)
         segmenter.feed(audioEmission(BASE_EPOCH_MS + 12_000L, BASE_EPOCH_MS + 300_000L))
         val sealed = segmenter.feed(locationEmission(BASE_EPOCH_MS + 47_000L, BASE_EPOCH_MS + 107_000L, gaps = listOf(locationGap)))
-        assertTrue(sealed.isEmpty())
+        assertTrue(sealed.sealed.isEmpty())
 
-        val flushed = segmenter.flush().single()
+        val flushed = segmenter.flush().sealed.single()
         assertEquals(listOf("audio"), flushed.payloads.map { it.sourceId })
         assertEquals(BASE_EPOCH_MS + 300_000L, flushed.wireKeys.endEpochMs)
         assertTrue(locationGap in flushed.gaps)

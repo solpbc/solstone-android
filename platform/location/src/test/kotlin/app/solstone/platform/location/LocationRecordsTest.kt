@@ -4,6 +4,7 @@
 package app.solstone.platform.location
 
 import app.solstone.core.model.SourceKind
+import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.SourceEmission
@@ -37,6 +38,38 @@ class LocationRecordsTest {
     }
 
     @Test
+    fun buildLocationRecordOmitsAccuracyWhenNaN() {
+        val nanRecord = buildLocationRecord(
+            LocationFix(
+                provider = "network",
+                timestampEpochMs = 1_000L,
+                lat = 39.7392,
+                lon = -104.9903,
+                accuracyMeters = Double.NaN,
+                fixAgeMs = 60_000L,
+            ),
+        )
+        val numericRecord = buildLocationRecord(
+            LocationFix(
+                provider = "network",
+                timestampEpochMs = 1_000L,
+                lat = 39.7392,
+                lon = -104.9903,
+                accuracyMeters = 12.5,
+                fixAgeMs = 60_000L,
+            ),
+        )
+
+        assertEquals(
+            "{\"provider\":\"network\",\"timestamp\":1000,\"lat\":39.7392,\"lon\":-104.9903,\"fixAge\":60000}\n",
+            nanRecord,
+        )
+        assertFalse(nanRecord.contains("accuracy"))
+        assertFalse(nanRecord.contains("NaN"))
+        assertTrue(numericRecord.contains("\"accuracy\":12.5"))
+    }
+
+    @Test
     fun decideGapUsesLocationGapWithoutPosition() {
         NoFixReason.entries.forEach { reason ->
             val gap = decideGap(reason, atEpochMs = 2_000L)
@@ -65,9 +98,15 @@ class LocationRecordsTest {
                 gaps = listOf(gap),
             ),
         )
-        val sealed = segmenter.flush().single()
+        val sealed = segmenter.flush().sealed.single()
         val writer = CountingSpoolWriter()
-        writer.seal(sealed, PayloadBytesProvider { ByteArrayInputStream(ByteArray(it.ref.byteSize.toInt())) })
+        writer.seal(
+            sealed,
+            object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) =
+                    ByteArrayInputStream(ByteArray(payload.ref.byteSize.toInt()))
+            },
+        )
 
         assertEquals(MAIN_STREAM, sealed.stream)
         assertTrue(sealed.payloads.isEmpty())

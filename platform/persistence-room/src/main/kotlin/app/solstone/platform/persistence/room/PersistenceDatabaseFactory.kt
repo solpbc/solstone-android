@@ -19,10 +19,17 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE segment ADD COLUMN dir_segment TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE segment SET dir_segment = segment")
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
         .build()

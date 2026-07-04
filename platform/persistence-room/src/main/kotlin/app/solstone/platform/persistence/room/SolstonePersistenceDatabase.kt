@@ -16,7 +16,7 @@ import app.solstone.core.model.QueueState
         EventRow::class,
         SyncStateRow::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)

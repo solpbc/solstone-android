@@ -68,10 +68,10 @@ class AudioContinuousSourceEngineTest {
         segmenter.feed(audioEmission)
         val sealed = segmenter.feed(
             coSourceEmission(
-                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS,
-                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 1_000L,
+                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 5_000L,
+                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 6_000L,
             ),
-        )
+        ).sealed
 
         val sealedWindow = sealed.single()
         assertTrue(sealedWindow.payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.ref.name == AudioContinuousSourceEngine.PAYLOAD_NAME })
@@ -167,6 +167,33 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
+    fun releaseDeletesDroppedFile() {
+        val outputDirectory = tempDirectory()
+        val sink = CapturingSink()
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = outputDirectory,
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+
+        val emission = sink.emissions.single()
+        val payload = SegmentPayload(emission.sourceId, emission.payloadRefs.single(), emission.captureStartEpochMs, emission.captureEndEpochMs)
+        val path = File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a")
+        assertTrue(path.exists())
+
+        engine.release(payload)
+
+        assertFalse(path.exists())
+        assertFailsWith<IllegalArgumentException> { engine.open(payload) }
+    }
+
+    @Test
     fun audioAndPhotoForSameWindowSealTogether() {
         val outputDirectory = tempDirectory()
         val audioEmission = completedAudioEmission(outputDirectory)
@@ -185,10 +212,10 @@ class AudioContinuousSourceEngineTest {
         segmenter.feed(audioEmission)
         val sealed = segmenter.feed(
             coSourceEmission(
-                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS,
-                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 1_000L,
+                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 5_000L,
+                BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS + 6_000L,
             ),
-        )
+        ).sealed
 
         val payloads = sealed.single().payloads
         assertTrue(payloads.any { it.sourceId == "photo" && it.ref.name == "photo.jpg" })

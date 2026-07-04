@@ -48,10 +48,15 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val tappedCamera = CameraTapEngine(camera, metadataEngine::onCameraEmission)
     return CaptureSetup(
         engines = listOf(audio, tappedCamera, metadataEngine),
-        payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
-            when (payload.sourceId) {
-                PhotoMetadataContract.SOURCE_ID -> metadataEngine.open(payload)
-                else -> ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
+        payloadBytesProvider = object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) =
+                when (payload.sourceId) {
+                    PhotoMetadataContract.SOURCE_ID -> metadataEngine.open(payload)
+                    else -> ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
+                }
+
+            override fun release(payload: SegmentPayload) {
+                if (payload.sourceId == PhotoMetadataContract.SOURCE_ID) metadataEngine.release(payload)
             }
         },
     )

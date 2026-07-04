@@ -186,16 +186,26 @@ fun planDayDrain(
     verdicts: List<ReconcileVerdict>,
     segments: List<SegmentRow>,
 ): List<DrainAction> {
-    val verdictByKey = verdicts.associateBy { it.key }
-    return segments.map { segment ->
-        val key = SegmentKey(segment.day, segment.segment)
-        if (verdictByKey[key]?.needsUpload == false) {
-            DrainAction.Skip(segment.id)
-        } else {
-            DrainAction.Upload(segment.id)
+    require(verdicts.size == segments.size) { "reconcile verdict count must match segment count" }
+    val segmentKeys = segments.map { SegmentKey(day = it.day, segment = it.segment) }
+    if (segmentKeys.distinct().size == segmentKeys.size) {
+        val verdictByKey = verdicts.associateBy { it.key }
+        return segments.map { segment ->
+            val verdict = verdictByKey.getValue(SegmentKey(day = segment.day, segment = segment.segment))
+            segment.drainAction(verdict)
         }
     }
+    return segments.zip(verdicts).map { (segment, verdict) ->
+        segment.drainAction(verdict)
+    }
 }
+
+private fun SegmentRow.drainAction(verdict: ReconcileVerdict): DrainAction =
+    if (verdict.needsUpload == false) {
+        DrainAction.Skip(id)
+    } else {
+        DrainAction.Upload(id)
+    }
 
 private fun Int.toSegmentSyncResult(): SegmentSyncResult =
     when (classify(this, ioError = false)) {

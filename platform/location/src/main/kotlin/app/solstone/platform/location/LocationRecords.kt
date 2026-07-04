@@ -27,7 +27,9 @@ fun buildLocationRecord(fix: LocationFix): String =
         append(",\"timestamp\":").append(fix.timestampEpochMs)
         append(",\"lat\":").append(fix.lat)
         append(",\"lon\":").append(fix.lon)
-        append(",\"accuracy\":").append(fix.accuracyMeters)
+        if (!fix.accuracyMeters.isNaN()) {
+            append(",\"accuracy\":").append(fix.accuracyMeters)
+        }
         append(",\"fixAge\":").append(fix.fixAgeMs)
         append("}\n")
     }

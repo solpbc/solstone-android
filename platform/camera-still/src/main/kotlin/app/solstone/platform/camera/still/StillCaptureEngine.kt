@@ -79,6 +79,10 @@ class StillCaptureEngine(
         return ByteArrayInputStream(bytes)
     }
 
+    override fun release(payload: SegmentPayload) {
+        cache.remove(payload.ref.name)
+    }
+
     private fun runLoop(sink: EmissionSink) {
         while (running.get()) {
             val start = nowProvider()

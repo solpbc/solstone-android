@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CapturePipelineTest {
@@ -37,7 +38,7 @@ class CapturePipelineTest {
             segmenter = Segmenter(java.time.ZoneId.of("UTC")),
             spoolWriter = writer,
             sealedSink = sink,
-            payloadBytes = PayloadBytesProvider { ByteArrayInputStream(ByteArray(it.ref.byteSize.toInt())) },
+            payloadBytes = ByteArrayPayloadProvider(),
             engines = listOf(engine),
             nowProvider = { EMISSION_EPOCH_MS },
             tickIntervalMs = 10_000L,
@@ -60,7 +61,7 @@ class CapturePipelineTest {
             segmenter = Segmenter(java.time.ZoneId.of("UTC")),
             spoolWriter = writer,
             sealedSink = sink,
-            payloadBytes = PayloadBytesProvider { ByteArrayInputStream(ByteArray(it.ref.byteSize.toInt())) },
+            payloadBytes = ByteArrayPayloadProvider(),
             engines = listOf(engine),
             nowProvider = { BASE_EPOCH_MS + 1_000L },
             tickIntervalMs = 10_000L,
@@ -76,6 +77,35 @@ class CapturePipelineTest {
         assertEquals(1, sink.persistedCount)
         assertTrue(writer.flushSawJoinedEngine.get())
         assertEquals(1, (writer.threadIds + sink.threadIds).distinct().size)
+    }
+
+    @Test
+    fun releasesPayloadsDroppedByLateEmission() {
+        val latePayload = PayloadRef("late-location.jsonl", "application/x-ndjson", 4, null)
+        val engine = ScriptedEngine(
+            listOf(
+                emission("audio", BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L, PayloadRef("audio-0.m4a", "audio/mp4", 4, null)),
+                emission("audio", BASE_EPOCH_MS + 305_000L, BASE_EPOCH_MS + 306_000L, PayloadRef("audio-1.m4a", "audio/mp4", 4, null)),
+                emission("location", BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 20_000L, latePayload),
+            ),
+        )
+        val provider = RecordingPayloadProvider()
+        val pipeline = CapturePipeline(
+            segmenter = Segmenter(java.time.ZoneId.of("UTC")),
+            spoolWriter = ThreadCapturingSpoolWriter(AtomicBoolean(true)),
+            sealedSink = ThreadCapturingSink(),
+            payloadBytes = provider,
+            engines = listOf(engine),
+            nowProvider = { BASE_EPOCH_MS + 306_000L },
+            tickIntervalMs = 10_000L,
+        )
+
+        pipeline.start()
+        assertTrue(engine.emitted.await(5, TimeUnit.SECONDS))
+        pipeline.stop()
+
+        assertTrue(provider.released.any { it.ref.name == latePayload.name })
+        assertFalse(provider.opened.any { it.ref.name == latePayload.name })
     }
 
     private class JoiningEngine : ContinuousSourceEngine {
@@ -124,6 +154,45 @@ class CapturePipelineTest {
             )
     }
 
+    private class ScriptedEngine(private val emissions: List<SourceEmission>) : ContinuousSourceEngine {
+        val emitted = CountDownLatch(1)
+
+        override fun start(sink: EmissionSink) {
+            emissions.forEach(sink::emit)
+            emitted.countDown()
+        }
+
+        override fun stop() = Unit
+
+        override fun condition(): SourceCondition =
+            SourceCondition(
+                desiredOn = true,
+                running = false,
+                available = true,
+                needsAttention = false,
+                paused = false,
+            )
+    }
+
+    private class ByteArrayPayloadProvider : PayloadBytesProvider {
+        override fun open(payload: SegmentPayload) =
+            ByteArrayInputStream(ByteArray(payload.ref.byteSize.toInt()))
+    }
+
+    private class RecordingPayloadProvider : PayloadBytesProvider {
+        val opened = mutableListOf<SegmentPayload>()
+        val released = mutableListOf<SegmentPayload>()
+
+        override fun open(payload: SegmentPayload): ByteArrayInputStream {
+            opened += payload
+            return ByteArrayInputStream(ByteArray(payload.ref.byteSize.toInt()))
+        }
+
+        override fun release(payload: SegmentPayload) {
+            released += payload
+        }
+    }
+
     private class ThreadCapturingSpoolWriter(private val engineJoined: AtomicBoolean) : SpoolWriter {
         val threadIds = mutableListOf<Long>()
         val flushSawJoinedEngine = AtomicBoolean(false)
@@ -159,3 +228,15 @@ class CapturePipelineTest {
         const val EMISSION_EPOCH_MS = BASE_EPOCH_MS + 123L
     }
 }
+
+private fun emission(sourceId: String, startEpochMs: Long, endEpochMs: Long, ref: PayloadRef): SourceEmission =
+    SourceEmission(
+        sourceId = sourceId,
+        stream = MAIN_STREAM,
+        sourceKind = SourceKind.OBSERVER,
+        captureStartEpochMs = startEpochMs,
+        captureEndEpochMs = endEpochMs,
+        payloadRefs = listOf(ref),
+        metadata = emptyMap(),
+        gaps = emptyList(),
+    )

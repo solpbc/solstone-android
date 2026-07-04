@@ -31,8 +31,9 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     )
     return CaptureSetup(
         engines = listOf(audio, location),
-        payloadBytesProvider = PayloadBytesProvider { payload: SegmentPayload ->
-            ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
+        payloadBytesProvider = object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) =
+                ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
         },
     )
 }

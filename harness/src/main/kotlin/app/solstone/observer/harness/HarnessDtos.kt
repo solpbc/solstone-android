@@ -39,6 +39,7 @@ data class HarnessEvidenceSegment(
     val day: String,
     val stream: String,
     val segment: String,
+    val dirSegment: String,
     val state: QueueState,
     val byteSize: Long,
     val sealedAt: Long,

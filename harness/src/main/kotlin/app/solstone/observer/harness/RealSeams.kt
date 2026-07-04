@@ -223,6 +223,7 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
                 day = row.day,
                 stream = row.stream,
                 segment = row.segment,
+                dirSegment = row.dirSegment,
                 state = row.state,
                 byteSize = row.byteSize,
                 sealedAt = row.sealedAt,
@@ -283,13 +284,13 @@ class RealBundleExport(
     private val fileOp: BundleFileOp = NioBundleFileOp(),
 ) : BundleExport {
     override fun export(segment: HarnessEvidenceSegment): HarnessExportResult {
-        val source = spoolBaseDir.resolve(segment.day).resolve(segment.stream).resolve(segment.segment).normalize()
+        val source = spoolBaseDir.resolve(segment.day).resolve(segment.stream).resolve(segment.dirSegment).normalize()
         require(source.startsWith(spoolBaseDir.normalize())) { "segment path escaped spool base" }
         val destination = externalFilesDir
             .resolve("exports")
             .resolve(segment.day)
             .resolve(segment.stream)
-            .resolve(segment.segment)
+            .resolve(segment.dirSegment)
             .normalize()
         require(destination.startsWith(externalFilesDir.normalize())) { "export path escaped external files dir" }
         val count = fileOp.copyDirectory(source, destination)

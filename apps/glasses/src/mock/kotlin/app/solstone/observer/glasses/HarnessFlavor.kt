@@ -93,7 +93,7 @@ fun createGlassesHarnessFlavor(
             evidenceReader = RealEvidenceReader(database.segmentDao()),
             bundleExport = BundleExport {
                 HarnessExportResult(
-                    sourcePath = spoolDir.resolve(it.day).resolve(it.stream).resolve(it.segment).toString(),
+                    sourcePath = spoolDir.resolve(it.day).resolve(it.stream).resolve(it.dirSegment).toString(),
                     destinationPath = context.filesDir.resolve("mock-export/${it.id}").absolutePath,
                     copiedFileCount = it.files.size,
                 )

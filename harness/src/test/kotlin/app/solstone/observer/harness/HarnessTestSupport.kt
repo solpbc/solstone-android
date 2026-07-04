@@ -288,12 +288,14 @@ internal fun evidenceSegment(
     id: String,
     stream: String,
     state: QueueState = QueueState.SEALED,
+    dirSegment: String = "120000_300",
 ): HarnessEvidenceSegment =
     HarnessEvidenceSegment(
         id = id,
         day = "20260617",
         stream = stream,
         segment = "120000_300",
+        dirSegment = dirSegment,
         state = state,
         byteSize = 10,
         sealedAt = 20,

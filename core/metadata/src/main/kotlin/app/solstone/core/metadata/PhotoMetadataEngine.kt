@@ -78,6 +78,10 @@ class PhotoMetadataEngine(
         return ByteArrayInputStream(bytes)
     }
 
+    override fun release(payload: SegmentPayload) {
+        payloads.remove(PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs))
+    }
+
     fun onCameraEmission(emission: SourceEmission) {
         scheduler.execute {
             if (!accepting.get() || emission.payloadRefs.isEmpty()) return@execute

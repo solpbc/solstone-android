@@ -3,6 +3,7 @@
 
 package app.solstone.platform.work
 
+import app.solstone.core.model.BundleFile
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
@@ -14,6 +15,8 @@ import app.solstone.core.queue.RetryDecision
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
+import java.io.File
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -207,6 +210,24 @@ class SyncDecisionsTest {
     }
 
     @Test
+    fun planDayDrainKeepsKeyPairingForNonCollidingRows() {
+        val segments = listOf(
+            segment("skip-id", MAIN_STREAM, QueueState.SEALED, key = "120000_1"),
+            segment("upload-id", MAIN_STREAM, QueueState.SEALED, key = "120500_1"),
+        )
+
+        val actions = planDayDrain(
+            verdicts = listOf(
+                ReconcileVerdict(SegmentKey(DAY, "120500_1"), needsUpload = true),
+                ReconcileVerdict(SegmentKey(DAY, "120000_1"), needsUpload = false),
+            ),
+            segments = segments,
+        )
+
+        assertEquals(listOf(DrainAction.Skip("skip-id"), DrainAction.Upload("upload-id")), actions)
+    }
+
+    @Test
     fun allReconciledSegmentsPlanNoUploads() {
         val segments = listOf(
             segment("skip-a", MAIN_STREAM, QueueState.SEALED, key = "120000_1"),
@@ -226,6 +247,54 @@ class SyncDecisionsTest {
     }
 
     @Test
+    fun planDayDrainDoesNotCollapseRowsSharingWireKey() {
+        val wireKey = "011500_300"
+        val suffixedLeaf = "${wireKey}__ws1793519100000"
+        val bare = segment("$DAY/$MAIN_STREAM/$wireKey", MAIN_STREAM, QueueState.SEALED, key = wireKey)
+        val suffixed = segment(
+            "$DAY/$MAIN_STREAM/$suffixedLeaf",
+            MAIN_STREAM,
+            QueueState.SEALED,
+            key = wireKey,
+            dirSegment = suffixedLeaf,
+        )
+
+        val actions = planDayDrain(
+            verdicts = listOf(
+                ReconcileVerdict(SegmentKey(DAY, wireKey), needsUpload = false),
+                ReconcileVerdict(SegmentKey(DAY, wireKey), needsUpload = true),
+            ),
+            segments = listOf(bare, suffixed),
+        )
+
+        assertEquals(listOf(DrainAction.Skip(bare.id), DrainAction.Upload(suffixed.id)), actions)
+    }
+
+    @Test
+    fun readPayloadForUsesDirSegmentNotWireSegment() {
+        val spoolDir = Files.createTempDirectory("solstone-work-spool").toFile()
+        try {
+            val wireKey = "011500_300"
+            val dirSegment = "${wireKey}__ws1793519100000"
+            val row = segment(
+                "$DAY/$MAIN_STREAM/$dirSegment",
+                MAIN_STREAM,
+                QueueState.SEALED,
+                key = wireKey,
+                dirSegment = dirSegment,
+            )
+            val file = BundleFile("audio", "audio.m4a", "sha", 5, "audio/mp4", 1, 2)
+            val segmentDir = File(File(File(spoolDir, DAY), MAIN_STREAM), dirSegment)
+            segmentDir.mkdirs()
+            File(segmentDir, file.name).writeBytes("bytes".toByteArray())
+
+            assertEquals("bytes", readPayloadFor(spoolDir, row, file).decodeToString())
+        } finally {
+            spoolDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun fakePlHttpClientRecordsRequestsForDecisionSeams() {
         val client = FakePlHttpClient(HttpResponse(200, emptyMap(), ByteArray(0)))
 
@@ -241,6 +310,7 @@ class SyncDecisionsTest {
         state: QueueState,
         day: String = DAY,
         key: String = id,
+        dirSegment: String = key,
         attemptCount: Int = 0,
         lastAttemptAt: Long? = null,
         lastStatusCode: Int? = null,
@@ -250,6 +320,7 @@ class SyncDecisionsTest {
             day = day,
             stream = stream,
             segment = key,
+            dirSegment = dirSegment,
             state = state,
             byteSize = 10,
             sealedAt = 100,

@@ -34,7 +34,8 @@ class SpoolRoomReconciler(
         if (dayDir.parentFile != baseDirFile) return false
         val parsed = parseManifest(manifestFile.readText(Charsets.UTF_8))
         val stream = streamDir.name
-        val segmentId = "${parsed.manifest.key.day}/$stream/${parsed.manifest.key.segment}"
+        val dirSegment = segmentDir.name
+        val segmentId = "${parsed.manifest.key.day}/$stream/$dirSegment"
         if (dao.segmentById(segmentId) != null) return false
         dao.insertSegmentWithFiles(
             SegmentRow(
@@ -42,6 +43,7 @@ class SpoolRoomReconciler(
                 day = parsed.manifest.key.day,
                 stream = stream,
                 segment = parsed.manifest.key.segment,
+                dirSegment = dirSegment,
                 state = QueueState.SEALED,
                 byteSize = parsed.manifest.files.sumOf { it.byteSize },
                 sealedAt = parsed.endEpochMs,

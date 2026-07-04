@@ -143,9 +143,11 @@ class GlassesHarnessUi(
     }
 
     private fun LinearLayout.segmentView(segment: HarnessEvidenceSegment) {
+        val localPath = "${segment.day}/${segment.stream}/${segment.dirSegment}"
         text(
             listOf(
-                "${segment.day}/${segment.stream}/${segment.segment}",
+                localPath,
+                if (segment.dirSegment != segment.segment) "wire=${segment.segment}" else null,
                 "state=${segment.state}",
                 "bytes=${segment.byteSize}",
             ).filterNotNull().joinToString("\n"),
@@ -153,7 +155,7 @@ class GlassesHarnessUi(
         segment.files.forEach { file ->
             text("${file.sourceId} ${file.name} ${file.mediaType} ${file.byteSize} ${file.sha256}")
         }
-        text("Bundle: spool/${segment.day}/${segment.stream}/${segment.segment}")
+        text("Bundle: spool/$localPath")
         button("Export") {
             val result = controller.exportSegment(segment)
             text("Exported ${result.copiedFileCount}: ${result.destinationPath}")

@@ -12,17 +12,21 @@ import app.solstone.core.segment.SegmentPayload
 import java.io.InputStream
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
 enum class SealState { DRAFT, WRITING_PAYLOADS, WRITING_MANIFEST, SEALED, FAILED }
 
-fun interface PayloadBytesProvider {
+interface PayloadBytesProvider {
     fun open(payload: SegmentPayload): InputStream
+
+    fun release(payload: SegmentPayload) {}
 }
 
 data class SealResult(val manifest: BundleManifest, val directory: Path?, val state: SealState)
@@ -39,13 +43,25 @@ interface SpoolWriter {
     fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult
 }
 
-class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
+class FileSpoolWriter(
+    private val baseDir: Path,
+    private val fsync: (Path) -> Unit = ::forcePath,
+) : SpoolWriter {
     override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
-        val draftDir = baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(segment.key.segment)
-        val finalDir = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(segment.key.segment)
+        val leaf = when (val selection = selectDirLeaf(segment)) {
+            is DirSelection.Existing -> return SealResult(
+                manifest = selection.manifest,
+                directory = selection.finalDir,
+                state = SealState.SEALED,
+            )
+            is DirSelection.Leaf -> selection.leaf
+        }
+        val draftDir = baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(leaf)
+        val finalDir = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(leaf)
+        requireSingleLeaf(draftDir, baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream), leaf)
+        requireSingleLeaf(finalDir, baseDir.resolve(segment.key.day).resolve(segment.stream), leaf)
         Files.createDirectories(draftDir.parent)
         if (Files.exists(draftDir)) draftDir.deleteRecursively()
-        if (Files.exists(finalDir)) finalDir.deleteRecursively()
         Files.createDirectories(draftDir)
 
         val files = segment.payloads.map { payload ->
@@ -65,6 +81,7 @@ class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
                     }
                 }
             }
+            fsync(target)
             BundleFile(
                 sourceId = payload.sourceId,
                 name = payload.ref.name,
@@ -81,7 +98,9 @@ class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
             files = files,
             gaps = segment.gaps.sortedWith(gapComparator),
         )
-        Files.write(draftDir.resolve("manifest"), serializeManifest(segment, manifest).toByteArray(StandardCharsets.UTF_8))
+        val manifestPath = draftDir.resolve("manifest")
+        Files.write(manifestPath, serializeManifest(segment, manifest).toByteArray(StandardCharsets.UTF_8))
+        fsync(manifestPath)
         Files.createDirectories(finalDir.parent)
         try {
             Files.move(draftDir, finalDir, StandardCopyOption.ATOMIC_MOVE)
@@ -92,6 +111,29 @@ class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
         return SealResult(manifest = manifest, directory = finalDir, state = SealState.SEALED)
     }
 
+    private fun selectDirLeaf(segment: SealedSegment): DirSelection {
+        val bareLeaf = segment.key.segment
+        val collisionLeaf = "${segment.key.segment}__ws${segment.wireKeys.startEpochMs}"
+        val bareFinal = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(bareLeaf)
+        val collisionFinal = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(collisionLeaf)
+        val collisionParsed = parseFinalManifest(collisionFinal)
+        if (collisionParsed != null) {
+            if (collisionParsed.identityMatches(segment)) {
+                return DirSelection.Existing(collisionParsed.manifest, collisionFinal)
+            }
+            throw IllegalStateException("collision segment leaf already exists with different identity: $collisionLeaf")
+        } else if (Files.exists(collisionFinal)) {
+            throw IllegalStateException("collision segment leaf already exists without a readable manifest: $collisionLeaf")
+        }
+
+        val bareParsed = parseFinalManifest(bareFinal)
+        if (bareParsed != null && bareParsed.identityMatches(segment)) {
+            return DirSelection.Existing(bareParsed.manifest, bareFinal)
+        }
+
+        return DirSelection.Leaf(if (!Files.exists(bareFinal)) bareLeaf else collisionLeaf)
+    }
+
     private fun cleanupEmptyDraftParents(draftDir: Path) {
         generateSequence(draftDir.parent) { it.parent }
             .takeWhile { it != baseDir.resolve(".draft").parent }
@@ -100,6 +142,37 @@ class FileSpoolWriter(private val baseDir: Path) : SpoolWriter {
                     Files.delete(dir)
                 }
             }
+    }
+
+    private sealed interface DirSelection {
+        data class Existing(val manifest: BundleManifest, val finalDir: Path) : DirSelection
+        data class Leaf(val leaf: String) : DirSelection
+    }
+}
+
+private fun parseFinalManifest(finalDir: Path): ParsedManifest? {
+    val manifestPath = finalDir.resolve("manifest")
+    if (!Files.isRegularFile(manifestPath)) return null
+    return runCatching {
+        parseManifest(String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8))
+    }.getOrNull()
+}
+
+private fun ParsedManifest.identityMatches(segment: SealedSegment): Boolean =
+    startEpochMs == segment.wireKeys.startEpochMs &&
+        endEpochMs == segment.wireKeys.endEpochMs &&
+        zoneId == segment.wireKeys.zoneId &&
+        utcOffsetSeconds == segment.wireKeys.utcOffsetSeconds
+
+private fun requireSingleLeaf(path: Path, parent: Path, leaf: String) {
+    require(path.normalize().parent == parent.normalize() && path.fileName.toString() == leaf) {
+        "segment directory leaf must not contain path separators: $leaf"
+    }
+}
+
+private fun forcePath(path: Path) {
+    FileChannel.open(path, StandardOpenOption.WRITE).use { channel ->
+        channel.force(true)
     }
 }
 

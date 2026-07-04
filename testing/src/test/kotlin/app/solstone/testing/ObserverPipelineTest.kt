@@ -55,14 +55,12 @@ class ObserverPipelineTest {
     @Test
     fun countingSpoolWriterCountsExactlyTwoHundredEightyEightFullWindows() {
         val segmenter = Segmenter(ZoneId.of("UTC"))
-        val source = FakeContinuousSource("source-a", frameEveryMillis = 300_000, frameSizeBytes = 8, frameCount = 289)
+        val source = FakeContinuousSource("source-a", frameEveryMillis = 300_000, frameSizeBytes = 8, frameCount = 290)
         val writer = CountingSpoolWriter()
-        val provider = PayloadBytesProvider { payload ->
-            ByteArrayInputStream(bytesForPayload(payload))
-        }
+        val provider = payloadProvider { payload -> ByteArrayInputStream(bytesForPayload(payload)) }
 
         source.emitAll { emission ->
-            segmenter.feed(emission).forEach { writer.seal(it, provider) }
+            segmenter.feed(emission).sealed.forEach { writer.seal(it, provider) }
         }
 
         assertEquals(288, writer.sealedCount)
@@ -75,7 +73,7 @@ class ObserverPipelineTest {
         val segmenter = Segmenter(ZoneId.of("UTC"))
 
         segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 300_000))
-        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
+        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 305_000, BASE_CAPTURE_EPOCH_MS + 600_000)).sealed.single()
 
         assertEquals("000000_300", sealed.key.segment)
         assertEquals(1, sealed.payloads.size)
@@ -90,7 +88,7 @@ class ObserverPipelineTest {
         val gap = GapEvent("capture_gap", BASE_CAPTURE_EPOCH_MS + 1_000, "storage")
 
         segmenter.feed(audioGapEmission(BASE_CAPTURE_EPOCH_MS, BASE_CAPTURE_EPOCH_MS + 1_000, gap))
-        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 300_000, BASE_CAPTURE_EPOCH_MS + 600_000)).single()
+        val sealed = segmenter.feed(audioEmission(BASE_CAPTURE_EPOCH_MS + 305_000, BASE_CAPTURE_EPOCH_MS + 600_000)).sealed.single()
 
         assertEquals("000000_1", sealed.key.segment)
         assertTrue(sealed.payloads.isEmpty())
@@ -105,9 +103,9 @@ class ObserverPipelineTest {
         val import = FakeImportSource(listOf(fakeImportEmission("import-a", "calendar-item.bin", captureStart, captureEnd)))
         val segmenter = Segmenter(ZoneId.of("UTC"))
         val writer = CountingSpoolWriter()
-        val provider = PayloadBytesProvider { payload -> ByteArrayInputStream(bytesForPayload(payload)) }
+        val provider = payloadProvider { payload -> ByteArrayInputStream(bytesForPayload(payload)) }
 
-        val segment = import.importNow().flatMap { segmenter.feed(it) } + segmenter.flush()
+        val segment = import.importNow().flatMap { segmenter.feed(it).sealed } + segmenter.flush().sealed
         assertEquals(1, segment.size)
         writer.seal(segment.single(), provider)
 
@@ -128,7 +126,7 @@ class ObserverPipelineTest {
         )
         val writer = FileSpoolWriter(base)
         val sealedDirs = mutableListOf<SealedDir>()
-        val provider = PayloadBytesProvider { payload ->
+        val provider = payloadProvider { payload ->
             assertFalse(Files.exists(base.resolve(".draft").resolve(payload.sourceId).resolve("manifest")))
             if (Files.exists(base.resolve(".draft"))) {
                 val manifests = Files.walk(base.resolve(".draft")).use { paths ->
@@ -140,11 +138,11 @@ class ObserverPipelineTest {
         }
 
         source.emitAll(EmissionSink { emission ->
-            segmenter.feed(emission).forEach { segment ->
+            segmenter.feed(emission).sealed.forEach { segment ->
                 sealedDirs.add(segment.toSealedDir(writer.seal(segment, provider).directory ?: error("missing final dir")))
             }
         })
-        segmenter.flush().forEach { segment ->
+        segmenter.flush().sealed.forEach { segment ->
             sealedDirs.add(segment.toSealedDir(writer.seal(segment, provider).directory ?: error("missing final dir")))
         }
 
@@ -223,6 +221,11 @@ class ObserverPipelineTest {
             segment = key.segment,
             payloadNames = payloads.map { it.ref.name },
         )
+
+    private fun payloadProvider(open: (SegmentPayload) -> ByteArrayInputStream): PayloadBytesProvider =
+        object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) = open(payload)
+        }
 }
 
 private fun Path.deleteRecursively() {

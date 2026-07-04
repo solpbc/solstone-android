@@ -14,6 +14,7 @@ data class SegmentRow(
     val day: String,
     val stream: String,
     val segment: String,
+    @ColumnInfo(name = "dir_segment", defaultValue = "''") val dirSegment: String,
     val state: QueueState,
     @ColumnInfo(name = "byte_size") val byteSize: Long,
     @ColumnInfo(name = "sealed_at") val sealedAt: Long,

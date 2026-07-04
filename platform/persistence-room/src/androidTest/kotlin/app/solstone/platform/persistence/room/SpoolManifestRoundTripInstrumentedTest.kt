@@ -94,8 +94,9 @@ class SpoolManifestRoundTripInstrumentedTest {
 
         val result = FileSpoolWriter(baseDir).seal(
             sealed,
-            PayloadBytesProvider { payload: SegmentPayload ->
-                ByteArrayInputStream(bytesFor(payload))
+            object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) =
+                    ByteArrayInputStream(bytesFor(payload))
             },
         )
 

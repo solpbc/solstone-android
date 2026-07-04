@@ -53,7 +53,7 @@ class CameraStillPipelineTest {
             val audio = FakeContinuousSource(
                 sourceId = "audio",
                 stream = MAIN_STREAM,
-                frameEveryMillis = 300_000L,
+                frameEveryMillis = 305_000L,
                 frameSizeBytes = audioBytes.size,
                 frameCount = 2,
                 fixedPayloadName = "audio.m4a",
@@ -61,18 +61,12 @@ class CameraStillPipelineTest {
             )
             val audioEmissions = CapturingSink().also { audio.emitAll(it) }.emissions
             val sealed = mutableListOf<app.solstone.core.segment.SealedSegment>()
-            sealed += segmenter.feed(audioEmissions[0])
-            sink.emissions.forEach { emission -> sealed += segmenter.feed(emission) }
-            sealed += segmenter.feed(audioEmissions[1])
+            sealed += segmenter.feed(audioEmissions[0]).sealed
+            sink.emissions.forEach { emission -> sealed += segmenter.feed(emission).sealed }
+            sealed += segmenter.feed(audioEmissions[1]).sealed
 
             assertEquals(1, sealed.size)
-            val provider = PayloadBytesProvider { payload: SegmentPayload ->
-                when (payload.sourceId) {
-                    "audio" -> ByteArrayInputStream(audioBytes)
-                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
-                    else -> error("unknown payload source: ${payload.sourceId}")
-                }
-            }
+            val provider = cameraPayloadProvider(camera, audioBytes)
             val result = FileSpoolWriter(base).seal(sealed.single(), provider)
             val manifest = result.manifest
             val finalDir = result.directory ?: error("missing final directory")
@@ -140,18 +134,12 @@ class CameraStillPipelineTest {
             val segmenter = Segmenter(ZoneId.of("UTC"))
             segmenter.feed(audioEmissions.single())
             sink.emissions.forEach { emission -> segmenter.feed(emission) }
-            val sealed = segmenter.flush().single()
+            val sealed = segmenter.flush().sealed.single()
 
             assertEquals(listOf(gap), sealed.gaps)
             assertTrue(sealed.payloads.any { it.sourceId == StillCaptureEngine.SOURCE_ID })
 
-            val provider = PayloadBytesProvider { payload: SegmentPayload ->
-                when (payload.sourceId) {
-                    "audio" -> ByteArrayInputStream(audioBytes)
-                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
-                    else -> error("unknown payload source: ${payload.sourceId}")
-                }
-            }
+            val provider = cameraPayloadProvider(camera, audioBytes)
             val result = FileSpoolWriter(base).seal(sealed, provider)
             val files = result.manifest.files
 
@@ -192,7 +180,7 @@ class CameraStillPipelineTest {
             val segmenter = Segmenter(ZoneId.of("UTC"))
             segmenter.feed(audioEmissions.single())
             sink.emissions.forEach { emission -> segmenter.feed(emission) }
-            val sealed = segmenter.flush().single()
+            val sealed = segmenter.flush().sealed.single()
 
             assertTrue(sealed.payloads.any { it.sourceId == "audio" && it.ref.name == "audio.m4a" })
             assertTrue(sealed.payloads.none { it.sourceId == StillCaptureEngine.SOURCE_ID })
@@ -202,11 +190,12 @@ class CameraStillPipelineTest {
 
             val result = FileSpoolWriter(base).seal(
                 sealed,
-                PayloadBytesProvider { payload: SegmentPayload ->
-                    when (payload.sourceId) {
-                        "audio" -> ByteArrayInputStream(audioBytes)
-                        else -> error("unexpected payload source: ${payload.sourceId}")
-                    }
+                object : PayloadBytesProvider {
+                    override fun open(payload: SegmentPayload) =
+                        when (payload.sourceId) {
+                            "audio" -> ByteArrayInputStream(audioBytes)
+                            else -> error("unexpected payload source: ${payload.sourceId}")
+                        }
                 },
             )
             val files = result.manifest.files
@@ -245,6 +234,16 @@ class CameraStillPipelineTest {
         }
         throw AssertionError("expected $count emissions, got ${sink.emissions.size}")
     }
+
+    private fun cameraPayloadProvider(camera: StillCaptureEngine, audioBytes: ByteArray): PayloadBytesProvider =
+        object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload) =
+                when (payload.sourceId) {
+                    "audio" -> ByteArrayInputStream(audioBytes)
+                    StillCaptureEngine.SOURCE_ID -> camera.open(payload)
+                    else -> error("unknown payload source: ${payload.sourceId}")
+                }
+        }
 
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")

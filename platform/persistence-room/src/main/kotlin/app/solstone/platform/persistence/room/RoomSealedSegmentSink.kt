@@ -8,16 +8,19 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.spool.SealResult
 import app.solstone.core.spool.SealedSegmentSink
+import java.io.File
 
 class RoomSealedSegmentSink(private val dao: SegmentDao) : SealedSegmentSink {
     override fun persistSealed(segment: SealedSegment, result: SealResult, sealedAtEpochMs: Long) {
-        val segmentId = segment.id()
+        val dirSegment = result.directory?.let { File(it.toString()).name } ?: segment.key.segment
+        val segmentId = segment.id(dirSegment)
         dao.insertSegmentWithFiles(
             segment = SegmentRow(
                 id = segmentId,
                 day = segment.key.day,
                 stream = segment.stream,
                 segment = segment.key.segment,
+                dirSegment = dirSegment,
                 state = QueueState.SEALED,
                 byteSize = result.manifest.files.sumOf { it.byteSize },
                 sealedAt = sealedAtEpochMs,
@@ -41,4 +44,4 @@ class RoomSealedSegmentSink(private val dao: SegmentDao) : SealedSegmentSink {
         )
 }
 
-fun SealedSegment.id(): String = "${key.day}/$stream/${key.segment}"
+fun SealedSegment.id(dirSegment: String): String = "${key.day}/$stream/$dirSegment"

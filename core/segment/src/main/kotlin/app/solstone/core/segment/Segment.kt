@@ -61,6 +61,11 @@ data class SealedSegment(
     val gaps: List<GapEvent>,
 )
 
+data class SegmenterResult(
+    val sealed: List<SealedSegment>,
+    val droppedPayloads: List<SegmentPayload>,
+)
+
 class Segmenter(
     private val zoneId: ZoneId,
     private val windowMs: Long = 300_000L,
@@ -74,11 +79,19 @@ class Segmenter(
         require(graceMs >= 0) { "graceMs must not be negative" }
     }
 
-    fun feed(emission: SourceEmission): List<SealedSegment> {
+    fun feed(emission: SourceEmission): SegmenterResult {
         val stream = emission.stream
         val windowStartEpochMs = windowStart(emission.captureStartEpochMs)
         val watermark = sealedWatermark[stream]
         if (watermark != null && windowStartEpochMs <= watermark) {
+            val droppedPayloads = emission.payloadRefs.map { ref ->
+                SegmentPayload(
+                    sourceId = emission.sourceId,
+                    ref = ref,
+                    captureStartEpochMs = emission.captureStartEpochMs,
+                    captureEndEpochMs = emission.captureEndEpochMs,
+                )
+            }
             val lateGap = GapEvent(
                 kind = "late_emission",
                 atEpochMs = emission.captureStartEpochMs,
@@ -89,8 +102,12 @@ class Segmenter(
                 WindowBucket(stream = stream, windowStartEpochMs = lateWindowStart)
             }
             bucket.gaps += lateGap
+            bucket.gaps += emission.gaps
             bucket.maxCaptureEndEpochMs = maxOf(bucket.maxCaptureEndEpochMs, lateWindowStart)
-            return sealWindowsBefore(stream, windowStartEpochMs)
+            return SegmenterResult(
+                sealed = sealWindowsBefore(stream, emission.captureStartEpochMs),
+                droppedPayloads = droppedPayloads,
+            )
         }
 
         val key = WindowKey(stream, windowStartEpochMs)
@@ -105,27 +122,36 @@ class Segmenter(
             )
         }
         bucket.gaps += emission.gaps
-        return sealWindowsBefore(stream, windowStartEpochMs)
+        return SegmenterResult(
+            sealed = sealWindowsBefore(stream, emission.captureStartEpochMs),
+            droppedPayloads = emptyList(),
+        )
     }
 
-    fun sealDue(nowEpochMs: Long): List<SealedSegment> {
+    fun sealDue(nowEpochMs: Long): SegmenterResult {
         val toSeal = open.keys
             .filter { key -> key.windowStartEpochMs + windowMs + graceMs <= nowEpochMs }
             .sortedWith(windowKeyComparator)
-        return toSeal.mapNotNull { key -> seal(key) }
+        return SegmenterResult(
+            sealed = toSeal.mapNotNull { key -> seal(key) },
+            droppedPayloads = emptyList(),
+        )
     }
 
-    fun flush(): List<SealedSegment> =
-        open.keys.sortedWith(windowKeyComparator)
-            .mapNotNull { key -> seal(key) }
-            .also { open.clear() }
+    fun flush(): SegmenterResult =
+        SegmenterResult(
+            sealed = open.keys.sortedWith(windowKeyComparator)
+                .mapNotNull { key -> seal(key) }
+                .also { open.clear() },
+            droppedPayloads = emptyList(),
+        )
 
     private fun windowStart(epochMs: Long): Long =
         Math.floorDiv(epochMs, windowMs) * windowMs
 
-    private fun sealWindowsBefore(stream: String, windowStartEpochMs: Long): List<SealedSegment> {
+    private fun sealWindowsBefore(stream: String, incomingCaptureStartEpochMs: Long): List<SealedSegment> {
         val toSeal = open.keys
-            .filter { it.stream == stream && it.windowStartEpochMs < windowStartEpochMs }
+            .filter { it.stream == stream && it.windowStartEpochMs + windowMs + graceMs <= incomingCaptureStartEpochMs }
             .sortedWith(windowKeyComparator)
         return toSeal.mapNotNull { key -> seal(key) }
     }
