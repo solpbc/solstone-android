@@ -14,83 +14,115 @@ import java.util.concurrent.TimeUnit
 
 class AndroidRokidTtsSpeaker(context: Context) : RokidTtsSpeaker {
     private val appContext = context.applicationContext
-    private val lock = Any()
-    private var binder: IBinder? = null
-    private var connection: ServiceConnection? = null
-    private var disconnected: Boolean = false
 
-    override fun speak(phrase: String): TtsAttempt =
-        runCatching {
-            val service = boundService() ?: return TtsAttempt.UNAVAILABLE
-            val data = Parcel.obtain()
-            val reply = Parcel.obtain()
-            try {
-                data.writeInterfaceToken(ASSUMED_TTS_DESCRIPTOR)
-                data.writeString(phrase)
-                if (!service.transact(ASSUMED_TRANSACTION_SPEAK, data, reply, 0)) {
-                    return TtsAttempt.UNAVAILABLE
-                }
-                reply.readException()
-                TtsAttempt.SPOKEN
-            } finally {
-                reply.recycle()
-                data.recycle()
-            }
-        }.getOrDefault(TtsAttempt.UNAVAILABLE)
-
-    private fun boundService(): IBinder? {
-        synchronized(lock) {
-            if (disconnected) return null
-            binder?.takeIf { it.isBinderAlive }?.let { return it }
-        }
-
-        val connected = CountDownLatch(1)
-        val nextConnection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                synchronized(lock) {
-                    if (connection !== this) {
-                        connected.countDown()
-                        return
-                    }
-                    binder = service
-                    disconnected = false
-                }
-                connected.countDown()
-            }
-
-            override fun onServiceDisconnected(name: ComponentName?) {
-                synchronized(lock) {
-                    binder = null
-                    connection = null
-                    disconnected = true
-                }
-            }
-        }
-
-        val intent = Intent(ASSUMED_TTS_ACTION).setPackage(ASSUMED_TTS_PACKAGE)
-        synchronized(lock) {
-            connection = nextConnection
-        }
-        val bound = runCatching { appContext.bindService(intent, nextConnection, Context.BIND_AUTO_CREATE) }
-            .getOrDefault(false)
-        if (!bound) {
-            unbind(nextConnection)
-            return null
-        }
-        if (!connected.await(TTS_BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            unbind(nextConnection)
-            return null
-        }
-        return synchronized(lock) { binder?.takeIf { it.isBinderAlive } }
+    override fun bind(callback: RokidTtsConnectionCallback): RokidTtsBinding? {
+        val binding = AndroidRokidTtsBinding(appContext, callback)
+        return if (binding.bind()) binding else null
     }
 
-    private fun unbind(staleConnection: ServiceConnection) {
-        synchronized(lock) {
-            if (connection !== staleConnection) return
-            binder = null
-            connection = null
+    private class AndroidRokidTtsBinding(
+        private val appContext: Context,
+        private val callback: RokidTtsConnectionCallback,
+    ) : RokidTtsBinding {
+        private val lock = Any()
+        private val connected = CountDownLatch(1)
+        private var serviceConnection: ServiceConnection? = null
+        private var connection: RokidTtsConnection? = null
+        private var unbound: Boolean = false
+
+        fun bind(): Boolean {
+            val nextConnection = object : ServiceConnection {
+                override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                    val next = service
+                        ?.takeIf { it.isBinderAlive }
+                        ?.let { AndroidRokidTtsConnection(it) }
+                    val shouldNotify = synchronized(lock) {
+                        if (serviceConnection !== this || unbound) {
+                            false
+                        } else {
+                            connection = next
+                            next != null
+                        }
+                    }
+                    if (shouldNotify && next != null) {
+                        callback.onConnected(next)
+                    }
+                    connected.countDown()
+                }
+
+                override fun onServiceDisconnected(name: ComponentName?) {
+                    val shouldNotify = synchronized(lock) {
+                        if (serviceConnection !== this) {
+                            false
+                        } else {
+                            connection = null
+                            true
+                        }
+                    }
+                    if (shouldNotify) {
+                        callback.onDisconnected()
+                    }
+                    connected.countDown()
+                }
+            }
+
+            synchronized(lock) {
+                serviceConnection = nextConnection
+            }
+            val intent = Intent(ASSUMED_TTS_ACTION).setPackage(ASSUMED_TTS_PACKAGE)
+            val bound = runCatching {
+                appContext.bindService(intent, nextConnection, Context.BIND_AUTO_CREATE)
+            }.getOrDefault(false)
+            if (!bound) {
+                unbind()
+            }
+            return bound
         }
-        runCatching { appContext.unbindService(staleConnection) }
+
+        override fun awaitConnected(timeoutMs: Long): RokidTtsConnection? {
+            if (!connected.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                return null
+            }
+            return synchronized(lock) { connection }
+        }
+
+        override fun unbind() {
+            val staleConnection = synchronized(lock) {
+                if (unbound) {
+                    null
+                } else {
+                    unbound = true
+                    connection = null
+                    serviceConnection.also { serviceConnection = null }
+                }
+            }
+            if (staleConnection != null) {
+                runCatching { appContext.unbindService(staleConnection) }
+            }
+        }
+    }
+
+    private class AndroidRokidTtsConnection(
+        private val service: IBinder,
+    ) : RokidTtsConnection {
+        override fun speak(phrase: String): TtsAttempt =
+            runCatching {
+                if (!service.isBinderAlive) return TtsAttempt.UNAVAILABLE
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(ASSUMED_TTS_DESCRIPTOR)
+                    data.writeString(phrase)
+                    if (!service.transact(ASSUMED_TRANSACTION_SPEAK, data, reply, 0)) {
+                        return TtsAttempt.UNAVAILABLE
+                    }
+                    reply.readException()
+                    TtsAttempt.SPOKEN
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }.getOrDefault(TtsAttempt.UNAVAILABLE)
     }
 
     private companion object {
@@ -104,6 +136,5 @@ class AndroidRokidTtsSpeaker(context: Context) : RokidTtsSpeaker {
         const val ASSUMED_TTS_ACTION = "com.rokid.tts.intent.action.BIND_TTS_SERVICE"
         const val ASSUMED_TTS_DESCRIPTOR = "com.rokid.tts.IRokidTtsService"
         const val ASSUMED_TRANSACTION_SPEAK = IBinder.FIRST_CALL_TRANSACTION
-        const val TTS_BIND_TIMEOUT_MS = 750L
     }
 }

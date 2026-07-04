@@ -35,10 +35,15 @@ import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -186,7 +191,69 @@ class GlassesObserverRuntimeCommandTest {
         assertSame(container, runtime.containerIfInitialized)
     }
 
-    private class FakeRuntimeContainer(
+    @Test
+    fun fgsFirstStartBuildsContainerAndRehydratesOffCallerThread() {
+        val callerThread = Thread.currentThread().name
+        val factoryThread = AtomicReference<String>()
+        val rehydrateThread = AtomicReference<String>()
+        val rehydrated = CountDownLatch(1)
+        val runtime = GlassesObserverRuntime(
+            containerFactory = {
+                factoryThread.set(Thread.currentThread().name)
+                object : FakeRuntimeContainer(controller = controller()) {
+                    override fun rehydrateInBackground() {
+                        rehydrateThread.set(Thread.currentThread().name)
+                        rehydrated.countDown()
+                    }
+                }
+            },
+            bootstrapExecutorFactory = {
+                Executors.newSingleThreadExecutor { runnable ->
+                    Thread(runnable, "test-bootstrap").also { it.isDaemon = true }
+                }
+            },
+        )
+
+        runtime.rehydrateFromForegroundServiceStart()
+
+        assertTrue(rehydrated.await(1, TimeUnit.SECONDS))
+        assertNotEquals(callerThread, factoryThread.get())
+        assertNotEquals(callerThread, rehydrateThread.get())
+        assertEquals(factoryThread.get(), rehydrateThread.get())
+    }
+
+    @Test
+    fun fgsFirstStartFactoryFailureEmitsDiagAndDoesNotThrowCaller() {
+        val events = mutableListOf<app.solstone.core.diagnostics.DiagEvent>()
+        val observed = CountDownLatch(1)
+        val runtime = GlassesObserverRuntime(
+            containerFactory = {
+                throw IllegalStateException("boom")
+            },
+            bootstrapExecutorFactory = {
+                Executors.newSingleThreadExecutor { runnable ->
+                    Thread(runnable, "test-bootstrap").also { it.isDaemon = true }
+                }
+            },
+            diag = {
+                events += it
+                observed.countDown()
+            },
+        )
+
+        runtime.rehydrateFromForegroundServiceStart()
+
+        assertTrue(observed.await(1, TimeUnit.SECONDS))
+        assertEquals(
+            app.solstone.core.diagnostics.DiagEvent.CaughtException(
+                site = "fgs-rehydrate",
+                type = "IllegalStateException",
+            ),
+            events.single(),
+        )
+    }
+
+    private open class FakeRuntimeContainer(
         override val controller: HarnessController,
     ) : GlassesRuntimeContainer {
         val sync = controllerSync(controller)
@@ -207,6 +274,12 @@ class GlassesObserverRuntimeCommandTest {
 
         override fun speakNeedsAttention() {
             speakAttentionCalls += 1
+        }
+
+        override fun speakCue(cue: app.solstone.core.diagnostics.StatusCue) {
+            if (cue == app.solstone.core.diagnostics.StatusCue.NEEDS_ATTENTION) {
+                speakAttentionCalls += 1
+            }
         }
 
         override fun close() {

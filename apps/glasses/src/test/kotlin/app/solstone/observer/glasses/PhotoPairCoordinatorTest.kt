@@ -4,6 +4,7 @@
 package app.solstone.observer.glasses
 
 import app.solstone.core.diagnostics.PairingFact
+import app.solstone.core.diagnostics.StatusCue
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
@@ -143,6 +144,7 @@ class PhotoPairCoordinatorTest {
         assertEquals(listOf(PAIR_A, PAIR_A), f.pairCalls)
         assertEquals(listOf(1L, 1L), f.decodedIds)
         assertEquals(0, f.unregisterCalls)
+        assertEquals(listOf(StatusCue.NEEDS_ATTENTION), f.terminalCues)
     }
 
     @Test
@@ -162,7 +164,7 @@ class PhotoPairCoordinatorTest {
     }
 
     @Test
-    fun reconnectingOutcomeDedupsAndContinues() {
+    fun reconnectingOutcomeDoesNotBurnEmitsTerminalCueAndContinues() {
         val f = fixture(
             candidates = listOf(ImageRef(1, NOW), ImageRef(2, NOW)),
             decodedById = mutableMapOf(1L to PAIR_A, 2L to null),
@@ -172,9 +174,10 @@ class PhotoPairCoordinatorTest {
         f.coordinator.onChange()
         f.coordinator.onChange()
 
-        assertEquals(listOf(PAIR_A), f.pairCalls)
+        assertEquals(listOf(PAIR_A, PAIR_A), f.pairCalls)
         assertEquals(listOf(1L, 2L, 1L, 2L), f.decodedIds)
         assertEquals(0, f.unregisterCalls)
+        assertEquals(listOf(StatusCue.HANDSHAKE_VALID), f.terminalCues)
     }
 
     @Test
@@ -351,6 +354,7 @@ class PhotoPairCoordinatorTest {
         var refreshCueCalls = 0
         var failedCueCalls = 0
         var looksLikeCalls = 0
+        val terminalCues = mutableListOf<StatusCue>()
         val decodedIds = mutableListOf<Long>()
         val pairCalls = mutableListOf<String>()
         val events = mutableListOf<String>()
@@ -386,6 +390,8 @@ class PhotoPairCoordinatorTest {
                 },
                 onNetworkUnavailableCue = { networkCueCalls += 1 },
                 onRefreshCodeCue = { refreshCueCalls += 1 },
+                onReconnectingCue = { terminalCues += StatusCue.HANDSHAKE_VALID },
+                onRetryCue = { terminalCues += StatusCue.NEEDS_ATTENTION },
                 onPairingFailedCue = { failedCueCalls += 1 },
                 log = { logs += it },
                 isUsableNetworkPresent = { networkUsable },

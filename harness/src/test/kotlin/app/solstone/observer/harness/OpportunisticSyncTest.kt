@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class OpportunisticSyncTest {
     @Test
@@ -106,6 +107,34 @@ class OpportunisticSyncTest {
         assertEquals(0, sync.calls)
         assertTrue(opportunistic.isDegraded())
         assertEquals("pending inspection failed: IllegalStateException", opportunistic.lastError)
+    }
+
+    @Test
+    fun pendingInspectionFailureReportsThroughInjectedReporterAndDoesNotThrow() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(1, null, null))
+        evidence.failPendingCount = true
+        val reports = mutableListOf<Pair<String, String>>()
+        val opportunistic = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = RecordingSyncEnqueue(),
+            networkAvailability = FakeNetworkAvailability(),
+            failureReporter = { message, throwable -> reports += message to throwable.javaClass.simpleName },
+        )
+
+        try {
+            opportunistic.enqueueIfPending()
+            opportunistic.stop()
+        } catch (t: Throwable) {
+            fail("failure should not escape caller: ${t.javaClass.simpleName}")
+        }
+
+        assertEquals(
+            listOf(
+                "pending inspection failed" to "IllegalStateException",
+                "pending inspection failed" to "IllegalStateException",
+            ),
+            reports,
+        )
     }
 
     @Test

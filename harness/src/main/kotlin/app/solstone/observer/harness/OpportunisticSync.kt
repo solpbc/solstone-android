@@ -11,6 +11,9 @@ class OpportunisticSync(
     private val evidenceReader: EvidenceReader,
     private val syncEnqueue: SyncEnqueue,
     private val networkAvailability: NetworkAvailability,
+    private val failureReporter: (String, Throwable) -> Unit = { message, throwable ->
+        runCatching { Log.w(TAG, message, throwable) }
+    },
 ) {
     private val lock = Any()
     private var started = false
@@ -85,6 +88,6 @@ class OpportunisticSync(
 
     private fun recordErrorLocked(message: String, throwable: Throwable) {
         _lastError = "$message: ${throwable.javaClass.simpleName}"
-        runCatching { Log.w(TAG, message, throwable) }
+        failureReporter(message, throwable)
     }
 }

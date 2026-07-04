@@ -12,6 +12,22 @@ import kotlin.test.assertTrue
 
 class RokidButtonBroadcastsTest {
     @Test
+    fun commandTokenForButtonBroadcastIgnoresSpoofedExtra() {
+        assertEquals(
+            GlassesNotificationCommand.Status.actionToken,
+            commandTokenFor(RokidButtonActions.CLICK, "observe_stop"),
+        )
+        assertEquals("observe_start", commandTokenFor(RokidButtonActions.DOUBLE_CLICK, "sync_now"))
+    }
+
+    @Test
+    fun commandTokenForNotificationPathUsesExtraWhenActionAbsent() {
+        assertEquals("sync_now", commandTokenFor(null, "sync_now"))
+        assertEquals("status", commandTokenFor("", "status"))
+        assertEquals("observe_stop", commandTokenFor("   ", "observe_stop"))
+    }
+
+    @Test
     fun rokidButtonActionsMapConservatively() {
         assertEquals(GlassesNotificationCommand.Status.actionToken, rokidButtonActionToken(RokidButtonActions.CLICK))
         assertEquals("observe_start", rokidButtonActionToken(RokidButtonActions.DOUBLE_CLICK))

@@ -81,11 +81,14 @@ class GlassesApplication : Application() {
         val filter = IntentFilter().also { intentFilter ->
             RokidButtonActions.all.forEach(intentFilter::addAction)
         }
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(receiver, filter)
+        when (rokidReceiverRegistrationMode(Build.VERSION.SDK_INT)) {
+            RokidReceiverRegistrationMode.NotExportedFlag -> {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            }
+            RokidReceiverRegistrationMode.LegacyExportedTwoArg -> {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, filter)
+            }
         }
         rokidReceiver = receiver
     }

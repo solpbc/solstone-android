@@ -7,25 +7,34 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import java.util.concurrent.Executors
 
 class GlassesCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
-        val token = intent.getStringExtra(EXTRA_COMMAND_ACTION) ?: rokidButtonActionToken(intent.action)
-        executor.execute {
+        val action = intent.action
+        val token = commandTokenFor(action, intent.getStringExtra(EXTRA_COMMAND_ACTION))
+        val runtime = GlassesHarnessRuntime.runtime
+            ?: (context.applicationContext as? GlassesApplication)?.runtime
+        if (decideNotificationSpeak(runtime != null) == NotificationSpeakDecision.NoOp) {
+            Log.w(TAG, "command ignored: ${CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)}")
+            pending.finish()
+            return
+        }
+        if (token == null) {
+            Log.w(TAG, "command ignored: no recognized action")
+            pending.finish()
+            return
+        }
+        val commandRuntime = requireNotNull(runtime)
+        val enqueued = commandRuntime.enqueueCommand {
             try {
-                val runtime = GlassesHarnessRuntime.runtime
-                    ?: (context.applicationContext as? GlassesApplication)?.runtime
-                if (decideNotificationSpeak(runtime != null) == NotificationSpeakDecision.NoOp) {
-                    Log.w(TAG, "command ignored: ${CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)}")
-                    return@execute
-                }
-                if (token == null) {
-                    Log.w(TAG, "command ignored: no recognized action")
-                    return@execute
-                }
-                val result = routeDebugRuntimeCommand(requireNotNull(runtime), null, token)
+                val result = routeCommandSurfaceCommand(
+                    runtime = commandRuntime,
+                    rawAction = action,
+                    token = token,
+                    appendDiag = GlassesDiagLog::appendRaw,
+                    playCue = commandRuntime::speakCue,
+                )
                 if (result == null) {
                     Log.w(TAG, "command ignored: unrecognized token=$token")
                 } else {
@@ -35,10 +44,12 @@ class GlassesCommandReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }
+        if (!enqueued) {
+            pending.finish()
+        }
     }
 
     private companion object {
         const val TAG = "GlassesCommand"
-        val executor = Executors.newSingleThreadExecutor()
     }
 }

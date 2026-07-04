@@ -5,22 +5,48 @@ package app.solstone.observer.glasses
 
 import android.content.Context
 import app.solstone.core.diagnostics.DiagEvent
+import app.solstone.core.diagnostics.StatusCue
 import app.solstone.core.model.SourceState
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class GlassesObserverRuntime(
     private val appContext: Context?,
     private val containerFactory: (Context) -> GlassesAppContainer = ::GlassesAppContainer,
+    private val bootstrapExecutorFactory: () -> ExecutorService = {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "glasses-bootstrap").also { it.isDaemon = true }
+        }
+    },
+    private val diag: (DiagEvent) -> Unit = GlassesDiagLog::emit,
+    private val testContainerFactory: (() -> GlassesRuntimeContainer)? = null,
 ) : GlassesRuntimeCommands {
     private val lock = Any()
     private var container: GlassesAppContainer? = null
     private var testContainer: GlassesRuntimeContainer? = null
+    private var factoryContainer: GlassesRuntimeContainer? = null
 
     internal constructor(container: GlassesRuntimeContainer) : this(appContext = null) {
         testContainer = container
     }
 
+    internal constructor(
+        containerFactory: () -> GlassesRuntimeContainer,
+        bootstrapExecutorFactory: () -> ExecutorService = {
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "glasses-bootstrap").also { it.isDaemon = true }
+            }
+        },
+        diag: (DiagEvent) -> Unit = GlassesDiagLog::emit,
+    ) : this(
+        appContext = null,
+        bootstrapExecutorFactory = bootstrapExecutorFactory,
+        diag = diag,
+        testContainerFactory = containerFactory,
+    )
+
     val containerIfInitialized: GlassesRuntimeContainer?
-        get() = synchronized(lock) { container ?: testContainer }
+        get() = synchronized(lock) { container ?: testContainer ?: factoryContainer }
 
     fun container(): GlassesAppContainer =
         synchronized(lock) {
@@ -32,21 +58,35 @@ class GlassesObserverRuntime(
         val containers = synchronized(lock) {
             val current = container
             val test = testContainer
+            val factory = factoryContainer
             container = null
             testContainer = null
-            current to test
+            factoryContainer = null
+            listOfNotNull(current, test, factory)
         }
-        containers.first?.close()
-        containers.second?.close()
+        containers.forEach { it.close() }
     }
 
     fun rehydrateFromForegroundServiceStart() {
-        runCatching {
-            runtimeContainer().rehydrateInBackground()
-        }.onFailure {
-            GlassesDiagLog.emit(DiagEvent.CaughtException(site = "fgs-rehydrate", type = it.javaClass.simpleName))
+        val bootstrap = bootstrapExecutorFactory()
+        try {
+            bootstrap.execute {
+                try {
+                    runtimeContainer().rehydrateInBackground()
+                } catch (t: Throwable) {
+                    diag(DiagEvent.CaughtException(site = "fgs-rehydrate", type = t.javaClass.simpleName))
+                } finally {
+                    bootstrap.shutdown()
+                }
+            }
+        } catch (t: Throwable) {
+            diag(DiagEvent.CaughtException(site = "fgs-rehydrate", type = t.javaClass.simpleName))
+            bootstrap.shutdown()
         }
     }
+
+    fun enqueueCommand(task: () -> Unit): Boolean =
+        runtimeContainer().enqueueCommand(task)
 
     override fun observeStart(): RuntimeCommandResult {
         val controller = runtimeContainer().controller
@@ -113,8 +153,18 @@ class GlassesObserverRuntime(
         return CommandSucceeded
     }
 
+    fun speakCue(cue: StatusCue) {
+        runtimeContainer().speakCue(cue)
+    }
+
     private fun runtimeContainer(): GlassesRuntimeContainer =
-        synchronized(lock) { testContainer } ?: container()
+        synchronized(lock) { testContainer ?: factoryContainer }
+            ?: testContainerFactory?.let { factory ->
+                synchronized(lock) {
+                    testContainer ?: factoryContainer ?: factory().also { factoryContainer = it }
+                }
+            }
+            ?: container()
 
     private fun verdictFromDiagnostics(): RuntimeCommandResult {
         val diagnostics = runtimeContainer().controller.diagnostics()

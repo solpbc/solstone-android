@@ -4,6 +4,7 @@
 package app.solstone.observer.glasses
 
 import android.content.Context
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.sources.GLASSES_STREAM
 import app.solstone.observer.harness.AndroidNetworkAvailability
 import app.solstone.observer.harness.HarnessController
@@ -54,6 +55,9 @@ fun createGlassesHarnessFlavor(
         evidenceReader = evidenceReader,
         syncEnqueue = syncEnqueue,
         networkAvailability = networkAvailability,
+        failureReporter = { message, throwable ->
+            GlassesDiagLog.emit(DiagEvent.CaughtException(site = "opportunistic-sync:$message", type = throwable.javaClass.simpleName))
+        },
     )
     return GlassesHarnessFlavor(
         controller = HarnessController(
@@ -78,7 +82,11 @@ fun createGlassesHarnessFlavor(
             diag = { GlassesDiagLog.appendRaw(it) },
         ),
         audioFeedback = if (guidance.id == "rokid") {
-            RokidTtsAudioFeedback(AndroidRokidTtsSpeaker(context), packaged)
+            RokidTtsAudioFeedback(
+                speaker = AndroidRokidTtsSpeaker(context),
+                fallback = packaged,
+                diag = GlassesDiagLog::appendRaw,
+            )
         } else {
             packaged
         },

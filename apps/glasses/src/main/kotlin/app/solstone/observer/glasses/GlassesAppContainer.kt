@@ -42,14 +42,29 @@ import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.power.OemGuidance
 import app.solstone.platform.power.OemGuidanceCatalog
 import java.time.ZoneId
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 interface GlassesRuntimeContainer {
     val controller: HarnessController
     fun rehydrateInBackground()
+    fun enqueueCommand(task: () -> Unit): Boolean {
+        task()
+        return true
+    }
+    fun startVisibleAsync(onResult: (Boolean) -> Unit) {
+        onResult(controller.start())
+    }
+    fun teardownVisibleOwner(ownerToken: Long, onComplete: () -> Unit = {}) {
+        controller.stop()
+        onComplete()
+    }
     fun speakCurrentStatus()
     fun speakNeedsAttention()
+    fun speakCue(cue: StatusCue)
     fun close()
 }
 
@@ -59,10 +74,18 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
-    private val background = Executors.newSingleThreadExecutor()
+    private val funnel = GlassesMutationFunnel(
+        executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "glasses-funnel").also { it.isDaemon = true }
+        },
+        diag = GlassesDiagLog::appendRaw,
+    )
+    private val reads = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "glasses-reads").also { it.isDaemon = true }
+    }
     private val mainHandler = Handler(Looper.getMainLooper())
     val asyncLoad = AsyncLoad(
-        background = { task -> background.execute { task() } },
+        background = { task -> reads.execute { task() } },
         main = { task -> mainHandler.post { task() } },
     )
     private var activePipeline: CapturePipeline? = null
@@ -79,6 +102,9 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         stopPipeline = { it.stop() },
         isRunning = { sourceSnapshot().engineRunning },
         onActiveChanged = { activePipeline = it },
+        canStart = { recoveryCompleted },
+        onStartDeferred = { GlassesDiagLog.appendRaw("start-deferred reason=recovery-pending") },
+        onStartCancelled = { GlassesDiagLog.appendRaw("start-deferred cancelled") },
     )
 
     val flavor: GlassesHarnessFlavor = createGlassesHarnessFlavor(
@@ -119,6 +145,18 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
                         .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
                 }
             },
+            onReconnectingCue = {
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.HANDSHAKE_VALID) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
+            },
+            onRetryCue = {
+                mainHandler.post {
+                    runCatching { flavor.audioFeedback.play(StatusCue.NEEDS_ATTENTION) }
+                        .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName)) }
+                }
+            },
             onPairingFailedCue = {
                 mainHandler.post {
                     runCatching { flavor.audioFeedback.play(StatusCue.PAIRING_FAILED) }
@@ -136,20 +174,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
     private var previousDiagnostics: HarnessDiagnostics? = null
     private var lastPostedNeedsAttention: Boolean = true
+    private val reconcileQueued = AtomicBoolean(false)
     private val pollRunnable = object : Runnable {
         override fun run() {
-            background.execute {
-                runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
-                    .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName)) }
-                runCatching {
-                    val current = controller.diagnostics()
-                    emitStateTransition(current)
-                    refreshServiceNotification(current)
-                    cuePoller.tick()
-                }.onFailure {
-                    GlassesDiagLog.emit(DiagEvent.CaughtException(site = "poll", type = it.javaClass.simpleName))
-                }
-            }
+            enqueueReconcile("poll", emitNoOwnerRefusal = false)
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
         }
     }
@@ -169,43 +197,60 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         )
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
-        background.execute {
+        funnel.execute("recovery") {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
             recoveryCompleted = true
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
+            lifecycle.replayDeferredStartIfPending()
         }
     }
 
     override fun close() {
         stopPhotoPairWatch()
         mainHandler.removeCallbacks(pollRunnable)
-        runCatching { controller.stop() }
-        background.shutdown()
-        runCatching { background.awaitTermination(2, TimeUnit.SECONDS) }
+        funnel.execute("close-stop") {
+            runCatching { controller.stop() }
+                .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "close-stop", type = it.javaClass.simpleName)) }
+        }
+        funnel.closeAndAwait(2, TimeUnit.SECONDS)
+        reads.shutdown()
+        runCatching { reads.awaitTermination(2, TimeUnit.SECONDS) }
         database.close()
     }
 
     override fun rehydrateInBackground() {
-        background.execute {
-            runCatching {
-                if (!controller.isVisibleCaptureOwnerPresent()) {
-                    GlassesDiagLog.emit(
-                        DiagEvent.CaptureRefused(
-                            source = DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
-                            reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
-                        ),
-                    )
-                }
-                controller.reconcile(ObserverStartMode.Rehydrate)
-            }.onFailure {
-                GlassesDiagLog.emit(DiagEvent.CaughtException(site = "fgs-rehydrate", type = it.javaClass.simpleName))
-            }
+        enqueueReconcile("fgs-rehydrate", emitNoOwnerRefusal = true)
+    }
+
+    override fun enqueueCommand(task: () -> Unit): Boolean =
+        funnel.execute("command", task)
+
+    override fun startVisibleAsync(onResult: (Boolean) -> Unit) {
+        funnel.execute("visible-start") {
+            val started = runCatching { controller.start() }
+                .onFailure { GlassesDiagLog.emit(DiagEvent.CaughtException(site = "visible-start", type = it.javaClass.simpleName)) }
+                .getOrDefault(false)
+            mainHandler.post { onResult(started) }
+        }
+    }
+
+    override fun teardownVisibleOwner(ownerToken: Long, onComplete: () -> Unit) {
+        funnel.execute("visible-stop") {
+            runVisibleCaptureTeardown(
+                stopController = { controller.stop() },
+                stopForeground = { ObserverForegroundService.stop(context) },
+                releaseOwner = { captureAuthority.release(ownerToken) },
+                diag = { site, throwable ->
+                    GlassesDiagLog.emit(DiagEvent.CaughtException(site = site, type = throwable.javaClass.simpleName))
+                },
+            )
+            mainHandler.post { onComplete() }
         }
     }
 
     override fun speakCurrentStatus() {
-        background.execute {
+        funnel.execute("cue") {
             runCatching {
                 flavor.audioFeedback.play(statusCueFor(cueSnapshot(controller)))
             }.onFailure {
@@ -215,7 +260,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     fun handleSwipe(action: SwipeAction, keyCode: Int) {
-        background.execute {
+        funnel.execute("swipe") {
             runCatching {
                 GlassesDiagLog.emit(DiagEvent.Swipe(keyCode, action.name))
                 dispatchSwipe(
@@ -231,9 +276,13 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     override fun speakNeedsAttention() {
-        background.execute {
+        speakCue(StatusCue.NEEDS_ATTENTION)
+    }
+
+    override fun speakCue(cue: StatusCue) {
+        funnel.execute("cue") {
             runCatching {
-                flavor.audioFeedback.play(StatusCue.NEEDS_ATTENTION)
+                flavor.audioFeedback.play(cue)
             }.onFailure {
                 GlassesDiagLog.emit(DiagEvent.CaughtException(site = "cue", type = it.javaClass.simpleName))
             }
@@ -244,7 +293,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         if (photoPairObserver != null || controller.pairingFact() == PairingFact.PAIRED) return
         val observer = object : ContentObserver(mainHandler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                background.execute { handlePhotoPairChange() }
+                funnel.execute("photo-pair") { handlePhotoPairChange() }
             }
         }
         context.contentResolver.registerContentObserver(
@@ -259,6 +308,42 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         val observer = photoPairObserver ?: return
         context.contentResolver.unregisterContentObserver(observer)
         photoPairObserver = null
+    }
+
+    private fun enqueueReconcile(site: String, emitNoOwnerRefusal: Boolean) {
+        if (!reconcileQueued.compareAndSet(false, true)) return
+        val enqueued = funnel.execute(site) {
+            try {
+                runCatching {
+                    if (emitNoOwnerRefusal && !controller.isVisibleCaptureOwnerPresent()) {
+                        GlassesDiagLog.emit(
+                            DiagEvent.CaptureRefused(
+                                source = DiagEvent.CaptureRefusalSource.FGS_REHYDRATE,
+                                reason = DiagEvent.CaptureRefusalReason.NO_VISIBLE_OWNER,
+                            ),
+                        )
+                    }
+                    controller.reconcile(ObserverStartMode.Rehydrate)
+                }.onFailure {
+                    GlassesDiagLog.emit(DiagEvent.CaughtException(site = site, type = it.javaClass.simpleName))
+                }
+                if (site == "poll") {
+                    runCatching {
+                        val current = controller.diagnostics()
+                        emitStateTransition(current)
+                        refreshServiceNotification(current)
+                        cuePoller.tick()
+                    }.onFailure {
+                        GlassesDiagLog.emit(DiagEvent.CaughtException(site = site, type = it.javaClass.simpleName))
+                    }
+                }
+            } finally {
+                reconcileQueued.set(false)
+            }
+        }
+        if (!enqueued) {
+            reconcileQueued.set(false)
+        }
     }
 
     private fun newPipeline(): CapturePipeline {
@@ -417,30 +502,130 @@ internal class IdempotentPipelineLifecycle<T>(
     private val stopPipeline: (T) -> Unit,
     private val isRunning: (T) -> Boolean,
     private val onActiveChanged: (T?) -> Unit,
+    private val canStart: () -> Boolean = { true },
+    private val onStartDeferred: () -> Unit = {},
+    private val onStartCancelled: () -> Unit = {},
 ) : ObserverLifecycle {
+    private val lock = Any()
     private var active: T? = null
+    private var deferredStartPending: Boolean = false
 
     override fun start() {
-        startForeground()
-        val current = active
-        if (current != null && isRunning(current)) return
-        if (current != null) {
-            stopPipeline(current)
-            active = null
-            onActiveChanged(null)
+        val shouldNotifyDeferred = synchronized(lock) {
+            if (!canStart()) {
+                val firstDeferred = !deferredStartPending
+                deferredStartPending = true
+                firstDeferred
+            } else {
+                null
+            }
         }
-        val pipeline = buildPipeline()
-        active = pipeline
-        onActiveChanged(pipeline)
-        startPipeline(pipeline)
+        if (shouldNotifyDeferred != null) {
+            if (shouldNotifyDeferred) onStartDeferred()
+            return
+        }
+        startForeground()
+        synchronized(lock) {
+            val current = active
+            if (current != null && isRunning(current)) return
+            if (current != null) {
+                try {
+                    stopPipeline(current)
+                } finally {
+                    active = null
+                    onActiveChanged(null)
+                }
+            }
+            val pipeline = buildPipeline()
+            active = pipeline
+            onActiveChanged(pipeline)
+            startPipeline(pipeline)
+        }
     }
 
     override fun stop() {
-        active?.let { pipeline ->
-            stopPipeline(pipeline)
-            active = null
-            onActiveChanged(null)
+        val shouldCancelDeferred = synchronized(lock) {
+            val pending = deferredStartPending
+            deferredStartPending = false
+            pending
         }
-        stopForeground()
+        if (shouldCancelDeferred) onStartCancelled()
+        try {
+            synchronized(lock) {
+                active?.let { pipeline ->
+                    try {
+                        stopPipeline(pipeline)
+                    } finally {
+                        active = null
+                        onActiveChanged(null)
+                    }
+                }
+            }
+        } finally {
+            stopForeground()
+        }
+    }
+
+    fun replayDeferredStartIfPending() {
+        val shouldStart = synchronized(lock) {
+            if (deferredStartPending && canStart()) {
+                deferredStartPending = false
+                true
+            } else {
+                false
+            }
+        }
+        if (shouldStart) start()
+    }
+}
+
+internal class GlassesMutationFunnel(
+    private val executor: ExecutorService,
+    private val diag: (String) -> Unit,
+) {
+    private val closed = AtomicBoolean(false)
+    private val closedDiagEmitted = AtomicBoolean(false)
+
+    fun execute(site: String, task: () -> Unit): Boolean {
+        if (closed.get()) {
+            emitClosedNoop(site)
+            return false
+        }
+        return try {
+            executor.execute(task)
+            true
+        } catch (_: RejectedExecutionException) {
+            emitClosedNoop(site)
+            false
+        }
+    }
+
+    fun closeAndAwait(timeout: Long, unit: TimeUnit) {
+        closed.set(true)
+        executor.shutdown()
+        runCatching { executor.awaitTermination(timeout, unit) }
+    }
+
+    private fun emitClosedNoop(site: String) {
+        if (closedDiagEmitted.compareAndSet(false, true)) {
+            diag("funnel-noop site=$site reason=closed")
+        }
+    }
+}
+
+internal fun runVisibleCaptureTeardown(
+    stopController: () -> Unit,
+    stopForeground: () -> Unit,
+    releaseOwner: () -> Unit,
+    diag: (String, Throwable) -> Unit,
+) {
+    try {
+        runCatching { stopController() }
+            .onFailure { diag("visible-stop", it) }
+    } finally {
+        runCatching { stopForeground() }
+            .onFailure { diag("visible-stop-fgs", it) }
+        runCatching { releaseOwner() }
+            .onFailure { diag("visible-stop-release", it) }
     }
 }

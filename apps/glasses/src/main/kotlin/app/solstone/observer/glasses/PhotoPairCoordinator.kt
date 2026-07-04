@@ -19,6 +19,8 @@ data class PhotoPairSeams(
     val onPairingStartedCue: () -> Unit,
     val onNetworkUnavailableCue: () -> Unit,
     val onRefreshCodeCue: () -> Unit,
+    val onReconnectingCue: () -> Unit,
+    val onRetryCue: () -> Unit,
     val onPairingFailedCue: () -> Unit,
     val log: (String) -> Unit,
     val isUsableNetworkPresent: () -> Boolean,
@@ -35,6 +37,8 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
     private var rescanRequested = false
     private val attemptedLinks = mutableSetOf<String>()
     private val networkUnavailableAnnounced = mutableSetOf<String>()
+    private val reconnectingAnnounced = mutableSetOf<String>()
+    private val retryAnnounced = mutableSetOf<String>()
 
     fun onChange() {
         scan()
@@ -76,6 +80,8 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
                 continue
             }
             if (!seams.isUsableNetworkPresent()) {
+                reconnectingAnnounced -= decoded
+                retryAnnounced -= decoded
                 if (decoded !in networkUnavailableAnnounced) {
                     seams.onNetworkUnavailableCue()
                     networkUnavailableAnnounced += decoded
@@ -95,23 +101,42 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
                     return
                 }
                 PhotoPairOutcome.RECONNECTING -> {
-                    attemptedLinks += decoded
+                    networkUnavailableAnnounced -= decoded
+                    retryAnnounced -= decoded
+                    if (decoded !in reconnectingAnnounced) {
+                        seams.onReconnectingCue()
+                        reconnectingAnnounced += decoded
+                    }
                 }
                 PhotoPairOutcome.NETWORK_UNAVAILABLE -> {
+                    reconnectingAnnounced -= decoded
+                    retryAnnounced -= decoded
                     if (decoded !in networkUnavailableAnnounced) {
                         seams.onNetworkUnavailableCue()
                         networkUnavailableAnnounced += decoded
                     }
                 }
                 PhotoPairOutcome.REFRESH_CODE -> {
+                    reconnectingAnnounced -= decoded
+                    retryAnnounced -= decoded
                     attemptedLinks += decoded
                     seams.onRefreshCodeCue()
                 }
                 PhotoPairOutcome.FAILED -> {
+                    reconnectingAnnounced -= decoded
+                    retryAnnounced -= decoded
                     attemptedLinks += decoded
                     seams.onPairingFailedCue()
                 }
-                PhotoPairOutcome.RETRY -> return
+                PhotoPairOutcome.RETRY -> {
+                    networkUnavailableAnnounced -= decoded
+                    reconnectingAnnounced -= decoded
+                    if (decoded !in retryAnnounced) {
+                        seams.onRetryCue()
+                        retryAnnounced += decoded
+                    }
+                    return
+                }
             }
         }
     }

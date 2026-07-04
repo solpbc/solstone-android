@@ -50,13 +50,14 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        if (!container.captureAuthority.isCurrent(captureOwnerToken)) return
+        val ownerToken = captureOwnerToken
+        if (!container.captureAuthority.isCurrent(ownerToken)) return
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_CLEARED))
-        container.controller.stop()
-        container.captureAuthority.release(captureOwnerToken)
-        captureStartedForOwner = false
-        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.STOPPED_RELEASED))
+        container.teardownVisibleOwner(ownerToken) {
+            captureStartedForOwner = false
+            GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.STOPPED_RELEASED))
+        }
     }
 
     override fun onDestroy() {
@@ -103,11 +104,13 @@ class MainActivity : Activity() {
 
     private fun startIfEligible() {
         if (captureStartedForOwner) return
-        if (!container.controller.start()) return
-        captureStartedForOwner = true
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_SET))
-        GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.START_ACCEPTED))
+        container.startVisibleAsync { started ->
+            if (!started || captureStartedForOwner || !container.captureAuthority.isCurrent(captureOwnerToken)) return@startVisibleAsync
+            captureStartedForOwner = true
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.SCREEN_ON_SET))
+            GlassesDiagLog.emit(DiagEvent.CaptureOwner(DiagEvent.CaptureOwnerTransition.START_ACCEPTED))
+        }
     }
 
     private companion object {
