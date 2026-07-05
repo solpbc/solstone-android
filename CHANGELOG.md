@@ -6,11 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-04
+
 ### Added
-- smart-glasses hardware milestone: sol runs as the default HOME app on the glasses, sealing worn audio+camera segments and syncing them to your paired journal when Wi-Fi is available.
+- your phone now encrypts the credential and identity it uses to pair with your journal, wrapping them with a key held in the android keystore on your phone. if that file is ever read off your phone, there's no usable key sitting in it.
+- your phone now recognizes a shared tailscale network as a direct way to reach your journal, not just the same wi-fi. if pairing failed with a "different networks" message while your phone and journal were both on tailscale, that's resolved.
 
 ### Changed
-- the app now calls itself sol — sol is the app, your journal is the memory, solstone is the platform.
+- the app is now sol. sol is the app on your phone, your journal is the memory it keeps, and solstone is the platform they're part of. the launcher name, the icon (now the sol mark), the ongoing notification, and the tips for keeping it running in the background all say sol now.
+
+### Fixed
+- two ways your phone's pairing could have been intercepted are now closed. pairing over a relay used to send the one-time pairing secret through a tunnel that didn't check the other end, so a malicious relay could have read it; pairing on a local network could have its certificate check sidestepped. your phone now pins and verifies the far end's certificate before it sends anything, and stops cold if it doesn't match.
+- when your phone says your observations are synced, they now really are. it reports caught-up only once everything has actually landed in your journal, recovers uploads that a crash or a sleeping computer left stranded, and retries the failures worth retrying instead of stopping. the first sync after this update may push a backlog it can now tell was never confirmed.
+- observations that used to be dropped before reaching your journal now make it in. location was the big one: nearly every session was quietly losing all of it. and a clock change, daylight saving included, can no longer collide in a way that overwrites observations already saved.
+- sol runs more steadily on your phone now. it survives a screen rotation without interrupting, picks back up on its own after a restart without you reopening it, and syncs in the background without the app open. the ongoing notification flags when it needs attention instead of always reading as on, and pairing by QR no longer reports success when it didn't happen.
 
 ## [0.1.1] - 2026-06-29
 
