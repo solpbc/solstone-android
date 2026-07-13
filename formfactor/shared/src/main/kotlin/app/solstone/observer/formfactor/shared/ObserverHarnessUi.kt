@@ -16,6 +16,7 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.syncNowMessage
 
 class ObserverHarnessUi(
     private val context: Context,
@@ -28,7 +29,8 @@ class ObserverHarnessUi(
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
 ) {
-    private val container = FrameLayout(context)
+    private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
+    private var atMenu = false
 
     fun view(): View {
         showMenu()
@@ -36,7 +38,7 @@ class ObserverHarnessUi(
     }
 
     fun showMenu() {
-        setScreen {
+        setScreen(isMenu = true) {
             button("Permissions") { showPermissions() }
             button("Scan pair QR") { showScanPairQr() }
             button("PL status probe") { showPlStatusProbe() }
@@ -111,9 +113,10 @@ class ObserverHarnessUi(
     fun showStatusQueueSync() {
         setScreen {
             val content = column()
+            val syncMessage = text("")
             button("Refresh") { loadStatus(content) }
             button("Sync now") {
-                controller.syncNow()
+                syncMessage.text = syncNowMessage(controller.syncNow())
                 loadStatus(content)
             }
             backButton()
@@ -215,7 +218,14 @@ class ObserverHarnessUi(
             is HarnessPlStatus.Reachable -> "Reachable: ${status.status}"
         }
 
-    private fun setScreen(build: LinearLayout.() -> Unit) {
+    fun handleBack(): Boolean {
+        if (atMenu) return false
+        showMenu()
+        return true
+    }
+
+    private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
+        atMenu = isMenu
         container.removeAllViews()
         container.addView(scroll(build))
     }

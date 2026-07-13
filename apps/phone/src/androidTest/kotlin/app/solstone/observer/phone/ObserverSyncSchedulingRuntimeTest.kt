@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkManager
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.work.SyncScheduler
+import app.solstone.testing.validDirectPairLink
 import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals

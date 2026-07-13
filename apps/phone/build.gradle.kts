@@ -80,10 +80,12 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation(project(":harness"))
+    androidTestImplementation(project(":core:diagnostics"))
     androidTestImplementation(project(":core:identity"))
     androidTestImplementation(project(":core:pl"))
     androidTestImplementation(project(":platform:camera-still"))
     androidTestImplementation(project(":platform:fgs"))
     androidTestImplementation(project(":platform:persistence-room"))
     androidTestImplementation(project(":platform:work"))
+    androidTestImplementation(project(":testing"))
 }

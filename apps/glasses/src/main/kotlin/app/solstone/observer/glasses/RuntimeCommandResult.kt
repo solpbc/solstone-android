@@ -24,4 +24,6 @@ enum class RuntimeCommandBlockReason {
     MissingPermissions,
     InvalidPairLinkOrCameraBusy,
     PairingProbeFailed,
+    NotPaired,
+    SyncEnqueueFailed,
 }

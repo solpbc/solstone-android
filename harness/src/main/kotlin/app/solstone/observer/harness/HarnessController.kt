@@ -228,8 +228,15 @@ class HarnessController(
         return lastPlStatus
     }
 
-    fun syncNow() {
-        syncEnqueue.enqueueNow()
+    fun syncNow(): SyncNowResult {
+        val fact = pairingFact()
+        if (fact != PairingFact.PAIRED) return SyncNowResult.NotPaired(fact)
+        return try {
+            syncEnqueue.enqueueNow()
+            SyncNowResult.Enqueued
+        } catch (throwable: Throwable) {
+            SyncNowResult.EnqueueFailed(throwable.message)
+        }
     }
 
     fun schedulePeriodicSync() {

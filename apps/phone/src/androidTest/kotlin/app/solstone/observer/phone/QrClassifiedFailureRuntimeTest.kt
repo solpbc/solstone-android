@@ -15,6 +15,7 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.observer.formfactor.shared.Camera2QrPreviewView
 import app.solstone.observer.scaffold.ObserverActivity
+import app.solstone.testing.validDirectPairLink
 import app.solstone.observer.harness.BundleExport
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment

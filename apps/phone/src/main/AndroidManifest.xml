@@ -20,9 +20,11 @@
     <application
         android:name=".PhoneApplication"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="sol">
+        android:label="sol"
+        android:theme="@style/ObserverTheme">
         <activity
             android:name="app.solstone.observer.scaffold.ObserverActivity"
             android:exported="true">

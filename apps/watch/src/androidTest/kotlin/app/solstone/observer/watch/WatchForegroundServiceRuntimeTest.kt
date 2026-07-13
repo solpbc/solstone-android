@@ -11,9 +11,12 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.model.SourceState
+import app.solstone.observer.harness.SyncNowResult
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.fgs.ObserverNotification
+import app.solstone.testing.validDirectPairLink
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,6 +45,14 @@ class WatchForegroundServiceRuntimeTest {
         ActivityScenario.launch(ObserverActivity::class.java).use {
             val container = waitForObserverContainer()
             assertTrue(container.controller.refreshPermissions().allRequiredGranted)
+            val sync = requireNotNull(container.flavor.syncControl)
+
+            val unpairedBaseline = sync.enqueueNowCalls
+            assertEquals(SyncNowResult.NotPaired(PairingFact.UNPAIRED), container.controller.syncNow())
+            assertEquals(unpairedBaseline, sync.enqueueNowCalls)
+
+            assertTrue(container.controller.onScannedPairLink(validDirectPairLink()) != null)
+            val pairedBaseline = sync.enqueueNowCalls
 
             container.controller.start()
             waitUntilNotificationVisible()
@@ -50,8 +61,8 @@ class WatchForegroundServiceRuntimeTest {
             container.flavor.heartbeatControl?.setFresh(false)
             assertEquals(SourceState.NEEDS_ATTENTION, container.controller.diagnostics().state)
 
-            container.controller.syncNow()
-            assertEquals(1, container.flavor.syncControl?.enqueueNowCalls)
+            assertEquals(SyncNowResult.Enqueued, container.controller.syncNow())
+            assertEquals(pairedBaseline + 1, sync.enqueueNowCalls)
 
             container.controller.stop()
         }

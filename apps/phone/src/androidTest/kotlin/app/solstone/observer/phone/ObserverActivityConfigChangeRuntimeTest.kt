@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.solstone.core.model.SourceState
 import app.solstone.observer.scaffold.ObserverActivity
+import app.solstone.testing.validDirectPairLink
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame

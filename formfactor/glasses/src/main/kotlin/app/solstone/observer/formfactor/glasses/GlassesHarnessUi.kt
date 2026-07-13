@@ -16,7 +16,9 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.syncNowMessage
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
+import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
 
 class GlassesHarnessUi(
     private val context: Context,
@@ -26,7 +28,7 @@ class GlassesHarnessUi(
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
 ) {
-    private val container = FrameLayout(context)
+    private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
 
     fun view(): View {
         showMenu()
@@ -104,9 +106,10 @@ class GlassesHarnessUi(
     fun showStatusQueueSync() {
         setScreen {
             val content = column()
+            val syncMessage = text("")
             button("Refresh") { loadStatus(content) }
             button("Sync now") {
-                controller.syncNow()
+                syncMessage.text = syncNowMessage(controller.syncNow())
                 loadStatus(content)
             }
             backButton()

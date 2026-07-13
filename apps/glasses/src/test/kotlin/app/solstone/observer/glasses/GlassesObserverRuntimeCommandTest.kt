@@ -71,6 +71,31 @@ class GlassesObserverRuntimeCommandTest {
     }
 
     @Test
+    fun syncNowBlocksUnpairedWithoutEnqueue() {
+        val container = FakeRuntimeContainer(
+            controller = controller(
+                endpointStore = FakeEndpointStore(null),
+                credentialStore = FakeCredentialStore(null),
+                identityStore = FakeIdentityStore(null),
+            ),
+        )
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.NotPaired), runtime.syncNow())
+        assertEquals(0, container.sync.enqueueNowCalls)
+    }
+
+    @Test
+    fun syncNowBlocksWhenEnqueueFails() {
+        val container = FakeRuntimeContainer(controller = controller())
+        container.sync.enqueueNowFailure = IllegalStateException("queue unavailable")
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.SyncEnqueueFailed), runtime.syncNow())
+        assertEquals(1, container.sync.enqueueNowCalls)
+    }
+
+    @Test
     fun observeStartSucceedsWithOwnerPresent() {
         val container = FakeRuntimeContainer(controller = controller())
         val runtime = GlassesObserverRuntime(container)
@@ -334,9 +359,11 @@ class GlassesObserverRuntimeCommandTest {
 
     private class RecordingSync : SyncEnqueue {
         var enqueueNowCalls = 0
+        var enqueueNowFailure: Throwable? = null
         override fun enqueuePeriodic() = Unit
         override fun enqueueNow() {
             enqueueNowCalls += 1
+            enqueueNowFailure?.let { throw it }
         }
     }
 

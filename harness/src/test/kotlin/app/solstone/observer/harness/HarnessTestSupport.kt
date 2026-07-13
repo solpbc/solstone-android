@@ -133,6 +133,7 @@ internal class FakeEvidenceReader(
 internal class RecordingSyncEnqueue : SyncEnqueue {
     var calls = 0
     var enqueuePeriodicCalls = 0
+    var enqueueNowFailure: Throwable? = null
 
     override fun enqueuePeriodic() {
         enqueuePeriodicCalls += 1
@@ -140,6 +141,7 @@ internal class RecordingSyncEnqueue : SyncEnqueue {
 
     override fun enqueueNow() {
         calls += 1
+        enqueueNowFailure?.let { throw it }
     }
 }
 

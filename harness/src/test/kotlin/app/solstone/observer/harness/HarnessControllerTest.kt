@@ -96,8 +96,60 @@ class HarnessControllerTest {
     @Test
     fun syncNowEnqueuesExactlyOnce() {
         val f = fixture()
-        f.controller.syncNow()
+        assertEquals(SyncNowResult.Enqueued, f.controller.syncNow())
         assertEquals(1, f.sync.calls)
+    }
+
+    @Test
+    fun syncNowRefusesUnpairedWithoutEnqueue() {
+        val f = fixture(
+            endpointStore = FakeEndpointStore(),
+            credentialStore = FakeCredentialStore(),
+            identityStore = FakeIdentityStore(),
+        )
+
+        assertEquals(SyncNowResult.NotPaired(PairingFact.UNPAIRED), f.controller.syncNow())
+        assertEquals(0, f.sync.calls)
+    }
+
+    @Test
+    fun syncNowDistinguishesRevokedPairingWithoutEnqueue() {
+        val f = fixture(identityStore = FakeIdentityStore(pairedHome(state = IdentityState.REVOKED)))
+
+        assertEquals(SyncNowResult.NotPaired(PairingFact.REVOKED), f.controller.syncNow())
+        assertEquals(0, f.sync.calls)
+    }
+
+    @Test
+    fun syncNowReportsEnqueueFailure() {
+        val f = fixture()
+        f.sync.enqueueNowFailure = IllegalStateException("queue unavailable")
+
+        assertEquals(SyncNowResult.EnqueueFailed("queue unavailable"), f.controller.syncNow())
+        assertEquals(1, f.sync.calls)
+    }
+
+    @Test
+    fun syncNowMessagesDescribeEveryOutcomeHonestly() {
+        assertEquals(
+            "Not paired. Use \"Scan pair QR\" to link this device.",
+            syncNowMessage(SyncNowResult.NotPaired(PairingFact.UNPAIRED)),
+        )
+        assertEquals(
+            "Pairing revoked. Use \"Scan pair QR\" to link this device again.",
+            syncNowMessage(SyncNowResult.NotPaired(PairingFact.REVOKED)),
+        )
+        assertEquals(
+            "Sync enqueued. The outcome appears in Last success / Last failure.",
+            syncNowMessage(SyncNowResult.Enqueued),
+        )
+        assertEquals(
+            "Couldn't enqueue sync: queue unavailable",
+            syncNowMessage(SyncNowResult.EnqueueFailed("queue unavailable")),
+        )
+        assertEquals("Couldn't enqueue sync: unknown", syncNowMessage(SyncNowResult.EnqueueFailed(null)))
+        assertEquals("Couldn't enqueue sync: unknown", syncNowMessage(SyncNowResult.EnqueueFailed("")))
+        assertEquals("Couldn't enqueue sync: unknown", syncNowMessage(SyncNowResult.EnqueueFailed("   ")))
     }
 
     @Test

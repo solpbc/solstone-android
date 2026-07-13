@@ -7,6 +7,7 @@ import android.content.Context
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.diagnostics.StatusCue
 import app.solstone.core.model.SourceState
+import app.solstone.observer.harness.SyncNowResult
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -125,10 +126,12 @@ class GlassesObserverRuntime(
         return CommandSucceeded
     }
 
-    override fun syncNow(): RuntimeCommandResult {
-        runtimeContainer().controller.syncNow()
-        return CommandSucceeded
-    }
+    override fun syncNow(): RuntimeCommandResult =
+        when (runtimeContainer().controller.syncNow()) {
+            SyncNowResult.Enqueued -> CommandSucceeded
+            is SyncNowResult.NotPaired -> CommandBlocked(RuntimeCommandBlockReason.NotPaired)
+            is SyncNowResult.EnqueueFailed -> CommandBlocked(RuntimeCommandBlockReason.SyncEnqueueFailed)
+        }
 
     override fun pairLink(raw: String): RuntimeCommandResult =
         try {
