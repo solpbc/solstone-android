@@ -41,9 +41,12 @@ import org.junit.runner.RunWith
  * Both limbs are mutation-proven, not merely green — see the ship record. Removing
  * applySystemBarInsetPadding() reddens limb 1 on every screen.
  *
- * No screenshots here on purpose: instrumented captures land on the GMD managed device, which gradle
- * destroys after the run, so they would produce nothing. Real per-screen frames come off the real
- * Galaxy A36 via `make hitl-phone` (artifacts/hitl/).
+ * No screenshots here, deliberately. Per-screen frames come off the REAL Galaxy A36 via
+ * `make hitl-phone` (artifacts/hitl/) — real hardware on the primary quality target is the more
+ * useful artifact, and this test already fails with the exact offending Rects. GMD captures ARE
+ * retrievable (AGP surfaces them under
+ * apps/phone/build/outputs/managed_device_android_test_additional_output/), so adding emulator
+ * frames later is a plumbing job, not a blocker — we just judged them redundant.
  */
 @RunWith(AndroidJUnit4::class)
 class ObserverHarnessChromeInvariantTest {
