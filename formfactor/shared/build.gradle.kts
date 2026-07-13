@@ -35,4 +35,5 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation(project(":core:identity"))
     androidTestImplementation(project(":platform:camera-still"))
+    androidTestImplementation(project(":testing"))
 }

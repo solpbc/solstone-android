@@ -30,7 +30,7 @@ class ObserverHarnessUi(
     private val onSyncLoaded: () -> Unit = {},
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
-    private var atMenu = false
+    private var inSubmenu = false
 
     fun view(): View {
         showMenu()
@@ -219,13 +219,13 @@ class ObserverHarnessUi(
         }
 
     fun handleBack(): Boolean {
-        if (atMenu) return false
+        if (!inSubmenu) return false
         showMenu()
         return true
     }
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
-        atMenu = isMenu
+        inSubmenu = !isMenu
         container.removeAllViews()
         container.addView(scroll(build))
     }

@@ -30,18 +30,20 @@ class ObserverHarnessChromeRuntimeTest {
     }
 
     @Test
-    fun noActionBarAndSyntheticSystemBarInsetPadsHarnessRoot() {
+    fun noActionBarAndSyntheticSystemBarAndCutoutInsetsPadHarnessRoot() {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 assertNull(activity.actionBar)
                 val root = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
                 val insets = WindowInsets.Builder()
                     .setInsets(WindowInsets.Type.systemBars(), Insets.of(0, 63, 0, 0))
+                    .setInsets(WindowInsets.Type.displayCutout(), Insets.of(20, 80, 0, 0))
                     .build()
 
                 root.dispatchApplyWindowInsets(insets)
 
-                assertEquals(63, root.paddingTop)
+                assertEquals(20, root.paddingLeft)
+                assertEquals(80, root.paddingTop)
             }
         }
     }
