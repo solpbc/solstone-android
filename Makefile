@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
+.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -18,16 +18,19 @@ test:
 ci:
 		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :core:metadata:test :testing:test :harness:test :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:pl-transport-conscrypt:testDebugUnitTest :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:metadata:assembleDebug :platform:metadata:testDebugUnitTest :platform:audio:assembleDebug :platform:audio:testDebugUnitTest :platform:location:assembleDebug :platform:location:testDebugUnitTest :platform:camera-legacy:assembleDebug :platform:camera-legacy:testDebugUnitTest :platform:camera2:assembleDebug :platform:camera2:testDebugUnitTest :platform:fgs:assembleDebug :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:glasses:checkRealDebugMicrophoneManifest :apps:watch:checkRealDebugLauncherManifest :apps:phone:checkRealDebugLauncherManifest :apps:glasses:checkRealDebugLauncherManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:glasses:assembleMockDebug :apps:glasses:assembleMockDebugAndroidTest :apps:glasses:assembleRealDebug :apps:validation-rogbid:assembleDebug
 
-# Slower device gate: GMD (pixel5api35) instrumented tests for the modules that
-# carry real androidTest coverage. Always host-GL — the default GMD GPU path
-# segfaults on the headless build box. Kept separate from `ci` so `ci` stays fast.
+# Slower device gate: GMD (pixel5api35) instrumented tests. Always host-GL — the
+# default GMD GPU path segfaults on the headless build box. Kept separate from `ci`
+# so `ci` stays fast.
+#
+# PHONE-ONLY, deliberately. The phone is the primary quality target; watch and
+# glasses are side experiments and are NOT release targets. A red here must always
+# mean "the shipping app is broken" — a side-experiment flake that reddens this lane
+# teaches everyone to ignore it. Watch/glasses live in `ci-device-experimental`.
 ci-device:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :platform:persistence-room:pixel5api35DebugAndroidTest \
 	  :platform:pl-transport-conscrypt:pixel5api35DebugAndroidTest \
-	  :apps:watch:pixel5api35MockDebugAndroidTest \
-	  :apps:phone:pixel5api35MockDebugAndroidTest \
-	  :apps:glasses:pixel5api35MockDebugAndroidTest
+	  :apps:phone:pixel5api35MockDebugAndroidTest
 	# AC5a real-flavor narrow gate. The class filter must match exactly one test;
 	# device-gate operators must confirm the real run reports Tests run: 1.
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
@@ -84,6 +87,56 @@ validate-rogbid-pl:
 #   FIREBASE_APP_ID                                         (Firebase Android App ID)
 # Release notes carry the short git SHA. The remote build tree (sync-android-host)
 # excludes .git, so the remote wrapper passes RELEASE_REV in from the caller's git.
+# Side-experiment device gate: watch + glasses. Not release targets (founder call
+# 2026-07-13). Run it when you touch them; never let it gate a phone release.
+ci-device-experimental:
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  :apps:watch:pixel5api35MockDebugAndroidTest \
+	  :apps:glasses:pixel5api35MockDebugAndroidTest
+
+# --- HITL: the real-hardware human-usability gate (blocks the release) ---
+#
+# solstone-android 0.2.0 reached a paid contract tester with a harness screen he
+# physically could not use: the menu rendered behind the status bar and a platform
+# ActionBar, "Permissions" and "Scan pair QR" were entirely hidden, and the menu was
+# shorter than the viewport so there was nothing to scroll. Every gate was green,
+# because nothing ever looked at the screen. This is the gate that looks.
+#
+# It runs the RELEASE APK — the exact artifact `dist-phone` ships — on the Galaxy A36
+# (API 36, one platform ahead of our targetSdk 35, so it also catches next-platform
+# breakage before Google forces it on us). Gating the debug APK here would leave
+# release signing and minification unexercised by the only human-usability check we
+# have, which would hollow out the whole guarantee.
+#
+# `dist-phone` DEPENDS on this. There is deliberately no SKIP escape hatch: if the
+# device is unhealthy, the device gets fixed. The guarantee we are buying is that a
+# build a human cannot use physically cannot reach a tester, and an escape hatch is
+# exactly how that guarantee gets spent on a deadline.
+ANDROID_HITL_SERIAL ?= RZGL11XCS9D
+HITL_FLOW := .maestro/phone-smoke.yaml
+HITL_ARTIFACTS = $(ARTIFACTS)/hitl
+
+hitl-phone:
+	@command -v maestro >/dev/null 2>&1 || { echo "maestro not on PATH (expected ~/.maestro/bin/maestro)" >&2; exit 2; }
+	@adb -s $(ANDROID_HITL_SERIAL) get-state >/dev/null 2>&1 || { \
+	  echo "" >&2; \
+	  echo "HITL GATE FAILED: device $(ANDROID_HITL_SERIAL) is not attached." >&2; \
+	  echo "This gate is required before a phone release can be distributed." >&2; \
+	  echo "Plug the Galaxy A36 back in, or set ANDROID_HITL_SERIAL to the phone under test." >&2; \
+	  echo "adb devices:" >&2; adb devices -l >&2; \
+	  echo "" >&2; \
+	  exit 1; }
+	$(GRADLE) :apps:phone:assembleRealRelease
+	@apk=$$(ls -t apps/phone/build/outputs/apk/real/release/*.apk 2>/dev/null | head -1); \
+	test -n "$$apk" || { echo "No signed release APK to gate — is the keystore env set?" >&2; exit 1; }; \
+	echo "HITL: gating $$apk on $(ANDROID_HITL_SERIAL)"; \
+	adb -s $(ANDROID_HITL_SERIAL) uninstall app.solstone.observer.phone >/dev/null 2>&1 || true; \
+	adb -s $(ANDROID_HITL_SERIAL) install -r -g "$$apk" || exit 1
+	mkdir -p $(HITL_ARTIFACTS)
+	@echo "HITL: driving $(HITL_FLOW) on $(ANDROID_HITL_SERIAL)"
+	MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device $(ANDROID_HITL_SERIAL) test $(HITL_FLOW)
+	@echo "HITL GATE PASSED — every control on every harness screen was reachable on real hardware."
+
 RELEASE_REV ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 RELEASE_NOTES ?=
 
@@ -93,7 +146,9 @@ require-dist-env:
 	@test -n "$(FIREBASE_APP_ID)" || (echo "Set FIREBASE_APP_ID (Firebase Android App ID)" >&2; exit 2)
 	@command -v firebase >/dev/null 2>&1 || (echo "firebase CLI not found on PATH" >&2; exit 2)
 
-dist-phone: require-dist-env
+# NOTE: hitl-phone is a HARD prerequisite. A phone build that a human cannot use
+# must not be able to reach a tester. Do not add a bypass.
+dist-phone: require-dist-env hitl-phone
 	$(GRADLE) :apps:phone:assembleRealRelease
 	@apk=$$(ls -t apps/phone/build/outputs/apk/real/release/*.apk 2>/dev/null | head -1); \
 	test -n "$$apk" || { echo "No signed release APK found under apps/phone/build/outputs/apk/real/release/" >&2; exit 1; }; \

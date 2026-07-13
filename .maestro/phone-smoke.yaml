@@ -1,0 +1,69 @@
+# Real-hardware human-usability gate for the sol phone observer.
+#
+# This is the gate that would have stopped solstone-android 0.2.0 from reaching a paid contract
+# tester with a screen he physically could not use. It runs against the RELEASE APK — the exact
+# artifact `make dist-phone` ships — on the Galaxy A36 (API 36, one platform ahead of our
+# targetSdk 35, so it also catches next-platform breakage before Google forces it on us).
+#
+# It asserts REACHABILITY, not pixels. Maestro drives the real accessibility tree: if a control is
+# hidden behind the status bar, drawn under an ActionBar, or off-screen with nothing to scroll,
+# tapping it fails here — which is exactly what happened to the tester.
+appId: app.solstone.observer.phone
+---
+- launchApp:
+    clearState: true
+
+# --- The menu. All six items, every one of them actually tappable. ---
+# 0.2.0 hid "Permissions" and "Scan pair QR" behind the top bar entirely, and the menu was shorter
+# than the viewport so there was nothing to scroll. Asserting visibility is the whole point.
+- assertVisible: "Permissions"
+- assertVisible: "Scan pair QR"
+- assertVisible: "PL status probe"
+- assertVisible: "Start/stop observing"
+- assertVisible: 'Status \+ queue/sync'
+- assertVisible: 'Evidence \+ export'
+- takeScreenshot: artifacts/hitl/menu
+
+# --- Every submenu opens, shows its readout, and system back returns to the menu. ---
+# The readout renders FIRST on each screen — it was rendering into the band the top bar covered,
+# which is why the tester reported "most of the menus appear empty".
+
+- tapOn: "Permissions"
+- assertVisible: "Request permissions"
+- takeScreenshot: artifacts/hitl/permissions
+- pressKey: Back
+- assertVisible: "Permissions"
+
+- tapOn: "PL status probe"
+- assertVisible: "Probe"
+- takeScreenshot: artifacts/hitl/pl-status-probe
+- pressKey: Back
+- assertVisible: "PL status probe"
+
+- tapOn: "Start/stop observing"
+- assertVisible: "Start"
+- assertVisible: "Stop"
+- takeScreenshot: artifacts/hitl/start-stop
+- pressKey: Back
+- assertVisible: "Start/stop observing"
+
+# --- "Sync now" while unpaired must say so, not fail silently. ---
+- tapOn: 'Status \+ queue/sync'
+- assertVisible: "Refresh"
+- assertVisible: "Sync now"
+- tapOn: "Sync now"
+- assertVisible:
+    text: ".*Not paired.*"
+    enabled: true
+- takeScreenshot: artifacts/hitl/status-queue-sync-unpaired
+- pressKey: Back
+- assertVisible: 'Status \+ queue/sync'
+
+- tapOn: 'Evidence \+ export'
+- takeScreenshot: artifacts/hitl/evidence-export
+- pressKey: Back
+- assertVisible: 'Evidence \+ export'
+
+# --- Back from the MENU exits the app (it must not trap the owner). ---
+- pressKey: Back
+- assertNotVisible: 'Status \+ queue/sync'
