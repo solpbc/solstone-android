@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-13
+
+### Fixed
+- the app's menu is no longer hidden behind the bar at the top of the screen. on first open everything sol can do is reachable, including granting permissions and scanning the pairing code — both were sitting entirely behind that bar, and the menu was too short to scroll them into view, so there was no way to reach them at all. the screens that looked empty were showing their status in that same covered strip; they read normally now.
+- "sync now" no longer does nothing without telling you. if your phone isn't paired with a journal yet, it says so and points you at the pairing code. if it is paired, it confirms the sync was queued — and it doesn't tell you your observations arrived until they actually have.
+- the back gesture now goes back. from any screen it returns to the menu instead of closing sol; from the menu it exits, as you'd expect.
+
 ## [0.2.0] - 2026-07-04
 
 ### Added
