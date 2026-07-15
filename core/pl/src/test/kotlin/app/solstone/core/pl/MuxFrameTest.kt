@@ -32,6 +32,8 @@ class MuxFrameTest {
         assertEquals(Frame(0, FLAG_PONG, payload), controlPong(Frame(0, FLAG_PING, payload)))
         assertNull(controlPong(Frame(1, FLAG_PING, payload)))
         assertNull(controlPong(Frame(0, FLAG_PING, ByteArray(7))))
+        assertNull(controlPong(Frame(0, FLAG_PING or FLAG_PONG, payload)))
+        assertNull(controlPong(Frame(0, FLAG_PING or FLAG_OPEN, payload)))
 
         val dialer = FrameDialer()
         assertEquals(1, dialer.allocate())
@@ -44,5 +46,10 @@ class MuxFrameTest {
         assertFailsWith<IllegalArgumentException> {
             encodeFrame(1, FLAG_DATA, ByteArray(0x1000000))
         }
+    }
+
+    @Test
+    fun windowCreditBytesAreBigEndian() {
+        assertContentEquals(byteArrayOf(0x01, 0x23, 0x45, 0x67), encodeWindowCredit(0x01234567))
     }
 }

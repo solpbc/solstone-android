@@ -10,6 +10,9 @@ const val FLAG_RESET = 0x08
 const val FLAG_WINDOW = 0x10
 const val FLAG_PING = 0x20
 const val FLAG_PONG = 0x40
+const val FLAG_RESERVED = 0x80
+
+val VALID_RECEIVE_FLAGS = setOf(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x10, 0x20, 0x40)
 
 class Frame(
     val streamId: Int,
@@ -54,6 +57,13 @@ fun encodeFrame(streamId: Int, flags: Int, payload: ByteArray): ByteArray {
     return out
 }
 
+fun encodeWindowCredit(n: Int): ByteArray = byteArrayOf(
+    ((n shr 24) and 0xff).toByte(),
+    ((n shr 16) and 0xff).toByte(),
+    ((n shr 8) and 0xff).toByte(),
+    (n and 0xff).toByte(),
+)
+
 fun decodeFrame(buf: ByteArray, offset: Int = 0): DecodedFrame {
     if (offset < 0 || buf.size - offset < 8) {
         throw IllegalArgumentException("socket closed while reading frame")
@@ -76,7 +86,7 @@ fun decodeFrame(buf: ByteArray, offset: Int = 0): DecodedFrame {
 }
 
 fun controlPong(frame: Frame): Frame? =
-    if (frame.streamId == 0 && (frame.flags and FLAG_PING) != 0 && frame.payload.size == 8) {
+    if (frame.streamId == 0 && frame.flags == FLAG_PING && frame.payload.size == 8) {
         Frame(0, FLAG_PONG, frame.payload)
     } else {
         null
