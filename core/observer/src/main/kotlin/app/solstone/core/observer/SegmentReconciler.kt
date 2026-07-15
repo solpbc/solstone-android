@@ -9,7 +9,11 @@ import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
 
-private val HELD_STATUSES = setOf("present", "relocated")
+// Per-file statuses that prove reconcile convergence after name and SHA match.
+// "processed" means the journal intentionally consumed the raw byte after verified
+// processing and deliberately does not keep that raw file on journal disk; it is still
+// terminal proof the byte arrived, which is what makes re-uploading it pointless.
+private val HELD_STATUSES = setOf("present", "processed")
 
 sealed class ReconcileException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -60,6 +64,7 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
     private fun isProvenHeld(local: BundleFile, remoteFiles: List<ServerFile>): Boolean =
         remoteFiles.any { remote ->
             (remote.submittedName ?: remote.name) == local.name &&
+                remote.sha256.isNotEmpty() &&
                 remote.sha256 == local.sha256 &&
                 remote.status in HELD_STATUSES
         }

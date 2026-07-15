@@ -153,7 +153,7 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun diffAcceptsRelocatedLocalFile() {
+    fun diffRejectsRetiredRelocatedStatus() {
         val http = RecordingPlHttpClient(
             responseForFiles("""{"name":"audio.wav","sha256":"sha-audio","status":"relocated"}"""),
         )
@@ -164,7 +164,78 @@ class SegmentReconcilerTest {
         )
 
         assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun processedProvesHeld() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"sha-audio","status":"processed"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
             listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun processedWithShaMismatchNeedsUpload() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"sha-audio","status":"processed"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "sha-DIFFERENT")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun mixedPresentAndProcessedFilesProveHeld() {
+        val http = RecordingPlHttpClient(
+            responseForFiles(
+                """{"name":"video.mp4","sha256":"sha-video","status":"present"}""",
+                """{"name":"audio.wav","sha256":"sha-audio","status":"processed"}""",
+            ),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "video.mp4" to "sha-video", "audio.wav" to "sha-audio")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = false)),
+            verdicts,
+        )
+    }
+
+    @Test
+    fun processedWithEmptyShaNeedsUpload() {
+        val http = RecordingPlHttpClient(
+            responseForFiles("""{"name":"audio.wav","sha256":"","status":"processed"}"""),
+        )
+
+        val verdicts = SegmentReconciler(http, testHandle).diff(
+            listOf(manifest("093000_60", "audio.wav" to "")),
+            "20260616",
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), needsUpload = true)),
             verdicts,
         )
     }

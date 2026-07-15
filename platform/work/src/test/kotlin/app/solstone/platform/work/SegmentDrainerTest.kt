@@ -10,6 +10,9 @@ import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileAuthException
 import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
+import app.solstone.core.observer.SegmentReconciler
+import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.queue.transition
 import app.solstone.core.sources.MAIN_STREAM
@@ -44,6 +47,40 @@ class SegmentDrainerTest {
         assertEquals(1, store.row("a").attemptCount)
         assertEquals(0, store.syncState!!.pendingCount)
         assertEquals(NOW, store.syncState!!.lastSuccessAt)
+    }
+
+    @Test
+    fun processedVerdictSkipsUploadAndMarksUploaded() {
+        val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
+        val fakeHttp = object : PlHttpClient {
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+            ): HttpResponse = HttpResponse(
+                200,
+                emptyMap(),
+                """{"items":[{"key":"a","files":[{"name":"a.bin","sha256":"sha-a","status":"processed"}]}],"total":1,"protocol_version":2}"""
+                    .toByteArray(),
+            )
+        }
+        var ingestCount = 0
+
+        drainSegments(
+            store = store,
+            reconcile = { manifests, day -> SegmentReconciler(fakeHttp, "obs-test").diff(manifests, day) },
+            ingest = { _, _ ->
+                ingestCount += 1
+                error("ingest must not be called for a held segment")
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = store::log,
+        )
+
+        assertEquals(0, ingestCount)
+        assertEquals(QueueState.UPLOADED, store.row("a").state)
     }
 
     @Test
