@@ -22,8 +22,6 @@ import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.testing.validDirectPairLink
 import app.solstone.observer.harness.BundleExport
-import app.solstone.observer.harness.AsyncLoad
-import app.solstone.observer.harness.BackgroundRunner
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessJournalCacheState
@@ -32,7 +30,6 @@ import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.InMemoryDesiredObservingStore
-import app.solstone.observer.harness.MainPoster
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
@@ -101,7 +98,7 @@ class QrClassifiedFailureRuntimeTest {
                     context = activity,
                     controller = failingController(),
                     permissionRequester = {},
-                    asyncLoad = AsyncLoad(BackgroundRunner { it() }, MainPoster { it() }),
+                    asyncLoad = waitForObserverContainer().asyncLoad,
                     previewHeightPx = 1,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "phone-test",
@@ -113,7 +110,17 @@ class QrClassifiedFailureRuntimeTest {
                 )
                 activity.setContentView(ui.view())
                 ui.showPairLink(validDirectPairLink())
+            }
 
+            waitUntil("classified pair-link failure") {
+                var rendered = false
+                scenario.onActivity { activity ->
+                    val texts = collectTexts(activity.findViewById(android.R.id.content))
+                    rendered = texts.contains("No network connection") || texts.any { it.contains("didn't answer") }
+                }
+                rendered
+            }
+            scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
                 assertTrue(texts.contains("No network connection") || texts.any { it.contains("didn't answer") })
                 assertFalse(texts.contains("Paired"))

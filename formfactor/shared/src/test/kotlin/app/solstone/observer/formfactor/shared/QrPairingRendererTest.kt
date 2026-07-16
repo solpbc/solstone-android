@@ -16,15 +16,13 @@ import kotlin.test.assertTrue
 
 class QrPairingRendererTest {
     @Test
-    fun pairLinkDispatchCopyIsFixedAndDoesNotExposeLinkPayload() {
-        val fragment = "PRIVATE-FRAGMENT-MARKER"
+    fun pairLinkDispatchCopyIsFixed() {
+        // These result types carry no pair-link content, so their renderer cannot expose it.
         val invalid = pairLinkDispatchText(PairLinkDispatchResult.InvalidLink)
         val busy = pairLinkDispatchText(PairLinkDispatchResult.Busy)
 
         assertEquals("Invalid pair link", invalid)
         assertEquals("Pairing already in progress. Try again.", busy)
-        assertFalse(requireNotNull(invalid).contains(fragment))
-        assertFalse(requireNotNull(busy).contains(fragment))
         assertEquals(null, pairLinkDispatchText(PairLinkDispatchResult.NoLink))
         assertEquals(
             "Pairing failed",

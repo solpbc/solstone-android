@@ -11,6 +11,7 @@ import app.solstone.observer.scaffold.FormFactorSpec
 val phoneSpec = FormFactorSpec(
     stream = PHONE_STREAM,
     deviceLabel = "solstone phone",
+    handlesPairLinks = true,
     qrBackend = QrBackend.Camera2,
     previewHeightPx = 480,
     permissions = { sdkInt ->

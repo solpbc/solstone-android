@@ -287,11 +287,29 @@ tasks.register("appLinksGuardSelfTest") {
         )
         check(!notVerified.hasVerifiedPairLink())
 
-        val wrongData = intentFilterTokens(
-            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" />""" +
-                """<category android:name="$browsable" /><data android:scheme="http" android:host="go.solstone.app" android:path="/other" /></intent-filter>"""
+        val explicitlyFalse = intentFilterTokens(
+            """<intent-filter android:autoVerify="false"><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="https" android:host="go.solstone.app" android:path="/p" /></intent-filter>"""
         )
-        check(!wrongData.hasVerifiedPairLink())
+        check(!explicitlyFalse.hasVerifiedPairLink())
+
+        val wrongScheme = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="http" android:host="go.solstone.app" android:path="/p" /></intent-filter>"""
+        )
+        check(!wrongScheme.hasVerifiedPairLink())
+
+        val wrongHost = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="https" android:host="example.invalid" android:path="/p" /></intent-filter>"""
+        )
+        check(!wrongHost.hasVerifiedPairLink())
+
+        val wrongPath = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="https" android:host="go.solstone.app" android:path="/other" /></intent-filter>"""
+        )
+        check(!wrongPath.hasVerifiedPairLink())
 
         val split = intentFilterTokens(
             """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" /><category android:name="$browsable" /></intent-filter>""" +

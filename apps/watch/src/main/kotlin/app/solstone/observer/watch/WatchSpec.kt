@@ -11,6 +11,7 @@ import app.solstone.observer.scaffold.FormFactorSpec
 val watchSpec = FormFactorSpec(
     stream = WATCH_STREAM,
     deviceLabel = "solstone watch",
+    handlesPairLinks = false,
     qrBackend = QrBackend.Legacy,
     previewHeightPx = 220,
     permissions = { sdkInt ->

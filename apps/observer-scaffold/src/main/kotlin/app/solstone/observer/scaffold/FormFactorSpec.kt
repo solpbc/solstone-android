@@ -8,6 +8,7 @@ import app.solstone.observer.formfactor.shared.QrBackend
 data class FormFactorSpec(
     val stream: String,
     val deviceLabel: String,
+    val handlesPairLinks: Boolean,
     val qrBackend: QrBackend,
     val previewHeightPx: Int,
     val permissions: (sdkInt: Int) -> Array<String>,

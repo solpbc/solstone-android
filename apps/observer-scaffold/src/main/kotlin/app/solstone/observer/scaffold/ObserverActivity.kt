@@ -42,8 +42,8 @@ class ObserverActivity : Activity() {
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
         setContentView(harnessUi.view())
-        if (savedInstanceState == null) {
-            showPairLink(intent)
+        if (spec.handlesPairLinks && savedInstanceState == null) {
+            routePairLinkIntent(intent)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
@@ -76,7 +76,9 @@ class ObserverActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        showPairLink(intent)
+        if (spec.handlesPairLinks) {
+            routePairLinkIntent(intent)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -92,7 +94,7 @@ class ObserverActivity : Activity() {
         }
     }
 
-    private fun showPairLink(intent: Intent) {
+    private fun routePairLinkIntent(intent: Intent) {
         if (intent.action != Intent.ACTION_VIEW) return
         val uri = intent.data ?: return
         harnessUi.showPairLink(uri.toString())
