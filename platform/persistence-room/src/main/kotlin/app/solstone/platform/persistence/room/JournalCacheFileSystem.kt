@@ -36,38 +36,46 @@ fun interface SpoolDirectoryRemover {
 internal class NioSpoolUsageMeasurer : SpoolUsageMeasurer {
     override fun measure(spoolRoot: Path): SpoolUsageMeasurement {
         val root = spoolRoot.toAbsolutePath().normalize()
-        if (!Files.exists(root, NOFOLLOW_LINKS)) return SpoolUsageMeasurement(0L, emptyMap())
-        require(!Files.isSymbolicLink(root)) { "spool root must not be a symbolic link" }
-        var total = 0L
         val directoryBytes = mutableMapOf<Path, Long>()
-        Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                require(!attrs.isSymbolicLink) { "spool traversal encountered a symbolic link" }
-                return FileVisitResult.CONTINUE
+        val total = measureRegularFileBytes(root) { file, size ->
+            val relative = root.relativize(file)
+            if (relative.nameCount >= 4 && relative.getName(0).toString() != ".draft") {
+                val segmentDir = root.resolve(relative.subpath(0, 3)).normalize()
+                directoryBytes[segmentDir] = Math.addExact(directoryBytes[segmentDir] ?: 0L, size)
             }
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                require(!attrs.isSymbolicLink && !Files.isSymbolicLink(file)) {
-                    "spool traversal encountered a symbolic link"
-                }
-                if (attrs.isRegularFile) {
-                    // Cache usage is logical regular-file bytes, matching the repository's byteSize semantics.
-                    val size = Files.readAttributes(file, BasicFileAttributes::class.java, NOFOLLOW_LINKS).size()
-                    require(size >= 0L) { "regular file reported a negative size" }
-                    total = Math.addExact(total, size)
-                    val relative = root.relativize(file)
-                    if (relative.nameCount >= 4 && relative.getName(0).toString() != ".draft") {
-                        val segmentDir = root.resolve(relative.subpath(0, 3)).normalize()
-                        directoryBytes[segmentDir] = Math.addExact(directoryBytes[segmentDir] ?: 0L, size)
-                    }
-                }
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = throw exc
-        })
+        }
         return SpoolUsageMeasurement(total, directoryBytes)
     }
+}
+
+internal fun measureRegularFileBytes(rootPath: Path, onRegularFile: (Path, Long) -> Unit = { _, _ -> }): Long {
+    val root = rootPath.toAbsolutePath().normalize()
+    if (!Files.exists(root, NOFOLLOW_LINKS)) return 0L
+    if (Files.isSymbolicLink(root)) throw IOException("measurement root must not be a symbolic link")
+    var total = 0L
+    Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+        override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+            if (attrs.isSymbolicLink) throw IOException("measurement encountered a symbolic link")
+            return FileVisitResult.CONTINUE
+        }
+
+        override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+            if (attrs.isSymbolicLink || Files.isSymbolicLink(file)) {
+                throw IOException("measurement encountered a symbolic link")
+            }
+            if (attrs.isRegularFile) {
+                // Cache usage is logical regular-file bytes, matching the repository's byteSize semantics.
+                val size = Files.readAttributes(file, BasicFileAttributes::class.java, NOFOLLOW_LINKS).size()
+                if (size < 0L) throw IOException("regular file reported a negative size")
+                total = Math.addExact(total, size)
+                onRegularFile(file, size)
+            }
+            return FileVisitResult.CONTINUE
+        }
+
+        override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = throw exc
+    })
+    return total
 }
 
 internal class FileStoreFreeSpaceProvider : SpoolFreeSpaceProvider {

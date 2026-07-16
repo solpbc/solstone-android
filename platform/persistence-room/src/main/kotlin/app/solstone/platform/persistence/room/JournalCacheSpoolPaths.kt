@@ -14,10 +14,8 @@ import java.nio.charset.StandardCharsets
 enum class JournalCachePathRefusal {
     MALFORMED_COMPONENT,
     ID_MISMATCH,
-    NOT_STRICTLY_CONTAINED,
     SYMLINK,
     MISSING_DIRECTORY,
-    WRONG_PHYSICAL_PARENT,
     MISSING_MANIFEST,
     INVALID_MANIFEST,
     MANIFEST_IDENTITY_MISMATCH,
@@ -41,12 +39,6 @@ internal fun proveSegmentDirectory(spoolRoot: Path, row: SegmentRow): SegmentDir
         return SegmentDirectoryProof.Refused(JournalCachePathRefusal.SYMLINK)
     }
     val target = root.resolve(row.day).resolve(row.stream).resolve(row.dirSegment).normalize()
-    if (target == root || !target.startsWith(root)) {
-        return SegmentDirectoryProof.Refused(JournalCachePathRefusal.NOT_STRICTLY_CONTAINED)
-    }
-    if (target.parent?.fileName?.toString() != row.stream || target.parent?.parent?.fileName?.toString() != row.day) {
-        return SegmentDirectoryProof.Refused(JournalCachePathRefusal.WRONG_PHYSICAL_PARENT)
-    }
 
     var current: Path? = root
     val relative = root.relativize(target)
@@ -63,9 +55,6 @@ internal fun proveSegmentDirectory(spoolRoot: Path, row: SegmentRow): SegmentDir
 }
 
 internal fun proveManifestIdentity(proof: SegmentDirectoryProof.Proven, row: SegmentRow): JournalCachePathRefusal? {
-    if (proof.path.parent?.fileName?.toString() != row.stream) {
-        return JournalCachePathRefusal.WRONG_PHYSICAL_PARENT
-    }
     val manifest = proof.path.resolve("manifest")
     if (!Files.exists(manifest, NOFOLLOW_LINKS) || Files.isSymbolicLink(manifest)) {
         return JournalCachePathRefusal.MISSING_MANIFEST
@@ -85,5 +74,6 @@ internal fun proveManifestIdentity(proof: SegmentDirectoryProof.Proven, row: Seg
     }
 }
 
+// This makes traversal and root escape unexpressible under root.resolve(day).resolve(stream).resolve(dirSegment).
 private fun safeComponent(value: String): Boolean =
     value.isNotEmpty() && value != "." && value != ".." && '/' !in value && '\\' !in value

@@ -3,6 +3,7 @@
 
 package app.solstone.platform.persistence.room
 
+import android.database.SQLException
 import app.solstone.core.model.QueueState
 import app.solstone.core.queue.EvictionInput
 import app.solstone.core.queue.EvictionBudget
@@ -12,6 +13,7 @@ import app.solstone.core.queue.evictionPolicy
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
+import java.io.IOException
 
 const val MAX_RESIDUAL_REMOVAL_ATTEMPTS_PER_PASS = 32
 
@@ -99,7 +101,9 @@ class JournalCacheEvictionService(
             )
             try {
                 dao.applyEvictions(accepted)
-            } catch (_: Exception) {
+            } catch (_: NoSuchElementException) {
+                return result(configuredLimit, measurement.totalBytes, freeBytes, true, marked, removals, residuals, refused, JournalCacheBlockedReason.TRANSITION_FAILED)
+            } catch (_: SQLException) {
                 return result(configuredLimit, measurement.totalBytes, freeBytes, true, marked, removals, residuals, refused, JournalCacheBlockedReason.TRANSITION_FAILED)
             }
             marked += accepted.evictions.map { it.segmentId }
@@ -134,7 +138,12 @@ class JournalCacheEvictionService(
         dao.segmentsByState(QueueState.EVICTED).forEach { row ->
             val proof = proveSegmentDirectory(spoolRoot, row)
             if (proof is SegmentDirectoryProof.Refused) {
-                if (proof.reason != JournalCachePathRefusal.MISSING_DIRECTORY) refused += row.id
+                if (proof.reason == JournalCachePathRefusal.MISSING_DIRECTORY) {
+                    removals += ConfirmedDirectoryRemoval(row.id, 0L)
+                    residuals -= row.id
+                } else {
+                    refused += row.id
+                }
                 return@forEach
             }
             proof as SegmentDirectoryProof.Proven
@@ -143,7 +152,13 @@ class JournalCacheEvictionService(
                 return@forEach
             }
             attempts += 1
-            val bytes = runCatching { usageMeasurer.measure(proof.path).totalBytes }.getOrNull()
+            val bytes = try {
+                measureRegularFileBytes(proof.path)
+            } catch (_: IOException) {
+                null
+            } catch (_: SecurityException) {
+                null
+            }
             if (bytes == null || directoryRemover.remove(proof.path) != DirectoryRemovalResult.ConfirmedAbsent || Files.exists(proof.path, NOFOLLOW_LINKS)) {
                 residuals += row.id
                 incomplete = true
@@ -185,10 +200,21 @@ class JournalCacheEvictionService(
         )
     }
 
-    private fun measureOrNull(): SpoolUsageMeasurement? = runCatching { usageMeasurer.measure(spoolRoot) }.getOrNull()
+    private fun measureOrNull(): SpoolUsageMeasurement? = try {
+        usageMeasurer.measure(spoolRoot)
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
 
-    private fun freeBytesOrNull(): Long? = runCatching { freeSpaceProvider.usableBytes(spoolRoot) }
-        .getOrNull()?.takeIf { it >= 0L }
+    private fun freeBytesOrNull(): Long? = try {
+        freeSpaceProvider.usableBytes(spoolRoot).takeIf { it >= 0L }
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
 
     private fun isUnderPressure(usage: Long, free: Long, limit: Long): Boolean =
         usage > limit || free < JOURNAL_CACHE_FREE_SPACE_FLOOR_BYTES

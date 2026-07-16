@@ -11,10 +11,12 @@ import app.solstone.core.queue.QueueEvent
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.spool.serializeManifest
 import java.nio.file.Files
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class JournalCacheEvictionServiceTest {
     @Test
@@ -82,16 +84,68 @@ class JournalCacheEvictionServiceTest {
         val dao = FakeSegmentDao(mutableListOf(row))
         val store = JournalCacheLimitStore(root.resolve("limit").toFile())
         val measurementFailure = JournalCacheEvictionService(
-            spool, dao, store, SpoolUsageMeasurer { error("stat") }, SpoolFreeSpaceProvider { 0 }, NioSpoolDirectoryRemover(),
+            spool, dao, store, SpoolUsageMeasurer { throw IOException("stat") }, SpoolFreeSpaceProvider { 0 }, NioSpoolDirectoryRemover(),
         ).runPass(1)
         assertEquals(JournalCacheBlockedReason.MEASUREMENT_FAILED, measurementFailure.blockedReason)
         assertEquals(QueueState.UPLOADED, dao.segmentById(row.id)?.state)
 
         val freeFailure = JournalCacheEvictionService(
-            spool, dao, store, NioSpoolUsageMeasurer(), SpoolFreeSpaceProvider { error("free") }, NioSpoolDirectoryRemover(),
+            spool, dao, store, NioSpoolUsageMeasurer(), SpoolFreeSpaceProvider { throw IOException("free") }, NioSpoolDirectoryRemover(),
         ).runPass(1)
         assertEquals(JournalCacheBlockedReason.FREE_SPACE_FAILED, freeFailure.blockedReason)
         assertEquals(QueueState.UPLOADED, dao.segmentById(row.id)?.state)
+    }
+
+    @Test
+    fun arithmeticOverflowFailsClosedWithoutTransitionOrRemoval() {
+        val root = Files.createTempDirectory("journal-cache-service")
+        val spool = root.resolve("spool")
+        val row = row("overflow", 1)
+        val dao = FakeSegmentDao(mutableListOf(row))
+        val path = spool.toAbsolutePath().normalize().resolve(row.day).resolve(row.stream).resolve(row.dirSegment)
+        val result = JournalCacheEvictionService(
+            spool,
+            dao,
+            JournalCacheLimitStore(root.resolve("limit").toFile()),
+            SpoolUsageMeasurer { SpoolUsageMeasurement(Long.MAX_VALUE, mapOf(path to Long.MAX_VALUE)) },
+            SpoolFreeSpaceProvider { 1L },
+            SpoolDirectoryRemover { error("removal must not run") },
+        ).runPass(1)
+
+        assertEquals(JournalCacheBlockedReason.ARITHMETIC_OVERFLOW, result.blockedReason)
+        assertTrue(result.durablyMarkedIds.isEmpty())
+        assertTrue(result.reclaimedSpace.removals.isEmpty())
+        assertEquals(QueueState.UPLOADED, dao.segmentById(row.id)?.state)
+    }
+
+    @Test
+    fun alreadyAbsentDurableResidualIsConfirmedWithZeroReclaimedAndNotRetryable() {
+        val root = Files.createTempDirectory("journal-cache-service")
+        val spool = root.resolve("spool")
+        val evicted = row("gone", 1).copy(state = QueueState.EVICTED)
+        val dao = FakeSegmentDao(mutableListOf(evicted))
+
+        val result = service(spool, dao, root, SpoolFreeSpaceProvider { Long.MAX_VALUE }).runPass(1)
+
+        assertEquals(listOf(ConfirmedDirectoryRemoval(evicted.id, 0L)), result.reclaimedSpace.removals)
+        assertEquals(0L, result.reclaimedSpace.totalBytes)
+        assertTrue(result.retryableResidualIds.isEmpty())
+        assertTrue(result.refusedPathIds.isEmpty())
+    }
+
+    @Test
+    fun programmingErrorsFromMeasurementAreNotRenderedAsBlockedResults() {
+        val root = Files.createTempDirectory("journal-cache-service")
+        val service = JournalCacheEvictionService(
+            root.resolve("spool"),
+            FakeSegmentDao(mutableListOf()),
+            JournalCacheLimitStore(root.resolve("limit").toFile()),
+            SpoolUsageMeasurer { error("programming defect") },
+            SpoolFreeSpaceProvider { Long.MAX_VALUE },
+            NioSpoolDirectoryRemover(),
+        )
+
+        assertFailsWith<IllegalStateException> { service.runPass(1) }
     }
 
     private fun service(spool: java.nio.file.Path, dao: SegmentDao, root: java.nio.file.Path, free: SpoolFreeSpaceProvider) =

@@ -67,10 +67,4 @@ class JournalCacheFileSystemTest {
         }
     }
 
-    @Test
-    fun injectedPerFileStatFailureIsObservableAtMeasurementSeam() {
-        val statFailure = SpoolUsageMeasurer { throw java.io.IOException("injected per-file stat failure") }
-        val failure = assertFails { statFailure.measure(Files.createTempDirectory("journal-cache-stat")) }
-        assertEquals("injected per-file stat failure", failure.message)
-    }
 }

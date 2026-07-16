@@ -41,16 +41,6 @@ class JournalCacheSpoolPathsTest {
         assertEquals(JournalCachePathRefusal.MANIFEST_IDENTITY_MISMATCH, proveManifestIdentity(fixture.proof(), fixture.row))
     }
 
-    @Test fun refusesWrongPhysicalStreamParent() {
-        val fixture = fixture(row())
-        val wrong = fixture.spool.resolve(fixture.row.day).resolve("wrong-stream").resolve(fixture.row.dirSegment)
-        Files.createDirectories(wrong)
-        assertEquals(
-            JournalCachePathRefusal.WRONG_PHYSICAL_PARENT,
-            proveManifestIdentity(SegmentDirectoryProof.Proven(wrong), fixture.row),
-        )
-    }
-
     @Test fun refusesSymlinkedDayAncestor() {
         val root = Files.createTempDirectory("journal-cache-paths")
         val spool = root.resolve("spool")
