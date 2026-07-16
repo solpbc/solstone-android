@@ -12,6 +12,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.Surface
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.observer.harness.HarnessController
 import com.google.zxing.BarcodeFormat
@@ -39,8 +40,10 @@ class LegacyQrPreviewView(
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
     private var camera: Camera? = null
-    private var width = 0
-    private var height = 0
+    private var viewWidth = 0
+    private var viewHeight = 0
+    private var bufferWidth = 0
+    private var bufferHeight = 0
     @Volatile private var closed = false
 
     init {
@@ -73,8 +76,9 @@ class LegacyQrPreviewView(
                 val params = opened.parameters
                 params.previewFormat = ImageFormat.NV21
                 val size = params.previewSize
-                width = size.width
-                height = size.height
+                bufferWidth = size.width
+                bufferHeight = size.height
+                schedulePreviewTransform()
                 opened.parameters = params
                 opened.setPreviewCallback(this)
                 opened.startPreview()
@@ -86,7 +90,11 @@ class LegacyQrPreviewView(
         }
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        viewWidth = width
+        viewHeight = height
+        schedulePreviewTransform()
+    }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         releaseCamera()
@@ -99,7 +107,7 @@ class LegacyQrPreviewView(
         handler.post {
             try {
                 if (closed) return@post
-                val text = decode(frame, width, height)
+                val text = decode(frame, bufferWidth, bufferHeight)
                 if (text != null) handleDecodedText(text)
             } finally {
                 decoding.set(false)
@@ -130,6 +138,31 @@ class LegacyQrPreviewView(
         return Handler(thread.looper).also { cameraHandler = it }
     }
 
+    private fun schedulePreviewTransform() {
+        post {
+            if (viewWidth <= 0 || viewHeight <= 0 || bufferWidth <= 0 || bufferHeight <= 0) return@post
+            val transform = qrPreviewTransform(
+                viewWidth = viewWidth,
+                viewHeight = viewHeight,
+                bufferWidth = bufferWidth,
+                bufferHeight = bufferHeight,
+                rotationDegrees = displayRotationDegrees(),
+            )
+            pivotX = transform.pivotX
+            pivotY = transform.pivotY
+            scaleX = transform.scaleX
+            scaleY = transform.scaleY
+        }
+    }
+
+    private fun displayRotationDegrees(): Int =
+        when (display?.rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
     private fun decode(data: ByteArray, width: Int, height: Int): String? =
         try {
             val source = PlanarYUVLuminanceSource(data, width, height, 0, 0, width, height, false)
@@ -158,6 +191,8 @@ class LegacyQrPreviewView(
         runCatching { camera?.stopPreview() }
         runCatching { camera?.release() }
         camera = null
+        bufferWidth = 0
+        bufferHeight = 0
         val thread = cameraThread
         cameraThread = null
         cameraHandler = null

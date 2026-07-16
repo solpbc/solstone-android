@@ -6,6 +6,7 @@ package app.solstone.observer.formfactor.shared
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -48,6 +49,8 @@ class Camera2QrPreviewView(
     private var session: CameraCaptureSession? = null
     private var imageReader: ImageReader? = null
     private var previewSurface: Surface? = null
+    private var bufferWidth = 0
+    private var bufferHeight = 0
     @Volatile private var closed = false
 
     init {
@@ -75,7 +78,10 @@ class Camera2QrPreviewView(
                 return
             }
             val size = chooseYuvSize(manager, cameraId) ?: Size(width.coerceAtLeast(1), height.coerceAtLeast(1))
+            bufferWidth = size.width
+            bufferHeight = size.height
             surface.setDefaultBufferSize(size.width, size.height)
+            applyPreviewTransform(width, height)
             previewSurface = Surface(surface)
             imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, MAX_IMAGES)
             cameraThread = HandlerThread(threadName).also { it.start() }
@@ -114,7 +120,9 @@ class Camera2QrPreviewView(
         }
     }
 
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) = Unit
+    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+        applyPreviewTransform(width, height)
+    }
 
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
         releaseCamera()
@@ -122,6 +130,29 @@ class Camera2QrPreviewView(
     }
 
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
+
+    private fun applyPreviewTransform(viewWidth: Int, viewHeight: Int) {
+        val transform = qrPreviewTransform(
+            viewWidth = viewWidth,
+            viewHeight = viewHeight,
+            bufferWidth = bufferWidth,
+            bufferHeight = bufferHeight,
+            rotationDegrees = displayRotationDegrees(),
+        )
+        setTransform(
+            Matrix().apply {
+                setScale(transform.scaleX, transform.scaleY, transform.pivotX, transform.pivotY)
+            },
+        )
+    }
+
+    private fun displayRotationDegrees(): Int =
+        when (display?.rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
 
     @Suppress("DEPRECATION")
     private fun createSession(opened: CameraDevice) {
@@ -248,6 +279,8 @@ class Camera2QrPreviewView(
         camera = null
         runCatching { imageReader?.close() }
         imageReader = null
+        bufferWidth = 0
+        bufferHeight = 0
         runCatching { previewSurface?.release() }
         previewSurface = null
         val thread = cameraThread
