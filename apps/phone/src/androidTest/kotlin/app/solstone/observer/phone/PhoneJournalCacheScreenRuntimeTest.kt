@@ -176,7 +176,6 @@ class PhoneJournalCacheScreenRuntimeTest {
             configuredLimitBytes = 4_000_000_000L,
             pressureRemains = blocked != null,
             durablyMarkedCount = 0,
-            reclaimedDirectoryCount = 0,
             reclaimedBytes = 0L,
             retryableResidualCount = residuals,
             refusedPathCount = 0,

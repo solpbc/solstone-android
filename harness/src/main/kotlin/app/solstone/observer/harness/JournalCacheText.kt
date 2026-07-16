@@ -22,6 +22,7 @@ fun journalCacheText(state: HarnessJournalCacheState): String = buildList {
     if (pass == null) {
         add("Cache check has not run yet")
     } else {
+        val checkedCurrentLimit = pass.configuredLimitBytes == state.configuredLimitBytes
         if (pass.measuredUsageBytes == null) {
             add("Attention: cache usage check failed")
         } else {
@@ -34,7 +35,14 @@ fun journalCacheText(state: HarnessJournalCacheState): String = buildList {
         if (pass.reclaimedBytes > 0) add("Reclaimed space: ${decimalBytes(pass.reclaimedBytes)}")
         if (pass.retryableResidualCount > 0) add("Removal retry pending: ${pass.retryableResidualCount}")
         if (pass.refusedPathCount > 0) add("Unsafe cache paths left in place: ${pass.refusedPathCount}")
-        if (pass.blockedReason == null && !pass.pressureRemains && pass.retryableResidualCount == 0) {
+        if (!checkedCurrentLimit) add("Current limit has not been checked yet")
+        if (
+            checkedCurrentLimit &&
+            pass.blockedReason == null &&
+            !pass.pressureRemains &&
+            pass.retryableResidualCount == 0 &&
+            pass.refusedPathCount == 0
+        ) {
             add("Cache check complete")
         }
     }

@@ -41,7 +41,6 @@ class JournalCacheDtosTest {
         assertEquals(9L, state.latestPass!!.measuredFreeBytes)
         assertEquals(1L, state.latestPass!!.configuredLimitBytes)
         assertEquals(2, state.latestPass!!.durablyMarkedCount)
-        assertEquals(1, state.latestPass!!.reclaimedDirectoryCount)
         assertEquals(7L, state.latestPass!!.reclaimedBytes)
         assertEquals(1, state.latestPass!!.retryableResidualCount)
         assertEquals(1, state.latestPass!!.refusedPathCount)

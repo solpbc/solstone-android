@@ -27,7 +27,6 @@ data class HarnessJournalCachePass(
     val configuredLimitBytes: Long,
     val pressureRemains: Boolean,
     val durablyMarkedCount: Int,
-    val reclaimedDirectoryCount: Int,
     val reclaimedBytes: Long,
     val retryableResidualCount: Int,
     val refusedPathCount: Int,
@@ -58,7 +57,6 @@ fun journalCacheState(
             configuredLimitBytes = it.configuredLimitBytes,
             pressureRemains = it.pressureRemains,
             durablyMarkedCount = it.durablyMarkedIds.size,
-            reclaimedDirectoryCount = it.reclaimedSpace.removals.size,
             reclaimedBytes = it.reclaimedSpace.totalBytes,
             retryableResidualCount = it.retryableResidualIds.size,
             refusedPathCount = it.refusedPathIds.size,
@@ -68,8 +66,16 @@ fun journalCacheState(
     saveError = saveError,
 )
 
-private fun JournalCacheLimitFallback.toHarness(): HarnessJournalCacheLimitFallback =
-    HarnessJournalCacheLimitFallback.valueOf(name)
+private fun JournalCacheLimitFallback.toHarness(): HarnessJournalCacheLimitFallback = when (this) {
+    JournalCacheLimitFallback.ABSENT -> HarnessJournalCacheLimitFallback.ABSENT
+    JournalCacheLimitFallback.CORRUPT -> HarnessJournalCacheLimitFallback.CORRUPT
+}
 
-private fun JournalCacheBlockedReason.toHarness(): HarnessJournalCacheBlockedReason =
-    HarnessJournalCacheBlockedReason.valueOf(name)
+private fun JournalCacheBlockedReason.toHarness(): HarnessJournalCacheBlockedReason = when (this) {
+    JournalCacheBlockedReason.MEASUREMENT_FAILED -> HarnessJournalCacheBlockedReason.MEASUREMENT_FAILED
+    JournalCacheBlockedReason.FREE_SPACE_FAILED -> HarnessJournalCacheBlockedReason.FREE_SPACE_FAILED
+    JournalCacheBlockedReason.ARITHMETIC_OVERFLOW -> HarnessJournalCacheBlockedReason.ARITHMETIC_OVERFLOW
+    JournalCacheBlockedReason.TRANSITION_FAILED -> HarnessJournalCacheBlockedReason.TRANSITION_FAILED
+    JournalCacheBlockedReason.NO_SAFE_ELIGIBLE_SEGMENT -> HarnessJournalCacheBlockedReason.NO_SAFE_ELIGIBLE_SEGMENT
+    JournalCacheBlockedReason.REMOVAL_INCOMPLETE -> HarnessJournalCacheBlockedReason.REMOVAL_INCOMPLETE
+}

@@ -49,11 +49,43 @@ class JournalCacheTextTest {
         assertTrue(text.contains("Previous limit kept"))
     }
 
+    @Test
+    fun stalePassKeepsTrueUsageButDoesNotClaimCurrentLimitWasChecked() {
+        val text = journalCacheText(
+            state(
+                currentLimit = 1_000_000_000L,
+                pass = pass(limit = 32_000_000_000L, usage = 4_000_000_000L),
+            ),
+        )
+
+        assertTrue(text.contains("Current limit: 1 GB"))
+        assertTrue(text.contains("Cache usage: 4 GB"))
+        assertTrue(text.contains("Current limit has not been checked yet"))
+        assertFalse(text.contains("Cache check complete"))
+    }
+
+    @Test
+    fun matchingCleanPassStillRendersCompletion() {
+        val text = journalCacheText(state(pass = pass()))
+
+        assertTrue(text.contains("Cache check complete"))
+        assertFalse(text.contains("has not been checked yet"))
+    }
+
+    @Test
+    fun refusedPathPreventsCompletionClaim() {
+        val text = journalCacheText(state(pass = pass(refusedPaths = 1)))
+
+        assertTrue(text.contains("Unsafe cache paths left in place: 1"))
+        assertFalse(text.contains("Cache check complete"))
+    }
+
     private fun state(
         pass: HarnessJournalCachePass? = null,
         saveError: HarnessJournalCacheSaveError? = null,
+        currentLimit: Long = 4_000_000_000L,
     ) = HarnessJournalCacheState(
-        configuredLimitBytes = 4_000_000_000L,
+        configuredLimitBytes = currentLimit,
         limitFallback = null,
         limitChoicesBytes = emptyList(),
         latestPass = pass,
@@ -64,16 +96,17 @@ class JournalCacheTextTest {
         blocked: HarnessJournalCacheBlockedReason? = null,
         usage: Long? = 0L,
         residuals: Int = 0,
+        refusedPaths: Int = 0,
+        limit: Long = 4_000_000_000L,
     ) = HarnessJournalCachePass(
         measuredUsageBytes = usage,
         measuredFreeBytes = 8_000_000_000L,
-        configuredLimitBytes = 4_000_000_000L,
+        configuredLimitBytes = limit,
         pressureRemains = blocked != null,
         durablyMarkedCount = 0,
-        reclaimedDirectoryCount = 0,
         reclaimedBytes = 0L,
         retryableResidualCount = residuals,
-        refusedPathCount = 0,
+        refusedPathCount = refusedPaths,
         blockedReason = blocked,
     )
 }
