@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.diagnostics.PairingFact
@@ -98,9 +99,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val journalCacheCoordinator = JournalCacheCoordinator(
         canRun = { recoveryCompleted },
         submit = { task -> funnel.execute("journal-cache", task) },
-        nowEpochMs = System::currentTimeMillis,
+        monotonicElapsedMs = SystemClock::elapsedRealtime,
         snapshot = journalCacheService::snapshot,
         saveLimitToStore = journalCacheLimitStore::save,
+        nowEpochMs = System::currentTimeMillis,
         runPass = journalCacheService::runPass,
     )
     private var activePipeline: CapturePipeline? = null

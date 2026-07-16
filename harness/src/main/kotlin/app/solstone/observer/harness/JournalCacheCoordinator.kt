@@ -14,9 +14,10 @@ const val JOURNAL_CACHE_ROUTINE_INTERVAL_MS = 15L * 60L * 1000L
 class JournalCacheCoordinator(
     private val canRun: () -> Boolean,
     private val submit: (() -> Unit) -> Boolean,
-    private val nowEpochMs: () -> Long,
+    private val monotonicElapsedMs: () -> Long,
     private val snapshot: () -> JournalCacheSnapshot,
     private val saveLimitToStore: (Long) -> JournalCacheLimitSaveResult,
+    private val nowEpochMs: () -> Long,
     private val runPass: (Long) -> JournalCacheEvictionResult,
 ) {
     private val closed = AtomicBoolean(false)
@@ -30,7 +31,7 @@ class JournalCacheCoordinator(
     private var latestSaveError: HarnessJournalCacheSaveError? = null
 
     @Volatile
-    private var lastPassStartedAtEpochMs: Long? = null
+    private var lastPassStartedAtMonotonicMs: Long? = null
 
     fun state(): HarnessJournalCacheState = journalCacheState(
         snapshot = snapshot(),
@@ -53,8 +54,8 @@ class JournalCacheCoordinator(
 
     fun requestRoutinePass() {
         if (closed.get() || !canRun()) return
-        val lastStarted = lastPassStartedAtEpochMs
-        if (lastStarted != null && nowEpochMs() - lastStarted < JOURNAL_CACHE_ROUTINE_INTERVAL_MS) return
+        val lastStarted = lastPassStartedAtMonotonicMs
+        if (lastStarted != null && monotonicElapsedMs() - lastStarted < JOURNAL_CACHE_ROUTINE_INTERVAL_MS) return
         enqueuePass()
     }
 
@@ -74,8 +75,8 @@ class JournalCacheCoordinator(
             try {
                 while (!closed.get()) {
                     immediateRequested.set(false)
+                    lastPassStartedAtMonotonicMs = monotonicElapsedMs()
                     val decidedAt = nowEpochMs()
-                    lastPassStartedAtEpochMs = decidedAt
                     latestResult = runPass(decidedAt)
                     if (!immediateRequested.get()) break
                 }

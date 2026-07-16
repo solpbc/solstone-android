@@ -6,6 +6,7 @@ package app.solstone.observer.scaffold
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.observer.isProviderFresh
 import app.solstone.core.segment.Segmenter
@@ -73,9 +74,10 @@ class ObserverAppContainer(
                 false
             }
         },
-        nowEpochMs = System::currentTimeMillis,
+        monotonicElapsedMs = SystemClock::elapsedRealtime,
         snapshot = journalCacheService::snapshot,
         saveLimitToStore = journalCacheLimitStore::save,
+        nowEpochMs = System::currentTimeMillis,
         runPass = journalCacheService::runPass,
     )
     private var activePipeline: CapturePipeline? = null

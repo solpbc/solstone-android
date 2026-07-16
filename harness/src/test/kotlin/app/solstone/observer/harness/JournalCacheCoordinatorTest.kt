@@ -36,11 +36,11 @@ class JournalCacheCoordinatorTest {
 
     @Test
     fun routinePassesCoalesceAndRunAtMostOncePerFifteenMinutes() {
-        var now = 1_000L
+        var monotonic = 1_000L
         var passes = 0
         val tasks = ArrayDeque<() -> Unit>()
         val coordinator = coordinator(
-            now = { now },
+            monotonic = { monotonic },
             submit = { tasks.addLast(it); true },
             runPass = { passes += 1; result() },
         )
@@ -52,11 +52,36 @@ class JournalCacheCoordinatorTest {
         coordinator.requestRoutinePass()
         assertTrue(tasks.isEmpty())
 
-        now += JOURNAL_CACHE_ROUTINE_INTERVAL_MS
+        monotonic += JOURNAL_CACHE_ROUTINE_INTERVAL_MS
         coordinator.requestRoutinePass()
         assertEquals(1, tasks.size)
         tasks.removeFirst().invoke()
         assertEquals(2, passes)
+    }
+
+    @Test
+    fun backwardWallClockCorrectionDoesNotDelayRoutinePassAndUsesCorrectedEpoch() {
+        var monotonic = 1_000L
+        var now = 10_000_000L
+        val decidedAt = mutableListOf<Long>()
+        val tasks = ArrayDeque<() -> Unit>()
+        val coordinator = coordinator(
+            monotonic = { monotonic },
+            now = { now },
+            submit = { tasks.addLast(it); true },
+            runPass = { decidedAt += it; result() },
+        )
+
+        coordinator.requestRoutinePass()
+        tasks.removeFirst().invoke()
+
+        monotonic += JOURNAL_CACHE_ROUTINE_INTERVAL_MS
+        now -= 60L * 60L * 1000L
+        coordinator.requestRoutinePass()
+
+        assertEquals(1, tasks.size)
+        tasks.removeFirst().invoke()
+        assertEquals(listOf(10_000_000L, 6_400_000L), decidedAt)
     }
 
     @Test
@@ -139,11 +164,20 @@ class JournalCacheCoordinatorTest {
     private fun coordinator(
         canRun: () -> Boolean = { true },
         submit: (() -> Unit) -> Boolean = { it(); true },
+        monotonic: () -> Long = { 1_000L },
         now: () -> Long = { 1_000L },
         snapshot: () -> JournalCacheSnapshot = { JournalCacheSnapshot(4_000_000_000L, null) },
         save: (Long) -> JournalCacheLimitSaveResult = { JournalCacheLimitSaveResult.Saved(JournalCacheSnapshot(it, null)) },
         runPass: (Long) -> JournalCacheEvictionResult = { result() },
-    ) = JournalCacheCoordinator(canRun, submit, now, snapshot, save, runPass)
+    ) = JournalCacheCoordinator(
+        canRun = canRun,
+        submit = submit,
+        monotonicElapsedMs = monotonic,
+        snapshot = snapshot,
+        saveLimitToStore = save,
+        nowEpochMs = now,
+        runPass = runPass,
+    )
 
     private companion object {
         fun result(limit: Long = 4_000_000_000L) = JournalCacheEvictionResult(
