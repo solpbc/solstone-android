@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - sol now shows how much space its local copy of your observations uses on your device and lets you choose a limit. when it needs room, sol removes only data your journal has already confirmed it has; anything it cannot safely remove stays in place and is reported honestly.
+- tapping a solstone pair link now opens sol and starts pairing right away, whether sol is already running or not. scan the pairing code with your phone's regular camera or tap a pair link wherever it appears; sol takes it from there. a link that is not a valid pairing link says so plainly instead of doing nothing.
 
 ## [0.2.2] - 2026-07-16
 
