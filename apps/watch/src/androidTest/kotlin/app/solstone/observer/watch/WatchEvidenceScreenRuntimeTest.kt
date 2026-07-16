@@ -3,10 +3,6 @@
 
 package app.solstone.observer.watch
 
-import android.view.View
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -131,35 +127,5 @@ class WatchEvidenceScreenRuntimeTest {
         } finally {
             db.close()
         }
-    }
-
-    private fun collectTexts(root: View): List<String> {
-        val texts = mutableListOf<String>()
-        fun visit(view: View) {
-            if (view is TextView) texts += view.text.toString()
-            if (view is ViewGroup) {
-                for (i in 0 until view.childCount) {
-                    visit(view.getChildAt(i))
-                }
-            }
-        }
-        visit(root)
-        return texts
-    }
-
-    private fun clickButton(root: View, label: String) {
-        fun visit(view: View): Boolean {
-            if (view is Button && view.text.toString() == label) {
-                view.performClick()
-                return true
-            }
-            if (view is ViewGroup) {
-                for (i in 0 until view.childCount) {
-                    if (visit(view.getChildAt(i))) return true
-                }
-            }
-            return false
-        }
-        check(visit(root)) { "button not found: $label" }
     }
 }
