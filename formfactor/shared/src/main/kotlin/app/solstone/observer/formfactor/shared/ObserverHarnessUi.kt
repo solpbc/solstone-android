@@ -14,7 +14,6 @@ import android.widget.TextView
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
-import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage

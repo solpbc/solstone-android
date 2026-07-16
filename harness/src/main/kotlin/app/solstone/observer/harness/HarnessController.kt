@@ -12,6 +12,7 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parsePairLink
@@ -206,7 +207,8 @@ class HarnessController(
                 is RelayPairLink -> try {
                     PairAttemptOutcome.Linked(runRelayPairProbe(link))
                 } catch (e: Throwable) {
-                    val endpoint = relayPairEndpoint(link)
+                    val endpoint = runCatching { relayPairEndpoint(link) }
+                        .getOrElse { DirectEndpoint("", 443) }
                     classifyPairException(e, endpoint.host, endpoint.port, PairRoute.RELAY, isUsableNetworkPresent)
                 }
                 is DirectPairLink -> try {

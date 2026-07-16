@@ -119,7 +119,6 @@ fun buildObserverFlavor(
         exemptionVerified = { true },
         batteryGuidance = guidance.batteryExemption,
         launchBatteryGuidance = { launchGuidance(context, guidance.batteryExemption) },
-        isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
     )
 }
 

@@ -29,7 +29,7 @@ class PermissionRowsTest {
                 "Coarse location: false",
                 "Notifications: true",
                 "Battery exemption: $batteryGranted",
-                "Ready: false",
+                "Permissions ready: false",
             ).joinToString("\n")
             assertContentEquals(expected.toByteArray(Charsets.UTF_8), rendered.toByteArray(Charsets.UTF_8))
             assertFalse(rendered.contains("Background" + " location"))

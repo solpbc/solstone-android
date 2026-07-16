@@ -337,6 +337,15 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun malformedRelayOriginFailureStillReturnsClassifiedOutcome() {
+        val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw IllegalArgumentException("bad origin") })
+
+        val outcome = f.controller.onScannedPairLinkClassified(relayPairLink("not a URL"))
+
+        assertEquals(PairAttemptOutcome.OtherFailure("IllegalArgumentException", null), outcome)
+    }
+
+    @Test
     fun classifiedRelayPairFailureReleasesLock() {
         val f = fixture(relayPairProbe = RelayPairProbe { _, _ -> throw IOException("boom") })
 
@@ -407,6 +416,36 @@ class HarnessControllerTest {
 
     private fun validRelayPairLink(): String =
         "https://go.solstone.app/p#0R0J6HB7H6NWVVR1VTPVXVYAZTXBW0938NKRKAYDXW00"
+
+    private fun relayPairLink(origin: String): String {
+        val originBytes = origin.toByteArray(Charsets.UTF_8)
+        val bytes = ByteArray(27 + originBytes.size)
+        bytes[0] = 0x06
+        hexBytes("0123456789abcdef").copyInto(bytes, 1)
+        bytes[9] = 0x01
+        hexBytes("deadbeefcafebabe0123456789abcdef").copyInto(bytes, 10)
+        bytes[26] = originBytes.size.toByte()
+        originBytes.copyInto(bytes, 27)
+        return "https://go.solstone.app/p#${encodeCrockford(bytes)}"
+    }
+
+    private fun encodeCrockford(bytes: ByteArray): String {
+        val alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+        val output = StringBuilder()
+        var buffer = 0
+        var bits = 0
+        bytes.forEach { raw ->
+            buffer = (buffer shl 8) or (raw.toInt() and 0xff)
+            bits += 8
+            while (bits >= 5) {
+                bits -= 5
+                output.append(alphabet[(buffer shr bits) and 31])
+                buffer = buffer and ((1 shl bits) - 1)
+            }
+        }
+        if (bits > 0) output.append(alphabet[(buffer shl (5 - bits)) and 31])
+        return output.toString()
+    }
 }
 
 private fun hexBytes(value: String): ByteArray {

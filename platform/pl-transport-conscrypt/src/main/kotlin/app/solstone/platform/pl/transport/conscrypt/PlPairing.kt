@@ -64,9 +64,27 @@ fun pairAndProbe(
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
     endpointStore: EndpointStore,
+): PairProbeResult = pairAndProbe(
+    pairLink = pairLink,
+    deviceLabel = deviceLabel,
+    credentialStore = credentialStore,
+    identityStore = identityStore,
+    endpointStore = endpointStore,
+    sessionOpener = ::openCertlessSession,
+    localInterfaces = readLocalIPv4Interfaces(),
+)
+
+internal fun pairAndProbe(
+    pairLink: String,
+    deviceLabel: String,
+    credentialStore: ClientCredentialStore,
+    identityStore: IdentityStore,
+    endpointStore: EndpointStore,
+    sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
+    localInterfaces: List<LocalIPv4Interface>,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
-    val ordered = orderCandidatesBySubnet(link.candidates, readLocalIPv4Interfaces())
+    val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
     val keyPair = generateP256KeyPair()
     val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
     val csr = buildCsrPem(deviceLabel, keyPair)
@@ -78,7 +96,7 @@ fun pairAndProbe(
 
     for (endpoint in ordered) {
         val pairSession = try {
-            openCertlessSession(endpoint, link.caFingerprintPrefix)
+            sessionOpener(endpoint, link.caFingerprintPrefix)
         } catch (e: Exception) {
             if (e is SSLException && e.message == PAIR_TLS_CA_PIN_MISMATCH) {
                 sawCaMismatch = true
@@ -210,7 +228,7 @@ internal fun persistOrReturnDirectPairResult(
 fun openAuthenticatedClient(endpoint: DirectEndpoint, credential: ClientCredential): ConscryptPlHttpClient =
     ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential))
 
-private data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
+internal data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 
 private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: ByteArray): CertlessSession {
     val socket = connectedSslSocket(certlessFactory(), endpoint.host, endpoint.port)

@@ -346,6 +346,7 @@ class CapturePipelineTest {
         assertTrue(first.stopAttempted.get())
         assertFalse(third.startAttempted.get())
         assertFalse(third.stopAttempted.get())
+        assertEquals(null, pipeline.startedEpochMs())
         assertTrue("capture event=start-failed source=engine type=IllegalStateException message=start failed" in diags)
     }
 

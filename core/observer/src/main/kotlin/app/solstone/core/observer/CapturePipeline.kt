@@ -67,6 +67,7 @@ class CapturePipeline(
             startedEngines.forEach { stopEngine(it) }
             tick?.cancel(false)
             tick = null
+            startedEpochMs = null
             started.set(false)
             throw t
         }

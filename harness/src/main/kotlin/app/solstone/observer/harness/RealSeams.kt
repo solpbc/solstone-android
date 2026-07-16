@@ -130,8 +130,6 @@ class RealPlStatusProbe(
                     client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status,
                 )
             }
-        } catch (e: IOException) {
-            HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
         } catch (e: Exception) {
             HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
         }

@@ -76,6 +76,5 @@ fun buildObserverFlavor(
         exemptionVerified = verifier::isExemptionVerified,
         batteryGuidance = guidance.batteryExemption,
         launchBatteryGuidance = { launchGuidance(context, guidance.batteryExemption) },
-        isUsableNetworkPresent = networkAvailability::isUsableNow,
     )
 }

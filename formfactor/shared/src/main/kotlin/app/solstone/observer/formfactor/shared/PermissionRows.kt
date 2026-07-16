@@ -13,5 +13,5 @@ fun permissionRowsText(status: PermissionStatus, batteryExemptionGranted: Boolea
         "Coarse location: ${status.coarseLocationGranted}",
         "Notifications: ${status.notificationsGranted}",
         "Battery exemption: $batteryExemptionGranted",
-        "Ready: ${status.allRequiredGranted}",
+        "Permissions ready: ${status.allRequiredGranted}",
     ).joinToString("\n")
