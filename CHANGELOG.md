@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-16
+
+### Fixed
+- sol no longer re-sends audio your journal has already finished processing. syncing kept sending the same pieces again, quietly costing bandwidth and battery. sol now takes the journal's confirmation as proof and stops; when the journal can't confirm it holds something, sol keeps its local copy.
+- the status screen now describes what's actually going on, in plain language, and only claims what sol can verify on your device. something that failed to start no longer shows a fresh start time.
+- pairing failures now give a reason you can act on. sol tells you whether your phone was offline or your journal didn't answer, so you know what to check next.
+- the permissions screen keeps itself current. status updates in place, the battery setting sol relies on shows its real state with steps for your specific device, and the settings shortcut opens the right page (on some Samsung and Rokid devices it went nowhere).
+- the camera preview for scanning your pairing code is no longer distorted. it shows exactly the area sol can read, so lining up the code is predictable.
+
 ## [0.2.1] - 2026-07-13
 
 ### Fixed
