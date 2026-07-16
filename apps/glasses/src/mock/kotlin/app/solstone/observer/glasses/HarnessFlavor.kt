@@ -102,6 +102,7 @@ fun createGlassesHarnessFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "mock glasses",
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = { true },
             opportunisticSync = null,
         ),
         audioFeedback = FakeAudioFeedback(),

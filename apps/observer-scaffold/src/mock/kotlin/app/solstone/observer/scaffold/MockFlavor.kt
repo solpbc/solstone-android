@@ -110,6 +110,7 @@ fun buildObserverFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = spec.deviceLabel,
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
             opportunisticSync = opportunisticSync,
         ),
         heartbeatControl = heartbeat,
@@ -118,6 +119,7 @@ fun buildObserverFlavor(
         exemptionVerified = { true },
         batteryGuidance = guidance.batteryExemption,
         launchBatteryGuidance = { launchGuidance(context, guidance.batteryExemption) },
+        isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
     )
 }
 

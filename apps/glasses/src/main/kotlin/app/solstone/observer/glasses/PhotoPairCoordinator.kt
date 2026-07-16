@@ -144,7 +144,7 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
     private fun logOutcome(outcome: PairAttemptOutcome) {
         when (outcome) {
             is PairAttemptOutcome.Linked -> seams.log("relay-pair outcome=Linked mode=${outcome.result.connectionMode}")
-            PairAttemptOutcome.NetworkUnavailable -> seams.log("relay-pair outcome=NetworkUnavailable")
+            is PairAttemptOutcome.NetworkUnavailable -> seams.log("relay-pair outcome=NetworkUnavailable")
             is PairAttemptOutcome.WindowClosed -> seams.log("relay-pair outcome=WindowClosed status=${outcome.statusCode}")
             is PairAttemptOutcome.OtherFailure -> {
                 seams.log("relay-pair outcome=OtherFailure type=${outcome.exceptionType} status=${outcome.statusCode}")

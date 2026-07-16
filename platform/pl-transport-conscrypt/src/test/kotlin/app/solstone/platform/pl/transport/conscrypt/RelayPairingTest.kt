@@ -28,6 +28,14 @@ import kotlin.test.assertTrue
 
 class RelayPairingTest {
     @Test
+    fun nullRelayOriginUsesNormalizedDefaultEndpoint() {
+        val endpoint = relayPairEndpoint(RelayPairLink(ByteArray(8), ByteArray(16), null))
+
+        assertEquals("link.solstone.app", endpoint.host)
+        assertEquals(443, endpoint.port)
+    }
+
+    @Test
     fun happyPathPersistsAfterEnrollAndClosesSessionBeforeEnroll() {
         val stores = Stores()
         val session = FakeSession(

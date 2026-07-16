@@ -52,6 +52,12 @@ data class PairProbeResult(
 
 enum class DirectPairConnectionMode { PAIRING, ALREADY_CONNECTED, RECONNECTING }
 
+class DirectPairEndpointException(
+    val endpointHost: String,
+    val endpointPort: Int,
+    cause: Exception,
+) : IOException("direct pair endpoint failed: $endpointHost:$endpointPort", cause)
+
 fun pairAndProbe(
     pairLink: String,
     deviceLabel: String,
@@ -67,6 +73,7 @@ fun pairAndProbe(
     val body = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
 
     var lastError: Exception? = null
+    var lastEndpoint: DirectEndpoint? = null
     var sawCaMismatch = false
 
     for (endpoint in ordered) {
@@ -77,6 +84,7 @@ fun pairAndProbe(
                 sawCaMismatch = true
             }
             lastError = e
+            lastEndpoint = endpoint
             continue
         }
         val pinned = pairSession.handshakePinned
@@ -86,6 +94,7 @@ fun pairAndProbe(
             }
         } catch (e: Exception) {
             lastError = e
+            lastEndpoint = endpoint
             continue
         }
 
@@ -134,6 +143,7 @@ fun pairAndProbe(
             }
             DialDecision.ADVANCE -> {
                 lastError = IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
+                lastEndpoint = endpoint
             }
         }
     }
@@ -141,8 +151,13 @@ fun pairAndProbe(
     if (sawCaMismatch) {
         throw SSLException("scanned a pair link whose host did not match its CA pin")
     }
-    throw lastError ?: IOException("all pair candidates exhausted")
+    val failure = lastError ?: IOException("all pair candidates exhausted")
+    val endpoint = lastEndpoint
+    throw directPairFailure(endpoint, failure)
 }
+
+internal fun directPairFailure(endpoint: DirectEndpoint?, failure: Exception): Exception =
+    if (endpoint == null) failure else DirectPairEndpointException(endpoint.host, endpoint.port, failure)
 
 internal fun persistOrReturnDirectPairResult(
     home: PairedHome,

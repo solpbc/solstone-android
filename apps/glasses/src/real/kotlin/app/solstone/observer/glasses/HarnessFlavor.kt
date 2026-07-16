@@ -75,6 +75,7 @@ fun createGlassesHarnessFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = "solstone glasses",
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = networkAvailability::isUsableNow,
             opportunisticSync = opportunisticSync,
             diag = { GlassesDiagLog.appendRaw(it) },
         ),

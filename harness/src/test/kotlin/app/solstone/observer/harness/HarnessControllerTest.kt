@@ -11,6 +11,7 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedException
 import java.io.IOException
 import java.net.UnknownHostException
+import java.net.ConnectException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -312,7 +313,15 @@ class HarnessControllerTest {
 
         val outcome = f.controller.onScannedPairLinkClassified(validRelayPairLink())
 
-        assertEquals(PairAttemptOutcome.NetworkUnavailable, outcome)
+        assertEquals(
+            PairAttemptOutcome.NetworkUnavailable(
+                ConnectivityFailure.NAME_RESOLUTION,
+                "link.solstone.app",
+                443,
+                PairRoute.RELAY,
+            ),
+            outcome,
+        )
     }
 
     /**
@@ -341,16 +350,32 @@ class HarnessControllerTest {
      * AC4 direct-link red proof: before direct classified failures were caught, this path threw.
      */
     @Test
-    fun classifiedDirectPairConnectivityFailureMapsNetworkUnavailable() {
-        val f = fixture(
-            pairProbe = PairProbe { _, _ ->
-                throw IOException("direct failed", UnknownHostException("h"))
-            },
+    fun classifiedDirectPairConnectivityFailureUsesNetworkSeam() {
+        val failure = IOException("direct failed", ConnectException("refused"))
+        val online = fixture(pairProbe = PairProbe { _, _ -> throw failure })
+        val offline = fixture(
+            pairProbe = PairProbe { _, _ -> throw failure },
+            isUsableNetworkPresent = { false },
         )
 
-        val outcome = f.controller.onScannedPairLinkClassified(validPairLink())
-
-        assertEquals(PairAttemptOutcome.NetworkUnavailable, outcome)
+        assertEquals(
+            PairAttemptOutcome.NetworkUnavailable(
+                ConnectivityFailure.HOST_DID_NOT_ANSWER,
+                "10.0.0.2",
+                7657,
+                PairRoute.DIRECT,
+            ),
+            online.controller.onScannedPairLinkClassified(validPairLink()),
+        )
+        assertEquals(
+            PairAttemptOutcome.NetworkUnavailable(
+                ConnectivityFailure.DEVICE_OFFLINE,
+                "10.0.0.2",
+                7657,
+                PairRoute.DIRECT,
+            ),
+            offline.controller.onScannedPairLinkClassified(validPairLink()),
+        )
     }
 
     @Test

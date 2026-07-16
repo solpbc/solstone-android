@@ -452,6 +452,7 @@ class GlassesObserverRuntimeCommandTest {
             },
             deviceLabel = "test glasses",
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = { true },
             opportunisticSync = opportunisticSync,
         ).also {
             syncByController[it] = sync

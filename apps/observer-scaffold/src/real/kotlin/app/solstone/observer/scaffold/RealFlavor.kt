@@ -69,11 +69,13 @@ fun buildObserverFlavor(
             sourceSnapshot = sourceSnapshot,
             deviceLabel = spec.deviceLabel,
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = networkAvailability::isUsableNow,
             opportunisticSync = opportunisticSync,
         ),
         opportunisticSync = opportunisticSync,
         exemptionVerified = verifier::isExemptionVerified,
         batteryGuidance = guidance.batteryExemption,
         launchBatteryGuidance = { launchGuidance(context, guidance.batteryExemption) },
+        isUsableNetworkPresent = networkAvailability::isUsableNow,
     )
 }

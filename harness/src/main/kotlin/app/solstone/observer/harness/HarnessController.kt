@@ -18,6 +18,7 @@ import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import app.solstone.platform.pl.transport.conscrypt.relayPairEndpoint
 
 enum class ObserverStartMode { VisibleStart, Rehydrate }
 
@@ -44,6 +45,7 @@ class HarnessController(
     private val sourceSnapshot: () -> SourceRuntimeSnapshot,
     private val deviceLabel: String,
     private val visibleCaptureAuthority: VisibleCaptureAuthority,
+    private val isUsableNetworkPresent: () -> Boolean,
     private val opportunisticSync: OpportunisticSync? = null,
     private val diag: (String) -> Unit = {},
 ) {
@@ -204,12 +206,14 @@ class HarnessController(
                 is RelayPairLink -> try {
                     PairAttemptOutcome.Linked(runRelayPairProbe(link))
                 } catch (e: Throwable) {
-                    classifyPairException(e)
+                    val endpoint = relayPairEndpoint(link)
+                    classifyPairException(e, endpoint.host, endpoint.port, PairRoute.RELAY, isUsableNetworkPresent)
                 }
                 is DirectPairLink -> try {
                     PairAttemptOutcome.Linked(runPairProbe(rawText))
                 } catch (e: Throwable) {
-                    classifyPairException(e)
+                    val endpoint = link.endpoint()
+                    classifyPairException(e, endpoint.host, endpoint.port, PairRoute.DIRECT, isUsableNetworkPresent)
                 }
             }
         } ?: return PairAttemptOutcome.Retry

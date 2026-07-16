@@ -8,6 +8,8 @@ import app.solstone.core.diagnostics.StatusCue
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
+import app.solstone.observer.harness.ConnectivityFailure
+import app.solstone.observer.harness.PairRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -270,7 +272,7 @@ class PhotoPairCoordinatorTest {
         assertEquals(emptyList(), f.pairCalls)
 
         f.networkUsable = true
-        f.outcomeByLink[PAIR_A] = PairAttemptOutcome.NetworkUnavailable
+        f.outcomeByLink[PAIR_A] = networkUnavailable()
         f.coordinator.onChange()
 
         assertEquals(2, f.networkCueCalls)
@@ -281,7 +283,7 @@ class PhotoPairCoordinatorTest {
     fun postAttemptNetworkUnavailableCuesAndDoesNotBurn() {
         val f = fixture(
             decodedById = mutableMapOf(1L to PAIR_A),
-            outcomeByLink = mutableMapOf(PAIR_A to PairAttemptOutcome.NetworkUnavailable),
+            outcomeByLink = mutableMapOf(PAIR_A to networkUnavailable()),
         )
 
         f.coordinator.onChange()
@@ -311,7 +313,7 @@ class PhotoPairCoordinatorTest {
     fun outcomeLogsAreRedactedAndUseCarriedFields() {
         val cases = listOf(
             linked() to "relay-pair outcome=Linked mode=PAIRING",
-            PairAttemptOutcome.NetworkUnavailable to "relay-pair outcome=NetworkUnavailable",
+            networkUnavailable() to "relay-pair outcome=NetworkUnavailable",
             PairAttemptOutcome.WindowClosed(401) to "relay-pair outcome=WindowClosed status=401",
             PairAttemptOutcome.OtherFailure("IOException", 503) to
                 "relay-pair outcome=OtherFailure type=IOException status=503",
@@ -421,6 +423,14 @@ class PhotoPairCoordinatorTest {
 
         fun linked(connectionMode: PairConnectionMode = PairConnectionMode.PAIRING): PairAttemptOutcome =
             PairAttemptOutcome.Linked(successResult(connectionMode))
+
+        fun networkUnavailable(): PairAttemptOutcome =
+            PairAttemptOutcome.NetworkUnavailable(
+                ConnectivityFailure.HOST_DID_NOT_ANSWER,
+                "relay.example",
+                443,
+                PairRoute.RELAY,
+            )
 
         fun successResult(connectionMode: PairConnectionMode = PairConnectionMode.PAIRING): HarnessPairProbeResult =
             HarnessPairProbeResult(

@@ -154,6 +154,7 @@ class GlassesDiagnosticPlumbingTest {
             },
             deviceLabel = "test glasses",
             visibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
+            isUsableNetworkPresent = { true },
             diag = diag,
         )
 

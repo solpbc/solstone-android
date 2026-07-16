@@ -16,6 +16,7 @@ data class SharedObserverFlavor(
     val exemptionVerified: () -> Boolean,
     val batteryGuidance: GuidanceAction,
     val launchBatteryGuidance: () -> GuidanceLaunchResult,
+    val isUsableNetworkPresent: () -> Boolean,
 )
 
 interface HeartbeatControl {

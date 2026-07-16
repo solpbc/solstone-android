@@ -16,7 +16,7 @@ fun decidePhotoPair(outcome: PairAttemptOutcome): PhotoPairOutcome =
             PairConnectionMode.RECONNECTING -> PhotoPairOutcome.RECONNECTING
         }
         PairAttemptOutcome.Retry -> PhotoPairOutcome.RETRY
-        PairAttemptOutcome.NetworkUnavailable -> PhotoPairOutcome.NETWORK_UNAVAILABLE
+        is PairAttemptOutcome.NetworkUnavailable -> PhotoPairOutcome.NETWORK_UNAVAILABLE
         is PairAttemptOutcome.WindowClosed -> PhotoPairOutcome.REFRESH_CODE
         is PairAttemptOutcome.OtherFailure -> PhotoPairOutcome.FAILED
     }

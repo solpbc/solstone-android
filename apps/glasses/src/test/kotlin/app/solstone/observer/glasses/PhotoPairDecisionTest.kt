@@ -6,6 +6,8 @@ package app.solstone.observer.glasses
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
+import app.solstone.observer.harness.ConnectivityFailure
+import app.solstone.observer.harness.PairRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -41,7 +43,17 @@ class PhotoPairDecisionTest {
 
     @Test
     fun mapsNetworkUnavailable() {
-        assertEquals(PhotoPairOutcome.NETWORK_UNAVAILABLE, decidePhotoPair(PairAttemptOutcome.NetworkUnavailable))
+        assertEquals(
+            PhotoPairOutcome.NETWORK_UNAVAILABLE,
+            decidePhotoPair(
+                PairAttemptOutcome.NetworkUnavailable(
+                    ConnectivityFailure.DEVICE_OFFLINE,
+                    "journal.example",
+                    443,
+                    PairRoute.RELAY,
+                ),
+            ),
+        )
     }
 
     @Test

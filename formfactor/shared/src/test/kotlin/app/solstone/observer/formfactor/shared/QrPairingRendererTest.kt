@@ -6,6 +6,8 @@ package app.solstone.observer.formfactor.shared
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
+import app.solstone.observer.harness.ConnectivityFailure
+import app.solstone.observer.harness.PairRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -36,7 +38,7 @@ class QrPairingRendererTest {
     fun nonLinkedOutcomesNeverRenderPaired() {
         val outcomes = listOf(
             PairAttemptOutcome.Retry,
-            PairAttemptOutcome.NetworkUnavailable,
+            networkFailure(ConnectivityFailure.DEVICE_OFFLINE),
             PairAttemptOutcome.WindowClosed(401),
             PairAttemptOutcome.OtherFailure("IOException", null),
         )
@@ -46,10 +48,29 @@ class QrPairingRendererTest {
             assertFalse(pairStatusText(outcome).contains("Paired"))
         }
         assertEquals("Scanning", pairStatusText(PairAttemptOutcome.Retry))
-        assertEquals("Network unavailable", pairStatusText(PairAttemptOutcome.NetworkUnavailable))
+        assertEquals("No network connection", pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)))
+        assertEquals(
+            "Couldn't find journal.example. Check the address.",
+            pairStatusText(networkFailure(ConnectivityFailure.NAME_RESOLUTION)),
+        )
+        assertEquals(
+            "Your journal at journal.example:7657 didn't answer. " +
+                "Check it's running and that port 7657 isn't blocked by a firewall.",
+            pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER)),
+        )
+        assertEquals(
+            "Your journal at journal.example:443 didn't answer.",
+            pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
+        )
         assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))
         assertEquals("Pairing failed", pairStatusText(PairAttemptOutcome.OtherFailure("IOException", null)))
     }
+
+    private fun networkFailure(
+        failure: ConnectivityFailure,
+        route: PairRoute = PairRoute.DIRECT,
+        port: Int = 7657,
+    ): PairAttemptOutcome = PairAttemptOutcome.NetworkUnavailable(failure, "journal.example", port, route)
 
     private fun result(pairStatus: Int, statusStatus: Int): HarnessPairProbeResult =
         HarnessPairProbeResult(

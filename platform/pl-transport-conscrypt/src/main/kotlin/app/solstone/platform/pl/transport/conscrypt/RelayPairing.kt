@@ -21,6 +21,7 @@ import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
 import app.solstone.core.pl.PlHttpClient
@@ -204,6 +205,11 @@ fun pairOverRelay(
         relayHost = relayHost,
         connectionMode = connectionMode,
     )
+}
+
+fun relayPairEndpoint(link: RelayPairLink): DirectEndpoint {
+    val relayOrigin = normalizeRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
+    return DirectEndpoint(URL(relayOrigin).host, 443)
 }
 
 private const val RELAY_SYNC_WAITING_TIMEOUT_MS = 30_000L

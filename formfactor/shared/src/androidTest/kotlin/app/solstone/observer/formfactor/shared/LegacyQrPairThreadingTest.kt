@@ -118,6 +118,7 @@ class LegacyQrPairThreadingTest {
             },
             deviceLabel = "legacy-test",
             visibleCaptureAuthority = VisibleCaptureOwnerRegistry(),
+            isUsableNetworkPresent = { true },
         )
 
 }

@@ -4,6 +4,8 @@
 package app.solstone.observer.formfactor.shared
 
 import app.solstone.observer.harness.PairAttemptOutcome
+import app.solstone.observer.harness.ConnectivityFailure
+import app.solstone.observer.harness.PairRoute
 
 fun pairStatusText(outcome: PairAttemptOutcome): String =
     when (outcome) {
@@ -14,9 +16,21 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
                 "Pairing failed"
             }
         PairAttemptOutcome.Retry -> "Scanning"
-        PairAttemptOutcome.NetworkUnavailable -> "Network unavailable"
+        is PairAttemptOutcome.NetworkUnavailable -> networkFailureText(outcome)
         is PairAttemptOutcome.WindowClosed -> "Pairing code expired"
         is PairAttemptOutcome.OtherFailure -> "Pairing failed"
+    }
+
+private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
+    when (outcome.failure) {
+        ConnectivityFailure.DEVICE_OFFLINE -> "No network connection"
+        ConnectivityFailure.NAME_RESOLUTION -> "Couldn't find ${outcome.endpointHost}. Check the address."
+        ConnectivityFailure.HOST_DID_NOT_ANSWER -> when (outcome.route) {
+            PairRoute.RELAY -> "Your journal at ${outcome.endpointHost}:${outcome.endpointPort} didn't answer."
+            PairRoute.DIRECT ->
+                "Your journal at ${outcome.endpointHost}:${outcome.endpointPort} didn't answer. " +
+                    "Check it's running and that port ${outcome.endpointPort} isn't blocked by a firewall."
+        }
     }
 
 fun PairAttemptOutcome.isSuccessfulPair(): Boolean =

@@ -213,6 +213,7 @@ internal fun fixture(
     desiredStore: FakeDesiredObservingStore = FakeDesiredObservingStore(),
     visibleCaptureAuthority: VisibleCaptureAuthority = FakeVisibleCaptureAuthority(present = true),
     networkAvailability: FakeNetworkAvailability? = null,
+    isUsableNetworkPresent: () -> Boolean = { networkAvailability?.usableNow ?: true },
     sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
     diag: (String) -> Unit = {},
 ): Fixture {
@@ -242,6 +243,7 @@ internal fun fixture(
             sourceSnapshot = sourceSnapshotProvider ?: { snapshot },
             deviceLabel = "watch",
             visibleCaptureAuthority = visibleCaptureAuthority,
+            isUsableNetworkPresent = isUsableNetworkPresent,
             opportunisticSync = opportunisticSync,
             diag = diag,
         ),

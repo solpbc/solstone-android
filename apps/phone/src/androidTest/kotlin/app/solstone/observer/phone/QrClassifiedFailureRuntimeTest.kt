@@ -119,6 +119,7 @@ class QrClassifiedFailureRuntimeTest {
             sourceSnapshot = { SourceRuntimeSnapshot(false, false, true, true) },
             deviceLabel = "phone-test",
             visibleCaptureAuthority = VisibleCaptureOwnerRegistry(),
+            isUsableNetworkPresent = { true },
         )
 }
 
