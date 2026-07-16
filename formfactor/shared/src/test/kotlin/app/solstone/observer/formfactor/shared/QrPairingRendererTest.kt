@@ -8,12 +8,32 @@ import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.PairConnectionMode
 import app.solstone.observer.harness.ConnectivityFailure
 import app.solstone.observer.harness.PairRoute
+import app.solstone.observer.harness.PairLinkDispatchResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class QrPairingRendererTest {
+    @Test
+    fun pairLinkDispatchCopyIsFixedAndDoesNotExposeLinkPayload() {
+        val fragment = "PRIVATE-FRAGMENT-MARKER"
+        val invalid = pairLinkDispatchText(PairLinkDispatchResult.InvalidLink)
+        val busy = pairLinkDispatchText(PairLinkDispatchResult.Busy)
+
+        assertEquals("Invalid pair link", invalid)
+        assertEquals("Pairing already in progress. Try again.", busy)
+        assertFalse(requireNotNull(invalid).contains(fragment))
+        assertFalse(requireNotNull(busy).contains(fragment))
+        assertEquals(null, pairLinkDispatchText(PairLinkDispatchResult.NoLink))
+        assertEquals(
+            "Pairing failed",
+            pairLinkDispatchText(
+                PairLinkDispatchResult.Attempted(PairAttemptOutcome.OtherFailure("IOException", null)),
+            ),
+        )
+    }
+
     /**
      * AC4 red proof: the old QR path rendered "Paired" optimistically after any non-throwing scan callback.
      */

@@ -16,6 +16,7 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.PairLinkDispatchResult
 import app.solstone.observer.harness.decimalBytes
 import app.solstone.observer.harness.journalCacheText
 import app.solstone.observer.harness.plStatusText
@@ -101,6 +102,23 @@ class ObserverHarnessUi(
             }
             addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeightPx))
             backButton()
+        }
+    }
+
+    fun showPairLink(uri: String?) {
+        setScreen {
+            val status = text("Pairing…")
+            backButton()
+            asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
+                when (state) {
+                    LoadState.Loading -> status.text = "Pairing…"
+                    is LoadState.Loaded -> when (val result = state.value) {
+                        PairLinkDispatchResult.NoLink -> showMenu()
+                        else -> status.text = requireNotNull(pairLinkDispatchText(result))
+                    }
+                    is LoadState.Failed -> status.text = "Pairing failed"
+                }
+            }
         }
     }
 

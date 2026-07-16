@@ -6,6 +6,15 @@ package app.solstone.observer.formfactor.shared
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.ConnectivityFailure
 import app.solstone.observer.harness.PairRoute
+import app.solstone.observer.harness.PairLinkDispatchResult
+
+fun pairLinkDispatchText(result: PairLinkDispatchResult): String? =
+    when (result) {
+        PairLinkDispatchResult.NoLink -> null
+        PairLinkDispatchResult.InvalidLink -> "Invalid pair link"
+        PairLinkDispatchResult.Busy -> "Pairing already in progress. Try again."
+        is PairLinkDispatchResult.Attempted -> pairStatusText(result.outcome)
+    }
 
 fun pairStatusText(outcome: PairAttemptOutcome): String =
     when (outcome) {

@@ -4,6 +4,9 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,16 +17,22 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.observer.formfactor.shared.Camera2QrPreviewView
+import app.solstone.observer.formfactor.shared.ObserverHarnessUi
+import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.testing.validDirectPairLink
 import app.solstone.observer.harness.BundleExport
+import app.solstone.observer.harness.AsyncLoad
+import app.solstone.observer.harness.BackgroundRunner
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
+import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.HarnessExportResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.InMemoryDesiredObservingStore
+import app.solstone.observer.harness.MainPoster
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
@@ -34,6 +43,8 @@ import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import app.solstone.platform.power.GuidanceAction
+import app.solstone.platform.power.GuidanceLaunchResult
 import java.net.ConnectException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -79,6 +90,45 @@ class QrClassifiedFailureRuntimeTest {
             assertTrue(latch.await(5, TimeUnit.SECONDS))
             assertFalse(lastStatus.contains("Paired"))
         }
+    }
+
+    @Test
+    fun failingPairLinkHandoffRendersClassifiedStatusWithoutCrashing() {
+        ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
+                val ui = ObserverHarnessUi(
+                    context = activity,
+                    controller = failingController(),
+                    permissionRequester = {},
+                    asyncLoad = AsyncLoad(BackgroundRunner { it() }, MainPoster { it() }),
+                    previewHeightPx = 1,
+                    qrBackend = QrBackend.Camera2,
+                    qrThreadLabel = "phone-test",
+                    batteryExemptionGranted = { true },
+                    batteryGuidance = GuidanceAction("", null, ""),
+                    launchBatteryGuidance = { GuidanceLaunchResult.Launched },
+                    journalCacheState = { cacheState },
+                    saveJournalCacheLimit = { cacheState },
+                )
+                activity.setContentView(ui.view())
+                ui.showPairLink(validDirectPairLink())
+
+                val texts = collectTexts(activity.findViewById(android.R.id.content))
+                assertTrue(texts.contains("No network connection") || texts.any { it.contains("didn't answer") })
+                assertFalse(texts.contains("Paired"))
+            }
+        }
+    }
+
+    private fun collectTexts(root: View): List<String> {
+        val texts = mutableListOf<String>()
+        fun visit(view: View) {
+            if (view is TextView) texts += view.text.toString()
+            if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+        }
+        visit(root)
+        return texts
     }
 
     private fun failingController(): HarnessController =

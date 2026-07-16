@@ -98,6 +98,48 @@ fun intentFilterTokenGroups(manifestText: String): List<Set<String>> =
         }
         .toList()
 
+data class IntentDataTokens(
+    val scheme: String?,
+    val host: String?,
+    val path: String?,
+)
+
+data class IntentFilterTokens(
+    val autoVerify: Boolean,
+    val names: Set<String>,
+    val data: List<IntentDataTokens>,
+)
+
+fun intentFilterTokens(manifestText: String): List<IntentFilterTokens> =
+    Regex("""<intent-filter([^>]*)>(.*?)</intent-filter>""", RegexOption.DOT_MATCHES_ALL)
+        .findAll(manifestText)
+        .map { filter ->
+            val body = filter.groupValues[2]
+            fun attribute(text: String, name: String): String? =
+                Regex("""android:$name\s*=\s*["']([^"']+)["']""")
+                    .find(text)
+                    ?.groupValues
+                    ?.get(1)
+            IntentFilterTokens(
+                autoVerify = attribute(filter.groupValues[1], "autoVerify") == "true",
+                names = Regex("""android:name\s*=\s*["']([^"']+)["']""")
+                    .findAll(body)
+                    .map { it.groupValues[1] }
+                    .toSet(),
+                data = Regex("""<data\b[^>]*>""")
+                    .findAll(body)
+                    .map { data ->
+                        IntentDataTokens(
+                            scheme = attribute(data.value, "scheme"),
+                            host = attribute(data.value, "host"),
+                            path = attribute(data.value, "path"),
+                        )
+                    }
+                    .toList(),
+            )
+        }
+        .toList()
+
 tasks.register("checkPrivacyDeps") {
     group = "verification"
     description = "Fails if a denylisted analytics, telemetry, crash, or tracking dependency is resolved."
@@ -219,6 +261,46 @@ tasks.register("launcherHomeGuardSelfTest") {
     }
 }
 
+tasks.register("appLinksGuardSelfTest") {
+    group = "verification"
+    description = "Exercises verified App Links intent-filter parsing."
+    doLast {
+        val view = "android.intent.action.VIEW"
+        val default = "android.intent.category.DEFAULT"
+        val browsable = "android.intent.category.BROWSABLE"
+        fun List<IntentFilterTokens>.hasVerifiedPairLink() = any { filter ->
+            filter.autoVerify &&
+                setOf(view, default, browsable).all { it in filter.names } &&
+                filter.data.any { it == IntentDataTokens("https", "go.solstone.app", "/p") }
+        }
+
+        val valid = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" />""" +
+                """<category android:name="$default" /><category android:name="$browsable" />""" +
+                """<data android:scheme="https" android:host="go.solstone.app" android:path="/p" /></intent-filter>"""
+        )
+        check(valid.hasVerifiedPairLink())
+
+        val notVerified = intentFilterTokens(
+            """<intent-filter><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="https" android:host="go.solstone.app" android:path="/p" /></intent-filter>"""
+        )
+        check(!notVerified.hasVerifiedPairLink())
+
+        val wrongData = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" />""" +
+                """<category android:name="$browsable" /><data android:scheme="http" android:host="go.solstone.app" android:path="/other" /></intent-filter>"""
+        )
+        check(!wrongData.hasVerifiedPairLink())
+
+        val split = intentFilterTokens(
+            """<intent-filter android:autoVerify="true"><action android:name="$view" /><category android:name="$default" /><category android:name="$browsable" /></intent-filter>""" +
+                """<intent-filter><data android:scheme="https" android:host="go.solstone.app" android:path="/p" /></intent-filter>"""
+        )
+        check(!split.hasVerifiedPairLink())
+    }
+}
+
 tasks.named("check") {
     dependsOn(
         "checkPrivacyDeps",
@@ -227,6 +309,7 @@ tasks.named("check") {
         "purityGuardSelfTest",
         "manifestGuardSelfTest",
         "launcherHomeGuardSelfTest",
+        "appLinksGuardSelfTest",
     )
 }
 
@@ -324,6 +407,34 @@ fun Project.registerLauncherHomeManifestCheck(requireHome: Boolean) {
     }
 }
 
+fun Project.registerAppLinksManifestCheck() {
+    tasks.register("checkRealDebugAppLinksManifest") {
+        group = "verification"
+        description = "Checks the realDebug merged manifest for the verified pair App Link."
+        dependsOn("processRealDebugManifest")
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val view = "android.intent.action.VIEW"
+            val default = "android.intent.category.DEFAULT"
+            val browsable = "android.intent.category.BROWSABLE"
+            val present = intentFilterTokens(manifest.readText()).any { filter ->
+                filter.autoVerify &&
+                    setOf(view, default, browsable).all { it in filter.names } &&
+                    filter.data.any { it == IntentDataTokens("https", "go.solstone.app", "/p") }
+            }
+            if (!present) {
+                throw GradleException("${project.path} realDebug App Links manifest check failed:\nmissing verified https://go.solstone.app/p VIEW intent-filter")
+            }
+        }
+    }
+}
+
 project(":apps:watch") {
     registerMicrophoneManifestCheck()
     registerLauncherHomeManifestCheck(requireHome = false)
@@ -332,6 +443,7 @@ project(":apps:watch") {
 project(":apps:phone") {
     registerMicrophoneManifestCheck()
     registerLauncherHomeManifestCheck(requireHome = false)
+    registerAppLinksManifestCheck()
 }
 
 project(":apps:glasses") {

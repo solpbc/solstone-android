@@ -23,6 +23,13 @@ import app.solstone.platform.pl.transport.conscrypt.relayPairEndpoint
 
 enum class ObserverStartMode { VisibleStart, Rehydrate }
 
+sealed interface PairLinkDispatchResult {
+    data object NoLink : PairLinkDispatchResult
+    data object InvalidLink : PairLinkDispatchResult
+    data object Busy : PairLinkDispatchResult
+    data class Attempted(val outcome: PairAttemptOutcome) : PairLinkDispatchResult
+}
+
 data class ObserverStartReadiness(
     val allowed: Boolean,
     val blockers: Set<ReasonCode>,
@@ -227,6 +234,20 @@ class HarnessController(
             opportunisticSync?.onPairingSuccess()
         }
         return outcome
+    }
+
+    fun dispatchPairLink(rawText: String?): PairLinkDispatchResult {
+        if (rawText == null) return PairLinkDispatchResult.NoLink
+        if (!looksLikePairLink(rawText)) return PairLinkDispatchResult.InvalidLink
+        try {
+            parsePairLink(rawText)
+        } catch (_: IllegalArgumentException) {
+            return PairLinkDispatchResult.InvalidLink
+        }
+        return when (val outcome = onScannedPairLinkClassified(rawText)) {
+            PairAttemptOutcome.Retry -> PairLinkDispatchResult.Busy
+            else -> PairLinkDispatchResult.Attempted(outcome)
+        }
     }
 
     fun probePlStatus(): HarnessPlStatus {

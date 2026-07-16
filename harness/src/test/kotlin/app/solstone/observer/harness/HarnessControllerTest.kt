@@ -24,6 +24,57 @@ import kotlin.test.fail
 
 class HarnessControllerTest {
     @Test
+    fun pairLinkDispatchRejectsAbsentMalformedAndInvalidLinks() {
+        val controller = fixture().controller
+
+        assertEquals(PairLinkDispatchResult.NoLink, controller.dispatchPairLink(null))
+        assertEquals(PairLinkDispatchResult.InvalidLink, controller.dispatchPairLink("not a pair link"))
+        assertEquals(
+            PairLinkDispatchResult.InvalidLink,
+            controller.dispatchPairLink("https://go.solstone.app/p#NOT-BASE32"),
+        )
+    }
+
+    @Test
+    fun pairLinkDispatchMapsLockContentionToBusyWithoutCallingProbe() {
+        var calls = 0
+        val lock = RecordingCameraLock().also { it.held = true }
+        val controller = fixture(
+            cameraLock = lock,
+            pairProbe = PairProbe { _, _ ->
+                calls += 1
+                error("probe should not run")
+            },
+        ).controller
+
+        assertEquals(PairLinkDispatchResult.Busy, controller.dispatchPairLink(validPairLink()))
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun pairLinkDispatchWrapsEveryClassifiedOutcomeWithoutRetry() {
+        val linked = fixture().controller.dispatchPairLink(validPairLink())
+        val directNetworkFailure = fixture(
+            pairProbe = PairProbe { _, _ -> throw IOException("failed", ConnectException("refused")) },
+        ).controller.dispatchPairLink(validPairLink())
+        val relayWindowClosed = fixture(
+            relayPairProbe = RelayPairProbe { _, _ -> throw RelayPairWindowClosedException() },
+        ).controller.dispatchPairLink(validRelayPairLink())
+        val otherFailure = fixture(
+            pairProbe = PairProbe { _, _ -> error("failed") },
+        ).controller.dispatchPairLink(validPairLink())
+
+        val results = listOf(linked, directNetworkFailure, relayWindowClosed, otherFailure)
+        assertIs<PairAttemptOutcome.Linked>((linked as PairLinkDispatchResult.Attempted).outcome)
+        assertIs<PairAttemptOutcome.NetworkUnavailable>(
+            (directNetworkFailure as PairLinkDispatchResult.Attempted).outcome,
+        )
+        assertIs<PairAttemptOutcome.WindowClosed>((relayWindowClosed as PairLinkDispatchResult.Attempted).outcome)
+        assertIs<PairAttemptOutcome.OtherFailure>((otherFailure as PairLinkDispatchResult.Attempted).outcome)
+        assertTrue(results.none { it is PairLinkDispatchResult.Attempted && it.outcome == PairAttemptOutcome.Retry })
+    }
+
+    @Test
     fun startRefusedUntilRequiredPermissionsAreGranted() {
         val cameraDenied = fixture(permissionStatus = grantedPermissions().copy(cameraGranted = false))
         assertFalse(cameraDenied.controller.start())

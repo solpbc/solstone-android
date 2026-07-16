@@ -4,6 +4,7 @@
 package app.solstone.observer.scaffold
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.window.OnBackInvokedDispatcher
@@ -41,6 +42,9 @@ class ObserverActivity : Activity() {
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
         setContentView(harnessUi.view())
+        if (savedInstanceState == null) {
+            showPairLink(intent)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
                 if (!harnessUi.handleBack()) finish()
@@ -69,6 +73,12 @@ class ObserverActivity : Activity() {
         super.onDestroy()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        showPairLink(intent)
+    }
+
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -80,6 +90,12 @@ class ObserverActivity : Activity() {
             container.controller.onPermissionsRequested()
             harnessUi.refreshPermissions()
         }
+    }
+
+    private fun showPairLink(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        harnessUi.showPairLink(uri.toString())
     }
 
     private companion object {
