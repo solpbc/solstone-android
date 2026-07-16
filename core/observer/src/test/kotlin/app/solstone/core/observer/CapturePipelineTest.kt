@@ -33,6 +33,28 @@ import kotlin.test.assertTrue
 
 class CapturePipelineTest {
     @Test
+    fun startedEpochMsUsesClockOnlyForFirstSuccessfulStart() {
+        val now = AtomicLong(BASE_EPOCH_MS)
+        val pipeline = CapturePipeline(
+            segmenter = Segmenter(java.time.ZoneId.of("UTC")),
+            spoolWriter = ThreadCapturingSpoolWriter(AtomicBoolean(true)),
+            sealedSink = ThreadCapturingSink(),
+            payloadBytes = ByteArrayPayloadProvider(),
+            engines = emptyList(),
+            nowProvider = now::get,
+            tickIntervalMs = 10_000L,
+        )
+
+        assertEquals(null, pipeline.startedEpochMs())
+        pipeline.start()
+        assertEquals(BASE_EPOCH_MS, pipeline.startedEpochMs())
+        now.incrementAndGet()
+        pipeline.start()
+        assertEquals(BASE_EPOCH_MS, pipeline.startedEpochMs())
+        pipeline.stop()
+    }
+
+    @Test
     fun lastEmissionEpochMsStartsNullAndUpdatesWhenEmissionArrives() {
         val engine = JoiningEngine()
         val writer = ThreadCapturingSpoolWriter(engine.joined)

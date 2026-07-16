@@ -131,11 +131,16 @@ class RealPlStatusProbe(
                 )
             }
         } catch (e: IOException) {
-            HarnessPlStatus.PairedButUnreachable(e.message)
+            HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
         } catch (e: Exception) {
-            HarnessPlStatus.PairedButUnreachable(e.message)
+            HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
         }
     }
+}
+
+internal fun plFailureDetail(exception: Exception): String {
+    val type = exception.javaClass.simpleName
+    return exception.message?.takeIf(String::isNotBlank)?.let { "$type: $it" } ?: type
 }
 
 class RealSyncEnqueue(private val context: Context, private val streamType: String) : SyncEnqueue {

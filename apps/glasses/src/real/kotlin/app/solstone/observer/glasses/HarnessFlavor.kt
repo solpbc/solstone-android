@@ -26,7 +26,6 @@ import app.solstone.platform.power.AndroidDeviceFingerprintProvider
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
 import app.solstone.platform.power.ExemptionVerifier
 import app.solstone.platform.power.OemGuidanceCatalog
-import app.solstone.platform.power.SharedPreferencesAutostartConfirmationStore
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
 
@@ -44,8 +43,6 @@ fun createGlassesHarnessFlavor(
     val guidance = OemGuidanceCatalog.select(AndroidDeviceFingerprintProvider().fingerprint())
     val verifier = ExemptionVerifier(
         batteryExemptionStatus = AndroidBatteryExemptionStatus(context),
-        autostartConfirmationStore = SharedPreferencesAutostartConfirmationStore(context),
-        autostartRequired = guidance.autostartAvailable,
     )
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val syncEnqueue = RealSyncEnqueue(context, GLASSES_STREAM)

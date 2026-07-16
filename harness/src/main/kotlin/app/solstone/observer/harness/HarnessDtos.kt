@@ -26,6 +26,14 @@ sealed interface HarnessPlStatus {
     data class Reachable(val status: Int) : HarnessPlStatus
 }
 
+fun plStatusText(status: HarnessPlStatus): String =
+    when (status) {
+        HarnessPlStatus.NotPaired -> "Not paired"
+        is HarnessPlStatus.PairedButUnreachable ->
+            "Paired but unreachable: ${status.reason?.takeIf(String::isNotBlank) ?: "connection failed (no further detail)"}"
+        is HarnessPlStatus.Reachable -> "Reachable (HTTP ${status.status})"
+    }
+
 data class HarnessEvidenceFile(
     val sourceId: String,
     val name: String,

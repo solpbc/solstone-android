@@ -23,7 +23,6 @@ import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidBatteryExemptionStatus
 import app.solstone.platform.power.ExemptionVerifier
-import app.solstone.platform.power.SharedPreferencesAutostartConfirmationStore
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
 
@@ -39,10 +38,7 @@ fun buildObserverFlavor(
 ): SharedObserverFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
-    val verifier = ExemptionVerifier(
-        AndroidBatteryExemptionStatus(context),
-        SharedPreferencesAutostartConfirmationStore(context),
-    )
+    val verifier = ExemptionVerifier(AndroidBatteryExemptionStatus(context))
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val syncEnqueue = RealSyncEnqueue(context, spec.stream)
     val networkAvailability = AndroidNetworkAvailability(context)

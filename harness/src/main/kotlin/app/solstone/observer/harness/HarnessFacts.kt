@@ -46,10 +46,22 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
 }
 
 fun displayFor(state: SourceState, reason: ReasonCode): String =
-    if (reason == ReasonCode.NONE) {
-        state.label()
-    } else {
-        "${state.label()}: ${reason.name.lowercase()}"
+    reason.text()?.let { "${state.label()}: $it" } ?: state.label()
+
+private fun ReasonCode.text(): String? =
+    when (this) {
+        ReasonCode.NONE -> null
+        ReasonCode.PERMISSION_REVOKED -> "permissions needed"
+        ReasonCode.SERVICE_KILLED -> "observing was stopped by the system"
+        ReasonCode.REBOOTED -> "restart observing after reboot"
+        ReasonCode.UNPAIRED -> "not paired with your journal"
+        ReasonCode.STORAGE_FULL -> "phone storage is full"
+        ReasonCode.PROVIDER_SILENT -> "nothing observed recently"
+        ReasonCode.AUTH_REVOKED -> "access was revoked - pair again"
+        ReasonCode.EXEMPTION_UNVERIFIED -> "battery settings may stop sol in the background"
+        ReasonCode.TRANSPORT_UNAVAILABLE -> "can't reach your journal"
+        ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "open sol to resume observing"
+        ReasonCode.DESIRED_OFF -> "observing is turned off"
     }
 
 private fun SourceState.label(): String =

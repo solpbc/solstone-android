@@ -63,19 +63,9 @@ class PowerLogicTest {
     }
 
     @Test
-    fun exemptionRequiresBatteryExemptionAndAutostartConfirmation() {
-        assertFalse(verifier(battery = false, autostart = false).isExemptionVerified())
-        assertFalse(verifier(battery = true, autostart = false).isExemptionVerified())
-        assertFalse(verifier(battery = false, autostart = true).isExemptionVerified())
-        assertTrue(verifier(battery = true, autostart = true).isExemptionVerified())
-    }
-
-    @Test
-    fun exemptionCanUseBatteryOnlyWhenAutostartIsUnavailable() {
-        assertFalse(verifier(battery = false, autostart = false, autostartRequired = false).isExemptionVerified())
-        assertFalse(verifier(battery = false, autostart = true, autostartRequired = false).isExemptionVerified())
-        assertTrue(verifier(battery = true, autostart = false, autostartRequired = false).isExemptionVerified())
-        assertTrue(verifier(battery = true, autostart = true, autostartRequired = false).isExemptionVerified())
+    fun exemptionReflectsBatteryExemption() {
+        assertFalse(verifier(battery = false).isExemptionVerified())
+        assertTrue(verifier(battery = true).isExemptionVerified())
     }
 
     @Test
@@ -84,20 +74,6 @@ class PowerLogicTest {
         assertTrue(StorageStatus(UsableSpaceProvider { 100L }, minimumFreeBytes = 100L).isStorageOk())
     }
 
-    private fun verifier(battery: Boolean, autostart: Boolean, autostartRequired: Boolean = true): ExemptionVerifier =
-        ExemptionVerifier(
-            batteryExemptionStatus = BatteryExemptionStatus { battery },
-            autostartConfirmationStore = FakeAutostartConfirmationStore(autostart),
-            autostartRequired = autostartRequired,
-        )
-
-    private class FakeAutostartConfirmationStore(initial: Boolean) : AutostartConfirmationStore {
-        private var confirmed = initial
-
-        override fun isAutostartConfirmed(): Boolean = confirmed
-
-        override fun setAutostartConfirmed(confirmed: Boolean) {
-            this.confirmed = confirmed
-        }
-    }
+    private fun verifier(battery: Boolean): ExemptionVerifier =
+        ExemptionVerifier(batteryExemptionStatus = BatteryExemptionStatus { battery })
 }

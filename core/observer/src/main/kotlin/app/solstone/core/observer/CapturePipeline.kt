@@ -31,6 +31,7 @@ class CapturePipeline(
     }
     private val started = AtomicBoolean(false)
     private var tick: ScheduledFuture<*>? = null
+    @Volatile private var startedEpochMs: Long? = null
     @Volatile private var lastEmissionEpochMs: Long? = null
     private var sealedCount: Long = 0
 
@@ -40,6 +41,7 @@ class CapturePipeline(
 
     fun start() {
         if (!started.compareAndSet(false, true)) return
+        startedEpochMs = nowProvider()
         emitDiag("capture event=start")
         tick = executor.scheduleAtFixedRate(
             { runDraining("engine") { segmenter.sealDue(nowProvider()) } },
@@ -90,6 +92,8 @@ class CapturePipeline(
             executor.awaitTermination(TERMINATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }
     }
+
+    fun startedEpochMs(): Long? = startedEpochMs
 
     fun lastEmissionEpochMs(): Long? = lastEmissionEpochMs
 

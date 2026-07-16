@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import app.solstone.core.observer.CapturePipeline
+import app.solstone.core.observer.isProviderFresh
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
@@ -154,10 +155,14 @@ class ObserverAppContainer(
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
         val condition = captureSetup.engines.firstOrNull()?.condition()
-        val lastEmission = activePipeline?.lastEmissionEpochMs()
+        val pipeline = activePipeline
         return SourceRuntimeSnapshot(
             engineRunning = condition?.running == true,
-            providerEmitting = lastEmission?.let { System.currentTimeMillis() - it <= PROVIDER_STALE_MS } == true,
+            providerEmitting = isProviderFresh(
+                startedEpochMs = pipeline?.startedEpochMs(),
+                lastEmissionEpochMs = pipeline?.lastEmissionEpochMs(),
+                nowEpochMs = System.currentTimeMillis(),
+            ),
             storageOk = condition?.available != false,
             exemptionVerified = flavor.exemptionVerified(),
         )
@@ -166,7 +171,6 @@ class ObserverAppContainer(
     private companion object {
         const val TICK_INTERVAL_MS = 5_000L
         const val STATUS_POLL_INTERVAL_MS = 5_000L
-        const val PROVIDER_STALE_MS = 310_000L
     }
 }
 

@@ -16,6 +16,7 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
 import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
@@ -200,13 +201,6 @@ class GlassesHarnessUi(
             "Ready: ${p.allRequiredGranted}",
         ).joinToString("\n")
     }
-
-    private fun plStatusText(status: HarnessPlStatus): String =
-        when (status) {
-            HarnessPlStatus.NotPaired -> "Not paired"
-            is HarnessPlStatus.PairedButUnreachable -> "Paired but unreachable: ${status.reason ?: "unknown"}"
-            is HarnessPlStatus.Reachable -> "Reachable: ${status.status}"
-        }
 
     private fun setScreen(build: LinearLayout.() -> Unit) {
         container.removeAllViews()
