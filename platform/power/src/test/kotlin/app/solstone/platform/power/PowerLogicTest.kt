@@ -63,6 +63,54 @@ class PowerLogicTest {
     }
 
     @Test
+    fun samsungAndGenericExposeTheirSelectedBatteryActions() {
+        val samsung = OemGuidanceCatalog.select(DeviceFingerprint("Samsung", "galaxy", "phone"))
+        val generic = OemGuidanceCatalog.select(DeviceFingerprint("Example", "Example", "Example"))
+
+        assertEquals(OemGuidanceCatalog.samsung.batteryExemption, samsung.batteryExemption)
+        assertEquals(OemGuidanceCatalog.generic.batteryExemption, generic.batteryExemption)
+    }
+
+    @Test
+    fun detailsTargetInjectsPackageName() {
+        val prepared = OemGuidanceCatalog.samsung.batteryExemption.prepareIntent("app.solstone.phone")
+
+        assertEquals(
+            GuidanceIntentPreparation.Ready(
+                action = "android.settings.APPLICATION_DETAILS_SETTINGS",
+                data = "package:app.solstone.phone",
+            ),
+            prepared,
+        )
+    }
+
+    @Test
+    fun blankPackageIsRejectedBeforeResolution() {
+        assertEquals(
+            GuidanceIntentPreparation.Invalid("app package is unavailable"),
+            OemGuidanceCatalog.samsung.batteryExemption.prepareIntent(" "),
+        )
+        assertEquals(
+            GuidanceIntentPreparation.Invalid("app package is unavailable"),
+            OemGuidanceCatalog.generic.batteryExemption.prepareIntent(""),
+        )
+    }
+
+    @Test
+    fun detailsActionWithoutSemanticPackageTargetIsRejected() {
+        val action = GuidanceAction(
+            intentAction = "android.settings.APPLICATION_DETAILS_SETTINGS",
+            intentData = null,
+            instructionText = "Open app settings.",
+        )
+
+        assertEquals(
+            GuidanceIntentPreparation.Invalid("app settings target is missing"),
+            action.prepareIntent("app.solstone.phone"),
+        )
+    }
+
+    @Test
     fun exemptionReflectsBatteryExemption() {
         assertFalse(verifier(battery = false).isExemptionVerified())
         assertTrue(verifier(battery = true).isExemptionVerified())

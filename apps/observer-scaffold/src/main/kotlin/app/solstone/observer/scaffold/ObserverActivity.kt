@@ -31,6 +31,9 @@ class ObserverActivity : Activity() {
             previewHeightPx = spec.previewHeightPx,
             qrBackend = spec.qrBackend,
             qrThreadLabel = spec.deviceLabel.substringAfterLast(' '),
+            batteryExemptionGranted = container.flavor.exemptionVerified,
+            batteryGuidance = container.flavor.batteryGuidance,
+            launchBatteryGuidance = container.flavor.launchBatteryGuidance,
             onEvidenceLoaded = { ObserverHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
             onSyncLoaded = { ObserverHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
         )
@@ -50,6 +53,7 @@ class ObserverActivity : Activity() {
     override fun onResume() {
         super.onResume()
         captureOwnerToken = container.captureAuthority.acquire()
+        harnessUi.refreshPermissions()
     }
 
     override fun onStop() {
@@ -60,6 +64,19 @@ class ObserverActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST) {
+            container.controller.onPermissionsRequested()
+            harnessUi.refreshPermissions()
+        }
     }
 
     private companion object {

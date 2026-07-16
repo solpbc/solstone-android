@@ -3,20 +3,13 @@
 
 package app.solstone.platform.power
 
-import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 
 data class GuidanceAction(
     val intentAction: String,
     val intentData: String?,
     val instructionText: String,
-) {
-    fun toIntent(): Intent =
-        Intent(intentAction).also { intent ->
-            if (intentData != null) intent.data = Uri.parse(intentData)
-        }
-}
+)
 
 data class OemGuidance(
     val id: String,

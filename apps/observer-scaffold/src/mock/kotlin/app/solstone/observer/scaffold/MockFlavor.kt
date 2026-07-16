@@ -32,6 +32,7 @@ import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import app.solstone.platform.power.OemGuidanceCatalog
 import java.nio.file.Path
 
 fun buildObserverFlavor(
@@ -51,6 +52,7 @@ fun buildObserverFlavor(
     val sync = MockSyncEnqueue()
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val opportunisticSync = OpportunisticSync(evidenceReader, sync, NoopNetworkAvailability)
+    val guidance = OemGuidanceCatalog.generic
     return SharedObserverFlavor(
         controller = HarnessController(
             permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
@@ -114,6 +116,8 @@ fun buildObserverFlavor(
         syncControl = sync,
         opportunisticSync = opportunisticSync,
         exemptionVerified = { true },
+        batteryGuidance = guidance.batteryExemption,
+        launchBatteryGuidance = { launchGuidance(context, guidance.batteryExemption) },
     )
 }
 

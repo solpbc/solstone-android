@@ -18,6 +18,8 @@ import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
+import app.solstone.platform.power.GuidanceAction
+import app.solstone.platform.power.GuidanceLaunchResult
 
 class ObserverHarnessUi(
     private val context: Context,
@@ -27,11 +29,15 @@ class ObserverHarnessUi(
     private val previewHeightPx: Int,
     private val qrBackend: QrBackend,
     private val qrThreadLabel: String,
+    private val batteryExemptionGranted: () -> Boolean,
+    private val batteryGuidance: GuidanceAction,
+    private val launchBatteryGuidance: () -> GuidanceLaunchResult,
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
+    private var permissionRows: TextView? = null
 
     fun view(): View {
         showMenu()
@@ -51,13 +57,29 @@ class ObserverHarnessUi(
 
     fun showPermissions() {
         setScreen {
-            text(permissionText())
+            permissionRows = text("")
+            text(batteryGuidance.instructionText)
+            lateinit var guidanceNote: TextView
+            button("Fix battery settings") {
+                guidanceNote.text = when (val result = launchBatteryGuidance()) {
+                    GuidanceLaunchResult.Launched -> "Battery settings opened"
+                    is GuidanceLaunchResult.Failed -> result.message
+                }
+            }
+            guidanceNote = text("")
+            val requestNote = text("")
             button("Request permissions") {
                 permissionRequester()
-                text("Requested")
+                requestNote.text = "Requested"
             }
             backButton()
         }
+        refreshPermissions()
+    }
+
+    fun refreshPermissions() {
+        val rows = permissionRows ?: return
+        rows.text = permissionRowsText(controller.refreshPermissions(), batteryExemptionGranted())
     }
 
     fun showScanPairQr() {
@@ -199,19 +221,6 @@ class ObserverHarnessUi(
         }
     }
 
-    private fun permissionText(): String {
-        val p = controller.refreshPermissions()
-        return listOf(
-            "Microphone: ${p.microphoneGranted}",
-            "Camera: ${p.cameraGranted}",
-            "Fine location: ${p.fineLocationGranted}",
-            "Coarse location: ${p.coarseLocationGranted}",
-            "Background location: ${p.backgroundLocationGranted}",
-            "Notifications: ${p.notificationsGranted}",
-            "Ready: ${p.allRequiredGranted}",
-        ).joinToString("\n")
-    }
-
     fun handleBack(): Boolean {
         if (!inSubmenu) return false
         showMenu()
@@ -220,6 +229,7 @@ class ObserverHarnessUi(
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
         inSubmenu = !isMenu
+        permissionRows = null
         container.removeAllViews()
         container.addView(scroll(build))
     }
