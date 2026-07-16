@@ -14,7 +14,10 @@ import android.widget.TextView
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
+import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.decimalBytes
+import app.solstone.observer.harness.journalCacheText
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
@@ -25,8 +28,11 @@ class GlassesHarnessUi(
     private val controller: HarnessController,
     private val permissionRequester: () -> Unit,
     private val asyncLoad: AsyncLoad,
+    private val journalCacheState: () -> HarnessJournalCacheState,
+    private val saveJournalCacheLimit: (Long) -> HarnessJournalCacheState,
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
+    private val onJournalCacheLoadComplete: () -> Unit = {},
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
 
@@ -43,6 +49,7 @@ class GlassesHarnessUi(
             button("Start/stop observing") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
+            button("Local cache") { showLocalCache() }
         }
     }
 
@@ -122,6 +129,58 @@ class GlassesHarnessUi(
             val content = column()
             backButton()
             loadEvidence(content)
+        }
+    }
+
+    fun showLocalCache() {
+        setScreen {
+            val content = column()
+            backButton()
+            loadJournalCache(content)
+        }
+    }
+
+    private fun loadJournalCache(content: LinearLayout) {
+        asyncLoad.load(journalCacheState) { state ->
+            content.removeAllViews()
+            when (state) {
+                LoadState.Loading -> content.text("Loading local cache…")
+                is LoadState.Loaded -> {
+                    content.renderJournalCache(state.value)
+                    onJournalCacheLoadComplete()
+                }
+                is LoadState.Failed -> {
+                    content.text("Couldn't load local cache")
+                    onJournalCacheLoadComplete()
+                }
+            }
+        }
+    }
+
+    private fun LinearLayout.renderJournalCache(state: HarnessJournalCacheState) {
+        text(journalCacheText(state))
+        state.limitChoicesBytes.forEach { choice ->
+            val current = if (choice == state.configuredLimitBytes) " (current)" else ""
+            button("Use ${decimalBytes(choice)}$current") {
+                asyncLoad.load({ saveJournalCacheLimit(choice) }) { loadState ->
+                    when (loadState) {
+                        LoadState.Loading -> {
+                            removeAllViews()
+                            text("Saving local cache limit…")
+                        }
+                        is LoadState.Loaded -> {
+                            removeAllViews()
+                            renderJournalCache(loadState.value)
+                            onJournalCacheLoadComplete()
+                        }
+                        is LoadState.Failed -> {
+                            removeAllViews()
+                            text("Couldn't save local cache limit. Previous limit kept.")
+                            onJournalCacheLoadComplete()
+                        }
+                    }
+                }
+            }
         }
     }
 

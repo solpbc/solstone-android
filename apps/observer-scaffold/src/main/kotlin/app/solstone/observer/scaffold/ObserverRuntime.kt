@@ -58,4 +58,5 @@ class ObserverRuntimeHooks {
     @Volatile var onRecoveryComplete: (() -> Unit)? = null
     @Volatile var onEvidenceLoadComplete: (() -> Unit)? = null
     @Volatile var onSyncLoadComplete: (() -> Unit)? = null
+    @Volatile var onJournalCacheLoadComplete: (() -> Unit)? = null
 }

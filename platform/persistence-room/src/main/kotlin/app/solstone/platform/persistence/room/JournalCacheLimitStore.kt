@@ -20,6 +20,8 @@ private val validJournalCacheLimits = setOf(1L, 2L, 4L, 8L, 16L, 32L).mapTo(muta
     it * 1_000_000_000L
 }
 
+val JOURNAL_CACHE_LIMIT_CHOICES_BYTES: List<Long> = validJournalCacheLimits.sorted()
+
 enum class JournalCacheLimitFallback { ABSENT, CORRUPT }
 
 data class JournalCacheSnapshot(
@@ -34,6 +36,7 @@ sealed interface JournalCacheLimitSaveResult {
 }
 
 class JournalCacheLimitStore(private val file: File) {
+    @Volatile
     private var current = loadSnapshot(file)
 
     fun snapshot(): JournalCacheSnapshot = current

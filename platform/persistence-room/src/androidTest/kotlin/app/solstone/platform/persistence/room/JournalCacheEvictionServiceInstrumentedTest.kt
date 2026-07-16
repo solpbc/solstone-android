@@ -176,6 +176,7 @@ class JournalCacheEvictionServiceInstrumentedTest {
         assertEquals(QueueState.EVICTED, database.segmentDao().segmentById(uploaded.id)!!.state)
         assertTrue(database.segmentDao().segmentsForDrain(STREAM).none { it.id == uploaded.id })
         assertTrue(database.segmentDao().segmentsByState(QueueState.SEALED).none { it.id == uploaded.id })
+        assertEquals(0, database.segmentDao().pendingCount(STREAM))
     }
 
     @Test
@@ -201,6 +202,7 @@ class JournalCacheEvictionServiceInstrumentedTest {
         assertFalse(Files.exists(path(uploaded)))
         assertTrue(database.segmentDao().segmentsForDrain(STREAM).none { it.id == uploaded.id })
         assertTrue(database.segmentDao().segmentsByState(QueueState.SEALED).none { it.id == uploaded.id })
+        assertEquals(0, database.segmentDao().pendingCount(STREAM))
         database.close()
         deleteDatabaseFiles(name)
         database = Room.inMemoryDatabaseBuilder(context, SolstonePersistenceDatabase::class.java)

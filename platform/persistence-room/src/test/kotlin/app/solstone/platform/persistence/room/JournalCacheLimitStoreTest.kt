@@ -12,6 +12,17 @@ import kotlin.test.assertTrue
 
 class JournalCacheLimitStoreTest {
     @Test
+    fun publicChoicesAreSortedAndExactlyAcceptedBySave() {
+        assertEquals(JOURNAL_CACHE_LIMIT_CHOICES_BYTES.sorted(), JOURNAL_CACHE_LIMIT_CHOICES_BYTES)
+        val root = Files.createTempDirectory("journal-cache-limit-choices")
+        val store = JournalCacheLimitStore(root.resolve("choices").toFile())
+        JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { limit ->
+            assertIs<JournalCacheLimitSaveResult.Saved>(store.save(limit))
+        }
+        assertIs<JournalCacheLimitSaveResult.Rejected>(store.save(3_000_000_000L))
+    }
+
+    @Test
     fun absentAndCorruptValuesFallBackAtConstruction() {
         val root = Files.createTempDirectory("journal-cache-limit")
         val file = root.resolve("limit").toFile()

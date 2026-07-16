@@ -15,6 +15,8 @@ import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessDiagnostics
+import app.solstone.observer.harness.HarnessJournalCacheState
+import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
@@ -23,11 +25,14 @@ import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
+import app.solstone.platform.persistence.room.JournalCacheEvictionService
+import app.solstone.platform.persistence.room.JournalCacheLimitStore
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import java.time.ZoneId
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 interface ObserverRuntimeContainer {
@@ -50,11 +55,28 @@ class ObserverAppContainer(
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
+    private val journalCacheLimitStore = JournalCacheLimitStore(context.filesDir.resolve("journal-cache-limit"))
+    private val journalCacheService = JournalCacheEvictionService(spoolDir, database.segmentDao(), journalCacheLimitStore)
     private val background = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     override val asyncLoad = AsyncLoad(
         background = { task -> background.execute { task() } },
         main = { task -> mainHandler.post { task() } },
+    )
+    private val journalCacheCoordinator = JournalCacheCoordinator(
+        canRun = { recoveryCompleted },
+        submit = { task ->
+            try {
+                background.execute(task)
+                true
+            } catch (_: RejectedExecutionException) {
+                false
+            }
+        },
+        nowEpochMs = System::currentTimeMillis,
+        snapshot = journalCacheService::snapshot,
+        saveLimitToStore = journalCacheLimitStore::save,
+        runPass = journalCacheService::runPass,
     )
     private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
@@ -90,6 +112,7 @@ class ObserverAppContainer(
 
     private val pollRunnable = object : Runnable {
         override fun run() {
+            journalCacheCoordinator.requestRoutinePass()
             background.execute {
                 runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
                 runCatching {
@@ -109,6 +132,7 @@ class ObserverAppContainer(
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
             recoveryCompleted = true
+            journalCacheCoordinator.requestImmediatePass()
             ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
             if (deferredStartPending) {
                 deferredStartPending = false
@@ -118,6 +142,7 @@ class ObserverAppContainer(
     }
 
     override fun close() {
+        journalCacheCoordinator.close()
         mainHandler.removeCallbacks(pollRunnable)
         runCatching { controller.stop() }
         background.shutdown()
@@ -130,6 +155,10 @@ class ObserverAppContainer(
             runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
         }
     }
+
+    fun journalCacheState(): HarnessJournalCacheState = journalCacheCoordinator.state()
+
+    fun saveJournalCacheLimit(bytes: Long): HarnessJournalCacheState = journalCacheCoordinator.saveLimit(bytes)
 
     private fun newPipeline(): CapturePipeline =
         CapturePipeline(

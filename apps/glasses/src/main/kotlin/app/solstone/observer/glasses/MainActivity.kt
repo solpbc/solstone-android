@@ -30,8 +30,11 @@ class MainActivity : Activity() {
                 controller = container.controller,
                 permissionRequester = { requestPermissions(requiredPermissions(), PERMISSION_REQUEST) },
                 asyncLoad = container.asyncLoad,
+                journalCacheState = container::journalCacheState,
+                saveJournalCacheLimit = container::saveJournalCacheLimit,
                 onEvidenceLoaded = { GlassesHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
                 onSyncLoaded = { GlassesHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
+                onJournalCacheLoadComplete = { GlassesHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
             ).view(),
         )
     }

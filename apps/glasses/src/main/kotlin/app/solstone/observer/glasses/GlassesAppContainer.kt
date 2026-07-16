@@ -28,6 +28,8 @@ import app.solstone.observer.formfactor.glasses.StillQrDecoder
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessDiagnostics
+import app.solstone.observer.harness.HarnessJournalCacheState
+import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
@@ -37,6 +39,8 @@ import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
+import app.solstone.platform.persistence.room.JournalCacheEvictionService
+import app.solstone.platform.persistence.room.JournalCacheLimitStore
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -75,6 +79,8 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
+    private val journalCacheLimitStore = JournalCacheLimitStore(context.filesDir.resolve("journal-cache-limit"))
+    private val journalCacheService = JournalCacheEvictionService(spoolDir, database.segmentDao(), journalCacheLimitStore)
     private val funnel = GlassesMutationFunnel(
         executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "glasses-funnel").also { it.isDaemon = true }
@@ -88,6 +94,14 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     val asyncLoad = AsyncLoad(
         background = { task -> reads.execute { task() } },
         main = { task -> mainHandler.post { task() } },
+    )
+    private val journalCacheCoordinator = JournalCacheCoordinator(
+        canRun = { recoveryCompleted },
+        submit = { task -> funnel.execute("journal-cache", task) },
+        nowEpochMs = System::currentTimeMillis,
+        snapshot = journalCacheService::snapshot,
+        saveLimitToStore = journalCacheLimitStore::save,
+        runPass = journalCacheService::runPass,
     )
     private var activePipeline: CapturePipeline? = null
     var pipelineBuildCount: Int = 0
@@ -179,6 +193,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val pollRunnable = object : Runnable {
         override fun run() {
             enqueueReconcile("poll", emitNoOwnerRefusal = false)
+            journalCacheCoordinator.requestRoutinePass()
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
         }
     }
@@ -202,12 +217,14 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
             SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
             recoveryCompleted = true
+            journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
             lifecycle.replayDeferredStartIfPending()
         }
     }
 
     override fun close() {
+        journalCacheCoordinator.close()
         stopPhotoPairWatch()
         mainHandler.removeCallbacks(pollRunnable)
         funnel.execute("close-stop") {
@@ -223,6 +240,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     override fun rehydrateInBackground() {
         enqueueReconcile("fgs-rehydrate", emitNoOwnerRefusal = true)
     }
+
+    fun journalCacheState(): HarnessJournalCacheState = journalCacheCoordinator.state()
+
+    fun saveJournalCacheLimit(bytes: Long): HarnessJournalCacheState = journalCacheCoordinator.saveLimit(bytes)
 
     override fun enqueueCommand(task: () -> Unit): Boolean =
         funnel.execute("command", task)
@@ -496,6 +517,7 @@ class GlassesRuntimeHooks {
     @Volatile var onRecoveryComplete: (() -> Unit)? = null
     @Volatile var onEvidenceLoadComplete: (() -> Unit)? = null
     @Volatile var onSyncLoadComplete: (() -> Unit)? = null
+    @Volatile var onJournalCacheLoadComplete: (() -> Unit)? = null
 }
 
 internal class IdempotentPipelineLifecycle<T>(

@@ -34,8 +34,11 @@ class ObserverActivity : Activity() {
             batteryExemptionGranted = container.flavor.exemptionVerified,
             batteryGuidance = container.flavor.batteryGuidance,
             launchBatteryGuidance = container.flavor.launchBatteryGuidance,
+            journalCacheState = container::journalCacheState,
+            saveJournalCacheLimit = container::saveJournalCacheLimit,
             onEvidenceLoaded = { ObserverHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
             onSyncLoaded = { ObserverHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
+            onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
         setContentView(harnessUi.view())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

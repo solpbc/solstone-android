@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- sol now shows how much space its local copy of your observations uses on your device and lets you choose a limit. when it needs room, sol removes only data your journal has already confirmed it has; anything it cannot safely remove stays in place and is reported honestly.
+
 ## [0.2.2] - 2026-07-16
 
 ### Fixed
