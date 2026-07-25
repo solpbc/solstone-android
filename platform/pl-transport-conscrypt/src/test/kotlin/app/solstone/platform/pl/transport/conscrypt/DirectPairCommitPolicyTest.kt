@@ -13,6 +13,7 @@ import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.FLAG_CLOSE
 import app.solstone.core.pl.FLAG_DATA
 import app.solstone.core.pl.FLAG_OPEN
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.encodeFrame
@@ -120,6 +121,7 @@ class DirectPairCommitPolicyTest {
         assertEquals(3, counts.sessionOpens)
         assertEquals(0, counts.duplexCreations)
         assertEquals(0, counts.requestInvocations)
+        assertEquals(0, counts.allOpenFrames)
     }
 
     @Test
@@ -162,6 +164,39 @@ class DirectPairCommitPolicyTest {
         assertEquals("10.0.1.2", failure.endpointHost)
         assertEquals(2, counts.sessionOpens)
         assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
+        assertEquals(1, counts.materialGenerations)
+    }
+
+    @Test
+    fun requestInvokedFlagSeparatesRetryableOpenFromTerminalRequestFailure() {
+        val counts = Counts()
+        val opened = mutableListOf<DirectEndpoint>()
+        val link = pairLink(
+            listOf(
+                byteArrayOf(10, 0, 0, 2),
+                byteArrayOf(10, 0, 1, 2),
+                byteArrayOf(10, 0, 2, 2),
+            ),
+        )
+
+        assertFailsWith<DirectPairEndpointException> {
+            invokePair(link, counts) { endpoint, _ ->
+                counts.sessionOpens++
+                opened += endpoint
+                if (counts.sessionOpens == 1) throw ConnectException("refused")
+                counts.duplexCreations++
+                CertlessSession(MuxSession(closedDuplex(counts)), true)
+            }
+        }
+
+        assertEquals(
+            listOf(DirectEndpoint("10.0.0.2", 7657), DirectEndpoint("10.0.1.2", 7657)),
+            opened,
+        )
+        assertEquals(2, counts.sessionOpens)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
         assertEquals(1, counts.materialGenerations)
     }
 
@@ -199,7 +234,8 @@ class DirectPairCommitPolicyTest {
         assertEquals(1, counts.materialGenerations)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.duplexCreations)
-        assertTrue(counts.requestInvocations > 0)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
     }
 
     @Test
@@ -218,7 +254,8 @@ class DirectPairCommitPolicyTest {
         assertEquals("pair failed HTTP 503: failure", failure.cause?.message)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.duplexCreations)
-        assertTrue(counts.requestInvocations > 0)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
     }
 
     @Test
@@ -236,7 +273,8 @@ class DirectPairCommitPolicyTest {
 
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.duplexCreations)
-        assertTrue(counts.requestInvocations > 0)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
     }
 
     @Test
@@ -255,6 +293,7 @@ class DirectPairCommitPolicyTest {
         assertEquals("pair response CA fingerprint did not match QR pin", failure.message)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
         assertTrue(failure.message != "all pair candidates exhausted")
     }
 
@@ -262,7 +301,7 @@ class DirectPairCommitPolicyTest {
     fun clientCertificateFingerprintFailureDoesNotOpenLaterCandidate() {
         val counts = Counts()
         val caPrefix = app.solstone.core.crypto.sha256(
-            app.solstone.core.crypto.pemToDer(TEST_RELAY_CA_PEM, "CERTIFICATE"),
+            app.solstone.core.crypto.pemToDer(PAIR_TEST_CA_PEM, "CERTIFICATE"),
         ).copyOf(16)
         val link = pairLink(
             listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)),
@@ -283,7 +322,28 @@ class DirectPairCommitPolicyTest {
         assertEquals("pair response client fingerprint mismatch", failure.message)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
         assertTrue(failure.message != "all pair candidates exhausted")
+    }
+
+    @Test
+    fun credentialStoreFailureAfterRequestDoesNotOpenLaterCandidate() {
+        assertCommittedPersistenceFailure(CommittedFailureStage.CREDENTIAL)
+    }
+
+    @Test
+    fun identityStoreFailureAfterRequestDoesNotOpenLaterCandidate() {
+        assertCommittedPersistenceFailure(CommittedFailureStage.IDENTITY)
+    }
+
+    @Test
+    fun endpointStoreFailureAfterRequestDoesNotOpenLaterCandidate() {
+        assertCommittedPersistenceFailure(CommittedFailureStage.ENDPOINT)
+    }
+
+    @Test
+    fun statusProbeFailureAfterRequestDoesNotOpenLaterCandidate() {
+        assertCommittedPersistenceFailure(CommittedFailureStage.PROBE)
     }
 
     @Test
@@ -323,24 +383,82 @@ class DirectPairCommitPolicyTest {
         assertMessageRedacted(failure.cause?.message.orEmpty(), link)
     }
 
+    @Test
+    fun countingDuplexCountsOnlyExpectedNonceBearingPairPost() {
+        val counts = Counts()
+        val duplex = CountingDuplex(ByteArrayInputStream(ByteArray(0)), counts)
+
+        duplex.output.write(encodeFrame(1, FLAG_OPEN or FLAG_DATA, requestBytes("GET", EXPECTED_PAIR_PATH)))
+        duplex.output.write(encodeFrame(3, FLAG_OPEN or FLAG_DATA, requestBytes("POST", "/wrong")))
+        duplex.output.write(encodeFrame(5, FLAG_OPEN or FLAG_DATA, requestBytes("POST", EXPECTED_PAIR_PATH)))
+
+        assertEquals(3, counts.allOpenFrames)
+        assertEquals(1, counts.requestInvocations)
+    }
+
+    private fun assertCommittedPersistenceFailure(stage: CommittedFailureStage) {
+        val counts = Counts()
+        val caPrefix = app.solstone.core.crypto.sha256(
+            app.solstone.core.crypto.pemToDer(PAIR_TEST_CA_PEM, "CERTIFICATE"),
+        ).copyOf(16)
+        val link = pairLink(
+            listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)),
+            caPrefix = caPrefix,
+        )
+        val stores = ThrowingStores(stage)
+
+        val failure = assertFailsWith<IllegalStateException> {
+            invokePair(
+                pairLink = link,
+                counts = counts,
+                credentialStore = stores.credentialStore,
+                identityStore = stores.identityStore,
+                endpointStore = stores.endpointStore,
+                statusProbe = { _, _ ->
+                    if (stage == CommittedFailureStage.PROBE) {
+                        throw IllegalStateException("probe failed")
+                    }
+                    HttpResponse(200, emptyMap(), "ok".toByteArray())
+                },
+            ) { _, _ ->
+                counts.sessionOpens++
+                counts.duplexCreations++
+                CertlessSession(MuxSession(responseDuplex(200, counts, pairResponse())), true)
+            }
+        }
+
+        assertEquals(stage.message, failure.message)
+        assertTrue(failure.message != "all pair candidates exhausted")
+        assertEquals(1, counts.sessionOpens)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
+    }
+
     private fun invokePair(
         pairLink: String,
         counts: Counts,
         localInterfaces: List<LocalIPv4Interface> = emptyList(),
+        credentialStore: ClientCredentialStore = EmptyCredentialStore,
+        identityStore: IdentityStore = EmptyIdentityStore,
+        endpointStore: EndpointStore = EmptyEndpointStore,
+        statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = { _, _ ->
+            HttpResponse(200, emptyMap(), "ok".toByteArray())
+        },
         sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     ) {
         pairAndProbe(
             pairLink = pairLink,
             deviceLabel = "test device",
-            credentialStore = EmptyCredentialStore,
-            identityStore = EmptyIdentityStore,
-            endpointStore = EmptyEndpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            endpointStore = endpointStore,
             sessionOpener = sessionOpener,
             localInterfaces = localInterfaces,
             materialFactory = {
                 counts.materialGenerations++
                 DirectPairMaterial(PRIVATE_KEY_MARKER, CSR_MARKER.toByteArray())
             },
+            statusProbe = statusProbe,
         )
     }
 
@@ -363,13 +481,13 @@ class DirectPairCommitPolicyTest {
 
     private fun pairResponse(
         fingerprint: String = "sha256:" + app.solstone.core.crypto.sha256Hex(
-            app.solstone.core.crypto.certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            app.solstone.core.crypto.certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         ),
     ): String =
         """
         {
-          "ca_chain":[${app.solstone.core.pl.toJson(TEST_RELAY_CA_PEM)}],
-          "client_cert":${app.solstone.core.pl.toJson(TEST_RELAY_LEAF_PEM)},
+          "ca_chain":[${app.solstone.core.pl.toJson(PAIR_TEST_CA_PEM)}],
+          "client_cert":${app.solstone.core.pl.toJson(PAIR_TEST_LEAF_PEM)},
           "instance_id":"test-instance",
           "home_label":"test-home",
           "home_attestation":"attestation.jwt",
@@ -386,11 +504,15 @@ class DirectPairCommitPolicyTest {
         assertTrue(!message.contains(PRIVATE_KEY_MARKER))
     }
 
+    private fun requestBytes(method: String, path: String): ByteArray =
+        "$method $path HTTP/1.1\r\nhost: spl.local\r\n\r\n".toByteArray(Charsets.US_ASCII)
+
     private data class Counts(
         var materialGenerations: Int = 0,
         var sessionOpens: Int = 0,
         var duplexCreations: Int = 0,
         var requestInvocations: Int = 0,
+        var allOpenFrames: Int = 0,
     )
 
     private class CountingDuplex(
@@ -400,7 +522,11 @@ class DirectPairCommitPolicyTest {
         override val output: OutputStream = object : ByteArrayOutputStream() {
             override fun write(b: ByteArray, off: Int, len: Int) {
                 if (len >= 8 && (b[off + 4].toInt() and FLAG_OPEN) != 0) {
-                    counts.requestInvocations++
+                    counts.allOpenFrames++
+                    val payload = b.copyOfRange(off + 8, off + len).toString(Charsets.US_ASCII)
+                    if (payload.startsWith("POST $EXPECTED_PAIR_PATH HTTP/1.1\r\n")) {
+                        counts.requestInvocations++
+                    }
                 }
                 super.write(b, off, len)
             }
@@ -434,10 +560,48 @@ class DirectPairCommitPolicyTest {
         override fun clear() = Unit
     }
 
+    private enum class CommittedFailureStage(val message: String) {
+        CREDENTIAL("credential save failed"),
+        IDENTITY("identity save failed"),
+        ENDPOINT("endpoint save failed"),
+        PROBE("probe failed"),
+    }
+
+    private class ThrowingStores(stage: CommittedFailureStage) {
+        val credentialStore = object : ClientCredentialStore {
+            override fun save(credential: ClientCredential) {
+                if (stage == CommittedFailureStage.CREDENTIAL) {
+                    throw IllegalStateException(stage.message)
+                }
+            }
+            override fun load(): ClientCredential? = null
+            override fun clear() = Unit
+        }
+        val identityStore = object : IdentityStore {
+            override fun save(home: PairedHome) {
+                if (stage == CommittedFailureStage.IDENTITY) {
+                    throw IllegalStateException(stage.message)
+                }
+            }
+            override fun load(): PairedHome? = null
+            override fun clear() = Unit
+        }
+        val endpointStore = object : EndpointStore {
+            override fun save(endpoint: DirectEndpoint) {
+                if (stage == CommittedFailureStage.ENDPOINT) {
+                    throw IllegalStateException(stage.message)
+                }
+            }
+            override fun load(): DirectEndpoint? = null
+            override fun clear() = Unit
+        }
+    }
+
     companion object {
         private const val PRIVATE_KEY_MARKER = "PRIVATE-KEY-MARKER"
         private const val CSR_MARKER = "CSR-MARKER"
         private const val NONCE_HEX = "000102030405060708090a0b0c0d0e0f"
+        private const val EXPECTED_PAIR_PATH = "/app/network/pair?token=$NONCE_HEX"
 
         private fun pairLink(
             ips: List<ByteArray>,

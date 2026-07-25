@@ -76,6 +76,11 @@ internal fun generateDirectPairMaterial(deviceLabel: String): DirectPairMaterial
     return DirectPairMaterial(privateKeyPem, body)
 }
 
+private fun probeDirectStatus(endpoint: DirectEndpoint, credential: ClientCredential): HttpResponse =
+    openAuthenticatedClient(endpoint, credential).use { client ->
+        client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+    }
+
 fun pairAndProbe(
     pairLink: String,
     deviceLabel: String,
@@ -101,6 +106,7 @@ internal fun pairAndProbe(
     sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     localInterfaces: List<LocalIPv4Interface>,
     materialFactory: (String) -> DirectPairMaterial = ::generateDirectPairMaterial,
+    statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = ::probeDirectStatus,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
@@ -112,30 +118,27 @@ internal fun pairAndProbe(
     var sawCaMismatch = false
 
     for (endpoint in ordered) {
-        val pairSession = try {
-            sessionOpener(endpoint, link.caFingerprintPrefix)
+        var pinned = false
+        val pairHttp = try {
+            val pairPath = "/app/network/pair?token=" + link.nonce
+            val pairHeaders = mapOf("content-type" to "application/json")
+            val pairBody = material.requestBody
+            val pairSession = sessionOpener(endpoint, link.caFingerprintPrefix)
+            pinned = pairSession.handshakePinned
+            pairSession.session.use { session ->
+                requestInvoked = true
+                session.request("POST", pairPath, pairHeaders, pairBody)
+            }
         } catch (e: Exception) {
+            if (requestInvoked) {
+                throw directPairFailure(endpoint, e)
+            }
             if (e is SSLException && e.message == PAIR_TLS_CA_PIN_MISMATCH) {
                 sawCaMismatch = true
             }
             lastError = e
             lastEndpoint = endpoint
             continue
-        }
-        val pinned = pairSession.handshakePinned
-        val pairHttp = try {
-            pairSession.session.use { session ->
-                requestInvoked = true
-                session.request(
-                    "POST",
-                    "/app/network/pair?token=" + link.nonce,
-                    mapOf("content-type" to "application/json"),
-                    material.requestBody,
-                )
-            }
-        } catch (e: Exception) {
-            check(requestInvoked)
-            throw directPairFailure(endpoint, e)
         }
 
         when (classifyPairResponseStatus(pairHttp.status)) {
@@ -171,11 +174,7 @@ internal fun pairAndProbe(
                     credentialStore = credentialStore,
                     identityStore = identityStore,
                     endpointStore = endpointStore,
-                    statusProbe = { statusEndpoint, statusCredential ->
-                        openAuthenticatedClient(statusEndpoint, statusCredential).use { client ->
-                            client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
-                        }
-                    },
+                    statusProbe = statusProbe,
                 )
             }
             DialDecision.TERMINAL -> {

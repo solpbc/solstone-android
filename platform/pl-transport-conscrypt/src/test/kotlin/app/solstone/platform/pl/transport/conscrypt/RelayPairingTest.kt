@@ -40,7 +40,7 @@ class RelayPairingTest {
         val stores = Stores()
         val session = FakeSession(
             HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         )
         val poster = FakePoster(session)
         val result = pairOverRelay(
@@ -73,36 +73,36 @@ class RelayPairingTest {
         assertEquals(INSTANCE_ID, home.instanceId)
         assertEquals("https://link.solstone.app", home.relayOrigin)
         assertEquals("mock-device-token", home.deviceToken)
-        assertEquals("sha256:" + sha256Hex(certificateFromPem(TEST_RELAY_LEAF_PEM).encoded), home.clientCertFingerprint)
+        assertEquals("sha256:" + sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded), home.clientCertFingerprint)
     }
 
     @Test
     fun prePersistFailuresLeaveStoresEmpty() {
         assertNoPersist("pair non-200") { stores ->
-            val session = FakeSession(HttpResponse(503, emptyMap(), "no".toByteArray()), certificateFromPem(TEST_RELAY_LEAF_PEM).encoded)
+            val session = FakeSession(HttpResponse(503, emptyMap(), "no".toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("pin mismatch") { stores ->
-            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(TEST_RELAY_LEAF_PEM).encoded)
-            val wrongPin = caSpkiFp16(TEST_RELAY_CA_PEM).also { it[0] = (it[0].toInt() xor 0xff).toByte() }
+            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
+            val wrongPin = caSpkiFp16(PAIR_TEST_CA_PEM).also { it[0] = (it[0].toInt() xor 0xff).toByte() }
             pairOverRelay(link(caFp = wrongPin), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("instance mismatch") { stores ->
             val session = FakeSession(
                 HttpResponse(200, emptyMap(), pairResponse(instanceId = "00000000-0000-0000-0000-000000000000").toByteArray()),
-                certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+                certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
             )
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("fingerprint mismatch") { stores ->
             val session = FakeSession(
                 HttpResponse(200, emptyMap(), pairResponse(fingerprint = "sha256:nope").toByteArray()),
-                certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+                certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
             )
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("enroll non-200") { stores ->
-            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(TEST_RELAY_LEAF_PEM).encoded)
+            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
             pairOverRelay(link(), "device", FakePoster(session, enrollStatus = 503), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("window closed") { stores ->
@@ -170,7 +170,7 @@ class RelayPairingTest {
         val stores = Stores(prior)
         val session = FakeSession(
             HttpResponse(200, emptyMap(), pairResponse(homeLabel = "relay-home").toByteArray(Charsets.UTF_8)),
-            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         )
         val poster = FakePoster(session)
 
@@ -191,7 +191,7 @@ class RelayPairingTest {
         val stores = Stores(pairedHome(state = IdentityState.REVOKED))
         val session = FakeSession(
             HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         )
 
         val result = pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
@@ -207,7 +207,7 @@ class RelayPairingTest {
         val stores = Stores()
         val session = FakeSession(
             HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         )
 
         val result = pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
@@ -231,7 +231,7 @@ class RelayPairingTest {
     fun noMatchingCaAbortsBeforeSendingS() {
         val stores = Stores()
         val session = FakeSession(
-            peerCertificateChainDer = listOf(certificateFromPem(TEST_RELAY_LEAF_PEM).encoded),
+            peerCertificateChainDer = listOf(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded),
         )
 
         assertFailsWith<CaPinException> {
@@ -262,7 +262,7 @@ class RelayPairingTest {
             peerLeafCertificateDer = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
             peerCertificateChainDer = listOf(
                 certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
-                certificateFromPem(TEST_RELAY_CA_PEM).encoded,
+                certificateFromPem(PAIR_TEST_CA_PEM).encoded,
             ),
         )
 
@@ -282,7 +282,7 @@ class RelayPairingTest {
     }
 
     private fun link(
-        caFp: ByteArray = caSpkiFp16(TEST_RELAY_CA_PEM),
+        caFp: ByteArray = caSpkiFp16(PAIR_TEST_CA_PEM),
         relayOrigin: String? = null,
     ): RelayPairLink =
         RelayPairLink(hexBytes("0123456789abcdef"), caFp, relayOrigin)
@@ -290,12 +290,12 @@ class RelayPairingTest {
     private fun pairResponse(
         instanceId: String = INSTANCE_ID,
         homeLabel: String = "relay-home",
-        fingerprint: String = "sha256:" + sha256Hex(certificateFromPem(TEST_RELAY_LEAF_PEM).encoded),
+        fingerprint: String = "sha256:" + sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded),
     ): String =
         """
         {
-          "ca_chain":[${jsonString(TEST_RELAY_CA_PEM)}],
-          "client_cert":${jsonString(TEST_RELAY_LEAF_PEM)},
+          "ca_chain":[${jsonString(PAIR_TEST_CA_PEM)}],
+          "client_cert":${jsonString(PAIR_TEST_LEAF_PEM)},
           "instance_id":"$instanceId",
           "home_label":"$homeLabel",
           "home_attestation":"attestation.jwt",
@@ -340,10 +340,10 @@ class RelayPairingTest {
 
     private class FakeSession(
         private val response: HttpResponse = HttpResponse(200, emptyMap(), pairResponseStatic().toByteArray()),
-        override val peerLeafCertificateDer: ByteArray? = certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
+        override val peerLeafCertificateDer: ByteArray? = certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
         override val peerCertificateChainDer: List<ByteArray>? = listOf(
-            certificateFromPem(TEST_RELAY_LEAF_PEM).encoded,
-            certificateFromPem(TEST_RELAY_CA_PEM).encoded,
+            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
+            certificateFromPem(PAIR_TEST_CA_PEM).encoded,
         ),
     ) : RelayDialSession {
         val requests = mutableListOf<RequestRecord>()
@@ -403,12 +403,12 @@ class RelayPairingTest {
         fun pairResponseStatic(): String =
             """
             {
-              "ca_chain":[${app.solstone.core.pl.toJson(TEST_RELAY_CA_PEM)}],
-              "client_cert":${app.solstone.core.pl.toJson(TEST_RELAY_LEAF_PEM)},
+              "ca_chain":[${app.solstone.core.pl.toJson(PAIR_TEST_CA_PEM)}],
+              "client_cert":${app.solstone.core.pl.toJson(PAIR_TEST_LEAF_PEM)},
               "instance_id":"$INSTANCE_ID",
               "home_label":"relay-home",
               "home_attestation":"attestation.jwt",
-              "fingerprint":"sha256:${sha256Hex(certificateFromPem(TEST_RELAY_LEAF_PEM).encoded)}"
+              "fingerprint":"sha256:${sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)}"
             }
             """.trimIndent()
     }
@@ -437,32 +437,6 @@ private fun hexBytes(value: String): ByteArray {
     }
     return out
 }
-
-// Test-only ephemeral certificates generated with openssl; not operational secrets.
-internal const val TEST_RELAY_CA_PEM = """-----BEGIN CERTIFICATE-----
-MIIBlzCCAT2gAwIBAgIUPPGWUZjdtzsgVEHE+ZtQg5pKb9EwCgYIKoZIzj0EAwIw
-ITEfMB0GA1UEAwwWc29sc3RvbmUtdGVzdC1yZWxheS1jYTAeFw0yNjA2MjYwNjU2
-NTlaFw0zNjA2MjMwNjU2NTlaMCExHzAdBgNVBAMMFnNvbHN0b25lLXRlc3QtcmVs
-YXktY2EwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQDxnjvJGXgJKz1k6hS+OCN
-o8Z8Sau6KmLagTIlXdP1yS9vrFOSJmE3ds6qBiMS+mmmgPEMVLXW7YWnPlx25sIx
-o1MwUTAdBgNVHQ4EFgQU5JS7pR98gG5FFWBaFQG1CyU+HqgwHwYDVR0jBBgwFoAU
-5JS7pR98gG5FFWBaFQG1CyU+HqgwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD
-AgNIADBFAiBAi7BjxrJ8n15io2V8KADdUBDBAntAkEcSxaOeLSULdgIhAKN9CYVy
-NtBHSCAhLQyKBI0u6Prh4F9sXuD0c1GST5cL
------END CERTIFICATE-----
-"""
-
-internal const val TEST_RELAY_LEAF_PEM = """-----BEGIN CERTIFICATE-----
-MIIBeTCCASCgAwIBAgIUMglsPRCiAWU5lfqkbDyAcT584bcwCgYIKoZIzj0EAwIw
-ITEfMB0GA1UEAwwWc29sc3RvbmUtdGVzdC1yZWxheS1jYTAeFw0yNjA2MjYwNjU2
-NTlaFw0zNjA2MjMwNjU2NTlaMBUxEzARBgNVBAMMCnJlbGF5LWxlYWYwWTATBgcq
-hkjOPQIBBggqhkjOPQMBBwNCAAQb0GVwcFN5cygcjoyh9PlmgbsT7+gwtK2zx0XQ
-hLYlDiZDvtKVl8CsEsIApDOeFKJN1MtSEMSf4kPFPq2V4h9co0IwQDAdBgNVHQ4E
-FgQUVMag2GDGNZBZyJQxAPY+GyNNxy0wHwYDVR0jBBgwFoAU5JS7pR98gG5FFWBa
-FQG1CyU+HqgwCgYIKoZIzj0EAwIDRwAwRAIgIMOGzfr8PMdgd8GpuqSEAW3TZXe9
-Vym9fT1BLkht+X0CIH3KLzz0foTyo+huJpyZpDUHbT3beeeWFhGhRkv9DjDv
------END CERTIFICATE-----
-"""
 
 private const val TEST_RELAY_UNRELATED_PEM = """-----BEGIN CERTIFICATE-----
 MIIBfTCCASOgAwIBAgIUNEpHEWWe11eXwZt02t864KjecoIwCgYIKoZIzj0EAwIw
