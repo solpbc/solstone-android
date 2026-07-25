@@ -21,7 +21,10 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:pl"))
     implementation("androidx.work:work-runtime:2.9.1")
     implementation("com.google.zxing:core:3.5.3")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
+
+    testImplementation("junit:junit:4.13.2")
 }

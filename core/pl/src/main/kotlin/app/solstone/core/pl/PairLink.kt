@@ -45,7 +45,7 @@ class DirectPairLink(
     }
 
     override fun toString(): String =
-        "DirectPairLink(candidates=$candidates, nonce=$nonce, caFingerprintPrefix=${caFingerprintPrefix.contentToString()})"
+        "DirectPairLink(candidates=$candidates, nonce=<redacted>, caFingerprintPrefix=<redacted>)"
 }
 
 class RelayPairLink(
@@ -144,7 +144,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
 
     if (decoded.size >= 3 && decoded[0] == 0x05.toByte() && decoded[1] == 0x01.toByte()) {
         val count = decoded[2].toInt() and 0xff
-        if (count < 1 || decoded.size != 37 + 4 * count) {
+        if (count < 1 || count > 4 || decoded.size != 37 + 4 * count) {
             throw IllegalArgumentException("unsupported pair link payload")
         }
         val port = ((decoded[3].toInt() and 0xff) shl 8) or (decoded[4].toInt() and 0xff)
@@ -156,17 +156,15 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
             val b = decoded[offset + 1].toInt() and 0xff
             val c = decoded[offset + 2].toInt() and 0xff
             val d = decoded[offset + 3].toInt() and 0xff
-            if (isDirectDialCandidate(a, b)) {
-                candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
+            if (!isDirectDialCandidate(a, b)) {
+                throw IllegalArgumentException("pair link is not local/private IPv4")
             }
-        }
-        if (candidates.isEmpty()) {
-            throw IllegalArgumentException("pair link has no usable direct candidates")
+            candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
         }
         val nonceOffset = 5 + 4 * count
         val nonceBytes = decoded.copyOfRange(nonceOffset, nonceOffset + 16)
         val caFp = decoded.copyOfRange(nonceOffset + 16, nonceOffset + 32)
-        return DirectPairLink(candidates, hex(nonceBytes), caFp)
+        return DirectPairLink(candidates.distinct(), hex(nonceBytes), caFp)
     }
 
     throw IllegalArgumentException("unsupported pair link payload")
@@ -209,8 +207,10 @@ fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
 private fun isCgnat(a: Int, b: Int): Boolean =
     a == 100 && b in 64..127
 
+private fun isLoopback(a: Int): Boolean = a == 127
+
 private fun isDirectDialCandidate(a: Int, b: Int): Boolean =
-    isPrivateOrLinkLocal(a, b) || isCgnat(a, b)
+    isPrivateOrLinkLocal(a, b) || isCgnat(a, b) || isLoopback(a)
 
 fun orderCandidatesBySubnet(
     candidates: List<DirectEndpoint>,

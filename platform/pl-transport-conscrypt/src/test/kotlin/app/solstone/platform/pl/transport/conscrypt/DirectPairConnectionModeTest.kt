@@ -13,6 +13,7 @@ import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class DirectPairConnectionModeTest {
     @Test
@@ -87,18 +88,139 @@ class DirectPairConnectionModeTest {
         assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
     }
 
+    @Test
+    fun emptyStoresRetainWritesCompletedBeforeEachFailure() {
+        FailureStage.entries.forEach { stage ->
+            val stores = Stores(failureStage = stage)
+
+            assertFailsWith<IllegalStateException> { persistWithFailure(stores, stage) }
+
+            when (stage) {
+                FailureStage.CREDENTIAL -> {
+                    assertEquals(null, stores.credentialStore.load())
+                    assertEquals(null, stores.identityStore.load())
+                    assertEquals(null, stores.endpointStore.load())
+                }
+                FailureStage.IDENTITY -> {
+                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals(null, stores.identityStore.load())
+                    assertEquals(null, stores.endpointStore.load())
+                }
+                FailureStage.ENDPOINT -> {
+                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals("new", stores.identityStore.load()?.instanceId)
+                    assertEquals(null, stores.endpointStore.load())
+                }
+                FailureStage.PROBE -> assertAllNew(stores)
+            }
+        }
+    }
+
+    @Test
+    fun preseededStoresAreNeverRolledBackOrClearedAfterFailure() {
+        FailureStage.entries.forEach { stage ->
+            val oldHome = home(instanceId = "old")
+            val oldEndpoint = DirectEndpoint("10.0.0.9", 7657)
+            val stores = Stores(
+                home = oldHome,
+                endpoint = oldEndpoint,
+                credential = credential("old"),
+                failureStage = stage,
+            )
+
+            assertFailsWith<IllegalStateException> { persistWithFailure(stores, stage) }
+
+            when (stage) {
+                FailureStage.CREDENTIAL -> {
+                    assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals(oldHome, stores.identityStore.load())
+                    assertEquals(oldEndpoint, stores.endpointStore.load())
+                }
+                FailureStage.IDENTITY -> {
+                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals(oldHome, stores.identityStore.load())
+                    assertEquals(oldEndpoint, stores.endpointStore.load())
+                }
+                FailureStage.ENDPOINT -> {
+                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals("new", stores.identityStore.load()?.instanceId)
+                    assertEquals(oldEndpoint, stores.endpointStore.load())
+                }
+                FailureStage.PROBE -> assertAllNew(stores)
+            }
+        }
+    }
+
+    @Test
+    fun credentialStoreFailurePropagatesWithoutSuccess() {
+        assertPersistFailure(FailureStage.CREDENTIAL, "credential save failed")
+    }
+
+    @Test
+    fun identityStoreFailurePropagatesWithoutSuccess() {
+        assertPersistFailure(FailureStage.IDENTITY, "identity save failed")
+    }
+
+    @Test
+    fun endpointStoreFailurePropagatesWithoutSuccess() {
+        assertPersistFailure(FailureStage.ENDPOINT, "endpoint save failed")
+    }
+
+    @Test
+    fun statusProbeFailurePropagatesWithoutSuccess() {
+        assertPersistFailure(FailureStage.PROBE, "probe failed")
+    }
+
+    private fun assertPersistFailure(stage: FailureStage, expectedMessage: String) {
+        val failure = assertFailsWith<IllegalStateException> {
+            persistWithFailure(Stores(failureStage = stage), stage)
+        }
+        assertEquals(expectedMessage, failure.message)
+        assertEquals(false, failure.message == "all pair candidates exhausted")
+    }
+
+    private fun persistWithFailure(stores: Stores, stage: FailureStage) {
+        persistOrReturnDirectPairResult(
+            home = home(instanceId = "new", label = "New"),
+            credential = credential("new"),
+            endpoint = DirectEndpoint("10.0.0.2", 7657),
+            handshakePinned = true,
+            pairStatus = 200,
+            credentialStore = stores.credentialStore,
+            identityStore = stores.identityStore,
+            endpointStore = stores.endpointStore,
+            statusProbe = { _, _ ->
+                if (stage == FailureStage.PROBE) throw IllegalStateException("probe failed")
+                HttpResponse(200, emptyMap(), "ok".toByteArray())
+            },
+        )
+    }
+
+    private fun assertAllNew(stores: Stores) {
+        assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+        assertEquals("new", stores.identityStore.load()?.instanceId)
+        assertEquals(DirectEndpoint("10.0.0.2", 7657), stores.endpointStore.load())
+    }
+
+    private enum class FailureStage { CREDENTIAL, IDENTITY, ENDPOINT, PROBE }
+
     private class Stores(
         home: PairedHome? = null,
         endpoint: DirectEndpoint? = null,
         credential: ClientCredential? = null,
+        failureStage: FailureStage? = null,
     ) {
-        val identityStore = FakeIdentityStore(home)
-        val endpointStore = FakeEndpointStore(endpoint)
-        val credentialStore = FakeCredentialStore(credential)
+        val identityStore = FakeIdentityStore(home, failureStage == FailureStage.IDENTITY)
+        val endpointStore = FakeEndpointStore(endpoint, failureStage == FailureStage.ENDPOINT)
+        val credentialStore = FakeCredentialStore(credential, failureStage == FailureStage.CREDENTIAL)
     }
 
-    private class FakeIdentityStore(private var home: PairedHome?) : IdentityStore {
+    private class FakeIdentityStore(
+        private var home: PairedHome?,
+        private val failSave: Boolean = false,
+    ) : IdentityStore {
         override fun save(home: PairedHome) {
+            if (failSave) throw IllegalStateException("identity save failed")
             this.home = home
         }
 
@@ -109,8 +231,12 @@ class DirectPairConnectionModeTest {
         }
     }
 
-    private class FakeEndpointStore(private var endpoint: DirectEndpoint?) : EndpointStore {
+    private class FakeEndpointStore(
+        private var endpoint: DirectEndpoint?,
+        private val failSave: Boolean = false,
+    ) : EndpointStore {
         override fun save(endpoint: DirectEndpoint) {
+            if (failSave) throw IllegalStateException("endpoint save failed")
             this.endpoint = endpoint
         }
 
@@ -121,8 +247,12 @@ class DirectPairConnectionModeTest {
         }
     }
 
-    private class FakeCredentialStore(private var credential: ClientCredential?) : ClientCredentialStore {
+    private class FakeCredentialStore(
+        private var credential: ClientCredential?,
+        private val failSave: Boolean = false,
+    ) : ClientCredentialStore {
         override fun save(credential: ClientCredential) {
+            if (failSave) throw IllegalStateException("credential save failed")
             this.credential = credential
         }
 

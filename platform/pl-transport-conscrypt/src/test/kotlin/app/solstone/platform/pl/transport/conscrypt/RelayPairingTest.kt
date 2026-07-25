@@ -439,7 +439,7 @@ private fun hexBytes(value: String): ByteArray {
 }
 
 // Test-only ephemeral certificates generated with openssl; not operational secrets.
-private const val TEST_RELAY_CA_PEM = """-----BEGIN CERTIFICATE-----
+internal const val TEST_RELAY_CA_PEM = """-----BEGIN CERTIFICATE-----
 MIIBlzCCAT2gAwIBAgIUPPGWUZjdtzsgVEHE+ZtQg5pKb9EwCgYIKoZIzj0EAwIw
 ITEfMB0GA1UEAwwWc29sc3RvbmUtdGVzdC1yZWxheS1jYTAeFw0yNjA2MjYwNjU2
 NTlaFw0zNjA2MjMwNjU2NTlaMCExHzAdBgNVBAMMFnNvbHN0b25lLXRlc3QtcmVs
@@ -452,7 +452,7 @@ NtBHSCAhLQyKBI0u6Prh4F9sXuD0c1GST5cL
 -----END CERTIFICATE-----
 """
 
-private const val TEST_RELAY_LEAF_PEM = """-----BEGIN CERTIFICATE-----
+internal const val TEST_RELAY_LEAF_PEM = """-----BEGIN CERTIFICATE-----
 MIIBeTCCASCgAwIBAgIUMglsPRCiAWU5lfqkbDyAcT584bcwCgYIKoZIzj0EAwIw
 ITEfMB0GA1UEAwwWc29sc3RvbmUtdGVzdC1yZWxheS1jYTAeFw0yNjA2MjYwNjU2
 NTlaFw0zNjA2MjMwNjU2NTlaMBUxEzARBgNVBAMMCnJlbGF5LWxlYWYwWTATBgcq

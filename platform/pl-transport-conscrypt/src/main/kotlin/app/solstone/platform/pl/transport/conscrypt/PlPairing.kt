@@ -58,6 +58,24 @@ class DirectPairEndpointException(
     cause: Exception,
 ) : IOException("direct pair endpoint failed: $endpointHost:$endpointPort", cause)
 
+class DirectPairCodeExpiredException(
+    val endpointHost: String,
+    val endpointPort: Int,
+) : IOException("direct pairing code expired at $endpointHost:$endpointPort")
+
+internal data class DirectPairMaterial(
+    val privateKeyPem: String,
+    val requestBody: ByteArray,
+)
+
+internal fun generateDirectPairMaterial(deviceLabel: String): DirectPairMaterial {
+    val keyPair = generateP256KeyPair()
+    val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
+    val csr = buildCsrPem(deviceLabel, keyPair)
+    val body = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
+    return DirectPairMaterial(privateKeyPem, body)
+}
+
 fun pairAndProbe(
     pairLink: String,
     deviceLabel: String,
@@ -82,13 +100,12 @@ internal fun pairAndProbe(
     endpointStore: EndpointStore,
     sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     localInterfaces: List<LocalIPv4Interface>,
+    materialFactory: (String) -> DirectPairMaterial = ::generateDirectPairMaterial,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
-    val keyPair = generateP256KeyPair()
-    val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
-    val csr = buildCsrPem(deviceLabel, keyPair)
-    val body = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
+    val material = materialFactory(deviceLabel)
+    var requestInvoked = false
 
     var lastError: Exception? = null
     var lastEndpoint: DirectEndpoint? = null
@@ -108,12 +125,17 @@ internal fun pairAndProbe(
         val pinned = pairSession.handshakePinned
         val pairHttp = try {
             pairSession.session.use { session ->
-                session.request("POST", "/app/network/pair?token=" + link.nonce, mapOf("content-type" to "application/json"), body)
+                requestInvoked = true
+                session.request(
+                    "POST",
+                    "/app/network/pair?token=" + link.nonce,
+                    mapOf("content-type" to "application/json"),
+                    material.requestBody,
+                )
             }
         } catch (e: Exception) {
-            lastError = e
-            lastEndpoint = endpoint
-            continue
+            check(requestInvoked)
+            throw directPairFailure(endpoint, e)
         }
 
         when (classifyPairResponseStatus(pairHttp.status)) {
@@ -128,7 +150,7 @@ internal fun pairAndProbe(
                     throw SSLException("pair response client fingerprint mismatch")
                 }
 
-                val credential = ClientCredential(privateKeyPem, resp.clientCert, resp.caChain)
+                val credential = ClientCredential(material.privateKeyPem, resp.clientCert, resp.caChain)
                 val home = PairedHome(
                     instanceId = resp.instanceId,
                     homeLabel = resp.homeLabel,
@@ -157,11 +179,13 @@ internal fun pairAndProbe(
                 )
             }
             DialDecision.TERMINAL -> {
-                throw IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
+                throw DirectPairCodeExpiredException(endpoint.host, endpoint.port)
             }
             DialDecision.ADVANCE -> {
-                lastError = IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText())
-                lastEndpoint = endpoint
+                throw directPairFailure(
+                    endpoint,
+                    IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText()),
+                )
             }
         }
     }

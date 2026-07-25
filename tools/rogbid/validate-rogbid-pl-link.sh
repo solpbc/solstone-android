@@ -9,7 +9,7 @@ PACKAGE="app.solstone.validation.rogbid"
 COMPONENT="$PACKAGE/.QrProbeActivity"
 
 if [[ -z "$PAIR_LINK" ]]; then
-  echo "usage: PAIR_LINK='https://link.solpbc.org/p#...' $0 [serial]" >&2
+  echo "usage: PAIR_LINK='https://go.solstone.app/p#...' $0 [serial]" >&2
   exit 2
 fi
 

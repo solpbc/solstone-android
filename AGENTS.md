@@ -40,7 +40,7 @@ make assemble-validation-rogbid
 make validate-rogbid-adb
 make validate-rogbid-media
 make validate-rogbid-qr
-PAIR_LINK='https://link.solpbc.org/p#...' make validate-rogbid-pl
+PAIR_LINK='https://go.solstone.app/p#...' make validate-rogbid-pl
 ```
 
 Use `ROGBID_SERIAL=<serial>` to target a different watch.

@@ -5,6 +5,7 @@ package app.solstone.observer.harness
 
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedException
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowUnavailableException
+import app.solstone.platform.pl.transport.conscrypt.DirectPairCodeExpiredException
 import app.solstone.platform.pl.transport.conscrypt.DirectPairEndpointException
 import java.io.IOException
 import java.net.ConnectException
@@ -37,6 +38,7 @@ fun classifyPairException(
     isUsableNetworkPresent: () -> Boolean,
 ): PairAttemptOutcome {
     if (e is RelayPairWindowClosedException) return PairAttemptOutcome.WindowClosed(401)
+    if (e is DirectPairCodeExpiredException) return PairAttemptOutcome.WindowClosed(410)
     val chain = generateSequence(e) { it.cause }.toList()
     if ((e is IOException && e.message == "WebSocket failed") || chain.any { it.isConnectivityFailure() }) {
         val directFailure = chain.filterIsInstance<DirectPairEndpointException>().firstOrNull()

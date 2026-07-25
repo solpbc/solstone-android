@@ -81,7 +81,17 @@ class QrPairingRendererTest {
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
         )
         assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))
+        assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(499)))
         assertEquals("Pairing failed", pairStatusText(PairAttemptOutcome.OtherFailure("IOException", null)))
+    }
+
+    @Test
+    fun directExpiredCodeUsesRegenerationInstruction() {
+        assertEquals(
+            "This pairing code has expired. Generate a new one on your solstone.",
+            pairStatusText(PairAttemptOutcome.WindowClosed(410)),
+        )
+        assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))
     }
 
     private fun networkFailure(

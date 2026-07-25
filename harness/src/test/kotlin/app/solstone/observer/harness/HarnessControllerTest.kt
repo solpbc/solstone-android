@@ -8,6 +8,7 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.platform.pl.transport.conscrypt.DirectPairCodeExpiredException
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedException
 import java.io.IOException
 import java.net.UnknownHostException
@@ -445,6 +446,19 @@ class HarnessControllerTest {
         val outcome = f.controller.onScannedPairLinkClassified(validPairLink())
 
         assertEquals(PairAttemptOutcome.OtherFailure("IllegalStateException", null), outcome)
+    }
+
+    @Test
+    fun classifiedDirectPairCodeExpiredMapsWindowClosed410() {
+        val f = fixture(
+            pairProbe = PairProbe { _, _ ->
+                throw DirectPairCodeExpiredException("10.0.0.2", 7657)
+            },
+        )
+
+        val outcome = f.controller.onScannedPairLinkClassified(validPairLink())
+
+        assertEquals(PairAttemptOutcome.WindowClosed(410), outcome)
     }
 
     @Test

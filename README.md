@@ -84,7 +84,7 @@ Default serial is the Rogbid Model X used during the spike:
 make validate-rogbid-adb
 make validate-rogbid-media
 make validate-rogbid-qr
-PAIR_LINK='https://link.solpbc.org/p#...' make validate-rogbid-pl
+PAIR_LINK='https://go.solstone.app/p#...' make validate-rogbid-pl
 ```
 
 The validation app package is `app.solstone.validation.rogbid`. Future installable solstone Android artifacts should use the same `app.solstone.*` namespace.

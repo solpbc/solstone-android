@@ -113,15 +113,39 @@ class PairLinkTest {
     }
 
     @Test
-    fun acceptsPrivateAndLinkLocalRanges() {
-        listOf(
-            byteArrayOf(10, 0, 0, 1),
-            byteArrayOf(172.toByte(), 16, 0, 1),
-            byteArrayOf(172.toByte(), 31, 255.toByte(), 1),
-            byteArrayOf(192.toByte(), 168.toByte(), 0, 1),
-            byteArrayOf(169.toByte(), 254.toByte(), 0, 1),
-        ).forEach { ip ->
-            parseDirectPairLink(pairLink(ip, 0))
+    fun admitsOnlyAllowListedIpv4RangesAtTheirBoundaries() {
+        val admitted = listOf(
+            byteArrayOf(10, 0, 0, 0),
+            byteArrayOf(10, 255.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(172.toByte(), 16, 0, 0),
+            byteArrayOf(172.toByte(), 31, 255.toByte(), 255.toByte()),
+            byteArrayOf(192.toByte(), 168.toByte(), 0, 0),
+            byteArrayOf(192.toByte(), 168.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(169.toByte(), 254.toByte(), 0, 0),
+            byteArrayOf(169.toByte(), 254.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(100, 64, 0, 0),
+            byteArrayOf(100, 127, 255.toByte(), 255.toByte()),
+            byteArrayOf(127, 0, 0, 0),
+            byteArrayOf(127, 255.toByte(), 255.toByte(), 255.toByte()),
+        )
+        admitted.forEach { ip -> parseDirectPairLink(pairLink(ip, 0)) }
+
+        val adjacent = listOf(
+            byteArrayOf(9, 255.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(11, 0, 0, 0),
+            byteArrayOf(172.toByte(), 15, 255.toByte(), 255.toByte()),
+            byteArrayOf(172.toByte(), 32, 0, 0),
+            byteArrayOf(192.toByte(), 167.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(192.toByte(), 169.toByte(), 0, 0),
+            byteArrayOf(169.toByte(), 253.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(169.toByte(), 255.toByte(), 0, 0),
+            byteArrayOf(100, 63, 255.toByte(), 255.toByte()),
+            byteArrayOf(100, 128.toByte(), 0, 0),
+            byteArrayOf(126, 255.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(128.toByte(), 0, 0, 0),
+        )
+        adjacent.forEach { ip ->
+            assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(ip, 0)) }
         }
     }
 
@@ -143,33 +167,21 @@ class PairLinkTest {
     }
 
     @Test
-    fun filtersV05ToPrivateCandidatesOrderPreserved() {
-        val parsed = parseDirectPairLink(
-            withBlob(
-                v05Blob(
-                    listOf(
-                        byteArrayOf(10, 0, 0, 40),
-                        byteArrayOf(8, 8, 8, 8),
-                        byteArrayOf(127, 0, 0, 1),
-                        byteArrayOf(100, 64, 0, 5),
-                        byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
+    fun rejectsEntireV05WhenAnyCandidateIsNotDirectDialable() {
+        val failure = assertFailsWith<IllegalArgumentException> {
+            parseDirectPairLink(
+                withBlob(
+                    v05Blob(
+                        listOf(
+                            byteArrayOf(10, 0, 0, 40),
+                            byteArrayOf(8, 8, 8, 8),
+                            byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
+                        ),
                     ),
                 ),
-            ),
-        )
-
-        assertEquals(
-            listOf(
-                DirectEndpoint("10.0.0.40", 7657),
-                DirectEndpoint("100.64.0.5", 7657),
-                DirectEndpoint("192.168.1.90", 7657),
-            ),
-            parsed.candidates,
-        )
-        assertEquals("10.0.0.40", parsed.host)
-        assertEquals(7657, parsed.port)
-        assertEquals("000102030405060708090a0b0c0d0e0f", parsed.nonce)
-        assertContentEquals(caFingerprint(), parsed.caFingerprintPrefix)
+            )
+        }
+        assertEquals("pair link is not local/private IPv4", failure.message)
     }
 
     @Test
@@ -217,34 +229,101 @@ class PairLinkTest {
         assertFailsWith<IllegalArgumentException> {
             parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(8, 8, 8, 8)))))
         }
-        assertFailsWith<IllegalArgumentException> {
-            parseDirectPairLink(
-                withBlob(
-                    v05Blob(
-                        listOf(
-                            byteArrayOf(127, 0, 0, 1),
-                            byteArrayOf(127, 1, 2, 3),
-                        ),
-                    ),
-                ),
-            )
-        }
     }
 
     @Test
-    fun filtersV05LoopbackCandidates() {
+    fun acceptsV05LoopbackOnlyCandidates() {
         val parsed = parseDirectPairLink(
             withBlob(
                 v05Blob(
                     listOf(
                         byteArrayOf(127, 0, 0, 1),
+                        byteArrayOf(127, 1, 2, 3),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(DirectEndpoint("127.0.0.1", 7657), DirectEndpoint("127.1.2.3", 7657)),
+            parsed.candidates,
+        )
+    }
+
+    @Test
+    fun coalescesDuplicateV05CandidatesPreservingFirstOccurrence() {
+        val parsed = parseDirectPairLink(
+            withBlob(
+                v05Blob(
+                    listOf(
+                        byteArrayOf(10, 0, 0, 40),
+                        byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
                         byteArrayOf(10, 0, 0, 40),
                     ),
                 ),
             ),
         )
 
-        assertEquals(listOf(DirectEndpoint("10.0.0.40", 7657)), parsed.candidates)
+        assertEquals(
+            listOf(DirectEndpoint("10.0.0.40", 7657), DirectEndpoint("192.168.1.90", 7657)),
+            parsed.candidates,
+        )
+    }
+
+    @Test
+    fun keepsDirectPairLinkConstructionUndeduplicated() {
+        val endpoint = DirectEndpoint("10.0.0.40", 7657)
+        val link = DirectPairLink(listOf(endpoint, endpoint), "nonce", byteArrayOf(1))
+
+        assertEquals(listOf(endpoint, endpoint), link.candidates)
+    }
+
+    @Test
+    fun supportsOnlyOneToFourV05Candidates() {
+        (1..4).forEach { count ->
+            val ips = (1..count).map { byteArrayOf(10, 0, 0, it.toByte()) }
+            assertEquals(
+                (1..count).map { DirectEndpoint("10.0.0.$it", 7657) },
+                parseDirectPairLink(withBlob(v05Blob(ips))).candidates,
+            )
+        }
+        listOf(0, 5, 8).forEach { count ->
+            val ips = (1..count).map { byteArrayOf(10, 0, 0, it.toByte()) }
+            val failure = assertFailsWith<IllegalArgumentException> {
+                parseDirectPairLink(withBlob(v05Blob(ips)))
+            }
+            assertEquals("unsupported pair link payload", failure.message)
+        }
+    }
+
+    @Test
+    fun refusesRepresentativeNonAllowListedAddresses() {
+        listOf(
+            byteArrayOf(0, 0, 0, 0),
+            byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(224.toByte(), 0, 0, 1),
+            byteArrayOf(192.toByte(), 0, 2, 42),
+            byteArrayOf(198.toByte(), 18, 0, 1),
+            byteArrayOf(8, 8, 8, 8),
+        ).forEach { ip ->
+            assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(ip, 7657)) }
+        }
+    }
+
+    @Test
+    fun directPairLinkToStringRedactsSecrets() {
+        val link = DirectPairLink(
+            listOf(DirectEndpoint("10.0.0.40", 7657)),
+            "00112233445566778899aabbccddeeff",
+            byteArrayOf(1, 2, 3, 4),
+        )
+
+        val rendered = link.toString()
+        assertTrue(rendered.contains("10.0.0.40"))
+        assertFalse(rendered.contains("00112233445566778899aabbccddeeff"))
+        assertFalse(rendered.contains("[1, 2, 3, 4]"))
+        assertTrue(rendered.contains("nonce=<redacted>"))
+        assertTrue(rendered.contains("caFingerprintPrefix=<redacted>"))
     }
 
     @Test

@@ -8,6 +8,9 @@ import app.solstone.observer.harness.ConnectivityFailure
 import app.solstone.observer.harness.PairRoute
 import app.solstone.observer.harness.PairLinkDispatchResult
 
+private const val DIRECT_PAIR_CODE_EXPIRED =
+    "This pairing code has expired. Generate a new one on your solstone."
+
 fun pairLinkDispatchText(result: PairLinkDispatchResult): String? =
     when (result) {
         PairLinkDispatchResult.NoLink -> null
@@ -26,7 +29,10 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
             }
         PairAttemptOutcome.Retry -> "Scanning"
         is PairAttemptOutcome.NetworkUnavailable -> networkFailureText(outcome)
-        is PairAttemptOutcome.WindowClosed -> "Pairing code expired"
+        is PairAttemptOutcome.WindowClosed -> when (outcome.statusCode) {
+            410 -> DIRECT_PAIR_CODE_EXPIRED
+            else -> "Pairing code expired"
+        }
         is PairAttemptOutcome.OtherFailure -> "Pairing failed"
     }
 

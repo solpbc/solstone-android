@@ -63,7 +63,9 @@ Its seventh job is to validate side-camera QR scanning:
 
 Its eighth job is to validate direct LAN private-link pairing:
 
-1. parse a `https://link.solpbc.org/p#...` direct PL QR payload;
+1. delegate recognition and parsing of `https://go.solstone.app/p#...` direct PL QR
+   payloads to `:core:pl`, including both single-candidate `0x04` and
+   multi-candidate `0x05` links;
 2. generate an on-watch ECDSA-P256 keypair and PKCS#10 CSR;
 3. connect to the solstone secure listener with TLS 1.3 + PL framing;
 4. submit `/app/network/pair`, persist the returned PL bundle, reconnect with the
@@ -283,11 +285,13 @@ characterization remains optional follow-up rather than a feasibility blocker.
 
 ## PL QR link validation
 
-The same `QR scan` activity now recognizes direct solstone PL pair links. When a
-valid direct pair QR is decoded, it closes the camera, generates a local
-ECDSA-P256 keypair/CSR, pairs through the secure listener, stores the returned
-bundle under app-private `files/pl-link/`, reconnects with the client
-certificate, and calls `/app/network/api/status`. Evidence is written to
+The same `QR scan` activity now delegates direct solstone PL pair-link
+recognition and parsing to `:core:pl`. It accepts both `0x04` and `0x05`; for a
+multi-candidate `0x05` link, this hardware probe dials only the first parsed
+candidate. When a valid direct pair QR is decoded, it closes the camera,
+generates a local ECDSA-P256 keypair/CSR, pairs through the secure listener,
+stores the returned bundle under app-private `files/pl-link/`, reconnects with
+the client certificate, and calls `/app/network/api/status`. Evidence is written to
 `files/pl-link-evidence.txt`.
 
 The Rogbid Android 9 firmware's platform TLS provider only advertised
@@ -298,7 +302,7 @@ forces PL sockets through that provider.
 ADB injection helper for a fresh pair link:
 
 ```bash
-PAIR_LINK='https://link.solpbc.org/p#...' tools/rogbid/validate-rogbid-pl-link.sh
+PAIR_LINK='https://go.solstone.app/p#...' tools/rogbid/validate-rogbid-pl-link.sh
 ```
 
 Validation on 2026-06-15 passed against the current solstone link code:

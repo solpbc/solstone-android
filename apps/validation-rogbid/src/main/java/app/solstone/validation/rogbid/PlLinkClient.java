@@ -7,6 +7,7 @@ import android.content.Context;
 import android.os.Build;
 import android.util.Base64;
 import android.util.Log;
+import app.solstone.core.pl.PairLinkKt;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -16,7 +17,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.SocketTimeoutException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -58,8 +58,6 @@ import org.json.JSONObject;
 
 final class PlLinkClient {
     private static final String TAG = "RogbidPlLink";
-    private static final String PAIR_LINK_HOST = "link.solpbc.org";
-    private static final String PAIR_LINK_PATH = "/p";
     private static final int DEFAULT_DIRECT_PORT = 7657;
     private static final int SOCKET_TIMEOUT_MS = 30000;
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -79,19 +77,11 @@ final class PlLinkClient {
     }
 
     static boolean looksLikePairLink(String text) {
-        if (text == null) {
-            return false;
-        }
-        try {
-            URL url = new URL(text.trim());
-            return "https".equals(url.getProtocol())
-                    && PAIR_LINK_HOST.equals(url.getHost())
-                    && PAIR_LINK_PATH.equals(url.getPath())
-                    && url.getRef() != null
-                    && !url.getRef().isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
+        return PairLinkKt.looksLikePairLink(text);
+    }
+
+    static app.solstone.core.pl.DirectPairLink parseCoreDirectPairLink(String pairLink) {
+        return PairLinkKt.parseDirectPairLink(pairLink);
     }
 
     static String defaultDeviceLabel() {
@@ -110,7 +100,7 @@ final class PlLinkClient {
 
     static PlResult pairAndProbe(Context context, String pairLink, String deviceLabel)
             throws Exception {
-        DirectPairLink link = parseDirectPairLink(pairLink);
+        app.solstone.core.pl.DirectPairLink link = parseCoreDirectPairLink(pairLink);
         KeyPair keyPair = generateKeyPair();
         String privateKeyPem = pem("PRIVATE KEY", keyPair.getPrivate().getEncoded());
         String csrPem = buildCsrPem(deviceLabel, keyPair);
@@ -126,7 +116,7 @@ final class PlLinkClient {
             handshakePinned = client.handshakePinned;
             pairHttp = client.request(
                     "POST",
-                    "/app/network/pair?token=" + link.nonce,
+                    "/app/network/pair?token=" + link.getNonce(),
                     "application/json",
                     body);
         }
@@ -140,7 +130,7 @@ final class PlLinkClient {
                 privateKeyPem,
                 deviceLabel,
                 link);
-        if (!startsWith(state.caFingerprintBytes, link.caFingerprintPrefix)) {
+        if (!startsWith(state.caFingerprintBytes, link.getCaFingerprintPrefix())) {
             throw new SSLException("pair response CA fingerprint did not match QR pin");
         }
         String computedClientFp = "sha256:" + sha256Hex(certificateFromPem(state.clientCertPem).getEncoded());
@@ -149,7 +139,9 @@ final class PlLinkClient {
         }
         state.write(context);
 
-        DirectEndpoint endpoint = state.firstEndpointOr(link.endpoint());
+        app.solstone.core.pl.DirectEndpoint coreEndpoint = link.endpoint();
+        DirectEndpoint endpoint = state.firstEndpointOr(
+                new DirectEndpoint(coreEndpoint.getHost(), coreEndpoint.getPort()));
         HttpResponse statusHttp;
         try (MuxHttpClient client = MuxHttpClient.connectAuthenticated(endpoint, state)) {
             statusHttp = client.request("GET", "/app/network/api/status", null, new byte[0]);
@@ -162,42 +154,6 @@ final class PlLinkClient {
                 pairHttp.status,
                 statusHttp.status,
                 statusHttp.bodyText());
-    }
-
-    private static DirectPairLink parseDirectPairLink(String pairLink) throws Exception {
-        URL url = new URL(pairLink.trim());
-        if (!"https".equals(url.getProtocol())
-                || !PAIR_LINK_HOST.equals(url.getHost())
-                || !PAIR_LINK_PATH.equals(url.getPath())) {
-            throw new IllegalArgumentException("not a solstone pair link");
-        }
-        String fragment = url.getRef();
-        if (fragment == null || fragment.isEmpty()) {
-            throw new IllegalArgumentException("pair link missing fragment");
-        }
-        byte[] decoded = decodeCrockford32(fragment);
-        if (decoded.length != 40 || decoded[0] != 0x04 || decoded[1] != 0x01) {
-            throw new IllegalArgumentException("unsupported pair link payload");
-        }
-        int a = decoded[2] & 0xff;
-        int b = decoded[3] & 0xff;
-        int c = decoded[4] & 0xff;
-        int d = decoded[5] & 0xff;
-        if (!isPrivateOrLinkLocal(a, b)) {
-            throw new IllegalArgumentException("pair link is not local/private IPv4");
-        }
-        String host = a + "." + b + "." + c + "." + d;
-        int port = ((decoded[6] & 0xff) << 8) | (decoded[7] & 0xff);
-        byte[] nonceBytes = Arrays.copyOfRange(decoded, 8, 24);
-        byte[] caFp = Arrays.copyOfRange(decoded, 24, 40);
-        return new DirectPairLink(host, port, hex(nonceBytes), caFp);
-    }
-
-    private static boolean isPrivateOrLinkLocal(int a, int b) {
-        return a == 10
-                || (a == 172 && b >= 16 && b <= 31)
-                || (a == 192 && b == 168)
-                || (a == 169 && b == 254);
     }
 
     private static KeyPair generateKeyPair() throws Exception {
@@ -287,47 +243,6 @@ final class PlLinkClient {
             offset += part.length;
         }
         return out;
-    }
-
-    private static byte[] decodeCrockford32(String text) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        int buffer = 0;
-        int bits = 0;
-        for (int i = 0; i < text.length(); i++) {
-            int value = crockfordValue(text.charAt(i));
-            if (value < 0) {
-                continue;
-            }
-            buffer = (buffer << 5) | value;
-            bits += 5;
-            while (bits >= 8) {
-                bits -= 8;
-                out.write((buffer >> bits) & 0xff);
-                buffer &= (1 << bits) - 1;
-            }
-        }
-        if (bits > 0 && (buffer & ((1 << bits) - 1)) != 0) {
-            throw new IllegalArgumentException("non-zero trailing pair-link pad bits");
-        }
-        return out.toByteArray();
-    }
-
-    private static int crockfordValue(char raw) {
-        if (raw == '-' || Character.isWhitespace(raw)) {
-            return -1;
-        }
-        char c = Character.toUpperCase(raw);
-        if (c == 'I' || c == 'L') {
-            c = '1';
-        } else if (c == 'O') {
-            c = '0';
-        }
-        String alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-        int value = alphabet.indexOf(c);
-        if (value < 0) {
-            throw new IllegalArgumentException("bad Crockford base32 char: " + raw);
-        }
-        return value;
     }
 
     private static X509Certificate certificateFromPem(String pem) throws Exception {
@@ -621,24 +536,6 @@ final class PlLinkClient {
         }
     }
 
-    static final class DirectPairLink {
-        final String host;
-        final int port;
-        final String nonce;
-        final byte[] caFingerprintPrefix;
-
-        DirectPairLink(String host, int port, String nonce, byte[] caFingerprintPrefix) {
-            this.host = host;
-            this.port = port;
-            this.nonce = nonce;
-            this.caFingerprintPrefix = caFingerprintPrefix;
-        }
-
-        DirectEndpoint endpoint() {
-            return new DirectEndpoint(host, port <= 0 ? DEFAULT_DIRECT_PORT : port);
-        }
-    }
-
     static final class DirectEndpoint {
         final String host;
         final int port;
@@ -693,7 +590,7 @@ final class PlLinkClient {
                 JSONObject response,
                 String privateKeyPem,
                 String deviceLabel,
-                DirectPairLink link) throws Exception {
+                app.solstone.core.pl.DirectPairLink link) throws Exception {
             JSONArray rawChain = response.getJSONArray("ca_chain");
             List<String> chain = new ArrayList<>();
             for (int i = 0; i < rawChain.length(); i++) {
@@ -707,8 +604,8 @@ final class PlLinkClient {
             if (endpoints == null || endpoints.length() == 0) {
                 endpoints = new JSONArray();
                 JSONObject fallback = new JSONObject();
-                fallback.put("ip", link.host);
-                fallback.put("port", link.port);
+                fallback.put("ip", link.getHost());
+                fallback.put("port", link.getPort());
                 fallback.put("scope", "qr");
                 endpoints.put(fallback);
             }
@@ -820,12 +717,12 @@ final class PlLinkClient {
             this.handshakePinned = handshakePinned;
         }
 
-        static MuxHttpClient connectCertless(DirectPairLink link) throws Exception {
-            SSLSocket socket = (SSLSocket) trustAllFactory().createSocket(link.host, link.port);
+        static MuxHttpClient connectCertless(app.solstone.core.pl.DirectPairLink link) throws Exception {
+            SSLSocket socket = (SSLSocket) trustAllFactory().createSocket(link.getHost(), link.getPort());
             socket.setSoTimeout(SOCKET_TIMEOUT_MS);
             enableTls13(socket);
             socket.startHandshake();
-            boolean pinned = peerChainMatchesPrefix(socket.getSession(), link.caFingerprintPrefix);
+            boolean pinned = peerChainMatchesPrefix(socket.getSession(), link.getCaFingerprintPrefix());
             if (!pinned) {
                 socket.close();
                 throw new SSLException("pair TLS peer chain did not match QR CA pin");
