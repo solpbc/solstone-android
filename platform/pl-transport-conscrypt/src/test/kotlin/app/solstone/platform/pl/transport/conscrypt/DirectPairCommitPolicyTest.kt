@@ -242,16 +242,18 @@ class DirectPairCommitPolicyTest {
     fun nonSuccessHttpDoesNotOpenLaterCandidate() {
         val counts = Counts()
         val link = pairLink(listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)))
+        val reflectedSecrets = "$link $NONCE_HEX $CA_PIN_HEX $CSR_MARKER $PRIVATE_KEY_MARKER"
 
         val failure = assertFailsWith<DirectPairEndpointException> {
             invokePair(link, counts) { _, _ ->
                 counts.sessionOpens++
                 counts.duplexCreations++
-                CertlessSession(MuxSession(responseDuplex(503, counts)), true)
+                CertlessSession(MuxSession(responseDuplex(503, counts, reflectedSecrets)), true)
             }
         }
 
-        assertEquals("pair failed HTTP 503: failure", failure.cause?.message)
+        assertEquals("pair failed HTTP 503", failure.cause?.message)
+        assertMessageRedacted(failure.cause?.message.orEmpty(), link)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.duplexCreations)
         assertEquals(1, counts.requestInvocations)
@@ -531,6 +533,7 @@ class DirectPairCommitPolicyTest {
         assertTrue(!message.contains(link))
         assertTrue(!message.contains(CSR_MARKER))
         assertTrue(!message.contains(PRIVATE_KEY_MARKER))
+        assertTrue(!message.contains(CA_PIN_HEX))
     }
 
     private fun requestBytes(method: String, path: String): ByteArray =
@@ -630,6 +633,7 @@ class DirectPairCommitPolicyTest {
         private const val PRIVATE_KEY_MARKER = "PRIVATE-KEY-MARKER"
         private const val CSR_MARKER = "CSR-MARKER"
         private const val NONCE_HEX = "000102030405060708090a0b0c0d0e0f"
+        private const val CA_PIN_HEX = "00000000000000000000000000000000"
         private const val EXPECTED_PAIR_PATH = "/app/network/pair?token=$NONCE_HEX"
 
         private fun pairLink(

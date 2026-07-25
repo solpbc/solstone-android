@@ -188,7 +188,7 @@ internal fun pairAndProbe(
             DialDecision.ADVANCE -> {
                 throw directPairFailure(
                     endpoint,
-                    IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText()),
+                    IOException("pair failed HTTP " + pairHttp.status),
                 )
             }
         }

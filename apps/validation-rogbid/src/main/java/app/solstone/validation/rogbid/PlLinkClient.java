@@ -121,7 +121,7 @@ final class PlLinkClient {
                     body);
         }
         if (pairHttp.status != 200) {
-            throw new IOException("pair failed HTTP " + pairHttp.status + ": " + pairHttp.bodyText());
+            throw new IOException("pair failed HTTP " + pairHttp.status);
         }
 
         JSONObject response = new JSONObject(pairHttp.bodyText());
