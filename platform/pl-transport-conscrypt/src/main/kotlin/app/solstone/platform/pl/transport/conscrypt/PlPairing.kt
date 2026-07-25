@@ -65,6 +65,7 @@ class DirectPairCodeExpiredException(
 
 internal data class DirectPairMaterial(
     val privateKeyPem: String,
+    val publicKeySpki: ByteArray,
     val requestBody: ByteArray,
 )
 
@@ -73,7 +74,7 @@ internal fun generateDirectPairMaterial(deviceLabel: String): DirectPairMaterial
     val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
     val csr = buildCsrPem(deviceLabel, keyPair)
     val body = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
-    return DirectPairMaterial(privateKeyPem, body)
+    return DirectPairMaterial(privateKeyPem, keyPair.public.encoded, body)
 }
 
 private fun probeDirectStatus(endpoint: DirectEndpoint, credential: ClientCredential): HttpResponse =
@@ -148,9 +149,13 @@ internal fun pairAndProbe(
                 if (!startsWith(sha256(caDer), link.caFingerprintPrefix)) {
                     throw SSLException("pair response CA fingerprint did not match QR pin")
                 }
-                val clientDer = certificateFromPem(resp.clientCert).encoded
+                val clientCertificate = certificateFromPem(resp.clientCert)
+                val clientDer = clientCertificate.encoded
                 if ("sha256:" + sha256Hex(clientDer) != resp.fingerprint) {
                     throw SSLException("pair response client fingerprint mismatch")
+                }
+                if (!clientCertificate.publicKey.encoded.contentEquals(material.publicKeySpki)) {
+                    throw SSLException("pair response client certificate key mismatch")
                 }
 
                 val credential = ClientCredential(material.privateKeyPem, resp.clientCert, resp.caChain)

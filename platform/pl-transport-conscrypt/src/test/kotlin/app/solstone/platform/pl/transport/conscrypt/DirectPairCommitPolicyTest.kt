@@ -327,6 +327,33 @@ class DirectPairCommitPolicyTest {
     }
 
     @Test
+    fun clientCertificateForDifferentKeyDoesNotOpenLaterCandidate() {
+        val counts = Counts()
+        val caPrefix = app.solstone.core.crypto.sha256(
+            app.solstone.core.crypto.pemToDer(PAIR_TEST_CA_PEM, "CERTIFICATE"),
+        ).copyOf(16)
+        val link = pairLink(
+            listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)),
+            caPrefix = caPrefix,
+        )
+        val otherPublicKey = app.solstone.core.crypto.certificateFromPem(PAIR_TEST_CA_PEM).publicKey.encoded
+
+        val failure = assertFailsWith<javax.net.ssl.SSLException> {
+            invokePair(link, counts, materialPublicKey = otherPublicKey) { _, _ ->
+                counts.sessionOpens++
+                counts.duplexCreations++
+                CertlessSession(MuxSession(responseDuplex(200, counts, pairResponse())), true)
+            }
+        }
+
+        assertEquals("pair response client certificate key mismatch", failure.message)
+        assertEquals(1, counts.sessionOpens)
+        assertEquals(1, counts.requestInvocations)
+        assertEquals(1, counts.allOpenFrames)
+        assertTrue(failure.message != "all pair candidates exhausted")
+    }
+
+    @Test
     fun credentialStoreFailureAfterRequestDoesNotOpenLaterCandidate() {
         assertCommittedPersistenceFailure(CommittedFailureStage.CREDENTIAL)
     }
@@ -441,6 +468,8 @@ class DirectPairCommitPolicyTest {
         credentialStore: ClientCredentialStore = EmptyCredentialStore,
         identityStore: IdentityStore = EmptyIdentityStore,
         endpointStore: EndpointStore = EmptyEndpointStore,
+        materialPublicKey: ByteArray = app.solstone.core.crypto.certificateFromPem(PAIR_TEST_LEAF_PEM)
+            .publicKey.encoded,
         statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = { _, _ ->
             HttpResponse(200, emptyMap(), "ok".toByteArray())
         },
@@ -456,7 +485,7 @@ class DirectPairCommitPolicyTest {
             localInterfaces = localInterfaces,
             materialFactory = {
                 counts.materialGenerations++
-                DirectPairMaterial(PRIVATE_KEY_MARKER, CSR_MARKER.toByteArray())
+                DirectPairMaterial(PRIVATE_KEY_MARKER, materialPublicKey, CSR_MARKER.toByteArray())
             },
             statusProbe = statusProbe,
         )
