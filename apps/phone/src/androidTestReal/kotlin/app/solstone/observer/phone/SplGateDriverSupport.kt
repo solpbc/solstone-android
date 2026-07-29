@@ -49,7 +49,9 @@ internal fun checkpointFromProductionStatus(
             checkpoint,
             probeId,
             PlCheckpointKind.PAIRED_UNREACHABLE,
-            status.reason?.takeIf(String::isNotBlank) ?: "production_probe_unreachable",
+            status.reason?.takeIf {
+                it.matches(Regex("[a-z0-9_]{1,128}"))
+            } ?: "production_probe_unreachable",
             null,
             GateHttpResult(probeId, attempted = true, completed = false, status = null),
         )

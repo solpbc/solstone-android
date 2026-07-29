@@ -33,17 +33,19 @@ class RealPlCheckpointMapperTest {
         val named = checkpointFromProductionStatus(
             "degraded",
             "probe-1",
-            HarnessPlStatus.PairedButUnreachable("IOException"),
+            HarnessPlStatus.PairedButUnreachable("network_denied"),
         )
-        val unnamed = checkpointFromProductionStatus(
+        val unsafe = checkpointFromProductionStatus(
             "degraded",
             "probe-2",
-            HarnessPlStatus.PairedButUnreachable(" "),
+            HarnessPlStatus.PairedButUnreachable(
+                "IOException: sensitive endpoint detail",
+            ),
         )
 
         assertEquals(PlCheckpointKind.PAIRED_UNREACHABLE, named.variant)
-        assertEquals("IOException", named.reason)
-        assertEquals("production_probe_unreachable", unnamed.reason)
+        assertEquals("network_denied", named.reason)
+        assertEquals("production_probe_unreachable", unsafe.reason)
         assertFalse(named.httpResult?.completed == true)
     }
 
