@@ -50,7 +50,11 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class SplIntegrationGateDriverTest {
@@ -251,9 +255,30 @@ class SplIntegrationGateDriverTest {
         val stores = syncStores(context)
         val identity = requirePairedIdentity(stores)
         val handle = requireNotNull(identity.observerHandle) { "observer_handle_absent" }
+        val expectedBodyBytes = requireNotNull(invocation.expectedBodyBytes)
         val progress = GateProgressWriter(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_PROGRESS_FILE"))
-        val progressOrder = G3ProgressOrder(invocation.expectedBodyBytes!!)
-        val interruptedTelemetry = GateTelemetry()
+        val cutControl = GateCutControl(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_CONTROL_FILE"))
+        val progressOrder = G3ProgressOrder(expectedBodyBytes)
+        val partialReady = CountDownLatch(1)
+        val cutApplied = CountDownLatch(1)
+        val firstPartial = AtomicInteger()
+        val cutControlError = AtomicReference<Throwable?>()
+        val interruptedTelemetry = GateTelemetry { cumulativeBytes ->
+            if (
+                cumulativeBytes > 0 &&
+                cumulativeBytes < expectedBodyBytes &&
+                firstPartial.compareAndSet(0, cumulativeBytes)
+            ) {
+                partialReady.countDown()
+                try {
+                    cutControl.await(invocation.runNonce)
+                } catch (throwable: Throwable) {
+                    cutControlError.set(throwable)
+                } finally {
+                    cutApplied.countDown()
+                }
+            }
+        }
         val executor = newGateExecutor()
         var partial = 0
         var activeAtPartial = 0
@@ -262,20 +287,29 @@ class SplIntegrationGateDriverTest {
             val future = executor.submitBounded {
                 requestSegments(stores, handle, invocation.observerDay!!, interruptedTelemetry)
             }
-            while (android.os.SystemClock.elapsedRealtime() - requestStarted <= GATE_STAGE_TIMEOUT_MS) {
-                partial = interruptedTelemetry.snapshot().consumedBytes
-                if (partial > 0 && partial < invocation.expectedBodyBytes!!) {
-                    activeAtPartial = interruptedTelemetry.snapshot().activeStreams
+            while (!partialReady.await(10, TimeUnit.MILLISECONDS)) {
+                if (future.isDone) {
+                    error("interruption_not_achieved")
+                }
+                if (android.os.SystemClock.elapsedRealtime() - requestStarted > GATE_STAGE_TIMEOUT_MS) {
                     break
                 }
-                if (future.isDone) error("interruption_not_achieved")
-                Thread.sleep(10)
             }
-            require(partial > 0 && partial < invocation.expectedBodyBytes!!) { "partial_signal_timeout" }
+            partial = firstPartial.get()
+            activeAtPartial = interruptedTelemetry.snapshot().activeStreams
+            require(partial > 0 && partial < expectedBodyBytes) { "partial_signal_timeout" }
             progress.write(
                 invocation.runNonce,
                 progressOrder.advance(G3ProgressState.PARTIAL_RESPONSE_CONSUMED, partial),
             )
+            val cutWaitMs = (
+                GATE_STAGE_TIMEOUT_MS -
+                    (android.os.SystemClock.elapsedRealtime() - requestStarted)
+                ).coerceAtLeast(1L)
+            require(cutApplied.await(cutWaitMs, TimeUnit.MILLISECONDS)) {
+                "network_cut_control_timeout"
+            }
+            cutControlError.get()?.let { throw it }
             val requestFailed = try {
                 val elapsed = android.os.SystemClock.elapsedRealtime() - requestStarted
                 future.awaitBounded(GATE_STAGE_TIMEOUT_MS - elapsed)

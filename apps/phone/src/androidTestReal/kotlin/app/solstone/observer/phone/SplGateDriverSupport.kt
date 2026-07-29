@@ -11,6 +11,7 @@ import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.atomicWriteOwnerOnly
 import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayDialObserver
+import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 import app.solstone.observer.harness.HarnessPlStatus
 import java.io.File
@@ -32,6 +33,7 @@ internal const val GATE_PRIVATE_DIR = "solstone-android-gate/v1"
 internal const val GATE_AUTHORITY_FILE = "pair-authority.json"
 internal const val GATE_RESULT_FILE = "action-result.json"
 internal const val GATE_PROGRESS_FILE = "action-progress.json"
+internal const val GATE_CONTROL_FILE = "action-control.json"
 
 internal fun utcSecond(): String = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()
 
@@ -76,7 +78,9 @@ internal data class GateTelemetrySnapshot(
     val sessionIdSha256: String?,
 )
 
-internal class GateTelemetry : PlStreamObserver, RelayDialObserver {
+internal class GateTelemetry(
+    private val onResponseData: ((Int) -> Unit)? = null,
+) : PlStreamObserver, RelayDialObserver {
     private val relayDials = AtomicInteger()
     private val active = AtomicInteger()
     private val maxActive = AtomicInteger()
@@ -99,6 +103,7 @@ internal class GateTelemetry : PlStreamObserver, RelayDialObserver {
 
     override fun onResponseDataConsumed(streamId: Int, deltaBytes: Int, cumulativeBytes: Int) {
         consumed.set(cumulativeBytes)
+        onResponseData?.invoke(cumulativeBytes)
     }
 
     override fun onStreamTerminated(streamId: Int, successful: Boolean) {
@@ -129,6 +134,37 @@ internal class GateProgressWriter(private val target: File) {
             "recorded_at" to utcSecond(),
         )
         atomicWriteOwnerOnly(target, (toJson(value) + "\n").toByteArray())
+    }
+}
+
+internal class GateCutControl(private val target: File) {
+    fun await(runNonce: String) {
+        val started = System.nanoTime()
+        while (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) <= GATE_STAGE_TIMEOUT_MS) {
+            if (target.isFile) {
+                val root = parseJson(target.readText()) as? Map<*, *>
+                    ?: error("network_cut_control_malformed")
+                require(
+                    root.keys == setOf(
+                        "schema_version",
+                        "driver_contract_version",
+                        "run_nonce",
+                        "action",
+                        "action_sequence",
+                        "command",
+                    ) &&
+                        (root["schema_version"] as? Number)?.toInt() == 1 &&
+                        (root["driver_contract_version"] as? Number)?.toInt() == 1 &&
+                        root["run_nonce"] == runNonce &&
+                        root["action"] == "g3_interrupt_recover" &&
+                        (root["action_sequence"] as? Number)?.toInt() == 3 &&
+                        root["command"] == "network_cut_applied",
+                ) { "network_cut_control_malformed" }
+                return
+            }
+            Thread.sleep(10)
+        }
+        error("network_cut_control_timeout")
     }
 }
 
