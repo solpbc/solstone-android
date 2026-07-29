@@ -6,6 +6,8 @@ package app.solstone.platform.pl.transport.conscrypt
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.pl.ByteDuplex
 import app.solstone.core.pl.MuxSession
+import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayDialObserver
 import java.io.Closeable
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,7 +36,10 @@ fun openRelayClient(
     port: Int,
     tunnelOpener: TunnelOpener,
     tlsMode: RelayTlsMode,
+    streamObserver: PlStreamObserver? = null,
+    dialObserver: RelayDialObserver? = null,
 ): RelayPlClient {
+    notifyDialObserver(dialObserver, host, port)
     val raw = tunnelOpener.open()
     try {
         val engine = when (tlsMode) {
@@ -42,11 +47,19 @@ fun openRelayClient(
             is RelayTlsMode.Authenticated -> authenticatedEngine(tlsMode.credential, host, port)
         }
         val tls = TlsEngineDuplex(engine, raw)
-        val client = ConscryptPlHttpClient(MuxSession(tls))
+        val client = ConscryptPlHttpClient(MuxSession(tls, streamObserver))
         return RelayPlClient(client, tls.peerLeafCertificateDer, tls.peerCertificateChainDer)
     } catch (e: Exception) {
         raw.close()
         throw e
+    }
+}
+
+private fun notifyDialObserver(observer: RelayDialObserver?, host: String, port: Int) {
+    try {
+        observer?.onRelayDialAttempt(1, host, port)
+    } catch (_: Throwable) {
+        // Optional observation must never alter production dialing.
     }
 }
 

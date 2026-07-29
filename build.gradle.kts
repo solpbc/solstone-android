@@ -79,6 +79,77 @@ fun scanCorePurity(rootDir: File): List<String> {
     return violations
 }
 
+private val splGateRequiredMarkers = listOf(
+    "GateInvocation.decide",
+    "GateInvocationDecision.Skip",
+    "syncStores",
+    "RealRelayPairProbe",
+    "RealPlStatusProbe",
+    "ObserverRegistration",
+    "ObserverIngestClient",
+    "SplIntegrationGateDriverTest",
+    "pair-authority.json",
+    "action-result.json",
+    "action-progress.json",
+)
+
+private val splGateBannedMarkers = listOf(
+    Regex("""\b(Mock|Fake|Loopback|Stub)[A-Za-z0-9_]*\b""") to "test-double type",
+    Regex("""RelayPairLink\s*\.\s*toString|\.toString\(\).*RelayPairLink""") to "RelayPairLink.toString",
+    Regex("""\bLog\s*\.""") to "driver logging",
+    Regex("""printStackTrace|getStackTrace|stackTraceToString""") to "stack trace rendering",
+    Regex("""["'][^"']*\${'$'}\{?\s*pairLink|pairLink\s*\+|\+\s*pairLink""", RegexOption.IGNORE_CASE) to "pair-link interpolation",
+    Regex("""RealSplGateDriverTest|g1-pair-status-register|g2-large-response-facts|g3-interrupted-stream-recovery|g4-g5-degraded-restored-status""") to "obsolete gate contract",
+    Regex("""files/spl-gate|pair-link\.txt|spl-gate/result\.json""") to "obsolete gate path",
+    Regex("""NetworkDenialController|svc\s+(wifi|data)""") to "driver-owned network mutation",
+    Regex("""GateConnectivity""") to "device-wide gate connectivity",
+)
+
+private val splGateSideEffectMarkers = listOf(
+    "syncStores(",
+    "RealRelayPairProbe(",
+    "RealPlStatusProbe(",
+    "openRelaySyncClient(",
+    "openRelayClient(",
+    "executeShellCommand(",
+    "GateResultWriter(",
+    "pair-authority.json",
+)
+
+fun splGateBannedSinkViolations(source: String): List<String> {
+    val violations = mutableListOf<String>()
+    splGateBannedMarkers.forEach { (pattern, description) ->
+        if (pattern.containsMatchIn(source)) violations += "banned $description"
+    }
+    return violations.distinct()
+}
+
+fun splGateDriverViolations(source: String): List<String> {
+    if (source.isBlank()) return emptyList()
+    val violations = splGateBannedSinkViolations(source).toMutableList()
+    splGateRequiredMarkers.forEach { marker ->
+        if (!source.contains(marker)) violations += "missing production marker $marker"
+    }
+    if (!source.contains("openRelaySyncClient") && !source.contains("openRelayClient")) {
+        violations += "missing production relay-client opener"
+    }
+    val decision = source.indexOf("GateInvocation.decide")
+    val skip = source.indexOf("GateInvocationDecision.Skip")
+    val firstSideEffect = splGateSideEffectMarkers
+        .map(source::indexOf)
+        .filter { it >= 0 }
+        .minOrNull()
+    if (decision < 0 || skip < decision || (firstSideEffect != null && skip > firstSideEffect)) {
+        violations += "inert action guard does not dominate side effects"
+    }
+    val authorityDelete = source.indexOf("file.delete()")
+    val authorityParse = source.indexOf("parseJson(bytes.toString")
+    if (authorityDelete < 0 || authorityParse < authorityDelete) {
+        violations += "pair authority is not deleted before parsing"
+    }
+    return violations.distinct()
+}
+
 fun foregroundServiceTypeTokens(manifestText: String): Set<String> =
     Regex("""foregroundServiceType\s*=\s*["']([^"']+)["']""")
         .findAll(manifestText)
@@ -181,6 +252,40 @@ tasks.register("checkCorePurity") {
     }
 }
 
+tasks.register("checkSplGateDriver") {
+    group = "verification"
+    description = "Checks the SPL gate driver for inertness, production composition, and secret-safe sinks."
+
+    doLast {
+        val sourceDir = rootProject.file("apps/phone/src/androidTestReal")
+        val allSources = if (sourceDir.exists()) {
+            sourceDir.walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .toList()
+        } else {
+            emptyList()
+        }
+        if (allSources.isEmpty()) return@doLast
+        val violations = mutableListOf<String>()
+        allSources.forEach { source ->
+            splGateBannedSinkViolations(source.readText()).forEach { violation ->
+                violations += "${source.relativeTo(rootProject.projectDir)}: $violation"
+            }
+        }
+        val gateSources = allSources.filter { it.readText().contains("GateInvocation") }
+        if (gateSources.isNotEmpty()) {
+            val gateGraph = (gateSources + allSources.filterNot(gateSources::contains))
+                .joinToString("\n") { it.readText() }
+            splGateDriverViolations(gateGraph)
+                .filterNot { it.startsWith("banned ") }
+                .forEach { violations += it }
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException("SPL gate driver guard failed:\n${violations.sorted().joinToString("\n")}")
+        }
+    }
+}
+
 tasks.register("privacyGuardSelfTest") {
     group = "verification"
     description = "Exercises privacy guard matching against synthetic coordinates."
@@ -207,6 +312,62 @@ tasks.register("purityGuardSelfTest") {
         check(isImpureBuildLine("""id("com.android.library")"""))
         check(isImpureBuildLine("""implementation("androidx.core:core:1.13.1")"""))
         check(!isImpureBuildLine("""implementation(project(":core:segment"))"""))
+    }
+}
+
+tasks.register("splGateDriverGuardSelfTest") {
+    group = "verification"
+    description = "Exercises SPL gate driver source predicates against synthetic safe and unsafe inputs."
+
+    doLast {
+        val safe = """
+            val decision = GateInvocation.decide(extras)
+            if (decision is GateInvocationDecision.Skip) return
+            val stores = syncStores(context)
+            val pair = RealRelayPairProbe(stores.credentialStore, stores.identityStore)
+            val status = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore)
+            val client = openRelaySyncClient(origin, instanceId, token, credential)
+            val registration = ObserverRegistration(client)
+            val ingest = ObserverIngestClient(client)
+            class SplIntegrationGateDriverTest
+            val authority = "pair-authority.json"
+            val result = "action-result.json"
+            val progress = "action-progress.json"
+            file.delete()
+            parseJson(bytes.toString())
+        """.trimIndent()
+        check(splGateDriverViolations("").isEmpty())
+        check(splGateDriverViolations(safe).isEmpty())
+        val cleanNonGate = "class ExistingRealFlavorRuntimeTest"
+        check(splGateBannedSinkViolations(cleanNonGate).isEmpty())
+        check(splGateBannedSinkViolations("$cleanNonGate\nLog.i(\"tag\", \"message\")").isNotEmpty())
+        check(splGateBannedSinkViolations("$cleanNonGate\n\"pair=\$pairLink\"").isNotEmpty())
+        listOf(
+            "MockTransport",
+            "FakeClient",
+            "LoopbackSession",
+            "StubRelay",
+            "RelayPairLink.toString",
+            "Log.i",
+            "stackTraceToString",
+            "\"pair=\$pairLink\"",
+            "RealSplGateDriverTest",
+            "g1-pair-status-register",
+            "files/spl-gate/result.json",
+            "NetworkDenialController",
+            "svc wifi disable",
+            "GateConnectivity",
+        ).forEach { banned ->
+            check(splGateDriverViolations("$safe\n$banned").isNotEmpty()) { "guard missed $banned" }
+        }
+        splGateRequiredMarkers.forEach { marker ->
+            check(splGateDriverViolations(safe.replace(marker, "removed")).isNotEmpty()) {
+                "guard missed required marker $marker"
+            }
+        }
+        check(splGateDriverViolations(safe.replace("openRelaySyncClient", "removed")).isNotEmpty())
+        val sideEffectFirst = "executeShellCommand(\"fixed\")\n$safe"
+        check("inert action guard does not dominate side effects" in splGateDriverViolations(sideEffectFirst))
     }
 }
 
@@ -323,8 +484,10 @@ tasks.named("check") {
     dependsOn(
         "checkPrivacyDeps",
         "checkCorePurity",
+        "checkSplGateDriver",
         "privacyGuardSelfTest",
         "purityGuardSelfTest",
+        "splGateDriverGuardSelfTest",
         "manifestGuardSelfTest",
         "launcherHomeGuardSelfTest",
         "appLinksGuardSelfTest",

@@ -7,6 +7,7 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
 
 // Per-file statuses that prove reconcile convergence after name and SHA match.
@@ -33,6 +34,10 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
             ),
             body = null,
         )
+        return parseFetchResponse(response)
+    }
+
+    fun parseFetchResponse(response: HttpResponse): List<ServerSegment> {
         when (response.status) {
             200 -> return try {
                 val root = parseJson(response.bodyText()) as? Map<*, *> ?: throw IllegalArgumentException("segments response must be an object")

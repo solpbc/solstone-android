@@ -8,7 +8,10 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.SocketTimeoutException
 
-class MuxSession(private val duplex: ByteDuplex) : Closeable {
+class MuxSession(
+    private val duplex: ByteDuplex,
+    private val observer: PlStreamObserver? = null,
+) : Closeable {
     private val input = duplex.input
     private val output = duplex.output
     private val dialer = FrameDialer()
@@ -19,73 +22,91 @@ class MuxSession(private val duplex: ByteDuplex) : Closeable {
             throw IOException(SESSION_UNUSABLE)
         }
         val streamId = dialer.allocate()
-        val request = httpRequestBytes(method, path, headers, body)
-        var offset = 0
-        while (offset < request.size) {
-            val count = minOf(MAX_DATA_CHUNK_BYTES, request.size - offset)
-            val flags = if (offset == 0) FLAG_OPEN or FLAG_DATA else FLAG_DATA
-            writeFrame(streamId, flags, request.copyOfRange(offset, offset + count))
-            offset += count
+        notifyObserver { it.onStreamOpened(streamId) }
+        var successful = false
+        try {
+            val request = httpRequestBytes(method, path, headers, body)
+            var offset = 0
+            while (offset < request.size) {
+                val count = minOf(MAX_DATA_CHUNK_BYTES, request.size - offset)
+                val flags = if (offset == 0) FLAG_OPEN or FLAG_DATA else FLAG_DATA
+                writeFrame(streamId, flags, request.copyOfRange(offset, offset + count))
+                offset += count
+            }
+            writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+            val response = ByteArrayOutputStream()
+            // Per-stream flow-control credit is replenished as each DATA frame is consumed.
+            var receiveWindow = INITIAL_RECEIVE_WINDOW
+            while (true) {
+                val frame = readFrame()
+                if ((frame.flags and FLAG_RESERVED) != 0) {
+                    markPoisoned()
+                    throw IOException("PL protocol error: reserved flag")
+                }
+                if (frame.streamId == 0) {
+                    val pong = controlPong(frame)
+                    if (pong != null) {
+                        writeFrame(pong.streamId, pong.flags, pong.payload)
+                        continue
+                    }
+                    if (frame.flags == FLAG_PONG) {
+                        continue
+                    }
+                    markPoisoned()
+                    throw IOException("PL protocol error: malformed control frame")
+                }
+                if (frame.streamId != streamId) {
+                    if ((frame.flags and (FLAG_OPEN or FLAG_DATA or FLAG_WINDOW)) != 0) {
+                        writeFrame(frame.streamId, FLAG_RESET, byteArrayOf(0x01))
+                    }
+                    continue
+                }
+                if (frame.flags !in VALID_RECEIVE_FLAGS) {
+                    writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
+                    throw IOException("PL protocol error: invalid flags")
+                }
+                if ((frame.flags and FLAG_DATA) != 0) {
+                    val size = frame.payload.size
+                    if (size > 0) {
+                        if (size > receiveWindow) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
+                            throw IOException("PL receive window exceeded")
+                        }
+                        // This hard total-response ceiling is distinct from replenished flow credit.
+                        if (response.size() + size > MAX_RESPONSE_BYTES) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                            throw IOException("PL response too large")
+                        }
+                        receiveWindow -= size
+                        response.write(frame.payload)
+                        notifyObserver { it.onResponseDataConsumed(streamId, size, response.size()) }
+                        writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
+                        receiveWindow += size
+                    }
+                }
+                if ((frame.flags and FLAG_RESET) != 0) {
+                    throw IOException("PL stream reset: " + resetReason(frame.payload))
+                }
+                if ((frame.flags and FLAG_WINDOW) != 0) {
+                    continue
+                }
+                if ((frame.flags and FLAG_CLOSE) != 0) {
+                    val parsed = parseHttpResponse(response.toByteArray())
+                    successful = true
+                    return parsed
+                }
+            }
+        } finally {
+            notifyObserver { it.onStreamTerminated(streamId, successful) }
         }
-        writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
-        val response = ByteArrayOutputStream()
-        // Per-stream flow-control credit is replenished as each DATA frame is consumed.
-        var receiveWindow = INITIAL_RECEIVE_WINDOW
-        while (true) {
-            val frame = readFrame()
-            if ((frame.flags and FLAG_RESERVED) != 0) {
-                markPoisoned()
-                throw IOException("PL protocol error: reserved flag")
-            }
-            if (frame.streamId == 0) {
-                val pong = controlPong(frame)
-                if (pong != null) {
-                    writeFrame(pong.streamId, pong.flags, pong.payload)
-                    continue
-                }
-                if (frame.flags == FLAG_PONG) {
-                    continue
-                }
-                markPoisoned()
-                throw IOException("PL protocol error: malformed control frame")
-            }
-            if (frame.streamId != streamId) {
-                if ((frame.flags and (FLAG_OPEN or FLAG_DATA or FLAG_WINDOW)) != 0) {
-                    writeFrame(frame.streamId, FLAG_RESET, byteArrayOf(0x01))
-                }
-                continue
-            }
-            if (frame.flags !in VALID_RECEIVE_FLAGS) {
-                writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
-                throw IOException("PL protocol error: invalid flags")
-            }
-            if ((frame.flags and FLAG_DATA) != 0) {
-                val size = frame.payload.size
-                if (size > 0) {
-                    if (size > receiveWindow) {
-                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
-                        throw IOException("PL receive window exceeded")
-                    }
-                    // This hard total-response ceiling is distinct from replenished flow credit.
-                    if (response.size() + size > MAX_RESPONSE_BYTES) {
-                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
-                        throw IOException("PL response too large")
-                    }
-                    receiveWindow -= size
-                    response.write(frame.payload)
-                    writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                    receiveWindow += size
-                }
-            }
-            if ((frame.flags and FLAG_RESET) != 0) {
-                throw IOException("PL stream reset: " + resetReason(frame.payload))
-            }
-            if ((frame.flags and FLAG_WINDOW) != 0) {
-                continue
-            }
-            if ((frame.flags and FLAG_CLOSE) != 0) {
-                return parseHttpResponse(response.toByteArray())
-            }
+    }
+
+    private inline fun notifyObserver(block: (PlStreamObserver) -> Unit) {
+        val current = observer ?: return
+        try {
+            block(current)
+        } catch (_: Throwable) {
+            // Optional observation must never alter production transport behavior.
         }
     }
 

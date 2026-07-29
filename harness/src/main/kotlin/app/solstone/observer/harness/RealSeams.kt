@@ -15,6 +15,8 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.QueueState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.RelayPairLink
+import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
@@ -67,13 +69,15 @@ class RealPairProbe(
 class RealRelayPairProbe(
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
+    private val streamObserver: PlStreamObserver? = null,
+    private val dialObserver: RelayDialObserver? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
             link = link,
             deviceLabel = deviceLabel,
             httpsPoster = defaultHttpsPoster(),
-            relayPairDialer = defaultRelayPairDialer(),
+            relayPairDialer = defaultRelayPairDialer(streamObserver, dialObserver),
             credentialStore = credentialStore,
             identityStore = identityStore,
         )
@@ -98,6 +102,8 @@ class RealPlStatusProbe(
     private val endpointStore: EndpointStore,
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
+    private val streamObserver: PlStreamObserver? = null,
+    private val dialObserver: RelayDialObserver? = null,
 ) : PlStatusProbe {
     override fun probe(): HarnessPlStatus {
         val credential = credentialStore.load()
@@ -124,6 +130,8 @@ class RealPlStatusProbe(
                     transport.instanceId,
                     transport.deviceToken,
                     credential,
+                    streamObserver,
+                    dialObserver,
                 )
             }.use { client ->
                 HarnessPlStatus.Reachable(

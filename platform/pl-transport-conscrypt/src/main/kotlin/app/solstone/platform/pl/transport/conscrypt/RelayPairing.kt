@@ -25,6 +25,8 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
@@ -69,17 +71,34 @@ fun interface RelayPairDialer {
     fun open(host: String, port: Int, rk: ByteArray): RelayDialSession
 }
 
-class OkHttpRelayPairDialer(private val client: OkHttpClient = OkHttpClient()) : RelayPairDialer {
+class OkHttpRelayPairDialer(
+    private val client: OkHttpClient = OkHttpClient(),
+    private val streamObserver: PlStreamObserver? = null,
+    private val dialObserver: RelayDialObserver? = null,
+) : RelayPairDialer {
     override fun open(host: String, port: Int, rk: ByteArray): RelayDialSession {
         val request = relayPairDialRequest(host, rk)
-        val relayClient = openRelayClient(host, port, OkHttpTunnelOpener(client, request), RelayTlsMode.Certless)
+        val relayClient = openRelayClient(
+            host,
+            port,
+            OkHttpTunnelOpener(client, request),
+            RelayTlsMode.Certless,
+            streamObserver,
+            dialObserver,
+        )
         return RelayPlClientDialSession(relayClient)
     }
 }
 
 fun defaultHttpsPoster(): HttpsPoster = OkHttpHttpsPoster()
 
-fun defaultRelayPairDialer(): RelayPairDialer = OkHttpRelayPairDialer()
+fun defaultRelayPairDialer(
+    streamObserver: PlStreamObserver? = null,
+    dialObserver: RelayDialObserver? = null,
+): RelayPairDialer = OkHttpRelayPairDialer(
+    streamObserver = streamObserver,
+    dialObserver = dialObserver,
+)
 
 data class RelayPairResult(
     val handshakePinned: Boolean,
@@ -219,6 +238,8 @@ fun openRelaySyncClient(
     instanceId: String,
     deviceToken: String,
     credential: ClientCredential,
+    streamObserver: PlStreamObserver? = null,
+    dialObserver: RelayDialObserver? = null,
 ): ConscryptPlHttpClient {
     val host = URL(normalizeRelayOrigin(relayOrigin)).host
     val request = relayWebSocketRequest(host, "/session/dial", instanceId, deviceToken)
@@ -234,6 +255,8 @@ fun openRelaySyncClient(
             RELAY_SYNC_WAITING_TIMEOUT_MS,
         ),
         RelayTlsMode.Authenticated(credential),
+        streamObserver,
+        dialObserver,
     ).client
 }
 
