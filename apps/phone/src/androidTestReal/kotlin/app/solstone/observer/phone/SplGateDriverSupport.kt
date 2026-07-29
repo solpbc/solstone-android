@@ -149,7 +149,8 @@ internal class GateCutControl(private val target: File) {
             if (target.isFile) {
                 val root = parseJson(target.readText()) as? Map<*, *>
                     ?: error("network_cut_control_malformed")
-                val actualCommand = root["command"]
+                val actualCommand = root["command"] as? String
+                    ?: error("network_cut_control_malformed")
                 require(
                     root.keys == setOf(
                         "schema_version",
@@ -170,8 +171,8 @@ internal class GateCutControl(private val target: File) {
                     return
                 }
                 require(
-                    expectedCommand == "network_restore_applied" &&
-                        actualCommand == "network_cut_applied",
+                    GATE_CONTROL_COMMANDS.indexOf(actualCommand) <
+                        GATE_CONTROL_COMMANDS.indexOf(expectedCommand),
                 ) { "network_cut_control_out_of_order" }
             }
             Thread.sleep(10)
@@ -180,8 +181,9 @@ internal class GateCutControl(private val target: File) {
     }
 
     private companion object {
-        val GATE_CONTROL_COMMANDS = setOf(
+        val GATE_CONTROL_COMMANDS = listOf(
             "network_cut_applied",
+            "interrupted_request_observed",
             "network_restore_applied",
         )
     }

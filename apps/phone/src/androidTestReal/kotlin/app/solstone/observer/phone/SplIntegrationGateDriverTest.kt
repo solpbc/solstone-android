@@ -327,6 +327,10 @@ class SplIntegrationGateDriverTest {
                 invocation.runNonce,
                 progressOrder.advance(G3ProgressState.INTERRUPTED_REQUEST_FAILED, partial),
             )
+            cutControl.await(
+                invocation.runNonce,
+                "interrupted_request_observed",
+            )
 
             val degradedTelemetry = GateTelemetry()
             val interrupted = checkpointFromProductionStatus(
