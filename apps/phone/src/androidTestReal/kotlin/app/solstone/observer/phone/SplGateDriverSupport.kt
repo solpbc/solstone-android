@@ -138,12 +138,16 @@ internal class GateProgressWriter(private val target: File) {
 }
 
 internal class GateCutControl(private val target: File) {
-    fun await(runNonce: String) {
+    fun await(runNonce: String, expectedCommand: String) {
+        require(expectedCommand in GATE_CONTROL_COMMANDS) {
+            "network_control_command_invalid"
+        }
         val started = System.nanoTime()
         while (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) <= GATE_STAGE_TIMEOUT_MS) {
             if (target.isFile) {
                 val root = parseJson(target.readText()) as? Map<*, *>
                     ?: error("network_cut_control_malformed")
+                val actualCommand = root["command"]
                 require(
                     root.keys == setOf(
                         "schema_version",
@@ -158,13 +162,26 @@ internal class GateCutControl(private val target: File) {
                         root["run_nonce"] == runNonce &&
                         root["action"] == "g3_interrupt_recover" &&
                         (root["action_sequence"] as? Number)?.toInt() == 3 &&
-                        root["command"] == "network_cut_applied",
+                        actualCommand in GATE_CONTROL_COMMANDS,
                 ) { "network_cut_control_malformed" }
-                return
+                if (actualCommand == expectedCommand) {
+                    return
+                }
+                require(
+                    expectedCommand == "network_restore_applied" &&
+                        actualCommand == "network_cut_applied",
+                ) { "network_cut_control_out_of_order" }
             }
             Thread.sleep(10)
         }
         error("network_cut_control_timeout")
+    }
+
+    private companion object {
+        val GATE_CONTROL_COMMANDS = setOf(
+            "network_cut_applied",
+            "network_restore_applied",
+        )
     }
 }
 

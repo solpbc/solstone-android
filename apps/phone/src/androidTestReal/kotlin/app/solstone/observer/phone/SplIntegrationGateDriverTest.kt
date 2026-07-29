@@ -271,7 +271,7 @@ class SplIntegrationGateDriverTest {
             ) {
                 partialReady.countDown()
                 try {
-                    cutControl.await(invocation.runNonce)
+                    cutControl.await(invocation.runNonce, "network_cut_applied")
                 } catch (throwable: Throwable) {
                     cutControlError.set(throwable)
                 } finally {
@@ -342,6 +342,7 @@ class SplIntegrationGateDriverTest {
                 progressOrder.advance(G3ProgressState.DEGRADED_STATUS_RECORDED, partial),
             )
 
+            cutControl.await(invocation.runNonce, "network_restore_applied")
             val restorationTelemetry = awaitRestoredProductionStatus(stores)
             progress.write(
                 invocation.runNonce,
