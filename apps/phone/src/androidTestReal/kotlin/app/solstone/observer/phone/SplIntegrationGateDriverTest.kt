@@ -481,11 +481,21 @@ class SplIntegrationGateDriverTest {
         val errorType = throwable.message
             ?.takeIf { it.matches(Regex("[a-z0-9_]{1,64}")) }
             ?: throwable.javaClass.simpleName.take(64)
+        val assertionFailure = invocation.action == GateAction.G3_INTERRUPT_RECOVER &&
+            errorType in setOf(
+                "interruption_not_achieved",
+                "partial_signal_timeout",
+                "interrupted_local_cleanup_unproven",
+                "degraded_status_unproven",
+                "network_restore_unverified",
+                "old_session_identity_unavailable",
+                "new_session_identity_unavailable",
+            )
         return GateResult(
             runNonce = invocation.runNonce,
             action = invocation.action,
             actionSequence = invocation.actionSequence,
-            result = if (errorType == "interruption_not_achieved") GateOutcome.FAIL else GateOutcome.ERROR,
+            result = if (assertionFailure) GateOutcome.FAIL else GateOutcome.ERROR,
             startedAt = startedAt,
             finishedAt = utcSecond(),
             ownerStatusCheckpoints = invocation.action.requiredCheckpoints.mapIndexed { index, name ->
