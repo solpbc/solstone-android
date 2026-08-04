@@ -3,6 +3,7 @@
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
 ANDROID_REMOTE_HOST ?=
+GATE_SOURCE_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null)
 # Dedicated remote build tree for `sync-android-host` (which rsyncs with --delete).
 # Kept separate from any working clone at ~/projects/solstone-android so the
 # destructive sync can never clobber a checkout in use on the build host.
@@ -52,10 +53,10 @@ sync-android-host: require-android-remote-host
 	rsync -az --delete $(RSYNC_EXCLUDES) ./ $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/
 
 android-host-ci: sync-android-host
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make ci'
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && GATE_SOURCE_COMMIT=$(GATE_SOURCE_COMMIT) make ci'
 
 android-host-ci-device: sync-android-host
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make ci-device'
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && GATE_SOURCE_COMMIT=$(GATE_SOURCE_COMMIT) make ci-device'
 
 android-host-assemble-validation-rogbid: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make assemble-validation-rogbid'
