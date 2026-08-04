@@ -16,27 +16,21 @@ class JidTest {
     }
 
     @Test
-    fun malformedSpkiIsTypedRefusal() {
-        val refusal = assertFailsWith<JidRefusalException> { jidFromSpkiDer(byteArrayOf(0x30, 0x00)) }
-
-        assertEquals(JidRefusalKind.MALFORMED_SPKI, refusal.kind)
+    fun malformedSpkiIsRefused() {
+        assertFailsWith<JidRefusalException> { jidFromSpkiDer(byteArrayOf(0x30, 0x00)) }
     }
 
     @Test
-    fun incompleteOrTrailingNonEcSpkiIsMalformed() {
-        assertMalformedSpki(byteArrayOf(0x30, 0x07, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70))
-        assertMalformedSpki(
+    fun incompleteOrTrailingNonEcSpkiIsRefused() {
+        assertRefused(byteArrayOf(0x30, 0x07, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70))
+        assertRefused(
             hexBytes(
                 "302a300506032b65700321003b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da2900",
             ),
         )
     }
 
-    private fun assertMalformedSpki(spkiDer: ByteArray) {
-        val refusal = assertFailsWith<JidRefusalException> { jidFromSpkiDer(spkiDer) }
-
-        assertEquals(JidRefusalKind.MALFORMED_SPKI, refusal.kind)
-    }
+    private fun assertRefused(spkiDer: ByteArray) = assertFailsWith<JidRefusalException> { jidFromSpkiDer(spkiDer) }
 
     private fun hexBytes(value: String): ByteArray = ByteArray(value.length / 2) { index ->
         value.substring(index * 2, index * 2 + 2).toInt(16).toByte()

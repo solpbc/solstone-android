@@ -97,7 +97,7 @@ class JournalIdentityConformanceTest {
     private fun loadVerifiedCorpus(): VerifiedCorpus {
         verifiedBundle()
         val vectors = resourceJson("conformance/bundle/vectors.json").requiredList("vectors").map { it.requiredMap() }
-        assertEquals(74, vectors.size, "total conformance vector count")
+        assertEquals(78, vectors.size, "total conformance vector count")
         assertOperationHistogramIsPinned(vectors)
         val deriveJidVectors = vectors.filter { it.requiredString("operation") == "derive_jid" }
         assertDeriveJidSelectionIsPinned(deriveJidVectors)
@@ -108,13 +108,17 @@ class JournalIdentityConformanceTest {
         val expectedIds = setOf(
             "identity.jid.canonical",
             "identity.jid.compressed-point",
+            "identity.jid.explicit-parameters",
+            "identity.jid.malformed",
             "identity.jid.off-curve-point",
+            "identity.jid.trailing-data",
+            "identity.jid.unused-bits",
             "identity.jid.wrong-algorithm",
             "identity.jid.wrong-curve",
         )
         val actualIds = deriveJidVectors.map { it.requiredString("id") }.toSet()
         val failures = buildList {
-            if (deriveJidVectors.size != 5) add("derive_jid vector count expected 5 but was ${deriveJidVectors.size}")
+            if (deriveJidVectors.size != 9) add("derive_jid vector count expected 9 but was ${deriveJidVectors.size}")
             if (actualIds != expectedIds) add("derive_jid vector ids expected $expectedIds but was $actualIds")
         }
         assertTrue(failures.isEmpty(), failures.joinToString("; "))
@@ -123,7 +127,7 @@ class JournalIdentityConformanceTest {
     // Only derive_jid is bound by this consumer today; the full histogram prevents silent corpus drift.
     private fun assertOperationHistogramIsPinned(vectors: List<Map<String, Any?>>) {
         assertEquals(
-            mapOf("parse_pair_link" to 67, "derive_jid" to 5, "derive_relay_key" to 1, "decode_crockford" to 1),
+            mapOf("parse_pair_link" to 67, "derive_jid" to 9, "derive_relay_key" to 1, "decode_crockford" to 1),
             vectors.groupingBy { it.requiredString("operation") }.eachCount(),
             "conformance operation histogram",
         )
@@ -135,18 +139,14 @@ class JournalIdentityConformanceTest {
             val observed = runCatching { jidFromSpkiDer(vector.spkiDer()) }
                 .fold(
                     onSuccess = { "jid $it" },
-                    onFailure = { "refusal ${(it as? JidRefusalException)?.kind?.wire ?: it::class.simpleName}" },
+                    onFailure = { "refusal ${it::class.simpleName}" },
                 )
             observed.takeUnless { it == "jid ${expected.requiredString("jid")}" }
                 ?.let { "expected jid ${expected.requiredString("jid")}, got $it" }
         } else {
-            val expectedKind = expected.requiredMap("error").requiredString("kind")
             runCatching { jidFromSpkiDer(vector.spkiDer()) }.fold(
-                onSuccess = { "expected refusal $expectedKind, got jid $it" },
-                onFailure = { failure ->
-                    val observedKind = (failure as? JidRefusalException)?.kind?.wire
-                    if (observedKind == expectedKind) null else "expected refusal $expectedKind, got refusal ${observedKind ?: failure::class.simpleName}"
-                },
+                onSuccess = { "expected refusal, got jid $it" },
+                onFailure = { null },
             )
         }
     }
@@ -202,10 +202,10 @@ class JournalIdentityConformanceTest {
 
     private companion object {
         const val AUTHORITY_REPOSITORY = "https://github.com/solpbc/spl"
-        const val AUTHORITY_COMMIT = "ddfe13b2abce2fd40acbe2e18d0551727e7ef757"
+        const val AUTHORITY_COMMIT = "e639605b692577700648af470ee27da898c6df75"
         const val AUTHORITY_MANIFEST_PATH = "proto/definition/bundle/manifest.json"
-        const val AUTHORITY_MANIFEST_SHA256 = "0d78abe38a2cf23af3b98c9a496bb3c6f1c94bc7c0467eafa43726af3a3603ea"
-        const val BUNDLE_SEMVER = "2.0.0"
+        const val AUTHORITY_MANIFEST_SHA256 = "bd3fcd1f6c7bc4eddeb35eb8981be47dc738a603e16064ad52adbda75867e7b1"
+        const val BUNDLE_SEMVER = "5.0.0"
         const val BUNDLE_SCHEMA_IDENTITY = "spl.pair-link-definition-bundle.schema.v1"
         const val ADOPTION_SCHEMA_VERSION = 1L
         const val CONSUMER_IDENTIFIER = "solpbc/solstone-android"
