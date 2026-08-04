@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format clean require-android-remote-host sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
+.PHONY: install test ci ci-device format clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -48,14 +48,17 @@ clean:
 require-android-remote-host:
 	@test -n "$(ANDROID_REMOTE_HOST)" || (echo "Set ANDROID_REMOTE_HOST=<host>" >&2; exit 2)
 
+require-gate-source-commit:
+	@test -n "$(GATE_SOURCE_COMMIT)" || (echo "Set GATE_SOURCE_COMMIT to a full commit SHA or run from a git checkout" >&2; exit 2)
+
 sync-android-host: require-android-remote-host
 	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)'
 	rsync -az --delete $(RSYNC_EXCLUDES) ./ $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/
 
-android-host-ci: sync-android-host
+android-host-ci: require-gate-source-commit sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && GATE_SOURCE_COMMIT=$(GATE_SOURCE_COMMIT) make ci'
 
-android-host-ci-device: sync-android-host
+android-host-ci-device: require-gate-source-commit sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && GATE_SOURCE_COMMIT=$(GATE_SOURCE_COMMIT) make ci-device'
 
 android-host-assemble-validation-rogbid: sync-android-host

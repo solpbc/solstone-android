@@ -7,11 +7,20 @@ plugins {
 
 val gateReceiptMainDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/main/assets")
 val gateReceiptTestDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/androidTest/assets")
-val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT").orElse(
-    providers.exec {
-        commandLine("git", "rev-parse", "HEAD")
-    }.standardOutput.asText,
-).map(String::trim)
+val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT")
+    .map(String::trim)
+    .filter { it.isNotEmpty() }
+    .orElse(
+        providers.exec {
+            commandLine("git", "rev-parse", "HEAD")
+        }.standardOutput.asText.map(String::trim),
+    )
+    .map { sourceCommit ->
+        check(sourceCommit.matches(Regex("[0-9a-fA-F]{40}"))) {
+            "GATE_SOURCE_COMMIT must be a full 40-character hexadecimal commit SHA"
+        }
+        sourceCommit
+    }
 val generateSolstoneGateBuildReceipt by tasks.registering {
     inputs.property("sourceCommit", gateSourceCommit)
     outputs.dirs(gateReceiptMainDir, gateReceiptTestDir)
