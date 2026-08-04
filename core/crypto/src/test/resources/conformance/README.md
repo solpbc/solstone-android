@@ -4,8 +4,7 @@
 # SPL journal identity conformance corpus
 
 `bundle/` is a read-only, byte-identical copy of the five-file authority bundle from
-[`solpbc/spl`](https://github.com/solpbc/spl), adopted at commit
-`ddfe13b2abce2fd40acbe2e18d0551727e7ef757`. `adoption.json` records the authority
+[`solpbc/spl`](https://github.com/solpbc/spl). `adoption.json` records the adopted authority
 selection; `bundle/manifest.json` remains the authority for payload names and digests.
 
 This README supplies SPDX coverage for `bundle/`. Adding headers to the JSON would break

@@ -52,6 +52,9 @@ class JournalIdentityConformanceTest {
     @Test
     fun deriveJidVectorsMatchExpectedOutcomes() {
         val corpus = loadVerifiedCorpus()
+        // entry_digests are intentionally not verified: upstream authors them over definition.json
+        // journal_identity.* entries, and no reproducible canonicalisation is documented. Bind them
+        // if upstream documents that canonicalisation.
         val failures = corpus.deriveJidVectors.mapNotNull { vector ->
             val observed = observe(vector)
             observed?.let { "${vector.requiredString("id")} ($it)" }

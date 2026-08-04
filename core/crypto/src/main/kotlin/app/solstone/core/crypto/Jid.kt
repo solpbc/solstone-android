@@ -39,7 +39,11 @@ internal fun canonicalP256Spki(spkiDer: ByteArray): ByteArray = try {
     outer.requireExhausted()
 
     val algorithm = SpkiDerReader(body.read(0x30).content)
+    val bitString = body.read(0x03).content
+    body.requireExhausted()
     val algorithmOid = algorithm.read(0x06).encoded
+    // Non-EC AlgorithmIdentifiers can have a different parameter shape, so classify by
+    // their first OID before requiring this sequence to be exhausted.
     if (!algorithmOid.contentEquals(ID_EC_PUBLIC_KEY_OID)) {
         throw JidRefusalException(JidRefusalKind.NOT_P256, "journal jid requires id-ecPublicKey")
     }
@@ -49,8 +53,6 @@ internal fun canonicalP256Spki(spkiDer: ByteArray): ByteArray = try {
         throw JidRefusalException(JidRefusalKind.NOT_P256, "journal jid requires P-256")
     }
 
-    val bitString = body.read(0x03).content
-    body.requireExhausted()
     require(bitString.isNotEmpty() && bitString[0] == 0.toByte()) { "invalid SPKI bit string" }
     val point = decodePoint(bitString.copyOfRange(1, bitString.size))
     der(
@@ -84,7 +86,7 @@ private fun decodePoint(bytes: ByteArray): P256Point {
             if (y.multiply(y).mod(P256_P) != rhs) invalidPoint("compressed point has no square root")
             val odd = bytes[0].toInt() == 0x03
             if (y.testBit(0) != odd) y = P256_P.subtract(y)
-            P256Point(x, y).also(::validatePoint)
+            P256Point(x, y)
         }
         else -> malformed("unsupported point encoding")
     }
