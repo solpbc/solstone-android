@@ -11,7 +11,7 @@ import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.deriveRk
 import app.solstone.core.crypto.generateP256KeyPair
 import app.solstone.core.crypto.hex
-import app.solstone.core.crypto.jidFromSpki
+import app.solstone.core.crypto.jidFromCaPem
 import app.solstone.core.crypto.pem
 import app.solstone.core.crypto.pemToDer
 import app.solstone.core.crypto.sha256Hex
@@ -155,7 +155,7 @@ fun pairOverRelay(
         }
         pairResponse = PairResponse.fromJson(pairHttp.bodyText())
         assertCaPin(pairResponse.caChain.first(), link.caFpSpki, session.peerLeafCertificateDer)
-        val expectedJid = jidFromSpki(pairResponse.caChain.first())
+        val expectedJid = jidFromCaPem(pairResponse.caChain.first())
         if (pairResponse.instanceId != expectedJid) {
             throw IOException("relay pair response instance_id did not match pinned CA identity")
         }

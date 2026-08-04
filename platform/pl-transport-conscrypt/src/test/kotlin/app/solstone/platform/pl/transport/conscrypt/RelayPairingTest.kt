@@ -7,6 +7,7 @@ import app.solstone.core.crypto.caSpkiFp16
 import app.solstone.core.crypto.CaPinException
 import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.hex
+import app.solstone.core.crypto.jidFromCaPem
 import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
@@ -398,7 +399,7 @@ class RelayPairingTest {
     }
 
     companion object {
-        const val INSTANCE_ID = "2c04a888-b4bc-842e-98eb-3954d2460d47"
+        val INSTANCE_ID = jidFromCaPem(PAIR_TEST_CA_PEM)
 
         fun pairResponseStatic(): String =
             """

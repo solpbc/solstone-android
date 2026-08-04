@@ -1,0 +1,28 @@
+{
+  "spdx_license_identifier": "AGPL-3.0-only",
+  "adoption_schema_version": 1,
+  "consumer_identifier": "solpbc/solstone-android",
+  "authority_repository": "https://github.com/solpbc/spl",
+  "authority_commit": "ddfe13b2abce2fd40acbe2e18d0551727e7ef757",
+  "bundle_semver": "2.0.0",
+  "authority_manifest_path": "proto/definition/bundle/manifest.json",
+  "authority_manifest_sha256": "0d78abe38a2cf23af3b98c9a496bb3c6f1c94bc7c0467eafa43726af3a3603ea",
+  "bundle_files": [
+    {
+      "path": "definition.json",
+      "sha256": "b4a2cc7a107005fcecb47543ded5e8fba8116d085f94c86ebb094311d6dc00ad"
+    },
+    {
+      "path": "definition.schema.json",
+      "sha256": "afac8ab91085e0feafde7dbf4cc61d56e156a152ed43e433722e6ce1fc31d0d9"
+    },
+    {
+      "path": "vectors.json",
+      "sha256": "d19e0da384a114ce2c1cc770f82a60f2c05ef722c1a0f2f1dca00cbb20c6e512"
+    },
+    {
+      "path": "vectors.schema.json",
+      "sha256": "fb2a25d01682b3d099333bbcf1728358d8b2d45e8a6c284e0021d79a7e19258f"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "bundle_schema_identity": "spl.pair-link-definition-bundle.schema.v1",
+  "bundle_semver": "2.0.0",
+  "files": [
+    {
+      "path": "definition.json",
+      "sha256": "b4a2cc7a107005fcecb47543ded5e8fba8116d085f94c86ebb094311d6dc00ad"
+    },
+    {
+      "path": "definition.schema.json",
+      "sha256": "afac8ab91085e0feafde7dbf4cc61d56e156a152ed43e433722e6ce1fc31d0d9"
+    },
+    {
+      "path": "vectors.json",
+      "sha256": "d19e0da384a114ce2c1cc770f82a60f2c05ef722c1a0f2f1dca00cbb20c6e512"
+    },
+    {
+      "path": "vectors.schema.json",
+      "sha256": "fb2a25d01682b3d099333bbcf1728358d8b2d45e8a6c284e0021d79a7e19258f"
+    }
+  ],
+  "generator_identity": "spl.proto.definition.generate.v1",
+  "generator_inputs": [
+    {
+      "id": "definition.authored_source",
+      "path": "proto/definition/definition.toml",
+      "role": "authored_source",
+      "sha256": "13e75d93a58583d4aa217bd9ae65e7dde07fb234a5a3018294d0fbfc2df8736c"
+    },
+    {
+      "id": "definition.conformance_corpus",
+      "path": "proto/definition/vectors.json",
+      "role": "conformance_corpus",
+      "sha256": "d19e0da384a114ce2c1cc770f82a60f2c05ef722c1a0f2f1dca00cbb20c6e512"
+    },
+    {
+      "id": "definition.generator",
+      "path": "proto/definition/generate.py",
+      "role": "generator",
+      "sha256": "2414d0ca10d5d9bf1086ffd2e532949021aa95fe108adb25d390d74a216b4f95"
+    },
+    {
+      "id": "source.identity",
+      "path": "proto/identity.md",
+      "role": "normative_source_document",
+      "sha256": "b5c777414499ce7d90d8985a82d6faf91a24dab90e575b8024782bbad84855af"
+    },
+    {
+      "id": "source.pair_window",
+      "path": "proto/pair-window.md",
+      "role": "normative_source_document",
+      "sha256": "4cf6038aff424f22e0851fa455138fff3095418995995bb04210fcc00cffb380"
+    },
+    {
+      "id": "source.pairing",
+      "path": "proto/pairing.md",
+      "role": "normative_source_document",
+      "sha256": "526b1b479ba875501b965d531ab0a1214d06820d1db4d7e354196af8c910de91"
+    }
+  ],
+  "schema_dialect_uri": "https://json-schema.org/draft/2020-12/schema"
+}
