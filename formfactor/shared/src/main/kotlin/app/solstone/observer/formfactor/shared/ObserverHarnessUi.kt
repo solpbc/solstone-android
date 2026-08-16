@@ -135,21 +135,21 @@ class ObserverHarnessUi(
 
     private fun loadPlStatus() {
         if (plStatusOutstanding) {
-            plStatusRows?.text = "Checking PL status…"
+            plStatusRows?.text = "checking your journal…"
             return
         }
         plStatusOutstanding = true
         asyncLoad.load({ controller.probePlStatus() }) { state ->
             when (state) {
                 LoadState.Loading ->
-                    plStatusRows?.text = "Checking PL status…"
+                    plStatusRows?.text = "checking your journal…"
                 is LoadState.Loaded -> {
                     plStatusOutstanding = false
                     plStatusRows?.text = plStatusText(state.value)
                 }
                 is LoadState.Failed -> {
                     plStatusOutstanding = false
-                    plStatusRows?.text = "Couldn't check PL status"
+                    plStatusRows?.text = "couldn't check your journal"
                 }
             }
         }
