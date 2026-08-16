@@ -130,30 +130,30 @@ class PhonePlStatusProbeAsyncRuntimeTest {
             assertTrue(waitForRecovery(container))
             waitUntil("initial local cache pass") { container.journalCacheState().latestPass != null }
 
-            scenario.onActivity { activity ->
-                val ui = ObserverHarnessUi(
-                    context = activity,
-                    controller = controller,
-                    permissionRequester = {},
-                    asyncLoad = container.asyncLoad,
-                    previewHeightPx = 1,
-                    qrBackend = QrBackend.Camera2,
-                    qrThreadLabel = "phone-test",
-                    batteryExemptionGranted = { true },
-                    batteryGuidance = GuidanceAction("", null, ""),
-                    launchBatteryGuidance = { GuidanceLaunchResult.Launched },
-                    journalCacheState = { cacheState },
-                    saveJournalCacheLimit = { cacheState },
-                )
-                activity.setContentView(ui.view())
-                val root = activity.findViewById<View>(android.R.id.content)
-                clickButton(root, "PL status probe")
-                // Probe awaits a latch. If probe() ran on the main looper, this
-                // onActivity would never return and the test would time out.
-                assertInProgress(collectTexts(root))
-            }
-
             try {
+                scenario.onActivity { activity ->
+                    val ui = ObserverHarnessUi(
+                        context = activity,
+                        controller = controller,
+                        permissionRequester = {},
+                        asyncLoad = container.asyncLoad,
+                        previewHeightPx = 1,
+                        qrBackend = QrBackend.Camera2,
+                        qrThreadLabel = "phone-test",
+                        batteryExemptionGranted = { true },
+                        batteryGuidance = GuidanceAction("", null, ""),
+                        launchBatteryGuidance = { GuidanceLaunchResult.Launched },
+                        journalCacheState = { cacheState },
+                        saveJournalCacheLimit = { cacheState },
+                    )
+                    activity.setContentView(ui.view())
+                    val root = activity.findViewById<View>(android.R.id.content)
+                    clickButton(root, "PL status probe")
+                    // Probe awaits a latch. If probe() ran on the main looper, this
+                    // onActivity would never return and the test would time out.
+                    assertInProgress(collectTexts(root))
+                }
+
                 waitUntil("probe entered") { calls.get() >= 1 }
                 assertTrue("probe must not run on the main looper", ranOffMain.get())
 
