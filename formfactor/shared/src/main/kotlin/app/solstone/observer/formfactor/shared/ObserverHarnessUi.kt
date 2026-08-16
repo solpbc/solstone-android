@@ -44,6 +44,8 @@ class ObserverHarnessUi(
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
     private var permissionRows: TextView? = null
+    private var plStatusRows: TextView? = null
+    private var plStatusOutstanding: Boolean = false
 
     fun view(): View {
         showMenu()
@@ -124,11 +126,32 @@ class ObserverHarnessUi(
 
     fun showPlStatusProbe() {
         setScreen {
-            val status = text(plStatusText(controller.probePlStatus()))
-            button("Probe") {
-                status.text = plStatusText(controller.probePlStatus())
-            }
+            plStatusRows = text("")
+            button("Probe") { loadPlStatus() }
             backButton()
+            loadPlStatus()
+        }
+    }
+
+    private fun loadPlStatus() {
+        if (plStatusOutstanding) {
+            plStatusRows?.text = "Checking PL status…"
+            return
+        }
+        plStatusOutstanding = true
+        asyncLoad.load({ controller.probePlStatus() }) { state ->
+            when (state) {
+                LoadState.Loading ->
+                    plStatusRows?.text = "Checking PL status…"
+                is LoadState.Loaded -> {
+                    plStatusOutstanding = false
+                    plStatusRows?.text = plStatusText(state.value)
+                }
+                is LoadState.Failed -> {
+                    plStatusOutstanding = false
+                    plStatusRows?.text = "Couldn't check PL status"
+                }
+            }
         }
     }
 
@@ -306,6 +329,7 @@ class ObserverHarnessUi(
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
         inSubmenu = !isMenu
         permissionRows = null
+        plStatusRows = null
         container.removeAllViews()
         container.addView(scroll(build))
     }
