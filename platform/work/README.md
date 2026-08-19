@@ -170,7 +170,7 @@ context.filesDir.toPath()
 
 The worker emits a diagnostics-only observer health beacon only on the reachable `DRAIN` path, after segment drain completes and after the fresh sync state is available. It uses the already-open authenticated `PlHttpClient`; it does not create a new identity or run when credential repair, reachability reschedule, or observer registration retry prevents drain.
 
-The local Android-side contract is a JSON POST to `/app/observer/health` with exactly these fields:
+The local Android-side contract is a JSON POST to `/app/devices/health` with exactly these fields:
 
 - `name`
 - `stream_type`

@@ -30,7 +30,7 @@ class SegmentReconcilerResponseParserTest {
         assertEquals(direct, fetched)
         assertEquals("seg-1", direct.single().key)
         assertEquals("source.txt", direct.single().files.single().submittedName)
-        assertEquals("/app/observer/ingest/segments/20260729", client.path)
+        assertEquals("/app/devices/ingest/segments/20260729", client.path)
     }
 
     @Test

@@ -20,7 +20,7 @@ class SegmentReconcilerTest {
         val segments = SegmentReconciler(http, testHandle).fetch("20260616")
 
         assertEquals("GET", http.lastRequest.method)
-        assertEquals("$SEGMENTS_PATH/20260616", http.lastRequest.path)
+        assertEquals("/app/devices/ingest/segments/20260616", http.lastRequest.path)
         assertEquals("2", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])
         assertEquals(testHandle, http.lastRequest.headers[OBSERVER_HANDLE_HEADER])
         assertEquals(

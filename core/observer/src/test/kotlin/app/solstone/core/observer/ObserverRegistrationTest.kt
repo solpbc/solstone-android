@@ -29,7 +29,7 @@ class ObserverRegistrationTest {
         )
 
         assertEquals("POST", http.lastRequest.method)
-        assertEquals(REGISTER_PATH, http.lastRequest.path)
+        assertEquals("/app/devices/register", http.lastRequest.path)
         assertEquals("application/json", http.lastRequest.headers["Content-Type"])
         val body = parseJson(http.lastRequest.body!!.toString(Charsets.UTF_8)) as Map<*, *>
         assertEquals("rogbid", body["platform"])

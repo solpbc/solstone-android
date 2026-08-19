@@ -28,7 +28,7 @@ class ObserverHealthTest {
         )
 
         assertEquals("POST", http.lastRequest.method)
-        assertEquals(HEALTH_PATH, http.lastRequest.path)
+        assertEquals("/app/devices/health", http.lastRequest.path)
         assertEquals("application/json", http.lastRequest.headers["Content-Type"])
         assertEquals("observer-handle", http.lastRequest.headers[OBSERVER_HANDLE_HEADER])
         assertEquals("2", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])

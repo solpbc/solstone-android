@@ -34,7 +34,7 @@ class ObserverIngestClientTest {
 
         assertIs<IngestOutcome.Accepted>(outcome)
         assertEquals("POST", http.lastRequest.method)
-        assertEquals(INGEST_PATH, http.lastRequest.path)
+        assertEquals("/app/devices/ingest", http.lastRequest.path)
         assertEquals("observer-handle", http.lastRequest.headers[OBSERVER_HANDLE_HEADER])
         assertEquals("2", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])
         assertTrue(http.lastRequest.headers.getValue("Content-Type").startsWith("multipart/form-data; boundary="))
