@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
+.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -40,6 +40,20 @@ ci-device:
 
 format:
 	@echo "No formatter is configured yet."
+
+# Re-vendor brand assets from the canonical brand source. CI verifies the
+# committed output (it does not run brand-sync) — run this locally when the
+# brand spec updates, then commit the diff.
+#
+# Every brand-derived asset in this repository is a raster: there are no SVGs
+# to copy, and the launcher ladder has no committed raster in the brand source
+# at Android's densities. scripts/build-launcher-icons.sh renders all three
+# families from the brand app-icon masters; see it for the geometry contract.
+brand-sync:
+	@test -n "$(BRAND_DIR)" || { echo "brand: BRAND_DIR is required — point it at your brand asset directory (BRAND_DIR=/path/to/brand make brand-sync)"; exit 1; }
+	@test -d "$(BRAND_DIR)" || { echo "brand: BRAND_DIR=$(BRAND_DIR) not found"; exit 1; }
+	@BRAND_DIR="$(BRAND_DIR)" sh scripts/build-launcher-icons.sh
+	@echo "brand: synced from $(BRAND_DIR)"
 
 clean:
 	$(GRADLE) clean
