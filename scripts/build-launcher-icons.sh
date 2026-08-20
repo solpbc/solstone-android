@@ -37,8 +37,8 @@ DENSITIES="mdpi:48:108 hdpi:72:162 xhdpi:96:216 xxhdpi:144:324 xxxhdpi:192:432"
 FG_MARK_DP=76
 FG_CANVAS_DP=108
 
-CREAM_MASTER="app-icon/sol-app-icon-cream.svg"
-TRANSPARENT_MASTER="app-icon/sol-app-icon-transparent.svg"
+CREAM_MASTER="app-icon/app-icon-cream.svg"
+TRANSPARENT_MASTER="app-icon/app-icon-transparent.svg"
 
 if [ -z "${BRAND_DIR:-}" ]; then
     echo "brand: BRAND_DIR is required — point it at your brand asset directory" >&2
