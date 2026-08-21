@@ -65,7 +65,7 @@ class SegmentDrainerTest {
             ): HttpResponse = HttpResponse(
                 200,
                 emptyMap(),
-                """{"items":[{"key":"a","files":[{"name":"a.bin","size":3,"sha256":"${"a".repeat(64)}","status":"processed"}]}],"total":1,"protocol_version":3}"""
+                """{"items":[{"key":"a","observed":true,"files":[{"name":"a.bin","size":3,"sha256":"${"a".repeat(64)}","status":"processed"}]}],"total":1,"protocol_version":3}"""
                     .toByteArray(),
             )
         }

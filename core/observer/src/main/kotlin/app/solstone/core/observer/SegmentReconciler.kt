@@ -93,6 +93,7 @@ class SegmentReconciler(private val http: PlHttpClient) {
         return ServerSegment(
             key = requiredNonBlankString(segment, "key"),
             files = segmentFiles(segment),
+            observed = requiredBoolean(segment, "observed"),
             originalKey = optionalNonBlankString(segment, "original_key"),
         )
     }
@@ -120,6 +121,9 @@ class SegmentReconciler(private val http: PlHttpClient) {
         return (root[key] as? String)?.takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("segments response invalid $key")
     }
+
+    private fun requiredBoolean(root: Map<*, *>, key: String): Boolean =
+        root[key] as? Boolean ?: throw IllegalArgumentException("segments response missing $key")
 
     private fun requiredNonNegativeLong(root: Map<*, *>, key: String): Long {
         val value = root[key] as? Number ?: throw IllegalArgumentException("segments response missing $key")
@@ -167,6 +171,7 @@ data class ServerFile(
 data class ServerSegment(
     val key: String,
     val files: List<ServerFile>,
+    val observed: Boolean,
     val originalKey: String?,
 )
 

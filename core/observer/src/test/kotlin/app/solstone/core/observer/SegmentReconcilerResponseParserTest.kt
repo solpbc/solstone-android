@@ -15,7 +15,7 @@ class SegmentReconcilerResponseParserTest {
     private val success = HttpResponse(
         200,
         emptyMap(),
-        """{"items":[{"key":"seg-1","files":[{"name":"a.txt","size":3,"sha256":"${"a".repeat(64)}","status":"present","submitted_name":"source.txt"}]}],"total":1,"protocol_version":3}"""
+        """{"items":[{"key":"seg-1","observed":true,"files":[{"name":"a.txt","size":3,"sha256":"${"a".repeat(64)}","status":"present","submitted_name":"source.txt"}]}],"total":1,"protocol_version":3}"""
             .toByteArray(),
     )
 

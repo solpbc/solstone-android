@@ -10,6 +10,7 @@ import app.solstone.core.pl.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class SegmentReconcilerTest {
     @Test
@@ -30,38 +31,88 @@ class SegmentReconcilerTest {
                         ServerFile("audio.wav", 3, SHA_A, "present", null),
                         ServerFile("photo.jpg", 3, SHA_B, "present", null),
                     ),
+                    true,
                     null,
                 ),
-                ServerSegment("094000_60", listOf(ServerFile("audio.wav", 3, SHA_A, "present", null)), null),
+                ServerSegment("094000_60", listOf(ServerFile("audio.wav", 3, SHA_A, "present", null)), false, null),
             ),
             segments,
         )
     }
 
     @Test
-    fun diffRequiresExactSubmittedNameSizeShaAndHeldStatus() {
-        val http = RecordingPlHttpClient(
-            response(
-                """{"key":"093000_60","files":[
-                {"name":"renamed.wav","submitted_name":"audio.wav","size":3,"sha256":"${SHA_A.uppercase()}","status":"present"},
-                {"name":"photo.jpg","size":4,"sha256":"$SHA_B","status":"missing"}
-                ]}""",
-            ),
+    fun diffDoesNotNeedUploadForPresentOrProcessedFiles() {
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
+            SegmentReconciler(
+                RecordingPlHttpClient(response(segmentJson("093000_60", fileJson("audio.wav", SHA_A.uppercase())))),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
         )
-
-        val verdict = SegmentReconciler(http).diff(
-            listOf(manifest("093000_60", "audio.wav" to SHA_A, "photo.jpg" to SHA_B)),
-            "20260616",
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
+            SegmentReconciler(
+                RecordingPlHttpClient(
+                    response(segmentJson("093000_60", fileJson("audio.wav", SHA_A, status = "processed"))),
+                ),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
         )
+    }
 
-        assertEquals(listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)), verdict)
+    @Test
+    fun diffDoesNotNeedUploadForExactNameOrSubmittedName() {
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
+            SegmentReconciler(
+                RecordingPlHttpClient(response(segmentJson("093000_60", fileJson("source.wav", SHA_A)))),
+            ).diff(listOf(manifest("093000_60", "source.wav" to SHA_A)), "20260616"),
+        )
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
+            SegmentReconciler(
+                RecordingPlHttpClient(
+                    response(segmentJson("093000_60", fileJson("stored.wav", SHA_A, submittedName = "source.wav"))),
+                ),
+            ).diff(listOf(manifest("093000_60", "source.wav" to SHA_A)), "20260616"),
+        )
+    }
+
+    @Test
+    fun diffNeedsUploadWhenOneHeldFactDoesNotMatch() {
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
+            SegmentReconciler(
+                RecordingPlHttpClient(
+                    response(segmentJson("093000_60", fileJson("audio.wav", SHA_A, submittedName = "other.wav"))),
+                ),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
+        )
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
+            SegmentReconciler(
+                RecordingPlHttpClient(response(segmentJson("093000_60", fileJson("audio.wav", SHA_A, size = 4)))),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
+        )
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
+            SegmentReconciler(
+                RecordingPlHttpClient(response(segmentJson("093000_60", fileJson("audio.wav", SHA_B)))),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
+        )
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
+            SegmentReconciler(
+                RecordingPlHttpClient(
+                    response(segmentJson("093000_60", fileJson("audio.wav", SHA_A, status = "missing"))),
+                ),
+            ).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
+        )
     }
 
     @Test
     fun diffUsesOriginalKeyWhenCanonicalKeyIsAbsent() {
         val http = RecordingPlHttpClient(
             response(
-                """{"key":"server-key","original_key":"093000_60","files":[${fileJson("audio.wav", SHA_A)}]}""",
+                segmentJson("server-key", fileJson("audio.wav", SHA_A), originalKey = "093000_60"),
             ),
         )
 
@@ -75,8 +126,8 @@ class SegmentReconcilerTest {
     fun diffPrefersCanonicalKeyOverOriginalKey() {
         val http = RecordingPlHttpClient(
             response(
-                """{"key":"093000_60","files":[]}""",
-                """{"key":"other","original_key":"093000_60","files":[${fileJson("audio.wav", SHA_A)}]}""",
+                segmentJson("093000_60"),
+                segmentJson("other", fileJson("audio.wav", SHA_A), originalKey = "093000_60"),
             ),
         )
 
@@ -102,13 +153,13 @@ class SegmentReconcilerTest {
     @Test
     fun fetchRejectsInvalidItemAndFileFields() {
         listOf(
-            """{"key":"","files":[]}""",
-            """{"key":"seg","files":[{"name":"a","size":1.5,"sha256":"$SHA_A","status":"present"}]}""",
-            """{"key":"seg","files":[{"name":"a","size":1,"sha256":"short","status":"present"}]}""",
-            """{"key":"seg","files":[{"name":"a","size":1,"sha256":"$SHA_A","status":"stored"}]}""",
-            """{"key":"seg","files":[{"name":"a","size":-1,"sha256":"$SHA_A","status":"present"}]}""",
-            """{"key":"seg","files":[{"name":"a","size":9007199254740992,"sha256":"$SHA_A","status":"present"}]}""",
-            """{"key":"seg","files":[{"name":"a","size":9223372036854775808,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"","observed":true,"files":[]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":1.5,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":1,"sha256":"short","status":"present"}]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":1,"sha256":"$SHA_A","status":"stored"}]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":-1,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":9007199254740992,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"seg","observed":true,"files":[{"name":"a","size":9223372036854775808,"sha256":"$SHA_A","status":"present"}]}""",
         ).forEach { item ->
             assertFailsWith<ReconcileUnavailableException> {
                 SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
@@ -120,17 +171,33 @@ class SegmentReconcilerTest {
     fun fetchRejectsDuplicateKeysAndOriginalKeys() {
         listOf(
             response(
-                """{"key":"seg","files":[${fileJson("audio.wav", SHA_A)}]}""",
-                """{"key":"seg","files":[${fileJson("photo.jpg", SHA_B)}]}""",
+                """{"key":"seg","observed":true,"files":[${fileJson("audio.wav", SHA_A)}]}""",
+                """{"key":"seg","observed":true,"files":[${fileJson("photo.jpg", SHA_B)}]}""",
             ),
             response(
-                """{"key":"server-a","original_key":"local","files":[${fileJson("audio.wav", SHA_A)}]}""",
-                """{"key":"server-b","original_key":"local","files":[${fileJson("photo.jpg", SHA_B)}]}""",
+                """{"key":"server-a","original_key":"local","observed":true,"files":[${fileJson("audio.wav", SHA_A)}]}""",
+                """{"key":"server-b","original_key":"local","observed":true,"files":[${fileJson("photo.jpg", SHA_B)}]}""",
             ),
         ).forEach { response ->
             assertFailsWith<ReconcileUnavailableException> {
                 SegmentReconciler(RecordingPlHttpClient(response)).fetch("20260616")
             }
+        }
+    }
+
+    @Test
+    fun fetchRejectsMissingOrNonBooleanObserved() {
+        listOf(
+            """{"key":"seg","files":[]}""",
+            """{"key":"seg","observed":"true","files":[]}""",
+            """{"key":"seg","observed":1,"files":[]}""",
+            """{"key":"seg","observed":null,"files":[]}""",
+        ).forEach { item ->
+            val error = assertFailsWith<ReconcileUnavailableException> {
+                SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
+            }
+            assertEquals(200, error.status)
+            assertIs<IllegalArgumentException>(error.cause)
         }
     }
 
@@ -151,8 +218,8 @@ class SegmentReconcilerTest {
     }
 
     private fun envelopeResponse(): HttpResponse = response(
-        """{"key":"093000_60","files":[${fileJson("audio.wav", SHA_A)},${fileJson("photo.jpg", SHA_B)}]}""",
-        """{"key":"094000_60","files":[${fileJson("audio.wav", SHA_A)}]}""",
+        segmentJson("093000_60", fileJson("audio.wav", SHA_A), fileJson("photo.jpg", SHA_B)),
+        segmentJson("094000_60", fileJson("audio.wav", SHA_A), observed = false),
     )
 
     private fun response(vararg items: String): HttpResponse = HttpResponse(
@@ -161,8 +228,26 @@ class SegmentReconcilerTest {
         """{"items":[${items.joinToString(",")}],"total":${items.size},"protocol_version":3}""".toByteArray(),
     )
 
-    private fun fileJson(name: String, sha256: String): String =
-        """{"name":"$name","size":3,"sha256":"$sha256","status":"present"}"""
+    private fun fileJson(
+        name: String,
+        sha256: String,
+        size: Int = 3,
+        status: String = "present",
+        submittedName: String? = null,
+    ): String {
+        val submittedNameJson = submittedName?.let { ",\"submitted_name\":\"$it\"" }.orEmpty()
+        return """{"name":"$name","size":$size,"sha256":"$sha256","status":"$status"$submittedNameJson}"""
+    }
+
+    private fun segmentJson(
+        key: String,
+        vararg files: String,
+        observed: Boolean = true,
+        originalKey: String? = null,
+    ): String {
+        val originalKeyJson = originalKey?.let { ",\"original_key\":\"$it\"" }.orEmpty()
+        return """{"key":"$key"$originalKeyJson,"observed":$observed,"files":[${files.joinToString(",")}]}"""
+    }
 
     private fun manifest(segment: String, vararg files: Pair<String, String>): BundleManifest = BundleManifest(
         key = SegmentKey(day = "20260616", segment = segment),
