@@ -15,14 +15,14 @@ class SegmentReconcilerResponseParserTest {
     private val success = HttpResponse(
         200,
         emptyMap(),
-        """{"items":[{"key":"seg-1","files":[{"name":"a.txt","sha256":"abc","status":"present","submitted_name":"source.txt"}]}]}"""
+        """{"items":[{"key":"seg-1","files":[{"name":"a.txt","size":3,"sha256":"${"a".repeat(64)}","status":"present","submitted_name":"source.txt"}]}],"total":1,"protocol_version":3}"""
             .toByteArray(),
     )
 
     @Test
     fun validResponseParsesIdenticallyThroughFetchAndDirectEntryPoint() {
         val client = RecordingClient(success)
-        val reconciler = SegmentReconciler(client, "observer")
+        val reconciler = SegmentReconciler(client)
 
         val direct = reconciler.parseFetchResponse(success)
         val fetched = reconciler.fetch("20260729")
@@ -35,10 +35,10 @@ class SegmentReconcilerResponseParserTest {
 
     @Test
     fun parserErrorsRemainWrappedAsUnavailable200() {
-        val reconciler = SegmentReconciler(RecordingClient(success), "observer")
+        val reconciler = SegmentReconciler(RecordingClient(success))
 
         val error = assertFailsWith<ReconcileUnavailableException> {
-            reconciler.parseFetchResponse(HttpResponse(200, emptyMap(), """{"items":"wrong"}""".toByteArray()))
+            reconciler.parseFetchResponse(HttpResponse(200, emptyMap(), """{"items":"wrong","total":1,"protocol_version":3}""".toByteArray()))
         }
 
         assertEquals(200, error.status)
@@ -47,7 +47,7 @@ class SegmentReconcilerResponseParserTest {
 
     @Test
     fun authStatusesRemainAuthErrors() {
-        val reconciler = SegmentReconciler(RecordingClient(success), "observer")
+        val reconciler = SegmentReconciler(RecordingClient(success))
 
         listOf(401, 403).forEach { status ->
             assertEquals(
@@ -61,7 +61,7 @@ class SegmentReconcilerResponseParserTest {
 
     @Test
     fun allOtherStatusesRemainUnavailable() {
-        val reconciler = SegmentReconciler(RecordingClient(success), "observer")
+        val reconciler = SegmentReconciler(RecordingClient(success))
         val response = HttpResponse(503, emptyMap(), ByteArray(0))
 
         val direct = assertFailsWith<ReconcileUnavailableException> {
@@ -69,7 +69,7 @@ class SegmentReconcilerResponseParserTest {
         }
         val client = RecordingClient(response)
         val fetched = assertFailsWith<ReconcileUnavailableException> {
-            SegmentReconciler(client, "observer").fetch("20260729")
+            SegmentReconciler(client).fetch("20260729")
         }
 
         assertEquals(503, direct.status)

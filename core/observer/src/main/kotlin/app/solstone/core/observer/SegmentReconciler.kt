@@ -23,14 +23,13 @@ class ReconcileAuthException(val status: Int) : ReconcileException("reconcile au
 class ReconcileUnavailableException(val status: Int?, cause: Throwable? = null) :
     ReconcileException("reconcile unavailable: $status", cause)
 
-class SegmentReconciler(private val http: PlHttpClient, private val observerHandle: String) {
+class SegmentReconciler(private val http: PlHttpClient) {
     fun fetch(day: String): List<ServerSegment> {
         val response = http.request(
             method = "GET",
             path = "$SEGMENTS_PATH/$day",
             headers = mapOf(
-                OBSERVER_HANDLE_HEADER to observerHandle,
-                PROTOCOL_VERSION_HEADER to OBSERVER_PROTOCOL_VERSION.toString(),
+                PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
             ),
             body = null,
         )
@@ -42,11 +41,11 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
             200 -> return try {
                 val root = parseJson(response.bodyText()) as? Map<*, *> ?: throw IllegalArgumentException("segments response must be an object")
                 val items = root["items"] as? List<*> ?: throw IllegalArgumentException("segments response missing items")
-                items.map { item ->
-                    val segment = item as? Map<*, *> ?: throw IllegalArgumentException("segment item must be an object")
-                    val files = segmentFiles(segment)
-                    ServerSegment(key = requiredString(segment, "key"), files = files)
-                }
+                val protocolVersion = requiredNonNegativeInt(root, "protocol_version")
+                require(protocolVersion == INGEST_PROTOCOL_VERSION) { "unsupported segments protocol version" }
+                val total = requiredNonNegativeInt(root, "total")
+                require(total == items.size) { "segments response total does not match items" }
+                items.map(::segment)
             } catch (e: Exception) {
                 throw ReconcileUnavailableException(200, e)
             }
@@ -56,9 +55,15 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
     }
 
     fun diff(localManifests: List<BundleManifest>, day: String): List<ReconcileVerdict> {
-        val remoteByKey = fetch(day).associateBy { it.key }
+        val remote = fetch(day)
+        val remoteByKey = remote.associateBy { it.key }
+        val remoteByOriginalKey = remote
+            .filter { it.originalKey != null }
+            .associateBy { requireNotNull(it.originalKey) }
         return localManifests.map { manifest ->
-            val remoteFiles = remoteByKey[manifest.key.segment]?.files.orEmpty()
+            val remoteFiles = (remoteByKey[manifest.key.segment] ?: remoteByOriginalKey[manifest.key.segment])
+                ?.files
+                .orEmpty()
             ReconcileVerdict(
                 key = manifest.key,
                 needsUpload = !manifest.files.all { local -> isProvenHeld(local, remoteFiles) },
@@ -69,35 +74,91 @@ class SegmentReconciler(private val http: PlHttpClient, private val observerHand
     private fun isProvenHeld(local: BundleFile, remoteFiles: List<ServerFile>): Boolean =
         remoteFiles.any { remote ->
             (remote.submittedName ?: remote.name) == local.name &&
+                remote.size == local.byteSize &&
                 remote.sha256.isNotEmpty() &&
-                remote.sha256 == local.sha256 &&
+                remote.sha256.equals(local.sha256, ignoreCase = true) &&
                 remote.status in HELD_STATUSES
         }
+
+    private fun segment(value: Any?): ServerSegment {
+        val segment = value as? Map<*, *> ?: throw IllegalArgumentException("segment item must be an object")
+        return ServerSegment(
+            key = requiredNonBlankString(segment, "key"),
+            files = segmentFiles(segment),
+            originalKey = optionalNonBlankString(segment, "original_key"),
+        )
+    }
 
     private fun segmentFiles(segment: Map<*, *>): List<ServerFile> {
         val files = segment["files"] as? List<*> ?: throw IllegalArgumentException("segment item missing files")
         return files.map { item ->
             val file = item as? Map<*, *> ?: throw IllegalArgumentException("segment file must be an object")
             ServerFile(
-                name = requiredString(file, "name"),
-                sha256 = requiredString(file, "sha256"),
-                status = file["status"] as? String,
-                submittedName = file["submitted_name"] as? String,
+                name = requiredNonBlankString(file, "name"),
+                size = requiredNonNegativeLong(file, "size"),
+                sha256 = requiredSha256(file),
+                status = requiredStatus(file),
+                submittedName = optionalNonBlankString(file, "submitted_name"),
             )
         }
     }
 
-    private fun requiredString(root: Map<*, *>, key: String): String =
-        root[key] as? String ?: throw IllegalArgumentException("segments response missing $key")
+    private fun requiredNonBlankString(root: Map<*, *>, key: String): String =
+        (root[key] as? String)?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("segments response missing $key")
+
+    private fun optionalNonBlankString(root: Map<*, *>, key: String): String? {
+        if (!root.containsKey(key)) return null
+        return (root[key] as? String)?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("segments response invalid $key")
+    }
+
+    private fun requiredNonNegativeLong(root: Map<*, *>, key: String): Long {
+        val value = root[key] as? Number ?: throw IllegalArgumentException("segments response missing $key")
+        val number = value.toDouble()
+        require(number.isFinite() && number >= 0 && number <= Long.MAX_VALUE.toDouble() && number % 1.0 == 0.0) {
+            "segments response invalid $key"
+        }
+        return number.toLong()
+    }
+
+    private fun requiredNonNegativeInt(root: Map<*, *>, key: String): Int {
+        val value = root[key] as? Number ?: throw IllegalArgumentException("segments response missing $key")
+        val number = value.toDouble()
+        require(number.isFinite() && number >= 0 && number <= Int.MAX_VALUE.toDouble() && number % 1.0 == 0.0) {
+            "segments response invalid $key"
+        }
+        return number.toInt()
+    }
+
+    private fun requiredSha256(root: Map<*, *>): String =
+        requiredNonBlankString(root, "sha256").also {
+            require(SHA256.matches(it)) { "segments response invalid sha256" }
+        }
+
+    private fun requiredStatus(root: Map<*, *>): String =
+        requiredNonBlankString(root, "status").also {
+            require(it in RESPONSE_STATUSES) { "segments response invalid status" }
+        }
+
+    private companion object {
+        val SHA256 = Regex("[0-9a-fA-F]{64}")
+        val RESPONSE_STATUSES = setOf("present", "processed", "missing")
+    }
 }
 
 data class ServerFile(
     val name: String,
+    val size: Long,
     val sha256: String,
-    val status: String?,
+    val status: String,
     val submittedName: String?,
 )
 
-data class ServerSegment(val key: String, val files: List<ServerFile>)
+data class ServerSegment(
+    val key: String,
+    val files: List<ServerFile>,
+    val originalKey: String?,
+)
 
 data class ReconcileVerdict(val key: SegmentKey, val needsUpload: Boolean)

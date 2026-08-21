@@ -80,7 +80,9 @@ object GateResultVerifier {
         }
         val expectedFactKeys = when (value.action) {
             GateAction.G1_PAIR_ROUND_TRIP ->
-                setOf("pre_pair", "pair", "registration", "authenticated_status", "round_trip")
+                setOf(
+                    "pre_pair", "pair", "registration", "authenticated_status", "round_trip", "reconciliation",
+                )
             GateAction.G2_LARGE_RESPONSE ->
                 setOf(
                     "http_status", "raw_body_bytes", "raw_body_sha256", "parser_succeeded",
@@ -112,6 +114,10 @@ object GateResultVerifier {
                 requireNestedKeys(value.facts, "round_trip", setOf(
                     "expected_bytes", "actual_bytes", "expected_sha256", "actual_sha256",
                     "ingest_http_status", "parser_succeeded",
+                ), this)
+                requireNestedKeys(value.facts, "reconciliation", setOf(
+                    "server_segment", "server_name", "submitted_name", "matched_name",
+                    "size", "sha256", "status",
                 ), this)
             }
             GateAction.G3_INTERRUPT_RECOVER -> {

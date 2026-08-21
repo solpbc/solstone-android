@@ -163,6 +163,9 @@ fun resolveIngestOutcome(outcome: IngestOutcome): SegmentSyncResult =
         is IngestOutcome.Accepted -> SegmentSyncResult.Uploaded(outcome.serverSegment)
         is IngestOutcome.Collision -> SegmentSyncResult.Uploaded(outcome.serverSegment)
         is IngestOutcome.Duplicate -> SegmentSyncResult.Uploaded(outcome.existingSegment)
+        is IngestOutcome.Failed -> SegmentSyncResult.HardFail(200)
+        is IngestOutcome.UnknownStatus,
+        is IngestOutcome.MalformedResponse -> SegmentSyncResult.Retry(null)
         is IngestOutcome.Rejected -> outcome.status.toSegmentSyncResult()
     }
 

@@ -142,11 +142,10 @@ class SyncWorker(
                             val spoolDir = File(applicationContext.filesDir, "spool")
                             val report = drainSegments(
                                 store = RoomDrainStore(dao),
-                                reconcile = SegmentReconciler(c, handle)::diff,
+                                reconcile = SegmentReconciler(c)::diff,
                                 ingest = { manifest, fileBytes ->
                                     ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(
                                         manifest = manifest,
-                                        handle = handle,
                                         fileBytes = fileBytes,
                                         host = deviceLabel(),
                                         platform = "android",

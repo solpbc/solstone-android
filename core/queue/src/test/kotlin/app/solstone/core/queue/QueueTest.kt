@@ -22,6 +22,7 @@ class QueueTest {
         assertEquals(RetryDecision.RETRY, classify(429, ioError = false))
         assertEquals(RetryDecision.RETRY, classify(null, ioError = true))
         assertEquals(RetryDecision.HARD_FAIL, classify(404, ioError = false))
+        assertEquals(RetryDecision.HARD_FAIL, classify(409, ioError = false))
         assertEquals(RetryDecision.HARD_FAIL, classify(400, ioError = false))
         assertEquals(RetryDecision.HARD_FAIL, classify(422, ioError = false))
     }

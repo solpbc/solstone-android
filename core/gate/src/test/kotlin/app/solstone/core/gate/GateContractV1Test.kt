@@ -33,12 +33,20 @@ class GateContractV1Test {
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
             "gate_contract_version" to "1",
-            "gate_action" to "g4_degraded_probe",
+            "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
-            "gate_action_sequence" to "4",
+            "gate_action_sequence" to "1",
+            "gate_fixture_path" to "/data/local/tmp/fixture.wav",
+            "gate_observer_day" to "20260729",
+            "gate_segment" to "120000_60",
+            "gate_expected_round_trip_bytes" to "3",
+            "gate_expected_round_trip_sha256" to "a".repeat(64),
         )
         assertIs<GateInvocationDecision.Run>(GateInvocation.decide(valid))
-        assertIs<GateInvocationDecision.Invalid>(GateInvocation.decide(valid + ("action" to "old")))
+        assertIs<GateInvocationDecision.Invalid>(GateInvocation.decide(valid + ("gate_extra" to "old")))
+        assertIs<GateInvocationDecision.Invalid>(
+            GateInvocation.decide(valid - "gate_segment"),
+        )
         assertIs<GateInvocationDecision.Invalid>(
             GateInvocation.decide(valid + ("gate_action_sequence" to "5")),
         )
@@ -101,7 +109,7 @@ class GateContractV1Test {
                 "raw_body_bytes" to 1_048_577,
                 "raw_body_sha256" to "a".repeat(64),
                 "parser_succeeded" to true,
-                "protocol_version" to 2,
+                "protocol_version" to 3,
                 "item_count" to 1,
                 "semantic_commitments_sha256" to "b".repeat(64),
             ),

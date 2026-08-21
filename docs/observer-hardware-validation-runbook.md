@@ -153,6 +153,8 @@ adb -s $DEV install -r -t platform/pl-transport-conscrypt/build/outputs/apk/andr
 # mint a fresh pair link (step 3), then:
 adb -s $DEV shell am instrument -w \
   -e pairLink '<pair_link>' \
+  -e fixturePath '/data/local/tmp/solstone-validation.wav' \
+  -e day 'YYYYMMDD' -e segment 'HHMMSS_LEN' \
   -e class app.solstone.platform.pl.transport.conscrypt.LiveObserverDriverTest \
   app.solstone.platform.pl.transport.conscrypt.test/androidx.test.runner.AndroidJUnitRunner
 #   -> OK (5 tests)
@@ -160,6 +162,8 @@ adb -s $DEV shell am instrument -w \
 
 The library androidTest module sets `testOptions.targetSdk = 35` so the test APK installs on API 36,
 and declares INTERNET in its androidTest manifest for the live socket.
+`fixturePath`, `day`, and `segment` are required for t3: the file must be a readable WAV on the
+target device. The driver does not synthesize a payload or derive a segment from byte length.
 
 ## Phone realDebug SPL integration gate (G1–G5)
 
@@ -199,28 +203,26 @@ adb shell am instrument -w \
   "$COMPONENT"
 ```
 
-G1 additionally supplies `gate_expected_round_trip_bytes` and
-`gate_expected_round_trip_sha256`. G2 and G3 additionally supply `gate_observer_day`,
+G1 additionally supplies `gate_fixture_path`, `gate_observer_day`, `gate_segment`,
+`gate_expected_round_trip_bytes`, and `gate_expected_round_trip_sha256`. The path is a readable
+target-device WAV fixture; the two commitment arguments are its exact byte length and lowercase
+SHA-256. G2 and G3 additionally supply `gate_observer_day`,
 `gate_expected_body_bytes`, `gate_expected_body_sha256`, and
 `gate_expected_semantics_sha256`. All are independently derived by the coordinator's
-`gate_identity.py` and host snapshots. No pair link, observer handle, token, credential, path,
-origin, package, or host is an argument.
+`gate_identity.py` and host snapshots. No pair link, observer handle, token, credential, origin,
+package, or host is an argument.
 
-For a run nonce matching `YYYYMMDDTHHMMSSZ-<16 lowercase hex>`, identity derivation is exact:
+For a run nonce matching `YYYYMMDDTHHMMSSZ-<16 lowercase hex>`, hostname derivation is exact:
 
-- `observer_day` is characters `0:8`, `hhmmss` is `9:15`, and `suffix` is `17:33`.
+- `suffix` is characters `17:33`.
 - `observer_hostname` is `android-gate-<suffix>.test`.
-- `g1_segment` is `<hhmmss>_<1 + (base16(suffix) modulo 9999)>`.
-- The G1 payload is the ASCII bytes of
-  `solstone android gate g1 run=<run_nonce>\n`, including the single trailing newline.
-- `gate_expected_round_trip_bytes` is exactly that byte array's length and
-  `gate_expected_round_trip_sha256` is its lowercase SHA-256.
-- The fixture namespace commitment is lowercase SHA-256 of the compact, key-sorted UTF-8 JSON
-  `{"driver_contract_version":1,"run_nonce":"<run_nonce>"}`.
+- G1 receives `gate_observer_day` and `gate_segment` explicitly and uses the supplied
+  `gate_fixture_path` bytes without a generated fallback.
+- `gate_expected_round_trip_bytes` and `gate_expected_round_trip_sha256` commit to that fixture.
 
-The driver derives these values independently and validates the supplied G1 length and digest
-before constructing stores, probing status, or opening any socket. It uses the exact derived
-hostname, segment, and payload for production registration and ingest/reconciliation.
+The driver derives the hostname independently and validates the supplied G1 fixture length and
+digest before consuming pair authority, constructing stores, probing status, or opening any socket.
+It uses the explicit day, segment, and fixture bytes for production ingest/reconciliation.
 
 G3 uses the exact atomic progress path below. The coordinator applies package denial only after
 `partial_response_consumed`, restores it only after `degraded_status_recorded`, and permits recovery
@@ -245,6 +247,12 @@ the exact next sequence. Malformed, stale, duplicate, future, or out-of-order ev
 regardless of timestamps. The coordinator owns package-policy restoration and verifies both
 connectivity getters during cleanup. The app and instrumentation APKs must both contain the exact
 `assets/solstone-android-gate-build-receipt.json` bound to the clean checkout HEAD.
+
+For G1, `facts.round_trip` is the local fixture-integrity check: the coordinator commitment is in
+`expected_bytes`/`expected_sha256` and the bytes read from `gate_fixture_path` are in
+`actual_bytes`/`actual_sha256`. `facts.reconciliation` is the separate server-derived proof with
+exactly `server_segment`, `server_name`, `submitted_name`, `matched_name`, `size`, `sha256`, and
+`status`; it is read from the parsed journal collection response.
 
 ## Cleanup
 

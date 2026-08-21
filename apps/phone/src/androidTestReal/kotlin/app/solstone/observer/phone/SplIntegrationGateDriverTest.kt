@@ -22,14 +22,13 @@ import app.solstone.core.gate.GateSemanticSegment
 import app.solstone.core.gate.G3ProgressOrder
 import app.solstone.core.gate.G3ProgressState
 import app.solstone.core.gate.PlCheckpointKind
-import app.solstone.core.gate.deriveGateIdentity
+import app.solstone.core.gate.deriveGateObserverHostname
 import app.solstone.core.gate.semanticCommitmentSha256
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
-import app.solstone.core.observer.OBSERVER_HANDLE_HEADER
-import app.solstone.core.observer.OBSERVER_PROTOCOL_VERSION
+import app.solstone.core.observer.INGEST_PROTOCOL_VERSION
 import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
@@ -87,15 +86,10 @@ class SplIntegrationGateDriverTest {
         assertEquals(result.diagnostics.firstOrNull()?.errorType, GateOutcome.PASS, result.result)
     }
 
-    private fun runG1(context: Context, invocation: GateInvocation, startedAt: String): GateResult =
-        withPairAuthority(context, invocation) { pairAuthority ->
-            val gateIdentity = deriveGateIdentity(invocation.runNonce)
-            require(
-                gateIdentity.matchesG1Commitment(
-                    requireNotNull(invocation.expectedRoundTripBytes),
-                    requireNotNull(invocation.expectedRoundTripSha256),
-                ),
-            ) { "round_trip_commitment_mismatch" }
+    private fun runG1(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
+        val fixture = readG1Fixture(invocation)
+        return withPairAuthority(context, invocation) { pairAuthority ->
+            val observerHostname = deriveGateObserverHostname(invocation.runNonce)
             val stores = syncStores(context)
             requireEmptyProductionStores(context, stores)
             val preProbeId = probeId(invocation, "pre_pair")
@@ -109,7 +103,7 @@ class SplIntegrationGateDriverTest {
             val pairTelemetry = GateTelemetry()
             val pair = RealRelayPairProbe(
                 stores.credentialStore, stores.identityStore, pairTelemetry, pairTelemetry,
-            ).pairOverRelay(link, gateIdentity.observerHostname)
+            ).pairOverRelay(link, observerHostname)
             val identity = requireNotNull(stores.identityStore.load()) { "paired_identity_not_persisted" }
             val credential = requireNotNull(stores.credentialStore.load()) { "credential_not_persisted" }
             require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
@@ -129,20 +123,19 @@ class SplIntegrationGateDriverTest {
                 registrationTelemetry, registrationTelemetry,
             ).use { client ->
                 ObserverRegistration(client).register(
-                    "android", gateIdentity.observerHostname, "phone", "spl-gate-v1",
+                    "android", observerHostname, "phone", "spl-gate-v1",
                 )
             }
             stores.identityStore.save(identity.copy(observerHandle = registration.handle))
 
-            val payload = gateIdentity.g1Payload
-            val day = gateIdentity.observerDay
-            val segment = gateIdentity.g1Segment
-            val fileName = "gate-${invocation.runNonce.takeLast(16)}.txt"
+            val payload = fixture.bytes
+            val day = requireNotNull(invocation.observerDay)
+            val segment = requireNotNull(invocation.segment)
             val manifest = BundleManifest(
                 SegmentKey(day, segment),
                 listOf(
                     BundleFile(
-                        "spl-gate", fileName, sha256Hex(payload), payload.size.toLong(), "text/plain",
+                        "spl-gate", fixture.name, sha256Hex(payload), payload.size.toLong(), "audio/wav",
                         0L, 0L,
                     ),
                 ),
@@ -156,25 +149,36 @@ class SplIntegrationGateDriverTest {
                 ObserverIngestClient(client) { "solstoneAndroidGate${invocation.runNonce.takeLast(16)}" }
                     .ingest(
                         manifest,
-                        registration.handle,
                         { payload },
-                        gateIdentity.observerHostname,
+                        observerHostname,
                         "android",
                     )
             }
-            require(ingest !is IngestOutcome.Rejected) { "round_trip_ingest_rejected" }
+            val serverSegment = when (ingest) {
+                is IngestOutcome.Accepted -> ingest.serverSegment
+                is IngestOutcome.Collision -> ingest.serverSegment
+                is IngestOutcome.Duplicate -> requireNotNull(ingest.existingSegment) { "round_trip_ingest_unaccepted" }
+                is IngestOutcome.Failed,
+                is IngestOutcome.UnknownStatus,
+                is IngestOutcome.MalformedResponse,
+                is IngestOutcome.Rejected -> error("round_trip_ingest_unaccepted")
+            }
 
             val roundTripTelemetry = GateTelemetry()
-            val response = requestSegments(stores, registration.handle, day, roundTripTelemetry)
-            val parsed = SegmentReconciler(noRequestClient(), registration.handle).parseFetchResponse(response)
-            val parserSucceeded = parsed.any { remote ->
-                remote.key == when (ingest) {
-                    is IngestOutcome.Accepted -> ingest.serverSegment
-                    is IngestOutcome.Collision -> ingest.serverSegment
-                    is IngestOutcome.Duplicate -> ingest.existingSegment
-                    is IngestOutcome.Rejected -> null
-                } && remote.files.any { it.sha256 == sha256Hex(payload) }
+            val response = requestSegments(stores, day, roundTripTelemetry)
+            val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
+            val reconciledSegment = requireNotNull(parsed.firstOrNull { it.key == serverSegment }) {
+                "round_trip_reconciliation_unproven"
             }
+            val reconciled = requireNotNull(
+                reconciledSegment.files
+                    .firstOrNull { file ->
+                        (file.submittedName ?: file.name) == fixture.name &&
+                            file.size == payload.size.toLong() &&
+                            file.sha256.equals(sha256Hex(payload), ignoreCase = true) &&
+                            file.status in setOf("present", "processed")
+                    },
+            ) { "round_trip_reconciliation_unproven" }
             val roundTripProbeId = probeId(invocation, "round_trip")
             val roundTripStatusTelemetry = GateTelemetry()
             val roundTrip = checkpointFromProductionStatus(
@@ -217,19 +221,31 @@ class SplIntegrationGateDriverTest {
                         "expected_sha256" to invocation.expectedRoundTripSha256,
                         "actual_sha256" to sha256Hex(payload),
                         "ingest_http_status" to 200,
-                        "parser_succeeded" to parserSucceeded,
+                        "parser_succeeded" to parsed.any { segment ->
+                            segment.key == reconciledSegment.key && segment.files.contains(reconciled)
+                        },
+                    ),
+                    "reconciliation" to linkedMapOf(
+                        "server_segment" to reconciledSegment.key,
+                        "server_name" to reconciled.name,
+                        "submitted_name" to reconciled.submittedName,
+                        "matched_name" to (reconciled.submittedName ?: reconciled.name),
+                        "size" to reconciled.size,
+                        "sha256" to reconciled.sha256,
+                        "status" to reconciled.status,
                     ),
                 ),
             )
         }
+    }
 
     private fun runG2(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
         val stores = syncStores(context)
         val identity = requirePairedIdentity(stores)
-        val handle = requireNotNull(identity.observerHandle) { "observer_handle_absent" }
+        requireNotNull(identity.observerHandle) { "observer_handle_absent" }
         val telemetry = GateTelemetry()
-        val response = requestSegments(stores, handle, invocation.observerDay!!, telemetry)
-        val parsed = SegmentReconciler(noRequestClient(), handle).parseFetchResponse(response)
+        val response = requestSegments(stores, invocation.observerDay!!, telemetry)
+        val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
         val semantic = semanticCommitment(parsed)
         val statusTelemetry = GateTelemetry()
         val checkpoint = checkpointFromProductionStatus(
@@ -244,7 +260,7 @@ class SplIntegrationGateDriverTest {
                 "raw_body_bytes" to response.body.size,
                 "raw_body_sha256" to sha256Hex(response.body),
                 "parser_succeeded" to true,
-                "protocol_version" to OBSERVER_PROTOCOL_VERSION,
+                "protocol_version" to INGEST_PROTOCOL_VERSION,
                 "item_count" to parsed.size,
                 "semantic_commitments_sha256" to semantic,
             ),
@@ -254,7 +270,7 @@ class SplIntegrationGateDriverTest {
     private fun runG3(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
         val stores = syncStores(context)
         val identity = requirePairedIdentity(stores)
-        val handle = requireNotNull(identity.observerHandle) { "observer_handle_absent" }
+        requireNotNull(identity.observerHandle) { "observer_handle_absent" }
         val expectedBodyBytes = requireNotNull(invocation.expectedBodyBytes)
         val progress = GateProgressWriter(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_PROGRESS_FILE"))
         val cutControl = GateCutControl(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_CONTROL_FILE"))
@@ -285,7 +301,7 @@ class SplIntegrationGateDriverTest {
         val requestStarted = android.os.SystemClock.elapsedRealtime()
         try {
             val future = executor.submitBounded {
-                requestSegments(stores, handle, invocation.observerDay!!, interruptedTelemetry)
+                requestSegments(stores, invocation.observerDay!!, interruptedTelemetry)
             }
             while (!partialReady.await(10, TimeUnit.MILLISECONDS)) {
                 if (future.isDone) {
@@ -354,8 +370,8 @@ class SplIntegrationGateDriverTest {
             )
 
             val recoveryTelemetry = GateTelemetry()
-            val recovery = requestSegments(stores, handle, invocation.observerDay!!, recoveryTelemetry)
-            val parsed = SegmentReconciler(noRequestClient(), handle).parseFetchResponse(recovery)
+            val recovery = requestSegments(stores, invocation.observerDay!!, recoveryTelemetry)
+            val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(recovery)
             val semantic = semanticCommitment(parsed)
             val recoveredStatusTelemetry = GateTelemetry()
             val recovered = checkpointFromProductionStatus(
@@ -553,7 +569,6 @@ class SplIntegrationGateDriverTest {
 
     private fun requestSegments(
         stores: SyncStores,
-        handle: String,
         day: String,
         telemetry: GateTelemetry,
     ): HttpResponse {
@@ -566,12 +581,26 @@ class SplIntegrationGateDriverTest {
             client.request(
                 "GET", "$SEGMENTS_PATH/$day",
                 mapOf(
-                    OBSERVER_HANDLE_HEADER to handle,
-                    PROTOCOL_VERSION_HEADER to OBSERVER_PROTOCOL_VERSION.toString(),
+                    PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
                 ),
                 null,
             )
         }
+    }
+
+    private data class G1Fixture(val name: String, val bytes: ByteArray)
+
+    private fun readG1Fixture(invocation: GateInvocation): G1Fixture {
+        val file = File(requireNotNull(invocation.fixturePath))
+        require(file.isFile && file.canRead()) { "fixture_unreadable" }
+        val bytes = runCatching { file.readBytes() }.getOrElse { error("fixture_unreadable") }
+        require(bytes.size == requireNotNull(invocation.expectedRoundTripBytes)) {
+            "round_trip_commitment_mismatch"
+        }
+        require(sha256Hex(bytes) == requireNotNull(invocation.expectedRoundTripSha256)) {
+            "round_trip_commitment_mismatch"
+        }
+        return G1Fixture(file.name, bytes)
     }
 
     private fun realStatusProbe(stores: SyncStores, telemetry: GateTelemetry) =
@@ -618,7 +647,9 @@ class SplIntegrationGateDriverTest {
             "gate_action",
             "gate_run_nonce",
             "gate_action_sequence",
+            "gate_fixture_path",
             "gate_observer_day",
+            "gate_segment",
             "gate_expected_body_bytes",
             "gate_expected_body_sha256",
             "gate_expected_semantics_sha256",
@@ -658,6 +689,10 @@ class SplIntegrationGateDriverTest {
                 "expected_bytes" to null,
                 "actual_bytes" to null, "expected_sha256" to null, "actual_sha256" to null,
                 "ingest_http_status" to null, "parser_succeeded" to false,
+            ),
+            "reconciliation" to linkedMapOf(
+                "server_segment" to null, "server_name" to null, "submitted_name" to null,
+                "matched_name" to null, "size" to null, "sha256" to null, "status" to null,
             ),
         )
         GateAction.G2_LARGE_RESPONSE -> linkedMapOf(

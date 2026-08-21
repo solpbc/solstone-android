@@ -53,7 +53,9 @@ data class GateInvocation(
     val runNonce: String,
     val action: GateAction,
     val actionSequence: Int,
+    val fixturePath: String?,
     val observerDay: String?,
+    val segment: String?,
     val expectedBodyBytes: Int?,
     val expectedBodySha256: String?,
     val expectedSemanticsSha256: String?,
@@ -75,7 +77,10 @@ data class GateInvocation(
                 ?: return GateInvocationDecision.Invalid("unknown_action")
             val expectedKeys = COMMON_KEYS + when (action) {
                 GateAction.G1_PAIR_ROUND_TRIP ->
-                    setOf("gate_expected_round_trip_bytes", "gate_expected_round_trip_sha256")
+                    setOf(
+                        "gate_fixture_path", "gate_observer_day", "gate_segment",
+                        "gate_expected_round_trip_bytes", "gate_expected_round_trip_sha256",
+                    )
                 GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
                     setOf(
                         "gate_observer_day", "gate_expected_body_bytes", "gate_expected_body_sha256",
@@ -98,6 +103,8 @@ data class GateInvocation(
             fun digest(key: String): String? = extras[key]?.takeIf(SHA256::matches)
 
             val day = extras["gate_observer_day"]
+            val fixturePath = extras["gate_fixture_path"]?.takeIf(String::isNotBlank)
+            val segment = extras["gate_segment"]?.takeIf(String::isNotBlank)
             val bodyBytes = positiveInt("gate_expected_body_bytes")
             val bodySha = digest("gate_expected_body_sha256")
             val semanticSha = digest("gate_expected_semantics_sha256")
@@ -105,7 +112,10 @@ data class GateInvocation(
             val roundTripSha = digest("gate_expected_round_trip_sha256")
             when (action) {
                 GateAction.G1_PAIR_ROUND_TRIP ->
-                    if (roundTripBytes == null || roundTripSha == null) {
+                    if (
+                        fixturePath == null || day == null || !DAY.matches(day) || segment == null ||
+                        roundTripBytes == null || roundTripSha == null
+                    ) {
                         return GateInvocationDecision.Invalid("invalid_round_trip_commitment")
                     }
                 GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
@@ -116,7 +126,7 @@ data class GateInvocation(
             }
             return GateInvocationDecision.Run(
                 GateInvocation(
-                    nonce, action, sequence, day, bodyBytes, bodySha, semanticSha,
+                    nonce, action, sequence, fixturePath, day, segment, bodyBytes, bodySha, semanticSha,
                     roundTripBytes, roundTripSha,
                 ),
             )

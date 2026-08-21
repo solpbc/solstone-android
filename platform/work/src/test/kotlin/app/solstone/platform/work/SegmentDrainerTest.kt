@@ -21,6 +21,7 @@ import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.io.FileNotFoundException
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -51,7 +52,10 @@ class SegmentDrainerTest {
 
     @Test
     fun processedVerdictSkipsUploadAndMarksUploaded() {
-        val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
+        val store = FakeDrainStore(
+            segment("a"),
+            files = mapOf("a" to listOf(file("a").copy(sha256 = "a".repeat(64), byteSize = 3))),
+        )
         val fakeHttp = object : PlHttpClient {
             override fun request(
                 method: String,
@@ -61,7 +65,7 @@ class SegmentDrainerTest {
             ): HttpResponse = HttpResponse(
                 200,
                 emptyMap(),
-                """{"items":[{"key":"a","files":[{"name":"a.bin","sha256":"sha-a","status":"processed"}]}],"total":1,"protocol_version":2}"""
+                """{"items":[{"key":"a","files":[{"name":"a.bin","size":3,"sha256":"${"a".repeat(64)}","status":"processed"}]}],"total":1,"protocol_version":3}"""
                     .toByteArray(),
             )
         }
@@ -69,7 +73,7 @@ class SegmentDrainerTest {
 
         drainSegments(
             store = store,
-            reconcile = { manifests, day -> SegmentReconciler(fakeHttp, "obs-test").diff(manifests, day) },
+            reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
             ingest = { _, _ ->
                 ingestCount += 1
                 error("ingest must not be called for a held segment")
@@ -133,6 +137,35 @@ class SegmentDrainerTest {
         )
         assertEquals(QueueState.FAILED, store.row("a").state)
         assertEquals(QueueState.FAILED, store.row("b").state)
+    }
+
+    @Test
+    fun typedProtocolFailuresRetainPayloadBytes() {
+        listOf<IngestOutcome>(
+            IngestOutcome.Failed(null),
+            IngestOutcome.UnknownStatus("future"),
+            IngestOutcome.MalformedResponse("invalid_json"),
+        ).forEach { outcome ->
+            val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
+            val payload = byteArrayOf(1, 2, 3)
+            var ingested: ByteArray? = null
+
+            drainSegments(
+                store = store,
+                reconcile = uploadAll,
+                ingest = { manifest, fileBytes ->
+                    ingested = fileBytes(manifest.files.single())
+                    outcome
+                },
+                readPayload = { _, _ -> payload },
+                now = { NOW },
+                log = store::log,
+            )
+
+            assertContentEquals(byteArrayOf(1, 2, 3), requireNotNull(ingested))
+            assertContentEquals(byteArrayOf(1, 2, 3), payload)
+            assertEquals(QueueState.FAILED, store.row("a").state)
+        }
     }
 
     @Test

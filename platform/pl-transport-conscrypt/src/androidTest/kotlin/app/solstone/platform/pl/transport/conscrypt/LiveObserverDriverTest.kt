@@ -31,9 +31,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * VPE-direct on-device validation driver for the Wave-1 observer foundation.
@@ -41,7 +38,7 @@ import java.util.Locale
  * Wires [pairAndProbe] / [openAuthenticatedClient] (this Conscrypt mTLS transport) to
  * [ObserverRegistration] / [ObserverIngestClient] / [SegmentReconciler] (core:observer)
  * and runs the full live arc against a real journal:
- *   pair -> PL status -> register -> ingest a synthetic sealed segment -> reconcile,
+ *   pair -> PL status -> register -> ingest a fixture-backed sealed segment -> reconcile,
  * plus an mTLS-after-process-death re-handshake from the persisted credential.
  *
  * Inert by default: every step skips (JUnit Assume) unless `-e pairLink <go.solstone.app/p#...>`
@@ -51,6 +48,8 @@ import java.util.Locale
  *   adb -s <serial> install -r -t <androidTest.apk>
  *   adb -s <serial> shell am instrument -w \
  *     -e pairLink 'https://go.solstone.app/p#...' \
+ *     -e fixturePath '/data/local/tmp/solstone-validation.wav' \
+ *     -e day YYYYMMDD -e segment HHMMSS_LEN \
  *     -e hostname rogbid-validation -e streamType watch \
  *     -e class app.solstone.platform.pl.transport.conscrypt.LiveObserverDriverTest \
  *     app.solstone.platform.pl.transport.conscrypt.test/androidx.test.runner.AndroidJUnitRunner
@@ -69,6 +68,9 @@ class LiveObserverDriverTest {
 
     private fun arg(name: String, default: String): String =
         args.getString(name)?.takeIf { it.isNotBlank() } ?: default
+
+    private fun requiredArg(name: String): String =
+        requireNotNull(args.getString(name)?.takeIf { it.isNotBlank() }) { "missing instrumentation argument: $name" }
 
     private val pairLink: String? get() = args.getString("pairLink")?.takeIf { it.isNotBlank() }
 
@@ -143,11 +145,14 @@ class LiveObserverDriverTest {
         val handle = idStore().load()?.observerHandle
         assumeTrue("t2 must register first (no stored handle)", credential != null && handle != null)
         try {
-            val payload = "solstone-android-observer-validation\n".toByteArray(Charsets.UTF_8)
-            val now = Date()
-            val day = SimpleDateFormat("yyyyMMdd", Locale.US).format(now)
-            val segmentKey = "${SimpleDateFormat("HHmmss", Locale.US).format(now)}_${payload.size}"
-            val fileName = "validation.txt"
+            val fixture = File(requiredArg("fixturePath"))
+            require(fixture.isFile && fixture.canRead()) { "fixture is absent or unreadable" }
+            val payload = fixture.readBytes()
+            val day = requiredArg("day").also {
+                require(it.matches(Regex("\\d{8}"))) { "invalid instrumentation argument: day" }
+            }
+            val segmentKey = requiredArg("segment")
+            val fileName = fixture.name
             val expectedSha = sha256Hex(payload)
             val manifest = BundleManifest(
                 key = SegmentKey(day = day, segment = segmentKey),
@@ -157,9 +162,9 @@ class LiveObserverDriverTest {
                         name = fileName,
                         sha256 = expectedSha,
                         byteSize = payload.size.toLong(),
-                        mediaType = "text/plain",
-                        captureStartEpochMs = now.time - 300_000L,
-                        captureEndEpochMs = now.time,
+                        mediaType = "audio/wav",
+                        captureStartEpochMs = 0L,
+                        captureEndEpochMs = 0L,
                     ),
                 ),
                 gaps = emptyList(),
@@ -168,7 +173,6 @@ class LiveObserverDriverTest {
             val outcome = openAuthenticatedClient(endpoint(), credential!!).use { client ->
                 ObserverIngestClient(client) { "solstoneAndroidValidation${System.nanoTime()}" }.ingest(
                     manifest = manifest,
-                    handle = handle!!,
                     fileBytes = { payload },
                     host = arg("hostname", "android-validation"),
                     platform = arg("platform", "android"),
@@ -176,13 +180,15 @@ class LiveObserverDriverTest {
             }
             result("t3.requestedDay=$day")
             result("t3.requestedSegment=$segmentKey")
-            result("t3.expectedSha=$expectedSha")
             result("t3.outcome=${outcome.javaClass.simpleName}")
 
             val serverSegment = when (outcome) {
                 is IngestOutcome.Accepted -> outcome.serverSegment
                 is IngestOutcome.Collision -> outcome.serverSegment
                 is IngestOutcome.Duplicate -> outcome.existingSegment
+                is IngestOutcome.Failed -> null
+                is IngestOutcome.UnknownStatus -> null
+                is IngestOutcome.MalformedResponse -> null
                 is IngestOutcome.Rejected -> null
             }
             result("t3.serverSegment=$serverSegment")
@@ -197,7 +203,9 @@ class LiveObserverDriverTest {
             )
             assertNotNull("server must return the canonical segment key", serverSegment)
 
-            ingestFile.writeText("day=$day\nsegment=$serverSegment\nfileName=$fileName\nsha=$expectedSha\n")
+            ingestFile.writeText(
+                "day=$day\nsegment=$serverSegment\nfileName=$fileName\nsize=${payload.size}\nsha=$expectedSha\n",
+            )
         } catch (t: Throwable) {
             result("t3.ERROR=${t.javaClass.simpleName}: ${t.message}")
             throw t
@@ -215,10 +223,12 @@ class LiveObserverDriverTest {
             }
             val day = record.getValue("day")
             val segment = record.getValue("segment")
+            val fileName = record.getValue("fileName")
+            val expectedSize = record.getValue("size").toLong()
             val expectedSha = record.getValue("sha")
 
             val segments = openAuthenticatedClient(endpoint(), credential!!).use { client ->
-                SegmentReconciler(client, handle!!).fetch(day)
+                SegmentReconciler(client).fetch(day)
             }
             result("t4.day=$day")
             result("t4.segmentCount=${segments.size}")
@@ -226,11 +236,20 @@ class LiveObserverDriverTest {
 
             val found = segments.firstOrNull { it.key == segment }
             assertNotNull("reconcile must list the just-ingested segment ($segment)", found)
-            result("t4.matchedFiles=${found!!.files}")
-            assertTrue(
-                "reconciled segment must carry the uploaded file's sha256",
-                found.files.any { it.sha256.equals(expectedSha, ignoreCase = true) },
-            )
+            val matched = found!!.files.firstOrNull { file ->
+                (file.submittedName ?: file.name) == fileName &&
+                    file.size == expectedSize &&
+                    file.sha256.equals(expectedSha, ignoreCase = true) &&
+                    file.status in setOf("present", "processed")
+            }
+            assertNotNull("reconciled segment must prove the uploaded file", matched)
+            result("t4.reconciliation.serverSegment=${found.key}")
+            result("t4.reconciliation.serverName=${matched!!.name}")
+            result("t4.reconciliation.submittedName=${matched.submittedName}")
+            result("t4.reconciliation.matchedName=${matched.submittedName ?: matched.name}")
+            result("t4.reconciliation.size=${matched.size}")
+            result("t4.reconciliation.sha256=${matched.sha256}")
+            result("t4.reconciliation.status=${matched.status}")
         } catch (t: Throwable) {
             result("t4.ERROR=${t.javaClass.simpleName}: ${t.message}")
             throw t
