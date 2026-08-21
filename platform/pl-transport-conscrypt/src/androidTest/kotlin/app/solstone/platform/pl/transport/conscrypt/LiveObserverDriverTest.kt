@@ -49,7 +49,7 @@ import java.io.File
  *     -e pairLink 'https://go.solstone.app/p#...' \
  *     -e fixturePath '/data/local/tmp/solstone-validation.wav' \
  *     -e day YYYYMMDD -e segment HHMMSS_LEN \
- *     -e hostname rogbid-validation -e streamType watch \
+ *     -e hostname rogbid-validation \
  *     -e class app.solstone.platform.pl.transport.conscrypt.LiveObserverDriverTest \
  *     app.solstone.platform.pl.transport.conscrypt.test/androidx.test.runner.AndroidJUnitRunner
  *

@@ -165,6 +165,7 @@ class SyncWithTransportTest {
             assertEquals(expectedOutcome, trace.outcome)
             assertFalse(trace.client.requests.any { it.path == HEALTH_PATH })
             assertFalse(trace.client.requests.any { it.path == REGISTER_PATH })
+            assertNoLegacyHeaders(trace.client.requests)
             assertEquals(0, trace.loadBeaconCalls)
             assertEquals(0, trace.persistedBeaconStates.size)
         }

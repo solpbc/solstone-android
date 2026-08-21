@@ -85,7 +85,7 @@ private val splGateRequiredMarkers = listOf(
     "syncStores",
     "RealRelayPairProbe",
     "RealPlStatusProbe",
-    "ObserverRegistration",
+    "SegmentReconciler",
     "ObserverIngestClient",
     "SplIntegrationGateDriverTest",
     "pair-authority.json",
@@ -327,7 +327,7 @@ tasks.register("splGateDriverGuardSelfTest") {
             val pair = RealRelayPairProbe(stores.credentialStore, stores.identityStore)
             val status = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore)
             val client = openRelaySyncClient(origin, instanceId, token, credential)
-            val registration = ObserverRegistration(client)
+            val reconciler = SegmentReconciler(client)
             val ingest = ObserverIngestClient(client)
             class SplIntegrationGateDriverTest
             val authority = "pair-authority.json"

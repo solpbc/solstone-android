@@ -165,9 +165,8 @@ and declares INTERNET in its androidTest manifest for the live socket.
 `fixturePath`, `day`, and `segment` are required for t3: the file must be a readable WAV on the
 target device. The driver does not synthesize a payload or derive a segment from byte length.
 Optional direct-driver arguments are `deviceLabel` (default `android-validation`), `platform`
-(default `android`), `hostname` (default `android-validation`), `streamType` (default `watch`),
-and `version` (default `0.1-validation`). `hostname` and `platform` also populate the ingest
-envelope metadata.
+(default `android`), and `hostname` (default `android-validation`). `hostname` and `platform` also
+populate the ingest envelope metadata.
 
 ## Phone realDebug SPL integration gate (G1–G5)
 
