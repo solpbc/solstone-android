@@ -45,7 +45,15 @@ class SegmentReconciler(private val http: PlHttpClient) {
                 require(protocolVersion == INGEST_PROTOCOL_VERSION) { "unsupported segments protocol version" }
                 val total = requiredNonNegativeInt(root, "total")
                 require(total == items.size) { "segments response total does not match items" }
-                items.map(::segment)
+                val segments = items.map(::segment)
+                require(segments.map(ServerSegment::key).toSet().size == segments.size) {
+                    "segments response has duplicate keys"
+                }
+                val originalKeys = segments.mapNotNull(ServerSegment::originalKey)
+                require(originalKeys.toSet().size == originalKeys.size) {
+                    "segments response has duplicate original keys"
+                }
+                segments
             } catch (e: Exception) {
                 throw ReconcileUnavailableException(200, e)
             }
@@ -116,7 +124,7 @@ class SegmentReconciler(private val http: PlHttpClient) {
     private fun requiredNonNegativeLong(root: Map<*, *>, key: String): Long {
         val value = root[key] as? Number ?: throw IllegalArgumentException("segments response missing $key")
         val number = value.toDouble()
-        require(number.isFinite() && number >= 0 && number <= Long.MAX_VALUE.toDouble() && number % 1.0 == 0.0) {
+        require(number.isFinite() && number >= 0 && number <= MAX_EXACT_JSON_INTEGER.toDouble() && number % 1.0 == 0.0) {
             "segments response invalid $key"
         }
         return number.toLong()
@@ -142,6 +150,7 @@ class SegmentReconciler(private val http: PlHttpClient) {
         }
 
     private companion object {
+        const val MAX_EXACT_JSON_INTEGER = 9_007_199_254_740_991L
         val SHA256 = Regex("[0-9a-fA-F]{64}")
         val RESPONSE_STATUSES = setOf("present", "processed", "missing")
     }

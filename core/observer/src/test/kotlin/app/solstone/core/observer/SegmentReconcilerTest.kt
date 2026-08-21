@@ -10,7 +10,6 @@ import app.solstone.core.pl.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class SegmentReconcilerTest {
     @Test
@@ -108,9 +107,29 @@ class SegmentReconcilerTest {
             """{"key":"seg","files":[{"name":"a","size":1,"sha256":"short","status":"present"}]}""",
             """{"key":"seg","files":[{"name":"a","size":1,"sha256":"$SHA_A","status":"stored"}]}""",
             """{"key":"seg","files":[{"name":"a","size":-1,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"seg","files":[{"name":"a","size":9007199254740992,"sha256":"$SHA_A","status":"present"}]}""",
+            """{"key":"seg","files":[{"name":"a","size":9223372036854775808,"sha256":"$SHA_A","status":"present"}]}""",
         ).forEach { item ->
             assertFailsWith<ReconcileUnavailableException> {
                 SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
+            }
+        }
+    }
+
+    @Test
+    fun fetchRejectsDuplicateKeysAndOriginalKeys() {
+        listOf(
+            response(
+                """{"key":"seg","files":[${fileJson("audio.wav", SHA_A)}]}""",
+                """{"key":"seg","files":[${fileJson("photo.jpg", SHA_B)}]}""",
+            ),
+            response(
+                """{"key":"server-a","original_key":"local","files":[${fileJson("audio.wav", SHA_A)}]}""",
+                """{"key":"server-b","original_key":"local","files":[${fileJson("photo.jpg", SHA_B)}]}""",
+            ),
+        ).forEach { response ->
+            assertFailsWith<ReconcileUnavailableException> {
+                SegmentReconciler(RecordingPlHttpClient(response)).fetch("20260616")
             }
         }
     }

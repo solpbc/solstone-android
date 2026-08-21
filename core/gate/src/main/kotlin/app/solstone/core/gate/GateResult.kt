@@ -144,7 +144,10 @@ object GateResultVerifier {
         expected: Set<String>,
         violations: MutableList<String>,
     ) {
-        val nested = facts[key] as? Map<*, *> ?: return
+        val nested = facts[key] as? Map<*, *> ?: run {
+            violations += "invalid_${key}_facts"
+            return
+        }
         if (nested.keys != expected) violations += "invalid_${key}_facts"
     }
 }

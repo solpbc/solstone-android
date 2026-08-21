@@ -140,7 +140,7 @@ class LiveObserverDriverTest {
     }
 
     @Test
-    fun t3_ingestSyntheticSegment() {
+    fun t3_ingestFixtureSegment() {
         val credential = credStore().load()
         val handle = idStore().load()?.observerHandle
         assumeTrue("t2 must register first (no stored handle)", credential != null && handle != null)
