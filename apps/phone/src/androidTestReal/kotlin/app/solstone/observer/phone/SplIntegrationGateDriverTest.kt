@@ -30,7 +30,6 @@ import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.INGEST_PROTOCOL_VERSION
 import app.solstone.core.observer.ObserverIngestClient
-import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
 import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.observer.SegmentReconciler
@@ -117,17 +116,6 @@ class SplIntegrationGateDriverTest {
                 realStatusProbe(stores, authenticatedTelemetry).probe(),
             )
 
-            val registrationTelemetry = GateTelemetry()
-            val registration = openRelaySyncClient(
-                identity.relayOrigin!!, identity.instanceId, identity.deviceToken!!, credential,
-                registrationTelemetry, registrationTelemetry,
-            ).use { client ->
-                ObserverRegistration(client).register(
-                    "android", observerHostname, "phone", "spl-gate-v1",
-                )
-            }
-            stores.identityStore.save(identity.copy(observerHandle = registration.handle))
-
             val payload = fixture.bytes
             val day = requireNotNull(invocation.observerDay)
             val segment = requireNotNull(invocation.segment)
@@ -186,7 +174,7 @@ class SplIntegrationGateDriverTest {
                 realStatusProbe(stores, roundTripStatusTelemetry).probe(),
             )
             val totalDials = listOf(
-                pairTelemetry, authenticatedTelemetry, registrationTelemetry, ingestTelemetry,
+                pairTelemetry, authenticatedTelemetry, ingestTelemetry,
                 roundTripTelemetry, roundTripStatusTelemetry,
             ).sumOf { it.snapshot().relayDials }
             result(
@@ -207,12 +195,6 @@ class SplIntegrationGateDriverTest {
                         "credential_persisted" to true,
                         "paired_identity_persisted" to true,
                         "device_token_persisted" to true,
-                    ),
-                    "registration" to linkedMapOf(
-                        "http_status" to 200,
-                        "protocol_version" to registration.protocolVersion,
-                        "registered" to true,
-                        "handle_persisted" to (stores.identityStore.load()?.observerHandle == registration.handle),
                     ),
                     "authenticated_status" to authenticated.status,
                     "round_trip" to linkedMapOf(
@@ -241,8 +223,6 @@ class SplIntegrationGateDriverTest {
 
     private fun runG2(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
         val stores = syncStores(context)
-        val identity = requirePairedIdentity(stores)
-        requireNotNull(identity.observerHandle) { "observer_handle_absent" }
         val telemetry = GateTelemetry()
         val response = requestSegments(stores, invocation.observerDay!!, telemetry)
         val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
@@ -269,8 +249,6 @@ class SplIntegrationGateDriverTest {
 
     private fun runG3(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
         val stores = syncStores(context)
-        val identity = requirePairedIdentity(stores)
-        requireNotNull(identity.observerHandle) { "observer_handle_absent" }
         val expectedBodyBytes = requireNotNull(invocation.expectedBodyBytes)
         val progress = GateProgressWriter(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_PROGRESS_FILE"))
         val cutControl = GateCutControl(File(context.filesDir, "$GATE_PRIVATE_DIR/$GATE_CONTROL_FILE"))
@@ -679,10 +657,6 @@ class SplIntegrationGateDriverTest {
                 "pair_http_status" to null, "enroll_http_status" to null,
                 "credential_persisted" to false, "paired_identity_persisted" to false,
                 "device_token_persisted" to false,
-            ),
-            "registration" to linkedMapOf(
-                "http_status" to null, "protocol_version" to null, "registered" to false,
-                "handle_persisted" to false,
             ),
             "authenticated_status" to null,
             "round_trip" to linkedMapOf(

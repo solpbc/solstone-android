@@ -15,7 +15,6 @@ import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ObserverIngestClient
-import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
@@ -36,9 +35,9 @@ import java.io.File
  * VPE-direct on-device validation driver for the Wave-1 observer foundation.
  *
  * Wires [pairAndProbe] / [openAuthenticatedClient] (this Conscrypt mTLS transport) to
- * [ObserverRegistration] / [ObserverIngestClient] / [SegmentReconciler] (core:observer)
+ * [ObserverIngestClient] / [SegmentReconciler] (core:observer)
  * and runs the full live arc against a real journal:
- *   pair -> PL status -> register -> ingest a fixture-backed sealed segment -> reconcile,
+ *   pair -> PL status -> mTLS authorization -> ingest a fixture-backed sealed segment -> reconcile,
  * plus an mTLS-after-process-death re-handshake from the persisted credential.
  *
  * Inert by default: every step skips (JUnit Assume) unless `-e pairLink <go.solstone.app/p#...>`
@@ -110,28 +109,14 @@ class LiveObserverDriverTest {
     }
 
     @Test
-    fun t2_registerObserver() {
+    fun t2_authorizePairedIdentity() {
         val credential = credStore().load()
-        assumeTrue("t1 must pair first (no stored credential)", credential != null)
+        assumeTrue("t1 must pair first (no stored credential or endpoint)", credential != null && endpointFile.exists())
         try {
             openAuthenticatedClient(endpoint(), credential!!).use { client ->
-                val observer = ObserverRegistration(client).register(
-                    platform = arg("platform", "android"),
-                    hostname = arg("hostname", "android-validation"),
-                    streamType = arg("streamType", "watch"),
-                    version = arg("version", "0.1-validation"),
-                )
-                result("t2.handle=${observer.handle}")
-                result("t2.handleLen=${observer.handle.length}")
-                result("t2.stream=${observer.stream}")
-                result("t2.ingestUrl=${observer.ingestUrl}")
-                result("t2.protocolVersion=${observer.protocolVersion}")
-
-                assertEquals("observer handle must be the 43-char DL key", 43, observer.handle.length)
-
-                idStore().load()?.let { home ->
-                    idStore().save(home.copy(observerHandle = observer.handle))
-                }
+                val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+                result("t2.authorizedStatus=${status.status}")
+                assertEquals("persisted credential must authorize PL status", 200, status.status)
             }
         } catch (t: Throwable) {
             result("t2.ERROR=${t.javaClass.simpleName}: ${t.message}")
@@ -142,8 +127,7 @@ class LiveObserverDriverTest {
     @Test
     fun t3_ingestFixtureSegment() {
         val credential = credStore().load()
-        val handle = idStore().load()?.observerHandle
-        assumeTrue("t2 must register first (no stored handle)", credential != null && handle != null)
+        assumeTrue("t1 must pair first (no stored credential)", credential != null)
         try {
             val fixture = File(requiredArg("fixturePath"))
             require(fixture.isFile && fixture.canRead()) { "fixture is absent or unreadable" }
@@ -215,8 +199,7 @@ class LiveObserverDriverTest {
     @Test
     fun t4_reconcileSegments() {
         val credential = credStore().load()
-        val handle = idStore().load()?.observerHandle
-        assumeTrue("t3 must ingest first (no ingest record)", credential != null && handle != null && ingestFile.exists())
+        assumeTrue("t3 must ingest first (no ingest record)", credential != null && ingestFile.exists())
         try {
             val record = ingestFile.readLines().filter { it.contains('=') }.associate {
                 val (k, v) = it.split('=', limit = 2); k to v

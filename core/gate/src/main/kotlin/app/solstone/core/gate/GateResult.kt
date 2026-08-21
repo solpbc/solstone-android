@@ -81,7 +81,7 @@ object GateResultVerifier {
         val expectedFactKeys = when (value.action) {
             GateAction.G1_PAIR_ROUND_TRIP ->
                 setOf(
-                    "pre_pair", "pair", "registration", "authenticated_status", "round_trip", "reconciliation",
+                    "pre_pair", "pair", "authenticated_status", "round_trip", "reconciliation",
                 )
             GateAction.G2_LARGE_RESPONSE ->
                 setOf(
@@ -107,9 +107,6 @@ object GateResultVerifier {
                     "route", "relay_origin", "handshake_pinned", "pair_http_status",
                     "enroll_http_status", "credential_persisted", "paired_identity_persisted",
                     "device_token_persisted",
-                ), this)
-                requireNestedKeys(value.facts, "registration", setOf(
-                    "http_status", "protocol_version", "registered", "handle_persisted",
                 ), this)
                 requireNestedKeys(value.facts, "round_trip", setOf(
                     "expected_bytes", "actual_bytes", "expected_sha256", "actual_sha256",

@@ -159,10 +159,6 @@ class GateContractV1Test {
                     "credential_persisted" to true, "paired_identity_persisted" to true,
                     "device_token_persisted" to true,
                 ),
-                "registration" to linkedMapOf(
-                    "http_status" to 200, "protocol_version" to 2, "registered" to true,
-                    "handle_persisted" to true,
-                ),
                 "authenticated_status" to 200,
                 "round_trip" to linkedMapOf(
                     "expected_bytes" to 3, "actual_bytes" to 3,

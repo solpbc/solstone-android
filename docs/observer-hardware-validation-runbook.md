@@ -14,7 +14,7 @@ defect classes only appear on the Android runtime or on real silicon:
 - host-JDK APIs absent on the Android runtime (`make ci`'s JVM tests pass; the device crashes),
 - main-thread database access (Room's main-thread assertion only fires at runtime),
 - real-sensor behavior (audio signal, camera capture, location fixes),
-- the live mTLS pair → register → ingest → reconcile round-trip against a journal.
+- the live mTLS pair → PL-status → mTLS authorization → ingest → reconcile round-trip against a journal.
 
 So every observer app change is validated on-device after it lands, on both bracketing targets.
 
@@ -92,7 +92,7 @@ single camera lock with still-capture, so a scan and active observing never cont
 The screen reports pair success + the paired home label. Links expire in 300s — mint fresh per scan.
 
 > For an automated/headless protocol e2e that bypasses the camera, the
-> `LiveObserverDriverTest` instrumented test drives pair → PL-status → register → ingest →
+> `LiveObserverDriverTest` instrumented test drives pair → PL-status → mTLS authorization → ingest →
 > reconcile (+ mTLS-after-process-death) against the live journal directly from the minted link —
 > see "Automated protocol e2e" below.
 
@@ -144,7 +144,7 @@ adb -s $DEV shell run-as $APP cat files/spool/<day>/observer/<seg>/manifest
 
 ## Automated protocol e2e (`LiveObserverDriverTest`)
 
-The proven, repeatable pair → register → ingest → reconcile round-trip against a live journal,
+The proven, repeatable pair → PL-status → mTLS authorization → ingest → reconcile round-trip against a live journal,
 without a camera scan:
 
 ```bash
@@ -252,11 +252,14 @@ regardless of timestamps. The coordinator owns package-policy restoration and ve
 connectivity getters during cleanup. The app and instrumentation APKs must both contain the exact
 `assets/solstone-android-gate-build-receipt.json` bound to the clean checkout HEAD.
 
-For G1, `facts.round_trip` is the local fixture-integrity check: the coordinator commitment is in
-`expected_bytes`/`expected_sha256` and the bytes read from `gate_fixture_path` are in
-`actual_bytes`/`actual_sha256`. `facts.reconciliation` is the separate server-derived proof with
-exactly `server_segment`, `server_name`, `submitted_name`, `matched_name`, `size`, `sha256`, and
-`status`; it is read from the parsed journal collection response.
+For G1, `facts.pre_pair` proves empty persisted pairing state, including
+`observer_handle_absent`; `facts.pair` records relay pairing; and
+`facts.authenticated_status` records post-pair status. `facts.round_trip` is the local
+fixture-integrity check: the coordinator commitment is in `expected_bytes`/`expected_sha256` and
+the bytes read from `gate_fixture_path` are in `actual_bytes`/`actual_sha256`.
+`facts.reconciliation` is the separate server-derived proof with exactly `server_segment`,
+`server_name`, `submitted_name`, `matched_name`, `size`, `sha256`, and `status`; it is read from
+the parsed journal collection response.
 
 ## Cleanup
 
@@ -284,7 +287,7 @@ phone formfactor module, and the selected camera adapter — the shared contract
   passive location, correct `observer`/`location` stream split.
 - Status + queue/sync renders the honest reduced state + the Room-backed queue (off-main load) on
   real silicon; Stop stops the service cleanly.
-- `LiveObserverDriverTest` against the live journal — **OK (5 tests)** (pair → PL-status → register →
+- `LiveObserverDriverTest` against the live journal — **OK (5 tests)** (pair → PL-status → mTLS authorization →
   ingest → reconcile + mTLS-after-process-death).
 
 **Galaxy A36 (API 36) — phone app, real flavor:**

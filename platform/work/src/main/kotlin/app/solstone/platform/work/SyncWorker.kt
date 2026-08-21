@@ -10,9 +10,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
-import app.solstone.core.observer.ObserverIngestClient
-import app.solstone.core.observer.SegmentReconciler
-import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
@@ -74,15 +71,33 @@ class SyncWorker(
                     RelayTokenResult.ReconnectNeeded -> return Result.failure()
                 }
             }
+            val store = RoomDrainStore(db.segmentDao())
+            val spoolDir = File(applicationContext.filesDir, "spool")
+            val syncTransport: (SyncTransport) -> SyncOutcome = { selectedTransport ->
+                syncWithTransport(
+                    transport = selectedTransport,
+                    openClient = { openSyncClient(it, credentials.credential) },
+                    store = store,
+                    readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
+                    existingHandle = credentials.identity.observerHandle,
+                    loadBeaconState = stores.beaconStateStore::load,
+                    persistBeaconState = stores.beaconStateStore::save,
+                    host = deviceLabel(),
+                    version = appVersion(),
+                    streamType = streamType,
+                    now = System::currentTimeMillis,
+                    log = { message, throwable -> Log.w(TAG, message, throwable) },
+                )
+            }
             val outcome = when (transport) {
-                is SyncTransport.Direct -> syncWithTransport(db.segmentDao(), stores, credentials, transport, streamType)
+                is SyncTransport.Direct -> syncTransport(transport)
                 is SyncTransport.Relay -> dialWithReactiveRefresh(
                     identity = credentials.identity,
                     transport = transport,
                     poster = poster,
                     identityStore = stores.identityStore,
                     dial = RelayDial { relayTransport ->
-                        syncWithTransport(db.segmentDao(), stores, credentials, relayTransport, streamType)
+                        syncTransport(relayTransport)
                     },
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
                 )
@@ -102,86 +117,6 @@ class SyncWorker(
             return Result.failure()
         } finally {
             db.close()
-        }
-    }
-
-    private fun syncWithTransport(
-        dao: SegmentDao,
-        stores: SyncStores,
-        credentials: SyncCredentials.Ready,
-        transport: SyncTransport,
-        streamType: String,
-    ): SyncOutcome {
-        openSyncClient(transport, credentials.credential).use { client ->
-            val status = try {
-                client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
-            } catch (e: RelayWebSocketClosedException) {
-                throw e
-            } catch (e: IOException) {
-                Log.w(TAG, "status probe io; retry", e)
-                return SyncOutcome.RETRY
-            }
-            return when (decideReachability(paired = true, reachable = status == 200)) {
-                ReachabilityVerdict.SKIP -> SyncOutcome.FAILURE
-                ReachabilityVerdict.RESCHEDULE -> SyncOutcome.RETRY
-                ReachabilityVerdict.DRAIN -> when (
-                    val outcome = registerThenDrain(
-                        client = client,
-                        existingHandle = credentials.identity.observerHandle,
-                        register = { c ->
-                            registerObserverHandle(
-                                client = c,
-                                platform = "android",
-                                hostname = deviceLabel(),
-                                streamType = streamType,
-                                version = appVersion(),
-                            )
-                        },
-                        persist = { handle -> stores.identityStore.save(credentials.identity.copy(observerHandle = handle)) },
-                        drain = { c, handle ->
-                            val spoolDir = File(applicationContext.filesDir, "spool")
-                            val report = drainSegments(
-                                store = RoomDrainStore(dao),
-                                reconcile = SegmentReconciler(c)::diff,
-                                ingest = { manifest, fileBytes ->
-                                    ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(
-                                        manifest = manifest,
-                                        fileBytes = fileBytes,
-                                        host = deviceLabel(),
-                                        platform = "android",
-                                    )
-                                },
-                                readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
-                                now = System::currentTimeMillis,
-                                log = { message, throwable -> Log.w(TAG, message, throwable) },
-                            )
-                            val emit = emitObserverHealth(
-                                client = c,
-                                priorState = stores.beaconStateStore.load(),
-                                persist = stores.beaconStateStore::save,
-                                streamType = streamType,
-                                handle = handle,
-                                version = appVersion(),
-                                now = System.currentTimeMillis(),
-                                syncRow = dao.syncState(),
-                                cleanDrain = report.cleanDrain,
-                                failedThisRun = report.failedThisRun,
-                                rawErrorReason = report.lastErrorReason,
-                                log = { message, throwable -> Log.w(TAG, message, throwable) },
-                            )
-                            if (emit == BeaconEmitResult.FAILED) {
-                                Log.w(TAG, "observer health beacon not delivered")
-                            }
-                            report.workOutcome
-                        },
-                        onError = { e -> Log.w(TAG, "observer registration failed: ${e.javaClass.simpleName}", e) },
-                    )
-                ) {
-                    RegisterDrainOutcome.Retry -> SyncOutcome.RETRY
-                    RegisterDrainOutcome.Halt -> SyncOutcome.FAILURE
-                    is RegisterDrainOutcome.Drained -> outcome.result
-                }
-            }
         }
     }
 
