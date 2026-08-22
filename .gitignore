@@ -22,3 +22,6 @@ artifacts/
 *.pem
 *.key
 
+/hostapd_*.conf
+/android-*/
+

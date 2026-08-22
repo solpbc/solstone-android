@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!--
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (c) 2026 sol pbc
+-->
+<html>
+<head>
+<meta id="vp" name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; padding: 8px; font-size: 16px; }
+  .rem { font-size: 1rem; }
+  .em { font-size: 1em; }
+  .px { font-size: 16px; }
+</style>
+</head>
+<body>
+<p id="env">env pending</p>
+<p class="rem">rem-16</p>
+<p class="em">em-16</p>
+<p class="px">px-16</p>
+<script>
+function reportEnv() {
+  var el = document.createElement("div");
+  el.style.paddingTop = "env(safe-area-inset-top, 0px)";
+  el.style.paddingRight = "env(safe-area-inset-right, 0px)";
+  el.style.paddingBottom = "env(safe-area-inset-bottom, 0px)";
+  el.style.paddingLeft = "env(safe-area-inset-left, 0px)";
+  document.body.appendChild(el);
+  var s = getComputedStyle(el);
+  document.getElementById("env").textContent =
+    "env-top=" + s.paddingTop +
+    " env-right=" + s.paddingRight +
+    " env-bottom=" + s.paddingBottom +
+    " env-left=" + s.paddingLeft;
+  document.body.removeChild(el);
+}
+function setCover(on) {
+  var meta = document.getElementById("vp");
+  if (on) {
+    meta.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+  } else {
+    meta.setAttribute("content", "width=device-width, initial-scale=1");
+  }
+  reportEnv();
+}
+reportEnv();
+</script>
+</body>
+</html>

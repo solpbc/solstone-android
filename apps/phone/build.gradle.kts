@@ -153,6 +153,9 @@ dependencies {
     implementation(project(":core:sources"))
     implementation(project(":formfactor:phone"))
     implementation("androidx.activity:activity-compose:1.12.4")
+    debugImplementation("androidx.compose.material3:material3:1.4.0")
+    debugImplementation("androidx.compose.ui:ui:1.10.6")
+    debugImplementation(project(":core:diagnostics"))
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")
