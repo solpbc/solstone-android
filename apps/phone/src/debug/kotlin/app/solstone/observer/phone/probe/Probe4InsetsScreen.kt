@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Insets: composition vs layout (staleness) and composition vs root-unconsumed (consumption).
@@ -120,6 +122,14 @@ private fun InsetTable(label: String) {
     var rootAt by remember { mutableLongStateOf(0L) }
     val densityValue = density.density
     val handler = remember { Handler(Looper.getMainLooper()) }
+    val alive = remember { AtomicBoolean(true) }
+    DisposableEffect(Unit) {
+        alive.set(true)
+        onDispose {
+            alive.set(false)
+            handler.removeCallbacksAndMessages(null)
+        }
+    }
     Box(
         Modifier
             .fillMaxWidth()
@@ -134,6 +144,7 @@ private fun InsetTable(label: String) {
                 val rootNow = rootUnconsumed(view, densityValue)
                 val now = System.currentTimeMillis()
                 handler.post {
+                    if (!alive.get()) return@post
                     layoutSnapshot = layoutNow
                     layoutAt = now
                     rootSnapshot = rootNow

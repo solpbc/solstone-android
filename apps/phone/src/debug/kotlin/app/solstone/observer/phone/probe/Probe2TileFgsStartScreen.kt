@@ -24,11 +24,24 @@ import androidx.compose.ui.platform.LocalContext
 import app.solstone.platform.fgs.ObserverForegroundService
 import kotlinx.coroutines.delay
 
-internal enum class Probe2Caller(val token: String) {
-    NoThrow("no-throw"),
-    Fgsnae("fgsnae"),
-    Security("security"),
-    Other("other"),
+internal sealed class Probe2Caller {
+    abstract val token: String
+
+    data object NoThrow : Probe2Caller() {
+        override val token = "no-throw"
+    }
+
+    data object Fgsnae : Probe2Caller() {
+        override val token = "fgsnae"
+    }
+
+    data object Security : Probe2Caller() {
+        override val token = "security"
+    }
+
+    data class Other(val type: String) : Probe2Caller() {
+        override val token = "other type=$type"
+    }
 }
 
 internal object Probe2Starts {
@@ -55,8 +68,15 @@ internal object Probe2Starts {
         } catch (_: SecurityException) {
             Probe2Caller.Security
         } catch (e: RuntimeException) {
-            if (isFgsnae(e)) Probe2Caller.Fgsnae else Probe2Caller.Other
+            if (isFgsnae(e)) Probe2Caller.Fgsnae else Probe2Caller.Other(e.javaClass.simpleName)
         }
+    }
+
+    fun startAndClassify(context: Context, mode: String) {
+        ProbeLog.install(context.applicationContext.filesDir)
+        ProbeLog.acquireLifecycleDiag()
+        val caller = tryStart(context)
+        scheduleClassify(context, mode, caller)
     }
 
     fun isFgsnae(exception: RuntimeException): Boolean =
@@ -75,17 +95,22 @@ internal object Probe2Starts {
         val t0 = audioBytes(app)
         ProbeLog.appendRaw("probe=2 mode=$mode caller=${caller.token}")
         Handler(Looper.getMainLooper()).postDelayed({
-            val outcome = classify(app, caller, since, t0)
-            ProbeLog.appendRaw("probe=2 mode=$mode outcome=$outcome")
-            updateTile(app, outcome)
+            try {
+                val outcome = classify(app, caller, since, t0)
+                ProbeLog.appendRaw("probe=2 mode=$mode outcome=$outcome")
+                updateTile(app, outcome)
+            } finally {
+                ProbeLog.releaseLifecycleDiag()
+            }
         }, 3_000L)
     }
 
     fun classify(context: Context, caller: Probe2Caller, sinceEpochMs: Long, t0Bytes: Long): String {
         when (caller) {
-            Probe2Caller.Fgsnae -> return "a"
-            Probe2Caller.Security -> return "b"
-            Probe2Caller.NoThrow, Probe2Caller.Other -> Unit
+            is Probe2Caller.Fgsnae -> return "a"
+            is Probe2Caller.Security -> return "b"
+            is Probe2Caller.Other -> return "other type=${caller.type}"
+            is Probe2Caller.NoThrow -> Unit
         }
         val failure = ProbeLog.readAll().lineSequence().any { line ->
             val ts = line.substringAfter("ts=", "").substringBefore(' ').toLongOrNull() ?: 0L
@@ -101,16 +126,21 @@ internal object Probe2Starts {
         }
     }
 
-    fun subtitle(outcome: String): String = when (outcome) {
-        "a" -> "fgsnae"
-        "b" -> "security"
-        "c" -> "svc-fail"
-        "d" -> "no-audio"
-        "started-audio" -> "started"
+    fun subtitle(outcome: String): String = when {
+        outcome == "a" -> "fgsnae"
+        outcome == "b" -> "security"
+        outcome == "c" -> "svc-fail"
+        outcome == "d" -> "no-audio"
+        outcome == "started-audio" -> "started"
+        outcome.startsWith("other") -> {
+            val type = outcome.substringAfter("type=", "")
+            if (type.isEmpty()) "other" else "other-$type"
+        }
         else -> outcome
     }
 
     fun updateTile(context: Context, outcome: String) {
+        ProbeTileService.current()?.qsTile?.let { applySubtitle(it, outcome) }
         val component = ComponentName(context, ProbeTileService::class.java)
         TileService.requestListeningState(context, component)
     }

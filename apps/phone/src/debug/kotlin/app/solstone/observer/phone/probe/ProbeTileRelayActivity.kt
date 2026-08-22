@@ -17,21 +17,13 @@ class ProbeTileRelayActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ProbeLog.install(filesDir)
-        ProbeLog.acquireLifecycleDiag()
     }
 
     override fun onResume() {
         super.onResume()
         if (started) return
         started = true
-        val mode = Probe2Starts.mode(this)
-        val caller = Probe2Starts.tryStart(this)
-        Probe2Starts.scheduleClassify(this, mode, caller)
+        Probe2Starts.startAndClassify(this, Probe2Starts.mode(this))
         finish()
-    }
-
-    override fun onDestroy() {
-        ProbeLog.releaseLifecycleDiag()
-        super.onDestroy()
     }
 }

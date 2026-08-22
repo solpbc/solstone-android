@@ -18,27 +18,34 @@ import androidx.annotation.RequiresApi
 class ProbeTileService : TileService() {
     override fun onCreate() {
         super.onCreate()
+        instance = this
         ProbeLog.install(filesDir)
         ProbeLog.acquireLifecycleDiag()
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         ProbeLog.releaseLifecycleDiag()
         super.onDestroy()
     }
 
     override fun onStartListening() {
         super.onStartListening()
+        instance = this
         val last = ProbeLog.readAll().lineSequence()
             .mapNotNull { line ->
-                val outcome = line.substringAfter("outcome=", missingDelimiterValue = "")
-                    .substringBefore(' ')
-                outcome.takeIf { it.isNotEmpty() && "probe=2" in line }
+                if ("probe=2" !in line || "outcome=" !in line) return@mapNotNull null
+                line.substringAfter("outcome=").trim().takeIf { it.isNotEmpty() }
             }
             .lastOrNull()
         if (last != null) {
             qsTile?.let { Probe2Starts.applySubtitle(it, last) }
         }
+    }
+
+    override fun onStopListening() {
+        if (instance === this) instance = null
+        super.onStopListening()
     }
 
     override fun onClick() {
@@ -48,8 +55,7 @@ class ProbeTileService : TileService() {
             startRelay()
             return
         }
-        val caller = Probe2Starts.tryStart(this)
-        Probe2Starts.scheduleClassify(this, mode, caller)
+        Probe2Starts.startAndClassify(this, mode)
     }
 
     private fun startRelay() {
@@ -78,7 +84,11 @@ class ProbeTileService : TileService() {
         startActivityAndCollapse(intent)
     }
 
-    private companion object {
-        const val RELAY_REQUEST = 41
+    companion object {
+        private const val RELAY_REQUEST = 41
+
+        @Volatile private var instance: ProbeTileService? = null
+
+        fun current(): ProbeTileService? = instance
     }
 }

@@ -3,7 +3,6 @@
 
 package app.solstone.observer.phone.probe
 
-import android.os.Build
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -48,17 +47,12 @@ fun Probe5WebViewScreen() {
     var cover by remember { mutableStateOf(false) }
     var textZoom by remember { mutableIntStateOf(-1) }
     var settingFontScale by remember { mutableStateOf(readFontScaleSetting(context)) }
-    val processStart = remember { android.os.Process.getStartUptimeMillis() }
     val webViewPackage = remember {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val info = WebView.getCurrentWebViewPackage()
-            if (info == null) {
-                "webview=null"
-            } else {
-                "package=${info.packageName} versionName=${info.versionName}"
-            }
+        val info = WebView.getCurrentWebViewPackage()
+        if (info == null) {
+            "webview=null"
         } else {
-            "unavailable below API 26"
+            "package=${info.packageName} versionName=${info.versionName}"
         }
     }
     LaunchedEffect(Unit) {
@@ -74,7 +68,9 @@ fun Probe5WebViewScreen() {
         gaps = PROBE5_GAPS,
     ) {
         Text(webViewPackage)
-        Text("processStartUptimeMs=$processStart")
+        Text("processStartUptimeMs=${ProbeProcess.startUptimeMs}")
+        Text("activityCreateCount=${ProbeProcess.activityCreateCount()}")
+        Text("activityCreateCount rises on each ProbeIndexActivity onCreate in this process; processStartUptimeMs is new only after a process start.")
         Text("activity.fontScale=${configuration.fontScale}")
         Text("settings.fontScale=$settingFontScale")
         Text("getTextZoom=$textZoom")

@@ -33,6 +33,7 @@ class ProbeIndexActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         ProbeLog.install(filesDir)
         ProbeLog.acquireLifecycleDiag()
+        ProbeProcess.onIndexCreated()
         setContent {
             MaterialTheme {
                 ProbeIndex(onRestoreMute = { restoreMute() })
@@ -59,6 +60,15 @@ class ProbeIndexActivity : ComponentActivity() {
 
 internal object Probe1MuteRestorer {
     @Volatile var mutedByProbe: Boolean = false
+}
+
+internal object ProbeProcess {
+    val startUptimeMs: Long = android.os.Process.getStartUptimeMillis()
+    private val creates = java.util.concurrent.atomic.AtomicInteger(0)
+
+    fun onIndexCreated(): Int = creates.incrementAndGet()
+
+    fun activityCreateCount(): Int = creates.get()
 }
 
 @Composable
