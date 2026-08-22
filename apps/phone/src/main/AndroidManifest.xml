@@ -43,6 +43,9 @@
                     android:path="/p" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".PhoneShellActivity"
+            android:exported="false" />
         <service
             android:name="app.solstone.platform.fgs.ObserverForegroundService"
             android:exported="false"

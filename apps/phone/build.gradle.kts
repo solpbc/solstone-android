@@ -3,6 +3,7 @@ import java.util.zip.ZipFile
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val gateReceiptMainDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/main/assets")
@@ -79,6 +80,10 @@ android {
         jvmTarget = "17"
     }
 
+    buildFeatures {
+        compose = true
+    }
+
     flavorDimensions += "mode"
     productFlavors {
         create("mock") {
@@ -110,6 +115,7 @@ android {
 tasks.matching {
     it.name.endsWith("Assets") ||
         it.name.startsWith("lintAnalyze") ||
+        it.name.startsWith("lintVitalAnalyze") ||
         (it.name.startsWith("generate") && it.name.contains("Lint") && it.name.endsWith("Model"))
 }.configureEach {
     dependsOn(generateSolstoneGateBuildReceipt)
@@ -145,12 +151,15 @@ tasks.register("verifySolstoneGateBuildReceipts") {
 dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:sources"))
+    implementation(project(":formfactor:phone"))
+    implementation("androidx.activity:activity-compose:1.12.4")
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.10.6")
     androidTestImplementation(project(":harness"))
     androidTestImplementation(project(":core:diagnostics"))
     androidTestImplementation(project(":core:identity"))
