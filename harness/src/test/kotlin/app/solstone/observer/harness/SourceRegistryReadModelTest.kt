@@ -93,6 +93,12 @@ class SourceRegistryReadModelTest {
 
         val snapshot = registry.snapshot()
         assertEquals(2, snapshot.sources.size)
+        val audio = snapshot.sources.single { it.sourceId == "audio" }
+        val location = snapshot.sources.single { it.sourceId == "location" }
+        assertEquals(SourceWish.Off, location.wish)
+        assertEquals(SourceState.OFF, location.state)
+        assertEquals(SourceWish.On, audio.wish)
+        assertTrue(audio.state != SourceState.OFF)
         snapshot.sources.forEach { row ->
             assertEquals(row.wish == SourceWish.Off, row.state == SourceState.OFF)
             assertEquals(row.wish == SourceWish.Off, row.reason == ReasonCode.DESIRED_OFF)

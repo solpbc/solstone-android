@@ -53,4 +53,41 @@ class SourceRegistryToggleTest {
         assertEquals(0, f.lifecycle.starts)
         assertEquals(0, f.lifecycle.stops)
     }
+
+    @Test
+    fun throwingStartLeavesTheSourceStoppable() {
+        val engine = FakeSourceEngine()
+        val boom = IllegalStateException("start failed")
+        engine.throwOnStart = boom
+        val registry = sourceRegistry(
+            registrations = listOf(SourceRegistration("audio", engine)),
+        )
+        val thrown = runCatching { registry.engines.single().start(EmissionSink { }) }
+        assertSame(boom, thrown.exceptionOrNull())
+
+        engine.throwOnStart = null
+        assertIs<SourceToggleResult.Applied>(registry.setWish("audio", SourceWish.Off))
+        assertEquals(1, engine.stopCalls)
+    }
+
+    @Test
+    fun throwingStopDoesNotCauseALaterOnToStartAgain() {
+        val engine = FakeSourceEngine()
+        val boom = IllegalStateException("stop failed")
+        val registry = sourceRegistry(
+            registrations = listOf(SourceRegistration("audio", engine)),
+        )
+        registry.engines.single().start(EmissionSink { })
+        assertEquals(1, engine.startCalls)
+
+        engine.throwOnStop = boom
+        val failed = assertIs<SourceToggleResult.EngineFailed>(
+            registry.setWish("audio", SourceWish.Off),
+        )
+        assertSame(boom, failed.error)
+
+        engine.throwOnStop = null
+        assertIs<SourceToggleResult.Applied>(registry.setWish("audio", SourceWish.On))
+        assertEquals(1, engine.startCalls)
+    }
 }

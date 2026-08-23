@@ -57,7 +57,7 @@ class SourceRegistry(
             wishes[sourceId] = wish
             bound.first { it.sourceId == sourceId }
         }
-        val result = wrapper.actuate(wish)
+        val result = wrapper.actuate()
         notifyListeners()
         return result
     }
@@ -80,27 +80,36 @@ class SourceRegistry(
         val sourceId: String,
         private val inner: ContinuousSourceEngine,
     ) : ContinuousSourceEngine {
+        private val actuationLock = Any()
         private var sink: EmissionSink? = null
+        // Believed-running: we issued start and have not confirmed a stop.
         private var started = false
 
         override fun start(sink: EmissionSink) {
-            val shouldStart = synchronized(lock) {
-                this.sink = sink
-                wishes.getValue(sourceId) == SourceWish.On
-            }
-            if (shouldStart) {
-                inner.start(sink)
-                synchronized(lock) { started = true }
+            synchronized(actuationLock) {
+                val shouldStart = synchronized(lock) {
+                    this.sink = sink
+                    wishes.getValue(sourceId) == SourceWish.On
+                }
+                if (shouldStart) {
+                    try {
+                        inner.start(sink)
+                    } finally {
+                        synchronized(lock) { started = true }
+                    }
+                }
             }
         }
 
         override fun stop() {
-            val shouldStop = synchronized(lock) { started }
-            if (shouldStop) {
-                inner.stop()
-                synchronized(lock) { started = false }
+            synchronized(actuationLock) {
+                val shouldStop = synchronized(lock) { started }
+                if (shouldStop) {
+                    inner.stop()
+                    synchronized(lock) { started = false }
+                }
+                synchronized(lock) { sink = null }
             }
-            synchronized(lock) { sink = null }
         }
 
         override fun condition(): SourceCondition {
@@ -122,33 +131,40 @@ class SourceRegistry(
         private fun conditionFor(wish: SourceWish): SourceCondition =
             inner.condition().copy(desiredOn = wish == SourceWish.On)
 
-        fun actuate(wish: SourceWish): SourceToggleResult =
-            try {
-                when (wish) {
-                    SourceWish.On -> {
-                        val held = synchronized(lock) { sink }
-                        if (held == null) {
-                            SourceToggleResult.AwaitingObserver
-                        } else {
-                            val alreadyStarted = synchronized(lock) { started }
-                            if (!alreadyStarted) {
-                                inner.start(held)
-                                synchronized(lock) { started = true }
+        fun actuate(): SourceToggleResult {
+            synchronized(actuationLock) {
+                val current = synchronized(lock) { wishes.getValue(sourceId) }
+                return try {
+                    when (current) {
+                        SourceWish.On -> {
+                            val held = synchronized(lock) { sink }
+                            if (held == null) {
+                                SourceToggleResult.AwaitingObserver
+                            } else {
+                                val alreadyStarted = synchronized(lock) { started }
+                                if (!alreadyStarted) {
+                                    try {
+                                        inner.start(held)
+                                    } finally {
+                                        synchronized(lock) { started = true }
+                                    }
+                                }
+                                SourceToggleResult.Applied
+                            }
+                        }
+                        SourceWish.Off -> {
+                            val shouldStop = synchronized(lock) { started }
+                            if (shouldStop) {
+                                inner.stop()
+                                synchronized(lock) { started = false }
                             }
                             SourceToggleResult.Applied
                         }
                     }
-                    SourceWish.Off -> {
-                        val shouldStop = synchronized(lock) { started }
-                        if (shouldStop) {
-                            inner.stop()
-                            synchronized(lock) { started = false }
-                        }
-                        SourceToggleResult.Applied
-                    }
+                } catch (error: Throwable) {
+                    SourceToggleResult.EngineFailed(error)
                 }
-            } catch (error: Throwable) {
-                SourceToggleResult.EngineFailed(error)
             }
+        }
     }
 }

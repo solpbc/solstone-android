@@ -193,16 +193,16 @@ class ObserverAppContainer(
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
-        val condition = sources.engines.firstOrNull()?.condition()
+        val conditions = sources.engines.map { it.condition() }
         val pipeline = activePipeline
         return SourceRuntimeSnapshot(
-            engineRunning = condition?.running == true,
+            engineRunning = conditions.any { it.running },
             providerEmitting = isProviderFresh(
                 startedEpochMs = pipeline?.startedEpochMs(),
                 lastEmissionEpochMs = pipeline?.lastEmissionEpochMs(),
                 nowEpochMs = System.currentTimeMillis(),
             ),
-            storageOk = condition?.available != false,
+            storageOk = conditions.filter { it.desiredOn }.all { it.available },
             exemptionVerified = flavor.exemptionVerified(),
         )
     }
