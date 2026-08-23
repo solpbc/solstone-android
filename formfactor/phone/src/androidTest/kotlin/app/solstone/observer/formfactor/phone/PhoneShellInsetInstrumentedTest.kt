@@ -25,7 +25,6 @@ import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.WindowInsets
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.then
@@ -81,7 +80,7 @@ class PhoneShellInsetInstrumentedTest {
         val appBarBottom = composeRule.onNodeWithTag("phoneAppBar").fetchSemanticsNode().boundsInRoot.bottom
         assertTrue(
             "at rest first tile top $firstTopAtRest should be at or below app bar $appBarBottom",
-            firstTopAtRest >= appBarBottom - 8f,
+            firstTopAtRest >= appBarBottom,
         )
         minTopAfterScroll = Float.POSITIVE_INFINITY
         composeRule.onNodeWithTag("probeGrid").performTouchInput { swipeUp() }

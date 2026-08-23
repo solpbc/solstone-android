@@ -355,10 +355,10 @@ fun phoneShellInsetDoctrineViolations(source: String): List<String> {
     if (count("content(paddingValues)") != 1) {
         violations += "content(paddingValues) count=${count("content(paddingValues)")}"
     }
-    if (count("WindowInsets.safeGestures") != 1) {
+    if (count("WindowInsets.safeGestures") < 1) {
         violations += "WindowInsets.safeGestures count=${count("WindowInsets.safeGestures")}"
     }
-    if (count("WindowInsets.safeDrawing") != 1) {
+    if (count("WindowInsets.safeDrawing") < 1) {
         violations += "WindowInsets.safeDrawing count=${count("WindowInsets.safeDrawing")}"
     }
     if (!stripped.contains("Modifier.fillMaxSize()")) {

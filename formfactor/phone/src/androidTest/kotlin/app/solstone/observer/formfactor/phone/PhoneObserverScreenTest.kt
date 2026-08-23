@@ -3,14 +3,21 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,6 +29,8 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -167,18 +176,60 @@ class PhoneObserverScreenTest {
 
     @Test
     fun liveRegionTextDoesNotContainCount() {
+        val decrements = 3
+        var pending by mutableStateOf(6)
         composeRule.setContent {
             PhoneStatusPill(
-                model = PhoneStatusModel(true, true, 7, true),
+                model = PhoneStatusModel(true, true, pending, true),
                 onClick = {},
             )
         }
-        val live = composeRule.onNodeWithTag("statusLiveRegion", useUnmergedTree = true)
+        composeRule.waitForIdle()
+        val live = liveRegionNode()
+        val state = stateDescriptionNode()
+        assertNotEquals(live.id, state.id)
+        val firstLive = announcedText(live)
+        val descriptions = mutableListOf(state.config.getOrNull(SemanticsProperties.StateDescription))
+        assertFalse("live announced contains count $pending: $firstLive", pending.toString() in firstLive)
+        repeat(decrements) {
+            pending -= 1
+            composeRule.waitForIdle()
+            val liveNow = announcedText(liveRegionNode())
+            assertEquals(firstLive, liveNow)
+            assertFalse("live announced contains count $pending: $liveNow", pending.toString() in liveNow)
+            descriptions += stateDescriptionNode().config.getOrNull(SemanticsProperties.StateDescription)
+        }
+        assertEquals(decrements, descriptions.zipWithNext().count { it.first != it.second })
+    }
+
+    @Test
+    fun deckReachesUnderAppBarAfterScroll() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(*(0 until 40).map { status("s-$it", SourceState.ON, SourceWish.On) }.toTypedArray()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.waitForIdle()
+        val appBarBottom = composeRule.onNodeWithTag("phoneAppBar").fetchSemanticsNode().boundsInRoot.bottom
+        val firstTop = composeRule.onNodeWithTag("sourceTile-s-0", useUnmergedTree = true)
             .fetchSemanticsNode()
-        val announced = live.config.toString()
-        assertTrue("syncing" in announced || live.children.isNotEmpty())
-        composeRule.onNodeWithTag("statusState", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithText("7 syncing").assertIsDisplayed()
+            .boundsInRoot
+            .top
+        assertTrue(
+            "at rest first tile top $firstTop should be at or below app bar $appBarBottom",
+            firstTop >= appBarBottom,
+        )
+        composeRule.onNodeWithTag("sourceGrid").performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        val minTop = composeRule.onAllNodes(sourceTileMatcher(), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .minOf { it.boundsInRoot.top }
+        assertTrue(
+            "some deck tile top $minTop should be above app bar $appBarBottom",
+            minTop < appBarBottom,
+        )
     }
 
     @Test
@@ -256,6 +307,30 @@ class PhoneObserverScreenTest {
             .fetchSemanticsNode()
             .config
             .getOrNull(SemanticsProperties.StateDescription)
+
+    private fun liveRegionNode() =
+        composeRule.onNodeWithTag("statusLiveRegion", useUnmergedTree = true).fetchSemanticsNode()
+
+    private fun stateDescriptionNode() =
+        composeRule.onNodeWithTag("statusState", useUnmergedTree = true).fetchSemanticsNode()
+
+    private fun announcedText(node: SemanticsNode): String {
+        val parts = mutableListOf<String>()
+        fun walk(n: SemanticsNode) {
+            n.config.getOrNull(SemanticsProperties.ContentDescription)?.let { parts.addAll(it) }
+            n.config.getOrNull(SemanticsProperties.Text)?.let { texts ->
+                parts.addAll(texts.map { it.text })
+            }
+            n.config.getOrNull(SemanticsProperties.StateDescription)?.let { parts.add(it) }
+            n.children.forEach(::walk)
+        }
+        walk(node)
+        return parts.joinToString(" ")
+    }
+
+    private fun sourceTileMatcher() = SemanticsMatcher("source tile") { node ->
+        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("sourceTile-") == true
+    }
 }
 
 private fun audioOn() = status("audio", SourceState.ON, SourceWish.On)
