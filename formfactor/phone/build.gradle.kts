@@ -48,6 +48,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling:1.10.6")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.10.6")
     implementation("androidx.activity:activity-compose:1.12.4")
+    // Declared for a consumer outside this module's own source.
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.core:core-ktx:1.17.0")
 

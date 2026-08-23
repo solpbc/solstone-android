@@ -230,10 +230,13 @@ fun activityIntentFilterGroups(manifestText: String): List<ActivityIntentFilterG
         ?.groupValues
         ?.get(1)
     val results = mutableListOf<ActivityIntentFilterGroup>()
-    val startPattern = Regex("""<activity\b""")
+    // activity-alias is listed first so `<activity\b` cannot swallow it. An alias
+    // that carries MAIN+LAUNCHER is a launcher owner: it places an icon.
+    val startPattern = Regex("""<(activity-alias|activity)\b""")
     var searchFrom = 0
     while (true) {
         val start = startPattern.find(manifestText, searchFrom) ?: break
+        val tagName = start.groupValues[1]
         val gt = manifestText.indexOf('>', start.range.last + 1)
         if (gt < 0) break
         val openTag = manifestText.substring(start.range.first, gt + 1)
@@ -252,7 +255,8 @@ fun activityIntentFilterGroups(manifestText: String): List<ActivityIntentFilterG
             searchFrom = gt + 1
             continue
         }
-        val close = manifestText.indexOf("</activity>", gt + 1)
+        val closeTag = "</$tagName>"
+        val close = manifestText.indexOf(closeTag, gt + 1)
         if (close < 0) {
             results += ActivityIntentFilterGroup(resolved, emptyList())
             searchFrom = gt + 1
@@ -260,7 +264,7 @@ fun activityIntentFilterGroups(manifestText: String): List<ActivityIntentFilterG
         }
         val body = manifestText.substring(gt + 1, close)
         results += ActivityIntentFilterGroup(resolved, intentFilterTokenGroups(body))
-        searchFrom = close + "</activity>".length
+        searchFrom = close + closeTag.length
     }
     return results
 }
@@ -630,17 +634,50 @@ tasks.register("phoneLauncherCountGuardSelfTest") {
             ),
         )
 
-        val selfClosing = activityIntentFilterGroups(
+        val selfClosingThenLauncher =
             """<manifest package="app.solstone.observer.phone">""" +
                 """<activity android:name=".PhoneShellActivity" android:exported="false" />""" +
-                """</manifest>""",
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>"""
+        val selfClosingGroups = activityIntentFilterGroups(selfClosingThenLauncher)
+        check(
+            selfClosingGroups.any {
+                it.activityName == "app.solstone.observer.phone.PhoneShellActivity" &&
+                    it.tokenGroups.isEmpty()
+            },
         )
-        check(selfClosing.any { it.activityName == "app.solstone.observer.phone.PhoneShellActivity" })
-        check(mainLauncherOwners(selfClosing.let { _ ->
+        check(mainLauncherOwners(selfClosingThenLauncher) == listOf(observer))
+
+        val alias = "app.solstone.observer.phone.Alias"
+        val aliasOwnsLauncher = mainLauncherOwners(
             """<manifest package="app.solstone.observer.phone">""" +
-                """<activity android:name=".PhoneShellActivity" android:exported="false" />""" +
-                """</manifest>"""
-        }).isEmpty())
+                """<activity-alias android:name=".Alias" android:targetActivity="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity-alias></manifest>""",
+        )
+        check(aliasOwnsLauncher == listOf(alias))
+
+        val aliasSilentBesideLauncher = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity-alias android:name=".Alias" android:targetActivity="$observer" />""" +
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(aliasSilentBesideLauncher == listOf(observer))
+        check(alias !in aliasSilentBesideLauncher)
+
+        val aliasAndActivity = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity-alias android:name=".Alias" android:targetActivity="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity-alias>""" +
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(aliasAndActivity.toSet() == setOf(alias, observer))
 
         val component = mainLauncherOwners(
             """<manifest package="app.solstone.observer.phone">""" +
@@ -815,7 +852,6 @@ tasks.register("checkForbiddenThemeApis") {
                     if (
                         relative.startsWith("formfactor/phone/src/main/") &&
                         file.name != "PhoneMetrics.kt" &&
-                        file.name != "PhoneShell.kt" &&
                         stripKotlinComments(text).contains("MINIMUM_TOUCH_TARGET_DP")
                     ) {
                         violations += "$relative: MINIMUM_TOUCH_TARGET_DP outside PhoneMetrics"

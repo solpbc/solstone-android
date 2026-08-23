@@ -3,5 +3,5 @@
 
 package app.solstone.observer.formfactor.phone
 
-/** Minimum touch target. Wave 1A records the number; no component consumes it yet. */
+/** Minimum touch-target floor for this module, in dp. */
 const val MINIMUM_TOUCH_TARGET_DP = 48

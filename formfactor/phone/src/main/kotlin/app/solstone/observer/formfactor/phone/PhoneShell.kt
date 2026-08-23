@@ -23,11 +23,11 @@ import androidx.compose.ui.tooling.preview.Preview
 /**
  * Themed phone shell host.
  *
- * @param shellAttachment Wave 1B plug point. Default is a no-op. Wave 1B
- *        attaches navigation chrome here. This module must not reference
- *        any type from state/ or nav/; those belong to 1B.
- * @param content Wave 1C attaches the destination host here. Default is
- *        the existing minWidthDp Text so Wave 0 tests remain valid.
+ * @param shellAttachment Slot for persistent navigation chrome shown alongside
+ *        the destination content. Defaults to nothing. This module must not
+ *        reference navigation- or state-holder types; those sit outside this
+ *        module's boundary.
+ * @param content Destination content slot. Defaults to the width-class readout.
  */
 @Composable
 fun PhoneShell(
