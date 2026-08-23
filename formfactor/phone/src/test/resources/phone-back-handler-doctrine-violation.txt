@@ -1,0 +1,22 @@
+@Composable
+fun DirectConditional(paneOpen: Boolean) {
+    if (paneOpen) {
+        BackHandler(enabled = true) {
+            closePane()
+        }
+    }
+}
+
+@Composable
+fun PaneContent() {
+    BackHandler(enabled = true) {
+        closePane()
+    }
+}
+
+@Composable
+fun CallerConditional(paneOpen: Boolean) {
+    if (paneOpen) {
+        PaneContent()
+    }
+}

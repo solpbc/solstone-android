@@ -163,6 +163,7 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.10.6")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
     androidTestImplementation(project(":harness"))
     androidTestImplementation(project(":core:diagnostics"))
     androidTestImplementation(project(":core:identity"))

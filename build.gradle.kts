@@ -34,6 +34,19 @@ fun deniedPrivacyCoordinate(group: String, name: String): String? {
     return null
 }
 
+fun deniedNavigationCoordinate(group: String, name: String): String? {
+    if (group == "androidx.compose.material3.adaptive" && name == "adaptive-navigation") {
+        return null
+    }
+    if (group == "androidx.navigation" || group.startsWith("androidx.navigation.")) {
+        return "$group:$name"
+    }
+    if (group == "androidx.navigation3" || group.startsWith("androidx.navigation3.")) {
+        return "$group:$name"
+    }
+    return null
+}
+
 fun isImpureImportLine(line: String): Boolean {
     val trimmed = line.trim()
     return trimmed.startsWith("import android.") || trimmed.startsWith("import androidx.")
@@ -332,6 +345,178 @@ fun phoneShellInsetDoctrineViolations(source: String): List<String> {
         val count = Regex.fromLiteral(token).findAll(stripped).count()
         if (count == 1) null else "$token count=$count"
     }
+}
+
+data class PhoneBackHandlerDoctrineReport(
+    val callSiteCount: Int,
+    val violations: List<String>,
+)
+
+fun skipKotlinStringLiteral(source: String, index: Int): Int {
+    if (index >= source.length) return index
+    return when (source[index]) {
+        '"' -> {
+            if (source.startsWith("\"\"\"", index)) {
+                val end = source.indexOf("\"\"\"", index + 3)
+                if (end < 0) source.length else end + 3
+            } else {
+                var i = index + 1
+                while (i < source.length) {
+                    when (source[i]) {
+                        '\\' -> i += 2
+                        '"' -> return i + 1
+                        else -> i++
+                    }
+                }
+                source.length
+            }
+        }
+        '\'' -> {
+            var i = index + 1
+            while (i < source.length) {
+                when (source[i]) {
+                    '\\' -> i += 2
+                    '\'' -> return i + 1
+                    else -> i++
+                }
+            }
+            source.length
+        }
+        else -> index
+    }
+}
+
+fun matchingDelimiter(source: String, openIndex: Int, open: Char, close: Char): Int {
+    var depth = 0
+    var i = openIndex
+    while (i < source.length) {
+        val skipped = skipKotlinStringLiteral(source, i)
+        if (skipped != i) {
+            i = skipped
+            continue
+        }
+        when (source[i]) {
+            open -> depth++
+            close -> {
+                depth--
+                if (depth == 0) return i
+            }
+        }
+        i++
+    }
+    return -1
+}
+
+fun phoneBackLadderBodyRange(stripped: String): IntRange? {
+    val match = Regex("""fun\s+PhoneBackLadder\b""").find(stripped) ?: return null
+    var i = match.range.last + 1
+    while (i < stripped.length && stripped[i].isWhitespace()) i++
+    if (i >= stripped.length || stripped[i] != '(') return null
+    val closeParams = matchingDelimiter(stripped, i, '(', ')')
+    if (closeParams < 0) return null
+    i = closeParams + 1
+    while (i < stripped.length && stripped[i].isWhitespace()) i++
+    if (i < stripped.length && stripped[i] == ':') {
+        while (i < stripped.length) {
+            val skipped = skipKotlinStringLiteral(stripped, i)
+            if (skipped != i) {
+                i = skipped
+                continue
+            }
+            if (stripped[i] == '{') break
+            i++
+        }
+    }
+    while (i < stripped.length && stripped[i].isWhitespace()) i++
+    if (i >= stripped.length || stripped[i] != '{') return null
+    val bodyOpen = i
+    val bodyClose = matchingDelimiter(stripped, bodyOpen, '{', '}')
+    if (bodyClose < 0) return null
+    return bodyOpen..bodyClose
+}
+
+fun braceDepthAt(source: String, bodyOpen: Int, index: Int): Int {
+    var depth = 0
+    var i = bodyOpen
+    while (i < index) {
+        val skipped = skipKotlinStringLiteral(source, i)
+        if (skipped != i) {
+            i = skipped
+            continue
+        }
+        when (source[i]) {
+            '{' -> depth++
+            '}' -> depth--
+        }
+        i++
+    }
+    return depth
+}
+
+fun argumentListHasEnabled(stripped: String, parenIndex: Int): Boolean {
+    val close = matchingDelimiter(stripped, parenIndex, '(', ')')
+    if (close < 0) return false
+    val args = stripped.substring(parenIndex + 1, close)
+    return Regex("""enabled\s*=""").containsMatchIn(args)
+}
+
+fun phoneBackHandlerDoctrineReport(
+    mainSources: Map<String, String>,
+    moduleSources: Map<String, String>,
+): PhoneBackHandlerDoctrineReport {
+    val violations = mutableListOf<String>()
+    var callSiteCount = 0
+    val callSiteRegex = Regex("""\b(?:Predictive)?BackHandler\s*\(""")
+    mainSources.forEach { (path, text) ->
+        val stripped = stripKotlinComments(text)
+        val sites = callSiteRegex.findAll(stripped).toList()
+        callSiteCount += sites.size
+        val isLadderFile = path.endsWith("PhoneBackLadder.kt")
+        val body = if (isLadderFile) phoneBackLadderBodyRange(stripped) else null
+        if (isLadderFile && body != null) {
+            val bodyText = stripped.substring(body)
+            if (Regex("""\b(if|when|for|while)\b""").containsMatchIn(bodyText)) {
+                violations += "PhoneBackLadder body contains control keyword"
+            }
+        }
+        sites.forEach { site ->
+            val index = site.range.first
+            val parenIndex = site.range.last
+            if (!argumentListHasEnabled(stripped, parenIndex)) {
+                violations += "missing enabled = at $path:$index"
+            }
+            if (!isLadderFile) {
+                violations += "handler outside PhoneBackLadder.kt: $path"
+            } else if (body == null) {
+                violations += "PhoneBackLadder body not found: $path"
+            } else if (index !in body) {
+                violations += "handler outside PhoneBackLadder body: $path"
+            } else {
+                val depth = braceDepthAt(stripped, body.first, index)
+                if (depth != 1) {
+                    violations += "nested handler at $path:$index depth=$depth"
+                }
+            }
+        }
+    }
+    if (callSiteCount < 4) {
+        violations += "callSites=$callSiteCount < 4"
+    }
+    moduleSources.forEach { (path, text) ->
+        val stripped = stripKotlinComments(text)
+        if (stripped.contains("onBackPressed") || stripped.contains("KEYCODE_BACK")) {
+            violations += "legacy back API in $path"
+        }
+    }
+    return PhoneBackHandlerDoctrineReport(callSiteCount, violations)
+}
+
+fun walkPhoneKotlin(root: File): Map<String, String> {
+    if (!root.exists()) return emptyMap()
+    return root.walkTopDown()
+        .filter { it.isFile && it.extension == "kt" }
+        .filterNot { file -> file.toPath().any { part -> part.toString() == "build" } }
+        .associate { it.relativeTo(rootProject.projectDir).path to it.readText() }
 }
 
 tasks.register("checkPrivacyDeps") {
@@ -882,6 +1067,202 @@ tasks.register("checkPhoneShellInsetDoctrine") {
     }
 }
 
+tasks.register("checkPhoneBackHandlerDoctrine") {
+    group = "verification"
+    description = "Fails if phone back-handler doctrine is violated."
+    doLast {
+        val mainSources = walkPhoneKotlin(rootProject.file("formfactor/phone/src/main"))
+        val moduleSources = walkPhoneKotlin(rootProject.file("formfactor/phone/src"))
+        val report = phoneBackHandlerDoctrineReport(mainSources, moduleSources)
+        logger.lifecycle("phone back-handler doctrine: callSites=${report.callSiteCount}")
+        if (report.violations.isNotEmpty()) {
+            throw GradleException(
+                "Phone back-handler doctrine guard failed:\n${report.violations.joinToString("\n")}",
+            )
+        }
+    }
+}
+
+tasks.register("phoneBackHandlerDoctrineGuardSelfTest") {
+    group = "verification"
+    description = "Exercises phone back-handler doctrine predicates against synthetic inputs."
+    doLast {
+        val ladderPath =
+            "formfactor/phone/src/main/kotlin/app/solstone/observer/formfactor/phone/PhoneBackLadder.kt"
+        val goodLadder = """
+            @Composable
+            fun PhoneBackLadder(
+                paneStates: PaneStates,
+                detailStack: PhoneRouteStack,
+                widthClass: WidthClass,
+                onClosePane: (PhonePane) -> Unit,
+                onPopDetail: () -> Unit,
+            ) {
+                val outcome = resolveBack(paneStates, detailStack, widthClass)
+                PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.SHELF)) { progress ->
+                    progress.collect()
+                    onClosePane(PhonePane.SHELF)
+                }
+                PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.JOURNAL)) { progress ->
+                    progress.collect()
+                    onClosePane(PhonePane.JOURNAL)
+                }
+                PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.STATUS)) { progress ->
+                    progress.collect()
+                    onClosePane(PhonePane.STATUS)
+                }
+                BackHandler(enabled = outcome.popsDetail) {
+                    onPopDetail()
+                }
+            }
+        """.trimIndent()
+        val good = phoneBackHandlerDoctrineReport(mapOf(ladderPath to goodLadder), emptyMap())
+        check(good.violations.isEmpty())
+        check(good.callSiteCount == 4)
+
+        val missingEnabled = goodLadder.replace(
+            "BackHandler(enabled = outcome.popsDetail)",
+            "BackHandler()",
+        )
+        check(
+            phoneBackHandlerDoctrineReport(mapOf(ladderPath to missingEnabled), emptyMap())
+                .violations.any { it.startsWith("missing enabled =") },
+        )
+
+        val ifWrapped = """
+            fun PhoneBackLadder() {
+                PredictiveBackHandler(enabled = true) {}
+                PredictiveBackHandler(enabled = true) {}
+                PredictiveBackHandler(enabled = true) {}
+                if (x) {
+                    BackHandler(enabled = true) {}
+                }
+            }
+        """.trimIndent()
+        val ifReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to ifWrapped), emptyMap())
+        check(ifReport.violations.any { it.contains("control keyword") })
+        check(ifReport.violations.any { it.contains("nested handler") })
+
+        val secondFile = phoneBackHandlerDoctrineReport(
+            mapOf(
+                ladderPath to goodLadder,
+                "Other.kt" to "BackHandler(enabled = true) {}",
+            ),
+            emptyMap(),
+        )
+        check(secondFile.violations.any { it.startsWith("handler outside PhoneBackLadder.kt:") })
+
+        val empty = phoneBackHandlerDoctrineReport(emptyMap(), emptyMap())
+        check(empty.callSiteCount == 0)
+        check(empty.violations.any { it.startsWith("callSites=0 < 4") })
+
+        val commented = goodLadder + "\n// BackHandler(enabled = true) {}\n"
+        val commentedReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to commented), emptyMap())
+        check(commentedReport.violations.isEmpty())
+        check(commentedReport.callSiteCount == 4)
+
+        val fixturePath = "formfactor/phone/src/test/resources/phone-back-handler-doctrine-violation.txt"
+        val fixture = rootProject.file(fixturePath)
+        check(fixture.exists()) { "missing phone-back-handler-doctrine fixture: $fixturePath" }
+        val fixtureText = fixture.readText()
+        val wrapped = """
+            fun PhoneBackLadder() {
+                PredictiveBackHandler(enabled = true) {}
+                PredictiveBackHandler(enabled = true) {}
+                PredictiveBackHandler(enabled = true) {}
+                BackHandler(enabled = true) {}
+            $fixtureText
+            }
+        """.trimIndent()
+        val conditionalReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to wrapped),
+            emptyMap(),
+        )
+        check(conditionalReport.callSiteCount >= 4)
+        check(conditionalReport.violations.none { it.startsWith("handler outside PhoneBackLadder.kt:") })
+        check(
+            conditionalReport.violations.any { it.contains("control keyword") } &&
+                conditionalReport.violations.any { it.contains("nested handler") },
+        )
+        val locationReport = phoneBackHandlerDoctrineReport(
+            mapOf("PaneContent.kt" to fixtureText),
+            emptyMap(),
+        )
+        check(locationReport.violations.any { it.startsWith("handler outside PhoneBackLadder.kt:") })
+
+        val legacy = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            mapOf("Foo.kt" to "override fun onBackPressed() {}"),
+        )
+        check(legacy.violations.any { it.startsWith("legacy back API in ") })
+
+        val commentedLegacy = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            mapOf("Foo.kt" to "// onBackPressed\n// KEYCODE_BACK"),
+        )
+        check(commentedLegacy.violations.none { it.startsWith("legacy back API in ") })
+
+        val runNested = goodLadder.replace(
+            "    BackHandler(enabled = outcome.popsDetail) {\n        onPopDetail()\n    }\n}",
+            "    BackHandler(enabled = outcome.popsDetail) {\n        onPopDetail()\n    }\n    run { BackHandler(enabled = true) {} }\n}",
+        )
+        val runReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to runNested), emptyMap())
+        check(runReport.callSiteCount == 5)
+        check(runReport.violations.any { it.contains("nested handler") && it.contains("depth=2") })
+
+        val sibling = goodLadder + "\nfun Other() { BackHandler(enabled = true) {} }\n"
+        val siblingReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to sibling), emptyMap())
+        check(siblingReport.violations.any { it.startsWith("handler outside PhoneBackLadder body:") })
+    }
+}
+
+tasks.register("checkNoNavigationLibrary") {
+    group = "verification"
+    description = "Fails if a Navigation Compose or Navigation3 dependency is resolved."
+
+    doLast {
+        val violations = mutableListOf<String>()
+        allprojects.forEach { project ->
+            project.configurations
+                .filter { it.isCanBeResolved }
+                .forEach { configuration ->
+                    runCatching {
+                        configuration.incoming.resolutionResult.allComponents.forEach { component ->
+                            val module = component.id as? ModuleComponentIdentifier
+                            if (module != null) {
+                                val denied = deniedNavigationCoordinate(module.group, module.module)
+                                if (denied != null) {
+                                    violations += "coordinate ${module.group}:${module.module}:${module.version} entered through ${project.path}:${configuration.name}"
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException("Navigation library guard failed:\n${violations.distinct().sorted().joinToString("\n")}")
+        }
+    }
+}
+
+tasks.register("navigationLibraryGuardSelfTest") {
+    group = "verification"
+    description = "Exercises navigation-library coordinate matching against synthetic coordinates."
+    doLast {
+        check(deniedNavigationCoordinate("androidx.navigation", "navigation-compose") != null)
+        check(deniedNavigationCoordinate("androidx.navigation3", "navigation3-ui") != null)
+        check(deniedNavigationCoordinate("androidx.navigation.compose", "navigation-compose") != null)
+        check(deniedNavigationCoordinate("androidx.navigationevent", "navigationevent") == null)
+        check(deniedNavigationCoordinate("androidx.navigationevent", "navigationevent-android") == null)
+        check(deniedNavigationCoordinate("androidx.navigationevent", "navigationevent-compose") == null)
+        check(deniedNavigationCoordinate("androidx.navigationevent", "navigationevent-compose-android") == null)
+        check(
+            deniedNavigationCoordinate("androidx.compose.material3.adaptive", "adaptive-navigation") == null,
+        )
+        check(deniedNavigationCoordinate("androidx.compose.material3.adaptive", "adaptive") == null)
+    }
+}
+
 tasks.named("check") {
     dependsOn(
         "checkPrivacyDeps",
@@ -899,6 +1280,10 @@ tasks.named("check") {
         "phoneShellInsetDoctrineGuardSelfTest",
         "checkForbiddenThemeApis",
         "checkPhoneShellInsetDoctrine",
+        "checkPhoneBackHandlerDoctrine",
+        "phoneBackHandlerDoctrineGuardSelfTest",
+        "checkNoNavigationLibrary",
+        "navigationLibraryGuardSelfTest",
     )
 }
 
@@ -1071,6 +1456,32 @@ fun Project.registerAppLinksManifestCheck() {
     }
 }
 
+fun Project.registerOnBackInvokedCallbackManifestCheck() {
+    tasks.register("checkRealDebugOnBackInvokedCallbackManifest") {
+        group = "verification"
+        description = "Checks the realDebug merged manifest for enableOnBackInvokedCallback."
+        dependsOn("processRealDebugManifest")
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val application = Regex("""<application\b[^>]*>""", setOf(RegexOption.DOT_MATCHES_ALL))
+                .find(manifest.readText())
+                ?.value
+                .orEmpty()
+            if (!application.contains("""android:enableOnBackInvokedCallback="true"""")) {
+                throw GradleException(
+                    "${project.path} realDebug OnBackInvokedCallback manifest check failed:\nmissing android:enableOnBackInvokedCallback=\"true\" on <application>",
+                )
+            }
+        }
+    }
+}
+
 project(":apps:watch") {
     registerMicrophoneManifestCheck()
     registerLauncherHomeManifestCheck(requireHome = false)
@@ -1081,6 +1492,7 @@ project(":apps:phone") {
     registerLauncherHomeManifestCheck(requireHome = false)
     registerAppLinksManifestCheck()
     registerPhoneLauncherCountManifestCheck()
+    registerOnBackInvokedCallbackManifestCheck()
 }
 
 project(":apps:glasses") {

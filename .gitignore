@@ -23,5 +23,6 @@ artifacts/
 *.key
 
 /hostapd_*.conf
+/netsim.ini
 /android-*/
 
