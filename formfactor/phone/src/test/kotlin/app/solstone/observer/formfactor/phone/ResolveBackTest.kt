@@ -64,10 +64,10 @@ class ResolveBackTest {
     }
 
     @Test
-    fun compactDepthOneNoPaneFallsThrough() {
+    fun compactDepthOneNoPanePopsDetail() {
         val stack = PhoneRouteStack.Empty.showInDetail(PhoneRoute.RouteA)
         assertEquals(
-            BackOutcome.FallThroughToSystem,
+            BackOutcome.PopDetail,
             resolveBack(PaneStates.Empty, stack, WidthClass.COMPACT),
         )
     }

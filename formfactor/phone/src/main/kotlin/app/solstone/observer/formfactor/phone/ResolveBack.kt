@@ -11,7 +11,7 @@ sealed interface BackOutcome {
 
 /**
  * Three-rung back decision: close an open pane (SHELF, else JOURNAL, else STATUS),
- * else pop a detail stack of depth 2 or more, else fall through to the system.
+ * else pop a detail stack of depth 1 or more, else fall through to the system.
  *
  * [widthClass] is accepted so a later tablet layout can branch without changing
  * this signature. The current resolver does not branch on it.
@@ -24,7 +24,7 @@ fun resolveBack(
 ): BackOutcome {
     val pane = PhonePane.entries.firstOrNull { paneStates.isOpen(it) }
     if (pane != null) return BackOutcome.ClosePane(pane)
-    if (detailStack.depth >= 2) return BackOutcome.PopDetail
+    if (detailStack.depth >= 1) return BackOutcome.PopDetail
     return BackOutcome.FallThroughToSystem
 }
 

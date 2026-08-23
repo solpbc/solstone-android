@@ -32,13 +32,14 @@ class PhoneRouteStackTest {
     }
 
     @Test
-    fun threeDifferentShowInDetailThenResolveBackFallsThrough() {
+    fun threeDifferentShowInDetailThenResolveBackPopsDetail() {
         val stack = PhoneRouteStack.Empty
             .showInDetail(PhoneRoute.RouteA)
             .showInDetail(PhoneRoute.RouteB)
             .showInDetail(PhoneRoute.RouteC)
+        assertEquals(1, stack.depth)
         assertEquals(
-            BackOutcome.FallThroughToSystem,
+            BackOutcome.PopDetail,
             resolveBack(PaneStates.Empty, stack, WidthClass.COMPACT),
         )
     }
@@ -72,10 +73,10 @@ class PhoneRouteStackTest {
     }
 
     @Test
-    fun popRungDoesNotFireAtDepthOne() {
+    fun popRungFiresAtDepthOne() {
         val stack = PhoneRouteStack.Empty.showInDetail(PhoneRoute.RouteA)
         assertEquals(
-            BackOutcome.FallThroughToSystem,
+            BackOutcome.PopDetail,
             resolveBack(PaneStates.Empty, stack, WidthClass.COMPACT),
         )
     }
