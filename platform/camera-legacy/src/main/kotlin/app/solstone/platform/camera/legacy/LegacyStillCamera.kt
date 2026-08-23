@@ -18,7 +18,11 @@ class LegacyStillCamera(context: Context) : StillCamera {
         var camera: Camera? = null
         var texture: SurfaceTexture? = null
         return try {
-            camera = Camera.open(CAMERA_ID)
+            camera = openRearCamera(
+                Camera.getNumberOfCameras(),
+                { index -> readFacing(index) },
+                { index -> Camera.open(index) },
+            ) ?: return StillCaptureResult.Failure(IllegalStateException("no outward camera available"))
             val parameters = camera.parameters
             chooseSmallest(parameters.supportedPictureSizes)?.let { size ->
                 parameters.setPictureSize(size.width, size.height)
@@ -68,11 +72,20 @@ class LegacyStillCamera(context: Context) : StillCamera {
         }
     }
 
+    private fun readFacing(index: Int): Int? {
+        return try {
+            val info = Camera.CameraInfo()
+            Camera.getCameraInfo(index, info)
+            info.facing
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
     private fun chooseSmallest(sizes: List<Camera.Size>?): Camera.Size? =
         sizes?.minByOrNull { size -> size.width.toLong() * size.height.toLong() }
 
     private companion object {
-        const val CAMERA_ID = 0
         const val SURFACE_TEXTURE_NAME = 110
         const val JPEG_QUALITY = 80
         const val PREVIEW_WARMUP_MS = 800L

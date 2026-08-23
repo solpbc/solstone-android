@@ -5,6 +5,7 @@ package app.solstone.platform.camera.camera2
 
 import android.content.Context
 import android.graphics.ImageFormat
+import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -30,7 +31,7 @@ class Camera2StillCamera(context: Context) : StillCamera {
         var device: CameraDevice? = null
         var session: CameraCaptureSession? = null
         return try {
-            val cameraId = chooseCameraId(manager) ?: return StillCaptureResult.Failure(IllegalStateException("no camera available"))
+            val cameraId = chooseCameraId(manager) ?: return StillCaptureResult.Failure(IllegalStateException("no outward camera available"))
             val size = chooseJpegSize(manager, cameraId) ?: return StillCaptureResult.Failure(IllegalStateException("no jpeg size available"))
             reader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, MAX_IMAGES)
             thread = HandlerThread("solstone-camera2-still").also { it.start() }
@@ -130,11 +131,15 @@ class Camera2StillCamera(context: Context) : StillCamera {
     }
 
     private fun chooseCameraId(manager: CameraManager): String? {
-        val ids = manager.cameraIdList
-        return ids.firstOrNull { id ->
-            manager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: ids.firstOrNull()
+        return chooseRearCameraId(manager.cameraIdList.toList()) { id ->
+            try {
+                manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
+            } catch (_: CameraAccessException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
     }
 
     private fun chooseJpegSize(manager: CameraManager, cameraId: String): Size? {
