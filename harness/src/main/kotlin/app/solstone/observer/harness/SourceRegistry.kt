@@ -29,6 +29,7 @@ class SourceRegistry(
     private val controller: HarnessController,
     registrations: List<SourceRegistration>,
     private val main: MainPoster,
+    private val wishStore: SourceWishStore,
 ) : SourcesReader {
     private val lock = Any()
     private val wishes = LinkedHashMap<String, SourceWish>()
@@ -41,7 +42,8 @@ class SourceRegistry(
         require(registrations.all { it.sourceId.isNotBlank() }) { "sourceId must be non-blank" }
         val ids = registrations.map { it.sourceId }
         require(ids.size == ids.toSet().size) { "sourceId values must be unique" }
-        registrations.forEach { wishes[it.sourceId] = SourceWish.On }
+        val persisted = wishStore.loadAll()
+        registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.On }
         bound = registrations.map { BoundSource(it.sourceId, it.engine) }
         engines = bound
     }
@@ -55,6 +57,7 @@ class SourceRegistry(
         val wrapper = synchronized(lock) {
             if (sourceId !in wishes) return SourceToggleResult.UnknownSource
             wishes[sourceId] = wish
+            wishStore.saveAll(wishes.toMap())
             bound.first { it.sourceId == sourceId }
         }
         val result = wrapper.actuate()

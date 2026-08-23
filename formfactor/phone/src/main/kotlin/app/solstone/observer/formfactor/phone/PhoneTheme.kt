@@ -8,6 +8,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
@@ -23,7 +24,9 @@ fun PhoneTheme(content: @Composable () -> Unit) {
 fun PhoneTheme(variant: ThemeVariant, content: @Composable () -> Unit) {
     val scheme = SolstoneColorSchemes.scheme(variant)
     ApplySystemBarPolarity(variant)
-    MaterialTheme(colorScheme = scheme, content = content)
+    CompositionLocalProvider(LocalStatusOnGreen provides statusOnGreen(variant)) {
+        MaterialTheme(colorScheme = scheme, content = content)
+    }
 }
 
 @Composable

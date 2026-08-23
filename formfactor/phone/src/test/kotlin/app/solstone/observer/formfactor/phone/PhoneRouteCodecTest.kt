@@ -24,6 +24,20 @@ class PhoneRouteCodecTest {
     }
 
     @Test
+    fun sourceDetailWithDelimiterRoundTrips() {
+        val route = PhoneRoute.SourceDetail("a/b/c")
+        assertEquals(route, decodePhoneRoute(encodePhoneRoute(route)))
+        assertEquals("sd/a/b/c", encodePhoneRoute(route))
+    }
+
+    @Test
+    fun malformedSourceDetailDecodesToNull() {
+        assertNull(decodePhoneRoute("sd/"))
+        assertNull(decodePhoneRoute("sd"))
+        assertNull(decodePhoneRoute("x/y"))
+    }
+
+    @Test
     fun decodeGarbageReturnsNull() {
         assertNull(decodePhoneRoute("not-a-route"))
     }

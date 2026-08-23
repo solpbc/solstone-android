@@ -57,6 +57,24 @@ object SolstoneColors {
     /** Dark onError and errorContainer. */
     val errorContainerDark = Color(0xFF601410)
 
+    /** Status-on green, light standard. */
+    val statusOnGreenLightStandard = Color(0xFF1C7440)
+
+    /** Status-on green, light medium. */
+    val statusOnGreenLightMedium = Color(0xFF187444)
+
+    /** Status-on green, light high. */
+    val statusOnGreenLightHigh = Color(0xFF147448)
+
+    /** Status-on green, dark standard. */
+    val statusOnGreenDarkStandard = Color(0xFF14A41C)
+
+    /** Status-on green, dark medium. */
+    val statusOnGreenDarkMedium = Color(0xFF18A414)
+
+    /** Status-on green, dark high. */
+    val statusOnGreenDarkHigh = Color(0xFF00A434)
+
     val palette: Set<Color>
         get() = setOf(
             solOrange,
@@ -74,5 +92,11 @@ object SolstoneColors {
             errorPink,
             errorContainerLight,
             errorContainerDark,
+            statusOnGreenLightStandard,
+            statusOnGreenLightMedium,
+            statusOnGreenLightHigh,
+            statusOnGreenDarkStandard,
+            statusOnGreenDarkMedium,
+            statusOnGreenDarkHigh,
         )
 }

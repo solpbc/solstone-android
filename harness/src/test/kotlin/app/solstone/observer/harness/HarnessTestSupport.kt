@@ -377,4 +377,5 @@ internal fun sourceRegistry(
     f: Fixture = fixture(),
     registrations: List<SourceRegistration>,
     main: MainPoster = MainPoster { it() },
-): SourceRegistry = SourceRegistry(f.controller, registrations, main)
+    wishStore: SourceWishStore = InMemorySourceWishStore(),
+): SourceRegistry = SourceRegistry(f.controller, registrations, main, wishStore)

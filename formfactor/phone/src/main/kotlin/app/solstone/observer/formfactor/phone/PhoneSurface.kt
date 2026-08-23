@@ -22,4 +22,5 @@ fun phoneSurfaces(): List<PhoneSurface> = listOf(
     PhoneRoute.RouteB,
     PhoneRoute.RouteC,
     PhoneRoute.RouteCChild,
+    PhoneRoute.SourceDetail("audio"),
 )

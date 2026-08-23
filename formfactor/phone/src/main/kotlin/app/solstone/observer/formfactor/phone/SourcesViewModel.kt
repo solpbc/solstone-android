@@ -28,7 +28,14 @@ class SourcesViewModel(
     }
 
     fun refresh() {
-        asyncLoad.load({ sources.snapshot() }) { sourcesState = it }
+        asyncLoad.load({ sources.snapshot() }) { incoming ->
+            val current = sourcesState
+            sourcesState = if (incoming is LoadState.Loading && current is LoadState.Loaded) {
+                current
+            } else {
+                incoming
+            }
+        }
     }
 
     fun setWish(sourceId: String, wish: SourceWish): SourceToggleResult =

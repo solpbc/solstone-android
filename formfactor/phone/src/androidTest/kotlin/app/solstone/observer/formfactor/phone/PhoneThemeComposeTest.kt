@@ -24,7 +24,7 @@ class PhoneThemeComposeTest {
     fun phoneShellAppliesOneOfSixSolstoneSchemes() {
         var captured: ColorScheme? = null
         composeRule.setContent {
-            PhoneShell {
+            PhoneShell { _ ->
                 captured = MaterialTheme.colorScheme
                 Text("probe")
             }

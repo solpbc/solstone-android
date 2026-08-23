@@ -20,6 +20,7 @@ import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
+import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
@@ -115,6 +116,7 @@ class ObserverAppContainer(
         controller = controller,
         registrations = captureSetup.engines.map { SourceRegistration(it.sourceId, it.engine) },
         main = { task -> mainHandler.post { task() } },
+        wishStore = FileSourceWishStore(context.filesDir.resolve("source-wishes")),
     )
     @Volatile override var recoveryCompleted: Boolean = false
         private set

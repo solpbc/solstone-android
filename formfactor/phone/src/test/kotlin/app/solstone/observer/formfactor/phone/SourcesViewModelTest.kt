@@ -17,6 +17,7 @@ import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.harness.SourcesSubscription
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -33,6 +34,26 @@ class SourcesViewModelTest {
         val failed = assertIs<LoadState.Failed>(viewModel.sourcesState)
         assertSame(boom, failed.error)
         assertTrue(viewModel.sourcesState !is LoadState.Loaded)
+    }
+
+    @Test
+    fun setWishRefreshDoesNotBlankLoadedTiles() {
+        val model = SourcesReadModel(
+            observer = ObserverStatus(SourceState.OFF, ReasonCode.NONE),
+            sources = emptyList(),
+        )
+        val reader = NotifyingSourcesReader(model)
+        val viewModel = SourcesViewModel(
+            sources = reader,
+            asyncLoad = immediateAsyncLoad(),
+        )
+        val loaded = assertIs<LoadState.Loaded<SourcesReadModel>>(viewModel.sourcesState)
+        viewModel.setWish("audio", SourceWish.Off)
+        assertIs<LoadState.Loaded<SourcesReadModel>>(viewModel.sourcesState)
+        assertTrue(viewModel.sourcesState is LoadState.Loaded)
+        assertTrue(viewModel.sourcesState !is LoadState.Loading)
+        val after = assertIs<LoadState.Loaded<SourcesReadModel>>(viewModel.sourcesState)
+        assertEquals(loaded.value, after.value)
     }
 
     @Test
@@ -68,4 +89,22 @@ private class FakeSourcesReader(
 
     override fun subscribe(listener: SourcesChangeListener): SourcesSubscription =
         SourcesSubscription {}
+}
+
+private class NotifyingSourcesReader(
+    private val model: SourcesReadModel,
+) : SourcesReader {
+    private val listeners = mutableListOf<SourcesChangeListener>()
+
+    override fun snapshot(): SourcesReadModel = model
+
+    override fun setWish(sourceId: String, wish: SourceWish): SourceToggleResult {
+        listeners.forEach { it.onSourcesChanged() }
+        return SourceToggleResult.Applied
+    }
+
+    override fun subscribe(listener: SourcesChangeListener): SourcesSubscription {
+        listeners.add(listener)
+        return SourcesSubscription { listeners.remove(listener) }
+    }
 }

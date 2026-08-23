@@ -25,8 +25,8 @@ class PhoneSurfaceTest {
     }
 
     @Test
-    fun surfaceCountIsEight() {
-        assertEquals(8, phoneSurfaces().size)
+    fun surfaceCountIsNine() {
+        assertEquals(9, phoneSurfaces().size)
     }
 
     @Test

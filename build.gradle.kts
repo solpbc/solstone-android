@@ -313,7 +313,9 @@ fun forbiddenThemeApiViolations(source: String): List<String> {
     ).forEach { marker ->
         if (stripped.contains(marker)) violations += marker
     }
-    if (stripped.contains(".state.")) violations += "state package"
+    if (Regex("""(?m)^\s*(?:import|package)\s+[\w.]*\.state\.""").containsMatchIn(stripped)) {
+        violations += "state package"
+    }
     if (stripped.contains(".nav.")) violations += "nav package"
     return violations.distinct()
 }
@@ -336,15 +338,33 @@ fun colorLiteralViolations(source: String, fileName: String): List<String> {
 
 fun phoneShellInsetDoctrineViolations(source: String): List<String> {
     val stripped = stripKotlinComments(source)
-    val tokens = listOf(
-        "Modifier.windowInsetsPadding(WindowInsets.safeDrawing)",
-        "contentWindowInsets = WindowInsets(0, 0, 0, 0)",
-        "Modifier.padding(paddingValues)",
-    )
-    return tokens.mapNotNull { token ->
-        val count = Regex.fromLiteral(token).findAll(stripped).count()
-        if (count == 1) null else "$token count=$count"
+    val violations = mutableListOf<String>()
+    fun count(token: String) = Regex.fromLiteral(token).findAll(stripped).count()
+    if (count("Modifier.windowInsetsPadding(WindowInsets.safeDrawing)") != 0) {
+        violations += "pre-1D host safeDrawing pad"
     }
+    if (count("contentWindowInsets = WindowInsets(0, 0, 0, 0)") != 0) {
+        violations += "zero contentWindowInsets"
+    }
+    if (count("Modifier.padding(paddingValues)") != 0) {
+        violations += "host paddingValues"
+    }
+    if (stripped.contains("statusBarsPadding()")) {
+        violations += "statusBarsPadding()"
+    }
+    if (count("content(paddingValues)") != 1) {
+        violations += "content(paddingValues) count=${count("content(paddingValues)")}"
+    }
+    if (count("WindowInsets.safeGestures") != 1) {
+        violations += "WindowInsets.safeGestures count=${count("WindowInsets.safeGestures")}"
+    }
+    if (count("WindowInsets.safeDrawing") != 1) {
+        violations += "WindowInsets.safeDrawing count=${count("WindowInsets.safeDrawing")}"
+    }
+    if (!stripped.contains("Modifier.fillMaxSize()")) {
+        violations += "missing fillMaxSize"
+    }
+    return violations
 }
 
 data class PhoneBackHandlerDoctrineReport(
@@ -938,6 +958,16 @@ tasks.register("forbiddenThemeApiGuardSelfTest") {
                 "import app.solstone.observer.formfactor.phone.PhoneShell",
             ).isEmpty(),
         )
+        check(
+            forbiddenThemeApiViolations(
+                "package app.solstone.observer.formfactor.phone.state.models",
+            ).isNotEmpty(),
+        )
+        check(
+            forbiddenThemeApiViolations(
+                "val label = status.state.name",
+            ).isEmpty(),
+        )
     }
 }
 
@@ -981,28 +1011,27 @@ tasks.register("phoneShellInsetDoctrineGuardSelfTest") {
     doLast {
         val good = """
             Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                contentWindowInsets = WindowInsets.safeDrawing
+                    .union(WindowInsets.safeGestures)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            ) { paddingValues ->
+                Box(Modifier.fillMaxSize()) { content(paddingValues) }
+            }
+        """.trimIndent()
+        check(phoneShellInsetDoctrineViolations(good).isEmpty())
+        val pre1d = """
+            Scaffold(
                 modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
             ) { paddingValues ->
                 Box(Modifier.padding(paddingValues)) { }
             }
         """.trimIndent()
-        check(phoneShellInsetDoctrineViolations(good).isEmpty())
-        check(
-            phoneShellInsetDoctrineViolations(
-                good.replace("Modifier.windowInsetsPadding(WindowInsets.safeDrawing)", ""),
-            ).isNotEmpty(),
-        )
-        check(
-            phoneShellInsetDoctrineViolations(
-                good + "\nModifier.windowInsetsPadding(WindowInsets.safeDrawing)",
-            ).isNotEmpty(),
-        )
-        check(
-            phoneShellInsetDoctrineViolations(
-                good + "\n// Modifier.windowInsetsPadding(WindowInsets.safeDrawing)",
-            ).isEmpty(),
-        )
+        check(phoneShellInsetDoctrineViolations(pre1d).isNotEmpty())
+        check(phoneShellInsetDoctrineViolations(good + "\nstatusBarsPadding()").isNotEmpty())
+        check(phoneShellInsetDoctrineViolations("").isNotEmpty())
+        check(phoneShellInsetDoctrineViolations(good + "\n// statusBarsPadding()").isEmpty())
     }
 }
 
@@ -1040,6 +1069,12 @@ tasks.register("checkForbiddenThemeApis") {
                         stripKotlinComments(text).contains("MINIMUM_TOUCH_TARGET_DP")
                     ) {
                         violations += "$relative: MINIMUM_TOUCH_TARGET_DP outside PhoneMetrics"
+                    }
+                    if (
+                        relative.startsWith("formfactor/phone/src/") &&
+                        stripKotlinComments(text).contains("announceForAccessibility")
+                    ) {
+                        violations += "$relative: announceForAccessibility"
                     }
                 }
         }
