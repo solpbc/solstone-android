@@ -28,6 +28,16 @@ class PaneStatesTest {
     }
 
     @Test
+    fun everyPaneRoundTrips() {
+        val panes = PhonePane.entries
+        assertTrue(panes.isNotEmpty())
+        assertEquals(phoneSurfaces().count { it is PhonePane }, panes.size)
+        panes.forEach { pane ->
+            assertEquals(pane, decodePhonePane(encodePhonePane(pane)))
+        }
+    }
+
+    @Test
     fun encodeDecodeRoundTripsOpenPanes() {
         val states = PaneStates.Empty.open(PhonePane.STATUS).open(PhonePane.SHELF)
         assertEquals(listOf("pane-shelf", "pane-status"), encodePaneStates(states))

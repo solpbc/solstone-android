@@ -11,7 +11,17 @@ class PhoneSurfaceTest {
     @Test
     fun paneTitlesAreUnique() {
         val titles = phoneSurfaces().map { it.paneTitle }
+        assertTrue(titles.all { it.isNotBlank() })
         assertEquals(titles.size, titles.distinct().size)
+        assertEquals(phoneSurfaces().size, titles.distinct().size)
+    }
+
+    @Test
+    fun headingKeysAreUnique() {
+        val keys = phoneSurfaces().map { it.headingKey }
+        assertTrue(keys.all { it.isNotBlank() })
+        assertEquals(keys.size, keys.distinct().size)
+        assertEquals(phoneSurfaces().size, keys.distinct().size)
     }
 
     @Test

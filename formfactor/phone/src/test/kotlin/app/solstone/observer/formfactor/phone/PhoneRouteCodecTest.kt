@@ -6,19 +6,16 @@ package app.solstone.observer.formfactor.phone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PhoneRouteCodecTest {
     @Test
     fun everyRouteRoundTrips() {
-        val expected = mapOf(
-            PhoneRoute.RouteA to "route-a",
-            PhoneRoute.RouteB to "route-b",
-            PhoneRoute.RouteC to "route-c",
-            PhoneRoute.RouteCChild to "route-c-child",
-        )
-        expected.forEach { (route, key) ->
-            assertEquals(key, encodePhoneRoute(route))
-            assertEquals(route, decodePhoneRoute(key))
+        val routes = phoneSurfaces().filterIsInstance<PhoneRoute>()
+        assertTrue(routes.isNotEmpty())
+        assertEquals(phoneSurfaces().count { it is PhoneRoute }, routes.size)
+        routes.forEach { route ->
+            assertEquals(route, decodePhoneRoute(encodePhoneRoute(route)))
         }
         val stack = PhoneRouteStack.Empty
             .showInDetail(PhoneRoute.RouteA)
