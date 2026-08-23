@@ -29,7 +29,11 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         cameraLock = cameraLock,
     )
     return CaptureSetup(
-        engines = listOf(audio, location, camera),
+        engines = listOf(
+            CapturedEngine(AudioContinuousSourceEngine.SOURCE_ID, audio),
+            CapturedEngine(LocationContinuousSourceEngine.SOURCE_ID, location),
+            CapturedEngine(StillCaptureEngine.SOURCE_ID, camera),
+        ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
                 when (payload.sourceId) {

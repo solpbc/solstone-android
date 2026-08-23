@@ -20,6 +20,8 @@ import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
+import app.solstone.observer.harness.SourceRegistration
+import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
@@ -42,6 +44,7 @@ interface ObserverRuntimeContainer {
     val captureAuthority: VisibleCaptureOwnerRegistry
     val asyncLoad: AsyncLoad
     val flavor: SharedObserverFlavor
+    val sources: SourceRegistry
     val recoveryCompleted: Boolean
     fun rehydrateInBackground()
     fun close()
@@ -108,6 +111,11 @@ class ObserverAppContainer(
     )
 
     override val controller: HarnessController = flavor.controller
+    override val sources = SourceRegistry(
+        controller = controller,
+        registrations = captureSetup.engines.map { SourceRegistration(it.sourceId, it.engine) },
+        main = { task -> mainHandler.post { task() } },
+    )
     @Volatile override var recoveryCompleted: Boolean = false
         private set
     @Volatile private var deferredStartPending: Boolean = false
@@ -168,7 +176,7 @@ class ObserverAppContainer(
             spoolWriter = FileSpoolWriter(spoolDir),
             sealedSink = RoomSealedSegmentSink(database.segmentDao()),
             payloadBytes = captureSetup.payloadBytesProvider,
-            engines = captureSetup.engines,
+            engines = sources.engines,
             nowProvider = System::currentTimeMillis,
             tickIntervalMs = TICK_INTERVAL_MS,
         )
@@ -185,7 +193,7 @@ class ObserverAppContainer(
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
-        val condition = captureSetup.engines.firstOrNull()?.condition()
+        val condition = sources.engines.firstOrNull()?.condition()
         val pipeline = activePipeline
         return SourceRuntimeSnapshot(
             engineRunning = condition?.running == true,

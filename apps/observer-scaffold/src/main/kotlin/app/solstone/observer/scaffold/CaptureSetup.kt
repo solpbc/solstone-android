@@ -6,7 +6,12 @@ package app.solstone.observer.scaffold
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.spool.PayloadBytesProvider
 
+data class CapturedEngine(
+    val sourceId: String,
+    val engine: ContinuousSourceEngine,
+)
+
 data class CaptureSetup(
-    val engines: List<ContinuousSourceEngine>,
+    val engines: List<CapturedEngine>,
     val payloadBytesProvider: PayloadBytesProvider,
 )

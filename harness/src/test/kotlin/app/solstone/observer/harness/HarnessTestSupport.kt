@@ -11,6 +11,9 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.sources.ContinuousSourceEngine
+import app.solstone.core.sources.EmissionSink
+import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
@@ -334,3 +337,44 @@ private fun crockfordEncode(bytes: ByteArray): String {
     }
     return out.toString()
 }
+
+internal class FakeSourceEngine(
+    var conditionValue: SourceCondition = SourceCondition(
+        desiredOn = true,
+        running = false,
+        available = true,
+        needsAttention = false,
+        paused = false,
+    ),
+    var throwOnCondition: Throwable? = null,
+    var throwOnStart: Throwable? = null,
+    var throwOnStop: Throwable? = null,
+) : ContinuousSourceEngine {
+    var startCalls = 0
+    var stopCalls = 0
+    var lastSink: EmissionSink? = null
+
+    override fun start(sink: EmissionSink) {
+        lastSink = sink
+        throwOnStart?.let { throw it }
+        startCalls += 1
+        conditionValue = conditionValue.copy(running = true)
+    }
+
+    override fun stop() {
+        throwOnStop?.let { throw it }
+        stopCalls += 1
+        conditionValue = conditionValue.copy(running = false)
+    }
+
+    override fun condition(): SourceCondition {
+        throwOnCondition?.let { throw it }
+        return conditionValue
+    }
+}
+
+internal fun sourceRegistry(
+    f: Fixture = fixture(),
+    registrations: List<SourceRegistration>,
+    main: MainPoster = MainPoster { it() },
+): SourceRegistry = SourceRegistry(f.controller, registrations, main)

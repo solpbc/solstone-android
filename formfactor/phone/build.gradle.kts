@@ -51,6 +51,8 @@ dependencies {
     // Declared for a consumer outside this module's own source.
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation(project(":harness"))
+    implementation(project(":core:model"))
 
     testImplementation(kotlin("test"))
     androidTestImplementation("junit:junit:4.13.2")
@@ -59,4 +61,6 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.10.6")
+    androidTestImplementation(project(":harness"))
+    androidTestImplementation(project(":core:model"))
 }

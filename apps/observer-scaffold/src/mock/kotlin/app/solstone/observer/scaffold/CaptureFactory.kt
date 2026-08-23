@@ -30,7 +30,10 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         mediaType = "application/x-ndjson",
     )
     return CaptureSetup(
-        engines = listOf(audio, location),
+        engines = listOf(
+            CapturedEngine("audio", audio),
+            CapturedEngine("location", location),
+        ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
                 ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
