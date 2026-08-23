@@ -3,6 +3,14 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
@@ -10,9 +18,42 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
+
+/**
+ * Themed phone shell host.
+ *
+ * @param shellAttachment Wave 1B plug point. Default is a no-op. Wave 1B
+ *        attaches navigation chrome here. This module must not reference
+ *        any type from state/ or nav/; those belong to 1B.
+ * @param content Wave 1C attaches the destination host here. Default is
+ *        the existing minWidthDp Text so Wave 0 tests remain valid.
+ */
+@Composable
+fun PhoneShell(
+    shellAttachment: @Composable () -> Unit = {},
+    content: @Composable () -> Unit = { PhoneShellDefaultContent() },
+) {
+    PhoneTheme {
+        Scaffold(
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        ) { paddingValues ->
+            // paddingValues are identically zero because contentWindowInsets is
+            // WindowInsets(0, 0, 0, 0). Applying them is the Scaffold contract,
+            // not a second inset read. Do not suppress UnusedMaterial3ScaffoldPaddingParameter.
+            Box(Modifier.padding(paddingValues)) {
+                Row(Modifier.fillMaxSize()) {
+                    shellAttachment()
+                    Box(Modifier.weight(1f)) { content() }
+                }
+            }
+        }
+    }
+}
 
 @Composable
-fun PhoneShell() {
+internal fun PhoneShellDefaultContent() {
     val minWidthDp = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
         .windowSizeClass
         .minWidthDp
@@ -23,4 +64,10 @@ fun PhoneShell() {
             .testTag("minWidthDp")
             .semantics { contentDescription = widthClass.name },
     )
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun PhoneShellPreview() {
+    PhoneShell()
 }

@@ -212,6 +212,124 @@ fun intentFilterTokens(manifestText: String): List<IntentFilterTokens> =
         }
         .toList()
 
+data class ActivityIntentFilterGroup(
+    val activityName: String,
+    val tokenGroups: List<Set<String>>,
+)
+
+fun resolveManifestActivityName(raw: String, packageName: String?): String =
+    when {
+        raw.startsWith(".") -> (packageName ?: "") + raw
+        raw.contains('.') -> raw
+        else -> if (packageName.isNullOrEmpty()) raw else "$packageName.$raw"
+    }
+
+fun activityIntentFilterGroups(manifestText: String): List<ActivityIntentFilterGroup> {
+    val packageName = Regex("""<manifest\b[^>]*\bpackage\s*=\s*["']([^"']+)["']""")
+        .find(manifestText)
+        ?.groupValues
+        ?.get(1)
+    val results = mutableListOf<ActivityIntentFilterGroup>()
+    val startPattern = Regex("""<activity\b""")
+    var searchFrom = 0
+    while (true) {
+        val start = startPattern.find(manifestText, searchFrom) ?: break
+        val gt = manifestText.indexOf('>', start.range.last + 1)
+        if (gt < 0) break
+        val openTag = manifestText.substring(start.range.first, gt + 1)
+        val rawName = Regex("""android:name\s*=\s*["']([^"']+)["']""")
+            .find(openTag)
+            ?.groupValues
+            ?.get(1)
+        if (rawName == null) {
+            searchFrom = gt + 1
+            continue
+        }
+        val resolved = resolveManifestActivityName(rawName, packageName)
+        val selfClosing = openTag.trimEnd().endsWith("/>")
+        if (selfClosing) {
+            results += ActivityIntentFilterGroup(resolved, emptyList())
+            searchFrom = gt + 1
+            continue
+        }
+        val close = manifestText.indexOf("</activity>", gt + 1)
+        if (close < 0) {
+            results += ActivityIntentFilterGroup(resolved, emptyList())
+            searchFrom = gt + 1
+            continue
+        }
+        val body = manifestText.substring(gt + 1, close)
+        results += ActivityIntentFilterGroup(resolved, intentFilterTokenGroups(body))
+        searchFrom = close + "</activity>".length
+    }
+    return results
+}
+
+fun mainLauncherOwners(manifestText: String): List<String> {
+    val main = "android.intent.action.MAIN"
+    val launcher = "android.intent.category.LAUNCHER"
+    return activityIntentFilterGroups(manifestText)
+        .filter { activity -> activity.tokenGroups.any { main in it && launcher in it } }
+        .map { it.activityName }
+}
+
+fun stripKotlinComments(source: String): String {
+    val noBlock = Regex("""/\*.*?\*/""", setOf(RegexOption.DOT_MATCHES_ALL)).replace(source, " ")
+    return noBlock.lineSequence().joinToString("\n") { line ->
+        val idx = line.indexOf("//")
+        if (idx >= 0) line.take(idx) else line
+    }
+}
+
+fun forbiddenThemeApiViolations(source: String): List<String> {
+    val stripped = stripKotlinComments(source)
+    val violations = mutableListOf<String>()
+    if (stripped.contains("androidx.compose.material.")) {
+        violations += "material2 import"
+    }
+    listOf(
+        "dynamicLightColorScheme",
+        "dynamicDarkColorScheme",
+        "dynamicTonalPalette",
+        "MaterialExpressiveTheme",
+        "MotionScheme",
+    ).forEach { marker ->
+        if (stripped.contains(marker)) violations += marker
+    }
+    if (stripped.contains(".state.")) violations += "state package"
+    if (stripped.contains(".nav.")) violations += "nav package"
+    return violations.distinct()
+}
+
+fun colorLiteralViolations(source: String, fileName: String): List<String> {
+    if (fileName.endsWith("SolstoneColors.kt")) return emptyList()
+    val stripped = stripKotlinComments(source)
+    val violations = mutableListOf<String>()
+    if (Regex("""Color\s*\(\s*0x""").containsMatchIn(stripped)) {
+        violations += "packed Color(0x"
+    }
+    listOf("Color.White", "Color.Black", "Color.Transparent").forEach { named ->
+        if (stripped.contains(named)) violations += named
+    }
+    if (Regex("""Color\s*\(\s*(?!0x)[\d.]""").containsMatchIn(stripped)) {
+        violations += "component Color ctor"
+    }
+    return violations
+}
+
+fun phoneShellInsetDoctrineViolations(source: String): List<String> {
+    val stripped = stripKotlinComments(source)
+    val tokens = listOf(
+        "Modifier.windowInsetsPadding(WindowInsets.safeDrawing)",
+        "contentWindowInsets = WindowInsets(0, 0, 0, 0)",
+        "Modifier.padding(paddingValues)",
+    )
+    return tokens.mapNotNull { token ->
+        val count = Regex.fromLiteral(token).findAll(stripped).count()
+        if (count == 1) null else "$token count=$count"
+    }
+}
+
 tasks.register("checkPrivacyDeps") {
     group = "verification"
     description = "Fails if a denylisted analytics, telemetry, crash, or tracking dependency is resolved."
@@ -481,6 +599,253 @@ tasks.register("appLinksGuardSelfTest") {
     }
 }
 
+tasks.register("phoneLauncherCountGuardSelfTest") {
+    group = "verification"
+    description = "Exercises MAIN+LAUNCHER owner parsing for the phone launcher-count guard."
+    doLast {
+        val main = "android.intent.action.MAIN"
+        val launcher = "android.intent.category.LAUNCHER"
+        val observer = "app.solstone.observer.scaffold.ObserverActivity"
+        val one = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(one == listOf(observer))
+
+        val two = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity>""" +
+                """<activity android:name=".probe.ProbeIndexActivity">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(
+            two.toSet() == setOf(
+                observer,
+                "app.solstone.observer.phone.probe.ProbeIndexActivity",
+            ),
+        )
+
+        val selfClosing = activityIntentFilterGroups(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".PhoneShellActivity" android:exported="false" />""" +
+                """</manifest>""",
+        )
+        check(selfClosing.any { it.activityName == "app.solstone.observer.phone.PhoneShellActivity" })
+        check(mainLauncherOwners(selfClosing.let { _ ->
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".PhoneShellActivity" android:exported="false" />""" +
+                """</manifest>"""
+        }).isEmpty())
+
+        val component = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="androidx.activity.ComponentActivity" android:exported="true" />""" +
+                """</manifest>""",
+        )
+        check(component.isEmpty())
+
+        val three = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="$observer"><intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter></activity>""" +
+                """<activity android:name=".probe.ProbeIndexActivity"><intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter></activity>""" +
+                """<activity android:name=".Other"><intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter></activity>""" +
+                """</manifest>""",
+        )
+        check(three.size == 3)
+
+        val wrongOwner = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".Other"><intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter></activity>""" +
+                """</manifest>""",
+        )
+        check(wrongOwner == listOf("app.solstone.observer.phone.Other"))
+        check(observer !in wrongOwner)
+
+        val split = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="$observer">""" +
+                """<intent-filter><action android:name="$main" /></intent-filter>""" +
+                """<intent-filter><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(split.isEmpty())
+
+        val nested = mainLauncherOwners(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name="$observer">""" +
+                """<meta-data android:name="x" android:value="y" />""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(nested == listOf(observer))
+    }
+}
+
+tasks.register("forbiddenThemeApiGuardSelfTest") {
+    group = "verification"
+    description = "Exercises forbidden theme-API predicates, including the M2 trailing-dot trap."
+    doLast {
+        check(forbiddenThemeApiViolations("import androidx.compose.material.Text").isNotEmpty())
+        check(forbiddenThemeApiViolations("import androidx.compose.material3.Text").isEmpty())
+        check(
+            forbiddenThemeApiViolations(
+                "import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo",
+            ).isEmpty(),
+        )
+        check(forbiddenThemeApiViolations("dynamicLightColorScheme()").isNotEmpty())
+        check(forbiddenThemeApiViolations("lightColorScheme()").isEmpty())
+        check(forbiddenThemeApiViolations("MaterialExpressiveTheme").isNotEmpty())
+        check(forbiddenThemeApiViolations("MotionScheme").isNotEmpty())
+        check(
+            forbiddenThemeApiViolations(
+                "import app.solstone.observer.formfactor.phone.state.Foo",
+            ).isNotEmpty(),
+        )
+        check(
+            forbiddenThemeApiViolations(
+                "import app.solstone.observer.formfactor.phone.nav.Bar",
+            ).isNotEmpty(),
+        )
+        check(
+            forbiddenThemeApiViolations(
+                "import app.solstone.observer.formfactor.phone.PhoneShell",
+            ).isEmpty(),
+        )
+    }
+}
+
+tasks.register("colorLiteralGuardSelfTest") {
+    group = "verification"
+    description = "Exercises colour-construction location predicates."
+    doLast {
+        check(
+            colorLiteralViolations("val x = Color(0xFFE8913A)", "PhoneShell.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("val x = Color(0xFFE8913A)", "SolstoneColors.kt").isEmpty(),
+        )
+        check(
+            colorLiteralViolations("Color.White", "SolstoneColorSchemes.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("Color.Black", "SolstoneColorSchemes.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("Color.Transparent", "SolstoneColorSchemes.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("Color(1f, 1f, 1f)", "SolstoneColorSchemes.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("Color(255, 255, 255)", "SolstoneColorSchemes.kt").isNotEmpty(),
+        )
+        check(
+            colorLiteralViolations("SolstoneColors.surfaceWhite", "SolstoneColorSchemes.kt").isEmpty(),
+        )
+        check(
+            colorLiteralViolations("MINIMUM_TOUCH_TARGET_DP = 48", "PhoneMetrics.kt").isEmpty(),
+        )
+    }
+}
+
+tasks.register("phoneShellInsetDoctrineGuardSelfTest") {
+    group = "verification"
+    description = "Exercises PhoneShell inset-doctrine snippet matching."
+    doLast {
+        val good = """
+            Scaffold(
+                modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            ) { paddingValues ->
+                Box(Modifier.padding(paddingValues)) { }
+            }
+        """.trimIndent()
+        check(phoneShellInsetDoctrineViolations(good).isEmpty())
+        check(
+            phoneShellInsetDoctrineViolations(
+                good.replace("Modifier.windowInsetsPadding(WindowInsets.safeDrawing)", ""),
+            ).isNotEmpty(),
+        )
+        check(
+            phoneShellInsetDoctrineViolations(
+                good + "\nModifier.windowInsetsPadding(WindowInsets.safeDrawing)",
+            ).isNotEmpty(),
+        )
+        check(
+            phoneShellInsetDoctrineViolations(
+                good + "\n// Modifier.windowInsetsPadding(WindowInsets.safeDrawing)",
+            ).isEmpty(),
+        )
+    }
+}
+
+tasks.register("checkForbiddenThemeApis") {
+    group = "verification"
+    description = "Fails if forbidden theme APIs, colour construction, or state/nav packages appear."
+    doLast {
+        val violations = mutableListOf<String>()
+        val roots = listOf(
+            rootProject.file("formfactor/phone/src"),
+            rootProject.file("apps/phone/src/main"),
+        )
+        roots.filter { it.exists() }.forEach { root ->
+            root.walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filterNot { file -> file.toPath().any { part -> part.toString() == "build" } }
+                .forEach { file ->
+                    val relative = file.relativeTo(rootProject.projectDir).path
+                    val text = file.readText()
+                    forbiddenThemeApiViolations(text).forEach { violation ->
+                        violations += "$relative: $violation"
+                    }
+                    if (relative.startsWith("formfactor/phone/src/")) {
+                        colorLiteralViolations(text, file.name).forEach { violation ->
+                            violations += "$relative: $violation"
+                        }
+                    }
+                    val pathParts = file.toPath().map { it.toString() }
+                    if ("state" in pathParts || "nav" in pathParts) {
+                        violations += "$relative: state/ or nav/ path"
+                    }
+                    if (
+                        relative.startsWith("formfactor/phone/src/main/") &&
+                        file.name != "PhoneMetrics.kt" &&
+                        file.name != "PhoneShell.kt" &&
+                        stripKotlinComments(text).contains("MINIMUM_TOUCH_TARGET_DP")
+                    ) {
+                        violations += "$relative: MINIMUM_TOUCH_TARGET_DP outside PhoneMetrics"
+                    }
+                }
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "Forbidden theme API guard failed:\n${violations.sorted().joinToString("\n")}",
+            )
+        }
+    }
+}
+
+tasks.register("checkPhoneShellInsetDoctrine") {
+    group = "verification"
+    description = "Checks PhoneShell.kt for the single inset-mechanism snippets."
+    doLast {
+        val file = rootProject.file(
+            "formfactor/phone/src/main/kotlin/app/solstone/observer/formfactor/phone/PhoneShell.kt",
+        )
+        val violations = phoneShellInsetDoctrineViolations(file.readText())
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "PhoneShell inset doctrine failed:\n${violations.joinToString("\n")}",
+            )
+        }
+    }
+}
+
 tasks.named("check") {
     dependsOn(
         "checkPrivacyDeps",
@@ -492,6 +857,12 @@ tasks.named("check") {
         "manifestGuardSelfTest",
         "launcherHomeGuardSelfTest",
         "appLinksGuardSelfTest",
+        "phoneLauncherCountGuardSelfTest",
+        "forbiddenThemeApiGuardSelfTest",
+        "colorLiteralGuardSelfTest",
+        "phoneShellInsetDoctrineGuardSelfTest",
+        "checkForbiddenThemeApis",
+        "checkPhoneShellInsetDoctrine",
     )
 }
 
@@ -589,6 +960,53 @@ fun Project.registerLauncherHomeManifestCheck(requireHome: Boolean) {
     }
 }
 
+fun Project.registerPhoneLauncherCountManifestCheck() {
+    tasks.register("checkPhoneLauncherCountManifest") {
+        group = "verification"
+        description = "Checks realDebug and realRelease merged manifests for MAIN+LAUNCHER owners."
+        dependsOn("processRealDebugManifest", "processRealReleaseManifest")
+        doLast {
+            val debugManifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            val releaseManifest = layout.buildDirectory
+                .file(
+                    "intermediates/merged_manifests/realRelease/processRealReleaseManifest/AndroidManifest.xml",
+                )
+                .get()
+                .asFile
+            if (!debugManifest.exists()) {
+                throw GradleException(
+                    "Merged manifest not found: ${debugManifest.relativeTo(rootProject.projectDir)}",
+                )
+            }
+            if (!releaseManifest.exists()) {
+                throw GradleException(
+                    "Merged manifest not found: ${releaseManifest.relativeTo(rootProject.projectDir)}",
+                )
+            }
+            val observer = "app.solstone.observer.scaffold.ObserverActivity"
+            val probe = "app.solstone.observer.phone.probe.ProbeIndexActivity"
+            val failures = mutableListOf<String>()
+            val releaseOwners = mainLauncherOwners(releaseManifest.readText())
+            if (releaseOwners != listOf(observer)) {
+                failures += "realRelease MAIN+LAUNCHER owners=$releaseOwners expected=[$observer]"
+            }
+            val debugOwners = mainLauncherOwners(debugManifest.readText()).toSet()
+            val expectedDebug = setOf(observer, probe)
+            if (debugOwners != expectedDebug) {
+                failures += "realDebug MAIN+LAUNCHER owners=$debugOwners expected=$expectedDebug"
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException(
+                    "${project.path} launcher-count manifest check failed:\n${failures.joinToString("\n")}",
+                )
+            }
+        }
+    }
+}
+
 fun Project.registerAppLinksManifestCheck() {
     tasks.register("checkRealDebugAppLinksManifest") {
         group = "verification"
@@ -626,6 +1044,7 @@ project(":apps:phone") {
     registerMicrophoneManifestCheck()
     registerLauncherHomeManifestCheck(requireHome = false)
     registerAppLinksManifestCheck()
+    registerPhoneLauncherCountManifestCheck()
 }
 
 project(":apps:glasses") {

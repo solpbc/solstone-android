@@ -3,7 +3,8 @@
 SPDX-License-Identifier: AGPL-3.0-only
 Copyright (c) 2026 sol pbc
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application>
@@ -32,5 +33,9 @@ Copyright (c) 2026 sol pbc
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+        <activity
+            android:name=".PhoneShellActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
     </application>
 </manifest>
