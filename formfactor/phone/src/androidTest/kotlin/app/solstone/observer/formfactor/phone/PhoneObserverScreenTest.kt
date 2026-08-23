@@ -3,6 +3,7 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -42,18 +44,20 @@ class PhoneObserverScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun greetingSlotExistsAndRendersNoCopy() {
+    fun greetingSlotRendersGoodMorningAtHourFive() {
         composeRule.setContent {
-            PhoneObserverScreen(
+            PhoneDeck(
                 loadState = loaded(audioOn()),
-                status = connected(),
+                contentPadding = PaddingValues(0.dp),
+                widthClass = WidthClass.COMPACT,
+                paneOpen = false,
+                onOpenSource = {},
                 onToggle = { _, _ -> },
+                hour = 5,
             )
         }
         assertEquals(1, composeRule.onAllNodesWithTag("greetingSlot").fetchSemanticsNodes().size)
-        composeRule.onNodeWithText("good morning", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("good afternoon", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("good evening", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("good morning").assertIsDisplayed()
     }
 
     @Test
@@ -139,7 +143,7 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag("statusPill").performClick()
         composeRule.onNodeWithTag("statusPane").assertIsDisplayed()
         composeRule.onNodeWithTag("statusPaneHeading").assertIsDisplayed()
-        composeRule.onNodeWithText("what is waiting").assertIsDisplayed()
+        composeRule.onNodeWithTag("statusPaneHeading").assertTextEquals("status")
         Espresso.pressBack()
         composeRule.onNodeWithTag("statusPane").assertDoesNotExist()
     }
@@ -270,9 +274,8 @@ class PhoneObserverScreenTest {
                 onToggle = { _, _ -> },
             )
         }
-        composeRule.onNodeWithText("taking it in", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("SETTING_UP", useUnmergedTree = true).assertDoesNotExist()
-        assertEquals("audio", tileStateDescription("audio"))
+        assertEquals("audio setting up", tileStateDescription("audio"))
     }
 
     @Test
@@ -284,13 +287,13 @@ class PhoneObserverScreenTest {
                 onToggle = { _, _ -> },
             )
         }
-        composeRule.onNodeWithText("paused", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("paused", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("PAUSED", useUnmergedTree = true).assertDoesNotExist()
-        assertEquals("audio", tileStateDescription("audio"))
+        assertEquals("audio paused", tileStateDescription("audio"))
     }
 
     @Test
-    fun capturingSourceRendersTakingItIn() {
+    fun capturingSourceRendersOn() {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
@@ -298,8 +301,22 @@ class PhoneObserverScreenTest {
                 onToggle = { _, _ -> },
             )
         }
-        composeRule.onNodeWithText("taking it in", useUnmergedTree = true).assertIsDisplayed()
-        assertEquals("audio taking it in", tileStateDescription("audio"))
+        assertEquals(listOf("audio", "on"), unmergedTexts("sourceBody-audio"))
+        assertEquals("audio on", tileStateDescription("audio"))
+    }
+
+    @Test
+    fun needsAttentionAudioTileRendersLabelAndStateOnly() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(status("audio", SourceState.NEEDS_ATTENTION, SourceWish.On)),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        assertEquals(listOf("audio", "needs attention"), unmergedTexts("sourceBody-audio"))
+        assertEquals("audio needs attention", tileStateDescription("audio"))
+        composeRule.onNodeWithText("tap to fix", useUnmergedTree = true).assertDoesNotExist()
     }
 
     private fun tileStateDescription(sourceId: String): String? =
@@ -307,6 +324,19 @@ class PhoneObserverScreenTest {
             .fetchSemanticsNode()
             .config
             .getOrNull(SemanticsProperties.StateDescription)
+
+    private fun unmergedTexts(tag: String): List<String> {
+        val root = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val texts = mutableListOf<String>()
+        fun walk(node: SemanticsNode) {
+            node.config.getOrNull(SemanticsProperties.Text)?.let { annotated ->
+                texts.addAll(annotated.map { it.text })
+            }
+            node.children.forEach(::walk)
+        }
+        walk(root)
+        return texts
+    }
 
     private fun liveRegionNode() =
         composeRule.onNodeWithTag("statusLiveRegion", useUnmergedTree = true).fetchSemanticsNode()

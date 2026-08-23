@@ -5,11 +5,14 @@ package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 
 @Composable
-fun PhoneGreetingSlot(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().testTag("greetingSlot"))
+fun PhoneGreetingSlot(hour: Int, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().testTag("greetingSlot")) {
+        Text(text = greetingFor(hour))
+    }
 }

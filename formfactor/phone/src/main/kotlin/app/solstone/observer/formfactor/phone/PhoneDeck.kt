@@ -35,6 +35,7 @@ fun PhoneDeck(
     paneOpen: Boolean,
     onOpenSource: (String) -> Unit,
     onToggle: (String, SourceWish) -> Unit,
+    hour: Int,
     modifier: Modifier = Modifier,
 ) {
     val hide = if (paneOpen) Modifier.clearAndSetSemantics { } else Modifier
@@ -46,7 +47,7 @@ fun PhoneDeck(
             .then(hide)
             .testTag("deck"),
     ) {
-        PhoneGreetingSlot()
+        PhoneGreetingSlot(hour)
         when (loadState) {
             is LoadState.Failed -> {
                 Box(

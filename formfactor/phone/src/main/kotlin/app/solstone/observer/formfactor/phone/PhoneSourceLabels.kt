@@ -5,19 +5,26 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.SourceState
 
-fun sourceLabel(sourceId: String): String = when (sourceId) {
-    "audio" -> "audio"
-    else -> sourceId
-}
+internal val phoneSourceLabels: Map<String, String> = mapOf(
+    "audio" to "audio",
+    "location" to "location",
+    "camera" to "camera",
+)
 
-fun sourceStateCopy(state: SourceState): String? = when (state) {
+fun sourceLabel(sourceId: String): String = phoneSourceLabels[sourceId] ?: sourceId
+
+fun sourceStateCopy(state: SourceState): String = when (state) {
     SourceState.OFF -> "off"
-    SourceState.ON -> "taking it in"
+    SourceState.SETTING_UP -> "setting up"
+    SourceState.ON -> "on"
+    SourceState.PAUSED -> "paused"
     SourceState.NEEDS_ATTENTION -> "needs attention"
-    SourceState.SETTING_UP, SourceState.PAUSED -> null
 }
 
-fun headingText(headingKey: String): String? = when (headingKey) {
-    "heading.pane_status" -> "what is waiting"
-    else -> null
+fun headingText(surface: PhoneSurface): String? = when (surface) {
+    is PhoneRoute.SourceDetail -> sourceLabel(surface.sourceId)
+    else -> when (surface.headingKey) {
+        "heading.pane_status" -> "status"
+        else -> null
+    }
 }

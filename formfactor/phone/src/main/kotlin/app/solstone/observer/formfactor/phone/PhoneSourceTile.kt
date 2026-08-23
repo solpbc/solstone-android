@@ -46,7 +46,7 @@ fun PhoneSourceTile(
             .fillMaxWidth()
             .testTag("sourceTile-${status.sourceId}")
             .clearAndSetSemantics {
-                stateDescription = if (stateCopy == null) label else "$label $stateCopy"
+                stateDescription = "$label $stateCopy"
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {
                     add(CustomAccessibilityAction(label) { onOpen(); true })
@@ -73,14 +73,9 @@ fun PhoneSourceTile(
                 PhoneTileDot(status.state)
                 Text(text = label, modifier = Modifier.padding(start = 8.dp))
             }
-            if (stateCopy != null) {
-                Text(text = stateCopy)
-            }
-            if (status.state == SourceState.NEEDS_ATTENTION) {
-                Text(text = "tap to fix")
-            }
+            Text(text = stateCopy)
             if (status.state == SourceState.OFF) {
-                Text(text = "turn on any time")
+                Text(text = "turn it on any time.")
             }
         }
         if (earnsSwitch) {

@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
+import java.time.LocalTime
 
 @Composable
 fun PhoneObserverScreen(
@@ -23,6 +25,7 @@ fun PhoneObserverScreen(
 ) {
     var paneStates by rememberPaneStates()
     var detailStack by rememberPhoneRouteStack()
+    val hour = remember { LocalTime.now().hour }
     val minWidthDp = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
         .windowSizeClass
         .minWidthDp
@@ -66,6 +69,7 @@ fun PhoneObserverScreen(
                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                 },
                 onToggle = onToggle,
+                hour = hour,
                 modifier = modifier,
             )
         },

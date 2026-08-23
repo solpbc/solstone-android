@@ -48,7 +48,7 @@ fun PhoneStatusPane(
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Column(Modifier.padding(16.dp).fillMaxWidth()) {
-                headingText(PhonePane.STATUS.headingKey)?.let { heading ->
+                headingText(PhonePane.STATUS)?.let { heading ->
                     Text(
                         text = heading,
                         modifier = Modifier.testTag("statusPaneHeading"),

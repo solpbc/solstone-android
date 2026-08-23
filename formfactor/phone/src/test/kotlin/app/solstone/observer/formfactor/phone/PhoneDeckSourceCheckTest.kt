@@ -8,6 +8,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -57,25 +58,70 @@ class PhoneDeckSourceCheckTest {
     }
 
     @Test
-    fun audioLabelIsApprovedIdentity() {
-        assertTrue(sourceLabel("audio") == "audio")
-        assertTrue(sourceLabel("location") == "location")
-        assertTrue(sourceLabel("camera") == "camera")
+    fun phoneSourceLabelsEqualApprovedTable() {
+        assertEquals(
+            mapOf(
+                "audio" to "audio",
+                "location" to "location",
+                "camera" to "camera",
+            ),
+            phoneSourceLabels,
+        )
     }
 
     @Test
-    fun sourceStateCopyUsesApprovedStringsAndNullTbd() {
+    fun sourceStateCopyMapsEveryApprovedWord() {
         assertEquals("off", sourceStateCopy(SourceState.OFF))
-        assertEquals("taking it in", sourceStateCopy(SourceState.ON))
+        assertEquals("setting up", sourceStateCopy(SourceState.SETTING_UP))
+        assertEquals("on", sourceStateCopy(SourceState.ON))
+        assertEquals("paused", sourceStateCopy(SourceState.PAUSED))
         assertEquals("needs attention", sourceStateCopy(SourceState.NEEDS_ATTENTION))
-        assertNull(sourceStateCopy(SourceState.SETTING_UP))
-        assertNull(sourceStateCopy(SourceState.PAUSED))
+        SourceState.entries.forEach { state ->
+            assertTrue(sourceStateCopy(state).isNotBlank(), state.name)
+        }
     }
 
     @Test
     fun headingTextMapsStatusAndOmitsOtherKeys() {
-        assertEquals("what is waiting", headingText("heading.pane_status"))
-        assertNull(headingText("heading.route_a"))
-        assertNull(headingText("heading.source_detail"))
+        assertEquals("status", headingText(PhonePane.STATUS))
+        assertEquals("camera", headingText(PhoneRoute.SourceDetail("camera")))
+        assertNull(headingText(PhonePane.JOURNAL))
+        assertNotEquals("journal", headingText(PhonePane.JOURNAL))
+        assertNull(headingText(PhoneRoute.RouteA))
+        assertNull(headingText(PhoneDeck))
+    }
+
+    @Test
+    fun clockApiLivesOnlyAsOneReadOnTheObserverScreen() {
+        val tokens = listOf(
+            "currentTimeMillis",
+            "LocalTime",
+            "Calendar",
+            "Instant",
+            "Clock",
+            "SystemClock",
+            "java.time",
+        )
+        val root = File("src/main/kotlin/app/solstone/observer/formfactor/phone")
+        root.walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+            val text = file.readText()
+            if (file.name == "PhoneObserverScreen.kt") {
+                assertEquals(1, text.split("LocalTime.now(").size - 1, file.name)
+            } else {
+                tokens.forEach { token ->
+                    assertFalse(text.contains(token), "${file.name} contains $token")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun retiredTileSublinesAppearNowhereInPhoneMain() {
+        val root = File("src/main/kotlin/app/solstone/observer/formfactor/phone")
+        root.walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+            val text = file.readText()
+            assertFalse(text.contains("tap to fix"), file.name)
+            assertFalse(text.contains("turn on any time"), file.name)
+        }
     }
 }
