@@ -92,6 +92,12 @@ class PhoneDeckSourceCheckTest {
     }
 
     @Test
+    fun headingTextMapsAboutSolstoneAndOmitsLicences() {
+        assertEquals("about solstone", headingText(PhoneRoute.AboutSolstone))
+        assertNull(headingText(PhoneRoute.Licences))
+    }
+
+    @Test
     fun clockApiLivesOnlyAsOneReadOnTheObserverScreen() {
         val tokens = listOf(
             "currentTimeMillis",

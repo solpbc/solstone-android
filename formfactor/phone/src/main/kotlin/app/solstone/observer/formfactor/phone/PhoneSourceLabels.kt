@@ -25,6 +25,7 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
     is PhoneRoute.SourceDetail -> sourceLabel(surface.sourceId)
     else -> when (surface.headingKey) {
         "heading.pane_status" -> "status"
+        "heading.about_solstone" -> "about solstone"
         else -> null
     }
 }

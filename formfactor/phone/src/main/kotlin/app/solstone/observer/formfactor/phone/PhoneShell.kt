@@ -46,6 +46,7 @@ fun PhoneShell(
     title: @Composable () -> Unit = {},
     statusAction: @Composable RowScope.() -> Unit = {},
     journalMark: @Composable () -> Unit = {},
+    navigationIcon: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit = { PhoneShellDefaultContent() },
 ) {
     PhoneTheme {
@@ -59,6 +60,7 @@ fun PhoneShell(
             topBar = {
                 TopAppBar(
                     title = title,
+                    navigationIcon = navigationIcon,
                     actions = { statusAction() },
                     modifier = Modifier.testTag("phoneAppBar"),
                 )

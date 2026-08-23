@@ -28,6 +28,16 @@ sealed interface PhoneRoute : PhoneSurface {
         override val paneTitle: String get() = "surface_source_detail"
         override val headingKey: String get() = "heading.source_detail"
     }
+
+    data object AboutSolstone : PhoneRoute {
+        override val paneTitle: String get() = "surface_about_solstone"
+        override val headingKey: String get() = "heading.about_solstone"
+    }
+
+    data object Licences : PhoneRoute {
+        override val paneTitle: String get() = "surface_licences"
+        override val headingKey: String get() = "heading.licences"
+    }
 }
 
 fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
@@ -36,6 +46,8 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.RouteC -> "route-c"
     PhoneRoute.RouteCChild -> "route-c-child"
     is PhoneRoute.SourceDetail -> "sd/${route.sourceId}"
+    PhoneRoute.AboutSolstone -> "about-solstone"
+    PhoneRoute.Licences -> "licences"
 }
 
 fun decodePhoneRoute(key: String): PhoneRoute? {
@@ -48,6 +60,8 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
         "route-b" -> PhoneRoute.RouteB
         "route-c" -> PhoneRoute.RouteC
         "route-c-child" -> PhoneRoute.RouteCChild
+        "about-solstone" -> PhoneRoute.AboutSolstone
+        "licences" -> PhoneRoute.Licences
         else -> null
     }
 }
