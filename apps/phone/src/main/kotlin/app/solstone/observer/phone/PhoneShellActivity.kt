@@ -12,9 +12,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
-import app.solstone.observer.formfactor.phone.PhoneStatusModel
+import app.solstone.observer.formfactor.phone.PhoneStatusViewModel
 import app.solstone.observer.formfactor.phone.SourcesViewModel
 import app.solstone.observer.harness.AsyncLoad
+import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
@@ -23,6 +24,7 @@ import app.solstone.observer.scaffold.ObserverHarnessRuntime
 class PhoneShellActivity : ComponentActivity() {
     private lateinit var container: ObserverAppContainer
     private lateinit var sourcesViewModel: SourcesViewModel
+    private lateinit var statusViewModel: PhoneStatusViewModel
     private var captureOwnerToken: Long = -1L
     private val mainHandler = Handler(Looper.getMainLooper())
     private val startWhenReady = object : Runnable {
@@ -43,14 +45,22 @@ class PhoneShellActivity : ComponentActivity() {
             ObserverHarnessRuntime.runtime = it
         }
         container = runtime.container()
+        val factory = PhoneShellViewModelFactory(
+            sources = container.sources,
+            readStatus = PhoneStatusSupplier.forContainer(container),
+            asyncLoad = container.asyncLoad,
+        )
         sourcesViewModel = ViewModelProvider(
             this,
-            PhoneShellSourcesViewModelFactory(container.sources, container.asyncLoad),
+            factory,
         ).get(SourcesViewModel::class.java)
+        statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
         setContent {
+            val snapshot = (statusViewModel.statusState as? LoadState.Loaded)?.value
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
-                status = SHELL_STATUS,
+                status = snapshot?.status,
+                waiting = snapshot?.waiting.orEmpty(),
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
             )
         }
@@ -69,30 +79,23 @@ class PhoneShellActivity : ComponentActivity() {
         container.captureAuthority.release(captureOwnerToken)
     }
 
-    private class PhoneShellSourcesViewModelFactory(
+    private class PhoneShellViewModelFactory(
         private val sources: SourcesReader,
+        private val readStatus: () -> app.solstone.observer.harness.HarnessBacklogStatus,
         private val asyncLoad: AsyncLoad,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            require(modelClass.isAssignableFrom(SourcesViewModel::class.java)) {
-                "unsupported view model ${modelClass.name}"
-            }
             @Suppress("UNCHECKED_CAST")
-            return SourcesViewModel(sources, asyncLoad) as T
+            return when {
+                modelClass.isAssignableFrom(SourcesViewModel::class.java) -> SourcesViewModel(sources, asyncLoad) as T
+                modelClass.isAssignableFrom(PhoneStatusViewModel::class.java) ->
+                    PhoneStatusViewModel(readStatus, sources, asyncLoad) as T
+                else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")
+            }
         }
     }
 
     private companion object {
         const val RECOVERY_POLL_INTERVAL_MS = 50L
-
-        // The shell does not yet derive link, queue, or network status. This value
-        // renders the conservative not-paired pill rather than claiming a link or
-        // network state we have not established.
-        val SHELL_STATUS = PhoneStatusModel(
-            paired = false,
-            online = false,
-            pendingCount = 0,
-            hasContentPending = false,
-        )
     }
 }

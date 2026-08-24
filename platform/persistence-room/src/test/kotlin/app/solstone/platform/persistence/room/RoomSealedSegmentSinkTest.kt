@@ -267,6 +267,17 @@ class RoomSealedSegmentSinkTest {
 
         override fun pendingCount(stream: String): Int = 0
 
+        override fun pendingSourceIds(stream: String): List<String> {
+            val pendingIds = segments
+                .filter {
+                    it.stream == stream &&
+                        (it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED)
+                }
+                .map { it.id }
+                .toSet()
+            return files.filter { it.segmentId in pendingIds }.map { it.sourceId }.distinct()
+        }
+
         override fun advanceState(id: String, event: QueueEvent): QueueState =
             segmentById(id)?.state ?: throw NoSuchElementException(id)
 

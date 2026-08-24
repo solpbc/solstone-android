@@ -73,6 +73,13 @@ abstract class SegmentDao {
     @Query("SELECT COUNT(*) FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED')")
     abstract fun pendingCount(stream: String): Int
 
+    @Query(
+        "SELECT DISTINCT f.source_id FROM segment_file f " +
+            "JOIN segment s ON s.id = f.segment_id " +
+            "WHERE s.stream = :stream AND s.state IN ('SEALED','UPLOADING','FAILED')",
+    )
+    abstract fun pendingSourceIds(stream: String): List<String>
+
     @Transaction
     open fun advanceState(id: String, event: QueueEvent): QueueState {
         val current = segmentState(id) ?: throw NoSuchElementException("segment not found: $id")

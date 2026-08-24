@@ -242,6 +242,18 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
     }
 }
 
+class RealBacklogStatusReader(
+    private val dao: SegmentDao,
+    private val plStatus: () -> HarnessPlStatus,
+) : BacklogStatusReader {
+    override fun read(): HarnessBacklogStatus =
+        HarnessBacklogStatus(
+            plStatus = plStatus(),
+            pendingCount = dao.pendingCount(MAIN_STREAM),
+            pendingSourceIds = dao.pendingSourceIds(MAIN_STREAM),
+        )
+}
+
 interface BundleFileOp {
     fun copyDirectory(source: Path, destination: Path): Int
 }

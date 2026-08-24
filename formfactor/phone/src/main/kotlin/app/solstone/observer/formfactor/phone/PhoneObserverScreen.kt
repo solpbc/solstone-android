@@ -43,7 +43,7 @@ private const val SHELF_CONTENT_DESCRIPTION = "settings"
 @Composable
 fun PhoneObserverScreen(
     loadState: LoadState<SourcesReadModel>,
-    status: PhoneStatusModel,
+    status: PhoneStatusModel?,
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
     onToggle: (String, SourceWish) -> Unit,
     modifier: Modifier = Modifier,
@@ -104,27 +104,29 @@ fun PhoneObserverScreen(
             }
         },
         statusAction = {
-            Box {
-                PhoneStatusPill(
-                    model = status,
-                    onClick = {
-                        paneStates = if (statusOpen) {
-                            paneStates.close(PhonePane.STATUS)
-                        } else {
-                            paneStates.open(PhonePane.STATUS)
-                        }
-                    },
-                )
-                if (statusOpen) {
-                    PhoneStatusPane(
-                        model = status,
-                        waiting = waiting,
-                        onDismiss = { paneStates = paneStates.close(PhonePane.STATUS) },
-                        onOpenSource = { id ->
-                            paneStates = paneStates.close(PhonePane.STATUS)
-                            detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
+            status?.let { model ->
+                Box {
+                    PhoneStatusPill(
+                        model = model,
+                        onClick = {
+                            paneStates = if (statusOpen) {
+                                paneStates.close(PhonePane.STATUS)
+                            } else {
+                                paneStates.open(PhonePane.STATUS)
+                            }
                         },
                     )
+                    if (statusOpen) {
+                        PhoneStatusPane(
+                            model = model,
+                            waiting = waiting,
+                            onDismiss = { paneStates = paneStates.close(PhonePane.STATUS) },
+                            onOpenSource = { id ->
+                                paneStates = paneStates.close(PhonePane.STATUS)
+                                detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
+                            },
+                        )
+                    }
                 }
             }
         },

@@ -60,6 +60,12 @@ data class HarnessSyncState(
     val lastFailureAt: Long?,
 )
 
+data class HarnessBacklogStatus(
+    val plStatus: HarnessPlStatus,
+    val pendingCount: Int,
+    val pendingSourceIds: List<String>,
+)
+
 data class HarnessExportResult(
     val sourcePath: String,
     val destinationPath: String,

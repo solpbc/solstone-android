@@ -37,11 +37,11 @@ class PhoneEvidenceScreenRuntimeTest {
     fun roomSeededEvidenceAndStatusRenderOnUiThread() {
         val evidenceLatch = CountDownLatch(1)
         val syncLatch = CountDownLatch(1)
+        seededObserverContainer(::seedEvidence)
         ObserverHarnessRuntime.hooks = ObserverRuntimeHooks().also { hooks ->
             hooks.onEvidenceLoadComplete = { evidenceLatch.countDown() }
             hooks.onSyncLoadComplete = { syncLatch.countDown() }
         }
-        seedEvidence()
 
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             assertTrue(waitForRecovery(waitForObserverContainer()))

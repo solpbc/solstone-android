@@ -14,6 +14,7 @@ import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.observer.harness.AsyncLoad
+import app.solstone.observer.harness.BacklogStatusReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessDiagnostics
 import app.solstone.observer.harness.HarnessJournalCacheState
@@ -21,6 +22,7 @@ import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.FileSourceWishStore
+import app.solstone.observer.harness.RealBacklogStatusReader
 import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
@@ -46,6 +48,7 @@ interface ObserverRuntimeContainer {
     val asyncLoad: AsyncLoad
     val flavor: SharedObserverFlavor
     val sources: SourceRegistry
+    val backlogStatus: BacklogStatusReader
     val recoveryCompleted: Boolean
     fun rehydrateInBackground()
     fun close()
@@ -112,6 +115,8 @@ class ObserverAppContainer(
     )
 
     override val controller: HarnessController = flavor.controller
+    override val backlogStatus: BacklogStatusReader =
+        RealBacklogStatusReader(database.segmentDao(), controller::probePlStatus)
     override val sources = SourceRegistry(
         controller = controller,
         registrations = captureSetup.registrations,

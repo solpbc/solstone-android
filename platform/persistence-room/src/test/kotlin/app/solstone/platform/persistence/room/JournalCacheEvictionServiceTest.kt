@@ -183,6 +183,11 @@ class JournalCacheEvictionServiceTest {
         override fun upsertSyncState(row: SyncStateRow) = Unit
         override fun syncState(): SyncStateRow? = null
         override fun pendingCount(stream: String) = 0
+        override fun pendingSourceIds(stream: String) =
+            files
+                .filter { file -> segments.any { it.id == file.segmentId && it.stream == stream && it.state in setOf(QueueState.SEALED, QueueState.UPLOADING, QueueState.FAILED) } }
+                .map { it.sourceId }
+                .distinct()
         override fun segmentState(id: String) = segmentById(id)?.state
         override fun updateState(id: String, state: QueueState): Int {
             val index = segments.indexOfFirst { it.id == id }

@@ -18,9 +18,13 @@ import org.junit.Assert.fail
 internal const val TEST_DATABASE_NAME = "solstone-persistence.db"
 
 internal fun resetObserverRuntime() {
-    ObserverHarnessRuntime.runtime?.closeForTest()
+    val runtime = ObserverHarnessRuntime.runtime
+    runtime?.closeForTest()
+    val appRuntime = (ApplicationProvider.getApplicationContext<Context>() as ObserverApplication).runtime
+    if (appRuntime !== runtime) appRuntime.closeForTest()
     ObserverHarnessRuntime.runtime = null
     ObserverHarnessRuntime.hooks = null
+    PhoneStatusSupplier.override = null
 }
 
 internal fun resetPersistence(context: Context) {
@@ -41,6 +45,14 @@ internal fun obtainObserverContainer(): ObserverAppContainer {
         ObserverHarnessRuntime.runtime = it
     }
     return runtime.container()
+}
+
+internal fun seededObserverContainer(seed: () -> Unit): ObserverAppContainer {
+    seed()
+    // An activity from the prior test can create and cache a container during reset. Close that
+    // container so the one returned here opens the database file written by this fixture.
+    resetObserverRuntime()
+    return obtainObserverContainer()
 }
 
 internal fun waitForObserverContainer(): ObserverAppContainer {
@@ -66,33 +78,52 @@ internal fun waitUntil(label: String, timeoutMs: Long = 10_000L, predicate: () -
 }
 
 internal fun seedPendingEvidence(context: Context, id: String = "pending-1") {
+    seedEvidence(
+        context = context,
+        id = id,
+        sourceIds = listOf("audio"),
+        stream = MAIN_STREAM,
+        state = QueueState.SEALED,
+    )
+}
+
+internal fun seedEvidence(
+    context: Context,
+    id: String,
+    sourceIds: List<String>,
+    stream: String,
+    state: QueueState,
+) {
+    check(ObserverHarnessRuntime.container == null) {
+        "Seed evidence before obtaining an observer container; concurrent Room instances can read a stale view of the test database"
+    }
     val db = openSolstonePersistenceDatabase(context)
     try {
         db.segmentDao().insertSegmentWithFiles(
             SegmentRow(
                 id = id,
                 day = "20260617",
-                stream = MAIN_STREAM,
+                stream = stream,
                 segment = "120000_300",
                 dirSegment = "120000_300",
-                state = QueueState.SEALED,
+                state = state,
                 byteSize = 5,
                 sealedAt = 10,
                 homeInstanceId = null,
                 observerHandle = null,
             ),
-            listOf(
+            sourceIds.map { sourceId ->
                 SegmentFileRow(
                     segmentId = id,
-                    sourceId = "audio",
-                    name = "audio.m4a",
-                    sha256 = "sha-$id",
+                    sourceId = sourceId,
+                    name = if (sourceId == "audio") "audio.m4a" else "$sourceId.bin",
+                    sha256 = if (sourceId == "audio") "sha-$id" else "sha-$id-$sourceId",
                     byteSize = 5,
                     mediaType = "audio/mp4",
                     captureStartEpochMs = 1,
                     captureEndEpochMs = 2,
-                ),
-            ),
+                )
+            },
         )
     } finally {
         db.close()

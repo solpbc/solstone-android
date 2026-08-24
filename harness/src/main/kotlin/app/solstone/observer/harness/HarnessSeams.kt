@@ -89,6 +89,10 @@ interface EvidenceReader {
     fun syncState(): HarnessSyncState
 }
 
+interface BacklogStatusReader {
+    fun read(): HarnessBacklogStatus
+}
+
 fun interface BundleExport {
     fun export(segment: HarnessEvidenceSegment): HarnessExportResult
 }

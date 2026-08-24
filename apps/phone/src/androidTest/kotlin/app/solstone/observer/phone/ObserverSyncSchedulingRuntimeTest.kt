@@ -64,11 +64,19 @@ class ObserverSyncSchedulingRuntimeTest {
             val sync = requireNotNull(container.flavor.syncControl)
 
             val initialEnqueueNowCalls = sync.enqueueNowCalls
-            assertEquals(0, pendingEvidenceCount(context))
             container.controller.onScannedPairLink(validDirectPairLink())
             assertEquals(initialEnqueueNowCalls, sync.enqueueNowCalls)
+        }
 
-            seedPendingEvidence(context)
+        resetObserverRuntime()
+        seededObserverContainer { seedPendingEvidence(context) }
+
+        ActivityScenario.launch(ObserverActivity::class.java).use {
+            val container = waitForObserverContainer()
+            waitForRecovery(container)
+            val sync = requireNotNull(container.flavor.syncControl)
+
+            val initialEnqueueNowCalls = sync.enqueueNowCalls
             container.controller.onScannedPairLink(validDirectPairLink())
 
             assertEquals(initialEnqueueNowCalls + 1, sync.enqueueNowCalls)
