@@ -14,8 +14,9 @@ import kotlin.test.assertEquals
 
 class HarnessFactsAgreementTest {
     @Test
-    fun shellStateReasonTableCoversBothEnums() {
-        val expected = mapOf(
+    fun displayContractCoverageCoversBothEnums() {
+        // This covers display inputs, not reducer-reachable state and reason pairs.
+        val displayCoverage = mapOf(
             SourceState.OFF to setOf(ReasonCode.NONE),
             SourceState.SETTING_UP to setOf(ReasonCode.NONE),
             SourceState.ON to setOf(ReasonCode.NONE),
@@ -23,8 +24,8 @@ class HarnessFactsAgreementTest {
             SourceState.NEEDS_ATTENTION to ReasonCode.entries.toSet(),
         )
 
-        assertEquals(SourceState.entries.toSet(), expected.keys)
-        assertEquals(ReasonCode.entries.toSet(), expected.values.flatten().toSet())
+        assertEquals(SourceState.entries.toSet(), displayCoverage.keys)
+        assertEquals(ReasonCode.entries.toSet(), displayCoverage.values.flatten().toSet())
     }
 
     @Test

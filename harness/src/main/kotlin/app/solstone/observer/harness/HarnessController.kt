@@ -17,6 +17,7 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parsePairLink
+import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
@@ -347,6 +348,22 @@ data class SourceRuntimeSnapshot(
     val silenced: SilencedFact,
     val engineStartIssued: Boolean = true,
 )
+
+fun sourceRuntimeSnapshotFromEngines(
+    engines: Collection<ContinuousSourceEngine>,
+    providerEmitting: Boolean,
+    storageOk: Boolean,
+    engineStartIssued: Boolean,
+): SourceRuntimeSnapshot {
+    val conditions = engines.mapNotNull { engine -> runCatching { engine.condition() }.getOrNull() }
+    return sourceRuntimeSnapshotOf(
+        engineRunning = conditions.any { it.running },
+        providerEmitting = providerEmitting,
+        storageOk = storageOk,
+        conditions = conditions,
+        engineStartIssued = engineStartIssued,
+    )
+}
 
 fun sourceRuntimeSnapshotOf(
     engineRunning: Boolean,

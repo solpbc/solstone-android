@@ -36,7 +36,7 @@ import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
-import app.solstone.observer.harness.sourceRuntimeSnapshotOf
+import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
@@ -411,22 +411,20 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
-        val conditions = captureSetup.engines.mapNotNull { engine -> runCatching { engine.condition() }.getOrNull() }
         val pipeline = activePipeline
         // Global reducer inputs: observer wish, all-required permissions, FGS freshness, and pairing
         // come from HarnessController; start-issued comes from the active pipeline; running and silenced
         // aggregate conditions; provider freshness is pipeline-wide; storage uses CaptureSetup's shared seam.
         // This surface has no per-source rows; on surfaces that do, source wish, declared permissions,
         // and condition running/silenced/paused/attention are assembled by SourceRegistry.
-        return sourceRuntimeSnapshotOf(
-            engineRunning = conditions.any { it.running },
+        return sourceRuntimeSnapshotFromEngines(
+            engines = captureSetup.engines,
             providerEmitting = isProviderFresh(
                 startedEpochMs = pipeline?.startedEpochMs(),
                 lastEmissionEpochMs = pipeline?.lastEmissionEpochMs(),
                 nowEpochMs = System.currentTimeMillis(),
             ),
             storageOk = captureSetup.storageOk(),
-            conditions = conditions,
             engineStartIssued = pipeline != null,
         )
     }

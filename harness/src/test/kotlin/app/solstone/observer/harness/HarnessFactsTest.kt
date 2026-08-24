@@ -78,12 +78,11 @@ class HarnessFactsTest {
     }
 
     @Test
-    fun allOmittedConditionsAfterStartNeedAttentionInsteadOfOn() {
-        val snapshot = sourceRuntimeSnapshotOf(
-            engineRunning = false,
+    fun throwingConditionIsOmittedByContainerSnapshotAssembly() {
+        val snapshot = sourceRuntimeSnapshotFromEngines(
+            engines = listOf(FakeSourceEngine(throwOnCondition = RuntimeException("condition failed"))),
             providerEmitting = true,
             storageOk = true,
-            conditions = emptyList(),
             engineStartIssued = true,
         )
         val f = fixture(snapshot = snapshot)
@@ -91,6 +90,7 @@ class HarnessFactsTest {
 
         val diagnostics = f.controller.diagnostics()
 
+        assertNotEquals(SourceState.ON, diagnostics.state)
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.REBOOTED, diagnostics.reason)
     }

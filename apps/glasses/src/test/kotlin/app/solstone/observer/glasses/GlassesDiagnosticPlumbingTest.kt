@@ -8,6 +8,7 @@ import app.solstone.core.diagnostics.formatDiagEvent
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
@@ -30,6 +31,7 @@ import app.solstone.observer.harness.EvidenceReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessExportResult
+import app.solstone.observer.harness.HarnessFactInputs
 import app.solstone.observer.harness.HarnessPairProbeResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
@@ -42,6 +44,8 @@ import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.observer.harness.AlwaysVisibleCaptureAuthority
+import app.solstone.observer.harness.assembleDiagnostics
+import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.PermissionStatus
@@ -119,19 +123,45 @@ class GlassesDiagnosticPlumbingTest {
         assertEquals("kind=mem trim=15", formatDiagEvent(DiagEvent.MemoryPressure.Trim(15)))
     }
 
+    @Test
+    fun allGlassesEngineConditionsContributeToObserverSnapshot() {
+        val snapshot = sourceRuntimeSnapshotFromEngines(
+            engines = listOf(
+                ConditionEngine(running = false, silenced = SilencedFact.NOT_SILENCED),
+                ConditionEngine(running = true, silenced = SilencedFact.UNKNOWN),
+                ConditionEngine(running = false, silenced = SilencedFact.UNKNOWN),
+            ),
+            providerEmitting = true,
+            storageOk = true,
+            engineStartIssued = true,
+        )
+
+        val diagnostics = assembleDiagnostics(
+            HarnessFactInputs(
+                desiredOn = true,
+                engineRunning = snapshot.engineRunning,
+                permissionStatus = grantedPermissions(),
+                fgsHeartbeatFresh = true,
+                providerEmitting = snapshot.providerEmitting,
+                storageOk = snapshot.storageOk,
+                credentialPresent = true,
+                endpointPresent = true,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+                silenced = snapshot.silenced,
+                engineStartIssued = snapshot.engineStartIssued,
+            ),
+        )
+
+        assertTrue(snapshot.engineRunning)
+        assertEquals(SilencedFact.UNKNOWN, snapshot.silenced)
+        assertEquals(SourceState.ON, diagnostics.state)
+        assertEquals(ReasonCode.NONE, diagnostics.reason)
+    }
+
     private fun controller(diag: (String) -> Unit): HarnessController =
         HarnessController(
-            permissionStatusReader = PermissionStatusReader {
-                PermissionStatus(
-                    microphoneGranted = false,
-                    cameraGranted = true,
-                    fineLocationGranted = true,
-                    coarseLocationGranted = false,
-                    backgroundLocationGranted = false,
-                    notificationsGranted = true,
-                    requireLocation = false,
-                )
-            },
+            permissionStatusReader = PermissionStatusReader { revokedMicrophonePermissions() },
             desiredObservingStore = MemoryDesiredStore(initial = true),
             cameraLock = NoopCameraLock(),
             observerLifecycle = NoopLifecycle(),
@@ -159,6 +189,20 @@ class GlassesDiagnosticPlumbingTest {
             diag = diag,
         )
 
+    private fun grantedPermissions(): PermissionStatus =
+        PermissionStatus(
+            microphoneGranted = true,
+            cameraGranted = true,
+            fineLocationGranted = true,
+            coarseLocationGranted = false,
+            backgroundLocationGranted = false,
+            notificationsGranted = true,
+            requireLocation = false,
+        )
+
+    private fun revokedMicrophonePermissions(): PermissionStatus =
+        grantedPermissions().copy(microphoneGranted = false)
+
     private class NoopEngine : ContinuousSourceEngine {
         override fun start(sink: EmissionSink) = Unit
         override fun stop() = Unit
@@ -170,6 +214,23 @@ class GlassesDiagnosticPlumbingTest {
                 needsAttention = false,
                 paused = false,
                 silenced = SilencedFact.UNKNOWN,
+            )
+    }
+
+    private class ConditionEngine(
+        private val running: Boolean,
+        private val silenced: SilencedFact,
+    ) : ContinuousSourceEngine {
+        override fun start(sink: EmissionSink) = Unit
+        override fun stop() = Unit
+        override fun condition(): SourceCondition =
+            SourceCondition(
+                desiredOn = true,
+                running = running,
+                available = true,
+                needsAttention = false,
+                paused = false,
+                silenced = silenced,
             )
     }
 

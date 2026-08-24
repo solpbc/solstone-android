@@ -43,6 +43,3 @@ sealed interface SourceToggleResult {
 fun interface SourcesChangeListener {
     fun onSourcesChanged()
 }
-
-internal fun HarnessDiagnostics.toObserverStatus(): ObserverStatus =
-    ObserverStatus(state = state, reason = reason)
