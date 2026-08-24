@@ -77,7 +77,7 @@ fun PhoneObserverScreen(
         }
     }
     val popsDetail = resolveBack(paneStates, detailStack, widthClass).popsDetail
-    LaunchedEffect(drawerState, firstShelfRowFocusRequester, openerFocusRequester) {
+    LaunchedEffect(drawerState) {
         var previousTarget: DrawerValue? = null
         snapshotFlow { drawerState.targetValue }.collectLatest { target ->
             val previous = previousTarget
