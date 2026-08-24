@@ -34,6 +34,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -49,6 +50,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty
                     .showInDetail(PhoneRoute.AboutSolstone)
                     .pushInDetail(PhoneRoute.Licences),
@@ -67,6 +69,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -82,6 +85,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty
                     .showInDetail(PhoneRoute.AboutSolstone)
                     .pushInDetail(PhoneRoute.Licences),
@@ -100,6 +104,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.waitForIdle()
@@ -113,6 +118,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -127,6 +133,7 @@ class PhonePushedPaneTest {
                 loadState = loaded(),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }

@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.SourceState
+import app.solstone.observer.harness.SourceWish
 
 internal val phoneSourceLabels: Map<String, String> = mapOf(
     "audio" to "audio",
@@ -19,6 +20,11 @@ fun sourceStateCopy(state: SourceState): String = when (state) {
     SourceState.ON -> "on"
     SourceState.PAUSED -> "paused"
     SourceState.NEEDS_ATTENTION -> "needs attention"
+}
+
+fun sourceWishCopy(wish: SourceWish): String = when (wish) {
+    SourceWish.Off -> "off"
+    SourceWish.On -> "on"
 }
 
 fun headingText(surface: PhoneSurface): String? = when (surface) {

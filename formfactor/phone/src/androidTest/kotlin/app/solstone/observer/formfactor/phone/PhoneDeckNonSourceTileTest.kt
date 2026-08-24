@@ -135,13 +135,18 @@ class PhoneDeckNonSourceTileTest {
     }
 
     @Test
-    fun addMoreRowOpensSourceDetail() {
+    fun addMoreCameraOpensDetailWithoutTemplateWhenCameraIsUnregistered() {
         setScreen(initial = PhoneRoute.AddMore)
 
-        composeRule.onNodeWithTag("addMoreRow-audio").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("addMoreRow-camera").assertIsDisplayed().performClick()
 
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.SourceDetail("audio").paneTitle))
+        composeRule.onNode(paneTitleMatcher(PhoneRoute.SourceDetail("camera").paneTitle))
             .assertIsDisplayed()
+        composeRule.onNodeWithText("give this a tile on home").assertIsDisplayed()
+        composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(REASON_TEST_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(ACTION_TEST_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(FACTS_TEST_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -193,6 +198,7 @@ class PhoneDeckNonSourceTileTest {
                 loadState = loadState,
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initial = initial?.let { PhoneRouteStack.Empty.showInDetail(it) }
                     ?: PhoneRouteStack.Empty,
             )

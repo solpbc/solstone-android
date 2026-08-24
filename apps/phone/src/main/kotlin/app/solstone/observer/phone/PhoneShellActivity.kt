@@ -62,6 +62,7 @@ class PhoneShellActivity : ComponentActivity() {
                 status = snapshot?.status,
                 waiting = snapshot?.waiting.orEmpty(),
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
+                onStartObserving = { container.controller.ensureObserving() },
             )
         }
     }

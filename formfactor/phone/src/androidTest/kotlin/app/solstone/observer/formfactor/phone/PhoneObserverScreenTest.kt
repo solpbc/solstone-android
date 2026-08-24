@@ -83,6 +83,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn(), cameraOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("sourceSwitch-audio", useUnmergedTree = true).assertIsDisplayed()
@@ -96,6 +97,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(status("watch", SourceState.OFF, SourceWish.Off)),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("sourceSwitch-watch", useUnmergedTree = true).assertDoesNotExist()
@@ -110,6 +112,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> toggles += 1 },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
@@ -154,6 +157,7 @@ class PhoneObserverScreenTest {
                 status = PhoneStatusModel(true, true, 1, true),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -171,6 +175,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -185,6 +190,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -200,6 +206,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 version = "version-sentinel",
             )
         }
@@ -223,6 +230,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -244,6 +252,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -261,6 +270,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -281,6 +291,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -302,6 +313,7 @@ class PhoneObserverScreenTest {
                     loadState = loaded(audioOn()),
                     status = connected(),
                     onToggle = { _, _ -> },
+                    onStartObserving = {},
                 )
             }
         }
@@ -324,6 +336,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 // initialShelfOpen starts this fixture open; production reaches
                 // the same state by dragging the gestures-enabled drawer over
                 // this detail stack.
@@ -350,6 +363,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -377,6 +391,7 @@ class PhoneObserverScreenTest {
                     loadState = loaded(audioOn()),
                     status = connected(),
                     onToggle = { _, _ -> },
+                    onStartObserving = {},
                 )
             }
         }
@@ -411,6 +426,7 @@ class PhoneObserverScreenTest {
                     loadState = loaded(audioOn()),
                     status = connected(),
                     onToggle = { _, _ -> },
+                    onStartObserving = {},
                     initial = PhoneRouteStack.Empty.showInDetail(route),
                 )
             }
@@ -431,6 +447,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
                 initialShelfOpen = true,
             )
         }
@@ -456,6 +473,7 @@ class PhoneObserverScreenTest {
                 status = PhoneStatusModel(true, false, 1, true),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -499,6 +517,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(*(0 until 40).map { status("s-$it", SourceState.ON, SourceWish.On) }.toTypedArray()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.waitForIdle()
@@ -529,6 +548,7 @@ class PhoneObserverScreenTest {
                 loadState = LoadState.Failed(IllegalStateException("boom")),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithTag("sourcesFailed").assertIsDisplayed()
@@ -542,6 +562,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         val node = composeRule.onNodeWithTag("sourceSwitch-audio", useUnmergedTree = true).fetchSemanticsNode()
@@ -558,6 +579,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(status("audio", SourceState.SETTING_UP, SourceWish.On)),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithText("SETTING_UP", useUnmergedTree = true).assertDoesNotExist()
@@ -571,6 +593,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(status("audio", SourceState.PAUSED, SourceWish.On)),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         composeRule.onNodeWithText("paused", useUnmergedTree = true).assertIsDisplayed()
@@ -585,6 +608,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(audioOn()),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         assertEquals(listOf("audio", "on"), unmergedTexts("sourceBody-audio"))
@@ -598,6 +622,7 @@ class PhoneObserverScreenTest {
                 loadState = loaded(status("audio", SourceState.NEEDS_ATTENTION, SourceWish.On)),
                 status = connected(),
                 onToggle = { _, _ -> },
+                onStartObserving = {},
             )
         }
         assertEquals(listOf("audio", "needs attention"), unmergedTexts("sourceBody-audio"))

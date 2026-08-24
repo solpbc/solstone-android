@@ -24,6 +24,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
@@ -46,6 +47,7 @@ fun PhoneObserverScreen(
     status: PhoneStatusModel?,
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
     onToggle: (String, SourceWish) -> Unit,
+    onStartObserving: () -> Unit,
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
@@ -60,6 +62,10 @@ fun PhoneObserverScreen(
     )
     val latestPaneStates by rememberUpdatedState(paneStates)
     val scope = rememberCoroutineScope()
+    val applicationContext = LocalContext.current.applicationContext
+    val homeTileStore = remember(applicationContext) {
+        SharedPreferencesPhoneHomeTileStore(applicationContext)
+    }
     val openerFocusRequester = remember { FocusRequester() }
     val firstShelfRowFocusRequester = remember { FocusRequester() }
     val hour = remember { LocalTime.now().hour }
@@ -239,7 +245,14 @@ fun PhoneObserverScreen(
                         paneModifier
                             .fillMaxSize()
                             .semantics { paneTitle = top.paneTitle },
-                    )
+                    ) {
+                        PhoneSourceDetail(
+                            loadState = loadState,
+                            sourceId = top.sourceId,
+                            homeTileStore = homeTileStore,
+                            onStartObserving = onStartObserving,
+                        )
+                    }
                 }
             }
         },
