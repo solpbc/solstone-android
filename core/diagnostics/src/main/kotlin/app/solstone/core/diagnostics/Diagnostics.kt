@@ -5,6 +5,7 @@ package app.solstone.core.diagnostics
 
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 
 enum class PairingFact { UNPAIRED, PAIRED, REVOKED }
@@ -29,6 +30,7 @@ data class SourceFacts(
   val providerEmitting: Boolean,
   val storageOk: Boolean,
   val pairing: PairingFact,
+  val silenced: SilencedFact,
 )
 
 fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
@@ -40,6 +42,7 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         f.desiredOn && f.pairing != PairingFact.PAIRED -> SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED
         f.desiredOn && !f.providerEmitting -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
         f.desiredOn && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
+        f.desiredOn && f.silenced == SilencedFact.SILENCED -> SourceState.PAUSED to ReasonCode.NONE
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE
         else -> SourceState.ON to ReasonCode.NONE
     }

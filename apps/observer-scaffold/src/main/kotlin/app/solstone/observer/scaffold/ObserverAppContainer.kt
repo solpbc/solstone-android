@@ -24,6 +24,7 @@ import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
+import app.solstone.observer.harness.sourceRuntimeSnapshotOf
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -197,7 +198,7 @@ class ObserverAppContainer(
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
         val conditions = sources.engines.map { it.condition() }
         val pipeline = activePipeline
-        return SourceRuntimeSnapshot(
+        return sourceRuntimeSnapshotOf(
             engineRunning = conditions.any { it.running },
             providerEmitting = isProviderFresh(
                 startedEpochMs = pipeline?.startedEpochMs(),
@@ -205,6 +206,7 @@ class ObserverAppContainer(
                 nowEpochMs = System.currentTimeMillis(),
             ),
             storageOk = conditions.filter { it.desiredOn }.all { it.available },
+            conditions = conditions,
         )
     }
 

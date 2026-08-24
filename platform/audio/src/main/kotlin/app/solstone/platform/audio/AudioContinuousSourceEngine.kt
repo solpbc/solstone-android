@@ -4,6 +4,7 @@
 package app.solstone.platform.audio
 
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.ContinuousSourceEngine
@@ -34,6 +35,7 @@ interface AudioRecording {
     fun start()
     fun finish(): RecordingFinishResult
     fun discard()
+    fun silenced(): SilencedFact
 }
 
 class AudioContinuousSourceEngine(
@@ -47,6 +49,7 @@ class AudioContinuousSourceEngine(
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
     private val currentToken = AtomicReference<Any?>(null)
+    private val activeRecording = AtomicReference<ActiveRecording?>(null)
     private val payloadFiles = ConcurrentHashMap<PayloadKey, File>()
     private var worker: Thread? = null
 
@@ -61,20 +64,24 @@ class AudioContinuousSourceEngine(
     override fun stop() {
         val localWorker = worker
         running.set(false)
-        currentToken.set(null)
+        currentToken.getAndSet(null)?.let(::clearActiveRecordingForToken)
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
     }
 
-    override fun condition(): SourceCondition =
-        SourceCondition(
+    override fun condition(): SourceCondition {
+        val recording = if (running.get()) activeRecording.get()?.recording else null
+        return SourceCondition(
             desiredOn = true,
             running = running.get(),
             available = storageStatus.isStorageOk(),
             needsAttention = !storageStatus.isStorageOk(),
             paused = false,
+            silenced = recording?.let { runCatching { it.silenced() }.getOrDefault(SilencedFact.UNKNOWN) }
+                ?: SilencedFact.UNKNOWN,
         )
+    }
 
     override fun open(payload: SegmentPayload): InputStream {
         val key = PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs)
@@ -100,6 +107,7 @@ class AudioContinuousSourceEngine(
             }
         } finally {
             if (currentToken.compareAndSet(token, null)) {
+                clearActiveRecordingForToken(token)
                 running.set(false)
             }
         }
@@ -119,7 +127,7 @@ class AudioContinuousSourceEngine(
                 continue
             }
 
-            val outcome = recordWindow(windowStart, windowEnd, nextRestartGap, firstRecordingWindow)
+            val outcome = recordWindow(windowStart, windowEnd, nextRestartGap, firstRecordingWindow, token)
             firstRecordingWindow = false
             if (!emitSafely(sink, outcome.emission, token)) break
             nextRestartGap = restartGap(outcome.emission.captureEndEpochMs)
@@ -127,15 +135,28 @@ class AudioContinuousSourceEngine(
         }
     }
 
-    private fun recordWindow(windowStart: Long, windowEnd: Long, restartGap: GapEvent?, firstRecordingWindow: Boolean): RecordingOutcome {
+    private fun recordWindow(
+        windowStart: Long,
+        windowEnd: Long,
+        restartGap: GapEvent?,
+        firstRecordingWindow: Boolean,
+        token: Any,
+    ): RecordingOutcome {
         val output = File(outputDirectory, "audio-$windowStart.m4a")
         var recording: AudioRecording? = null
+        var active: ActiveRecording? = null
         var actualRecordingStart = windowStart
         try {
             recording = recorderFactory.create(output)
             recording.start()
+            active = ActiveRecording(token, recording)
+            activeRecording.set(active)
+            if (!running.get() || currentToken.get() !== token) {
+                clearActiveRecording(active)
+            }
             actualRecordingStart = nowProvider()
         } catch (error: Exception) {
+            clearActiveRecording(active)
             recording?.discard() ?: output.delete()
             val completed = sleepUntilWindowEnd(windowEnd, currentToken.get())
             return RecordingOutcome(
@@ -147,7 +168,9 @@ class AudioContinuousSourceEngine(
         val completed = sleepUntilWindowEnd(windowEnd, currentToken.get())
         val captureEndEpochMs = if (completed) windowEnd else nowProvider()
         val captureStartEpochMs = if (firstRecordingWindow) actualRecordingStart else windowStart
-        val finishResult = recording.finish()
+        val startedRecording = checkNotNull(recording)
+        clearActiveRecording(active)
+        val finishResult = startedRecording.finish()
         val size = when (finishResult) {
             is RecordingFinishResult.Failure -> {
                 output.delete()
@@ -214,6 +237,18 @@ class AudioContinuousSourceEngine(
         runCatching { diag(line) }
     }
 
+    private fun clearActiveRecording(active: ActiveRecording?) {
+        if (active != null) activeRecording.compareAndSet(active, null)
+    }
+
+    private fun clearActiveRecordingForToken(token: Any) {
+        while (true) {
+            val active = activeRecording.get() ?: return
+            if (active.token !== token) return
+            if (activeRecording.compareAndSet(active, null)) return
+        }
+    }
+
     private fun gapEmission(captureStartEpochMs: Long, captureEndEpochMs: Long, reason: String): SourceEmission =
         SourceEmission(
             sourceId = sourceId,
@@ -244,6 +279,7 @@ class AudioContinuousSourceEngine(
     private data class RecordingOutcome(val emission: SourceEmission, val interrupted: Boolean)
 
     private data class PayloadKey(val captureStartEpochMs: Long, val captureEndEpochMs: Long)
+    private data class ActiveRecording(val token: Any, val recording: AudioRecording)
 
     private class DeleteOnCloseInputStream(
         delegate: InputStream,

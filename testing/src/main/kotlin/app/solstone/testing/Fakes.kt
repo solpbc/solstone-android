@@ -4,6 +4,7 @@
 package app.solstone.testing
 
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
@@ -62,6 +63,7 @@ class FakeContinuousSource(
             available = true,
             needsAttention = false,
             paused = false,
+            silenced = SilencedFact.NOT_SILENCED,
         )
 }
 

@@ -4,6 +4,7 @@
 package app.solstone.observer.harness
 
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.DirectEndpoint
 import kotlin.test.Test
@@ -22,6 +23,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
             diag = { lines += it },
         )
@@ -46,6 +48,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -80,6 +83,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -99,6 +103,7 @@ class HarnessControllerRehydrateTest {
                     engineRunning = f.lifecycle.starts > 0,
                     providerEmitting = true,
                     storageOk = true,
+                    silenced = SilencedFact.NOT_SILENCED,
                 )
             },
         )
@@ -119,6 +124,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -193,6 +199,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -214,6 +221,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -230,6 +238,7 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
             ),
             endpointStore = FakeEndpointStore(DirectEndpoint("10.0.0.2", 7657)),
             credentialStore = FakeCredentialStore(credential()),

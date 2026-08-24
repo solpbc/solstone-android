@@ -16,6 +16,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.PairedHome
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.observer.formfactor.shared.ObserverHarnessUi
@@ -126,7 +127,7 @@ class PhonePlStatusProbeAsyncRuntimeTest {
             endpointStore = ProbeMemoryEndpointStore(),
             credentialStore = ProbeMemoryCredentialStore(),
             identityStore = ProbeMemoryIdentityStore(),
-            sourceSnapshot = { SourceRuntimeSnapshot(false, false, true) },
+            sourceSnapshot = { SourceRuntimeSnapshot(false, false, true, SilencedFact.UNKNOWN) },
             deviceLabel = "phone-test",
             visibleCaptureAuthority = VisibleCaptureOwnerRegistry(),
             isUsableNetworkPresent = { true },

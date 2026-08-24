@@ -5,6 +5,7 @@ package app.solstone.core.diagnostics
 
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +39,30 @@ class DiagnosticsTest {
     fun reduceMapsOffAndHealthyOn() {
         assertEquals(SourceState.OFF to ReasonCode.NONE, reduce(healthy().copy(desiredOn = false)))
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))
+    }
+
+    @Test
+    fun providerEmissionAndSilencedAreIndependentFactsInReduce() {
+        assertEquals(
+            SourceState.ON to ReasonCode.NONE,
+            reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.NOT_SILENCED)),
+        )
+        assertEquals(
+            SourceState.PAUSED to ReasonCode.NONE,
+            reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.SILENCED)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT,
+            reduce(healthy().copy(providerEmitting = false, silenced = SilencedFact.NOT_SILENCED)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT,
+            reduce(healthy().copy(providerEmitting = false, silenced = SilencedFact.SILENCED)),
+        )
+        assertEquals(
+            SourceState.ON to ReasonCode.NONE,
+            reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.UNKNOWN)),
+        )
     }
 
     @Test
@@ -116,5 +141,6 @@ class DiagnosticsTest {
         providerEmitting = true,
         storageOk = true,
         pairing = PairingFact.PAIRED,
+        silenced = SilencedFact.NOT_SILENCED,
     )
 }

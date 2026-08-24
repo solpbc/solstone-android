@@ -36,6 +36,7 @@ import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
+import app.solstone.observer.harness.sourceRuntimeSnapshotOf
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
@@ -412,7 +413,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
         val condition = captureSetup.engines.firstOrNull()?.condition()
         val pipeline = activePipeline
-        return SourceRuntimeSnapshot(
+        return sourceRuntimeSnapshotOf(
             engineRunning = condition?.running == true,
             providerEmitting = isProviderFresh(
                 startedEpochMs = pipeline?.startedEpochMs(),
@@ -420,6 +421,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
                 nowEpochMs = System.currentTimeMillis(),
             ),
             storageOk = condition?.available != false,
+            conditions = listOfNotNull(condition),
         )
     }
 

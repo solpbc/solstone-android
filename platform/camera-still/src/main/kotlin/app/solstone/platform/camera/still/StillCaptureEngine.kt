@@ -4,6 +4,7 @@
 package app.solstone.platform.camera.still
 
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.ContinuousSourceEngine
@@ -82,6 +83,7 @@ class StillCaptureEngine(
             available = true,
             needsAttention = false,
             paused = false,
+            silenced = SilencedFact.UNKNOWN,
         )
 
     override fun open(payload: SegmentPayload): InputStream {

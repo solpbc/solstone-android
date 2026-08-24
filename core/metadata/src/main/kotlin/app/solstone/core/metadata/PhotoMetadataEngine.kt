@@ -3,6 +3,7 @@
 
 package app.solstone.core.metadata
 
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.ContinuousSourceEngine
@@ -74,6 +75,7 @@ class PhotoMetadataEngine(
             available = true,
             needsAttention = false,
             paused = false,
+            silenced = SilencedFact.UNKNOWN,
         )
 
     override fun open(payload: SegmentPayload): InputStream {

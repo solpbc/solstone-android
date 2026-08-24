@@ -93,6 +93,8 @@ class StatusCueTest {
     fun mapsCurrentStatusForButton() {
         assertEquals(StatusCue.OBSERVING, statusCueFor(snapshot(SourceState.ON)))
         assertEquals(StatusCue.OBSERVER_PAUSED, statusCueFor(snapshot(SourceState.OFF)))
+        assertEquals(StatusCue.NEEDS_ATTENTION, statusCueFor(snapshot(SourceState.PAUSED, ReasonCode.NONE)))
+        assertNull(cueFor(snapshot(SourceState.ON), snapshot(SourceState.PAUSED, ReasonCode.NONE)))
         assertEquals(
             StatusCue.NOT_PAIRED,
             statusCueFor(snapshot(SourceState.NEEDS_ATTENTION, ReasonCode.UNPAIRED, PairingFact.UNPAIRED)),

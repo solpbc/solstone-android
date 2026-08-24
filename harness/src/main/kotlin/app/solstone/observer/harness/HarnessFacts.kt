@@ -8,6 +8,7 @@ import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.diagnostics.reduce
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.platform.fgs.PermissionStatus
 
@@ -22,6 +23,7 @@ data class HarnessFactInputs(
     val endpointPresent: Boolean,
     val relayOriginPresent: Boolean,
     val identityState: IdentityState?,
+    val silenced: SilencedFact,
 )
 
 fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
@@ -38,6 +40,7 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
             inputs.relayOriginPresent,
             inputs.identityState,
         ),
+        silenced = inputs.silenced,
     )
     val (state, reason) = reduce(facts)
     return HarnessDiagnostics(state = state, reason = reason, display = displayFor(state, reason))

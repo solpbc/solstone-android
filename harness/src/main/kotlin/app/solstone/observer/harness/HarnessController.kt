@@ -9,6 +9,7 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.DirectPairLink
@@ -16,6 +17,7 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.pl.parsePairLink
+import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
@@ -303,6 +305,7 @@ class HarnessController(
                 endpointPresent = endpointPresent,
                 relayOriginPresent = identity?.relayOrigin != null,
                 identityState = identity?.state,
+                silenced = snapshot.silenced,
             ),
         )
     }
@@ -340,4 +343,23 @@ data class SourceRuntimeSnapshot(
     val engineRunning: Boolean,
     val providerEmitting: Boolean,
     val storageOk: Boolean,
+    val silenced: SilencedFact,
 )
+
+fun sourceRuntimeSnapshotOf(
+    engineRunning: Boolean,
+    providerEmitting: Boolean,
+    storageOk: Boolean,
+    conditions: Collection<SourceCondition>,
+): SourceRuntimeSnapshot =
+    SourceRuntimeSnapshot(
+        engineRunning = engineRunning,
+        providerEmitting = providerEmitting,
+        storageOk = storageOk,
+        silenced = when {
+            conditions.isEmpty() -> SilencedFact.UNKNOWN
+            conditions.any { it.silenced == SilencedFact.SILENCED } -> SilencedFact.SILENCED
+            conditions.any { it.silenced == SilencedFact.UNKNOWN } -> SilencedFact.UNKNOWN
+            else -> SilencedFact.NOT_SILENCED
+        },
+    )

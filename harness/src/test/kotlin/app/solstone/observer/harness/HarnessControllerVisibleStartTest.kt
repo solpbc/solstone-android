@@ -8,6 +8,7 @@ import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.StatusCue
 import app.solstone.core.diagnostics.cueFor
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,6 +71,7 @@ class HarnessControllerVisibleStartTest {
                     engineRunning = f.lifecycle.starts > 0,
                     providerEmitting = true,
                     storageOk = true,
+                    silenced = SilencedFact.NOT_SILENCED,
                 )
             },
         )
@@ -127,5 +129,6 @@ class HarnessControllerVisibleStartTest {
             engineRunning = false,
             providerEmitting = true,
             storageOk = true,
+            silenced = SilencedFact.UNKNOWN,
         )
 }

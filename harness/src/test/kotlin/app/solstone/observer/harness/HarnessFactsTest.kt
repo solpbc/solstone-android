@@ -5,7 +5,9 @@ package app.solstone.observer.harness
 
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
+import app.solstone.core.sources.SourceCondition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -38,10 +40,67 @@ class HarnessFactsTest {
                 endpointPresent = false,
                 relayOriginPresent = true,
                 identityState = IdentityState.PAIRED,
+                silenced = SilencedFact.NOT_SILENCED,
             ),
         )
 
         assertEquals(SourceState.ON, diagnostics.state)
         assertEquals(ReasonCode.NONE, diagnostics.reason)
     }
+
+    @Test
+    fun sourceConditionsAggregateAndReachDiagnosticsWithoutMergingFreshness() {
+        val unknown = sourceRuntimeSnapshotOf(
+            engineRunning = true,
+            providerEmitting = true,
+            storageOk = true,
+            conditions = listOf(condition(SilencedFact.NOT_SILENCED), condition(SilencedFact.UNKNOWN)),
+        )
+        assertEquals(SilencedFact.UNKNOWN, unknown.silenced)
+        assertEquals(SourceState.ON, diagnosticsFor(unknown.silenced).state)
+
+        val silenced = sourceRuntimeSnapshotOf(
+            engineRunning = true,
+            providerEmitting = true,
+            storageOk = true,
+            conditions = listOf(
+                condition(SilencedFact.NOT_SILENCED),
+                condition(SilencedFact.UNKNOWN),
+                condition(SilencedFact.SILENCED),
+            ),
+        )
+        assertEquals(SilencedFact.SILENCED, silenced.silenced)
+        assertEquals(SourceState.PAUSED, diagnosticsFor(silenced.silenced).state)
+        assertEquals(
+            SilencedFact.UNKNOWN,
+            sourceRuntimeSnapshotOf(true, true, true, emptyList()).silenced,
+        )
+    }
+
+    private fun diagnosticsFor(silenced: SilencedFact) =
+        assembleDiagnostics(
+            HarnessFactInputs(
+                desiredOn = true,
+                engineRunning = true,
+                permissionStatus = grantedPermissions(),
+                fgsHeartbeatFresh = true,
+                providerEmitting = true,
+                storageOk = true,
+                credentialPresent = true,
+                endpointPresent = true,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+                silenced = silenced,
+            ),
+        )
+
+    private fun condition(silenced: SilencedFact) =
+        SourceCondition(
+            desiredOn = true,
+            running = true,
+            available = true,
+            needsAttention = false,
+            paused = false,
+            silenced = silenced,
+        )
 }

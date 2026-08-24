@@ -4,6 +4,7 @@
 package app.solstone.platform.audio
 
 import app.solstone.core.model.SourceKind
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.sources.EmissionSink
@@ -18,7 +19,9 @@ import java.io.File
 import java.nio.file.Files
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -26,6 +29,78 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AudioContinuousSourceEngineTest {
+    @Test
+    fun conditionExposesOnlyInFlightRecordingSilencedFact() {
+        val sink = CapturingSink()
+        val releaseSleep = CountDownLatch(1)
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = {
+                releaseSleep.await(1, TimeUnit.SECONDS)
+                throw InterruptedException()
+            },
+            recorderFactory = FakeAudioRecorderFactory(
+                bytesToWrite = AUDIO_BYTES,
+                silenced = SilencedFact.SILENCED,
+            ),
+        )
+
+        assertEquals(SilencedFact.UNKNOWN, engine.condition().silenced)
+
+        engine.start(sink)
+        waitForCondition { engine.condition().silenced == SilencedFact.SILENCED }
+
+        releaseSleep.countDown()
+        waitForEmissions(sink, 1)
+        assertEquals(SilencedFact.UNKNOWN, engine.condition().silenced)
+        engine.stop()
+    }
+
+    @Test
+    fun conditionIsUnknownForStartFailureAndPostFinishDeadTime() {
+        val failedSink = CapturingSink()
+        val failed = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(startError = IllegalStateException("boom")),
+        )
+
+        failed.start(failedSink)
+        waitForEmissions(failedSink, 1)
+        assertEquals(SilencedFact.UNKNOWN, failed.condition().silenced)
+        failed.stop()
+
+        val finishEntered = CountDownLatch(1)
+        val releaseFinish = CountDownLatch(1)
+        var now = OFF_BOUNDARY_EPOCH_MS
+        var sleeps = 0
+        val deadTime = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = { now },
+            sleeper = {
+                if (sleeps++ == 0) {
+                    now = BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS
+                } else {
+                    throw InterruptedException()
+                }
+            },
+            recorderFactory = BlockingFinishAudioRecorderFactory(finishEntered, releaseFinish),
+        )
+
+        deadTime.start(CapturingSink())
+        assertTrue(finishEntered.await(1, TimeUnit.SECONDS))
+        assertTrue(deadTime.condition().running)
+        assertEquals(SilencedFact.UNKNOWN, deadTime.condition().silenced)
+
+        releaseFinish.countDown()
+        deadTime.stop()
+    }
+
     @Test
     fun alignsOffBoundaryCaptureToCompletedWallClockWindow() {
         val outputDirectory = tempDirectory()
@@ -315,9 +390,10 @@ class AudioContinuousSourceEngineTest {
         private val bytesToWrite: ByteArray = AUDIO_BYTES,
         private val startError: RuntimeException? = null,
         private val finishError: RuntimeException? = null,
+        private val silenced: SilencedFact = SilencedFact.NOT_SILENCED,
     ) : AudioRecorderFactory {
         override fun create(output: File): AudioRecording =
-            FakeAudioRecording(output, bytesToWrite, startError, finishError)
+            FakeAudioRecording(output, bytesToWrite, startError, finishError, silenced)
     }
 
     private class FakeAudioRecording(
@@ -325,6 +401,7 @@ class AudioContinuousSourceEngineTest {
         private val bytesToWrite: ByteArray,
         private val startError: RuntimeException?,
         private val finishError: RuntimeException?,
+        private val silenced: SilencedFact,
     ) : AudioRecording {
         override fun start() {
             startError?.let { throw it }
@@ -338,6 +415,32 @@ class AudioContinuousSourceEngineTest {
         override fun discard() {
             output.delete()
         }
+
+        override fun silenced(): SilencedFact = silenced
+    }
+
+    private class BlockingFinishAudioRecorderFactory(
+        private val finishEntered: CountDownLatch,
+        private val releaseFinish: CountDownLatch,
+    ) : AudioRecorderFactory {
+        override fun create(output: File): AudioRecording =
+            object : AudioRecording {
+                override fun start() {
+                    output.writeBytes(AUDIO_BYTES)
+                }
+
+                override fun finish(): RecordingFinishResult {
+                    finishEntered.countDown()
+                    releaseFinish.await(1, TimeUnit.SECONDS)
+                    return RecordingFinishResult.Success(output.length())
+                }
+
+                override fun discard() {
+                    output.delete()
+                }
+
+                override fun silenced(): SilencedFact = SilencedFact.SILENCED
+            }
     }
 
     private class CapturingSink : EmissionSink {
@@ -386,6 +489,14 @@ class AudioContinuousSourceEngineTest {
             Thread.sleep(5L)
         }
         throw AssertionError("expected $count emissions, got ${sink.emissions.size}")
+    }
+
+    private fun waitForCondition(predicate: () -> Boolean) {
+        repeat(200) {
+            if (predicate()) return
+            Thread.sleep(5L)
+        }
+        throw AssertionError("condition did not become true")
     }
 
     private companion object {

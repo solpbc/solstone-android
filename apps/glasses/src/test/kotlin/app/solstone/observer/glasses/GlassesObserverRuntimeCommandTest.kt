@@ -9,6 +9,7 @@ import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
@@ -447,6 +448,7 @@ class GlassesObserverRuntimeCommandTest {
                     engineRunning = true,
                     providerEmitting = true,
                     storageOk = true,
+                    silenced = SilencedFact.NOT_SILENCED,
                 )
             },
             deviceLabel = "test glasses",

@@ -4,6 +4,7 @@
 package app.solstone.core.observer
 
 import app.solstone.core.model.BundleManifest
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
@@ -427,6 +428,7 @@ class CapturePipelineTest {
                 available = true,
                 needsAttention = false,
                 paused = false,
+                silenced = SilencedFact.UNKNOWN,
             )
     }
 
@@ -447,6 +449,7 @@ class CapturePipelineTest {
                 available = true,
                 needsAttention = false,
                 paused = false,
+                silenced = SilencedFact.UNKNOWN,
             )
     }
 
@@ -464,7 +467,7 @@ class CapturePipelineTest {
         override fun stop() = Unit
 
         override fun condition(): SourceCondition =
-            SourceCondition(true, false, true, false, false)
+            SourceCondition(true, false, true, false, false, SilencedFact.UNKNOWN)
     }
 
     private class ByteArrayPayloadProvider : PayloadBytesProvider {
@@ -587,7 +590,7 @@ class CapturePipelineTest {
         }
 
         override fun condition(): SourceCondition =
-            SourceCondition(true, false, true, false, false)
+            SourceCondition(true, false, true, false, false, SilencedFact.UNKNOWN)
     }
 
     private class StopFailingEngine : ContinuousSourceEngine {
@@ -601,7 +604,7 @@ class CapturePipelineTest {
         }
 
         override fun condition(): SourceCondition =
-            SourceCondition(true, false, true, false, false)
+            SourceCondition(true, false, true, false, false, SilencedFact.UNKNOWN)
     }
 
     private class StartFailingEngine(private val failure: RuntimeException) : ContinuousSourceEngine {
@@ -612,7 +615,7 @@ class CapturePipelineTest {
         override fun stop() = Unit
 
         override fun condition(): SourceCondition =
-            SourceCondition(true, false, true, false, false)
+            SourceCondition(true, false, true, false, false, SilencedFact.UNKNOWN)
     }
 
     private companion object {

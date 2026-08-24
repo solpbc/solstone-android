@@ -4,6 +4,7 @@
 package app.solstone.observer.harness
 
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.mapSourceState
@@ -65,6 +66,7 @@ class SourceRegistryReadModelTest {
                 available = true,
                 needsAttention = false,
                 paused = false,
+                silenced = SilencedFact.UNKNOWN,
             ),
         )
         val registry = sourceRegistry(
@@ -79,6 +81,13 @@ class SourceRegistryReadModelTest {
         assertEquals(SourceWish.On, row.wish)
         assertEquals(SourceState.SETTING_UP, row.state)
         assertEquals(SourceState.OFF, snapshot.observer.state)
+    }
+
+    @Test
+    fun silencedFactMapsPerSourceStateWithoutChangingRunning() {
+        assertEquals(SourceState.ON, mapSourceState(condition(SilencedFact.NOT_SILENCED)))
+        assertEquals(SourceState.PAUSED, mapSourceState(condition(SilencedFact.SILENCED)))
+        assertEquals(SourceState.ON, mapSourceState(condition(SilencedFact.UNKNOWN)))
     }
 
     @Test
@@ -104,4 +113,14 @@ class SourceRegistryReadModelTest {
             assertEquals(row.wish == SourceWish.Off, row.reason == ReasonCode.DESIRED_OFF)
         }
     }
+
+    private fun condition(silenced: SilencedFact) =
+        SourceCondition(
+            desiredOn = true,
+            running = true,
+            available = true,
+            needsAttention = false,
+            paused = false,
+            silenced = silenced,
+        )
 }

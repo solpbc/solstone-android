@@ -11,6 +11,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.PairedHome
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.observer.harness.BundleExport
@@ -113,6 +114,7 @@ class LegacyQrPairThreadingTest {
                     engineRunning = false,
                     providerEmitting = false,
                     storageOk = true,
+                    silenced = SilencedFact.UNKNOWN,
                 )
             },
             deviceLabel = "legacy-test",

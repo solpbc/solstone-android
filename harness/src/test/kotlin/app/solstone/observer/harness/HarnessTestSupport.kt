@@ -9,6 +9,7 @@ import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.sources.ContinuousSourceEngine
@@ -208,6 +209,7 @@ internal fun fixture(
         engineRunning = true,
         providerEmitting = true,
         storageOk = true,
+        silenced = SilencedFact.NOT_SILENCED,
     ),
     endpointStore: FakeEndpointStore = FakeEndpointStore(DirectEndpoint("10.0.0.2", 7657)),
     credentialStore: FakeCredentialStore = FakeCredentialStore(credential()),
@@ -344,6 +346,7 @@ internal class FakeSourceEngine(
         available = true,
         needsAttention = false,
         paused = false,
+        silenced = SilencedFact.NOT_SILENCED,
     ),
     var throwOnCondition: Throwable? = null,
     var throwOnStart: Throwable? = null,

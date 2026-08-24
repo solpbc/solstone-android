@@ -10,6 +10,7 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.pl.DirectEndpoint
@@ -149,6 +150,7 @@ class GlassesDiagnosticPlumbingTest {
                     engineRunning = false,
                     providerEmitting = false,
                     storageOk = true,
+                    silenced = SilencedFact.UNKNOWN,
                 )
             },
             deviceLabel = "test glasses",
@@ -167,6 +169,7 @@ class GlassesDiagnosticPlumbingTest {
                 available = true,
                 needsAttention = false,
                 paused = false,
+                silenced = SilencedFact.UNKNOWN,
             )
     }
 
