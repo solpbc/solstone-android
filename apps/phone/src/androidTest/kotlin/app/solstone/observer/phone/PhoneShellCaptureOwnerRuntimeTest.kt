@@ -5,19 +5,14 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import android.content.Context
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import org.junit.After
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -25,10 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class PhoneShellActivityRuntimeTest {
-    @get:Rule
-    val composeRule = createEmptyComposeRule()
-
+class PhoneShellCaptureOwnerRuntimeTest {
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(
         Manifest.permission.RECORD_AUDIO,
@@ -52,21 +44,15 @@ class PhoneShellActivityRuntimeTest {
     }
 
     @Test
-    fun launchesResumedAndRendersLiveSourceTiles() {
+    fun captureOwnerPresentOnlyWhileResumed() {
         val container = obtainObserverContainer()
-        assertTrue(waitForRecovery(container))
+        assertFalse(container.captureAuthority.isVisibleOwnerPresent())
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
-            assertEquals(Lifecycle.State.RESUMED, scenario.state)
-            composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithTag("sourceTile-audio").assertIsDisplayed()
-            composeRule.onNodeWithTag("sourceTile-location").assertIsDisplayed()
-            assertEquals(2, composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().size)
+            assertTrue(container.captureAuthority.isVisibleOwnerPresent())
+            scenario.moveToState(Lifecycle.State.CREATED)
+            assertFalse(container.captureAuthority.isVisibleOwnerPresent())
+            assertSame(container, waitForObserverContainer())
         }
-    }
-
-    private fun sourceTileMatcher() = SemanticsMatcher("source tile") { node ->
-        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("sourceTile-") == true
+        assertFalse(container.captureAuthority.isVisibleOwnerPresent())
     }
 }

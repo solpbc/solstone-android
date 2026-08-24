@@ -152,6 +152,7 @@ dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:sources"))
     implementation(project(":formfactor:phone"))
+    implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")
     debugImplementation("androidx.compose.material3:material3:1.4.0")
     debugImplementation("androidx.compose.ui:ui:1.10.6")

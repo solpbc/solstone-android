@@ -72,6 +72,8 @@ class SourceRegistry(
         }
     }
 
+    fun subscriberCount(): Int = synchronized(lock) { listeners.size }
+
     private fun notifyListeners() {
         val snapshot = synchronized(lock) { listeners.toList() }
         snapshot.forEach { listener ->
