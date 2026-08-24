@@ -31,6 +31,11 @@ android {
                     apiLevel = 35
                     systemImageSource = "google_apis"
                 }
+                create("nexus7api35") {
+                    device = "Nexus 7"
+                    apiLevel = 35
+                    systemImageSource = "google_apis"
+                }
             }
         }
     }
@@ -43,6 +48,7 @@ android {
 dependencies {
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
+    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.2.0")
     implementation("androidx.compose.ui:ui:1.10.6")
     implementation("androidx.compose.ui:ui-tooling-preview:1.10.6")
     debugImplementation("androidx.compose.ui:ui-tooling:1.10.6")

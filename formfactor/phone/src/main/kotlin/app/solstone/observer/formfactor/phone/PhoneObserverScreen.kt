@@ -4,13 +4,20 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.layout.AnimatedPane
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
+import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldValue
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +48,14 @@ import kotlinx.coroutines.launch
 private const val UP_CONTENT_DESCRIPTION = "up"
 private const val SHELF_CONTENT_DESCRIPTION = "settings"
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+private val permanentDeckValue = ThreePaneScaffoldValue(
+    PaneAdaptedValue.Expanded,
+    PaneAdaptedValue.Expanded,
+    PaneAdaptedValue.Hidden,
+)
+
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun PhoneObserverScreen(
     loadState: LoadState<SourcesReadModel>,
@@ -69,12 +84,20 @@ fun PhoneObserverScreen(
     val openerFocusRequester = remember { FocusRequester() }
     val firstShelfRowFocusRequester = remember { FocusRequester() }
     val hour = remember { LocalTime.now().hour }
-    val minWidthDp = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
+    val adaptiveInfo = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
+    val minWidthDp = adaptiveInfo
         .windowSizeClass
         .minWidthDp
     val widthClass = classifyWindowWidth(minWidthDp)
+    val directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(adaptiveInfo)
+    val deckWidth = deckPaneWidth(widthClass)
+    val renderSplit = shouldRenderSplit(
+        maxHorizontalPartitions = directive.maxHorizontalPartitions,
+        deckPaneWidthDp = deckWidth.value.toInt(),
+    )
     val statusOpen = paneStates.isOpen(PhonePane.STATUS)
     val shelfOpen = paneStates.isOpen(PhonePane.SHELF)
+    val deckPaneOpen = statusOpen || shelfOpen
     val top = detailStack.toList().lastOrNull()
     val popDetail = {
         val remaining = detailStack.toList().dropLast(1)
@@ -138,7 +161,7 @@ fun PhoneObserverScreen(
         },
         journalMark = {},
         navigationIcon = {
-            if (popsDetail) {
+            if (!renderSplit && popsDetail) {
                 IconButton(
                     onClick = popDetail,
                     modifier = Modifier.testTag("phoneUp"),
@@ -191,12 +214,12 @@ fun PhoneObserverScreen(
             )
         },
         content = { paddingValues ->
-            if (top == null) {
+            val deckContent: @Composable (WidthClass, Modifier) -> Unit = { deckWidthClass, deckModifier ->
                 PhoneDeck(
                     loadState = loadState,
                     contentPadding = paddingValues,
-                    widthClass = widthClass,
-                    paneOpen = statusOpen || shelfOpen,
+                    widthClass = deckWidthClass,
+                    paneOpen = deckPaneOpen,
                     onOpenSource = { id ->
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
@@ -208,52 +231,77 @@ fun PhoneObserverScreen(
                         detailStack = detailStack.showInDetail(PhoneRoute.AddMore)
                     },
                     hour = hour,
-                    modifier = modifier,
+                    modifier = deckModifier,
                 )
+            }
+            if (renderSplit) {
+                ListDetailPaneScaffold(
+                    directive = directive,
+                    value = permanentDeckValue,
+                    listPane = {
+                        AnimatedPane(
+                            modifier = Modifier
+                                .preferredWidth(deckWidth)
+                                .fillMaxSize(),
+                        ) {
+                            BoxWithConstraints {
+                                deckContent(
+                                    classifyWindowWidth(maxWidth.value.toInt()),
+                                    Modifier,
+                                )
+                            }
+                        }
+                    },
+                    detailPane = {
+                        AnimatedPane(modifier = Modifier.fillMaxSize()) {
+                            PhoneDetailPane(
+                                top = top,
+                                loadState = loadState,
+                                homeTileStore = homeTileStore,
+                                onStartObserving = onStartObserving,
+                                onOpenLicences = {
+                                    detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
+                                },
+                                onOpenSource = { id ->
+                                    detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
+                                },
+                                modifier = Modifier.padding(paddingValues),
+                                leadingSlot = if (top != null) {
+                                    {
+                                        IconButton(
+                                            onClick = popDetail,
+                                            modifier = Modifier.testTag("phoneUp"),
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.phone_navigation_up),
+                                                contentDescription = UP_CONTENT_DESCRIPTION,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                    },
+                    modifier = modifier.testTag("phoneSplit"),
+                )
+            } else if (top == null) {
+                deckContent(widthClass, modifier)
             } else {
-                val paneModifier = modifier.padding(paddingValues)
-                when (top) {
-                    PhoneRoute.AboutSolstone -> PhoneAboutPane(
-                        onOpenLicences = {
-                            detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
-                        },
-                        modifier = paneModifier,
-                    )
-                    PhoneRoute.Licences -> PhoneLicencesPane(modifier = paneModifier)
-                    PhoneRoute.Import -> PhoneImportPane(modifier = paneModifier)
-                    PhoneRoute.AddMore -> PhoneAddMorePane(
-                        onOpenSource = { id ->
-                            detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
-                        },
-                        modifier = paneModifier,
-                    )
-                    PhoneRoute.RouteA,
-                    PhoneRoute.RouteB,
-                    PhoneRoute.RouteC,
-                    PhoneRoute.RouteCChild,
-                    PhoneRoute.YourJournal,
-                    PhoneRoute.ThisDevice,
-                    PhoneRoute.Notifications,
-                    PhoneRoute.Help -> {
-                        Box(
-                            paneModifier
-                                .fillMaxSize()
-                                .semantics { paneTitle = top.paneTitle },
-                        )
-                    }
-                    is PhoneRoute.SourceDetail -> Box(
-                        paneModifier
-                            .fillMaxSize()
-                            .semantics { paneTitle = top.paneTitle },
-                    ) {
-                        PhoneSourceDetail(
-                            loadState = loadState,
-                            sourceId = top.sourceId,
-                            homeTileStore = homeTileStore,
-                            onStartObserving = onStartObserving,
-                        )
-                    }
-                }
+                PhoneDetailPane(
+                    top = top,
+                    loadState = loadState,
+                    homeTileStore = homeTileStore,
+                    onStartObserving = onStartObserving,
+                    onOpenLicences = {
+                        detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
+                    },
+                    onOpenSource = { id ->
+                        detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
+                    },
+                    modifier = modifier.padding(paddingValues),
+                )
             }
         },
     )
