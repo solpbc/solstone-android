@@ -26,6 +26,8 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
     else -> when (surface.headingKey) {
         "heading.pane_status" -> "status"
         "heading.about_solstone" -> "about solstone"
+        "heading.import" -> "import"
+        "heading.add_more" -> "add more"
         else -> null
     }
 }

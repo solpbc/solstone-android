@@ -53,6 +53,8 @@ class PhoneObserverScreenTest {
                 paneOpen = false,
                 onOpenSource = {},
                 onToggle = { _, _ -> },
+                onOpenImport = {},
+                onOpenAddMore = {},
                 hour = 5,
             )
         }

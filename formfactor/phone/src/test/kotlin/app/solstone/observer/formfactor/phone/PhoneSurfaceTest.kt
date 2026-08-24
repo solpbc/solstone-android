@@ -25,8 +25,8 @@ class PhoneSurfaceTest {
     }
 
     @Test
-    fun surfaceCountIsEleven() {
-        assertEquals(11, phoneSurfaces().size)
+    fun surfaceCountIsThirteen() {
+        assertEquals(13, phoneSurfaces().size)
     }
 
     @Test
@@ -43,6 +43,8 @@ class PhoneSurfaceTest {
         assertTrue(registered(PhoneRoute.SourceDetail("audio")))
         assertTrue(registered(PhoneRoute.AboutSolstone))
         assertTrue(registered(PhoneRoute.Licences))
+        assertTrue(registered(PhoneRoute.Import))
+        assertTrue(registered(PhoneRoute.AddMore))
     }
 
     private fun registered(route: PhoneRoute): Boolean = when (route) {
@@ -52,6 +54,8 @@ class PhoneSurfaceTest {
         PhoneRoute.RouteCChild -> PhoneRoute.RouteCChild in phoneSurfaces()
         PhoneRoute.AboutSolstone -> PhoneRoute.AboutSolstone in phoneSurfaces()
         PhoneRoute.Licences -> PhoneRoute.Licences in phoneSurfaces()
+        PhoneRoute.Import -> PhoneRoute.Import in phoneSurfaces()
+        PhoneRoute.AddMore -> PhoneRoute.AddMore in phoneSurfaces()
         is PhoneRoute.SourceDetail -> phoneSurfaces().any { it is PhoneRoute.SourceDetail }
     }
 }

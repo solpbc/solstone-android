@@ -25,4 +25,6 @@ fun phoneSurfaces(): List<PhoneSurface> = listOf(
     PhoneRoute.SourceDetail("audio"),
     PhoneRoute.AboutSolstone,
     PhoneRoute.Licences,
+    PhoneRoute.Import,
+    PhoneRoute.AddMore,
 )

@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,6 +113,12 @@ fun PhoneObserverScreen(
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
                     onToggle = onToggle,
+                    onOpenImport = {
+                        detailStack = detailStack.showInDetail(PhoneRoute.Import)
+                    },
+                    onOpenAddMore = {
+                        detailStack = detailStack.showInDetail(PhoneRoute.AddMore)
+                    },
                     hour = hour,
                     modifier = modifier,
                 )
@@ -125,15 +132,26 @@ fun PhoneObserverScreen(
                         modifier = paneModifier,
                     )
                     PhoneRoute.Licences -> PhoneLicencesPane(modifier = paneModifier)
+                    PhoneRoute.Import -> PhoneImportPane(modifier = paneModifier)
+                    PhoneRoute.AddMore -> PhoneAddMorePane(
+                        onOpenSource = { id ->
+                            detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
+                        },
+                        modifier = paneModifier,
+                    )
                     PhoneRoute.RouteA,
                     PhoneRoute.RouteB,
                     PhoneRoute.RouteC,
-                    PhoneRoute.RouteCChild,
-                    is PhoneRoute.SourceDetail -> {
+                    PhoneRoute.RouteCChild -> {
                         Box(
                             paneModifier.semantics { paneTitle = top.paneTitle },
                         )
                     }
+                    is PhoneRoute.SourceDetail -> Box(
+                        paneModifier
+                            .fillMaxSize()
+                            .semantics { paneTitle = top.paneTitle },
+                    )
                 }
             }
         },
