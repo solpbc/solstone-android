@@ -22,6 +22,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -99,6 +100,86 @@ class AudioContinuousSourceEngineTest {
 
         releaseFinish.countDown()
         deadTime.stop()
+    }
+
+    @Test
+    fun delayedStoppedWorkerCannotHideNewGenerationSilencedFact() {
+        val firstStartEntered = CountDownLatch(1)
+        val allowFirstStart = CountDownLatch(1)
+        val oldPublicationReached = CountDownLatch(1)
+        val allowOldWorkerToContinue = CountDownLatch(1)
+        val holdWindow = CountDownLatch(1)
+        val stopFinished = CountDownLatch(1)
+        val oldStartReturned = ThreadLocal<Boolean>()
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = {
+                if (oldStartReturned.get() == true) {
+                    oldStartReturned.remove()
+                    oldPublicationReached.countDown()
+                    awaitIgnoringInterrupts(allowOldWorkerToContinue)
+                }
+                OFF_BOUNDARY_EPOCH_MS
+            },
+            sleeper = {
+                awaitIgnoringInterrupts(holdWindow)
+                throw InterruptedException()
+            },
+            recorderFactory = StopStartOverlapRecorderFactory(
+                firstStartEntered = firstStartEntered,
+                allowFirstStart = allowFirstStart,
+                oldStartReturned = oldStartReturned,
+            ),
+        )
+
+        engine.start(CapturingSink())
+        assertTrue(firstStartEntered.await(1, TimeUnit.SECONDS))
+        val stopper = Thread {
+            engine.stop()
+            stopFinished.countDown()
+        }
+        stopper.start()
+        try {
+            waitForCondition { !engine.condition().running }
+
+            engine.start(CapturingSink())
+            waitForCondition { engine.condition().silenced == SilencedFact.SILENCED }
+
+            allowFirstStart.countDown()
+            assertTrue(oldPublicationReached.await(1, TimeUnit.SECONDS))
+            assertEquals(SilencedFact.SILENCED, engine.condition().silenced)
+        } finally {
+            allowFirstStart.countDown()
+            allowOldWorkerToContinue.countDown()
+            holdWindow.countDown()
+            assertTrue(stopFinished.await(1, TimeUnit.SECONDS))
+            stopper.join(1_000L)
+        }
+    }
+
+    @Test
+    fun stoppedConditionIsNeverSilenced() {
+        val holdWindow = CountDownLatch(1)
+        val engine = AudioContinuousSourceEngine(
+            outputDirectory = tempDirectory(),
+            storageStatus = okStorage(),
+            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            sleeper = {
+                awaitIgnoringInterrupts(holdWindow)
+                throw InterruptedException()
+            },
+            recorderFactory = FakeAudioRecorderFactory(silenced = SilencedFact.SILENCED),
+        )
+
+        engine.start(CapturingSink())
+        waitForCondition { engine.condition().silenced == SilencedFact.SILENCED }
+        holdWindow.countDown()
+        engine.stop()
+
+        val condition = engine.condition()
+        assertFalse(condition.running)
+        assertEquals(SilencedFact.UNKNOWN, condition.silenced)
     }
 
     @Test
@@ -443,6 +524,42 @@ class AudioContinuousSourceEngineTest {
             }
     }
 
+    private class StopStartOverlapRecorderFactory(
+        private val firstStartEntered: CountDownLatch,
+        private val allowFirstStart: CountDownLatch,
+        private val oldStartReturned: ThreadLocal<Boolean>,
+    ) : AudioRecorderFactory {
+        private val creations = AtomicInteger()
+
+        override fun create(output: File): AudioRecording =
+            if (creations.getAndIncrement() == 0) {
+                object : AudioRecording {
+                    override fun start() {
+                        firstStartEntered.countDown()
+                        awaitIgnoringInterrupts(allowFirstStart)
+                        output.writeBytes(AUDIO_BYTES)
+                        oldStartReturned.set(true)
+                    }
+
+                    override fun finish(): RecordingFinishResult = RecordingFinishResult.Success(output.length())
+
+                    override fun discard() {
+                        output.delete()
+                    }
+
+                    override fun silenced(): SilencedFact = SilencedFact.NOT_SILENCED
+                }
+            } else {
+                FakeAudioRecording(
+                    output = output,
+                    bytesToWrite = AUDIO_BYTES,
+                    startError = null,
+                    finishError = null,
+                    silenced = SilencedFact.SILENCED,
+                )
+            }
+    }
+
     private class CapturingSink : EmissionSink {
         val emissions = CopyOnWriteArrayList<SourceEmission>()
 
@@ -500,6 +617,16 @@ class AudioContinuousSourceEngineTest {
     }
 
     private companion object {
+        fun awaitIgnoringInterrupts(latch: CountDownLatch) {
+            while (true) {
+                try {
+                    latch.await()
+                    return
+                } catch (_: InterruptedException) {
+                }
+            }
+        }
+
         val UTC: ZoneId = ZoneId.of("UTC")
         const val OFF_BOUNDARY_EPOCH_MS = BASE_CAPTURE_EPOCH_MS + 137_000L
         val AUDIO_BYTES = "fake-m4a-bytes".encodeToByteArray()

@@ -50,31 +50,45 @@ class AudioContinuousSourceEngine(
     private val running = AtomicBoolean(false)
     private val currentToken = AtomicReference<Any?>(null)
     private val activeRecording = AtomicReference<ActiveRecording?>(null)
+    private val recordingStateLock = Any()
     private val payloadFiles = ConcurrentHashMap<PayloadKey, File>()
     private var worker: Thread? = null
 
     override fun start(sink: EmissionSink) {
         if (!running.compareAndSet(false, true)) return
         val token = Any()
-        currentToken.set(token)
+        synchronized(recordingStateLock) {
+            currentToken.set(token)
+        }
         outputDirectory.mkdirs()
         worker = Thread({ runWorker(sink, token) }, WORKER_THREAD_NAME).also { it.start() }
     }
 
     override fun stop() {
         val localWorker = worker
-        running.set(false)
-        currentToken.getAndSet(null)?.let(::clearActiveRecordingForToken)
+        synchronized(recordingStateLock) {
+            running.set(false)
+            currentToken.getAndSet(null)?.let(::clearActiveRecordingForToken)
+        }
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
     }
 
     override fun condition(): SourceCondition {
-        val recording = if (running.get()) activeRecording.get()?.recording else null
+        val isRunning = running.get()
+        val recording = if (isRunning) {
+            synchronized(recordingStateLock) {
+                activeRecording.get()
+                    ?.takeIf { it.token === currentToken.get() }
+                    ?.recording
+            }
+        } else {
+            null
+        }
         return SourceCondition(
             desiredOn = true,
-            running = running.get(),
+            running = isRunning,
             available = storageStatus.isStorageOk(),
             needsAttention = !storageStatus.isStorageOk(),
             paused = false,
@@ -106,9 +120,11 @@ class AudioContinuousSourceEngine(
                 emitDiag("capture event=engine-failed source=$sourceId type=${t.javaClass.simpleName} message=${t.message ?: ""}")
             }
         } finally {
-            if (currentToken.compareAndSet(token, null)) {
-                clearActiveRecordingForToken(token)
-                running.set(false)
+            synchronized(recordingStateLock) {
+                if (currentToken.compareAndSet(token, null)) {
+                    clearActiveRecordingForToken(token)
+                    running.set(false)
+                }
             }
         }
     }
@@ -150,10 +166,7 @@ class AudioContinuousSourceEngine(
             recording = recorderFactory.create(output)
             recording.start()
             active = ActiveRecording(token, recording)
-            activeRecording.set(active)
-            if (!running.get() || currentToken.get() !== token) {
-                clearActiveRecording(active)
-            }
+            publishActiveRecording(active)
             actualRecordingStart = nowProvider()
         } catch (error: Exception) {
             clearActiveRecording(active)
@@ -239,6 +252,16 @@ class AudioContinuousSourceEngine(
 
     private fun clearActiveRecording(active: ActiveRecording?) {
         if (active != null) activeRecording.compareAndSet(active, null)
+    }
+
+    private fun publishActiveRecording(active: ActiveRecording) {
+        synchronized(recordingStateLock) {
+            if (!running.get() || currentToken.get() !== active.token) return
+            val current = activeRecording.get()
+            if (current == null || current.token === active.token) {
+                activeRecording.set(active)
+            }
+        }
     }
 
     private fun clearActiveRecordingForToken(token: Any) {
