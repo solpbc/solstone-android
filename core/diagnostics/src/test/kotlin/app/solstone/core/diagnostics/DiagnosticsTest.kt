@@ -28,6 +28,26 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun desiredOnBeforeStartIsSettingUp() {
+        assertEquals(
+            SourceState.SETTING_UP to ReasonCode.NONE,
+            reduce(healthy().copy(engineRunning = false, engineStartIssued = false)),
+        )
+    }
+
+    @Test
+    fun sourceAttentionUsesSpecificReducerBranches() {
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL,
+            reduce(healthy().copy(storageOk = false, conditionNeedsAttention = true)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT,
+            reduce(healthy().copy(conditionNeedsAttention = true)),
+        )
+    }
+
+    @Test
     fun reduceMapsS1HonestStateFactsIndividually() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
@@ -62,6 +82,18 @@ class DiagnosticsTest {
         assertEquals(
             SourceState.ON to ReasonCode.NONE,
             reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.UNKNOWN)),
+        )
+    }
+
+    @Test
+    fun pausedFactDoesNotCollapseSilencedUnknown() {
+        assertEquals(
+            SourceState.PAUSED to ReasonCode.NONE,
+            reduce(healthy().copy(silenced = SilencedFact.UNKNOWN, paused = true)),
+        )
+        assertEquals(
+            SourceState.ON to ReasonCode.NONE,
+            reduce(healthy().copy(silenced = SilencedFact.UNKNOWN, paused = false)),
         )
     }
 

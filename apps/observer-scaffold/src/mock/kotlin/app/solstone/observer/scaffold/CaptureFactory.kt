@@ -7,6 +7,7 @@ import android.content.Context
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.spool.PayloadBytesProvider
+import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.testing.FakeContinuousSource
 import app.solstone.testing.fakePayloadBytes
@@ -30,9 +31,17 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         mediaType = "application/x-ndjson",
     )
     return CaptureSetup(
-        engines = listOf(
-            CapturedEngine("audio", audio),
-            CapturedEngine("location", location),
+        registrations = listOf(
+            SourceRegistration(
+                sourceId = "audio",
+                engine = audio,
+                requiredPermissionsGranted = { it.microphoneGranted },
+            ),
+            SourceRegistration(
+                sourceId = "location",
+                engine = location,
+                requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+            ),
         ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =

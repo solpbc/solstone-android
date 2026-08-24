@@ -3,11 +3,14 @@
 
 package app.solstone.observer.harness
 
-import app.solstone.core.model.ReasonCode
+import app.solstone.core.diagnostics.PairingFact
+import app.solstone.core.diagnostics.SourceFacts
+import app.solstone.core.diagnostics.reduce
+import app.solstone.core.model.SilencedFact
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
-import app.solstone.core.sources.mapSourceState
+import app.solstone.platform.fgs.PermissionStatus
 
 class SourcesSubscription(private val closeAction: () -> Unit) {
     private var closed = false
@@ -44,13 +47,18 @@ class SourceRegistry(
         require(ids.size == ids.toSet().size) { "sourceId values must be unique" }
         val persisted = wishStore.loadAll()
         registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.On }
-        bound = registrations.map { BoundSource(it.sourceId, it.engine) }
+        bound = registrations.map(::BoundSource)
         engines = bound
     }
 
     override fun snapshot(): SourcesReadModel {
-        val observer = controller.diagnostics().toObserverStatus()
-        return SourcesReadModel(observer = observer, sources = bound.map { it.status() })
+        val inputs = controller.globalFactInputs()
+        val globalFacts = sourceFactsFor(inputs)
+        val (state, reason) = reduce(globalFacts)
+        return SourcesReadModel(
+            observer = ObserverStatus(state = state, reason = reason),
+            sources = bound.map { it.status(globalFacts, inputs.permissionStatus) },
+        )
     }
 
     override fun setWish(sourceId: String, wish: SourceWish): SourceToggleResult {
@@ -82,9 +90,10 @@ class SourceRegistry(
     }
 
     private inner class BoundSource(
-        val sourceId: String,
-        private val inner: ContinuousSourceEngine,
+        private val registration: SourceRegistration,
     ) : ContinuousSourceEngine {
+        val sourceId = registration.sourceId
+        private val inner = registration.engine
         private val actuationLock = Any()
         private var sink: EmissionSink? = null
         // Believed-running: we issued start and have not confirmed a stop.
@@ -122,19 +131,59 @@ class SourceRegistry(
             return conditionFor(wish)
         }
 
-        fun status(): SourceStatus {
+        fun status(globalFacts: SourceFacts, permissionStatus: PermissionStatus): SourceStatus {
             val wish = synchronized(lock) { wishes.getValue(sourceId) }
-            val condition = conditionFor(wish)
+            val facts = if (wish == SourceWish.Off) {
+                offFacts()
+            } else {
+                sourceFacts(globalFacts, permissionStatus)
+            }
+            val (state, reason) = reduce(facts)
             return SourceStatus(
                 sourceId = sourceId,
                 wish = wish,
-                state = mapSourceState(condition),
-                reason = if (condition.desiredOn) ReasonCode.NONE else ReasonCode.DESIRED_OFF,
+                state = state,
+                reason = reason,
             )
         }
 
         private fun conditionFor(wish: SourceWish): SourceCondition =
             inner.condition().copy(desiredOn = wish == SourceWish.On)
+
+        private fun offFacts(): SourceFacts =
+            SourceFacts(
+                desiredOn = false,
+                engineRunning = false,
+                permissionGranted = true,
+                fgsHeartbeatFresh = true,
+                providerEmitting = true,
+                storageOk = true,
+                pairing = PairingFact.PAIRED,
+                silenced = SilencedFact.UNKNOWN,
+                engineStartIssued = false,
+            )
+
+        private fun sourceFacts(globalFacts: SourceFacts, permissionStatus: PermissionStatus): SourceFacts {
+            val condition = runCatching { conditionFor(SourceWish.On) }.getOrNull()
+            val started = synchronized(lock) { started }
+            // Global inputs: storageOk is shared by every desired-on row. All-required permissions,
+            // FGS heartbeat, provider freshness, and pairing remain observer-only and are neutral here.
+            // Per-source inputs: wish, start-issued, running, declared permissions, silenced, paused,
+            // and condition health.
+            return globalFacts.copy(
+                desiredOn = true,
+                engineRunning = condition?.running == true,
+                permissionGranted = registration.requiredPermissionsGranted(permissionStatus),
+                fgsHeartbeatFresh = true,
+                providerEmitting = true,
+                storageOk = globalFacts.storageOk,
+                pairing = PairingFact.PAIRED,
+                silenced = condition?.silenced ?: SilencedFact.UNKNOWN,
+                engineStartIssued = started,
+                conditionNeedsAttention = condition?.let { it.needsAttention || !it.available } ?: true,
+                paused = condition?.paused == true,
+            )
+        }
 
         fun actuate(): SourceToggleResult {
             synchronized(actuationLock) {

@@ -7,14 +7,13 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.sources.SourceCondition
-import app.solstone.core.sources.mapSourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SourceRegistryReadModelTest {
     @Test
-    fun snapshotStateComesFromMapSourceStateAndIdsFromRegistration() {
+    fun snapshotStateComesFromReducerAndIdsFromRegistration() {
         val engine = FakeSourceEngine()
         val registry = sourceRegistry(
             registrations = listOf(SourceRegistration("audio", engine)),
@@ -22,12 +21,13 @@ class SourceRegistryReadModelTest {
 
         val row = registry.snapshot().sources.single()
         assertEquals("audio", row.sourceId)
-        assertEquals(mapSourceState(engine.condition().copy(desiredOn = true)), row.state)
+        assertEquals(SourceState.SETTING_UP, row.state)
+        assertEquals(ReasonCode.NONE, row.reason)
         assertEquals(SourceWish.On, row.wish)
     }
 
     @Test
-    fun wishOffIsOffWithDesiredOffReason() {
+    fun wishOffIsOffWithNoReason() {
         val engine = FakeSourceEngine()
         val registry = sourceRegistry(
             registrations = listOf(SourceRegistration("audio", engine)),
@@ -38,7 +38,7 @@ class SourceRegistryReadModelTest {
 
         assertEquals(SourceWish.Off, row.wish)
         assertEquals(SourceState.OFF, row.state)
-        assertEquals(ReasonCode.DESIRED_OFF, row.reason)
+        assertEquals(ReasonCode.NONE, row.reason)
     }
 
     @Test
@@ -85,9 +85,9 @@ class SourceRegistryReadModelTest {
 
     @Test
     fun silencedFactMapsPerSourceStateWithoutChangingRunning() {
-        assertEquals(SourceState.ON, mapSourceState(condition(SilencedFact.NOT_SILENCED)))
-        assertEquals(SourceState.PAUSED, mapSourceState(condition(SilencedFact.SILENCED)))
-        assertEquals(SourceState.ON, mapSourceState(condition(SilencedFact.UNKNOWN)))
+        assertEquals(SourceState.ON, sourceState(SilencedFact.NOT_SILENCED))
+        assertEquals(SourceState.PAUSED, sourceState(SilencedFact.SILENCED))
+        assertEquals(SourceState.ON, sourceState(SilencedFact.UNKNOWN))
     }
 
     @Test
@@ -110,9 +110,19 @@ class SourceRegistryReadModelTest {
         assertTrue(audio.state != SourceState.OFF)
         snapshot.sources.forEach { row ->
             assertEquals(row.wish == SourceWish.Off, row.state == SourceState.OFF)
-            assertEquals(row.wish == SourceWish.Off, row.reason == ReasonCode.DESIRED_OFF)
+            assertEquals(ReasonCode.NONE, row.reason)
         }
     }
+
+    private fun sourceState(silenced: SilencedFact): SourceState =
+        sourceRegistry(
+            registrations = listOf(
+                SourceRegistration(
+                    "audio",
+                    FakeSourceEngine(conditionValue = condition(silenced)),
+                ),
+            ),
+        ).snapshot().sources.single().state
 
     private fun condition(silenced: SilencedFact) =
         SourceCondition(

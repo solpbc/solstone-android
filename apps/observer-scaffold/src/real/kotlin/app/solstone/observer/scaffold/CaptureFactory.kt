@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.spool.PayloadBytesProvider
+import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.audio.AudioContinuousSourceEngine
 import app.solstone.platform.camera.camera2.Camera2StillCamera
 import app.solstone.platform.camera.legacy.LegacyStillCamera
@@ -19,9 +20,10 @@ import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
 
 fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
+    val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
     val audio = AudioContinuousSourceEngine(
         outputDirectory = context.cacheDir.resolve("audio-source"),
-        storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES),
+        storageStatus = storageStatus,
     )
     val location = LocationContinuousSourceEngine(AndroidLocationSource(context))
     val camera = StillCaptureEngine(
@@ -29,10 +31,22 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         cameraLock = cameraLock,
     )
     return CaptureSetup(
-        engines = listOf(
-            CapturedEngine(AudioContinuousSourceEngine.SOURCE_ID, audio),
-            CapturedEngine(LocationContinuousSourceEngine.SOURCE_ID, location),
-            CapturedEngine(StillCaptureEngine.SOURCE_ID, camera),
+        registrations = listOf(
+            SourceRegistration(
+                sourceId = AudioContinuousSourceEngine.SOURCE_ID,
+                engine = audio,
+                requiredPermissionsGranted = { it.microphoneGranted },
+            ),
+            SourceRegistration(
+                sourceId = LocationContinuousSourceEngine.SOURCE_ID,
+                engine = location,
+                requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+            ),
+            SourceRegistration(
+                sourceId = StillCaptureEngine.SOURCE_ID,
+                engine = camera,
+                requiredPermissionsGranted = { it.cameraGranted },
+            ),
         ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
@@ -52,6 +66,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                 }
             }
         },
+        storageOk = storageStatus::isStorageOk,
     )
 }
 

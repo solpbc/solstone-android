@@ -31,8 +31,14 @@ data class SourceFacts(
   val storageOk: Boolean,
   val pairing: PairingFact,
   val silenced: SilencedFact,
+  val engineStartIssued: Boolean = true,
+  val conditionNeedsAttention: Boolean = false,
+  val paused: Boolean = false,
 )
 
+// NONE is correct for off, on, paused, and setting up. Only a needs-attention row with NONE is a
+// defect. DESIRED_OFF is deliberately not emitted on the shell path, so an off source reads OFF +
+// NONE by design.
 fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
     when {
         !f.permissionGranted -> SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED
@@ -41,8 +47,10 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         !f.storageOk -> SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL
         f.desiredOn && f.pairing != PairingFact.PAIRED -> SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED
         f.desiredOn && !f.providerEmitting -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
-        f.desiredOn && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
-        f.desiredOn && f.silenced == SilencedFact.SILENCED -> SourceState.PAUSED to ReasonCode.NONE
+        f.desiredOn && f.conditionNeedsAttention -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
+        f.desiredOn && f.engineStartIssued && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
+        f.desiredOn && !f.engineStartIssued && !f.engineRunning -> SourceState.SETTING_UP to ReasonCode.NONE
+        f.desiredOn && (f.silenced == SilencedFact.SILENCED || f.paused) -> SourceState.PAUSED to ReasonCode.NONE
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE
         else -> SourceState.ON to ReasonCode.NONE
     }

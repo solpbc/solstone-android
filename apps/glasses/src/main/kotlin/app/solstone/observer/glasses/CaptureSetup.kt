@@ -9,4 +9,5 @@ import app.solstone.core.spool.PayloadBytesProvider
 data class CaptureSetup(
     val engines: List<ContinuousSourceEngine>,
     val payloadBytesProvider: PayloadBytesProvider,
+    val storageOk: () -> Boolean = { true },
 )

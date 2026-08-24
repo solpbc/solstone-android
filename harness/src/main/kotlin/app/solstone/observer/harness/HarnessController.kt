@@ -288,27 +288,28 @@ class HarnessController(
 
     fun exportSegment(segment: HarnessEvidenceSegment): HarnessExportResult = bundleExport.export(segment)
 
-    fun diagnostics(): HarnessDiagnostics {
+    fun globalFactInputs(): HarnessFactInputs {
         val snapshot = sourceSnapshot()
         val identity = identityStore.load()
         val credentialPresent = credentialStore.load() != null
         val endpointPresent = endpointStore.load() != null
-        return assembleDiagnostics(
-            HarnessFactInputs(
-                desiredOn = desiredOn,
-                engineRunning = snapshot.engineRunning,
-                permissionStatus = permissionStatusReader.read().also { permissionStatus = it },
-                fgsHeartbeatFresh = heartbeatFreshness.isFresh(),
-                providerEmitting = snapshot.providerEmitting,
-                storageOk = snapshot.storageOk,
-                credentialPresent = credentialPresent,
-                endpointPresent = endpointPresent,
-                relayOriginPresent = identity?.relayOrigin != null,
-                identityState = identity?.state,
-                silenced = snapshot.silenced,
-            ),
+        return HarnessFactInputs(
+            desiredOn = desiredOn,
+            engineRunning = snapshot.engineRunning,
+            permissionStatus = permissionStatusReader.read().also { permissionStatus = it },
+            fgsHeartbeatFresh = heartbeatFreshness.isFresh(),
+            providerEmitting = snapshot.providerEmitting,
+            storageOk = snapshot.storageOk,
+            credentialPresent = credentialPresent,
+            endpointPresent = endpointPresent,
+            relayOriginPresent = identity?.relayOrigin != null,
+            identityState = identity?.state,
+            silenced = snapshot.silenced,
+            engineStartIssued = snapshot.engineStartIssued,
         )
     }
+
+    fun diagnostics(): HarnessDiagnostics = assembleDiagnostics(globalFactInputs())
 
     private fun runPairProbe(rawText: String): HarnessPairProbeResult {
         val result = pairProbe.pairAndProbe(rawText, deviceLabel)
@@ -344,6 +345,7 @@ data class SourceRuntimeSnapshot(
     val providerEmitting: Boolean,
     val storageOk: Boolean,
     val silenced: SilencedFact,
+    val engineStartIssued: Boolean = true,
 )
 
 fun sourceRuntimeSnapshotOf(
@@ -351,6 +353,7 @@ fun sourceRuntimeSnapshotOf(
     providerEmitting: Boolean,
     storageOk: Boolean,
     conditions: Collection<SourceCondition>,
+    engineStartIssued: Boolean = true,
 ): SourceRuntimeSnapshot =
     SourceRuntimeSnapshot(
         engineRunning = engineRunning,
@@ -362,4 +365,5 @@ fun sourceRuntimeSnapshotOf(
             conditions.any { it.silenced == SilencedFact.UNKNOWN } -> SilencedFact.UNKNOWN
             else -> SilencedFact.NOT_SILENCED
         },
+        engineStartIssued = engineStartIssued,
     )

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -11,7 +13,7 @@ import kotlin.test.assertTrue
 
 class SourceRegistryLoadStateTest {
     @Test
-    fun throwingConditionSurfacesAsFailedNotOffDefault() {
+    fun throwingConditionDegradesOnlyItsOwnRow() {
         val boom = RuntimeException("condition failed")
         val engine = FakeSourceEngine(throwOnCondition = boom)
         val registry = sourceRegistry(
@@ -26,9 +28,11 @@ class SourceRegistryLoadStateTest {
         loader.load({ registry.snapshot() }) { states += it }
 
         assertSame(LoadState.Loading, states[0])
-        val failed = assertIs<LoadState.Failed>(states.last())
-        assertSame(boom, failed.error)
-        assertTrue(states.none { it is LoadState.Loaded })
+        val loaded = assertIs<LoadState.Loaded<SourcesReadModel>>(states.last()).value
+        val row = loaded.sources.single()
+        assertEquals(SourceState.NEEDS_ATTENTION, row.state)
+        assertEquals(ReasonCode.PROVIDER_SILENT, row.reason)
+        assertTrue(states.none { it is LoadState.Failed })
     }
 
     @Test

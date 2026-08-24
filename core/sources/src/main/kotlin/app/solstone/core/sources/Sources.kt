@@ -6,7 +6,6 @@ package app.solstone.core.sources
 import app.solstone.core.model.GapEvent
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
-import app.solstone.core.model.SourceState
 
 data class SourceEmission(
   val sourceId: String,
@@ -48,13 +47,3 @@ data class SourceCondition(
     val paused: Boolean,
     val silenced: SilencedFact,
 )
-
-fun mapSourceState(condition: SourceCondition): SourceState =
-    when {
-        !condition.desiredOn -> SourceState.OFF
-        condition.needsAttention || !condition.available -> SourceState.NEEDS_ATTENTION
-        condition.silenced == SilencedFact.SILENCED -> SourceState.PAUSED
-        condition.paused -> SourceState.PAUSED
-        condition.running -> SourceState.ON
-        else -> SourceState.SETTING_UP
-    }

@@ -24,10 +24,17 @@ data class HarnessFactInputs(
     val relayOriginPresent: Boolean,
     val identityState: IdentityState?,
     val silenced: SilencedFact,
+    val engineStartIssued: Boolean = true,
 )
 
 fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
-    val facts = SourceFacts(
+    val facts = sourceFactsFor(inputs)
+    val (state, reason) = reduce(facts)
+    return HarnessDiagnostics(state = state, reason = reason, display = displayFor(state, reason))
+}
+
+internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts =
+    SourceFacts(
         desiredOn = inputs.desiredOn,
         engineRunning = inputs.engineRunning,
         permissionGranted = inputs.permissionStatus.allRequiredGranted,
@@ -41,10 +48,8 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
             inputs.identityState,
         ),
         silenced = inputs.silenced,
+        engineStartIssued = inputs.engineStartIssued,
     )
-    val (state, reason) = reduce(facts)
-    return HarnessDiagnostics(state = state, reason = reason, display = displayFor(state, reason))
-}
 
 fun displayFor(state: SourceState, reason: ReasonCode): String =
     reason.text()?.let { "${state.label()}: $it" } ?: state.label()

@@ -411,17 +411,23 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
-        val condition = captureSetup.engines.firstOrNull()?.condition()
+        val conditions = captureSetup.engines.mapNotNull { engine -> runCatching { engine.condition() }.getOrNull() }
         val pipeline = activePipeline
+        // Global reducer inputs: observer wish, all-required permissions, FGS freshness, and pairing
+        // come from HarnessController; start-issued comes from the active pipeline; running and silenced
+        // aggregate conditions; provider freshness is pipeline-wide; storage uses CaptureSetup's shared seam.
+        // This surface has no per-source rows; on surfaces that do, source wish, declared permissions,
+        // and condition running/silenced/paused/attention are assembled by SourceRegistry.
         return sourceRuntimeSnapshotOf(
-            engineRunning = condition?.running == true,
+            engineRunning = conditions.any { it.running },
             providerEmitting = isProviderFresh(
                 startedEpochMs = pipeline?.startedEpochMs(),
                 lastEmissionEpochMs = pipeline?.lastEmissionEpochMs(),
                 nowEpochMs = System.currentTimeMillis(),
             ),
-            storageOk = condition?.available != false,
-            conditions = listOfNotNull(condition),
+            storageOk = captureSetup.storageOk(),
+            conditions = conditions,
+            engineStartIssued = pipeline != null,
         )
     }
 

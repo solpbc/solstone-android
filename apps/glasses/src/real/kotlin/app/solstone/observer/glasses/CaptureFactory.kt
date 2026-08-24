@@ -20,9 +20,10 @@ import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
 
 fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
+    val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
     val audio = AudioContinuousSourceEngine(
         outputDirectory = context.cacheDir.resolve("audio-source"),
-        storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES),
+        storageStatus = storageStatus,
     )
     val camera = StillCaptureEngine(
         stillCamera = Camera2StillCamera(context),
@@ -55,6 +56,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                 }
             }
         },
+        storageOk = storageStatus::isStorageOk,
     )
 }
 

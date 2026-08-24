@@ -6,6 +6,7 @@ package app.solstone.observer.harness
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.core.sources.ContinuousSourceEngine
+import app.solstone.platform.fgs.PermissionStatus
 
 enum class SourceWish { Off, On }
 
@@ -29,6 +30,7 @@ data class SourcesReadModel(
 data class SourceRegistration(
     val sourceId: String,
     val engine: ContinuousSourceEngine,
+    val requiredPermissionsGranted: (PermissionStatus) -> Boolean = { true },
 )
 
 sealed interface SourceToggleResult {

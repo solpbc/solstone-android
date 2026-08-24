@@ -77,6 +77,24 @@ class HarnessFactsTest {
         )
     }
 
+    @Test
+    fun allOmittedConditionsAfterStartNeedAttentionInsteadOfOn() {
+        val snapshot = sourceRuntimeSnapshotOf(
+            engineRunning = false,
+            providerEmitting = true,
+            storageOk = true,
+            conditions = emptyList(),
+            engineStartIssued = true,
+        )
+        val f = fixture(snapshot = snapshot)
+        f.desiredStore.setDesiredOn(true)
+
+        val diagnostics = f.controller.diagnostics()
+
+        assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
+        assertEquals(ReasonCode.REBOOTED, diagnostics.reason)
+    }
+
     private fun diagnosticsFor(silenced: SilencedFact) =
         assembleDiagnostics(
             HarnessFactInputs(

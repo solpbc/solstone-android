@@ -3,15 +3,11 @@
 
 package app.solstone.observer.scaffold
 
-import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.spool.PayloadBytesProvider
-
-data class CapturedEngine(
-    val sourceId: String,
-    val engine: ContinuousSourceEngine,
-)
+import app.solstone.observer.harness.SourceRegistration
 
 data class CaptureSetup(
-    val engines: List<CapturedEngine>,
+    val registrations: List<SourceRegistration>,
     val payloadBytesProvider: PayloadBytesProvider,
+    val storageOk: () -> Boolean = { true },
 )
