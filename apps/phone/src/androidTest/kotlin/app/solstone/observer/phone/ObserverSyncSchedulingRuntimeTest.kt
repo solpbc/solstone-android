@@ -58,6 +58,8 @@ class ObserverSyncSchedulingRuntimeTest {
      */
     @Test
     fun pairingSuccessEnqueuesOnlyWhenPendingEvidenceExists() {
+        assertEquals(0, pendingEvidenceCount(context))
+
         ActivityScenario.launch(ObserverActivity::class.java).use {
             val container = waitForObserverContainer()
             waitForRecovery(container)
