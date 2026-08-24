@@ -112,7 +112,7 @@ Historical note: before scaffold consolidation, phone/watch used an in-memory de
 Remove trust defaults and require explicit call-site choices:
 
 - Remove the default always-visible capture authority from `HarnessController`.
-- Remove `exemptionVerified: () -> Boolean = { true }` defaults from `PhoneHarnessFlavor`, `WatchHarnessFlavor`, and `GlassesHarnessFlavor`.
+- ~~Remove `exemptionVerified: () -> Boolean = { true }` defaults from `PhoneHarnessFlavor`, `WatchHarnessFlavor`, and `GlassesHarnessFlavor`.~~ **SUPERSEDED 2026-08-23** — the battery-exemption diagnosis was retired outright, so these identifiers no longer exist anywhere in the tree. Kept struck rather than deleted: this section records that default-true trust values were removed for a reason, and that reasoning still governs any future default.
 - Remove `isUsableNetworkPresent: () -> Boolean = { true }` default from `GlassesHarnessFlavor`.
 - Phone/watch temporarily passed an explicit always-visible capture authority in this lode; the later scaffold consolidation replaced that with a real visible-owner registry.
 - Chase compile errors for direct data-class construction and tests.
