@@ -34,10 +34,13 @@ class PhoneTwoPaneLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun deckSurvivesDeckTapInPanePushAndBack() {
+    fun deckTapsKeepDeckWhileBackWalksDetailStack() {
         setWideContent()
 
+        composeRule.onNodeWithTag("importTile").performClick()
         composeRule.onNodeWithTag("addMoreTile").performClick()
+        composeRule.onNodeWithTag("sourceTile-audio").performClick()
+        composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
         composeRule.onNodeWithTag("shelfRow-aboutSolstone").performClick()
@@ -47,17 +50,6 @@ class PhoneTwoPaneLayoutTest {
         Espresso.pressBack()
 
         composeRule.onNodeWithTag("licencesRow").assertIsDisplayed()
-        composeRule.onNodeWithTag("deck").assertIsDisplayed()
-    }
-
-    @Test
-    fun threeDeckTapsKeepDeckAndOneBackShowsDefaultDetail() {
-        setWideContent()
-
-        composeRule.onNodeWithTag("importTile").performClick()
-        composeRule.onNodeWithTag("addMoreTile").performClick()
-        composeRule.onNodeWithTag("sourceTile-audio").performClick()
-        composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
 
         Espresso.pressBack()
@@ -91,12 +83,13 @@ class PhoneTwoPaneLayoutTest {
     @Test
     fun deckColumnIsAtLeast360DpAtMediumWidth() {
         val mediumDeckWidth = renderedDeckWidthDp(MEDIUM_SIZE)
-        assertTrue("medium deck was $mediumDeckWidth dp", mediumDeckWidth >= 360f)
+        assertDeckIsColumn(MEDIUM_SIZE, mediumDeckWidth)
     }
 
     @Test
     fun deckColumnIs412DpAtLargeWidth() {
         val largeDeckWidth = renderedDeckWidthDp(LARGE_SIZE)
+        assertDeckIsColumn(LARGE_SIZE, largeDeckWidth)
         assertEquals(412f, largeDeckWidth, 1f)
     }
 
@@ -133,6 +126,12 @@ class PhoneTwoPaneLayoutTest {
         }
         composeRule.waitForIdle()
         return composeRule.onNodeWithTag("deck").fetchSemanticsNode().boundsInRoot.width / density
+    }
+
+    private fun assertDeckIsColumn(size: DpSize, deckWidth: Float) {
+        composeRule.onNodeWithTag("phoneSplit").assertIsDisplayed()
+        assertTrue("deck was $deckWidth dp", deckWidth >= 360f)
+        assertTrue("deck was $deckWidth dp", deckWidth < size.width.value)
     }
 
     private companion object {

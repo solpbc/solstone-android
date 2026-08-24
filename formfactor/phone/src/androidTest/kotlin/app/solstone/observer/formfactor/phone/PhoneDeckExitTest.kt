@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
-import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -55,6 +54,5 @@ class PhoneDeckExitTest {
         Espresso.pressBackUnconditionally()
 
         assertTrue(activity.isFinishing)
-        ActivityScenario.launch(ComponentActivity::class.java)
     }
 }

@@ -17,7 +17,8 @@ import androidx.compose.ui.unit.dp
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReadModel
 
-// 2 x 48dp tiles + 8dp grid gap + 2 x 16dp margins = 136dp.
+// Guards the selected preferred deck width: 2 x 48dp tiles + 8dp grid gap + 2 x 16dp compact
+// margins = 136dp. The split collapses entirely rather than shrinking the leading pane below it.
 private const val MINIMUM_SPLIT_DECK_WIDTH_DP = 136
 
 internal fun deckPaneWidth(widthClass: WidthClass): Dp = when (widthClass) {
