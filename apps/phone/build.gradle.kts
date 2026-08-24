@@ -150,13 +150,14 @@ tasks.register("verifySolstoneGateBuildReceipts") {
 
 dependencies {
     implementation(project(":apps:observer-scaffold"))
+    implementation(project(":core:diagnostics"))
     implementation(project(":core:sources"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")
+    implementation("androidx.glance:glance-appwidget:1.1.1")
     debugImplementation("androidx.compose.material3:material3:1.4.0")
     debugImplementation("androidx.compose.ui:ui:1.10.6")
-    debugImplementation(project(":core:diagnostics"))
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")
@@ -165,6 +166,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.10.6")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+    androidTestImplementation("androidx.glance:glance-appwidget-testing:1.1.1")
     androidTestImplementation(project(":harness"))
     androidTestImplementation(project(":core:diagnostics"))
     androidTestImplementation(project(":core:identity"))

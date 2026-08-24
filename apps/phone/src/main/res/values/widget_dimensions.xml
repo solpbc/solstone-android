@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="phone_observer_widget_background_radius">16dp</dimen>
+    <dimen name="phone_observer_widget_inner_radius">12dp</dimen>
+    <dimen name="phone_observer_widget_min_width">180dp</dimen>
+    <dimen name="phone_observer_widget_min_height">48dp</dimen>
+</resources>

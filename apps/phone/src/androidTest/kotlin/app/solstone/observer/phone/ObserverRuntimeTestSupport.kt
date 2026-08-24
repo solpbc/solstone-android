@@ -37,6 +37,10 @@ internal fun resetPersistence(context: Context) {
         .edit()
         .clear()
         .commit()
+    context.getSharedPreferences("phone_widget_start_outcome", Context.MODE_PRIVATE)
+        .edit()
+        .clear()
+        .commit()
 }
 
 internal fun obtainObserverContainer(): ObserverAppContainer {

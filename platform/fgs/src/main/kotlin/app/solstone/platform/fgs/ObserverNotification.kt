@@ -11,6 +11,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationCompat
 
 object ObserverNotification {
     const val CHANNEL_ID = "solstone_observer"
@@ -33,6 +34,7 @@ object ObserverNotification {
         needsAttention: Boolean = false,
         decorate: Boolean = false,
         contentIntent: PendingIntent? = null,
+        requestPromotion: Boolean = false,
     ): Notification {
         ensureChannel(context)
         val builder = builder(context)
@@ -46,6 +48,9 @@ object ObserverNotification {
         if (decorate) {
             dispatchDecoration { decorator?.decorate(context, builder) }
         }
+        if (requestPromotion) {
+            requestPromotedOngoing(builder)
+        }
         return builder
             .build()
     }
@@ -56,6 +61,10 @@ object ObserverNotification {
 
     fun dispatchDecoration(hook: (() -> Unit)?) {
         hook?.invoke()
+    }
+
+    private fun requestPromotedOngoing(builder: Notification.Builder) {
+        builder.extras.putBoolean(NotificationCompat.EXTRA_REQUEST_PROMOTED_ONGOING, true)
     }
 
     private fun builder(context: Context): Notification.Builder =

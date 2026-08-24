@@ -4,6 +4,7 @@
 package app.solstone.platform.fgs
 
 import app.solstone.core.model.SourceState
+import app.solstone.core.model.ReasonCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -166,6 +167,40 @@ class FgsLogicTest {
         ObserverNotification.dispatchDecoration { calls += 1 }
 
         assertTrue(calls == 1)
+    }
+
+    @Test
+    fun widgetStartCallbacksPreserveAcceptanceAndRefusalReasons() {
+        val accepted = mutableListOf<String>()
+        val refused = mutableListOf<Pair<String, ReasonCode>>()
+        ObserverForegroundService.widgetStartHandler = object : ObserverForegroundService.ObserverWidgetStartHandler {
+            override fun onForegroundServiceStarted(sourceId: String) {
+                accepted += sourceId
+            }
+
+            override fun onForegroundServiceStartRefused(sourceId: String, reason: ReasonCode) {
+                refused += sourceId to reason
+            }
+        }
+        try {
+            ObserverForegroundService.dispatchWidgetStartAccepted("audio")
+            ObserverForegroundService.dispatchWidgetStartRefused("audio", ReasonCode.PERMISSION_REVOKED)
+            ObserverForegroundService.dispatchWidgetStartRefused(
+                "audio",
+                ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            )
+        } finally {
+            ObserverForegroundService.widgetStartHandler = null
+        }
+
+        assertEquals(listOf("audio"), accepted)
+        assertEquals(
+            listOf(
+                "audio" to ReasonCode.PERMISSION_REVOKED,
+                "audio" to ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            ),
+            refused,
+        )
     }
 
     @Test

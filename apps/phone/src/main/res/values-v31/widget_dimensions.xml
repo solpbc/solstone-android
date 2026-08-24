@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="phone_observer_widget_background_radius" type="dimen">@android:dimen/system_app_widget_background_radius</item>
+    <item name="phone_observer_widget_inner_radius" type="dimen">@android:dimen/system_app_widget_inner_radius</item>
+</resources>

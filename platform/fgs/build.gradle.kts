@@ -25,5 +25,6 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:diagnostics"))
+    implementation("androidx.core:core:1.17.0")
     testImplementation(kotlin("test"))
 }

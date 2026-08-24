@@ -55,6 +55,14 @@ dependencies {
     implementation(project(":core:model"))
 
     testImplementation(kotlin("test"))
+    // Widget reducer tests construct the real HarnessController/SourceRegistry path. These stay
+    // test-only to avoid leaking harness implementation seams into the phone UI runtime.
+    testImplementation(project(":core:diagnostics"))
+    testImplementation(project(":core:identity"))
+    testImplementation(project(":core:pl"))
+    testImplementation(project(":core:sources"))
+    testImplementation(project(":platform:camera-still"))
+    testImplementation(project(":platform:fgs"))
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")
     androidTestImplementation("androidx.test:runner:1.5.2")

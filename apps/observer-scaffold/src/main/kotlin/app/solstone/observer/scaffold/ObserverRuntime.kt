@@ -13,6 +13,7 @@ class ObserverRuntime(
     private val lock = Any()
     private var container: ObserverAppContainer? = null
     private var testContainer: ObserverRuntimeContainer? = null
+    private var containerInitializedListener: ((ObserverRuntimeContainer) -> Unit)? = null
 
     internal constructor(container: ObserverRuntimeContainer, spec: FormFactorSpec) : this(appContext = null, spec = spec) {
         testContainer = container
@@ -21,11 +22,26 @@ class ObserverRuntime(
     val containerIfInitialized: ObserverRuntimeContainer?
         get() = synchronized(lock) { container ?: testContainer }
 
-    fun container(): ObserverAppContainer =
-        synchronized(lock) {
+    fun container(): ObserverAppContainer {
+        var created: ObserverAppContainer? = null
+        val result = synchronized(lock) {
             val context = requireNotNull(appContext) { "appContext is required for a real ObserverAppContainer" }
-            container ?: containerFactory(context, spec).also { container = it }
+            container ?: containerFactory(context, spec).also {
+                container = it
+                created = it
+            }
         }
+        created?.let { initialized -> containerInitializedListener?.invoke(initialized) }
+        return result
+    }
+
+    fun onContainerInitialized(listener: (ObserverRuntimeContainer) -> Unit) {
+        val initialized = synchronized(lock) {
+            containerInitializedListener = listener
+            container ?: testContainer
+        }
+        initialized?.let(listener)
+    }
 
     fun closeForTest() {
         val containers = synchronized(lock) {

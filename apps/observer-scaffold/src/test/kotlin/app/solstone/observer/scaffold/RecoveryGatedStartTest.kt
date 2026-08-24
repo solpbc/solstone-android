@@ -75,6 +75,50 @@ class RecoveryGatedStartTest {
         assertEquals(false, started?.running)
         assertNull(active)
     }
+
+    @Test
+    fun alreadyForegroundStartIsDeferredUntilRecoveryCompletesWithoutSecondForegroundStart() {
+        var recoveryCompleted = false
+        var deferredStartPending = false
+        var foregroundStarts = 0
+        var builds = 0
+        var starts = 0
+        var active: TestPipeline? = null
+        val lifecycle = IdempotentPipelineLifecycle(
+            startForeground = { foregroundStarts += 1 },
+            stopForeground = {},
+            buildPipeline = { TestPipeline(++builds) },
+            startPipeline = { pipeline ->
+                starts += 1
+                pipeline.running = true
+            },
+            stopPipeline = { pipeline -> pipeline.running = false },
+            isRunning = { it.running },
+            onActiveChanged = { active = it },
+            canStart = { recoveryCompleted },
+            onStartDeferred = {},
+            onAlreadyForegroundStartDeferred = { deferredStartPending = true },
+            onStartCancelled = {},
+        )
+
+        lifecycle.startWhenAlreadyForeground()
+
+        assertEquals(0, foregroundStarts)
+        assertEquals(0, builds)
+        assertEquals(0, starts)
+        assertEquals(true, deferredStartPending)
+
+        recoveryCompleted = true
+        if (deferredStartPending) {
+            deferredStartPending = false
+            lifecycle.startWhenAlreadyForeground()
+        }
+
+        assertEquals(0, foregroundStarts)
+        assertEquals(1, builds)
+        assertEquals(1, starts)
+        assertEquals(true, active?.running)
+    }
 }
 
 private class TestPipeline(val id: Int) {

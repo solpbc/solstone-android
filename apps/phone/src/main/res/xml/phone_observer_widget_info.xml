@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 21–35 has no lock-screen app-widget host. This base resource keeps the API-36+
+     keyguard opt-out in every configuration instead of maintaining a drifting versioned copy. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="@dimen/phone_observer_widget_min_width"
+    android:minHeight="@dimen/phone_observer_widget_min_height"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen|not_keyguard" />

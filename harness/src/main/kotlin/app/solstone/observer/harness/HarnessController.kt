@@ -24,7 +24,7 @@ import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import app.solstone.platform.pl.transport.conscrypt.relayPairEndpoint
 
-enum class ObserverStartMode { VisibleStart, Rehydrate }
+enum class ObserverStartMode { VisibleStart, Rehydrate, ForegroundServiceStart }
 
 sealed interface PairLinkDispatchResult {
     data object NoLink : PairLinkDispatchResult
@@ -101,7 +101,7 @@ class HarnessController(
         if (!permissionStatus.allRequiredGranted) {
             blockers += ReasonCode.PERMISSION_REVOKED
         }
-        if (!visibleCaptureAuthority.isVisibleOwnerPresent()) {
+        if (mode != ObserverStartMode.ForegroundServiceStart && !visibleCaptureAuthority.isVisibleOwnerPresent()) {
             blockers += ReasonCode.FOREGROUND_START_NOT_ALLOWED
         }
         if (mode == ObserverStartMode.Rehydrate) {
@@ -128,6 +128,23 @@ class HarnessController(
         lastStartRefused = false
         opportunisticSync?.start()
         return true
+    }
+
+    fun startWhenAlreadyForeground(): ObserverStartReadiness {
+        val readiness = startReadiness(ObserverStartMode.ForegroundServiceStart)
+        if (!readiness.allowed) {
+            lastStartRefused = true
+            return readiness
+        }
+        observerLifecycle.startWhenAlreadyForeground()
+        desiredOn = true
+        lastStartRefused = false
+        opportunisticSync?.start()
+        return readiness
+    }
+
+    fun recordStartRefusal() {
+        lastStartRefused = true
     }
 
     fun stop() {
@@ -162,7 +179,11 @@ class HarnessController(
             return
         }
         emitDiag("reconcile mode=$mode result=started")
-        observerLifecycle.start()
+        if (mode == ObserverStartMode.ForegroundServiceStart) {
+            observerLifecycle.startWhenAlreadyForeground()
+        } else {
+            observerLifecycle.start()
+        }
         opportunisticSync?.start()
     }
 

@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.observer.isProviderFresh
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
@@ -25,6 +26,7 @@ import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.observer.harness.RealBacklogStatusReader
 import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
+import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
@@ -50,6 +52,7 @@ interface ObserverRuntimeContainer {
     val sources: SourceRegistry
     val backlogStatus: BacklogStatusReader
     val recoveryCompleted: Boolean
+    fun setBackgroundStatusRefreshListener(listener: (() -> Unit)?)
     fun rehydrateInBackground()
     fun close()
 }
@@ -89,7 +92,8 @@ class ObserverAppContainer(
     )
     private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
-    private var lastPostedNeedsAttention: Boolean = true
+    private var lastPostedNotification: Pair<Boolean, Int> = true to 0
+    @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
     private val lifecycle = IdempotentPipelineLifecycle(
         startForeground = { ObserverForegroundService.startFromVisibleContext(context) },
         stopForeground = { ObserverForegroundService.stop(context) },
@@ -99,8 +103,9 @@ class ObserverAppContainer(
         isRunning = { sourceSnapshot().engineRunning },
         onActiveChanged = { activePipeline = it },
         canStart = { recoveryCompleted },
-        onStartDeferred = { deferredStartPending = true },
-        onStartCancelled = { deferredStartPending = false },
+        onStartDeferred = { deferredStartMode = ObserverStartMode.VisibleStart },
+        onAlreadyForegroundStartDeferred = { deferredStartMode = ObserverStartMode.ForegroundServiceStart },
+        onStartCancelled = { deferredStartMode = null },
     )
 
     override val flavor: SharedObserverFlavor = buildObserverFlavor(
@@ -125,7 +130,7 @@ class ObserverAppContainer(
     )
     @Volatile override var recoveryCompleted: Boolean = false
         private set
-    @Volatile private var deferredStartPending: Boolean = false
+    @Volatile private var deferredStartMode: ObserverStartMode? = null
 
     private val pollRunnable = object : Runnable {
         override fun run() {
@@ -135,6 +140,7 @@ class ObserverAppContainer(
                 runCatching {
                     val current = controller.diagnostics()
                     previousDiagnostics = current
+                    backgroundStatusRefreshListener?.invoke()
                     refreshServiceNotification(current)
                 }
             }
@@ -151,9 +157,9 @@ class ObserverAppContainer(
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
-            if (deferredStartPending) {
-                deferredStartPending = false
-                controller.reconcile(ObserverStartMode.VisibleStart)
+            deferredStartMode?.let { mode ->
+                deferredStartMode = null
+                controller.reconcile(mode)
             }
         }
     }
@@ -173,9 +179,21 @@ class ObserverAppContainer(
         }
     }
 
+    override fun setBackgroundStatusRefreshListener(listener: (() -> Unit)?) {
+        backgroundStatusRefreshListener = listener
+    }
+
     fun journalCacheState(): HarnessJournalCacheState = journalCacheCoordinator.state()
 
     fun saveJournalCacheLimit(bytes: Long): HarnessJournalCacheState = journalCacheCoordinator.saveLimit(bytes)
+
+    fun activateSourceWhenAlreadyForeground(sourceId: String): ReasonCode? {
+        require(sources.snapshot().sources.any { it.sourceId == sourceId }) { "unknown source $sourceId" }
+        val readiness = controller.startWhenAlreadyForeground()
+        if (!readiness.allowed) return readiness.blockers.first()
+        sources.setWish(sourceId, SourceWish.On)
+        return null
+    }
 
     private fun newPipeline(): CapturePipeline =
         CapturePipeline(
@@ -190,13 +208,14 @@ class ObserverAppContainer(
 
     private fun refreshServiceNotification(current: HarnessDiagnostics) {
         if (!controller.desiredOn) {
-            lastPostedNeedsAttention = true
+            lastPostedNotification = true to 0
             return
         }
         val needsAttention = needsAttentionForState(current.state)
-        if (needsAttention == lastPostedNeedsAttention) return
+        val notification = needsAttention to controller.syncState().pendingCount
+        if (notification == lastPostedNotification) return
         ObserverForegroundService.refreshOngoingNotification(context, needsAttention)
-        lastPostedNeedsAttention = needsAttention
+        lastPostedNotification = notification
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
@@ -234,16 +253,30 @@ internal class IdempotentPipelineLifecycle<T>(
     private val onActiveChanged: (T?) -> Unit,
     private val canStart: () -> Boolean,
     private val onStartDeferred: () -> Unit,
+    private val onAlreadyForegroundStartDeferred: () -> Unit = onStartDeferred,
     private val onStartCancelled: () -> Unit,
 ) : ObserverLifecycle {
     private var active: T? = null
 
-    override fun start() {
+    override fun start() = start(
+        startForeground = startForeground,
+        onDeferred = onStartDeferred,
+    )
+
+    override fun startWhenAlreadyForeground() = start(
+        startForeground = null,
+        onDeferred = onAlreadyForegroundStartDeferred,
+    )
+
+    private fun start(
+        startForeground: (() -> Unit)?,
+        onDeferred: () -> Unit,
+    ) {
         if (!canStart()) {
-            onStartDeferred()
+            onDeferred()
             return
         }
-        startForeground()
+        startForeground?.invoke()
         val current = active
         if (current != null && isRunning(current)) return
         if (current != null) {

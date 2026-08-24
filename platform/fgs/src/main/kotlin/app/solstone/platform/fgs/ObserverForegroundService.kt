@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import app.solstone.core.model.ReasonCode
 import java.util.concurrent.atomic.AtomicLong
 
 class ObserverForegroundService : Service() {
@@ -32,19 +33,27 @@ class ObserverForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val hook = rehydrator
+        val widgetSourceId = widgetSourceId(intent)
         val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null)
         try {
             startForeground(
                 ObserverNotification.SERVICE_NOTIFICATION_ID,
-                ObserverNotification.ongoing(this, needsAttention = plan.initialNeedsAttention, decorate = true),
+                ObserverNotification.ongoing(
+                    this,
+                    needsAttention = plan.initialNeedsAttention,
+                    decorate = true,
+                    requestPromotion = true,
+                ),
             )
         } catch (e: SecurityException) {
             handleStartFailure(this, e.javaClass.simpleName)
+            widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
             stopSelf()
             return START_STICKY
         } catch (e: RuntimeException) {
             if (!isForegroundStartNotAllowedException(e)) throw e
             handleStartFailure(this, e.javaClass.simpleName)
+            widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.FOREGROUND_START_NOT_ALLOWED) }
             stopSelf()
             return START_STICKY
         }
@@ -56,6 +65,7 @@ class ObserverForegroundService : Service() {
         if (plan.dispatchRehydrate) {
             dispatchRehydrate(hook)
         }
+        widgetSourceId?.let(::dispatchWidgetStartAccepted)
         if (plan.postAttentionOn102) {
             postAttentionNotification(this)
         }
@@ -92,10 +102,19 @@ class ObserverForegroundService : Service() {
         private val lastStartRequestedNanos = AtomicLong(0L)
 
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
+        @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
 
         fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
             hook?.onForegroundServiceStarted()
+        }
+
+        fun dispatchWidgetStartAccepted(sourceId: String) {
+            widgetStartHandler?.onForegroundServiceStarted(sourceId)
+        }
+
+        fun dispatchWidgetStartRefused(sourceId: String, reason: ReasonCode) {
+            widgetStartHandler?.onForegroundServiceStartRefused(sourceId, reason)
         }
 
         fun dispatchLifecycle(line: String) {
@@ -118,6 +137,10 @@ class ObserverForegroundService : Service() {
                 handleStartFailure(context, e.javaClass.simpleName)
             }
         }
+
+        fun widgetStartIntent(context: Context, sourceId: String): Intent =
+            Intent(context, ObserverForegroundService::class.java)
+                .putExtra(EXTRA_WIDGET_SOURCE_ID, sourceId)
 
         fun stop(context: Context) {
             invalidateHeartbeat()
@@ -156,7 +179,12 @@ class ObserverForegroundService : Service() {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             manager.notify(
                 ObserverNotification.SERVICE_NOTIFICATION_ID,
-                ObserverNotification.ongoing(context, needsAttention = needsAttention, decorate = true),
+                ObserverNotification.ongoing(
+                    context,
+                    needsAttention = needsAttention,
+                    decorate = true,
+                    requestPromotion = true,
+                ),
             )
         }
 
@@ -198,6 +226,11 @@ class ObserverForegroundService : Service() {
         private fun pendingIntentFlags(): Int =
             PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+
+        private fun widgetSourceId(intent: Intent?): String? =
+            intent?.getStringExtra(EXTRA_WIDGET_SOURCE_ID)?.takeIf(String::isNotBlank)
+
+        private const val EXTRA_WIDGET_SOURCE_ID = "app.solstone.platform.fgs.extra.WIDGET_SOURCE_ID"
     }
 
     private fun removeForegroundNotification() {
@@ -211,5 +244,10 @@ class ObserverForegroundService : Service() {
 
     fun interface ObserverServiceRehydrator {
         fun onForegroundServiceStarted()
+    }
+
+    interface ObserverWidgetStartHandler {
+        fun onForegroundServiceStarted(sourceId: String)
+        fun onForegroundServiceStartRefused(sourceId: String, reason: ReasonCode)
     }
 }

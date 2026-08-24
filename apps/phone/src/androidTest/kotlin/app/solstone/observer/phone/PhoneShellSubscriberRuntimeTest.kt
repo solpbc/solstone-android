@@ -41,12 +41,12 @@ class PhoneShellSubscriberRuntimeTest {
     }
 
     @Test
-    fun subscriberCountIsExactlyOneAcrossRecreate() {
+    fun subscriberCountIsExactlyTwoAcrossRecreate() {
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
             val container = waitForObserverContainer()
-            assertEquals(1, container.sources.subscriberCount())
+            assertEquals(2, container.sources.subscriberCount())
             scenario.recreate()
-            assertEquals(1, waitForObserverContainer().sources.subscriberCount())
+            assertEquals(2, waitForObserverContainer().sources.subscriberCount())
         }
     }
 }
