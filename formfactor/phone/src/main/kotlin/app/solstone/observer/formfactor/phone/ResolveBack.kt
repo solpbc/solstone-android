@@ -22,12 +22,16 @@ fun resolveBack(
     detailStack: PhoneRouteStack,
     widthClass: WidthClass,
 ): BackOutcome {
+    // SHELF must remain a close outcome so the detail rung stays disabled while
+    // the drawer's own back handler closes the drawer.
     val pane = PhonePane.entries.firstOrNull { paneStates.isOpen(it) }
     if (pane != null) return BackOutcome.ClosePane(pane)
     if (detailStack.depth >= 1) return BackOutcome.PopDetail
     return BackOutcome.FallThroughToSystem
 }
 
+// Keeps SHELF load-bearing for the detail-rung exclusion even though its close
+// action belongs to the drawer.
 fun BackOutcome.closesPane(pane: PhonePane): Boolean =
     this is BackOutcome.ClosePane && this.pane == pane
 

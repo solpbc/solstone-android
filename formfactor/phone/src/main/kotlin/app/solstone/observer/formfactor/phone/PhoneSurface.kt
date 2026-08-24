@@ -27,4 +27,8 @@ fun phoneSurfaces(): List<PhoneSurface> = listOf(
     PhoneRoute.Licences,
     PhoneRoute.Import,
     PhoneRoute.AddMore,
+    PhoneRoute.YourJournal,
+    PhoneRoute.ThisDevice,
+    PhoneRoute.Notifications,
+    PhoneRoute.Help,
 )

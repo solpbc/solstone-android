@@ -48,6 +48,26 @@ sealed interface PhoneRoute : PhoneSurface {
         override val paneTitle: String get() = "surface_add_more"
         override val headingKey: String get() = "heading.add_more"
     }
+
+    data object YourJournal : PhoneRoute {
+        override val paneTitle: String get() = "surface_your_journal"
+        override val headingKey: String get() = "heading.your_journal"
+    }
+
+    data object ThisDevice : PhoneRoute {
+        override val paneTitle: String get() = "surface_this_device"
+        override val headingKey: String get() = "heading.this_device"
+    }
+
+    data object Notifications : PhoneRoute {
+        override val paneTitle: String get() = "surface_notifications"
+        override val headingKey: String get() = "heading.notifications"
+    }
+
+    data object Help : PhoneRoute {
+        override val paneTitle: String get() = "surface_help"
+        override val headingKey: String get() = "heading.help"
+    }
 }
 
 fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
@@ -60,6 +80,10 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.Licences -> "licences"
     PhoneRoute.Import -> "import"
     PhoneRoute.AddMore -> "add-more"
+    PhoneRoute.YourJournal -> "your-journal"
+    PhoneRoute.ThisDevice -> "this-device"
+    PhoneRoute.Notifications -> "notifications"
+    PhoneRoute.Help -> "help"
 }
 
 fun decodePhoneRoute(key: String): PhoneRoute? {
@@ -76,6 +100,10 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
         "licences" -> PhoneRoute.Licences
         "import" -> PhoneRoute.Import
         "add-more" -> PhoneRoute.AddMore
+        "your-journal" -> PhoneRoute.YourJournal
+        "this-device" -> PhoneRoute.ThisDevice
+        "notifications" -> PhoneRoute.Notifications
+        "help" -> PhoneRoute.Help
         else -> null
     }
 }

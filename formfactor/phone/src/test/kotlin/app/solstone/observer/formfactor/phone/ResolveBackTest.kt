@@ -45,6 +45,24 @@ class ResolveBackTest {
     }
 
     @Test
+    fun shelfCloseOutcomeDisablesEveryLadderRungAtDepthTwo() {
+        val stack = PhoneRouteStack.Empty
+            .showInDetail(PhoneRoute.RouteA)
+            .pushInDetail(PhoneRoute.RouteCChild)
+        // This is the invariant the removed shelf rung depends on: the drawer
+        // closes the shelf while every handler in the ladder stays disabled.
+        val outcome = resolveBack(
+            PaneStates.Empty.open(PhonePane.SHELF),
+            stack,
+            WidthClass.COMPACT,
+        )
+        assertEquals(BackOutcome.ClosePane(PhonePane.SHELF), outcome)
+        assertFalse(outcome.popsDetail)
+        assertFalse(outcome.closesPane(PhonePane.JOURNAL))
+        assertFalse(outcome.closesPane(PhonePane.STATUS))
+    }
+
+    @Test
     fun compactDepthTwoNoPanePopsDetail() {
         val stack = PhoneRouteStack.Empty
             .showInDetail(PhoneRoute.RouteA)

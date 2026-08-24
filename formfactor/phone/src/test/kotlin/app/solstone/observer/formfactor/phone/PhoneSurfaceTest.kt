@@ -25,8 +25,8 @@ class PhoneSurfaceTest {
     }
 
     @Test
-    fun surfaceCountIsThirteen() {
-        assertEquals(13, phoneSurfaces().size)
+    fun surfaceCountIsSeventeen() {
+        assertEquals(17, phoneSurfaces().size)
     }
 
     @Test
@@ -45,6 +45,24 @@ class PhoneSurfaceTest {
         assertTrue(registered(PhoneRoute.Licences))
         assertTrue(registered(PhoneRoute.Import))
         assertTrue(registered(PhoneRoute.AddMore))
+        assertTrue(registered(PhoneRoute.YourJournal))
+        assertTrue(registered(PhoneRoute.ThisDevice))
+        assertTrue(registered(PhoneRoute.Notifications))
+        assertTrue(registered(PhoneRoute.Help))
+    }
+
+    @Test
+    fun shelfReachablePaneTitlesDoNotReuseShippedTitles() {
+        val shelfRoutes = listOf(
+            PhoneRoute.YourJournal,
+            PhoneRoute.ThisDevice,
+            PhoneRoute.Notifications,
+            PhoneRoute.Help,
+            PhoneRoute.AboutSolstone,
+        )
+        val shipped = phoneSurfaces().filterNot { it in shelfRoutes }
+        assertEquals(shelfRoutes.size, shelfRoutes.map { it.paneTitle }.distinct().size)
+        assertTrue(shelfRoutes.none { route -> shipped.any { it.paneTitle == route.paneTitle } })
     }
 
     private fun registered(route: PhoneRoute): Boolean = when (route) {
@@ -56,6 +74,10 @@ class PhoneSurfaceTest {
         PhoneRoute.Licences -> PhoneRoute.Licences in phoneSurfaces()
         PhoneRoute.Import -> PhoneRoute.Import in phoneSurfaces()
         PhoneRoute.AddMore -> PhoneRoute.AddMore in phoneSurfaces()
+        PhoneRoute.YourJournal -> PhoneRoute.YourJournal in phoneSurfaces()
+        PhoneRoute.ThisDevice -> PhoneRoute.ThisDevice in phoneSurfaces()
+        PhoneRoute.Notifications -> PhoneRoute.Notifications in phoneSurfaces()
+        PhoneRoute.Help -> PhoneRoute.Help in phoneSurfaces()
         is PhoneRoute.SourceDetail -> phoneSurfaces().any { it is PhoneRoute.SourceDetail }
     }
 }

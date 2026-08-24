@@ -84,6 +84,7 @@ class PhoneDeckSourceCheckTest {
     @Test
     fun headingTextMapsStatusAndOmitsOtherKeys() {
         assertEquals("status", headingText(PhonePane.STATUS))
+        assertEquals("settings", headingText(PhonePane.SHELF))
         assertEquals("camera", headingText(PhoneRoute.SourceDetail("camera")))
         assertNull(headingText(PhonePane.JOURNAL))
         assertNotEquals("journal", headingText(PhonePane.JOURNAL))
@@ -95,6 +96,14 @@ class PhoneDeckSourceCheckTest {
     fun headingTextMapsAboutSolstoneAndOmitsLicences() {
         assertEquals("about solstone", headingText(PhoneRoute.AboutSolstone))
         assertNull(headingText(PhoneRoute.Licences))
+    }
+
+    @Test
+    fun headingTextMapsShelfRoutes() {
+        assertEquals("your journal", headingText(PhoneRoute.YourJournal))
+        assertEquals("this device", headingText(PhoneRoute.ThisDevice))
+        assertEquals("notifications", headingText(PhoneRoute.Notifications))
+        assertEquals("help", headingText(PhoneRoute.Help))
     }
 
     @Test

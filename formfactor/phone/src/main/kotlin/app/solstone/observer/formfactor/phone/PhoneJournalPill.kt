@@ -9,16 +9,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun PhoneJournalPill(
     modifier: Modifier = Modifier,
+    hideSemantics: Boolean = false,
     mark: @Composable () -> Unit = {},
 ) {
     Box(
-        modifier
-            .testTag("journalPill")
+        modifier.then(
+            if (hideSemantics) Modifier.clearAndSetSemantics { } else Modifier.testTag("journalPill"),
+        )
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
         contentAlignment = Alignment.Center,
     ) {

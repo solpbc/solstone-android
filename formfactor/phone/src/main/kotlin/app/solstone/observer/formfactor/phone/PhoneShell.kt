@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -15,16 +16,21 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeGestures
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.DrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
@@ -34,8 +40,12 @@ import androidx.compose.ui.tooling.preview.Preview
  *
  * @param shellAttachment Slot for persistent navigation chrome shown alongside
  *        the destination content. Defaults to nothing. This module must not
- *        reference navigation- or state-holder types; those sit outside this
- *        module's boundary.
+ *        reference navigation types; those sit outside this module's boundary.
+ * @param drawerState State for the shelf drawer. Defaults to a closed drawer.
+ * @param shelfOpen Whether the shelf is open. It only suppresses the shell
+ *        controls that remain visually behind the drawer.
+ * @param drawerContent Content shown inside the shelf drawer. Defaults to
+ *        nothing so existing shell hosts keep their current presentation.
  * @param content Destination content slot. Receives Scaffold paddingValues to
  *        use as lazy-grid contentPadding so tiles can scroll under the app bar.
  */
@@ -47,36 +57,56 @@ fun PhoneShell(
     statusAction: @Composable RowScope.() -> Unit = {},
     journalMark: @Composable () -> Unit = {},
     navigationIcon: @Composable () -> Unit = {},
+    drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed),
+    shelfOpen: Boolean = false,
+    drawerContent: @Composable ColumnScope.() -> Unit = {},
     content: @Composable (PaddingValues) -> Unit = { PhoneShellDefaultContent() },
 ) {
     PhoneTheme {
         val gestureInsets = WindowInsets.safeGestures
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
-            contentWindowInsets = WindowInsets.safeDrawing
-                .union(gestureInsets)
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
-            topBar = {
-                TopAppBar(
-                    title = title,
-                    navigationIcon = navigationIcon,
-                    actions = { statusAction() },
-                    modifier = Modifier.testTag("phoneAppBar"),
+        ModalNavigationDrawer(
+            drawerContent = {
+                PhoneShelfSheet(
+                    drawerState = drawerState,
+                    semanticsVisible = shelfOpen,
+                    content = drawerContent,
                 )
             },
-        ) { paddingValues ->
-            Box(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxSize()) {
-                    shellAttachment()
-                    Box(Modifier.weight(1f)) { content(paddingValues) }
+            drawerState = drawerState,
+            gesturesEnabled = true,
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = MaterialTheme.colorScheme.background,
+                contentWindowInsets = WindowInsets.safeDrawing
+                    .union(gestureInsets)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                topBar = {
+                    TopAppBar(
+                        title = title,
+                        navigationIcon = navigationIcon,
+                        actions = { statusAction() },
+                        modifier = if (shelfOpen) {
+                            Modifier.clearAndSetSemantics { }
+                        } else {
+                            Modifier.testTag("phoneAppBar")
+                        },
+                    )
                 }
-                PhoneJournalPill(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(gestureInsets),
-                    mark = journalMark,
-                )
+            ) { paddingValues ->
+                Box(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxSize()) {
+                        shellAttachment()
+                        Box(Modifier.weight(1f)) { content(paddingValues) }
+                    }
+                    PhoneJournalPill(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(gestureInsets),
+                        hideSemantics = shelfOpen,
+                        mark = journalMark,
+                    )
+                }
             }
         }
     }

@@ -5,21 +5,35 @@ package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -162,6 +176,276 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag("statusPill").performClick()
         composeRule.onNodeWithTag("statusPane").assertIsDisplayed()
         composeRule.onNodeWithText("audio", useUnmergedTree = false).assertDoesNotExist()
+    }
+
+    @Test
+    fun statusPaneKeepsShellControlsReachable() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("statusPill").performClick()
+        composeRule.onNodeWithTag("statusPane").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneAppBar").assertIsDisplayed()
+        composeRule.onNodeWithTag("journalPill").assertIsDisplayed()
+    }
+
+    @Test
+    fun shelfMakesOnlyShellControlsAndDeckInert() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+                version = "version-sentinel",
+            )
+        }
+        composeRule.onNodeWithTag("phoneAppBar").assertIsDisplayed()
+        composeRule.onNodeWithTag("sourceTile-audio").assertIsDisplayed()
+        composeRule.onNodeWithTag("journalPill").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        composeRule.onNodeWithTag("shelfPrivacy").assertTextEquals("privacy")
+        composeRule.onNodeWithTag("shelfTerms").assertTextEquals("terms")
+        composeRule.onNodeWithTag("shelfVersion").assertTextEquals("version-sentinel")
+        composeRule.onNodeWithTag("phoneAppBar").assertDoesNotExist()
+        composeRule.onNodeWithTag("sourceTile-audio").assertDoesNotExist()
+        composeRule.onNodeWithTag("journalPill").assertDoesNotExist()
+    }
+
+    @Test
+    fun drawerDismissActionClosesAndShelfReopens() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        waitForFocus("shelfRow-yourJournal")
+        composeRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
+            .performSemanticsAction(SemanticsActions.Dismiss)
+        composeRule.onNodeWithTag("phoneShelfOpener").assertIsDisplayed()
+        // Input focus does not return to the opener when ModalNavigationDrawer
+        // closes; both Back and dismiss leave it reset after a five-second wait.
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+    }
+
+    @Test
+    fun drawerBackClosesAndShelfReopens() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneShelfOpener").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+    }
+
+    @Test
+    fun drawerBackClosesAndShelfReopensWithFocusReturnLimitation() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        waitForFocus("shelfRow-yourJournal")
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneShelfOpener").assertIsDisplayed()
+        // Input focus does not return to the opener when ModalNavigationDrawer
+        // closes; both Back and dismiss leave it reset after a five-second wait.
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+    }
+
+    @Test
+    fun drawerSwipeClosesAndShelfReopens() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("phoneShelfSheet").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithTag("phoneShelfOpener").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+    }
+
+    @Test
+    fun drawerScrimClosesAndShelfReopens() {
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(
+                    DpSize(500.dp, 800.dp),
+                ),
+            ) {
+                PhoneObserverScreen(
+                    loadState = loaded(audioOn()),
+                    status = connected(),
+                    onToggle = { _, _ -> },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        val root = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        val sheet = composeRule.onNodeWithTag("phoneShelfSheet").fetchSemanticsNode().boundsInRoot
+        composeRule.onRoot().performTouchInput {
+            click(Offset((sheet.right + root.right) / 2f, root.center.y))
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+    }
+
+    @Test
+    fun shelfCanOpenOverTwoDetailRoutesAndReturnToDetailBack() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+                // initialShelfOpen starts this fixture open; production reaches
+                // the same state by dragging the gestures-enabled drawer over
+                // this detail stack.
+                initial = PhoneRouteStack.Empty
+                    .showInDetail(PhoneRoute.ThisDevice)
+                    .pushInDetail(PhoneRoute.Help),
+                initialShelfOpen = true,
+            )
+        }
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneShelfSheet").assertIsNotDisplayed()
+        composeRule.onNode(paneTitleMatcher(PhoneRoute.Help.paneTitle)).assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneUp").assertIsDisplayed()
+        Espresso.pressBack()
+        composeRule.onNode(paneTitleMatcher(PhoneRoute.ThisDevice.paneTitle)).assertIsDisplayed()
+    }
+
+    @Test
+    fun restoredOpenShelfKeepsTheShellInert() {
+        val tester = StateRestorationTester(composeRule)
+        tester.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+            )
+        }
+        composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        tester.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneAppBar").assertDoesNotExist()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneShelfSheet").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun shelfRowsCloseAndReachTheirPanes() {
+        val rows = listOf(
+            "shelfRow-yourJournal" to PhoneRoute.YourJournal,
+            "shelfRow-thisDevice" to PhoneRoute.ThisDevice,
+            "shelfRow-notifications" to PhoneRoute.Notifications,
+            "shelfRow-help" to PhoneRoute.Help,
+            "shelfRow-aboutSolstone" to PhoneRoute.AboutSolstone,
+        )
+        var screenGeneration by mutableStateOf(0)
+        composeRule.setContent {
+            key(screenGeneration) {
+                PhoneObserverScreen(
+                    loadState = loaded(audioOn()),
+                    status = connected(),
+                    onToggle = { _, _ -> },
+                )
+            }
+        }
+        rows.forEachIndexed { index, (rowTag, route) ->
+            composeRule.onNodeWithTag("phoneShelfOpener").performClick()
+            composeRule.onNodeWithTag(rowTag).assertIsDisplayed().performClick()
+            composeRule.onNodeWithTag("phoneShelfSheet").assertIsNotDisplayed()
+            if (route == PhoneRoute.AboutSolstone) {
+                composeRule.onNodeWithTag("licencesRow").assertIsDisplayed()
+            } else {
+                composeRule.onNode(paneTitleMatcher(route.paneTitle)).assertIsDisplayed()
+            }
+            if (index != rows.lastIndex) {
+                composeRule.runOnIdle { screenGeneration += 1 }
+            }
+        }
+    }
+
+    @Test
+    fun shelfRoutesRenderHeadingsAndPaneTitles() {
+        val routes = listOf(
+            PhoneRoute.YourJournal to "your journal",
+            PhoneRoute.ThisDevice to "this device",
+            PhoneRoute.Notifications to "notifications",
+            PhoneRoute.Help to "help",
+        )
+        var routeIndex by mutableStateOf(0)
+        composeRule.setContent {
+            val route = routes[routeIndex].first
+            key(route) {
+                PhoneObserverScreen(
+                    loadState = loaded(audioOn()),
+                    status = connected(),
+                    onToggle = { _, _ -> },
+                    initial = PhoneRouteStack.Empty.showInDetail(route),
+                )
+            }
+        }
+        routes.forEachIndexed { index, (route, heading) ->
+            composeRule.onNodeWithText(heading).assertIsDisplayed()
+            composeRule.onNode(paneTitleMatcher(route.paneTitle)).assertIsDisplayed()
+            if (index != routes.lastIndex) {
+                composeRule.runOnIdle { routeIndex += 1 }
+            }
+        }
+    }
+
+    @Test
+    fun shelfRowsDoNotExposeTabRoles() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+                initialShelfOpen = true,
+            )
+        }
+        listOf(
+            "shelfRow-yourJournal",
+            "shelfRow-thisDevice",
+            "shelfRow-notifications",
+            "shelfRow-help",
+            "shelfRow-aboutSolstone",
+        ).forEach { rowTag ->
+            val role = composeRule.onNodeWithTag(rowTag).fetchSemanticsNode()
+                .config
+                .getOrNull(SemanticsProperties.Role)
+            assertNotEquals(Role.Tab, role)
+        }
     }
 
     @Test
@@ -362,6 +646,19 @@ class PhoneObserverScreenTest {
 
     private fun sourceTileMatcher() = SemanticsMatcher("source tile") { node ->
         node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("sourceTile-") == true
+    }
+
+    private fun waitForFocus(tag: String) {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().singleOrNull()
+                ?.config
+                ?.getOrNull(SemanticsProperties.Focused) == true
+        }
+        composeRule.onNodeWithTag(tag).assertIsFocused()
+    }
+
+    private fun paneTitleMatcher(title: String) = SemanticsMatcher("pane $title") { node ->
+        node.config.getOrNull(SemanticsProperties.PaneTitle) == title
     }
 }
 

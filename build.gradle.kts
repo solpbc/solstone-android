@@ -519,8 +519,8 @@ fun phoneBackHandlerDoctrineReport(
             }
         }
     }
-    if (callSiteCount < 4) {
-        violations += "callSites=$callSiteCount < 4"
+    if (callSiteCount < 3) {
+        violations += "callSites=$callSiteCount < 3"
     }
     moduleSources.forEach { (path, text) ->
         val stripped = stripKotlinComments(text)
@@ -1155,6 +1155,48 @@ tasks.register("phoneBackHandlerDoctrineGuardSelfTest") {
         check(good.violations.isEmpty())
         check(good.callSiteCount == 4)
 
+        val productionMirror = """
+            @Composable
+            fun PhoneBackLadder(
+                paneStates: PaneStates,
+                detailStack: PhoneRouteStack,
+                widthClass: WidthClass,
+                onClosePane: (PhonePane) -> Unit,
+                onPopDetail: () -> Unit,
+            ) {
+                val outcome = resolveBack(paneStates, detailStack, widthClass)
+                PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.JOURNAL)) { progress ->
+                    progress.collect()
+                    onClosePane(PhonePane.JOURNAL)
+                }
+                PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.STATUS)) { progress ->
+                    progress.collect()
+                    onClosePane(PhonePane.STATUS)
+                }
+                BackHandler(enabled = outcome.popsDetail) {
+                    onPopDetail()
+                }
+            }
+        """.trimIndent()
+        val productionReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to productionMirror),
+            emptyMap(),
+        )
+        check(productionReport.violations.isEmpty())
+        check(productionReport.callSiteCount == 3)
+
+        val twoRung = productionMirror.replace(
+            """    PredictiveBackHandler(enabled = outcome.closesPane(PhonePane.STATUS)) { progress ->
+        progress.collect()
+        onClosePane(PhonePane.STATUS)
+    }
+""",
+            "",
+        )
+        val twoRungReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to twoRung), emptyMap())
+        check(twoRungReport.callSiteCount == 2)
+        check(twoRungReport.violations.any { it.startsWith("callSites=2 < 3") })
+
         val missingEnabled = goodLadder.replace(
             "BackHandler(enabled = outcome.popsDetail)",
             "BackHandler()",
@@ -1189,7 +1231,7 @@ tasks.register("phoneBackHandlerDoctrineGuardSelfTest") {
 
         val empty = phoneBackHandlerDoctrineReport(emptyMap(), emptyMap())
         check(empty.callSiteCount == 0)
-        check(empty.violations.any { it.startsWith("callSites=0 < 4") })
+        check(empty.violations.any { it.startsWith("callSites=0 < 3") })
 
         val commented = goodLadder + "\n// BackHandler(enabled = true) {}\n"
         val commentedReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to commented), emptyMap())

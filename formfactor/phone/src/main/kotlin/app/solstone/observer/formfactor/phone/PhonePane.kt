@@ -17,6 +17,8 @@ enum class PhonePane(
     SHELF(
         paneTitle = "pane_shelf",
         headingKey = "heading.pane_shelf",
+        // The drawer performs the close, but this requirement preserves the
+        // resolver's SHELF outcome so detail back cannot win while it is open.
         backDismissRequirement = PaneBackDismissRequirement.DRAWER_STATE_OVERLOAD,
     ),
     JOURNAL(
