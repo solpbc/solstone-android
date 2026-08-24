@@ -22,7 +22,6 @@ data class HarnessFactInputs(
     val endpointPresent: Boolean,
     val relayOriginPresent: Boolean,
     val identityState: IdentityState?,
-    val exemptionVerified: Boolean,
 )
 
 fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
@@ -39,7 +38,6 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
             inputs.relayOriginPresent,
             inputs.identityState,
         ),
-        exemptionVerified = inputs.exemptionVerified,
     )
     val (state, reason) = reduce(facts)
     return HarnessDiagnostics(state = state, reason = reason, display = displayFor(state, reason))
@@ -58,7 +56,6 @@ private fun ReasonCode.text(): String? =
         ReasonCode.STORAGE_FULL -> "phone storage is full"
         ReasonCode.PROVIDER_SILENT -> "nothing observed recently"
         ReasonCode.AUTH_REVOKED -> "access was revoked - pair again"
-        ReasonCode.EXEMPTION_UNVERIFIED -> "battery settings may stop sol in the background"
         ReasonCode.TRANSPORT_UNAVAILABLE -> "can't reach your journal"
         ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "open sol to resume observing"
         ReasonCode.DESIRED_OFF -> "observing is turned off"

@@ -29,7 +29,6 @@ data class SourceFacts(
   val providerEmitting: Boolean,
   val storageOk: Boolean,
   val pairing: PairingFact,
-  val exemptionVerified: Boolean,
 )
 
 fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
@@ -41,7 +40,6 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         f.desiredOn && f.pairing != PairingFact.PAIRED -> SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED
         f.desiredOn && !f.providerEmitting -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
         f.desiredOn && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
-        f.desiredOn && !f.exemptionVerified -> SourceState.NEEDS_ATTENTION to ReasonCode.EXEMPTION_UNVERIFIED
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE
         else -> SourceState.ON to ReasonCode.NONE
     }

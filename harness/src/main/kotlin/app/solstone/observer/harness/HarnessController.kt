@@ -303,7 +303,6 @@ class HarnessController(
                 endpointPresent = endpointPresent,
                 relayOriginPresent = identity?.relayOrigin != null,
                 identityState = identity?.state,
-                exemptionVerified = snapshot.exemptionVerified,
             ),
         )
     }
@@ -341,5 +340,4 @@ data class SourceRuntimeSnapshot(
     val engineRunning: Boolean,
     val providerEmitting: Boolean,
     val storageOk: Boolean,
-    val exemptionVerified: Boolean,
 )

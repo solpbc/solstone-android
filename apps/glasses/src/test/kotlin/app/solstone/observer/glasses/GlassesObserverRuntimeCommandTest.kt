@@ -447,7 +447,6 @@ class GlassesObserverRuntimeCommandTest {
                     engineRunning = true,
                     providerEmitting = true,
                     storageOk = true,
-                    exemptionVerified = true,
                 )
             },
             deviceLabel = "test glasses",

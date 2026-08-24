@@ -420,7 +420,6 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
                 nowEpochMs = System.currentTimeMillis(),
             ),
             storageOk = condition?.available != false,
-            exemptionVerified = flavor.exemptionVerified(),
         )
     }
 
@@ -495,7 +494,6 @@ data class GlassesHarnessFlavor(
     val oemGuidance: OemGuidance = OemGuidanceCatalog.generic,
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
-    val exemptionVerified: () -> Boolean,
     val isUsableNetworkPresent: () -> Boolean,
 )
 

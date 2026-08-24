@@ -113,7 +113,6 @@ class LegacyQrPairThreadingTest {
                     engineRunning = false,
                     providerEmitting = false,
                     storageOk = true,
-                    exemptionVerified = true,
                 )
             },
             deviceLabel = "legacy-test",

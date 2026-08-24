@@ -13,7 +13,6 @@ data class GuidanceAction(
 
 data class OemGuidance(
     val id: String,
-    val batteryExemption: GuidanceAction,
     val autostart: GuidanceAction,
     val autostartAvailable: Boolean = true,
 )
@@ -37,11 +36,6 @@ object OemGuidanceCatalog {
 
     val generic: OemGuidance = OemGuidance(
         id = "generic",
-        batteryExemption = GuidanceAction(
-            intentAction = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
-            intentData = null,
-            instructionText = "Allow sol to stay active in the background.",
-        ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
@@ -51,11 +45,6 @@ object OemGuidanceCatalog {
 
     val rokid: OemGuidance = OemGuidance(
         id = "rokid",
-        batteryExemption = GuidanceAction(
-            intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            intentData = packageUri,
-            instructionText = "Open app settings and allow sol to keep running where the OS permits it. Battery and background survival are best-effort.",
-        ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
@@ -66,11 +55,6 @@ object OemGuidanceCatalog {
 
     val rogbid: OemGuidance = OemGuidance(
         id = "rogbid",
-        batteryExemption = GuidanceAction(
-            intentAction = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
-            intentData = null,
-            instructionText = "Open battery settings and allow sol to stay active after the screen turns off.",
-        ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
@@ -80,11 +64,6 @@ object OemGuidanceCatalog {
 
     val samsung: OemGuidance = OemGuidance(
         id = "samsung",
-        batteryExemption = GuidanceAction(
-            intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            intentData = packageUri,
-            instructionText = "Open Battery, set sol to unrestricted, and leave background use allowed.",
-        ),
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,

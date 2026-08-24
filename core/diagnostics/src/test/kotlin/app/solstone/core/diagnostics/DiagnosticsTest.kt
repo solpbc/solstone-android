@@ -8,7 +8,6 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 
 class DiagnosticsTest {
     @Test
@@ -23,13 +22,6 @@ class DiagnosticsTest {
     }
 
     @Test
-    fun reduceDoesNotReturnOnUntilExemptionIsVerified() {
-        val result = reduce(healthy().copy(exemptionVerified = false))
-        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.EXEMPTION_UNVERIFIED, result)
-        assertNotEquals(SourceState.ON, result.first)
-    }
-
-    @Test
     fun desiredOnWithoutRuntimeFactsNeedsAttention() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
     }
@@ -40,7 +32,6 @@ class DiagnosticsTest {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT, reduce(healthy().copy(providerEmitting = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(healthy().copy(storageOk = false)))
-        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.EXEMPTION_UNVERIFIED, reduce(healthy().copy(exemptionVerified = false)))
     }
 
     @Test
@@ -125,6 +116,5 @@ class DiagnosticsTest {
         providerEmitting = true,
         storageOk = true,
         pairing = PairingFact.PAIRED,
-        exemptionVerified = true,
     )
 }

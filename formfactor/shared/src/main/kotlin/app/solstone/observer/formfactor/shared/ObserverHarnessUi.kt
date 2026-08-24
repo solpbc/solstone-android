@@ -21,8 +21,6 @@ import app.solstone.observer.harness.decimalBytes
 import app.solstone.observer.harness.journalCacheText
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
-import app.solstone.platform.power.GuidanceAction
-import app.solstone.platform.power.GuidanceLaunchResult
 
 class ObserverHarnessUi(
     private val context: Context,
@@ -32,9 +30,6 @@ class ObserverHarnessUi(
     private val previewHeightPx: Int,
     private val qrBackend: QrBackend,
     private val qrThreadLabel: String,
-    private val batteryExemptionGranted: () -> Boolean,
-    private val batteryGuidance: GuidanceAction,
-    private val launchBatteryGuidance: () -> GuidanceLaunchResult,
     private val journalCacheState: () -> HarnessJournalCacheState,
     private val saveJournalCacheLimit: (Long) -> HarnessJournalCacheState,
     private val onEvidenceLoaded: () -> Unit = {},
@@ -67,15 +62,6 @@ class ObserverHarnessUi(
     fun showPermissions() {
         setScreen {
             permissionRows = text("")
-            text(batteryGuidance.instructionText)
-            lateinit var guidanceNote: TextView
-            button("Fix battery settings") {
-                guidanceNote.text = when (val result = launchBatteryGuidance()) {
-                    GuidanceLaunchResult.Launched -> "Battery settings opened"
-                    is GuidanceLaunchResult.Failed -> result.message
-                }
-            }
-            guidanceNote = text("")
             val requestNote = text("")
             button("Request permissions") {
                 permissionRequester()
@@ -88,7 +74,7 @@ class ObserverHarnessUi(
 
     fun refreshPermissions() {
         val rows = permissionRows ?: return
-        rows.text = permissionRowsText(controller.refreshPermissions(), batteryExemptionGranted())
+        rows.text = permissionRowsText(controller.refreshPermissions())
     }
 
     fun showScanPairQr() {

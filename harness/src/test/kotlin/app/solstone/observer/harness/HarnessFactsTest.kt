@@ -38,7 +38,6 @@ class HarnessFactsTest {
                 endpointPresent = false,
                 relayOriginPresent = true,
                 identityState = IdentityState.PAIRED,
-                exemptionVerified = true,
             ),
         )
 

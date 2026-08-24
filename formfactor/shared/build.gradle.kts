@@ -27,7 +27,6 @@ dependencies {
     implementation(project(":core:sources"))
     implementation(project(":core:pl"))
     implementation(project(":platform:fgs"))
-    implementation(project(":platform:power"))
     implementation("com.google.zxing:core:3.5.3")
 
     testImplementation(kotlin("test"))

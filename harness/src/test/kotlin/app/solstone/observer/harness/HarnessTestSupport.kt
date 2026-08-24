@@ -208,7 +208,6 @@ internal fun fixture(
         engineRunning = true,
         providerEmitting = true,
         storageOk = true,
-        exemptionVerified = true,
     ),
     endpointStore: FakeEndpointStore = FakeEndpointStore(DirectEndpoint("10.0.0.2", 7657)),
     credentialStore: FakeCredentialStore = FakeCredentialStore(credential()),

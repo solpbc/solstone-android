@@ -42,8 +42,6 @@ import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
-import app.solstone.platform.power.GuidanceAction
-import app.solstone.platform.power.GuidanceLaunchResult
 import java.net.ConnectException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -128,7 +126,7 @@ class PhonePlStatusProbeAsyncRuntimeTest {
             endpointStore = ProbeMemoryEndpointStore(),
             credentialStore = ProbeMemoryCredentialStore(),
             identityStore = ProbeMemoryIdentityStore(),
-            sourceSnapshot = { SourceRuntimeSnapshot(false, false, true, true) },
+            sourceSnapshot = { SourceRuntimeSnapshot(false, false, true) },
             deviceLabel = "phone-test",
             visibleCaptureAuthority = VisibleCaptureOwnerRegistry(),
             isUsableNetworkPresent = { true },
@@ -149,9 +147,6 @@ class PhonePlStatusProbeAsyncRuntimeTest {
                         previewHeightPx = 1,
                         qrBackend = QrBackend.Camera2,
                         qrThreadLabel = "phone-test",
-                        batteryExemptionGranted = { true },
-                        batteryGuidance = GuidanceAction("", null, ""),
-                        launchBatteryGuidance = { GuidanceLaunchResult.Launched },
                         journalCacheState = { cacheState },
                         saveJournalCacheLimit = { cacheState },
                     )
@@ -223,7 +218,7 @@ class PhonePlStatusProbeAsyncRuntimeTest {
                     val root = activity.findViewById<View>(android.R.id.content)
                     clickButton(root, "Back")
                     clickButton(root, "Permissions")
-                    assertTrue(collectTexts(root).contains("Fix battery settings"))
+                    assertTrue(collectTexts(root).contains("Request permissions"))
                 }
             } finally {
                 detachedGate.countDown()
@@ -239,7 +234,7 @@ class PhonePlStatusProbeAsyncRuntimeTest {
             )
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.contains("Fix battery settings"))
+                assertTrue(texts.contains("Request permissions"))
                 assertFalse(texts.contains("Reachable (HTTP 204)"))
                 assertFalse(texts.contains("couldn't check your journal"))
                 assertFalse(texts.contains("checking your journal…"))

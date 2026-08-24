@@ -45,11 +45,9 @@ class PowerLogicTest {
     }
 
     @Test
-    fun everyGuidanceEntryHasBatteryAndAutostartActions() {
+    fun everyGuidanceEntryHasAutostartAction() {
         listOf(OemGuidanceCatalog.generic, OemGuidanceCatalog.rokid, OemGuidanceCatalog.rogbid, OemGuidanceCatalog.samsung).forEach { entry ->
-            assertTrue(entry.batteryExemption.instructionText.isNotBlank())
             assertTrue(entry.autostart.instructionText.isNotBlank())
-            assertTrue(entry.batteryExemption.intentAction.isNotBlank())
             assertTrue(entry.autostart.intentAction.isNotBlank())
         }
     }
@@ -63,17 +61,17 @@ class PowerLogicTest {
     }
 
     @Test
-    fun samsungAndGenericExposeTheirSelectedBatteryActions() {
+    fun samsungAndGenericExposeTheirSelectedAutostartActions() {
         val samsung = OemGuidanceCatalog.select(DeviceFingerprint("Samsung", "galaxy", "phone"))
         val generic = OemGuidanceCatalog.select(DeviceFingerprint("Example", "Example", "Example"))
 
-        assertEquals(OemGuidanceCatalog.samsung.batteryExemption, samsung.batteryExemption)
-        assertEquals(OemGuidanceCatalog.generic.batteryExemption, generic.batteryExemption)
+        assertEquals(OemGuidanceCatalog.samsung.autostart, samsung.autostart)
+        assertEquals(OemGuidanceCatalog.generic.autostart, generic.autostart)
     }
 
     @Test
     fun detailsTargetInjectsPackageName() {
-        val prepared = OemGuidanceCatalog.samsung.batteryExemption.prepareIntent("app.solstone.phone")
+        val prepared = OemGuidanceCatalog.samsung.autostart.prepareIntent("app.solstone.phone")
 
         assertEquals(
             GuidanceIntentPreparation.Ready(
@@ -88,11 +86,11 @@ class PowerLogicTest {
     fun blankPackageIsRejectedBeforeResolution() {
         assertEquals(
             GuidanceIntentPreparation.Invalid("app package is unavailable"),
-            OemGuidanceCatalog.samsung.batteryExemption.prepareIntent(" "),
+            OemGuidanceCatalog.samsung.autostart.prepareIntent(" "),
         )
         assertEquals(
             GuidanceIntentPreparation.Invalid("app package is unavailable"),
-            OemGuidanceCatalog.generic.batteryExemption.prepareIntent(""),
+            OemGuidanceCatalog.generic.autostart.prepareIntent(""),
         )
     }
 
@@ -111,17 +109,8 @@ class PowerLogicTest {
     }
 
     @Test
-    fun exemptionReflectsBatteryExemption() {
-        assertFalse(verifier(battery = false).isExemptionVerified())
-        assertTrue(verifier(battery = true).isExemptionVerified())
-    }
-
-    @Test
     fun storageStatusUsesThreshold() {
         assertFalse(StorageStatus(UsableSpaceProvider { 99L }, minimumFreeBytes = 100L).isStorageOk())
         assertTrue(StorageStatus(UsableSpaceProvider { 100L }, minimumFreeBytes = 100L).isStorageOk())
     }
-
-    private fun verifier(battery: Boolean): ExemptionVerifier =
-        ExemptionVerifier(batteryExemptionStatus = BatteryExemptionStatus { battery })
 }

@@ -8,11 +8,6 @@ sealed interface GuidanceIntentPreparation {
     data class Invalid(val reason: String) : GuidanceIntentPreparation
 }
 
-sealed interface GuidanceLaunchResult {
-    data object Launched : GuidanceLaunchResult
-    data class Failed(val message: String) : GuidanceLaunchResult
-}
-
 fun GuidanceAction.prepareIntent(packageName: String): GuidanceIntentPreparation {
     if (packageName.isBlank()) return GuidanceIntentPreparation.Invalid("app package is unavailable")
     val data = if (intentAction == APPLICATION_DETAILS_SETTINGS && intentData == PACKAGE_URI) {

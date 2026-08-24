@@ -22,7 +22,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
             diag = { lines += it },
         )
@@ -47,7 +46,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -82,7 +80,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -102,7 +99,6 @@ class HarnessControllerRehydrateTest {
                     engineRunning = f.lifecycle.starts > 0,
                     providerEmitting = true,
                     storageOk = true,
-                    exemptionVerified = true,
                 )
             },
         )
@@ -123,7 +119,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -198,7 +193,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -220,7 +214,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
         )
         f.desiredStore.setDesiredOn(true)
@@ -237,7 +230,6 @@ class HarnessControllerRehydrateTest {
                 engineRunning = false,
                 providerEmitting = true,
                 storageOk = true,
-                exemptionVerified = true,
             ),
             endpointStore = FakeEndpointStore(DirectEndpoint("10.0.0.2", 7657)),
             credentialStore = FakeCredentialStore(credential()),

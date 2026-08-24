@@ -149,7 +149,6 @@ class GlassesDiagnosticPlumbingTest {
                     engineRunning = false,
                     providerEmitting = false,
                     storageOk = true,
-                    exemptionVerified = true,
                 )
             },
             deviceLabel = "test glasses",

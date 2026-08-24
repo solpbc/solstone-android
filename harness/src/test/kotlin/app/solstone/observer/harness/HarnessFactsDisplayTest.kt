@@ -22,7 +22,6 @@ class HarnessFactsDisplayTest {
             ReasonCode.STORAGE_FULL to "Needs attention: phone storage is full",
             ReasonCode.PROVIDER_SILENT to "Needs attention: nothing observed recently",
             ReasonCode.AUTH_REVOKED to "Needs attention: access was revoked - pair again",
-            ReasonCode.EXEMPTION_UNVERIFIED to "Needs attention: battery settings may stop sol in the background",
             ReasonCode.TRANSPORT_UNAVAILABLE to "Needs attention: can't reach your journal",
             ReasonCode.FOREGROUND_START_NOT_ALLOWED to "Needs attention: open sol to resume observing",
             ReasonCode.DESIRED_OFF to "Needs attention: observing is turned off",

@@ -205,7 +205,6 @@ class ObserverAppContainer(
                 nowEpochMs = System.currentTimeMillis(),
             ),
             storageOk = conditions.filter { it.desiredOn }.all { it.available },
-            exemptionVerified = flavor.exemptionVerified(),
         )
     }
 

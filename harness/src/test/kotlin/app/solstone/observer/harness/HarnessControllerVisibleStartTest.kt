@@ -70,7 +70,6 @@ class HarnessControllerVisibleStartTest {
                     engineRunning = f.lifecycle.starts > 0,
                     providerEmitting = true,
                     storageOk = true,
-                    exemptionVerified = true,
                 )
             },
         )
@@ -128,6 +127,5 @@ class HarnessControllerVisibleStartTest {
             engineRunning = false,
             providerEmitting = true,
             storageOk = true,
-            exemptionVerified = true,
         )
 }

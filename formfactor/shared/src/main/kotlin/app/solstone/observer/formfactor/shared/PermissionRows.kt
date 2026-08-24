@@ -5,13 +5,12 @@ package app.solstone.observer.formfactor.shared
 
 import app.solstone.platform.fgs.PermissionStatus
 
-fun permissionRowsText(status: PermissionStatus, batteryExemptionGranted: Boolean): String =
+fun permissionRowsText(status: PermissionStatus): String =
     listOf(
         "Microphone: ${status.microphoneGranted}",
         "Camera: ${status.cameraGranted}",
         "Fine location: ${status.fineLocationGranted}",
         "Coarse location: ${status.coarseLocationGranted}",
         "Notifications: ${status.notificationsGranted}",
-        "Battery exemption: $batteryExemptionGranted",
         "Permissions ready: ${status.allRequiredGranted}",
     ).joinToString("\n")

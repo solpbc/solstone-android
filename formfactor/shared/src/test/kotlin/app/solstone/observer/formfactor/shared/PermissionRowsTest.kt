@@ -10,7 +10,7 @@ import kotlin.test.assertFalse
 
 class PermissionRowsTest {
     @Test
-    fun rendersExactRowsForBothBatteryStatesWithoutBackgroundLocation() {
+    fun rendersExactRowsWithoutBackgroundLocation() {
         val status = PermissionStatus(
             microphoneGranted = true,
             cameraGranted = false,
@@ -20,19 +20,16 @@ class PermissionRowsTest {
             notificationsGranted = true,
         )
 
-        listOf(false, true).forEach { batteryGranted ->
-            val rendered = permissionRowsText(status, batteryGranted)
-            val expected = listOf(
-                "Microphone: true",
-                "Camera: false",
-                "Fine location: true",
-                "Coarse location: false",
-                "Notifications: true",
-                "Battery exemption: $batteryGranted",
-                "Permissions ready: false",
-            ).joinToString("\n")
-            assertContentEquals(expected.toByteArray(Charsets.UTF_8), rendered.toByteArray(Charsets.UTF_8))
-            assertFalse(rendered.contains("Background" + " location"))
-        }
+        val rendered = permissionRowsText(status)
+        val expected = listOf(
+            "Microphone: true",
+            "Camera: false",
+            "Fine location: true",
+            "Coarse location: false",
+            "Notifications: true",
+            "Permissions ready: false",
+        ).joinToString("\n")
+        assertContentEquals(expected.toByteArray(Charsets.UTF_8), rendered.toByteArray(Charsets.UTF_8))
+        assertFalse(rendered.contains("Background" + " location"))
     }
 }

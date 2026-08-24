@@ -22,8 +22,6 @@ import app.solstone.observer.scaffold.ObserverHarnessRuntime
 import app.solstone.observer.scaffold.ObserverRuntimeHooks
 import app.solstone.platform.persistence.room.JOURNAL_CACHE_LIMIT_CHOICES_BYTES
 import app.solstone.platform.persistence.room.JournalCacheLimitStore
-import app.solstone.platform.power.GuidanceAction
-import app.solstone.platform.power.GuidanceLaunchResult
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.After
@@ -106,9 +104,6 @@ class PhoneJournalCacheScreenRuntimeTest {
                     previewHeightPx = 100,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "test",
-                    batteryExemptionGranted = { true },
-                    batteryGuidance = GuidanceAction("test", null, "Test settings"),
-                    launchBatteryGuidance = { GuidanceLaunchResult.Failed("not used") },
                     journalCacheState = { state },
                     saveJournalCacheLimit = { state.copy(saveError = HarnessJournalCacheSaveError.FAILED) },
                     onJournalCacheLoadComplete = { loaded.countDown() },

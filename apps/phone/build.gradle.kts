@@ -174,7 +174,6 @@ dependencies {
     androidTestImplementation(project(":platform:camera-still"))
     androidTestImplementation(project(":platform:fgs"))
     androidTestImplementation(project(":platform:persistence-room"))
-    androidTestImplementation(project(":platform:power"))
     androidTestImplementation(project(":platform:pl-transport-conscrypt"))
     androidTestImplementation(project(":platform:identity-file"))
     androidTestImplementation(project(":platform:work"))
