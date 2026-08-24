@@ -21,7 +21,7 @@ class PhoneObserverWidgetModelTest {
         )
 
         assertEquals(SourceState.ON, snapshot.observer.state)
-        assertEquals(SourceState.ON, snapshot.sources.single().state)
+        assertEquals(SourceState.ON, snapshot.sources.single { it.sourceId == "audio" }.state)
     }
 
     @Test
@@ -43,6 +43,29 @@ class PhoneObserverWidgetModelTest {
         val staleSilenced = render(fixture, providerFresh = false, silenced = SilencedFact.SILENCED)
         assertEquals("needs attention", staleSilenced.stateWord)
         assertFalse(staleSilenced.audioChecked)
+    }
+
+    @Test
+    fun silencedAudioUnderAnOnObserverRendersPausedAndUnchecked() {
+        val fixture = PhoneObserverWidgetHarnessFixture()
+        val snapshot = fixture.snapshot(
+            providerFresh = true,
+            silenced = SilencedFact.NOT_SILENCED,
+            audioSilenced = SilencedFact.SILENCED,
+        )
+
+        assertEquals(SourceState.ON, snapshot.observer.state)
+        assertEquals(SourceState.PAUSED, snapshot.sources.single { it.sourceId == "audio" }.state)
+        assertEquals(SourceState.ON, snapshot.sources.single { it.sourceId == "location" }.state)
+
+        val model = renderPhoneObserverWidget(
+            readModel = snapshot,
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+
+        assertFalse(model.audioChecked)
+        assertEquals("paused", model.stateWord)
     }
 
     @Test

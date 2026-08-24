@@ -9,21 +9,28 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class PhoneWidgetCoordinator(context: Context) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val refreshMutex = Mutex()
 
     fun updateAll() {
         scope.launch {
-            updateAllInBackground()
+            refreshMutex.withLock {
+                updateAllInBackground()
+            }
         }
     }
 
     fun refreshAndUpdateAll(refresh: () -> Unit) {
         scope.launch {
-            refresh()
-            updateAllInBackground()
+            refreshMutex.withLock {
+                refresh()
+                updateAllInBackground()
+            }
         }
     }
 

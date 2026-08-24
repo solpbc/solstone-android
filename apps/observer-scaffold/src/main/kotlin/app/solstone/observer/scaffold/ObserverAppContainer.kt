@@ -26,6 +26,7 @@ import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.observer.harness.RealBacklogStatusReader
 import app.solstone.observer.harness.SourceRegistry
 import app.solstone.observer.harness.SourceRuntimeSnapshot
+import app.solstone.observer.harness.SourceToggleResult
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
@@ -187,12 +188,11 @@ class ObserverAppContainer(
 
     fun saveJournalCacheLimit(bytes: Long): HarnessJournalCacheState = journalCacheCoordinator.saveLimit(bytes)
 
-    fun activateSourceWhenAlreadyForeground(sourceId: String): ReasonCode? {
+    fun activateSourceWhenAlreadyForeground(sourceId: String): ForegroundSourceActivation {
         require(sources.snapshot().sources.any { it.sourceId == sourceId }) { "unknown source $sourceId" }
         val readiness = controller.startWhenAlreadyForeground()
-        if (!readiness.allowed) return readiness.blockers.first()
-        sources.setWish(sourceId, SourceWish.On)
-        return null
+        if (!readiness.allowed) return ForegroundSourceActivation.StartRefused(readiness.blockers.first())
+        return ForegroundSourceActivation.Actuated(sources.setWish(sourceId, SourceWish.On))
     }
 
     private fun newPipeline(): CapturePipeline =
@@ -241,6 +241,11 @@ class ObserverAppContainer(
         const val TICK_INTERVAL_MS = 5_000L
         const val STATUS_POLL_INTERVAL_MS = 5_000L
     }
+}
+
+sealed interface ForegroundSourceActivation {
+    data class StartRefused(val reason: ReasonCode) : ForegroundSourceActivation
+    data class Actuated(val result: SourceToggleResult) : ForegroundSourceActivation
 }
 
 internal class IdempotentPipelineLifecycle<T>(

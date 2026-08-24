@@ -37,7 +37,8 @@ fun renderPhoneObserverWidget(
     statusModel: PhoneStatusModel,
     startOutcome: PhoneWidgetStartOutcome,
 ): PhoneObserverWidgetModel {
-    val audioWish = readModel?.sources?.singleOrNull { it.sourceId == "audio" }?.wish
+    val audio = readModel?.sources?.singleOrNull { it.sourceId == "audio" }
+    val audioWish = audio?.wish
     val observer = when (startOutcome) {
         PhoneWidgetStartOutcome.None -> when (audioWish) {
             SourceWish.Off -> ObserverStatus(SourceState.OFF, ReasonCode.NONE)
@@ -46,15 +47,20 @@ fun renderPhoneObserverWidget(
         is PhoneWidgetStartOutcome.Refused -> ObserverStatus(SourceState.OFF, startOutcome.reason)
     }
     val audioWishOn = audioWish == SourceWish.On
-    val audioChecked = startOutcome == PhoneWidgetStartOutcome.None &&
-        observer.state == SourceState.ON
-    val needsAttention = observer.state != SourceState.ON
+    val audioState = audio?.state ?: SourceState.OFF
+    val presentation = when {
+        observer.state == SourceState.NEEDS_ATTENTION -> observer
+        audioState != SourceState.ON -> ObserverStatus(audioState, audio?.reason ?: ReasonCode.NONE)
+        else -> observer
+    }
+    val audioChecked = observer.state == SourceState.ON && audioState == SourceState.ON
+    val needsAttention = !audioChecked
     return PhoneObserverWidgetModel(
         audioChecked = audioChecked,
         audioWishOn = audioWishOn,
-        stateWord = sourceStateCopy(observer.state),
+        stateWord = sourceStateCopy(presentation.state),
         needsAttention = needsAttention,
-        reason = observer.reason,
+        reason = presentation.reason,
         pendingCount = statusModel.pendingCount,
         syncText = statusPillText(statusModel),
         colors = buildSet {

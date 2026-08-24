@@ -12,6 +12,8 @@ import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
 import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.harness.SourceWish
+import app.solstone.observer.harness.SourceToggleResult
+import app.solstone.observer.scaffold.ForegroundSourceActivation
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverRuntimeContainer
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -32,17 +34,20 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
         ObserverForegroundService.widgetStartHandler = object : ObserverWidgetStartHandler {
             override fun onForegroundServiceStarted(sourceId: String) {
-                val refusal = runtime.container().activateSourceWhenAlreadyForeground(sourceId)
-                if (refusal == null) {
-                    widgetStartOutcomes.clear()
-                } else {
-                    runtime.containerIfInitialized?.controller?.recordStartRefusal()
-                    widgetStartOutcomes.recordRefusal(refusal)
+                when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
+                    is ForegroundSourceActivation.Actuated -> if (activation.result == SourceToggleResult.Applied) {
+                        widgetStartOutcomes.clear()
+                    }
+                    is ForegroundSourceActivation.StartRefused -> {
+                        runtime.containerIfInitialized?.controller?.recordStartRefusal()
+                        widgetStartOutcomes.recordRefusal(activation.reason)
+                    }
                 }
                 refreshWidgetAndUpdate()
             }
 
             override fun onForegroundServiceStartRefused(sourceId: String, reason: ReasonCode) {
+                // A PendingIntent denial before service entry cannot reach this handler to retain its reason.
                 runtime.containerIfInitialized?.controller?.recordStartRefusal()
                 widgetStartOutcomes.recordRefusal(reason)
                 refreshWidgetAndUpdate()

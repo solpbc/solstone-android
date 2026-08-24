@@ -41,7 +41,8 @@ import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 
 internal class PhoneObserverWidgetHarnessFixture {
-    private val audio = MutableAudioEngine()
+    private val audio = MutableSourceEngine()
+    private val location = MutableSourceEngine()
     private var sourceSnapshot = SourceRuntimeSnapshot(
         engineRunning = true,
         providerEmitting = true,
@@ -76,6 +77,11 @@ internal class PhoneObserverWidgetHarnessFixture {
                 engine = audio,
                 requiredPermissionsGranted = { it.microphoneGranted },
             ),
+            SourceRegistration(
+                sourceId = "location",
+                engine = location,
+                requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+            ),
         ),
         main = MainPoster { task -> task() },
         wishStore = InMemorySourceWishStore(),
@@ -84,9 +90,10 @@ internal class PhoneObserverWidgetHarnessFixture {
     fun snapshot(
         providerFresh: Boolean,
         silenced: SilencedFact,
+        audioSilenced: SilencedFact = silenced,
     ): SourcesReadModel {
         sourceSnapshot = sourceSnapshot.copy(providerEmitting = providerFresh, silenced = silenced)
-        audio.condition = audio.condition.copy(silenced = silenced)
+        audio.condition = audio.condition.copy(silenced = audioSilenced)
         return registry.snapshot()
     }
 
@@ -94,7 +101,7 @@ internal class PhoneObserverWidgetHarnessFixture {
         registry.setWish("audio", wish)
     }
 
-    private class MutableAudioEngine : ContinuousSourceEngine {
+    private class MutableSourceEngine : ContinuousSourceEngine {
         var condition = SourceCondition(
             desiredOn = true,
             running = true,
