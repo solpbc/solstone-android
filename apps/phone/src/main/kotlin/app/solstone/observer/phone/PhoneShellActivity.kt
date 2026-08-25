@@ -63,8 +63,20 @@ class PhoneShellActivity : ComponentActivity() {
                 waiting = snapshot?.waiting.orEmpty(),
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
                 onStartObserving = { container.controller.ensureObserving() },
+                version = appVersion,
             )
         }
+    }
+
+
+    /**
+     * The installed version, read from the package rather than a generated constant so the shelf
+     * footer does not depend on build-config generation being enabled for this module.
+     */
+    private val appVersion: String by lazy {
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
+            .getOrNull()
+            .orEmpty()
     }
 
     override fun onResume() {
