@@ -52,7 +52,9 @@ fun PhoneDeck(
     modifier: Modifier = Modifier,
 ) {
     val hide = if (paneOpen) Modifier.clearAndSetSemantics { } else Modifier
-    val margin = if (widthClass == WidthClass.COMPACT) 16.dp else 24.dp
+    val margin =
+        if (widthClass == WidthClass.COMPACT) PHONE_CONTENT_MARGIN_DP.dp
+        else PHONE_CONTENT_MARGIN_WIDE_DP.dp
     val columns = if (widthClass == WidthClass.COMPACT) 2 else 3
     val layoutDirection = LocalLayoutDirection.current
     val startInset = margin + contentPadding.calculateStartPadding(layoutDirection)

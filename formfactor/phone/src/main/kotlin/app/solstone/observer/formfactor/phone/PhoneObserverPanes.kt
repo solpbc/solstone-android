@@ -6,6 +6,7 @@ package app.solstone.observer.formfactor.phone
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -58,7 +59,8 @@ internal fun PhoneDetailPane(
             onOpenSource = onOpenSource,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .padding(horizontal = PHONE_CONTENT_MARGIN_DP.dp),
         )
     }
 }
