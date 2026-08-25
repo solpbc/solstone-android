@@ -54,13 +54,20 @@ fun PhoneDeck(
     val hide = if (paneOpen) Modifier.clearAndSetSemantics { } else Modifier
     val margin = if (widthClass == WidthClass.COMPACT) 16.dp else 24.dp
     val columns = if (widthClass == WidthClass.COMPACT) 2 else 3
+    val layoutDirection = LocalLayoutDirection.current
+    val startInset = margin + contentPadding.calculateStartPadding(layoutDirection)
+    val endInset = margin + contentPadding.calculateEndPadding(layoutDirection)
+    val greetingInset = contentPadding.calculateTopPadding()
     Column(
         modifier
             .fillMaxSize()
             .then(hide)
             .testTag("deck"),
     ) {
-        PhoneGreetingSlot(hour)
+        PhoneGreetingSlot(
+            hour,
+            Modifier.padding(start = startInset, end = endInset, top = greetingInset),
+        )
         val sources = when (loadState) {
             is LoadState.Loaded -> loadState.value.sources
             is LoadState.Loading,
@@ -71,19 +78,19 @@ fun PhoneDeck(
             if (attention > 0) {
                 Text(
                     text = if (attention == 1) "1 needs attention" else "$attention need attention",
-                    modifier = Modifier.padding(horizontal = margin),
+                    modifier = Modifier.padding(start = startInset, end = endInset),
                 )
             }
         }
-        val layoutDirection = LocalLayoutDirection.current
         Box(Modifier.fillMaxSize()) {
             PhoneSourceGrid(
                 sources = sources,
                 columns = columns,
+                // The greeting above already consumes the top inset for this column.
                 contentPadding = PaddingValues(
-                    start = margin + contentPadding.calculateStartPadding(layoutDirection),
-                    end = margin + contentPadding.calculateEndPadding(layoutDirection),
-                    top = contentPadding.calculateTopPadding(),
+                    start = startInset,
+                    end = endInset,
+                    top = 0.dp,
                     bottom = contentPadding.calculateBottomPadding(),
                 ),
                 gridState = gridState,
