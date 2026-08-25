@@ -36,4 +36,26 @@ class SourceRegistryNotifyTest {
         assertEquals(1, posts)
         assertEquals(1, deliveries)
     }
+
+    @Test
+    fun refreshSubscribersNotifiesWithoutAWishChange() {
+        var deliveries = 0
+        val registry = sourceRegistry(
+            registrations = listOf(SourceRegistration("audio", FakeSourceEngine())),
+            main = MainPoster { task -> task() },
+        )
+        val subscription = registry.subscribe { deliveries += 1 }
+
+        // Engines start, stop and become silenced with no wish change at all. Without this a reader
+        // that subscribed once renders the state as of the last toggle forever.
+        registry.refreshSubscribers()
+        assertEquals(1, deliveries)
+
+        registry.refreshSubscribers()
+        assertEquals(2, deliveries)
+
+        subscription.close()
+        registry.refreshSubscribers()
+        assertEquals(2, deliveries)
+    }
 }

@@ -142,6 +142,7 @@ class ObserverAppContainer(
                     val current = controller.diagnostics()
                     previousDiagnostics = current
                     backgroundStatusRefreshListener?.invoke()
+                    sources.refreshSubscribers()
                     refreshServiceNotification(current)
                 }
             }

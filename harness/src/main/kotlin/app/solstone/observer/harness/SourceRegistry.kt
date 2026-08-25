@@ -82,6 +82,17 @@ class SourceRegistry(
 
     fun subscriberCount(): Int = synchronized(lock) { listeners.size }
 
+    /**
+     * Tell subscribers to re-read.
+     *
+     * Wishes are not the only thing that moves a source: engines start, stop, and become silenced
+     * without the owner touching anything. Only [setWish] notified, so a reader that subscribed once
+     * kept rendering the state as of the last toggle.
+     */
+    fun refreshSubscribers() {
+        notifyListeners()
+    }
+
     private fun notifyListeners() {
         val snapshot = synchronized(lock) { listeners.toList() }
         snapshot.forEach { listener ->
