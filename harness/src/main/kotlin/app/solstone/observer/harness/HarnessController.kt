@@ -155,20 +155,33 @@ class HarnessController(
 
     fun reconcile(mode: ObserverStartMode) {
         if (reconcileInFlight) {
+            // Carry the caller's mode into the rerun. Repeating the in-flight mode instead would
+            // silently downgrade an owner-initiated start that overlapped a background pass, and a
+            // background mode is gated by blockers a visible start does not carry.
+            pendingReconcileMode = mode
             reconcileRerunRequested = true
             return
         }
         reconcileInFlight = true
         try {
+            var current = mode
             do {
                 reconcileRerunRequested = false
-                reconcileOnce(mode)
+                reconcileOnce(current)
+                val queued = pendingReconcileMode
+                pendingReconcileMode = null
+                if (reconcileRerunRequested && queued != null) {
+                    current = queued
+                }
             } while (reconcileRerunRequested)
         } finally {
             reconcileInFlight = false
             reconcileRerunRequested = false
+            pendingReconcileMode = null
         }
     }
+
+    @Volatile private var pendingReconcileMode: ObserverStartMode? = null
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return

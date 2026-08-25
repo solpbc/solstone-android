@@ -131,4 +131,33 @@ class HarnessControllerVisibleStartTest {
             storageOk = true,
             silenced = SilencedFact.UNKNOWN,
         )
+
+    @Test
+    fun aVisibleStartRequestedDuringABackgroundPassKeepsItsMode() {
+        // A background rehydrate is blocked when the transport is unreachable; a visible start is
+        // not. If the rerun repeated the in-flight mode, the owner's start would be downgraded to a
+        // rehydrate and silently refused, and nothing would ever begin observing.
+        var reentered = false
+        lateinit var held: Fixture
+        held = fixture(
+            desiredStore = FakeDesiredObservingStore(initial = true),
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = false,
+                storageOk = true,
+                silenced = SilencedFact.UNKNOWN,
+            ),
+            diag = { line ->
+                if (!reentered && line.contains("result=blocked")) {
+                    reentered = true
+                    held.controller.reconcile(ObserverStartMode.VisibleStart)
+                }
+            },
+        )
+
+        held.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertTrue(reentered, "the rehydrate pass should have been blocked and re-entered")
+        assertEquals(1, held.lifecycle.starts)
+    }
 }
