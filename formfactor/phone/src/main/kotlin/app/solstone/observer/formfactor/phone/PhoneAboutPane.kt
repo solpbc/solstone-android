@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,6 +34,6 @@ fun PhoneAboutPane(
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .clickable(onClick = onOpenLicences)
                 .testTag("licencesRow"),
-        )
+        ) { Text("licenses") }
     }
 }

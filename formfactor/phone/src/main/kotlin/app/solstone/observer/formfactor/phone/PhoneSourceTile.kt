@@ -4,7 +4,9 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,11 +24,14 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
+
+private val PHONE_SOURCE_TILE_INLINE_MIN_WIDTH = 224.dp
 
 @Composable
 fun PhoneSourceTile(
@@ -41,7 +46,7 @@ fun PhoneSourceTile(
     val stateCopy = sourceStateCopy(status.state)
     val earnsSwitch = sourceEarnsSwitch(status.sourceId)
     val wishOn = status.wish == SourceWish.On
-    Row(
+    BoxWithConstraints(
         modifier
             .fillMaxWidth()
             .testTag("sourceTile-${status.sourceId}")
@@ -60,39 +65,104 @@ fun PhoneSourceTile(
                     }
                 }
             },
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            Modifier
-                .weight(1f)
-                .clickable { onOpen() }
-                .padding(12.dp)
-                .testTag("sourceBody-${status.sourceId}"),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PhoneTileDot(status.state)
-                Text(text = label, modifier = Modifier.padding(start = 8.dp))
-            }
-            Text(text = stateCopy)
-            if (status.state == SourceState.OFF) {
-                Text(text = "turn it on any time.")
-            }
-        }
-        if (earnsSwitch) {
-            Box(
-                Modifier
-                    .minimumInteractiveComponentSize()
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .testTag("sourceSwitch-${status.sourceId}"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Switch(
-                    checked = wishOn,
-                    onCheckedChange = { checked ->
-                        onToggle(if (checked) SourceWish.On else SourceWish.Off)
-                    },
+        if (maxWidth < PHONE_SOURCE_TILE_INLINE_MIN_WIDTH) {
+            Column {
+                PhoneSourceBody(
+                    label = label,
+                    state = status.state,
+                    stateCopy = stateCopy,
+                    onOpen = onOpen,
+                    sourceId = status.sourceId,
+                    modifier = Modifier.fillMaxWidth(),
                 )
+                if (earnsSwitch) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        PhoneSourceSwitch(
+                            sourceId = status.sourceId,
+                            wishOn = wishOn,
+                            onToggle = onToggle,
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PhoneSourceBody(
+                    label = label,
+                    state = status.state,
+                    stateCopy = stateCopy,
+                    onOpen = onOpen,
+                    sourceId = status.sourceId,
+                    modifier = Modifier.weight(1f),
+                )
+                if (earnsSwitch) {
+                    PhoneSourceSwitch(
+                        sourceId = status.sourceId,
+                        wishOn = wishOn,
+                        onToggle = onToggle,
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PhoneSourceBody(
+    label: String,
+    state: SourceState,
+    stateCopy: String,
+    onOpen: () -> Unit,
+    sourceId: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .clickable { onOpen() }
+            .padding(12.dp)
+            .testTag("sourceBody-$sourceId"),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.testTag("sourceLabel-$sourceId"),
+        ) {
+            PhoneTileDot(state)
+            Text(
+                text = label,
+                modifier = Modifier.padding(start = 8.dp),
+                softWrap = false,
+            )
+        }
+        Text(text = stateCopy)
+        if (state == SourceState.OFF) {
+            Text(text = "turn it on any time.")
+        }
+    }
+}
+
+@Composable
+private fun PhoneSourceSwitch(
+    sourceId: String,
+    wishOn: Boolean,
+    onToggle: (SourceWish) -> Unit,
+) {
+    Box(
+        Modifier
+            .minimumInteractiveComponentSize()
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics(mergeDescendants = true) {}
+            .testTag("sourceSwitch-$sourceId"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Switch(
+            checked = wishOn,
+            onCheckedChange = { checked ->
+                onToggle(if (checked) SourceWish.On else SourceWish.Off)
+            },
+        )
     }
 }

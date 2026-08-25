@@ -32,6 +32,7 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
     else -> when (surface.headingKey) {
         "heading.pane_status" -> "status"
         "heading.about_solstone" -> "about solstone"
+        "heading.licences" -> "licenses"
         "heading.import" -> "import"
         "heading.add_more" -> "add more"
         "heading.your_journal" -> "your journal"
@@ -48,6 +49,21 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
  *
  * A surface's [PhoneSurface.paneTitle] is an internal identifier that tests match on; it is not
  * owner-facing text. Resolve the visible heading first so a pane is announced with the same words
- * it displays, and fall back to the identifier only where no approved heading exists yet.
+ * it displays. Only deliberately unimplemented placeholder routes may expose an identifier.
  */
-fun spokenPaneTitle(surface: PhoneSurface): String = headingText(surface) ?: surface.paneTitle
+fun spokenPaneTitle(surface: PhoneSurface): String = when (surface) {
+    PhonePane.JOURNAL -> "your journal, not set up yet"
+    else -> headingText(surface) ?: placeholderPaneTitle(surface)
+}
+
+private fun placeholderPaneTitle(surface: PhoneSurface): String {
+    check(
+        surface in setOf(
+            PhoneRoute.RouteA,
+            PhoneRoute.RouteB,
+            PhoneRoute.RouteC,
+            PhoneRoute.RouteCChild,
+        ),
+    ) { "A rendered owner surface needs an approved pane title: ${surface.paneTitle}" }
+    return surface.paneTitle
+}

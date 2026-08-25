@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -122,9 +123,19 @@ class PhoneDeckNonSourceTileTest {
     fun importPaneShowsApprovedRows() {
         setScreen(initial = PhoneRoute.Import)
 
-        assertTileTexts("importRow-photos", listOf("photos", "pick from your library"))
-        assertTileTexts("importRow-files", listOf("files", "documents, audio, PDFs"))
-        assertTileTexts("importRow-recentlyImported", listOf("recently imported"))
+        assertTileTexts("importRow-photos", listOf("photos", "not available"))
+        assertTileTexts("importRow-files", listOf("files", "not available"))
+        assertTileTexts("importRow-recentlyImported", listOf("recently imported", "nothing to show"))
+    }
+
+    @Test
+    fun importPaneRowsAreInformationalRatherThanActions() {
+        setScreen(initial = PhoneRoute.Import)
+
+        listOf("importRow-photos", "importRow-files", "importRow-recentlyImported").forEach { tag ->
+            val node = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+            assertFalse("$tag is actionable", node.config.getOrNull(SemanticsActions.OnClick) != null)
+        }
     }
 
     @Test

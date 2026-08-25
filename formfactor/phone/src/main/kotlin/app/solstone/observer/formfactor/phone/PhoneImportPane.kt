@@ -23,17 +23,17 @@ fun PhoneImportPane(
     ) {
         PhoneImportRow(
             label = "photos",
-            subLine = "pick from your library",
+            subLine = "not available",
             testTag = "importRow-photos",
         )
         PhoneImportRow(
             label = "files",
-            subLine = "documents, audio, PDFs",
+            subLine = "not available",
             testTag = "importRow-files",
         )
         PhoneImportRow(
             label = "recently imported",
-            subLine = null,
+            subLine = "nothing to show",
             testTag = "importRow-recentlyImported",
         )
         Text(

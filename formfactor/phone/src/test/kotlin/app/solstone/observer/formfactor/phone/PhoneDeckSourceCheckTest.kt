@@ -82,20 +82,21 @@ class PhoneDeckSourceCheckTest {
     }
 
     @Test
-    fun headingTextMapsStatusAndOmitsOtherKeys() {
+    fun headingTextMapsStatusAndKeepsJournalAsAMarkName() {
         assertEquals("status", headingText(PhonePane.STATUS))
         assertEquals("settings", headingText(PhonePane.SHELF))
         assertEquals("camera", headingText(PhoneRoute.SourceDetail("camera")))
         assertNull(headingText(PhonePane.JOURNAL))
         assertNotEquals("journal", headingText(PhonePane.JOURNAL))
+        assertEquals("your journal, not set up yet", spokenPaneTitle(PhonePane.JOURNAL))
         assertNull(headingText(PhoneRoute.RouteA))
         assertNull(headingText(PhoneDeck))
     }
 
     @Test
-    fun headingTextMapsAboutSolstoneAndOmitsLicences() {
+    fun headingTextMapsAboutSolstoneAndLicenses() {
         assertEquals("about solstone", headingText(PhoneRoute.AboutSolstone))
-        assertNull(headingText(PhoneRoute.Licences))
+        assertEquals("licenses", headingText(PhoneRoute.Licences))
     }
 
     @Test

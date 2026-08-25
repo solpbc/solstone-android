@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.SourceState
@@ -52,6 +53,7 @@ fun PhoneDeck(
     modifier: Modifier = Modifier,
 ) {
     val hide = if (paneOpen) Modifier.clearAndSetSemantics { } else Modifier
+    val greeting = greetingFor(hour)
     val margin =
         if (widthClass == WidthClass.COMPACT) PHONE_CONTENT_MARGIN_DP.dp
         else PHONE_CONTENT_MARGIN_WIDE_DP.dp
@@ -63,6 +65,7 @@ fun PhoneDeck(
     Column(
         modifier
             .fillMaxSize()
+            .semantics { paneTitle = greeting }
             .then(hide)
             .testTag("deck"),
     ) {

@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -34,6 +35,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.then
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
@@ -76,6 +78,32 @@ class PhoneObserverScreenTest {
         }
         assertEquals(1, composeRule.onAllNodesWithTag("greetingSlot").fetchSemanticsNodes().size)
         composeRule.onNodeWithText("good morning").assertIsDisplayed()
+    }
+
+    @Test
+    fun deckPaneTitleMatchesTheGreetingItRendersInEveryBand() {
+        var hour by mutableStateOf(5)
+        composeRule.setContent {
+            PhoneDeck(
+                loadState = loaded(audioOn()),
+                contentPadding = PaddingValues(0.dp),
+                gridState = rememberLazyGridState(),
+                widthClass = WidthClass.COMPACT,
+                paneOpen = false,
+                onOpenSource = {},
+                onToggle = { _, _ -> },
+                onOpenImport = {},
+                onOpenAddMore = {},
+                hour = hour,
+            )
+        }
+
+        listOf(5, 12, 17).forEach { expectedHour ->
+            composeRule.runOnIdle { hour = expectedHour }
+            val greeting = greetingFor(expectedHour)
+            composeRule.onNodeWithText(greeting).assertIsDisplayed()
+            composeRule.onNode(paneTitleMatcher(greeting)).assertIsDisplayed()
+        }
     }
 
     @Test
@@ -443,6 +471,33 @@ class PhoneObserverScreenTest {
     }
 
     @Test
+    fun licensesActionIsVisibleAccessibleAndOpensItsPane() {
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+                initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
+            )
+        }
+
+        composeRule.onNodeWithText("licenses").assertIsDisplayed()
+        val action = composeRule.onNodeWithTag("licencesRow").fetchSemanticsNode()
+        assertEquals(
+            listOf("licenses"),
+            action.config.getOrNull(SemanticsProperties.Text)?.map { it.text },
+        )
+        assertTrue(action.config.getOrNull(SemanticsActions.OnClick) != null)
+        val minPx = with(composeRule.density) { MINIMUM_TOUCH_TARGET_DP.dp.toPx() }
+        assertTrue(action.size.width >= minPx - 1f)
+        assertTrue(action.size.height >= minPx - 1f)
+
+        composeRule.onNodeWithTag("licencesRow").performClick()
+        composeRule.onNode(paneTitleMatcher("licenses")).assertIsDisplayed()
+    }
+
+    @Test
     fun shelfRowsDoNotExposeTabRoles() {
         composeRule.setContent {
             PhoneObserverScreen(
@@ -572,6 +627,55 @@ class PhoneObserverScreenTest {
         val minPx = with(density) { MINIMUM_TOUCH_TARGET_DP.dp.toPx() }
         assertTrue(node.size.width >= minPx - 1f)
         assertTrue(node.size.height >= minPx - 1f)
+    }
+
+    @Test
+    fun locationReflowsWithoutJoiningItsSwitchAtCompactFontScales() {
+        var toggles = 0
+        var fontScale by mutableStateOf(1.3f)
+        var screenGeneration by mutableStateOf(0)
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 800.dp)) then
+                    DeviceConfigurationOverride.FontScale(fontScale),
+            ) {
+                key(screenGeneration) {
+                    PhoneObserverScreen(
+                        loadState = loaded(status("location", SourceState.ON, SourceWish.On)),
+                        status = connected(),
+                        onToggle = { sourceId, _ ->
+                            if (sourceId == "location") toggles += 1
+                        },
+                        onStartObserving = {},
+                    )
+                }
+            }
+        }
+
+        listOf(1.3f, 2f).forEachIndexed { index, scale ->
+            composeRule.runOnIdle { fontScale = scale }
+            val label = composeRule.onNodeWithTag("sourceLabel-location", useUnmergedTree = true)
+                .fetchSemanticsNode()
+            val body = composeRule.onNodeWithTag("sourceBody-location", useUnmergedTree = true)
+                .fetchSemanticsNode()
+            val toggle = composeRule.onNodeWithTag("sourceSwitch-location", useUnmergedTree = true)
+                .fetchSemanticsNode()
+            val tile = composeRule.onNodeWithTag("sourceTile-location", useUnmergedTree = true)
+                .fetchSemanticsNode()
+            val density = composeRule.density
+            val minPx = with(density) { MINIMUM_TOUCH_TARGET_DP.dp.toPx() }
+
+            assertTrue("$scale label must precede its switch", label.boundsInRoot.bottom <= toggle.boundsInRoot.top)
+            assertTrue("$scale tile must grow for both controls", tile.boundsInRoot.height > body.boundsInRoot.height)
+            assertTrue("$scale switch width", toggle.size.width >= minPx - 1f)
+            assertTrue("$scale switch height", toggle.size.height >= minPx - 1f)
+
+            composeRule.onNodeWithTag("sourceBody-location", useUnmergedTree = true).performClick()
+            composeRule.onNode(paneTitleMatcher("location")).assertIsDisplayed()
+            composeRule.runOnIdle { screenGeneration += 1 }
+            composeRule.onNodeWithTag("sourceSwitch-location", useUnmergedTree = true).performClick()
+            assertEquals("$scale switch action", index + 1, toggles)
+        }
     }
 
     @Test
