@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
@@ -68,6 +70,36 @@ fun PhoneObserverScreen(
     initialShelfOpen: Boolean = false,
     version: String = "",
 ) {
+    PhoneObserverScreen(
+        loadState = loadState,
+        status = status,
+        waiting = waiting,
+        onToggle = onToggle,
+        onStartObserving = onStartObserving,
+        modifier = modifier,
+        initial = initial,
+        initialShelfOpen = initialShelfOpen,
+        version = version,
+        windowAdaptiveInfo = currentWindowAdaptiveInfo(
+            supportLargeAndXLargeWidth = true,
+        ),
+    )
+}
+
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+@Composable
+internal fun PhoneObserverScreen(
+    loadState: LoadState<SourcesReadModel>,
+    status: PhoneStatusModel?,
+    waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
+    onToggle: (String, SourceWish) -> Unit,
+    onStartObserving: () -> Unit,
+    modifier: Modifier = Modifier,
+    initial: PhoneRouteStack = PhoneRouteStack.Empty,
+    initialShelfOpen: Boolean = false,
+    version: String = "",
+    windowAdaptiveInfo: WindowAdaptiveInfo,
+) {
     var paneStates by rememberPaneStates(
         initial = if (initialShelfOpen) PaneStates.Empty.open(PhonePane.SHELF) else PaneStates.Empty,
     )
@@ -84,13 +116,13 @@ fun PhoneObserverScreen(
     val openerFocusRequester = remember { FocusRequester() }
     val firstShelfRowFocusRequester = remember { FocusRequester() }
     val hour = remember { LocalTime.now().hour }
-    val adaptiveInfo = currentWindowAdaptiveInfo(supportLargeAndXLargeWidth = true)
-    val minWidthDp = adaptiveInfo
+    val minWidthDp = windowAdaptiveInfo
         .windowSizeClass
         .minWidthDp
     val widthClass = classifyWindowWidth(minWidthDp)
-    val directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(adaptiveInfo)
+    val directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(windowAdaptiveInfo)
     val deckWidth = deckPaneWidth(widthClass)
+    val deckGridState = rememberLazyGridState()
     val renderSplit = shouldRenderSplit(
         maxHorizontalPartitions = directive.maxHorizontalPartitions,
         deckPaneWidthDp = deckWidth.value.toInt(),
@@ -218,6 +250,7 @@ fun PhoneObserverScreen(
                 PhoneDeck(
                     loadState = loadState,
                     contentPadding = paddingValues,
+                    gridState = deckGridState,
                     widthClass = deckWidthClass,
                     paneOpen = deckPaneOpen,
                     onOpenSource = { id ->

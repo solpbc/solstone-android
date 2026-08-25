@@ -39,7 +39,7 @@ class PhoneTwoPaneLayoutTest {
 
         composeRule.onNodeWithTag("importTile").performClick()
         composeRule.onNodeWithTag("addMoreTile").performClick()
-        composeRule.onNodeWithTag("sourceTile-audio").performClick()
+        composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertIsDisplayed()
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()

@@ -139,4 +139,27 @@ class PhoneDeckSourceCheckTest {
             assertFalse(text.contains("turn on any time"), file.name)
         }
     }
+
+    @Test
+    fun adaptiveInfoSeamIsTheOnlyPosturePath() {
+        val root = File("src/main/kotlin/app/solstone/observer/formfactor/phone")
+        val sources = root.walkTopDown().filter { it.extension == "kt" }.toList()
+        val allSourceText = sources.joinToString("\n") { it.readText() }
+        val observerScreen = root.resolve("PhoneObserverScreen.kt").readText()
+
+        assertEquals(1, "windowAdaptiveInfo: WindowAdaptiveInfo".toRegex().findAll(allSourceText).count())
+        assertEquals(1, observerScreen.split("windowAdaptiveInfo = currentWindowAdaptiveInfo(").size - 1)
+
+        val handRolledApis = listOf(
+            "WindowInfoTracker",
+            "collectFoldingFeaturesAsState",
+            "windowLayoutInfo",
+        )
+        sources.forEach { file ->
+            val text = file.readText()
+            handRolledApis.forEach { api ->
+                assertFalse(text.contains(api), "${file.name} contains $api")
+            }
+        }
+    }
 }

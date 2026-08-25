@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,7 @@ class PhoneObserverScreenTest {
             PhoneDeck(
                 loadState = loaded(audioOn()),
                 contentPadding = PaddingValues(0.dp),
+                gridState = rememberLazyGridState(),
                 widthClass = WidthClass.COMPACT,
                 paneOpen = false,
                 onOpenSource = {},

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ private const val LEADING_NON_SOURCE_TILE_COUNT = 2
 fun PhoneDeck(
     loadState: LoadState<SourcesReadModel>,
     contentPadding: PaddingValues,
+    gridState: LazyGridState,
     widthClass: WidthClass,
     paneOpen: Boolean,
     onOpenSource: (String) -> Unit,
@@ -84,6 +86,7 @@ fun PhoneDeck(
                     top = contentPadding.calculateTopPadding(),
                     bottom = contentPadding.calculateBottomPadding(),
                 ),
+                gridState = gridState,
                 onOpenSource = onOpenSource,
                 onToggle = onToggle,
                 onOpenImport = onOpenImport,
@@ -115,6 +118,7 @@ internal fun PhoneSourceGrid(
     sources: List<SourceStatus>,
     columns: Int,
     contentPadding: PaddingValues,
+    gridState: LazyGridState,
     onOpenSource: (String) -> Unit,
     onToggle: (String, SourceWish) -> Unit,
     onOpenImport: () -> Unit,
@@ -122,6 +126,7 @@ internal fun PhoneSourceGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
+        state = gridState,
         modifier = Modifier
             .fillMaxSize()
             .testTag("sourceGrid"),
