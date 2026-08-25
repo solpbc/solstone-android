@@ -24,7 +24,7 @@ fun PhoneAboutPane(
     Box(
         modifier
             .fillMaxSize()
-            .semantics { paneTitle = PhoneRoute.AboutSolstone.paneTitle },
+            .semantics { paneTitle = spokenPaneTitle(PhoneRoute.AboutSolstone) },
     ) {
         Box(
             Modifier

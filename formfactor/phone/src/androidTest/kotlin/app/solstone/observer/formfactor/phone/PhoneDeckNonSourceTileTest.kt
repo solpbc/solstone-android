@@ -40,7 +40,7 @@ class PhoneDeckNonSourceTileTest {
 
         composeRule.onNodeWithTag("importTile").assertIsDisplayed().performClick()
 
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.Import.paneTitle)).assertIsDisplayed()
+        composeRule.onNode(paneTitleMatcher(spokenPaneTitle(PhoneRoute.Import))).assertIsDisplayed()
     }
 
     @Test
@@ -49,7 +49,7 @@ class PhoneDeckNonSourceTileTest {
 
         composeRule.onNodeWithTag("addMoreTile").assertIsDisplayed().performClick()
 
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.AddMore.paneTitle)).assertIsDisplayed()
+        composeRule.onNode(paneTitleMatcher(spokenPaneTitle(PhoneRoute.AddMore))).assertIsDisplayed()
     }
 
     @Test
@@ -140,7 +140,7 @@ class PhoneDeckNonSourceTileTest {
 
         composeRule.onNodeWithTag("addMoreRow-camera").assertIsDisplayed().performClick()
 
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.SourceDetail("camera").paneTitle))
+        composeRule.onNode(paneTitleMatcher(spokenPaneTitle(PhoneRoute.SourceDetail("camera"))))
             .assertIsDisplayed()
         composeRule.onNodeWithText("give this a tile on home").assertIsDisplayed()
         composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertDoesNotExist()

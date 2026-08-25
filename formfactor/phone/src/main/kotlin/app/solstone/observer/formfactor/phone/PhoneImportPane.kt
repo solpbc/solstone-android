@@ -19,7 +19,7 @@ fun PhoneImportPane(
     Column(
         modifier
             .fillMaxSize()
-            .semantics { paneTitle = PhoneRoute.Import.paneTitle },
+            .semantics { paneTitle = spokenPaneTitle(PhoneRoute.Import) },
     ) {
         PhoneImportRow(
             label = "photos",

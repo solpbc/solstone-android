@@ -42,3 +42,12 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
         else -> null
     }
 }
+
+/**
+ * The name a screen reader announces when a pane appears.
+ *
+ * A surface's [PhoneSurface.paneTitle] is an internal identifier that tests match on; it is not
+ * owner-facing text. Resolve the visible heading first so a pane is announced with the same words
+ * it displays, and fall back to the identifier only where no approved heading exists yet.
+ */
+fun spokenPaneTitle(surface: PhoneSurface): String = headingText(surface) ?: surface.paneTitle

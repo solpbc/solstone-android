@@ -74,7 +74,7 @@ internal fun PhoneShelfContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .semantics { paneTitle = PhonePane.SHELF.paneTitle },
+            .semantics { paneTitle = spokenPaneTitle(PhonePane.SHELF) },
     ) {
         Text(
             text = headingText(PhonePane.SHELF).orEmpty(),

@@ -351,10 +351,10 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag("shelfRow-yourJournal").assertIsDisplayed()
         Espresso.pressBack()
         composeRule.onNodeWithTag("phoneShelfSheet").assertIsNotDisplayed()
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.Help.paneTitle)).assertIsDisplayed()
+        composeRule.onNode(paneTitleMatcher(spokenPaneTitle(PhoneRoute.Help))).assertIsDisplayed()
         composeRule.onNodeWithTag("phoneUp").assertIsDisplayed()
         Espresso.pressBack()
-        composeRule.onNode(paneTitleMatcher(PhoneRoute.ThisDevice.paneTitle)).assertIsDisplayed()
+        composeRule.onNode(paneTitleMatcher(spokenPaneTitle(PhoneRoute.ThisDevice))).assertIsDisplayed()
     }
 
     @Test
@@ -404,7 +404,7 @@ class PhoneObserverScreenTest {
             if (route == PhoneRoute.AboutSolstone) {
                 composeRule.onNodeWithTag("licencesRow").assertIsDisplayed()
             } else {
-                composeRule.onNode(paneTitleMatcher(route.paneTitle)).assertIsDisplayed()
+                composeRule.onNode(paneTitleMatcher(spokenPaneTitle(route))).assertIsDisplayed()
             }
             if (index != rows.lastIndex) {
                 composeRule.runOnIdle { screenGeneration += 1 }
@@ -435,7 +435,7 @@ class PhoneObserverScreenTest {
         }
         routes.forEachIndexed { index, (route, heading) ->
             composeRule.onNodeWithText(heading).assertIsDisplayed()
-            composeRule.onNode(paneTitleMatcher(route.paneTitle)).assertIsDisplayed()
+            composeRule.onNode(paneTitleMatcher(spokenPaneTitle(route))).assertIsDisplayed()
             if (index != routes.lastIndex) {
                 composeRule.runOnIdle { routeIndex += 1 }
             }

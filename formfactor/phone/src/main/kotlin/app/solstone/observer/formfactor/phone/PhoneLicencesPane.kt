@@ -19,7 +19,7 @@ fun PhoneLicencesPane(
         modifier
             .fillMaxSize()
             .semantics(mergeDescendants = true) {
-                paneTitle = PhoneRoute.Licences.paneTitle
+                paneTitle = spokenPaneTitle(PhoneRoute.Licences)
             },
     ) {
         Text("AGPL-3.0-only")

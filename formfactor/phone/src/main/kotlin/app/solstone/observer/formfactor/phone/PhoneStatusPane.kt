@@ -43,7 +43,7 @@ fun PhoneStatusPane(
         Surface(
             modifier = modifier
                 .testTag("statusPane")
-                .semantics { paneTitle = PhonePane.STATUS.paneTitle },
+                .semantics { paneTitle = spokenPaneTitle(PhonePane.STATUS) },
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {

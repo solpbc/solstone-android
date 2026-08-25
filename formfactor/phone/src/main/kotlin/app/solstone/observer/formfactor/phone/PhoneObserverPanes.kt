@@ -100,13 +100,13 @@ private fun PhoneDetailContent(
             Box(
                 modifier
                     .fillMaxSize()
-                    .semantics { paneTitle = top.paneTitle },
+                    .semantics { paneTitle = spokenPaneTitle(top) },
             )
         }
         is PhoneRoute.SourceDetail -> Box(
             modifier
                 .fillMaxSize()
-                .semantics { paneTitle = top.paneTitle },
+                .semantics { paneTitle = spokenPaneTitle(top) },
         ) {
             PhoneSourceDetail(
                 loadState = loadState,

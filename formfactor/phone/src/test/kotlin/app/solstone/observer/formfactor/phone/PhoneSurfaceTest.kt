@@ -80,4 +80,29 @@ class PhoneSurfaceTest {
         PhoneRoute.Help -> PhoneRoute.Help in phoneSurfaces()
         is PhoneRoute.SourceDetail -> phoneSurfaces().any { it is PhoneRoute.SourceDetail }
     }
+
+    @Test
+    fun everySurfaceWithApprovedCopyIsAnnouncedWithIt() {
+        val announced = phoneSurfaces().associateWith { spokenPaneTitle(it) }
+        val stillAnIdentifier = announced.filterValues { it.startsWith("surface_") || it.startsWith("pane_") }
+        assertEquals(
+            setOf(
+                "surface_deck",
+                "pane_journal",
+                "surface_licences",
+                "surface_route_a",
+                "surface_route_b",
+                "surface_route_c",
+                "surface_route_c_child",
+            ),
+            stillAnIdentifier.values.toSet(),
+        )
+    }
+
+    @Test
+    fun announcedPaneNamesAreUnique() {
+        val announced = phoneSurfaces().map { spokenPaneTitle(it) }
+        assertTrue(announced.all { it.isNotBlank() })
+        assertEquals(announced.size, announced.distinct().size)
+    }
 }

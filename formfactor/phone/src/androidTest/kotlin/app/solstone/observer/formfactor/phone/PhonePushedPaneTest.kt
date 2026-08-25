@@ -143,7 +143,7 @@ class PhonePushedPaneTest {
         composeRule.onNode(
             SemanticsMatcher("licences pane") { node ->
                 node.config.getOrNull(SemanticsProperties.PaneTitle) ==
-                    PhoneRoute.Licences.paneTitle
+                    spokenPaneTitle(PhoneRoute.Licences)
             },
         ).assertIsDisplayed()
     }

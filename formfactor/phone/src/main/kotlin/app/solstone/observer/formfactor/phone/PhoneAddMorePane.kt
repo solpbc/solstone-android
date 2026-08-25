@@ -26,7 +26,7 @@ fun PhoneAddMorePane(
     Column(
         modifier
             .fillMaxSize()
-            .semantics { paneTitle = PhoneRoute.AddMore.paneTitle },
+            .semantics { paneTitle = spokenPaneTitle(PhoneRoute.AddMore) },
     ) {
         phoneSourceLabels.keys.forEach { id ->
             Text(
