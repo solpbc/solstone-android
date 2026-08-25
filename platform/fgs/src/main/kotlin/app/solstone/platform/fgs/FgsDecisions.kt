@@ -22,5 +22,7 @@ fun onStartCommandPlan(hasIntent: Boolean, hasRehydrator: Boolean): ObserverStar
 
 fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.ON
 
+fun shouldOfferStartAction(isRunning: Boolean): Boolean = !isRunning
+
 fun startFailureDiagLine(exceptionClassName: String): String =
     "fgs start-failure exception=$exceptionClassName"

@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.content.Context
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -20,6 +21,7 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHandler
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
+import app.solstone.platform.fgs.shouldOfferStartAction
 
 class PhoneApplication : ObserverApplication(phoneSpec) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
@@ -32,6 +34,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
         runtime.onContainerInitialized(::onContainerInitialized)
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
+        ObserverNotification.startAction = startCaptureAction(applicationContext, cachedWidgetModel.audioChecked)
         ObserverForegroundService.widgetStartHandler = object : ObserverWidgetStartHandler {
             override fun onForegroundServiceStarted(sourceId: String) {
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
@@ -102,6 +105,19 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             statusModel = statusModel,
             startOutcome = widgetStartOutcomes.read(),
         )
+        ObserverNotification.startAction = startCaptureAction(applicationContext, cachedWidgetModel.audioChecked)
+    }
+
+    private fun startCaptureAction(context: Context, isRunning: Boolean): Notification.Action? {
+        if (!shouldOfferStartAction(isRunning)) return null
+        val pendingIntent = PendingIntent.getForegroundService(
+            context,
+            START_CAPTURE_REQUEST_CODE,
+            ObserverForegroundService.widgetStartIntent(context, PHONE_WIDGET_AUDIO_SOURCE_ID),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        @Suppress("DEPRECATION")
+        return Notification.Action.Builder(0, "Start capture", pendingIntent).build()
     }
 
     private fun decorateObserverNotification(context: Context, builder: Notification.Builder) {
@@ -111,5 +127,9 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         builder
             .setContentTitle(model.stateWord)
             .setContentText(model.syncText)
+    }
+
+    private companion object {
+        const val START_CAPTURE_REQUEST_CODE = 201
     }
 }

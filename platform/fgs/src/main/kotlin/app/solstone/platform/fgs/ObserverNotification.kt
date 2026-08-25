@@ -21,6 +21,7 @@ object ObserverNotification {
     const val TEXT_NEEDS_ATTENTION = "needs attention"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
+    @Volatile var startAction: Notification.Action? = null
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -45,6 +46,7 @@ object ObserverNotification {
         if (contentIntent != null) {
             builder.setContentIntent(contentIntent)
         }
+        startAction?.let { builder.addAction(it) }
         if (decorate) {
             dispatchDecoration { decorator?.decorate(context, builder) }
         }

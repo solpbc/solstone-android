@@ -98,6 +98,12 @@ class FgsLogicTest {
     }
 
     @Test
+    fun startActionOfferedOnlyWhenCaptureNotRunning() {
+        assertFalse(shouldOfferStartAction(isRunning = true))
+        assertTrue(shouldOfferStartAction(isRunning = false))
+    }
+
+    @Test
     fun startFailureDiagLineEmbedsExceptionClass() {
         assertTrue(startFailureDiagLine("SecurityException").contains("SecurityException"))
     }
@@ -201,6 +207,28 @@ class FgsLogicTest {
             ),
             refused,
         )
+    }
+
+    @Test
+    fun widgetStartRefusalHasNoReportingChannelOtherThanTheInstalledHandler() {
+        ObserverForegroundService.widgetStartHandler = null
+        ObserverForegroundService.dispatchWidgetStartRefused("audio", ReasonCode.FOREGROUND_START_NOT_ALLOWED)
+
+        val refused = mutableListOf<Pair<String, ReasonCode>>()
+        ObserverForegroundService.widgetStartHandler = object : ObserverForegroundService.ObserverWidgetStartHandler {
+            override fun onForegroundServiceStarted(sourceId: String) {}
+
+            override fun onForegroundServiceStartRefused(sourceId: String, reason: ReasonCode) {
+                refused += sourceId to reason
+            }
+        }
+        try {
+            ObserverForegroundService.dispatchWidgetStartRefused("audio", ReasonCode.FOREGROUND_START_NOT_ALLOWED)
+        } finally {
+            ObserverForegroundService.widgetStartHandler = null
+        }
+
+        assertEquals(listOf("audio" to ReasonCode.FOREGROUND_START_NOT_ALLOWED), refused)
     }
 
     @Test
