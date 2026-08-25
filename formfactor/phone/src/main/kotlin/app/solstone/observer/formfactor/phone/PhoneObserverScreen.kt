@@ -65,6 +65,7 @@ fun PhoneObserverScreen(
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
     onToggle: (String, SourceWish) -> Unit,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
@@ -76,6 +77,7 @@ fun PhoneObserverScreen(
         waiting = waiting,
         onToggle = onToggle,
         onStartObserving = onStartObserving,
+        onConnectJournal = onConnectJournal,
         modifier = modifier,
         initial = initial,
         initialShelfOpen = initialShelfOpen,
@@ -94,6 +96,7 @@ internal fun PhoneObserverScreen(
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
     onToggle: (String, SourceWish) -> Unit,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
@@ -292,6 +295,7 @@ internal fun PhoneObserverScreen(
                                 loadState = loadState,
                                 homeTileStore = homeTileStore,
                                 onStartObserving = onStartObserving,
+                                onConnectJournal = onConnectJournal,
                                 onOpenLicences = {
                                     detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
                                 },
@@ -327,6 +331,7 @@ internal fun PhoneObserverScreen(
                     loadState = loadState,
                     homeTileStore = homeTileStore,
                     onStartObserving = onStartObserving,
+                    onConnectJournal = onConnectJournal,
                     onOpenLicences = {
                         detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
                     },

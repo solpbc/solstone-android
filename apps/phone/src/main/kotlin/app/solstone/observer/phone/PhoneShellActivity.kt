@@ -3,6 +3,7 @@
 
 package app.solstone.observer.phone
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -17,6 +18,7 @@ import app.solstone.observer.formfactor.phone.SourcesViewModel
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReader
+import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverHarnessRuntime
@@ -63,6 +65,12 @@ class PhoneShellActivity : ComponentActivity() {
                 waiting = snapshot?.waiting.orEmpty(),
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
                 onStartObserving = { container.controller.ensureObserving() },
+                onConnectJournal = {
+                    startActivity(
+                        Intent(this, ObserverActivity::class.java)
+                            .putExtra(ObserverActivity.EXTRA_SCAN_PAIR_QR, true),
+                    )
+                },
                 version = appVersion,
             )
         }

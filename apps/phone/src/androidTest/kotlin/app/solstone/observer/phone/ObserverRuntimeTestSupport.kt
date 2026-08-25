@@ -3,7 +3,11 @@
 
 package app.solstone.observer.phone
 
+import android.app.Activity
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import app.solstone.core.model.QueueState
 import app.solstone.core.sources.MAIN_STREAM
@@ -80,6 +84,21 @@ internal fun waitUntil(label: String, timeoutMs: Long = 10_000L, predicate: () -
     }
     fail("Timed out waiting for $label")
 }
+
+internal fun allActivityViews(activity: Activity): List<View> {
+    val views = mutableListOf<View>()
+    fun visit(view: View) {
+        views += view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) visit(view.getChildAt(index))
+        }
+    }
+    visit(activity.findViewById(android.R.id.content))
+    return views
+}
+
+internal fun activityTexts(activity: Activity): List<String> =
+    allActivityViews(activity).filterIsInstance<TextView>().map { it.text.toString() }
 
 internal fun seedPendingEvidence(context: Context, id: String = "pending-1") {
     seedEvidence(

@@ -39,7 +39,7 @@ class ObserverActivity : Activity() {
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
         setContentView(harnessUi.view())
-        if (spec.handlesPairLinks && savedInstanceState == null) {
+        if (!routeDirectScanIntent(intent) && spec.handlesPairLinks && savedInstanceState == null) {
             routePairLinkIntent(intent)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -73,7 +73,7 @@ class ObserverActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (spec.handlesPairLinks) {
+        if (!routeDirectScanIntent(intent) && spec.handlesPairLinks) {
             routePairLinkIntent(intent)
         }
     }
@@ -97,7 +97,14 @@ class ObserverActivity : Activity() {
         harnessUi.showPairLink(uri.toString())
     }
 
-    private companion object {
-        const val PERMISSION_REQUEST = 10
+    private fun routeDirectScanIntent(intent: Intent): Boolean {
+        if (!intent.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false)) return false
+        harnessUi.showScanPairQr()
+        return true
+    }
+
+    companion object {
+        const val EXTRA_SCAN_PAIR_QR = "app.solstone.observer.scaffold.EXTRA_SCAN_PAIR_QR"
+        private const val PERMISSION_REQUEST = 10
     }
 }

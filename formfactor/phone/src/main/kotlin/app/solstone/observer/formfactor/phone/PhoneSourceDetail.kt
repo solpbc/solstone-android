@@ -30,8 +30,11 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
+internal enum class SourceDetailActionKind { RETRY, CONNECT_JOURNAL }
+
 internal data class SourceDetailAction(
     val label: String,
+    val kind: SourceDetailActionKind = SourceDetailActionKind.RETRY,
 )
 
 internal data class SourceDetailRule(
@@ -63,7 +66,7 @@ internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reas
     )
     ReasonCode.UNPAIRED -> SourceDetailRule(
         diagnosis = "not paired with your journal",
-        action = SourceDetailAction("connect a journal"),
+        action = SourceDetailAction("connect a journal", kind = SourceDetailActionKind.CONNECT_JOURNAL),
         retryHonest = false,
     )
     ReasonCode.PROVIDER_SILENT -> SourceDetailRule(
@@ -116,6 +119,7 @@ internal fun PhoneSourceDetail(
     sourceId: String,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val readModel = (loadState as? LoadState.Loaded)?.value
@@ -126,6 +130,7 @@ internal fun PhoneSourceDetail(
                     status = status,
                     reason = resolveSourceDetailReason(status, model.observer),
                     onStartObserving = onStartObserving,
+                    onConnectJournal = onConnectJournal,
                 )
             }
         }
@@ -138,6 +143,7 @@ private fun SourceDetailTemplate(
     status: SourceStatus,
     reason: ReasonCode,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit,
 ) {
     val rule = sourceDetailRule(reason)
     Text(
@@ -161,6 +167,7 @@ private fun SourceDetailTemplate(
             action = action,
             retryHonest = rule.retryHonest,
             onStartObserving = onStartObserving,
+            onConnectJournal = onConnectJournal,
         )
     }
     Column(
@@ -179,10 +186,13 @@ private fun SourceDetailActionControl(
     action: SourceDetailAction,
     retryHonest: Boolean,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit,
 ) {
+    val enabled = action.kind == SourceDetailActionKind.CONNECT_JOURNAL || retryHonest
+    val onClick = if (action.kind == SourceDetailActionKind.CONNECT_JOURNAL) onConnectJournal else onStartObserving
     Button(
-        onClick = onStartObserving,
-        enabled = retryHonest,
+        onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .padding(12.dp)

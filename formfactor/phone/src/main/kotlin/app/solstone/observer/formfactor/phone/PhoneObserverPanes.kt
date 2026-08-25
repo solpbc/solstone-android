@@ -39,6 +39,7 @@ internal fun PhoneDetailPane(
     loadState: LoadState<SourcesReadModel>,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -55,6 +56,7 @@ internal fun PhoneDetailPane(
             loadState = loadState,
             homeTileStore = homeTileStore,
             onStartObserving = onStartObserving,
+            onConnectJournal = onConnectJournal,
             onOpenLicences = onOpenLicences,
             onOpenSource = onOpenSource,
             modifier = Modifier
@@ -71,6 +73,7 @@ private fun PhoneDetailContent(
     loadState: LoadState<SourcesReadModel>,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
+    onConnectJournal: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
     modifier: Modifier,
@@ -115,6 +118,7 @@ private fun PhoneDetailContent(
                 sourceId = top.sourceId,
                 homeTileStore = homeTileStore,
                 onStartObserving = onStartObserving,
+                onConnectJournal = onConnectJournal,
             )
         }
     }

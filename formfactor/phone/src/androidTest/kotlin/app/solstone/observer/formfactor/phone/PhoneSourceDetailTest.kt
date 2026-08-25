@@ -97,6 +97,7 @@ class PhoneSourceDetailTest {
         ReasonCode.values()
             .filter { reason ->
                 sourceDetailRule(reason).action != null && !sourceDetailRule(reason).retryHonest
+                    && reason != ReasonCode.UNPAIRED
             }
             .forEach { reason ->
                 render(loadState = loaded(source("audio", reason)))
@@ -143,6 +144,22 @@ class PhoneSourceDetailTest {
     }
 
     @Test
+    fun connectJournalActionIsEnabledAndInvokesConnectJournalOnly() {
+        var starts = 0
+        var connects = 0
+        render(
+            loadState = loaded(source("audio", ReasonCode.UNPAIRED)),
+            onStartObserving = { starts += 1 },
+            onConnectJournal = { connects += 1 },
+        )
+
+        composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals(1, connects)
+        assertEquals(0, starts)
+    }
+
+    @Test
     fun homeTileControlReflectsStoredValueOnFirstComposition() {
         homeTileStore.setHasTile("audio", true)
 
@@ -155,8 +172,9 @@ class PhoneSourceDetailTest {
         sourceId: String = "audio",
         loadState: LoadState<SourcesReadModel>,
         onStartObserving: () -> Unit = {},
+        onConnectJournal: () -> Unit = {},
     ) {
-        val input = DetailInput(sourceId, loadState, onStartObserving)
+        val input = DetailInput(sourceId, loadState, onStartObserving, onConnectJournal)
         if (contentSet) {
             composeRule.runOnIdle { detailInput = input }
         } else {
@@ -168,6 +186,7 @@ class PhoneSourceDetailTest {
                         sourceId = detailInput.sourceId,
                         homeTileStore = homeTileStore,
                         onStartObserving = detailInput.onStartObserving,
+                        onConnectJournal = detailInput.onConnectJournal,
                     )
                 }
             }
@@ -189,6 +208,7 @@ private data class DetailInput(
     val sourceId: String,
     val loadState: LoadState<SourcesReadModel>,
     val onStartObserving: () -> Unit,
+    val onConnectJournal: () -> Unit = {},
 )
 
 private class TestPhoneHomeTileStore : PhoneHomeTileStore {

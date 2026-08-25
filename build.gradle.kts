@@ -225,9 +225,22 @@ fun intentFilterTokens(manifestText: String): List<IntentFilterTokens> =
         }
         .toList()
 
+fun List<IntentFilterTokens>.hasVerifiedPairLink(): Boolean {
+    val view = "android.intent.action.VIEW"
+    val default = "android.intent.category.DEFAULT"
+    val browsable = "android.intent.category.BROWSABLE"
+    return any { filter ->
+        filter.autoVerify &&
+            setOf(view, default, browsable).all { it in filter.names } &&
+            filter.data.any { it == IntentDataTokens("https", "go.solstone.app", "/p") }
+    }
+}
+
 data class ActivityIntentFilterGroup(
     val activityName: String,
     val tokenGroups: List<Set<String>>,
+    val exported: Boolean? = null,
+    val intentFilters: List<IntentFilterTokens> = emptyList(),
 )
 
 fun resolveManifestActivityName(raw: String, packageName: String?): String =
@@ -262,21 +275,27 @@ fun activityIntentFilterGroups(manifestText: String): List<ActivityIntentFilterG
             continue
         }
         val resolved = resolveManifestActivityName(rawName, packageName)
+        val exported = Regex("""android:exported\s*=\s*["'](true|false)["']""")
+            .find(openTag)
+            ?.groupValues
+            ?.get(1)
+            ?.toBoolean()
         val selfClosing = openTag.trimEnd().endsWith("/>")
         if (selfClosing) {
-            results += ActivityIntentFilterGroup(resolved, emptyList())
+            results += ActivityIntentFilterGroup(resolved, emptyList(), exported, emptyList())
             searchFrom = gt + 1
             continue
         }
         val closeTag = "</$tagName>"
         val close = manifestText.indexOf(closeTag, gt + 1)
         if (close < 0) {
-            results += ActivityIntentFilterGroup(resolved, emptyList())
+            results += ActivityIntentFilterGroup(resolved, emptyList(), exported, emptyList())
             searchFrom = gt + 1
             continue
         }
         val body = manifestText.substring(gt + 1, close)
-        results += ActivityIntentFilterGroup(resolved, intentFilterTokenGroups(body))
+        val filters = intentFilterTokens(body)
+        results += ActivityIntentFilterGroup(resolved, filters.map { it.names }, exported, filters)
         searchFrom = close + closeTag.length
     }
     return results
@@ -757,11 +776,6 @@ tasks.register("appLinksGuardSelfTest") {
         val view = "android.intent.action.VIEW"
         val default = "android.intent.category.DEFAULT"
         val browsable = "android.intent.category.BROWSABLE"
-        fun List<IntentFilterTokens>.hasVerifiedPairLink() = any { filter ->
-            filter.autoVerify &&
-                setOf(view, default, browsable).all { it in filter.names } &&
-                filter.data.any { it == IntentDataTokens("https", "go.solstone.app", "/p") }
-        }
 
         val valid = intentFilterTokens(
             """<intent-filter android:autoVerify="true"><action android:name="$view" />""" +
@@ -925,6 +939,29 @@ tasks.register("phoneLauncherCountGuardSelfTest") {
                 """</activity></manifest>""",
         )
         check(nested == listOf(observer))
+
+        val exportedTrue = activityIntentFilterGroups(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".PhoneShellActivity" android:exported="true">""" +
+                """<intent-filter><action android:name="$main" /><category android:name="$launcher" /></intent-filter>""" +
+                """</activity></manifest>""",
+        )
+        check(exportedTrue.single().exported == true)
+        check(exportedTrue.single().intentFilters.single().names == setOf(main, launcher))
+
+        val exportedFalse = activityIntentFilterGroups(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".PhoneShellActivity" android:exported="false" />""" +
+                """</manifest>""",
+        )
+        check(exportedFalse.single().exported == false)
+
+        val exportedAbsent = activityIntentFilterGroups(
+            """<manifest package="app.solstone.observer.phone">""" +
+                """<activity android:name=".PhoneShellActivity" />""" +
+                """</manifest>""",
+        )
+        check(exportedAbsent.single().exported == null)
     }
 }
 
@@ -1484,21 +1521,99 @@ fun Project.registerPhoneLauncherCountManifestCheck() {
                     "Merged manifest not found: ${releaseManifest.relativeTo(rootProject.projectDir)}",
                 )
             }
-            val observer = "app.solstone.observer.scaffold.ObserverActivity"
+            val shell = "app.solstone.observer.phone.PhoneShellActivity"
             val probe = "app.solstone.observer.phone.probe.ProbeIndexActivity"
             val failures = mutableListOf<String>()
             val releaseOwners = mainLauncherOwners(releaseManifest.readText())
-            if (releaseOwners != listOf(observer)) {
-                failures += "realRelease MAIN+LAUNCHER owners=$releaseOwners expected=[$observer]"
+            if (releaseOwners != listOf(shell)) {
+                failures += "realRelease MAIN+LAUNCHER owners=$releaseOwners expected=[$shell]"
             }
             val debugOwners = mainLauncherOwners(debugManifest.readText()).toSet()
-            val expectedDebug = setOf(observer, probe)
+            val expectedDebug = setOf(shell, probe)
             if (debugOwners != expectedDebug) {
                 failures += "realDebug MAIN+LAUNCHER owners=$debugOwners expected=$expectedDebug"
             }
             if (failures.isNotEmpty()) {
                 throw GradleException(
                     "${project.path} launcher-count manifest check failed:\n${failures.joinToString("\n")}",
+                )
+            }
+        }
+    }
+}
+
+fun Project.registerReleaseAppLinksManifestCheck() {
+    tasks.register("checkRealReleaseAppLinksManifest") {
+        group = "verification"
+        description = "Checks the realRelease merged manifest for the verified pair App Link and its exported owner."
+        dependsOn("processRealReleaseManifest")
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realRelease/processRealReleaseManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val owner = "app.solstone.observer.scaffold.ObserverActivity"
+            val ownerGroup = activityIntentFilterGroups(manifest.readText())
+                .firstOrNull { it.activityName == owner }
+            val failures = mutableListOf<String>()
+            if (ownerGroup == null) {
+                failures += "missing activity $owner"
+            } else {
+                if (ownerGroup.exported != true) {
+                    failures += "$owner exported=${ownerGroup.exported} expected=true"
+                }
+                if (!ownerGroup.intentFilters.hasVerifiedPairLink()) {
+                    failures += "$owner missing verified https://go.solstone.app/p VIEW intent-filter"
+                }
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException(
+                    "${project.path} realRelease App Links manifest check failed:\n${failures.joinToString("\n")}",
+                )
+            }
+        }
+    }
+}
+
+fun Project.registerPhoneShellExportManifestCheck() {
+    tasks.register("checkPhoneShellExportManifest") {
+        group = "verification"
+        description = "Checks realDebug and realRelease merged manifests for PhoneShellActivity's exported flag."
+        dependsOn("processRealDebugManifest", "processRealReleaseManifest")
+        doLast {
+            val shell = "app.solstone.observer.phone.PhoneShellActivity"
+            val debugManifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realDebug/processRealDebugManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            val releaseManifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realRelease/processRealReleaseManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            val variants = listOf("realDebug" to debugManifest, "realRelease" to releaseManifest)
+            variants.forEach { (_, manifest) ->
+                if (!manifest.exists()) {
+                    throw GradleException(
+                        "Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}",
+                    )
+                }
+            }
+            val failures = mutableListOf<String>()
+            variants.forEach { (variant, manifest) ->
+                val group = activityIntentFilterGroups(manifest.readText())
+                    .firstOrNull { it.activityName == shell }
+                if (group == null) {
+                    failures += "$variant missing activity $shell"
+                } else if (group.exported != true) {
+                    failures += "$variant $shell exported=${group.exported} expected=true"
+                }
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException(
+                    "${project.path} phone shell export manifest check failed:\n${failures.joinToString("\n")}",
                 )
             }
         }
@@ -1518,14 +1633,7 @@ fun Project.registerAppLinksManifestCheck() {
             if (!manifest.exists()) {
                 throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
             }
-            val view = "android.intent.action.VIEW"
-            val default = "android.intent.category.DEFAULT"
-            val browsable = "android.intent.category.BROWSABLE"
-            val present = intentFilterTokens(manifest.readText()).any { filter ->
-                filter.autoVerify &&
-                    setOf(view, default, browsable).all { it in filter.names } &&
-                    filter.data.any { it == IntentDataTokens("https", "go.solstone.app", "/p") }
-            }
+            val present = intentFilterTokens(manifest.readText()).hasVerifiedPairLink()
             if (!present) {
                 throw GradleException("${project.path} realDebug App Links manifest check failed:\nmissing verified https://go.solstone.app/p VIEW intent-filter")
             }
@@ -1568,7 +1676,9 @@ project(":apps:phone") {
     registerMicrophoneManifestCheck()
     registerLauncherHomeManifestCheck(requireHome = false)
     registerAppLinksManifestCheck()
+    registerReleaseAppLinksManifestCheck()
     registerPhoneLauncherCountManifestCheck()
+    registerPhoneShellExportManifestCheck()
     registerOnBackInvokedCallbackManifestCheck()
 }
 

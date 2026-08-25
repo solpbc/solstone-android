@@ -35,17 +35,48 @@ class PhoneSourceDetailRuleTest {
     @Test
     fun rulesMatchTheRuledTable() {
         val expected = listOf(
-            ExpectedRule(ReasonCode.PERMISSION_REVOKED, "permissions needed", "grant permissions", false),
-            ExpectedRule(ReasonCode.AUTH_REVOKED, "access to your journal was revoked", "pair again", false),
-            ExpectedRule(ReasonCode.SERVICE_KILLED, "observing was stopped by the system", "start observing again", true),
-            ExpectedRule(ReasonCode.STORAGE_FULL, "storage is full", "manage local storage", false),
-            ExpectedRule(ReasonCode.UNPAIRED, "not paired with your journal", "connect a journal", false),
+            ExpectedRule(
+                ReasonCode.PERMISSION_REVOKED,
+                "permissions needed",
+                "grant permissions",
+                false,
+                SourceDetailActionKind.RETRY,
+            ),
+            ExpectedRule(
+                ReasonCode.AUTH_REVOKED,
+                "access to your journal was revoked",
+                "pair again",
+                false,
+                SourceDetailActionKind.RETRY,
+            ),
+            ExpectedRule(
+                ReasonCode.SERVICE_KILLED,
+                "observing was stopped by the system",
+                "start observing again",
+                true,
+                SourceDetailActionKind.RETRY,
+            ),
+            ExpectedRule(
+                ReasonCode.STORAGE_FULL,
+                "storage is full",
+                "manage local storage",
+                false,
+                SourceDetailActionKind.RETRY,
+            ),
+            ExpectedRule(
+                ReasonCode.UNPAIRED,
+                "not paired with your journal",
+                "connect a journal",
+                false,
+                SourceDetailActionKind.CONNECT_JOURNAL,
+            ),
             ExpectedRule(ReasonCode.PROVIDER_SILENT, "nothing has come in recently", null, false),
             ExpectedRule(
                 ReasonCode.REBOOTED,
                 "this device restarted and observing didn't resume on its own",
                 "start observing again",
                 true,
+                SourceDetailActionKind.RETRY,
             ),
         )
 
@@ -54,6 +85,7 @@ class PhoneSourceDetailRuleTest {
             assertEquals(expectedRule.diagnosis, actual.diagnosis, expectedRule.reason.name)
             assertEquals(expectedRule.action, actual.action?.label, expectedRule.reason.name)
             assertEquals(expectedRule.retryHonest, actual.retryHonest, expectedRule.reason.name)
+            assertEquals(expectedRule.actionKind, actual.action?.kind, expectedRule.reason.name)
         }
     }
 
@@ -103,6 +135,7 @@ private data class ExpectedRule(
     val diagnosis: String,
     val action: String?,
     val retryHonest: Boolean,
+    val actionKind: SourceDetailActionKind? = null,
 )
 
 private fun source(
