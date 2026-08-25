@@ -82,6 +82,8 @@ class PhoneShortWindowGeometryTest {
 
         assertSameControlGeometry(tall.journalPill, short.journalPill, "journalPill", VerticalAnchor.BOTTOM)
         assertSameControlGeometry(tall.statusPill, short.statusPill, "statusPill", VerticalAnchor.TOP)
+        // The popup resolves in a separate window, so this verifies its own root geometry only.
+        // Placement relative to the host window is not asserted here.
         assertSameControlGeometry(tall.statusPane!!, short.statusPane!!, "statusPane", VerticalAnchor.BOTTOM)
     }
 
@@ -104,11 +106,13 @@ class PhoneShortWindowGeometryTest {
     }
 
     private fun boundsFor(testTag: String, density: Float): Bounds {
-        val node = composeRule
-        .onNodeWithTag(testTag, useUnmergedTree = true)
-        .fetchSemanticsNode()
+        val node = nodeFor(testTag)
         return node.boundsInRoot.toBounds(density, node.root().boundsInRoot.toFrame(density))
     }
+
+    private fun nodeFor(testTag: String): SemanticsNode = composeRule
+        .onNodeWithTag(testTag, useUnmergedTree = true)
+        .fetchSemanticsNode()
 
     private fun SemanticsNode.root(): SemanticsNode {
         var current = this
