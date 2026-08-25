@@ -24,5 +24,8 @@ fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.O
 
 fun shouldOfferStartAction(isRunning: Boolean): Boolean = !isRunning
 
+fun shouldNotifyCaptureStopped(lastObserved: SourceState?, now: SourceState): Boolean =
+    lastObserved == SourceState.ON && now == SourceState.OFF
+
 fun startFailureDiagLine(exceptionClassName: String): String =
     "fgs start-failure exception=$exceptionClassName"

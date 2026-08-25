@@ -8,6 +8,7 @@ import app.solstone.core.model.ReasonCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class FgsLogicTest {
@@ -101,6 +102,34 @@ class FgsLogicTest {
     fun startActionOfferedOnlyWhenCaptureNotRunning() {
         assertFalse(shouldOfferStartAction(isRunning = true))
         assertTrue(shouldOfferStartAction(isRunning = false))
+    }
+
+    @Test
+    fun stoppedNotificationRequiresObservedOnToOff() {
+        assertTrue(shouldNotifyCaptureStopped(SourceState.ON, SourceState.OFF))
+        assertFalse(shouldNotifyCaptureStopped(null, SourceState.OFF))
+        assertFalse(shouldNotifyCaptureStopped(SourceState.OFF, SourceState.OFF))
+        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.SETTING_UP))
+        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.PAUSED))
+        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.NEEDS_ATTENTION))
+    }
+
+    @Test
+    fun stoppedNotificationTextIsDistinctAndSelected() {
+        assertNotEquals(ObserverNotification.TEXT_ON, ObserverNotification.TEXT_OFF)
+        assertNotEquals(ObserverNotification.TEXT_NEEDS_ATTENTION, ObserverNotification.TEXT_OFF)
+        assertEquals(
+            ObserverNotification.TEXT_OFF,
+            ObserverNotification.ongoingContentText(needsAttention = false, stopped = true),
+        )
+        assertEquals(
+            ObserverNotification.TEXT_ON,
+            ObserverNotification.ongoingContentText(needsAttention = false, stopped = false),
+        )
+        assertEquals(
+            ObserverNotification.TEXT_NEEDS_ATTENTION,
+            ObserverNotification.ongoingContentText(needsAttention = true, stopped = false),
+        )
     }
 
     @Test

@@ -204,6 +204,22 @@ class ObserverForegroundService : Service() {
             )
         }
 
+        fun postStoppedNotification(context: Context) {
+            if (!ObserverNotification.notificationsPermitted(context)) {
+                dispatchLifecycle("fgs stopped notif suppressed permission=denied")
+                return
+            }
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            manager.notify(
+                ObserverNotification.BOOT_NOTIFICATION_ID,
+                ObserverNotification.ongoing(
+                    context,
+                    stopped = true,
+                    contentIntent = launchPendingIntent(context),
+                ),
+            )
+        }
+
         fun cancelAttentionNotification(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             manager.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)

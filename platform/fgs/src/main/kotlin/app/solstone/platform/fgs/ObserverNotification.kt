@@ -18,10 +18,17 @@ object ObserverNotification {
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
     const val TEXT_ON = "on"
+    const val TEXT_OFF = "off"
     const val TEXT_NEEDS_ATTENTION = "needs attention"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
     @Volatile var startAction: Notification.Action? = null
+
+    fun ongoingContentText(needsAttention: Boolean, stopped: Boolean): String = when {
+        stopped -> TEXT_OFF
+        needsAttention -> TEXT_NEEDS_ATTENTION
+        else -> TEXT_ON
+    }
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -33,6 +40,7 @@ object ObserverNotification {
     fun ongoing(
         context: Context,
         needsAttention: Boolean = false,
+        stopped: Boolean = false,
         decorate: Boolean = false,
         contentIntent: PendingIntent? = null,
         requestPromotion: Boolean = false,
@@ -40,7 +48,7 @@ object ObserverNotification {
         ensureChannel(context)
         val builder = builder(context)
             .setContentTitle("sol")
-            .setContentText(if (needsAttention) TEXT_NEEDS_ATTENTION else TEXT_ON)
+            .setContentText(ongoingContentText(needsAttention, stopped))
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
         if (contentIntent != null) {

@@ -22,11 +22,13 @@ import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHa
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
 import app.solstone.platform.fgs.shouldOfferStartAction
+import app.solstone.platform.fgs.shouldNotifyCaptureStopped
 
 class PhoneApplication : ObserverApplication(phoneSpec) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
     @Volatile private var cachedWidgetModel = emptyWidgetModel()
+    private var lastObservedAudioState: SourceState? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,6 +82,12 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             }
             if (audio?.state == SourceState.ON) {
                 widgetStartOutcomes.clear()
+            }
+            val previousAudioState = lastObservedAudioState
+            lastObservedAudioState = audio?.state
+            if (audio != null && shouldNotifyCaptureStopped(previousAudioState, audio.state)) {
+                ObserverNotification.startAction = startCaptureAction(applicationContext, isRunning = false)
+                ObserverForegroundService.postStoppedNotification(applicationContext)
             }
             refreshWidgetAndUpdate()
         }
