@@ -110,7 +110,7 @@ fun nextSyncState(
   - `NeedsRepair` if credential, identity, or paired state is missing.
   - Direct transport also requires a durable endpoint.
   - Relay transport requires durable `relayOrigin`, `instanceId`, and `deviceToken` on the identity record.
-  - `Ready` only when the selected transport, credential, identity, and `IdentityState.PAIRED` are durable facts; the worker registers and persists an observer handle before draining when one is missing.
+  - `Ready` only when the selected transport, credential, identity, and `IdentityState.PAIRED` are durable facts.
 - `selectDrainSegments` keeps only `QueueState.SEALED` and `MAIN_STREAM`; import `MAIN_STREAM` from `core:sources`, do not hardcode it. Location stream rows are excluded.
 - `reconstructManifest` maps one `SegmentRow` plus its `SegmentFileRow`s to `BundleManifest(SegmentKey(segment.day, segment.segment), files, gaps = emptyList())`.
 - `decideReachability`: not paired -> `SKIP`; paired and unreachable -> `RESCHEDULE`; paired and reachable -> `DRAIN`.
