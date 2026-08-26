@@ -1,24 +1,24 @@
 # solstone-android
 
-Android observers and clients for [solstone](https://solstone.app): watch, phone, and Android accessory surfaces that help the owner's journal receive local, owner-controlled context.
+the [solstone](https://solstone.app) app for android, with retained android hardware research and validation evidence.
 
 ## Status
 
-Public beta and hardware-validation repo. The phone observer has a beta distribution path; watch and glasses are installable hardware-validation surfaces over the shared observer harness. The Rogbid Model X validation app remains as a hardware probe target.
+The [repository target status](AGENTS.md#maintained-target-and-parked-sources) defines the phone app as the maintained android surface and the watch, Rokid/RV203 glasses, and Rogbid sources as parked historical/experimental evidence. The phone [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
 
 ## Layout
 
 ```text
 apps/
-  validation-rogbid/   Android 9 watch validation app for camera, mic, GPS, QR, PL linking, upload, and battery trials
-  watch/               Watch observer app
-  phone/               Phone observer app and beta distribution target
-  glasses/             Smart-glasses observer app for RV203 hardware validation
-core/                  Shared observer/link/domain modules as they graduate from the validation app
-platform/              Android framework adapters: camera, audio, location, foreground service, permissions, power
+  validation-rogbid/   Parked android 9 watch validation evidence
+  watch/               Parked watch app source
+  phone/               Maintained phone app
+  glasses/             Parked smart-glasses/RV203 app source
+core/                  Shared app/link/domain modules as they graduate from the validation app
+platform/              android framework adapters: camera, audio, location, foreground service, permissions, power
 formfactor/            Watch/phone/glasses UI and policy helpers
 testing/               Fake sensors, fixtures, and link harnesses
-tools/rogbid/          ADB validation scripts for the Rogbid Model X
+tools/rogbid/          Parked Rogbid hardware-evidence scripts
 ```
 
 ## Install
@@ -26,18 +26,18 @@ tools/rogbid/          ADB validation scripts for the Rogbid Model X
 Prerequisites:
 
 - JDK 17
-- Android SDK with API 35
-- Android build tools usable by Gradle
+- android SDK with API 36
+- android build tools usable by Gradle
 - `adb` on `PATH` for hardware validation
 
-On the Android build host, load the existing Android environment first:
+On the android build host, load the existing android environment first:
 
 ```bash
 source ~/android-dev/env.sh
 make install
 ```
 
-From a development machine with SSH access to an Android build host, the root Makefile can sync the tree and run the same gate remotely:
+From a development machine with SSH access to an android build host, the root Makefile can sync the tree and run the same gate remotely:
 
 ```bash
 ANDROID_REMOTE_HOST=host.local make android-host-ci
@@ -46,25 +46,25 @@ ANDROID_REMOTE_HOST=host.local make android-host-ci
 ## Build
 
 ```bash
-make assemble-validation-rogbid
+./gradlew :apps:phone:assembleRealDebug
 ```
 
-The general CI gate also assembles the watch, phone, and glasses debug variants:
+The broad CI aggregate retains compilation of shared and parked hardware sources as a safeguard; it does not designate them as maintained targets:
 
 ```bash
 make ci
 ```
 
-To build on a remote Android host from this checkout:
+To build on a remote android host from this checkout:
 
 ```bash
-ANDROID_REMOTE_HOST=host.local make android-host-assemble-validation-rogbid
+ANDROID_REMOTE_HOST=host.local make android-host-ci
 ```
 
-The APK is produced at:
+The maintained phone APK is produced at:
 
 ```text
-apps/validation-rogbid/build/outputs/apk/debug/validation-rogbid-debug.apk
+apps/phone/build/outputs/apk/real/debug/phone-real-debug.apk
 ```
 
 ## Test
@@ -74,11 +74,11 @@ make test
 make ci
 ```
 
-The validation target is intentionally hardware-heavy, so most confidence still comes from the `tools/rogbid/*` scripts against the physical watch.
+Phone validation uses `make ci`, `make ci-device`, and [`make hitl-phone`](Makefile). The retained `tools/rogbid/*` scripts document historical hardware evidence and are not a routine validation path.
 
-## Hardware Validation
+## Parked Hardware Evidence
 
-Default serial is the Rogbid Model X used during the spike:
+The following Rogbid commands remain available only for manual inspection of the historical spike:
 
 ```bash
 make validate-rogbid-adb
@@ -87,11 +87,11 @@ make validate-rogbid-qr
 PAIR_LINK='https://go.solstone.app/p#...' make validate-rogbid-pl
 ```
 
-The validation app package is `app.solstone.validation.rogbid`. Future installable solstone Android artifacts should use the same `app.solstone.*` namespace.
+The validation app package is `app.solstone.validation.rogbid`, a retained historical artifact. Installable solstone android artifacts use the `app.solstone.*` namespace.
 
 ## Hardware Milestones
 
-- [RV203 glasses HOME observer milestone](docs/glasses-home-observer-milestone-2026-07-02.md)
+- [RV203 glasses HOME app milestone](docs/glasses-home-observer-milestone-2026-07-02.md)
 
 ## License
 

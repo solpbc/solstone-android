@@ -2,6 +2,8 @@
 
 Regenerated from the app manifests — when a manifest's service declaration or permission set changes, update this file in the same change.
 
+This is a source-reference matrix. Phone is the sole maintained Android target; the watch, glasses/Rokid, and Rogbid entries document retained parked source and hardware evidence.
+
 Per-app `foregroundServiceType` (never the data-sync type):
 - `apps/phone` and `apps/watch`: `microphone|location|camera`
 - `apps/glasses`: `microphone|camera` (the RV203 has no GPS/network location provider)

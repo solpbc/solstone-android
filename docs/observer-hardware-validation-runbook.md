@@ -1,9 +1,10 @@
 # Observer hardware validation runbook
 
-End-to-end on-device validation procedure for the installable Solstone observer apps
-(`:apps:watch`, `:apps:phone`) on real hardware, plus the recorded results of the Wave-3 validation
-pass. Instrumented/JVM tests gate logic in CI; this runbook covers what CI structurally cannot —
-the real-runtime, real-sensor, real-journal behavior that only surfaces on a device.
+End-to-end on-device validation procedure for the maintained Solstone phone
+observer (`:apps:phone`) on real hardware. Instrumented/JVM tests gate logic in
+CI; this runbook covers the real-runtime behavior that only surfaces on a
+device. The retained Wave-3 watch/Rogbid material below is historical evidence,
+not a routine-maintenance or release procedure.
 
 ## Why this exists
 
@@ -16,39 +17,33 @@ defect classes only appear on the Android runtime or on real silicon:
 - real-sensor behavior (audio signal, camera capture, location fixes),
 - the live mTLS pair → PL-status → mTLS authorization → ingest → reconcile round-trip against a journal.
 
-So every observer app change is validated on-device after it lands, on both bracketing targets.
+So every maintained phone app change is validated on-device after it lands.
 
 ## Targets
 
 | Role | Device | API | Camera path | TLS |
 |------|--------|-----|-------------|-----|
-| Watch | Rogbid Model X (`adb -s 46734915123233`) | 28 (Android 9) | legacy `android.hardware.Camera` | Conscrypt (TLS 1.3) |
+| Historical watch evidence (parked) | Rogbid Model X (`adb -s 46734915123233`) | 28 (Android 9) | legacy `android.hardware.Camera` | Conscrypt (TLS 1.3) |
 | Phone | Galaxy A36 / `SM-A366E` (`adb -s RZGL11XCS9D`) | 36 (One UI 8) | Camera2 | platform |
 
-Both reach the validation journal over Wi-Fi LAN. They bracket the supported SDK range
-(`minSdk 26` … `compileSdk 36`) so the platform-adapter seam is exercised on real silicon at both
-ends.
+The Galaxy A36 is the maintained real-hardware validation target. The Rogbid row records a prior hardware boundary and is not a current device requirement.
 
-> Maestro tap-injection is unreliable on the Rogbid — drive its screens with `adb shell input` +
+> Historical note: Maestro tap-injection was unreliable on the Rogbid — drive its screens with `adb shell input` +
 > `uiautomator dump` / `screencap`, or by hand. Maestro is fine on the A36.
 
-## Build the APKs
+## Build the maintained phone APK
 
 From a host with the Android toolchain:
 
 ```bash
-make assemble-watch        # or: ./gradlew :apps:watch:assembleRealDebug
-make assemble-phone        # or: ./gradlew :apps:phone:assembleRealDebug
+./gradlew :apps:phone:assembleRealDebug
 ```
 
-Real-flavor APKs:
-- `apps/watch/build/outputs/apk/real/debug/watch-real-debug.apk`
-- `apps/phone/build/outputs/apk/real/debug/phone-real-debug.apk`
+Real-flavor APK: `apps/phone/build/outputs/apk/real/debug/phone-real-debug.apk`
 
-## Procedure (per device)
+## Procedure (phone)
 
-Substitute `$DEV` with the device serial and `$APP` with `app.solstone.observer.watch`
-(watch) or `app.solstone.observer.phone` (phone).
+Substitute `$DEV` with the phone device serial and `$APP` with `app.solstone.observer.phone`.
 
 ### 1. Install + launch
 
@@ -72,7 +67,7 @@ done
 # API 29+ only (A36): ACCESS_BACKGROUND_LOCATION ; API 33+ only (A36): POST_NOTIFICATIONS
 ```
 
-On API 28 (Rogbid) `ACCESS_BACKGROUND_LOCATION` and `POST_NOTIFICATIONS` do not exist; the
+In the historical API-28 Rogbid record, `ACCESS_BACKGROUND_LOCATION` and `POST_NOTIFICATIONS` did not exist; the
 permission model treats them as non-applicable / non-gating there. The Permissions screen reflects
 each permission's grant state.
 

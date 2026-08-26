@@ -1,7 +1,9 @@
 # Rogbid Validation — Model X ADB smoke spike
 
-Minimal Android app for validating the full Linux build host -> ADB -> Rogbid Model X loop,
-then proving foreground access to the watch cameras, microphone, and HTTPS upload path.
+Parked historical Android app for documenting the full Linux build host -> ADB ->
+Rogbid Model X loop and foreground access to the watch cameras, microphone, and
+HTTPS upload path. It is retained as experimental evidence, not a
+routine-maintenance or release target.
 
 The watch validated on 2026-06-11 as Android 9 / API 28, `arm64-v8a`, model `Model_X`,
 serial `46734915123233`. This spike deliberately avoids Compose, foreground services,
@@ -79,7 +81,7 @@ cd ~/projects/solstone-android
 ./gradlew :apps:validation-rogbid:assembleDebug
 ```
 
-## Full watch validation
+## Historical watch validation
 
 ```bash
 tools/rogbid/validate-rogbid-adb.sh

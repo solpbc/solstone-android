@@ -23,10 +23,10 @@ ci:
 # default GMD GPU path segfaults on the headless build box. Kept separate from `ci`
 # so `ci` stays fast.
 #
-# PHONE-ONLY, deliberately. The phone is the primary quality target; watch and
-# glasses are side experiments and are NOT release targets. A red here must always
-# mean "the shipping app is broken" — a side-experiment flake that reddens this lane
-# teaches everyone to ignore it. Watch/glasses live in `ci-device-experimental`.
+# PHONE-ONLY, deliberately. The phone is the sole maintained quality target.
+# Watch, glasses/Rokid, and Rogbid sources are parked historical/experimental
+# evidence, not routine-maintenance or release targets. A red here must always mean
+# "the shipping app is broken"; the retained manual hardware command is not a gate.
 ci-device:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :platform:persistence-room:pixel5api35DebugAndroidTest \
@@ -106,8 +106,8 @@ validate-rogbid-pl:
 #   FIREBASE_APP_ID                                         (Firebase Android App ID)
 # Release notes carry the short git SHA. The remote build tree (sync-android-host)
 # excludes .git, so the remote wrapper passes RELEASE_REV in from the caller's git.
-# Side-experiment device gate: watch + glasses. Not release targets (founder call
-# 2026-07-13). Run it when you touch them; never let it gate a phone release.
+# Parked manual device command: retained watch + glasses source evidence. It is
+# neither routine maintenance nor a release gate; do not let it gate a phone release.
 ci-device-experimental:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :apps:watch:pixel5api35MockDebugAndroidTest \
@@ -122,8 +122,7 @@ ci-device-experimental:
 # because nothing ever looked at the screen. This is the gate that looks.
 #
 # It runs the RELEASE APK — the exact artifact `dist-phone` ships — on the Galaxy A36
-# (API 36, one platform ahead of our targetSdk 35, so it also catches next-platform
-# breakage before Google forces it on us). Gating the debug APK here would leave
+# (API 36, matching the phone targetSdk 36 baseline). Gating the debug APK here would leave
 # release signing and minification unexercised by the only human-usability check we
 # have, which would hollow out the whole guarantee.
 #

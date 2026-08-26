@@ -1,5 +1,9 @@
 # Device Matrix
 
+Phone is the sole maintained Android target. The Rogbid and RV203 entries below
+are retained historical hardware evidence, not routine-maintenance or release
+targets; their recorded properties remain useful source constraints.
+
 ## Rogbid Model X
 
 - Android 9 / API 28

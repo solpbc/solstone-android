@@ -2,8 +2,7 @@
 #
 # This is the gate that would have stopped solstone-android 0.2.0 from reaching a paid contract
 # tester with a screen he physically could not use. It runs against the RELEASE APK — the exact
-# artifact `make dist-phone` ships — on the Galaxy A36 (API 36, one platform ahead of our
-# targetSdk 35, so it also catches next-platform breakage before Google forces it on us).
+# artifact `make dist-phone` ships — on the Galaxy A36 (API 36, matching targetSdk 36).
 #
 # It asserts REACHABILITY, not pixels. Maestro drives the real accessibility tree: if a control is
 # hidden behind the status bar, drawn under an ActionBar, or off-screen with nothing to scroll,

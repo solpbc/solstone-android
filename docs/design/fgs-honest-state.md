@@ -4,7 +4,7 @@
 
 Make foreground-service state fail honest: the live notification must not claim `on` until capture diagnostics prove the observer is actually ON; blocked or failed starts must surface needs-attention; self-heal must run through production wiring without the dead foreground-start-allowed seam.
 
-No hosted CI/release behavior changes are in scope. `make ci-device` currently runs five instrumented modules: `:platform:persistence-room`, `:platform:pl-transport-conscrypt`, `:apps:watch`, `:apps:phone`, and `:apps:glasses`. It does not run `platform/fgs` android tests, and `platform/fgs` has no `androidTest` source set. Therefore every FGS honest-state choice must be represented by a pure JVM decision function where possible. The irreducible Android calls (`startForeground`, `NotificationManager.notify`, `getLaunchIntentForPackage`, `startForegroundService` / `startService`) remain thin wrappers with manual/on-device residual risk.
+No hosted CI/release behavior changes are in scope. `make ci-device` runs the maintained phone device suites for `:platform:persistence-room`, `:platform:pl-transport-conscrypt`, `:formfactor:phone`, and `:apps:phone`, plus one narrow phone real-flavor class; the watch and glasses sources are parked and not device gates. It does not run `platform/fgs` android tests, and `platform/fgs` has no `androidTest` source set. Therefore every FGS honest-state choice must be represented by a pure JVM decision function where possible. The irreducible Android calls (`startForeground`, `NotificationManager.notify`, `getLaunchIntentForPackage`, `startForegroundService` / `startService`) remain thin wrappers with manual/on-device residual risk.
 
 ## Validation Summary
 

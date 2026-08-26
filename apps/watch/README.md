@@ -1,5 +1,5 @@
 # Watch App
 
-Hardware-validation surface for the watch-focused solstone observer app.
+Parked watch observer source, retained as historical/experimental hardware evidence and not a routine-maintenance or release target.
 
-Current watch hardware findings live in `apps/validation-rogbid`, `tools/rogbid`, and `docs/device-matrix.md`.
+Historical watch hardware findings remain in `apps/validation-rogbid`, `tools/rogbid`, and `docs/device-matrix.md`.

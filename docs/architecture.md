@@ -2,6 +2,10 @@
 
 `solstone-android` is structured as one repo with multiple app artifacts.
 
+Phone is the sole maintained and release-quality Android surface. Watch,
+glasses/Rokid, and Rogbid artifacts remain in the source tree as parked
+historical/experimental evidence, not routine-maintenance or release targets.
+
 ## Shape
 
 - `apps/*` are installable Android apps.
@@ -17,7 +21,7 @@ The Rogbid validation app is intentionally not production-shaped. It proves hard
 1. PL QR parsing, on-device identity, CSR, Conscrypt TLS 1.3, and mTLS status calls live in `core/pl`, `core/identity`, and the Conscrypt transport adapter.
 2. Spool, segment, queue, observer registration, and sync policy live in Android-light `core`, `harness`, and `platform/work` modules where practical.
 3. Camera, audio, location, foreground-service, metadata, and power behavior live behind `platform` adapters.
-4. Watch-, phone-, and glasses-specific UI and policy belong in their app modules and `formfactor/*`, while sharing the same harness/controller contracts.
+4. Phone-specific UI and policy are maintained in its app module and `formfactor/*`; the watch and glasses-specific sources remain as parked shared-harness evidence.
 
 The RV203 glasses observer has a hardware-validated HOME/capture-mode path; see
 [glasses HOME observer milestone](glasses-home-observer-milestone-2026-07-02.md).

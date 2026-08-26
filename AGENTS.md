@@ -4,14 +4,14 @@ Development guidelines for Android solstone observers, clients, and validation t
 
 ## Project Overview
 
-`solstone-android` is the Android family repo for solstone surfaces: a watch-focused observer, a full Android phone observer/importer/client, and Android accessories such as smart glasses. The repo also carries hardware validation targets that prove what a device can do before that code graduates into production observer modules.
+`solstone-android` is the Android family repo for the maintained solstone phone app plus retained Android hardware research and validation evidence.
 
 The repo is public open source. Keep all visible files clean of private operational context, internal paths, personal machine names, and unreleasable implementation history.
 
-## Current Targets
+## Maintained Target and Parked Sources
 
-- `:apps:validation-rogbid` is the imported Rogbid Model X validation app. It exercises camera, microphone, GPS, QR preview/scan, PL QR linking, upload/retry, and battery trials on Android 9/API 28 hardware.
-- `:apps:watch`, `:apps:phone`, and `:apps:glasses` are installable observer apps over the shared harness. Phone has the beta release channel wired today; watch and glasses are hardware-validation surfaces until their release channels are explicitly added.
+- In this repository, `:apps:phone` is the sole maintained Android surface; its [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
+- `:apps:validation-rogbid`, `:apps:watch`, and `:apps:glasses` are parked source and hardware evidence. They are retained for historical/experimental reference, not routine-maintenance or release targets.
 
 ## Principles
 
@@ -19,9 +19,9 @@ The repo is public open source. Keep all visible files clean of private operatio
 - **One repo, separate artifacts.** Share protocol, identity, spool, queue, power, and hardware adapter code in modules; ship separate app artifacts for watch, phone, and accessories because their manifests, permissions, UI, and distribution rules differ.
 - **Keep the observer core Android-light.** Segmenting, spool decisions, queue policy, link state, and protocol parsing should be host-testable where possible. Android framework APIs belong behind platform adapters.
 - **Fail gap-honest.** Never render an observing/synced/linked state unless the underlying durable fact is true. Android background survival is best-effort and must surface gaps.
-- **Use proven hardware paths.** The Rogbid app validated legacy `Camera`, `AudioRecord`, GPS, ZXing QR, Conscrypt TLS 1.3, and WorkManager retry on the watch. Preserve those facts until production code replaces them with tested equivalents.
+- **Preserve proven hardware evidence.** Retain documented Rogbid hardware findings as historical evidence without treating its parked hardware lane as a maintenance target.
 - **No GitHub Actions release path.** Builds and releases are operator-driven from known local machines. Local `make` and Gradle automation are encouraged; hosted CI/CD and release credentials in GitHub are not.
-- **Use the solstone app namespace.** Installable Android artifacts use `app.solstone.*`; the current validation target is `app.solstone.validation.rogbid`.
+- **Use the solstone app namespace.** Installable Android artifacts use `app.solstone.*`; `app.solstone.validation.rogbid` is a retained parked evidence package.
 
 ## Commands
 
@@ -43,34 +43,34 @@ make validate-rogbid-qr
 PAIR_LINK='https://go.solstone.app/p#...' make validate-rogbid-pl
 ```
 
-Use `ROGBID_SERIAL=<serial>` to target a different watch.
+The Rogbid commands and `ROGBID_SERIAL=<serial>` are retained for historical/manual investigation only; they are not a routine validation or release path.
 
 ## CI gates
 
-There are two gates. **`make ci` is the fast gate** — JVM unit tests, lint, and assembles, with **no instrumented tests** — and it must stay fast (it is the inner-loop gate). **`make ci-device` is the slower device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for the modules that carry real `androidTest` coverage (`platform/persistence-room`, `platform/pl-transport-conscrypt`, and the watch/phone/glasses apps' mock flavors, plus one narrowly-gated real-flavor phone test), on a headless emulator. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host.
+There are two maintained gates. **`make ci` is the fast gate.** It runs JVM unit tests, lint, root guards, and assembles, with **no instrumented tests**, and it must stay fast. **`make ci-device` is the slower phone device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for `platform/persistence-room`, `platform/pl-transport-conscrypt`, `formfactor/phone`, and the phone mock flavor, plus one narrowly-gated real-flavor phone test. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host. `ci-device-experimental` is a parked manual command, not a maintained gate.
 
-**`make ci-device` green is a required ship-stage acceptance criterion** for any lode that touches an on-device surface: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `make ci` structurally cannot catch two defect classes that have already shipped green through it — host-JDK-API-absent-on-Android (e.g. a `core/*` module calling a JDK method missing from the Android runtime) and instrumented-tests-authored-but-never-run. If a lode touches those surfaces, run the device gate green before declaring it shipped.
+**Run `make ci-device` manually before declaring an on-device change shipped**: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `dist-phone` does not run this gate. `make ci` does not run Android instrumented tests and cannot exercise host-JDK APIs against the Android runtime.
 
 ## Source Layout
 
 ```text
-apps/validation-rogbid/   Imported Rogbid hardware-probe target
+apps/validation-rogbid/   Parked Rogbid hardware-probe evidence
 apps/observer-scaffold/   Shared phone/watch app scaffold (application, activity, container, capture setup; real/mock flavors)
-apps/watch/               Watch observer app — spec + Application over the shared scaffold
-apps/phone/               Phone observer app — spec + Application over the shared scaffold; beta distribution target
-apps/glasses/             Smart-glasses observer app — RV203 hardware-validation surface
+apps/watch/               Parked watch observer source: retained historical/experimental evidence
+apps/phone/               Phone observer app: spec + Application over the shared scaffold; beta distribution target
+apps/glasses/             Parked smart-glasses/RV203 observer source: retained evidence
 harness/                  Form-factor-agnostic observer UI logic (controller, state, seams, async-load)
 core/                     Shared domain/protocol/observer modules
 platform/                 Android framework adapters
 formfactor/               Form-factor UI helpers - shared QR/pairing/harness UI (shared), glasses-specific views (glasses)
 testing/                  Fake sensor streams and protocol fixtures
-tools/rogbid/             Hardware validation scripts
+tools/rogbid/             Parked hardware-evidence scripts
 docs/                     Architecture, device notes, and docs/observer-hardware-validation-runbook.md (on-device validation)
 ```
 
 ## Safety Rails
 
-- Do not rename the validation app package or evidence files unless you also update every validation script and re-run the watch checks.
+- Do not rename the validation app package or evidence files unless you also update every retained validation script; do not restart parked watch validation as routine maintenance.
 - Do not commit `.env`, keystores, private keys, pairing links, captured media, local evidence artifacts, or device screenshots.
 - Do not add owner-visible copy that uses surveillance verbs such as watch, monitor, track, or collect. Code identifiers may keep Android/framework terms where they are technical names.
 - Do not make phone/watch/glasses share one app manifest. Share modules, not installable artifacts.
