@@ -129,7 +129,7 @@ fun nextSyncState(
 3. Open the authenticated PL client with the recovered transport and credential.
 4. Probe `/app/network/api/status`; `status == 200` is reachable. Use `decideReachability(true, reachable)`.
 5. Load `dao.segmentsByState(QueueState.SEALED)`, then `selectDrainSegments`.
-6. Group by day. For each day, build `SegmentReconciler(client, handle)`, reconstruct manifests from DB rows, call `reconciler.diff(manifests, day)`, and record `dedupe_checked_at = now` for checked rows.
+6. Group by day. For each day, build `SegmentReconciler(client)`, reconstruct manifests from DB rows, call `reconciler.diff(manifests, day)`, and record `dedupe_checked_at = now` for checked rows.
 7. For each segment:
    - `advanceState(id, START_UPLOAD)`
    - increment attempt count and set `last_attempt_at`
@@ -165,31 +165,6 @@ context.filesDir.toPath()
 ```
 
 `file.name` must remain a single path segment, matching `FileSpoolWriter`'s existing separator guard.
-
-## Health Beacon
-
-The worker emits a diagnostics-only observer health beacon only on the reachable `DRAIN` path, after segment drain completes and after the fresh sync state is available. It uses the already-open authenticated `PlHttpClient`; it does not create a new identity or run when credential repair, reachability reschedule, or observer registration retry prevents drain.
-
-The local Android-side contract is a JSON POST to `/app/devices/health` with exactly these fields:
-
-- `name`
-- `stream_type`
-- `version`
-- `uptime`
-- `last_successful_sync`
-- `pending_queue_depth`
-- `recent_error_count`
-- `last_error_reason`
-
-Encodings are local source of truth until a journal-side contract is published: `uptime` is integer seconds, `last_successful_sync` is epoch milliseconds or null, and counts are integers. `recent_error_count` is bounded to 0-99. `last_error_reason` is a short redacted reason string derived from outcome words and status codes only. Receiver compatibility remains an integration check until journal-side support is confirmed.
-
-`BeaconDecisions.kt` stays pure: it builds the payload, redacts the reason, advances the durable started-at anchor, updates the bounded error count, and exposes a non-throwing emit seam for JVM tests. `SyncWorker` remains the thin shell that reads WorkManager input data, calls drain, reads `dao.syncState()`, invokes the emit seam, and logs only `observer health beacon not delivered` if delivery fails.
-
-The durable beacon state lives in `File(context.filesDir, "pl/beacon.txt")` via `FileBeaconStateStore`. It stores only `startedAt` and `recent_error_count`; no Room schema change is required.
-
-`stream_type` is threaded per form factor through `SyncScheduler` WorkManager input data. Periodic work uses `ExistingPeriodicWorkPolicy.UPDATE`, so later app starts refresh the unique periodic work's input data and constraints while preserving its schedule identity.
-
-Journal-side ingest rejections are a separate health source; this beacon does not replace them.
 
 ## Persistence Changes
 

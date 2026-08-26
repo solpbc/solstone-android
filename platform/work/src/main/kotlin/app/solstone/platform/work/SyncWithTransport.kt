@@ -6,7 +6,6 @@ package app.solstone.platform.work
 import app.solstone.core.model.BundleFile
 import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.SegmentReconciler
-import app.solstone.core.pl.BeaconState
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
@@ -18,12 +17,7 @@ internal fun <C> syncWithTransport(
     openClient: (SyncTransport) -> C,
     store: DrainStore,
     readPayload: (SegmentRow, BundleFile) -> ByteArray,
-    existingHandle: String?,
-    loadBeaconState: () -> BeaconState?,
-    persistBeaconState: (BeaconState) -> Unit,
     host: String,
-    version: String,
-    streamType: String,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
 ): SyncOutcome where C : PlHttpClient, C : Closeable =
@@ -55,25 +49,6 @@ internal fun <C> syncWithTransport(
                     now = now,
                     log = log,
                 )
-                if (existingHandle != null) {
-                    val emit = emitObserverHealth(
-                        client = client,
-                        priorState = loadBeaconState(),
-                        persist = persistBeaconState,
-                        streamType = streamType,
-                        handle = existingHandle,
-                        version = version,
-                        now = now(),
-                        syncRow = store.syncState(),
-                        cleanDrain = report.cleanDrain,
-                        failedThisRun = report.failedThisRun,
-                        rawErrorReason = report.lastErrorReason,
-                        log = log,
-                    )
-                    if (emit == BeaconEmitResult.FAILED) {
-                        log("observer health beacon not delivered", null)
-                    }
-                }
                 report.workOutcome
             }
         }

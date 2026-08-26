@@ -22,6 +22,16 @@ import java.io.IOException
 
 const val DRAIN_SEGMENT_CAP = 50
 
+data class DrainReport(
+    val workOutcome: SyncOutcome,
+    val cleanDrain: Boolean,
+    val failedThisRun: Boolean,
+    val lastErrorReason: String?,
+)
+
+fun advanceLastSuccess(prior: Long?, cleanDrain: Boolean, now: Long): Long? =
+    if (cleanDrain) now else prior
+
 interface DrainStore {
     fun syncState(): SyncStateRow?
     fun segmentsForDrain(): List<SegmentRow>

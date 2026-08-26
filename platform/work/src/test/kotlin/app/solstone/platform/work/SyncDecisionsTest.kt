@@ -8,9 +8,6 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
-import app.solstone.core.pl.HttpResponse
-import app.solstone.core.pl.PlHttpClient
-import app.solstone.core.pl.parseJson
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
@@ -24,49 +21,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SyncDecisionsTest {
-    @Test
-    fun streamTypeFromInputDefaultsMissingValueToMainStream() {
-        assertEquals(MAIN_STREAM, streamTypeFromInput(null))
-    }
-
-    @Test
-    fun streamTypeFromInputUsesProvidedValue() {
-        assertEquals("glasses", streamTypeFromInput("glasses"))
-    }
-
-    @Test
-    fun registerObserverHandleSendsProvidedStreamType() {
-        val client = FakePlHttpClient(registrationResponse(name = "glasses"))
-
-        val handle = registerObserverHandle(
-            client = client,
-            platform = "android",
-            hostname = "device",
-            streamType = "glasses",
-            version = "0.1",
-        )
-
-        assertEquals("observer-handle", handle)
-        val body = parseJson(client.lastBodyText()) as Map<*, *>
-        assertEquals("glasses", body["stream_type"])
-    }
-
-    @Test
-    fun registerObserverHandleSendsMainStreamType() {
-        val client = FakePlHttpClient(registrationResponse(name = MAIN_STREAM))
-
-        registerObserverHandle(
-            client = client,
-            platform = "android",
-            hostname = "device",
-            streamType = MAIN_STREAM,
-            version = "0.1",
-        )
-
-        val body = parseJson(client.lastBodyText()) as Map<*, *>
-        assertEquals(MAIN_STREAM, body["stream_type"])
-    }
-
     @Test
     fun selectDrainSegmentsKeepsDueMainStreamRowsAndExcludesOtherStreams() {
         val now = 2_000_000L
@@ -297,16 +251,6 @@ class SyncDecisionsTest {
         }
     }
 
-    @Test
-    fun fakePlHttpClientRecordsRequestsForDecisionSeams() {
-        val client = FakePlHttpClient(HttpResponse(200, emptyMap(), ByteArray(0)))
-
-        client.request("GET", "/app/network/api/status", emptyMap(), null)
-
-        assertEquals(listOf("/app/network/api/status"), client.paths)
-        assertEquals(0, client.ingestCount)
-    }
-
     private fun segment(
         id: String,
         stream: String,
@@ -346,36 +290,9 @@ class SyncDecisionsTest {
             captureEndEpochMs = 2,
         )
 
-    private class FakePlHttpClient(vararg responses: HttpResponse) : PlHttpClient {
-        private val scripted = ArrayDeque(responses.toList())
-        val paths = mutableListOf<String>()
-        var ingestCount = 0
-            private set
-
-        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
-            paths += path
-            lastBody = body
-            if (method == "POST") {
-                ingestCount += 1
-            }
-            return scripted.removeFirst()
-        }
-
-        private var lastBody: ByteArray? = null
-
-        fun lastBodyText(): String = lastBody?.toString(Charsets.UTF_8) ?: error("no request body")
-    }
-
     private companion object {
         const val DAY = "20260617"
         const val MINUTE_MS = 60_000L
         const val HOUR_MS = 60L * MINUTE_MS
-
-        fun registrationResponse(name: String): HttpResponse =
-            HttpResponse(
-                200,
-                emptyMap(),
-                """{"key":"observer-handle","name":"$name","ingest_url":"https://home.example/ingest"}""".toByteArray(),
-            )
     }
 }

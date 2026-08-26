@@ -4,7 +4,6 @@
 package app.solstone.platform.work
 
 import app.solstone.core.model.QueueState
-import app.solstone.core.observer.REGISTER_PATH
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.QueueEvent
@@ -145,9 +144,6 @@ internal class RecordingPlHttpClient(vararg responses: HttpResponse) : PlHttpCli
         private set
 
     override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
-        if (path == REGISTER_PATH) {
-            throw AssertionError("legacy registration request is forbidden")
-        }
         requests += RecordedRequest(method, path, headers, body)
         return scripted.removeFirst()
     }

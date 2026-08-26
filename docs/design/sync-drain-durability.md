@@ -37,8 +37,8 @@ Validation:
 `SyncWorker` changes:
 
 - Build `RoomDrainStore(db.segmentDao())`.
-- Bind `reconcile = SegmentReconciler(c, handle)::diff`.
-- Bind `ingest = { manifest, fileBytes -> ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(manifest, handle, fileBytes, deviceLabel(), "android") }`.
+- Bind `reconcile = SegmentReconciler(c)::diff`.
+- Bind `ingest = { manifest, fileBytes -> ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(manifest, fileBytes, deviceLabel(), "android") }`.
 - Bind `readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) }`.
 - Bind `now = System::currentTimeMillis`.
 - Bind `log = { message, throwable -> Log.w(TAG, message, throwable) }`.
@@ -59,7 +59,7 @@ Claim each selected row into `UPLOADING` before attempt recording:
 Validation:
 
 - These are all legal edges in `core/queue/Queue.kt`. There is no `UPLOADING -> SEALED` edge and none is needed.
-- `UPLOADING` is safe to treat as crash leftover only after D8 single-drain exclusion.
+- `UPLOADING` is safe to treat as crash leftover only after D7 single-drain exclusion.
 - Grouping by day still works with a retry-due/capped subset because reconcile consumes the manifests for only the selected rows in that day. Rows excluded by backoff/cap remain untouched and count in `pendingAfter`.
 
 Unexpected claim failure must log and skip only that segment. Do not let `IllegalStateException` from `advanceState` escape the drain.
@@ -74,7 +74,7 @@ Add pure helpers in `SyncDecisions.kt`:
 Exact policy for sign-off:
 
 - `SEALED` is due.
-- `UPLOADING` is due; D8 makes it a crash-leftover recovery path.
+- `UPLOADING` is due; D7 makes it a crash-leftover recovery path.
 - `FAILED` is due only if the stored classification is retryable/hard-fail cadence and elapsed time satisfies backoff.
 - `STOP_AUTH` is not due.
 - `RETRY` cadence: 15 min, 30 min, 1 h, 2 h, 4 h, capped at 4 h. Formula: `15min * 2^min(max(attemptCount - 1, 0), 4)`.
@@ -105,12 +105,10 @@ Outcome:
 
 At end, call `advanceLastSuccess(priorLastSuccessAt, cleanDrain, now())`. Remove the current per-segment `lastSuccessAt = now` mutations from skip/upload paths.
 
-Beacon accounting uses `nextRecentErrorCount(previous, cleanDrain, failedThisRun)`: clean drains reset to 0, failed runs increment and clamp, and idle-not-due runs leave the previous count unchanged.
-
 Validation:
 
-- AC-3 holds: all 422 hard-fail rows set `failedThisRun`, outcome `RETRY`, no success stamp, and no health error-count reset.
-- AC-4a holds: only FAILED rows still in backoff are not selected; `pendingAfter > 0` with no failures and no due remainder returns `SUCCESS`, but `cleanDrain` is false so there is no success stamp and beacon error count is unchanged.
+- AC-3 holds: all 422 hard-fail rows set `failedThisRun`, outcome `RETRY`, and no success stamp.
+- AC-4a holds: only FAILED rows still in backoff are not selected; `pendingAfter > 0` with no failures and no due remainder returns `SUCCESS`, but `cleanDrain` is false so there is no success stamp.
 
 ### D5. Missing or unreadable payloads
 
@@ -153,33 +151,7 @@ Validation:
 - No wire change: same GET path and headers.
 - Core observer tests must be updated for typed exceptions on non-200 and parse/shape failures.
 
-### D7. Register auth
-
-In `ObserverRegistration.register`, add typed exception:
-
-- `class ObserverAuthException(val status: Int) : IOException` is not recommended because `registerThenDrain` rethrows all `IOException` as transient. Use a non-IO `RuntimeException` or sealed observer exception and catch it before generic `Exception`.
-
-Status handling:
-
-- `200`: parse as today.
-- `401`/`403`: throw `ObserverAuthException(status)`.
-- Other non-200: throw clear non-auth exception, or keep `IllegalStateException`.
-
-In `registerThenDrain`:
-
-- Add `RegisterDrainOutcome.Halt`.
-- Catch `ObserverAuthException` before generic `Exception`, call `onError`, return `Halt`.
-- Keep `IOException` rethrow for transient transport failures.
-- Other `Exception` remains `onError + Retry`.
-
-Worker `when` must add `RegisterDrainOutcome.Halt -> SyncOutcome.FAILURE`; current `when` has only `Retry` and `Drained`, so it will not be exhaustive after adding `Halt`.
-
-Validation:
-
-- `registerObserverHandle` can keep returning `String`; typed exceptions pass through.
-- Existing `RegisterThenDrainTest` needs a new auth-halt test.
-
-### D8. Single-drain exclusion
+### D7. Single-drain exclusion
 
 Add a process-wide gate in platform/work:
 
@@ -190,11 +162,11 @@ Wrap `SyncWorker.sync(...)` from before DB open through DB close. Loser returns 
 
 Validation:
 
-- Wrapping `sync` covers token maintenance, DB open, status probe, registration, drain, health, and DB close.
+- Wrapping `sync` covers token maintenance, DB open, status probe, drain, and DB close.
 - This makes observed `UPLOADING` rows in drain candidates crash leftovers rather than same-process concurrent work.
 - Unit-test gate directly: first acquire true, second false, release, acquire true.
 
-### D9. Insert-if-absent with file refresh
+### D8. Insert-if-absent with file refresh
 
 Change `SegmentDao.insertSegmentWithFiles`:
 
@@ -211,7 +183,7 @@ Validation:
 - Existing instrumented test `insertSegmentWithFiles_persistsThenReplacesFilesOnReinsert` encodes old behavior and must be rewritten.
 - New AC-10 persistence-room androidTest: seed an `UPLOADED` row with `serverKey` and `attemptCount`, reinsert same id as `SEALED` with new files, assert row remains `UPLOADED`, serverKey/attemptCount remain intact, stale files are gone, new files exist.
 
-### D10. Per-run cap
+### D9. Per-run cap
 
 Add constant in SegmentDrainer:
 
@@ -232,7 +204,7 @@ Validation:
 
 ## Logging Seam
 
-Use logging lambdas in extracted/pure helpers and bind to Android `Log` only in `SyncWorker`. This keeps JVM tests free of `android.util.Log` and matches the existing `onError` pattern in `registerThenDrain`.
+Use logging lambdas in extracted/pure helpers and bind to Android `Log` only in `SyncWorker`. This keeps JVM tests free of `android.util.Log`.
 
 Catch sites to update for AC-12:
 
@@ -240,14 +212,10 @@ Catch sites to update for AC-12:
 - `SyncWorker.syncWithTransport` status probe: catch `IOException` currently returns retry without logging; log. `RelayWebSocketClosedException` rethrow can log at outer catch only.
 - Extracted drain ingest catches: every catch logs through `log` seam except rethrow if outer catch logs.
 - New claim/reconcile/payload catches in SegmentDrainer must log.
-- `SyncDecisions.registerThenDrain`: existing `onError` logs register/persist exceptions; add auth halt logging through the same seam.
-- `BeaconDecisions.emitObserverHealth`: currently catches generic `Exception` without logging. Add `onError: (Throwable) -> Unit` or `log: (String, Throwable?) -> Unit` parameter and update callers/tests.
 - `RelayTokenMaintenance` has swallowed relay-close inside refresh fallback; not directly in drain AC unless Jer scopes AC-12 to all platform/work catches. If AC-12 literally means every platform/work catch, update it too.
 
-## Health Beacon, Classify, and Observer Changes
+## Classification Changes
 
-- `ObserverHealthClient.report` must treat non-2xx as failure: either throw a typed exception or return a failure result. Minimal implementation: throw `IllegalStateException` on non-2xx and let `emitObserverHealth` return `FAILED`.
-- Update `core/observer` test `ObserverHealthTest.reportIgnoresNon200Response` to assert failure/throw, and `platform/work` `BeaconDecisionsTest` to assert `emitObserverHealth` returns `FAILED` on non-2xx.
 - Add `408`, `425`, and `429` retry mapping in `core/queue/Queue.kt`.
 - Update `QueueTest.classifyMapsRetryDecisions`.
 
@@ -257,11 +225,9 @@ Catch sites to update for AC-12:
 2. Add `SegmentDrainer.kt` with `DrainStore`, selector, retry-due use, claim helper, honest outcome, logging seam, and JVM fake tests.
 3. Add `SegmentDao.segmentsForDrain` and `RoomDrainStore`; update insert-if-absent behavior and persistence-room androidTest.
 4. Harden `SegmentReconciler` exceptions and update core/observer tests.
-5. Harden `ObserverRegistration`, add `RegisterDrainOutcome.Halt`, update platform/work register tests and worker `when`.
-6. Harden `ObserverHealthClient.report` and `emitObserverHealth` logging/failure behavior; update core/observer and platform/work tests.
-7. Add `SyncDrainGate`, wrap worker sync path, and add gate unit test.
-8. Refactor `SyncWorker` to bind the extracted drain seams and remove old in-worker drain function.
-9. Run `make ci`; run `make ci-device` because persistence-room androidTest and on-device sync surfaces are touched.
+5. Add `SyncDrainGate`, wrap worker sync path, and add gate unit test.
+6. Refactor `SyncWorker` to bind the extracted drain seams and remove old in-worker drain function.
+7. Run `make ci`; run `make ci-device` because persistence-room androidTest and on-device sync surfaces are touched.
 
 ## AC to Test Matrix
 
@@ -276,17 +242,13 @@ Catch sites to update for AC-12:
 | AC-6 reconcile unavailable leaves rows unclaimed and retries | `SegmentDrainerTest.reconcileUnavailableLogsAndLeavesDayDrainable` | JVM platform/work | Fake reconcile throws `ReconcileUnavailableException`; assert no claim events and outcome retry. |
 | AC-7 reconcile auth halts | `SegmentDrainerTest.reconcileAuthHaltsWithFailure` | JVM platform/work | Fake reconcile throws `ReconcileAuthException`; assert failure and log. |
 | AC-8 single drain exclusion | `platform/work/src/test/kotlin/app/solstone/platform/work/SyncDrainGateTest.tryAcquireExcludesConcurrentDrainAndReleaseReopens` | JVM platform/work | Direct gate test. Worker loser path can be covered if constructor setup is practical; otherwise keep gate unit. |
-| AC-9 register auth halts | `platform/work/src/test/kotlin/app/solstone/platform/work/RegisterThenDrainTest.registerAuthFailureHaltsWithoutPersistOrDrain` | JVM platform/work | Fake register throws `ObserverAuthException`; assert `Halt`, logged, no persist/drain. |
 | AC-10 re-seal does not regress queue row | `platform/persistence-room/src/androidTest/kotlin/app/solstone/platform/persistence/room/RoomQueueStoreInstrumentedTest.insertSegmentWithFiles_refreshesFilesWithoutReplacingExistingSegmentRow` | Instrumented persistence-room | Seed uploaded row with serverKey/attemptCount; reinsert sealed; assert row metadata preserved and files refreshed. |
 | AC-11 per-run cap | `SegmentDrainerTest.capLeavesRemainderPendingAndReturnsRetry` | JVM platform/work | Seed 51 due rows, cap 50; assert 50 attempted and outcome retry due pendingAfter. |
-| AC-12 every catch logs | `SegmentDrainerTest.logsClaimPayloadAndReconcileCatches`; `RegisterThenDrainTest` auth/generic logging assertions; `BeaconDecisionsTest.emitObserverHealthLogsClientFailure` | JVM platform/work | Use log list fake. Worker-level `Log` catches are best verified by code review unless returnDefaultValues/Robolectric is added. |
-| AC-13 health beacon non-2xx surfaces failure | `core/observer/src/test/kotlin/app/solstone/core/observer/ObserverHealthTest.reportFailsOnNon2xxResponse`; `platform/work/src/test/kotlin/app/solstone/platform/work/BeaconDecisionsTest.emitObserverHealthReturnsFailedOnNon2xx` | JVM core/observer + platform/work | Existing `reportIgnoresNon200Response` must be inverted. |
+| AC-12 every catch logs | `SegmentDrainerTest.logsClaimPayloadAndReconcileCatches` | JVM platform/work | Use log list fake. Worker-level `Log` catches are best verified by code review unless returnDefaultValues/Robolectric is added. |
 
 ## Risks and Open Questions
 
 - `host` in D1 drain signature does not have a consumer if ingest is pre-bound. Recommendation: remove it from the drain function or explicitly use it in the worker's ingest binding.
 - AC-12 scope needs confirmation. If it means every `platform/work` catch, include `RelayTokenMaintenance`; if it means sync drain path only, it can remain out of scope.
-- `ObserverAuthException` must not subclass `IOException` unless `registerThenDrain` catch order changes to catch it before `IOException`; non-IO typed exception is safer.
-- `recentErrorCount` increments on in-backoff runs with no new error because honest outcome is `RETRY`. This is internally consistent but owner-visible health semantics may need Jer approval.
 - `SegmentReconciler.fetch` parse errors as transient unavailable will change existing core/observer tests that currently expect `IllegalArgumentException` for malformed 200 bodies.
 - `LiveObserverDriverTest` will compile with typed exceptions but its failure output class names change on auth/reconcile failures.

@@ -130,10 +130,6 @@ class SegmentDrainerTest {
         assertFalse(report.cleanDrain)
         assertTrue(report.failedThisRun)
         assertEquals(123, store.syncState!!.lastSuccessAt)
-        assertEquals(
-            8,
-            nextRecentErrorCount(previous = 7, cleanDrain = report.cleanDrain, failedThisRun = report.failedThisRun),
-        )
         assertEquals(QueueState.FAILED, store.row("a").state)
         assertEquals(QueueState.FAILED, store.row("b").state)
     }

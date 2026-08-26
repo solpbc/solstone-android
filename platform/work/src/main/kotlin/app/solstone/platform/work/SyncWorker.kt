@@ -30,7 +30,6 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
-            val streamType = streamTypeFromInput(inputData.getString(SyncScheduler.STREAM_TYPE_KEY))
             val stores = syncStores(applicationContext)
             when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
                 is SyncCredentials.NeedsRepair -> {
@@ -43,7 +42,7 @@ class SyncWorker(
                         Result.retry()
                     } else {
                         try {
-                            sync(stores, credentials, streamType)
+                            sync(stores, credentials)
                         } finally {
                             SyncDrainGate.release()
                         }
@@ -52,7 +51,7 @@ class SyncWorker(
             }
         }
 
-    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready, streamType: String): Result {
+    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): Result {
         val db = openSolstonePersistenceDatabase(applicationContext)
         val poster = defaultHttpsPoster()
         try {
@@ -79,12 +78,7 @@ class SyncWorker(
                     openClient = { openSyncClient(it, credentials.credential) },
                     store = store,
                     readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
-                    existingHandle = credentials.identity.observerHandle,
-                    loadBeaconState = stores.beaconStateStore::load,
-                    persistBeaconState = stores.beaconStateStore::save,
                     host = deviceLabel(),
-                    version = appVersion(),
-                    streamType = streamType,
                     now = System::currentTimeMillis,
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
                 )
@@ -144,10 +138,6 @@ class SyncWorker(
             .joinToString(" ")
             .ifBlank { "android" }
 
-    private fun appVersion(): String =
-        runCatching {
-            applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0).versionName
-	        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.1"
 }
 
 internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {

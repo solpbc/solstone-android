@@ -29,7 +29,7 @@ class SyncCredentialsTest {
     }
 
     @Test
-    fun readyWhenPairedButObserverHandleNotYetRegistered() {
+    fun readyWhenPairedWithoutObserverHandle() {
         val result = recoverSyncCredentials(
             endpointStore = FakeEndpointStore(endpoint()),
             credentialStore = FakeCredentialStore(credential()),

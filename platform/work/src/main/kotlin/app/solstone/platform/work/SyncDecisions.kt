@@ -8,17 +8,13 @@ import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.IngestOutcome
-import app.solstone.core.observer.ObserverAuthException
-import app.solstone.core.observer.ObserverRegistration
 import app.solstone.core.observer.ReconcileVerdict
-import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
-import java.io.IOException
 
 private const val MINUTE_MS = 60_000L
 private const val HOUR_MS = 60L * MINUTE_MS
@@ -26,22 +22,6 @@ private const val RETRY_BACKOFF_BASE_MS = 15L * MINUTE_MS
 private const val RETRY_BACKOFF_CAP_MS = 4L * HOUR_MS
 private const val HARD_FAIL_BACKOFF_BASE_MS = 2L * HOUR_MS
 private const val HARD_FAIL_BACKOFF_CAP_MS = 6L * HOUR_MS
-
-fun streamTypeFromInput(raw: String?): String = raw ?: MAIN_STREAM
-
-fun registerObserverHandle(
-    client: PlHttpClient,
-    platform: String,
-    hostname: String,
-    streamType: String,
-    version: String,
-): String =
-    ObserverRegistration(client).register(
-        platform = platform,
-        hostname = hostname,
-        streamType = streamType,
-        version = version,
-    ).handle
 
 fun isRetryDue(
     state: QueueState,
@@ -106,50 +86,6 @@ fun decideReachability(
         !reachable -> ReachabilityVerdict.RESCHEDULE
         else -> ReachabilityVerdict.DRAIN
     }
-
-sealed interface RegisterDrainOutcome<out R> {
-    data class Drained<R>(val result: R) : RegisterDrainOutcome<R>
-    data object Retry : RegisterDrainOutcome<Nothing>
-    data object Halt : RegisterDrainOutcome<Nothing>
-}
-
-/**
- * Resolve the observer handle over a single client, registering only when missing, persisting
- * before any drain. Register/persist failures are transient (caller retries); the SAME client is
- * threaded to both register and drain.
- */
-fun <R> registerThenDrain(
-    client: PlHttpClient,
-    existingHandle: String?,
-    register: (PlHttpClient) -> String,
-    persist: (String) -> Unit,
-    drain: (PlHttpClient, String) -> R,
-    onError: (Throwable) -> Unit,
-): RegisterDrainOutcome<R> {
-    val handle = if (existingHandle != null) {
-        existingHandle
-    } else {
-        val registered = try {
-            register(client)
-        } catch (e: IOException) {
-            throw e
-        } catch (e: ObserverAuthException) {
-            onError(e)
-            return RegisterDrainOutcome.Halt
-        } catch (e: Exception) {
-            onError(e)
-            return RegisterDrainOutcome.Retry
-        }
-        try {
-            persist(registered)
-        } catch (e: Exception) {
-            onError(e)
-            return RegisterDrainOutcome.Retry
-        }
-        registered
-    }
-    return RegisterDrainOutcome.Drained(drain(client, handle))
-}
 
 sealed interface SegmentSyncResult {
     data class Uploaded(val serverKey: String?) : SegmentSyncResult

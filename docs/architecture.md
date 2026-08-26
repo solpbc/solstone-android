@@ -19,7 +19,7 @@ historical/experimental evidence, not routine-maintenance or release targets.
 The Rogbid validation app is intentionally not production-shaped. It proves hardware and protocol feasibility. Production observer work graduates shared pieces into the reusable layers:
 
 1. PL QR parsing, on-device identity, CSR, Conscrypt TLS 1.3, and mTLS status calls live in `core/pl`, `core/identity`, and the Conscrypt transport adapter.
-2. Spool, segment, queue, observer registration, and sync policy live in Android-light `core`, `harness`, and `platform/work` modules where practical.
+2. Spool, segment, queue, observer protocol, and sync policy live in Android-light `core`, `harness`, and `platform/work` modules where practical.
 3. Camera, audio, location, foreground-service, metadata, and power behavior live behind `platform` adapters.
 4. Phone-specific UI and policy are maintained in its app module and `formfactor/*`; the watch and glasses-specific sources remain as parked shared-harness evidence.
 

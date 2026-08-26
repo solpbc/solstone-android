@@ -592,8 +592,7 @@ class SplIntegrationGateDriverTest {
     private fun requireEmptyProductionStores(context: Context, stores: SyncStores) {
         val absent = stores.endpointStore.load() == null &&
             stores.credentialStore.load() == null &&
-            stores.identityStore.load() == null &&
-            stores.beaconStateStore.load() == null
+            stores.identityStore.load() == null
         val directory = plStoreDir(context)
         val regularFiles = if (directory.exists()) {
             directory.walkTopDown().filter(File::isFile).toList()
