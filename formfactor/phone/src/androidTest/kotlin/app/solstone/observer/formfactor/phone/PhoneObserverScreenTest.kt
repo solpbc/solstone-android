@@ -568,7 +568,7 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun deckReachesUnderAppBarAfterScroll() {
+    fun deckScrollsBelowFixedAppBar() {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(*(0 until 40).map { status("s-$it", SourceState.ON, SourceWish.On) }.toTypedArray()),
@@ -587,14 +587,30 @@ class PhoneObserverScreenTest {
             "at rest first tile top $firstTop should be at or below app bar $appBarBottom",
             firstTop >= appBarBottom,
         )
+        val atRestOffset = composeRule.onNodeWithTag("sourceGrid")
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.VerticalScrollAxisRange]
+            .value()
+        assertEquals("source grid should start at rest", 0f, atRestOffset, 0f)
         composeRule.onNodeWithTag("sourceGrid").performTouchInput { swipeUp() }
         composeRule.waitForIdle()
-        val minTop = composeRule.onAllNodes(sourceTileMatcher(), useUnmergedTree = true)
+        val scrolledOffset = composeRule.onNodeWithTag("sourceGrid")
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.VerticalScrollAxisRange]
+            .value()
+        assertTrue("source grid did not scroll: $scrolledOffset", scrolledOffset > 0f)
+        val appBarBottomAfterScroll = composeRule.onNodeWithTag("phoneAppBar")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .bottom
+        assertEquals("app bar moved after deck scroll", appBarBottom, appBarBottomAfterScroll, 0f)
+        val sourceTiles = composeRule.onAllNodes(sourceTileMatcher(), useUnmergedTree = true)
             .fetchSemanticsNodes()
-            .minOf { it.boundsInRoot.top }
+        assertTrue("expected rendered source tiles after scroll", sourceTiles.isNotEmpty())
+        val minTop = sourceTiles.minOf { it.boundsInRoot.top }
         assertTrue(
-            "some deck tile top $minTop should be above app bar $appBarBottom",
-            minTop < appBarBottom,
+            "deck tile top $minTop should remain below app bar $appBarBottomAfterScroll",
+            minTop >= appBarBottomAfterScroll,
         )
     }
 

@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -57,7 +58,7 @@ class PhoneShellDetailRuntimeTest {
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             openAudioDetail()
             Espresso.pressBack()
-            composeRule.onNodeWithTag("deck").assertIsDisplayed()
+            assertDeckWithoutSourceDetail()
         }
     }
 
@@ -66,8 +67,13 @@ class PhoneShellDetailRuntimeTest {
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             openAudioDetail()
             composeRule.onNodeWithTag("phoneUp").performClick()
-            composeRule.onNodeWithTag("deck").assertIsDisplayed()
+            assertDeckWithoutSourceDetail()
         }
+    }
+
+    private fun assertDeckWithoutSourceDetail() {
+        composeRule.onNodeWithTag("deck").assertIsDisplayed()
+        composeRule.onNodeWithTag("sourceDetailHomeTile", useUnmergedTree = true).assertDoesNotExist()
     }
 
     private fun openAudioDetail() {
@@ -78,14 +84,17 @@ class PhoneShellDetailRuntimeTest {
         }
         composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodes(sourceDetailPaneMatcher()).fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodes(sourceDetailPaneMatcher(), useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
-        composeRule.onNode(sourceDetailPaneMatcher()).assertExists()
+        composeRule.onNode(sourceDetailPaneMatcher(), useUnmergedTree = true).assertExists()
         composeRule.onNode(audioHeadingMatcher()).assertIsDisplayed()
     }
 
-    private fun sourceDetailPaneMatcher() = SemanticsMatcher("source detail pane") { node ->
-        node.config.getOrNull(SemanticsProperties.PaneTitle) == "surface_source_detail"
+    private fun sourceDetailPaneMatcher() = SemanticsMatcher("audio source detail pane") { node ->
+        node.config.getOrNull(SemanticsProperties.PaneTitle) == "audio" &&
+            node.hasDescendantWithTag("sourceDetailHomeTile")
     }
 
     private fun audioHeadingMatcher() = SemanticsMatcher("audio heading") { node ->
@@ -93,3 +102,9 @@ class PhoneShellDetailRuntimeTest {
             node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "audio" } == true
     }
 }
+
+private fun SemanticsNode.hasDescendantWithTag(testTag: String): Boolean =
+    children.any { child ->
+        child.config.getOrNull(SemanticsProperties.TestTag) == testTag ||
+            child.hasDescendantWithTag(testTag)
+    }

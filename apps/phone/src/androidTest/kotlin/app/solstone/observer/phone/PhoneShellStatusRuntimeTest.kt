@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -96,9 +97,11 @@ class PhoneShellStatusRuntimeTest {
             openStatusPane()
             composeRule.onNodeWithTag("waitingRow-audio").assertIsDisplayed().performClick()
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(sourceDetailPaneMatcher()).fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodes(sourceDetailPaneMatcher(), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
             }
-            composeRule.onNode(sourceDetailPaneMatcher()).assertExists()
+            composeRule.onNode(sourceDetailPaneMatcher(), useUnmergedTree = true).assertExists()
             composeRule.onNode(audioHeadingMatcher()).assertIsDisplayed()
         }
     }
@@ -247,8 +250,9 @@ class PhoneShellStatusRuntimeTest {
         node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("waitingRow-") == true
     }
 
-    private fun sourceDetailPaneMatcher() = SemanticsMatcher("source detail pane") { node ->
-        node.config.getOrNull(SemanticsProperties.PaneTitle) == "surface_source_detail"
+    private fun sourceDetailPaneMatcher() = SemanticsMatcher("audio source detail pane") { node ->
+        node.config.getOrNull(SemanticsProperties.PaneTitle) == "audio" &&
+            node.hasDescendantWithTag("sourceDetailHomeTile")
     }
 
     private fun audioHeadingMatcher() = SemanticsMatcher("audio heading") { node ->
@@ -256,3 +260,9 @@ class PhoneShellStatusRuntimeTest {
             node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "audio" } == true
     }
 }
+
+private fun SemanticsNode.hasDescendantWithTag(testTag: String): Boolean =
+    children.any { child ->
+        child.config.getOrNull(SemanticsProperties.TestTag) == testTag ||
+            child.hasDescendantWithTag(testTag)
+    }
