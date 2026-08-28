@@ -65,14 +65,29 @@ class AudioContinuousSourceEngine(
     }
 
     override fun stop() {
-        val localWorker = worker
-        synchronized(recordingStateLock) {
+        val (localWorker, stoppedToken) = synchronized(recordingStateLock) {
             running.set(false)
-            currentToken.getAndSet(null)?.let(::clearActiveRecordingForToken)
+            // Keep this generation token until its worker has sealed and emitted
+            // the interrupted recording. Clearing it here rejects the final
+            // partial audio payload in emitSafely(), so a normal short capture
+            // never reaches the segment pipeline. A subsequent start replaces
+            // the token and still prevents an old worker from publishing into
+            // the new generation.
+            val token = currentToken.get()
+            token?.let(::clearActiveRecordingForToken)
+            worker to token
         }
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
-        worker = null
+        synchronized(recordingStateLock) {
+            // A recorder that did not finish inside the bounded stop window is
+            // not allowed to publish after stop() returns. Do not clear a
+            // newer generation that has already replaced this token.
+            if (localWorker?.isAlive == true && stoppedToken != null) {
+                currentToken.compareAndSet(stoppedToken, null)
+            }
+            if (worker === localWorker) worker = null
+        }
     }
 
     override fun condition(): SourceCondition {

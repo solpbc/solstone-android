@@ -239,17 +239,22 @@ class AudioContinuousSourceEngineTest {
     fun finalizeOnStopEmitsPartialAudioPayload() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
+        val recordingStarted = CountDownLatch(1)
         val engine = AudioContinuousSourceEngine(
             outputDirectory = outputDirectory,
             storageStatus = okStorage(),
             nowProvider = { OFF_BOUNDARY_EPOCH_MS },
-            sleeper = { throw InterruptedException() },
+            sleeper = {
+                recordingStarted.countDown()
+                Thread.sleep(Long.MAX_VALUE)
+            },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
         )
 
         engine.start(sink)
-        waitForEmissions(sink, 1)
+        assertTrue(recordingStarted.await(1, TimeUnit.SECONDS))
         engine.stop()
+        waitForEmissions(sink, 1)
 
         val emission = sink.emissions.single()
         val ref = emission.payloadRefs.single()
