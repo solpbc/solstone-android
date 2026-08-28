@@ -495,12 +495,7 @@ class SplIntegrationGateDriverTest {
         startedAt: String,
         throwable: Throwable,
     ): GateResult {
-        val errorType = throwable.message
-            ?.takeIf { it.matches(Regex("[a-z0-9_]{1,64}")) }
-            ?: throwable.javaClass.simpleName
-                .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
-                .lowercase()
-                .take(64)
+        val errorType = gateErrorType(throwable)
         val assertionFailure = invocation.action == GateAction.G3_INTERRUPT_RECOVER &&
             errorType in setOf(
                 "interruption_not_achieved",
@@ -526,6 +521,29 @@ class SplIntegrationGateDriverTest {
             facts = emptyFacts(invocation.action),
             diagnostics = listOf(GateDiagnostic(errorType, "driver")),
         )
+    }
+
+    private fun gateErrorType(throwable: Throwable): String {
+        var current: Throwable? = throwable
+        repeat(8) {
+            val value = current ?: return@repeat
+            value.message
+                ?.takeIf { it.matches(Regex("[a-z0-9_]{1,64}")) }
+                ?.let { return it }
+            current = value.cause
+        }
+        val message = generateSequence(throwable) { it.cause }
+            .take(8)
+            .mapNotNull(Throwable::message)
+            .joinToString(" ")
+        return when {
+            "sealed physical audio segment" in message -> "physical_audio_capture_timeout"
+            "normal sync completion" in message -> "normal_sync_timeout"
+            else -> throwable.javaClass.simpleName
+                .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+                .lowercase()
+                .take(64)
+        }
     }
 
     private fun withPairAuthority(
