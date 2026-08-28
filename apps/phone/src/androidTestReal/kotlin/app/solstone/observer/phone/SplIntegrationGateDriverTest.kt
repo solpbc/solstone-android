@@ -591,8 +591,13 @@ class SplIntegrationGateDriverTest {
 
     private fun grantCapturePermissions(context: Context) {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        // Visible start currently gates on the complete declared capture permission set.
+        // Camera and location are switched off before capture, so this scenario emits only audio.
         listOf(
             Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.POST_NOTIFICATIONS,
         ).forEach { permission ->
             automation.grantRuntimePermission(context.packageName, permission)
