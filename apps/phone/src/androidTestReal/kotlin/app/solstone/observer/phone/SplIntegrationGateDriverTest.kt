@@ -33,6 +33,7 @@ import app.solstone.core.observer.INGEST_PROTOCOL_VERSION
 import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
 import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.observer.SegmentReconciler
+import app.solstone.core.pl.DirectPairLink
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.parseJson
@@ -42,6 +43,7 @@ import app.solstone.observer.harness.SourceToggleResult
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SyncNowResult
 import app.solstone.observer.scaffold.ObserverActivity
+import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.work.SyncStores
@@ -112,11 +114,39 @@ class SplIntegrationGateDriverTest {
                     "location_source_not_disabled"
                 }
                 val link = parsePairLink(pairAuthority)
-                require(link is RelayPairLink) { "pair_route_not_relay" }
                 val pair = requireNotNull(container.controller.onScannedPairLink(pairAuthority)) { "pair_refused" }
                 val identity = requireNotNull(stores.identityStore.load()) { "paired_identity_not_persisted" }
-                require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
-                require(!identity.deviceToken.isNullOrBlank()) { "device_token_not_persisted" }
+                val pairFacts = when (link) {
+                    is RelayPairLink -> {
+                        require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
+                        require(!identity.deviceToken.isNullOrBlank()) { "device_token_not_persisted" }
+                        linkedMapOf(
+                            "route" to "RELAY",
+                            "relay_origin" to identity.relayOrigin,
+                            "device_token_persisted" to true,
+                        )
+                    }
+                    is DirectPairLink -> {
+                        require(identity.relayOrigin == null) { "direct_route_relay_state_present" }
+                        val endpoint = requireNotNull(stores.endpointStore.load()) { "direct_endpoint_not_persisted" }
+                        require(endpoint.host == pair.endpointHost && endpoint.port == pair.endpointPort) {
+                            "direct_endpoint_identity_mismatch"
+                        }
+                        linkedMapOf(
+                            "route" to "DIRECT",
+                            "endpoint_host" to endpoint.host,
+                            "endpoint_port" to endpoint.port,
+                            "device_token_persisted" to false,
+                        )
+                    }
+                } + linkedMapOf(
+                    "handshake_pinned" to pair.handshakePinned,
+                    "pair_http_status" to pair.pairStatus,
+                    "enroll_http_status" to pair.statusStatus,
+                    "credential_persisted" to true,
+                    "paired_identity_persisted" to true,
+                    "client_cert_cid" to identity.clientCertFingerprint,
+                )
 
                 val authenticatedTelemetry = GateTelemetry()
                 val authenticated = checkpointFromProductionStatus(
@@ -189,21 +219,7 @@ class SplIntegrationGateDriverTest {
                             "endpoint_absent" to true,
                             "observer_handle_absent" to true,
                         ),
-                        "pair" to linkedMapOf(
-                            "route" to "RELAY",
-                            "relay_origin" to identity.relayOrigin,
-                            "handshake_pinned" to pair.handshakePinned,
-                            "pair_http_status" to pair.pairStatus,
-                            "enroll_http_status" to pair.statusStatus,
-                            "credential_persisted" to true,
-                            "paired_identity_persisted" to true,
-                            "device_token_persisted" to true,
-                            // The host-side receipt must bind the accepted segment to
-                            // this exact certificate, not to a mutable device label.
-                            // `RelayPairing` derives this fingerprint from the leaf
-                            // certificate after it verifies the pair response.
-                            "client_cert_cid" to identity.clientCertFingerprint,
-                        ),
+                        "pair" to pairFacts,
                         "authenticated_status" to authenticated.status,
                         "capture" to linkedMapOf(
                             "visible_activity" to true,
@@ -600,10 +616,17 @@ class SplIntegrationGateDriverTest {
     ): HttpResponse {
         val identity = requirePairedIdentity(stores)
         val credential = requireNotNull(stores.credentialStore.load()) { "credential_absent" }
-        return openRelaySyncClient(
-            requireNotNull(identity.relayOrigin), identity.instanceId, requireNotNull(identity.deviceToken),
-            credential, telemetry, telemetry,
-        ).use { client ->
+        val client = identity.relayOrigin?.let { relayOrigin ->
+            openRelaySyncClient(
+                relayOrigin, identity.instanceId, requireNotNull(identity.deviceToken),
+                credential, telemetry, telemetry,
+            )
+        } ?: openAuthenticatedClient(
+            requireNotNull(stores.endpointStore.load()) { "direct_endpoint_absent" },
+            credential,
+            telemetry,
+        )
+        return client.use { client ->
             client.request(
                 "GET", "$SEGMENTS_PATH/$day" +
                     sourceId.takeIf(String::isNotBlank)?.let { "?source=$it" }.orEmpty(),

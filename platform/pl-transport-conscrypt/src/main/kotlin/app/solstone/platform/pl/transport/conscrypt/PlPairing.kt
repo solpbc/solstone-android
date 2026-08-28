@@ -27,6 +27,7 @@ import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
+import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.SOCKET_TIMEOUT_MS
 import app.solstone.core.pl.classifyPairResponseStatus
 import app.solstone.core.pl.orderCandidatesBySubnet
@@ -253,8 +254,12 @@ internal fun persistOrReturnDirectPairResult(
  * pairing happens once (see [pairAndProbe]); every later request opens an authenticated
  * client from the stored credential. Caller owns the returned client and must close it.
  */
-fun openAuthenticatedClient(endpoint: DirectEndpoint, credential: ClientCredential): ConscryptPlHttpClient =
-    ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential))
+fun openAuthenticatedClient(
+    endpoint: DirectEndpoint,
+    credential: ClientCredential,
+    streamObserver: PlStreamObserver? = null,
+): ConscryptPlHttpClient =
+    ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential, streamObserver))
 
 internal data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 
@@ -278,12 +283,16 @@ private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: B
     }
 }
 
-private fun openAuthenticatedSession(endpoint: DirectEndpoint, credential: ClientCredential): MuxSession {
+private fun openAuthenticatedSession(
+    endpoint: DirectEndpoint,
+    credential: ClientCredential,
+    streamObserver: PlStreamObserver?,
+): MuxSession {
     val socket = connectedSslSocket(authenticatedFactory(credential), endpoint.host, endpoint.port)
     try {
         configureSocket(socket)
         socket.startHandshake()
-        return MuxSession(SocketByteDuplex(socket))
+        return MuxSession(SocketByteDuplex(socket), streamObserver)
     } catch (e: Exception) {
         socket.close()
         throw e
