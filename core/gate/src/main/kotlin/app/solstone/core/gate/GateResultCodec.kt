@@ -144,7 +144,7 @@ data class GateAcceptanceExpectation(
 fun acceptsGateResult(bytes: ByteArray, expected: GateAcceptanceExpectation): Boolean = runCatching {
     val result = GateResultCodec.decode(bytes)
     result.schemaVersion == 1 &&
-        result.driverContractVersion == 1 &&
+        result.driverContractVersion == SPL_GATE_DRIVER_CONTRACT_VERSION &&
         result.runNonce == expected.runNonce &&
         result.action == expected.action &&
         result.actionSequence == expected.exactNextSequence

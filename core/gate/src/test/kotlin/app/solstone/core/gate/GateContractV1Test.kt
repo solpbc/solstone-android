@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class GateContractV1Test {
+class GateContractV2Test {
     @Test
     fun actionsAndSequencesAreExact() {
         assertEquals(
@@ -32,20 +32,15 @@ class GateContractV1Test {
     @Test
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
-            "gate_contract_version" to "1",
+            "gate_contract_version" to "2",
             "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
             "gate_action_sequence" to "1",
-            "gate_fixture_path" to "/data/local/tmp/fixture.wav",
-            "gate_observer_day" to "20260729",
-            "gate_segment" to "120000_60",
-            "gate_expected_round_trip_bytes" to "3",
-            "gate_expected_round_trip_sha256" to "a".repeat(64),
         )
         assertIs<GateInvocationDecision.Run>(GateInvocation.decide(valid))
         assertIs<GateInvocationDecision.Invalid>(GateInvocation.decide(valid + ("gate_extra" to "old")))
         assertIs<GateInvocationDecision.Invalid>(
-            GateInvocation.decide(valid - "gate_segment"),
+            GateInvocation.decide(valid - "gate_action_sequence"),
         )
         assertIs<GateInvocationDecision.Invalid>(
             GateInvocation.decide(valid + ("gate_action_sequence" to "5")),
@@ -160,15 +155,23 @@ class GateContractV1Test {
                     "device_token_persisted" to true,
                 ),
                 "authenticated_status" to 200,
+                "capture" to linkedMapOf(
+                    "visible_activity" to true, "minimum_capture_ms" to 3_000,
+                    "local_segment_id" to "local-1", "day" to "20260729", "segment" to "120000_60",
+                    "source" to "audio", "name" to "audio.m4a", "media_type" to "audio/mp4",
+                    "byte_size" to 3, "sha256" to "a".repeat(64), "queue_state_before_sync" to "SEALED",
+                ),
                 "round_trip" to linkedMapOf(
-                    "expected_bytes" to 3, "actual_bytes" to 3,
-                    "expected_sha256" to "a".repeat(64), "actual_sha256" to "a".repeat(64),
-                    "ingest_http_status" to 200, "parser_succeeded" to true,
+                    "sync_enqueued" to true, "sync_work_state" to "SUCCEEDED",
+                    "queue_state_after_sync" to "UPLOADED", "actual_bytes" to 3,
+                    "actual_sha256" to "a".repeat(64), "segment_fetch_http_status" to 200,
+                    "parser_succeeded" to true,
                 ),
                 "reconciliation" to linkedMapOf(
                     "server_segment" to "segment", "server_name" to "fixture.wav",
                     "submitted_name" to "fixture.wav", "matched_name" to "fixture.wav",
                     "size" to 3, "sha256" to "a".repeat(64), "status" to "present",
+                    "source" to "audio", "local_segment_id" to "local-1",
                 ),
             ),
         )

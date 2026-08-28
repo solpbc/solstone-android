@@ -21,29 +21,42 @@ class ObserverIngestClient(
         host: String? = null,
         platform: String? = null,
     ): IngestOutcome {
-        val boundary = boundaryProvider()
-        val body = buildMultipartBody(boundary, manifest, fileBytes, host, platform)
-        val response = http.request(
-            method = "POST",
-            path = INGEST_PATH,
-            headers = mapOf(
-                "Content-Type" to "multipart/form-data; boundary=$boundary",
-                PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
-            ),
-            body = body,
-        )
-        return response.toIngestOutcome()
+        require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
+        var terminal: IngestOutcome? = null
+        for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
+            val sourceManifest = BundleManifest(manifest.key, files, manifest.gaps)
+            val boundary = boundaryProvider()
+            val body = buildMultipartBody(boundary, sourceManifest, sourceId, fileBytes, host, platform)
+            val outcome = http.request(
+                method = "POST",
+                path = INGEST_PATH,
+                headers = mapOf(
+                    "Content-Type" to "multipart/form-data; boundary=$boundary",
+                    PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
+                ),
+                body = body,
+            ).toIngestOutcome()
+            if (outcome !is IngestOutcome.Accepted &&
+                outcome !is IngestOutcome.Collision &&
+                outcome !is IngestOutcome.Duplicate
+            ) {
+                return outcome
+            }
+            terminal = outcome
+        }
+        return checkNotNull(terminal)
     }
 
     private fun buildMultipartBody(
         boundary: String,
         manifest: BundleManifest,
+        sourceId: String,
         fileBytes: (BundleFile) -> ByteArray,
         host: String?,
         platform: String?,
     ): ByteArray {
         val out = ByteArrayOutputStream()
-        out.writeJsonPart(boundary, "envelope", buildEnvelope(manifest, host, platform))
+        out.writeJsonPart(boundary, "envelope", buildEnvelope(manifest, sourceId, host, platform))
         for (file in manifest.files) {
             out.writeFilePart(boundary, "files", file.name, file.mediaType, fileBytes(file))
         }
@@ -53,20 +66,16 @@ class ObserverIngestClient(
 
     private fun buildEnvelope(
         manifest: BundleManifest,
+        sourceId: String,
         host: String?,
         platform: String?,
     ): String {
         val root = linkedMapOf<String, Any?>(
             "day" to manifest.key.day,
             "segment" to manifest.key.segment,
-            "files" to manifest.files.map { file ->
-                linkedMapOf<String, Any?>("submitted" to file.name).apply {
-                    if (file.sourceId.isNotBlank()) {
-                        put("source", file.sourceId)
-                    }
-                }
-            },
+            "files" to manifest.files.map { file -> linkedMapOf("submitted" to file.name) },
         )
+        if (sourceId.isNotBlank()) root["source"] = sourceId
         val meta = linkedMapOf<String, Any?>().apply {
             if (host != null) put("host", host)
             if (platform != null) put("platform", platform)

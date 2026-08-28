@@ -3,7 +3,7 @@
 
 package app.solstone.core.gate
 
-const val SPL_GATE_DRIVER_CONTRACT_VERSION = 1
+const val SPL_GATE_DRIVER_CONTRACT_VERSION = 2
 const val SPL_GATE_RESULT_SCHEMA_VERSION = 1
 
 enum class GateAction(
@@ -53,14 +53,10 @@ data class GateInvocation(
     val runNonce: String,
     val action: GateAction,
     val actionSequence: Int,
-    val fixturePath: String?,
     val observerDay: String?,
-    val segment: String?,
     val expectedBodyBytes: Int?,
     val expectedBodySha256: String?,
     val expectedSemanticsSha256: String?,
-    val expectedRoundTripBytes: Int?,
-    val expectedRoundTripSha256: String?,
 ) {
     companion object {
         private val NONCE = Regex("""\d{8}T\d{6}Z-[0-9a-f]{16}""")
@@ -76,11 +72,7 @@ data class GateInvocation(
             val action = GateAction.fromWireName(actionText)
                 ?: return GateInvocationDecision.Invalid("unknown_action")
             val expectedKeys = COMMON_KEYS + when (action) {
-                GateAction.G1_PAIR_ROUND_TRIP ->
-                    setOf(
-                        "gate_fixture_path", "gate_observer_day", "gate_segment",
-                        "gate_expected_round_trip_bytes", "gate_expected_round_trip_sha256",
-                    )
+                GateAction.G1_PAIR_ROUND_TRIP -> emptySet()
                 GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
                     setOf(
                         "gate_observer_day", "gate_expected_body_bytes", "gate_expected_body_sha256",
@@ -103,21 +95,11 @@ data class GateInvocation(
             fun digest(key: String): String? = extras[key]?.takeIf(SHA256::matches)
 
             val day = extras["gate_observer_day"]
-            val fixturePath = extras["gate_fixture_path"]?.takeIf(String::isNotBlank)
-            val segment = extras["gate_segment"]?.takeIf(String::isNotBlank)
             val bodyBytes = positiveInt("gate_expected_body_bytes")
             val bodySha = digest("gate_expected_body_sha256")
             val semanticSha = digest("gate_expected_semantics_sha256")
-            val roundTripBytes = positiveInt("gate_expected_round_trip_bytes")
-            val roundTripSha = digest("gate_expected_round_trip_sha256")
             when (action) {
-                GateAction.G1_PAIR_ROUND_TRIP ->
-                    if (
-                        fixturePath == null || day == null || !DAY.matches(day) || segment == null ||
-                        roundTripBytes == null || roundTripSha == null
-                    ) {
-                        return GateInvocationDecision.Invalid("invalid_round_trip_commitment")
-                    }
+                GateAction.G1_PAIR_ROUND_TRIP -> Unit
                 GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
                     if (day == null || !DAY.matches(day) || bodyBytes == null || bodySha == null || semanticSha == null) {
                         return GateInvocationDecision.Invalid("invalid_response_commitment")
@@ -126,8 +108,7 @@ data class GateInvocation(
             }
             return GateInvocationDecision.Run(
                 GateInvocation(
-                    nonce, action, sequence, fixturePath, day, segment, bodyBytes, bodySha, semanticSha,
-                    roundTripBytes, roundTripSha,
+                    nonce, action, sequence, day, bodyBytes, bodySha, semanticSha,
                 ),
             )
         }

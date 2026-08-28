@@ -3,9 +3,13 @@
 
 package app.solstone.observer.phone
 
+import android.Manifest
 import android.content.Context
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import android.system.Os
 import android.system.OsConstants
 import app.solstone.core.crypto.sha256Hex
@@ -22,14 +26,10 @@ import app.solstone.core.gate.GateSemanticSegment
 import app.solstone.core.gate.G3ProgressOrder
 import app.solstone.core.gate.G3ProgressState
 import app.solstone.core.gate.PlCheckpointKind
-import app.solstone.core.gate.deriveGateObserverHostname
+import app.solstone.core.gate.SPL_GATE_DRIVER_CONTRACT_VERSION
+import app.solstone.core.model.QueueState
 import app.solstone.core.gate.semanticCommitmentSha256
-import app.solstone.core.model.BundleFile
-import app.solstone.core.model.BundleManifest
-import app.solstone.core.model.SegmentKey
-import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.INGEST_PROTOCOL_VERSION
-import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
 import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.observer.SegmentReconciler
@@ -38,9 +38,14 @@ import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.parsePairLink
 import app.solstone.observer.harness.RealPlStatusProbe
-import app.solstone.observer.harness.RealRelayPairProbe
+import app.solstone.observer.harness.SourceToggleResult
+import app.solstone.observer.harness.SourceWish
+import app.solstone.observer.harness.SyncNowResult
+import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
+import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.work.SyncStores
+import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.plStoreDir
 import app.solstone.platform.work.syncStores
 import org.junit.Assert.assertEquals
@@ -85,146 +90,160 @@ class SplIntegrationGateDriverTest {
         assertEquals(result.diagnostics.firstOrNull()?.errorType, GateOutcome.PASS, result.result)
     }
 
-    private fun runG1(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
-        val fixture = readG1Fixture(invocation)
-        return withPairAuthority(context, invocation) { pairAuthority ->
-            val observerHostname = deriveGateObserverHostname(invocation.runNonce)
+    private fun runG1(context: Context, invocation: GateInvocation, startedAt: String): GateResult =
+        withPairAuthority(context, invocation) { pairAuthority ->
             val stores = syncStores(context)
             requireEmptyProductionStores(context, stores)
-            val preProbeId = probeId(invocation, "pre_pair")
             val pre = checkpointFromProductionStatus(
-                "g1_pre_pair", preProbeId, realStatusProbe(stores, GateTelemetry()).probe(),
+                "g1_pre_pair", probeId(invocation, "pre_pair"), realStatusProbe(stores, GateTelemetry()).probe(),
             )
             require(pre.variant == PlCheckpointKind.NOT_PAIRED) { "prepair_state_not_clean" }
+            grantCapturePermissions(context)
+            ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    require(!activity.isFinishing && !activity.isDestroyed) { "visible_capture_activity_unavailable" }
+                }
+                val container = waitForObserverContainer()
+                require(waitForRecovery(container)) { "capture_recovery_not_ready" }
+                require(container.sources.setWish("camera", SourceWish.Off) is SourceToggleResult.Applied) {
+                    "camera_source_not_disabled"
+                }
+                require(container.sources.setWish("location", SourceWish.Off) is SourceToggleResult.Applied) {
+                    "location_source_not_disabled"
+                }
+                val link = parsePairLink(pairAuthority)
+                require(link is RelayPairLink) { "pair_route_not_relay" }
+                val pair = requireNotNull(container.controller.onScannedPairLink(pairAuthority)) { "pair_refused" }
+                val identity = requireNotNull(stores.identityStore.load()) { "paired_identity_not_persisted" }
+                require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
+                require(!identity.deviceToken.isNullOrBlank()) { "device_token_not_persisted" }
 
-            val link = parsePairLink(pairAuthority)
-            require(link is RelayPairLink) { "pair_route_not_relay" }
-            val pairTelemetry = GateTelemetry()
-            val pair = RealRelayPairProbe(
-                stores.credentialStore, stores.identityStore, pairTelemetry, pairTelemetry,
-            ).pairOverRelay(link, observerHostname)
-            val identity = requireNotNull(stores.identityStore.load()) { "paired_identity_not_persisted" }
-            val credential = requireNotNull(stores.credentialStore.load()) { "credential_not_persisted" }
-            require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
-            require(!identity.deviceToken.isNullOrBlank()) { "device_token_not_persisted" }
+                val authenticatedTelemetry = GateTelemetry()
+                val authenticated = checkpointFromProductionStatus(
+                    "g1_authenticated",
+                    probeId(invocation, "authenticated"),
+                    realStatusProbe(stores, authenticatedTelemetry).probe(),
+                )
+                require(container.controller.start()) { "visible_capture_start_refused" }
+                Thread.sleep(PHYSICAL_CAPTURE_MINIMUM_MS)
+                container.controller.stop()
 
-            val authenticatedTelemetry = GateTelemetry()
-            val authenticatedProbeId = probeId(invocation, "authenticated")
-            val authenticated = checkpointFromProductionStatus(
-                "g1_authenticated",
-                authenticatedProbeId,
-                realStatusProbe(stores, authenticatedTelemetry).probe(),
-            )
+                lateinit var captured: app.solstone.observer.harness.HarnessEvidenceSegment
+                lateinit var audio: app.solstone.observer.harness.HarnessEvidenceFile
+                waitUntil("sealed physical audio segment", PHYSICAL_CAPTURE_SEAL_TIMEOUT_MS) {
+                    val candidate = container.controller.listEvidence().lastOrNull { evidence ->
+                        evidence.files.singleOrNull { file ->
+                            file.sourceId == "audio" &&
+                                file.name == "audio.m4a" &&
+                                file.mediaType == "audio/mp4" &&
+                                file.byteSize > 0
+                        } != null
+                    }
+                    val candidateAudio = candidate?.files?.singleOrNull {
+                        it.sourceId == "audio" &&
+                            it.name == "audio.m4a" &&
+                            it.mediaType == "audio/mp4" &&
+                            it.byteSize > 0
+                    }
+                    if (candidate == null || candidateAudio == null) return@waitUntil false
+                    captured = candidate
+                    audio = candidateAudio
+                    true
+                }
+                require(captured.state == QueueState.SEALED) { "captured_segment_not_sealed" }
 
-            val payload = fixture.bytes
-            val day = requireNotNull(invocation.observerDay)
-            val segment = requireNotNull(invocation.segment)
-            val manifest = BundleManifest(
-                SegmentKey(day, segment),
-                listOf(
-                    BundleFile(
-                        "spl-gate", fixture.name, sha256Hex(payload), payload.size.toLong(), "audio/wav",
-                        0L, 0L,
-                    ),
-                ),
-                emptyList(),
-            )
-            val ingestTelemetry = GateTelemetry()
-            val ingest = openRelaySyncClient(
-                identity.relayOrigin!!, identity.instanceId, identity.deviceToken!!, credential,
-                ingestTelemetry, ingestTelemetry,
-            ).use { client ->
-                ObserverIngestClient(client) { "solstoneAndroidGate${invocation.runNonce.takeLast(16)}" }
-                    .ingest(
-                        manifest,
-                        { payload },
-                        observerHostname,
-                        "android",
-                    )
-            }
-            val serverSegment = when (ingest) {
-                is IngestOutcome.Accepted -> ingest.serverSegment
-                is IngestOutcome.Collision -> ingest.serverSegment
-                is IngestOutcome.Duplicate -> requireNotNull(ingest.existingSegment) { "round_trip_ingest_unaccepted" }
-                is IngestOutcome.Failed,
-                is IngestOutcome.UnknownStatus,
-                is IngestOutcome.MalformedResponse,
-                is IngestOutcome.Rejected -> error("round_trip_ingest_unaccepted")
-            }
+                require(container.controller.syncNow() == SyncNowResult.Enqueued) { "normal_sync_not_enqueued" }
+                awaitNormalSync(context, captured.id)
 
-            val roundTripTelemetry = GateTelemetry()
-            val response = requestSegments(stores, day, roundTripTelemetry)
-            val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
-            val reconciledSegment = requireNotNull(parsed.firstOrNull { it.key == serverSegment }) {
-                "round_trip_reconciliation_unproven"
-            }
-            val reconciled = requireNotNull(
-                reconciledSegment.files
-                    .firstOrNull { file ->
-                        (file.submittedName ?: file.name) == fixture.name &&
-                            file.size == payload.size.toLong() &&
-                            file.sha256.equals(sha256Hex(payload), ignoreCase = true) &&
+                val roundTripTelemetry = GateTelemetry()
+                val response = requestSegments(stores, captured.day, audio.sourceId, roundTripTelemetry)
+                val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
+                val reconciledSegment = requireNotNull(parsed.firstOrNull { it.key == captured.segment }) {
+                    "round_trip_reconciliation_unproven"
+                }
+                val reconciled = requireNotNull(
+                    reconciledSegment.files.firstOrNull { file ->
+                        (file.submittedName ?: file.name) == audio.name &&
+                            file.size == audio.byteSize &&
+                            file.sha256.equals(audio.sha256, ignoreCase = true) &&
                             file.status in setOf("present", "processed")
                     },
-            ) { "round_trip_reconciliation_unproven" }
-            val roundTripProbeId = probeId(invocation, "round_trip")
-            val roundTripStatusTelemetry = GateTelemetry()
-            val roundTrip = checkpointFromProductionStatus(
-                "g1_round_trip", roundTripProbeId,
-                realStatusProbe(stores, roundTripStatusTelemetry).probe(),
-            )
-            val totalDials = listOf(
-                pairTelemetry, authenticatedTelemetry, ingestTelemetry,
-                roundTripTelemetry, roundTripStatusTelemetry,
-            ).sumOf { it.snapshot().relayDials }
-            result(
-                invocation, startedAt, listOf(pre, authenticated, roundTrip), totalDials,
-                linkedMapOf(
-                    "pre_pair" to linkedMapOf(
-                        "credential_absent" to true,
-                        "identity_absent" to true,
-                        "endpoint_absent" to true,
-                        "observer_handle_absent" to true,
+                ) { "round_trip_reconciliation_unproven" }
+                val roundTripStatusTelemetry = GateTelemetry()
+                val roundTrip = checkpointFromProductionStatus(
+                    "g1_round_trip",
+                    probeId(invocation, "round_trip"),
+                    realStatusProbe(stores, roundTripStatusTelemetry).probe(),
+                )
+                result(
+                    invocation,
+                    startedAt,
+                    listOf(pre, authenticated, roundTrip),
+                    authenticatedTelemetry.snapshot().relayDials +
+                        roundTripTelemetry.snapshot().relayDials +
+                        roundTripStatusTelemetry.snapshot().relayDials,
+                    linkedMapOf(
+                        "pre_pair" to linkedMapOf(
+                            "credential_absent" to true,
+                            "identity_absent" to true,
+                            "endpoint_absent" to true,
+                            "observer_handle_absent" to true,
+                        ),
+                        "pair" to linkedMapOf(
+                            "route" to "RELAY",
+                            "relay_origin" to identity.relayOrigin,
+                            "handshake_pinned" to pair.handshakePinned,
+                            "pair_http_status" to pair.pairStatus,
+                            "enroll_http_status" to pair.statusStatus,
+                            "credential_persisted" to true,
+                            "paired_identity_persisted" to true,
+                            "device_token_persisted" to true,
+                        ),
+                        "authenticated_status" to authenticated.status,
+                        "capture" to linkedMapOf(
+                            "visible_activity" to true,
+                            "minimum_capture_ms" to PHYSICAL_CAPTURE_MINIMUM_MS,
+                            "local_segment_id" to captured.id,
+                            "day" to captured.day,
+                            "segment" to captured.segment,
+                            "source" to audio.sourceId,
+                            "name" to audio.name,
+                            "media_type" to audio.mediaType,
+                            "byte_size" to audio.byteSize,
+                            "sha256" to audio.sha256,
+                            "queue_state_before_sync" to captured.state.name,
+                        ),
+                        "round_trip" to linkedMapOf(
+                            "sync_enqueued" to true,
+                            "sync_work_state" to WorkInfo.State.SUCCEEDED.name,
+                            "queue_state_after_sync" to QueueState.UPLOADED.name,
+                            "actual_bytes" to audio.byteSize,
+                            "actual_sha256" to audio.sha256,
+                            "segment_fetch_http_status" to response.status,
+                            "parser_succeeded" to parsed.any { segment ->
+                                segment.key == reconciledSegment.key && segment.files.contains(reconciled)
+                            },
+                        ),
+                        "reconciliation" to linkedMapOf(
+                            "server_segment" to reconciledSegment.key,
+                            "server_name" to reconciled.name,
+                            "submitted_name" to reconciled.submittedName,
+                            "matched_name" to (reconciled.submittedName ?: reconciled.name),
+                            "size" to reconciled.size,
+                            "sha256" to reconciled.sha256,
+                            "status" to reconciled.status,
+                            "source" to audio.sourceId,
+                            "local_segment_id" to captured.id,
+                        ),
                     ),
-                    "pair" to linkedMapOf(
-                        "route" to "RELAY",
-                        "relay_origin" to identity.relayOrigin,
-                        "handshake_pinned" to pair.handshakePinned,
-                        "pair_http_status" to pair.pairStatus,
-                        "enroll_http_status" to pair.statusStatus,
-                        "credential_persisted" to true,
-                        "paired_identity_persisted" to true,
-                        "device_token_persisted" to true,
-                    ),
-                    "authenticated_status" to authenticated.status,
-                    "round_trip" to linkedMapOf(
-                        "expected_bytes" to invocation.expectedRoundTripBytes,
-                        "actual_bytes" to payload.size,
-                        "expected_sha256" to invocation.expectedRoundTripSha256,
-                        "actual_sha256" to sha256Hex(payload),
-                        "ingest_http_status" to 200,
-                        "parser_succeeded" to parsed.any { segment ->
-                            segment.key == reconciledSegment.key && segment.files.contains(reconciled)
-                        },
-                    ),
-                    "reconciliation" to linkedMapOf(
-                        "server_segment" to reconciledSegment.key,
-                        "server_name" to reconciled.name,
-                        "submitted_name" to reconciled.submittedName,
-                        "matched_name" to (reconciled.submittedName ?: reconciled.name),
-                        "size" to reconciled.size,
-                        "sha256" to reconciled.sha256,
-                        "status" to reconciled.status,
-                    ),
-                ),
-            )
+                )
+            }
         }
-    }
 
     private fun runG2(context: Context, invocation: GateInvocation, startedAt: String): GateResult {
         val stores = syncStores(context)
         val telemetry = GateTelemetry()
-        val response = requestSegments(stores, invocation.observerDay!!, telemetry)
+        val response = requestSegments(stores, invocation.observerDay!!, telemetry = telemetry)
         val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(response)
         val semantic = semanticCommitment(parsed)
         val statusTelemetry = GateTelemetry()
@@ -279,7 +298,7 @@ class SplIntegrationGateDriverTest {
         val requestStarted = android.os.SystemClock.elapsedRealtime()
         try {
             val future = executor.submitBounded {
-                requestSegments(stores, invocation.observerDay!!, interruptedTelemetry)
+                requestSegments(stores, invocation.observerDay!!, telemetry = interruptedTelemetry)
             }
             while (!partialReady.await(10, TimeUnit.MILLISECONDS)) {
                 if (future.isDone) {
@@ -348,7 +367,7 @@ class SplIntegrationGateDriverTest {
             )
 
             val recoveryTelemetry = GateTelemetry()
-            val recovery = requestSegments(stores, invocation.observerDay!!, recoveryTelemetry)
+            val recovery = requestSegments(stores, invocation.observerDay!!, telemetry = recoveryTelemetry)
             val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(recovery)
             val semantic = semanticCommitment(parsed)
             val recoveredStatusTelemetry = GateTelemetry()
@@ -533,7 +552,9 @@ class SplIntegrationGateDriverTest {
                 ),
             ) { "pair_authority_malformed" }
             require((root["schema_version"] as? Number)?.toInt() == 1) { "pair_authority_malformed" }
-            require((root["driver_contract_version"] as? Number)?.toInt() == 1) { "pair_authority_malformed" }
+            require(
+                (root["driver_contract_version"] as? Number)?.toInt() == SPL_GATE_DRIVER_CONTRACT_VERSION,
+            ) { "pair_authority_malformed" }
             require(root["run_nonce"] == invocation.runNonce) { "pair_authority_stale" }
             require(root["action"] == "g1_pair_round_trip") { "pair_authority_action_mismatch" }
             require((root["action_sequence"] as? Number)?.toInt() == 1) { "pair_authority_sequence_mismatch" }
@@ -548,6 +569,7 @@ class SplIntegrationGateDriverTest {
     private fun requestSegments(
         stores: SyncStores,
         day: String,
+        sourceId: String = "",
         telemetry: GateTelemetry,
     ): HttpResponse {
         val identity = requirePairedIdentity(stores)
@@ -557,7 +579,8 @@ class SplIntegrationGateDriverTest {
             credential, telemetry, telemetry,
         ).use { client ->
             client.request(
-                "GET", "$SEGMENTS_PATH/$day",
+                "GET", "$SEGMENTS_PATH/$day" +
+                    sourceId.takeIf(String::isNotBlank)?.let { "?source=$it" }.orEmpty(),
                 mapOf(
                     PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
                 ),
@@ -566,19 +589,33 @@ class SplIntegrationGateDriverTest {
         }
     }
 
-    private data class G1Fixture(val name: String, val bytes: ByteArray)
+    private fun grantCapturePermissions(context: Context) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        listOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ).forEach { permission ->
+            automation.grantRuntimePermission(context.packageName, permission)
+        }
+    }
 
-    private fun readG1Fixture(invocation: GateInvocation): G1Fixture {
-        val file = File(requireNotNull(invocation.fixturePath))
-        require(file.isFile && file.canRead()) { "fixture_unreadable" }
-        val bytes = runCatching { file.readBytes() }.getOrElse { error("fixture_unreadable") }
-        require(bytes.size == requireNotNull(invocation.expectedRoundTripBytes)) {
-            "round_trip_commitment_mismatch"
+    private fun awaitNormalSync(context: Context, segmentId: String) {
+        val workManager = WorkManager.getInstance(context)
+        waitUntil("normal sync completion", NORMAL_SYNC_TIMEOUT_MS) {
+            val terminal = workManager.getWorkInfosForUniqueWork(SyncScheduler.NOW_WORK_NAME)
+                .get()
+                .lastOrNull { work -> work.state.isFinished }
+                ?: return@waitUntil false
+            require(terminal.state == WorkInfo.State.SUCCEEDED) {
+                "normal_sync_${terminal.state.name.lowercase()}"
+            }
+            val database = openSolstonePersistenceDatabase(context)
+            try {
+                database.segmentDao().segmentById(segmentId)?.state == QueueState.UPLOADED
+            } finally {
+                database.close()
+            }
         }
-        require(sha256Hex(bytes) == requireNotNull(invocation.expectedRoundTripSha256)) {
-            "round_trip_commitment_mismatch"
-        }
-        return G1Fixture(file.name, bytes)
     }
 
     private fun realStatusProbe(stores: SyncStores, telemetry: GateTelemetry) =
@@ -624,14 +661,10 @@ class SplIntegrationGateDriverTest {
             "gate_action",
             "gate_run_nonce",
             "gate_action_sequence",
-            "gate_fixture_path",
             "gate_observer_day",
-            "gate_segment",
             "gate_expected_body_bytes",
             "gate_expected_body_sha256",
             "gate_expected_semantics_sha256",
-            "gate_expected_round_trip_bytes",
-            "gate_expected_round_trip_sha256",
         ).associateWith(arguments::getString).filterValues { it != null }
     }
 
@@ -658,14 +691,22 @@ class SplIntegrationGateDriverTest {
                 "device_token_persisted" to false,
             ),
             "authenticated_status" to null,
+            "capture" to linkedMapOf(
+                "visible_activity" to false, "minimum_capture_ms" to 0L,
+                "local_segment_id" to null, "day" to null, "segment" to null,
+                "source" to null, "name" to null, "media_type" to null,
+                "byte_size" to null, "sha256" to null, "queue_state_before_sync" to null,
+            ),
             "round_trip" to linkedMapOf(
-                "expected_bytes" to null,
-                "actual_bytes" to null, "expected_sha256" to null, "actual_sha256" to null,
-                "ingest_http_status" to null, "parser_succeeded" to false,
+                "sync_enqueued" to false, "sync_work_state" to null,
+                "queue_state_after_sync" to null, "actual_bytes" to null,
+                "actual_sha256" to null, "segment_fetch_http_status" to null,
+                "parser_succeeded" to false,
             ),
             "reconciliation" to linkedMapOf(
                 "server_segment" to null, "server_name" to null, "submitted_name" to null,
                 "matched_name" to null, "size" to null, "sha256" to null, "status" to null,
+                "source" to null, "local_segment_id" to null,
             ),
         )
         GateAction.G2_LARGE_RESPONSE -> linkedMapOf(

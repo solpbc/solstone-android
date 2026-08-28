@@ -18,14 +18,15 @@ import kotlin.test.assertTrue
 
 class ObserverIngestClientTest {
     @Test
-    fun ingestPostsV3EnvelopeAndFileParts() {
+    fun ingestPostsOneSourceBoundEnvelopeAndFilePart() {
         val http = RecordingPlHttpClient(okResponse("server-segment"))
         val client = ObserverIngestClient(http) { "fixed-boundary" }
-        val manifest = twoFileManifest()
-        val bytes = mapOf(
-            "audio.wav" to byteArrayOf(1, 2, 3),
-            "photo.jpg" to byteArrayOf(4, 5, 6),
+        val manifest = BundleManifest(
+            SegmentKey("20260616", "093000_60"),
+            listOf(BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", 1, 2)),
+            emptyList(),
         )
+        val bytes = mapOf("audio.wav" to byteArrayOf(1, 2, 3))
 
         val outcome = client.ingest(
             manifest = manifest,
@@ -40,29 +41,49 @@ class ObserverIngestClientTest {
         assertEquals("3", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])
         assertEquals(setOf("Content-Type", PROTOCOL_VERSION_HEADER), http.lastRequest.headers.keys)
         val parts = parseMultipart(requireNotNull(http.lastRequest.body), "fixed-boundary")
-        assertEquals(listOf("envelope", "files", "files"), parts.map { it.name })
+        assertEquals(listOf("envelope", "files"), parts.map { it.name })
         assertEquals("application/json", parts.first().contentType)
         assertNull(parts.first().filename)
         val envelope = parseJson(parts.first().body.toString(Charsets.UTF_8)) as Map<*, *>
-        assertEquals(setOf("day", "segment", "files", "meta"), envelope.keys)
+        assertEquals(setOf("day", "segment", "source", "files", "meta"), envelope.keys)
         assertEquals("20260616", envelope["day"])
         assertEquals("093000_60", envelope["segment"])
-        assertEquals(
-            listOf(
-                mapOf("submitted" to "audio.wav", "source" to "mic"),
-                mapOf("submitted" to "photo.jpg", "source" to "camera"),
-            ),
-            envelope["files"],
-        )
+        assertEquals("mic", envelope["source"])
+        assertEquals(listOf(mapOf("submitted" to "audio.wav")), envelope["files"])
         assertEquals(mapOf("host" to "watch-one", "platform" to "rogbid"), envelope["meta"])
         assertTrue("stream" !in envelope)
         assertTrue("observer" !in envelope)
         assertEquals("audio.wav", parts[1].filename)
         assertEquals("audio/wav", parts[1].contentType)
         assertContentEquals(byteArrayOf(1, 2, 3), parts[1].body)
-        assertEquals("photo.jpg", parts[2].filename)
-        assertEquals("image/jpeg", parts[2].contentType)
-        assertContentEquals(byteArrayOf(4, 5, 6), parts[2].body)
+    }
+
+    @Test
+    fun ingestSplitsMixedSourceManifestIntoJournalSourceBoundRequests() {
+        val http = RecordingPlHttpClient(okResponse("server-segment"))
+        val client = ObserverIngestClient(http) { "boundary-${System.nanoTime()}" }
+        val bytes = mapOf(
+            "audio.wav" to byteArrayOf(1, 2, 3),
+            "photo.jpg" to byteArrayOf(4, 5, 6),
+        )
+
+        val outcome = client.ingest(twoFileManifest(), { bytes.getValue(it.name) })
+
+        assertIs<IngestOutcome.Accepted>(outcome)
+        assertEquals(2, http.requests.size)
+        val envelopes = http.requests.map { request ->
+            val boundary = requireNotNull(request.headers["Content-Type"])
+                .substringAfter("boundary=")
+            val parts = parseMultipart(requireNotNull(request.body), boundary)
+            parseJson(parts.first().body.toString(Charsets.UTF_8)) as Map<*, *>
+        }
+        assertEquals(setOf("mic", "camera"), envelopes.map { it["source"] }.toSet())
+        assertEquals(
+            setOf("audio.wav", "photo.jpg"),
+            envelopes.flatMap { envelope ->
+                (envelope["files"] as List<*>).map { (it as Map<*, *>)["submitted"] }
+            }.toSet(),
+        )
     }
 
     @Test

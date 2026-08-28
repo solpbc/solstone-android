@@ -50,7 +50,9 @@ data class GateResult(
 
 object GateResultVerifier {
     fun violations(value: GateResult): List<String> = buildList {
-        if (value.schemaVersion != 1 || value.driverContractVersion != 1) add("driver_schema_mismatch")
+        if (value.schemaVersion != 1 || value.driverContractVersion != SPL_GATE_DRIVER_CONTRACT_VERSION) {
+            add("driver_schema_mismatch")
+        }
         if (value.actionSequence != value.action.sequence) add("out_of_order_action_result")
         if (value.startedAt > value.finishedAt) add("invalid_timestamps")
         if (value.productionRelayDialAttempts < 0 || value.callerRetryAttempts < 0) add("invalid_counters")
@@ -81,7 +83,7 @@ object GateResultVerifier {
         val expectedFactKeys = when (value.action) {
             GateAction.G1_PAIR_ROUND_TRIP ->
                 setOf(
-                    "pre_pair", "pair", "authenticated_status", "round_trip", "reconciliation",
+                    "pre_pair", "pair", "authenticated_status", "capture", "round_trip", "reconciliation",
                 )
             GateAction.G2_LARGE_RESPONSE ->
                 setOf(
@@ -109,12 +111,16 @@ object GateResultVerifier {
                     "device_token_persisted",
                 ), this)
                 requireNestedKeys(value.facts, "round_trip", setOf(
-                    "expected_bytes", "actual_bytes", "expected_sha256", "actual_sha256",
-                    "ingest_http_status", "parser_succeeded",
+                    "sync_enqueued", "sync_work_state", "queue_state_after_sync", "actual_bytes",
+                    "actual_sha256", "segment_fetch_http_status", "parser_succeeded",
+                ), this)
+                requireNestedKeys(value.facts, "capture", setOf(
+                    "visible_activity", "minimum_capture_ms", "local_segment_id", "day", "segment",
+                    "source", "name", "media_type", "byte_size", "sha256", "queue_state_before_sync",
                 ), this)
                 requireNestedKeys(value.facts, "reconciliation", setOf(
                     "server_segment", "server_name", "submitted_name", "matched_name",
-                    "size", "sha256", "status",
+                    "size", "sha256", "status", "source", "local_segment_id",
                 ), this)
             }
             GateAction.G3_INTERRUPT_RECOVER -> {

@@ -27,7 +27,7 @@ val generateSolstoneGateBuildReceipt by tasks.registering {
     outputs.dirs(gateReceiptMainDir, gateReceiptTestDir)
     doLast {
         val receipt = """
-            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":1}
+            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":2}
         """.trimIndent() + "\n"
         listOf(gateReceiptMainDir.get().asFile, gateReceiptTestDir.get().asFile).forEach { directory ->
             directory.mkdirs()
@@ -123,12 +123,12 @@ tasks.matching {
 
 tasks.register("verifySolstoneGateBuildReceipts") {
     group = "verification"
-    description = "Verifies the exact contract-v1 source receipt embedded in both realDebug APKs."
+    description = "Verifies the exact contract-v2 source receipt embedded in both realDebug APKs."
     dependsOn("assembleRealDebug", "assembleRealDebugAndroidTest")
     inputs.property("sourceCommit", gateSourceCommit)
     doLast {
         val expected = """
-            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":1}
+            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":2}
         """.trimIndent() + "\n"
         val apks = listOf(
             layout.buildDirectory.file("outputs/apk/real/debug/phone-real-debug.apk").get().asFile,

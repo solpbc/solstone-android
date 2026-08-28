@@ -97,10 +97,14 @@ private val splGateRequiredMarkers = listOf(
     "GateInvocation.decide",
     "GateInvocationDecision.Skip",
     "syncStores",
-    "RealRelayPairProbe",
     "RealPlStatusProbe",
     "SegmentReconciler",
-    "ObserverIngestClient",
+    "ObserverActivity",
+    "onScannedPairLink",
+    "syncNow()",
+    "listEvidence()",
+    "audio.m4a",
+    "QueueState.UPLOADED",
     "SplIntegrationGateDriverTest",
     "pair-authority.json",
     "action-result.json",
@@ -671,11 +675,15 @@ tasks.register("splGateDriverGuardSelfTest") {
             val decision = GateInvocation.decide(extras)
             if (decision is GateInvocationDecision.Skip) return
             val stores = syncStores(context)
-            val pair = RealRelayPairProbe(stores.credentialStore, stores.identityStore)
             val status = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore)
             val client = openRelaySyncClient(origin, instanceId, token, credential)
             val reconciler = SegmentReconciler(client)
-            val ingest = ObserverIngestClient(client)
+            val activity = ObserverActivity()
+            activity.onScannedPairLink(pairLink)
+            activity.syncNow()
+            activity.listEvidence()
+            val recorded = "audio.m4a"
+            val uploaded = QueueState.UPLOADED
             class SplIntegrationGateDriverTest
             val authority = "pair-authority.json"
             val result = "action-result.json"

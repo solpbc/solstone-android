@@ -7,6 +7,7 @@ import app.solstone.core.gate.GateCheckpoint
 import app.solstone.core.gate.G3ProgressRecord
 import app.solstone.core.gate.GateHttpResult
 import app.solstone.core.gate.PlCheckpointKind
+import app.solstone.core.gate.SPL_GATE_DRIVER_CONTRACT_VERSION
 import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.atomicWriteOwnerOnly
 import app.solstone.core.pl.PlStreamObserver
@@ -29,7 +30,12 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
 internal const val GATE_STAGE_TIMEOUT_MS = 35_000L
-internal const val GATE_PRIVATE_DIR = "solstone-android-gate/v1"
+// A physical MediaRecorder needs enough wall time to create and seal an actual audio container.
+// The gate reports this exact duration with the captured file digest; it is not a readiness poll.
+internal const val PHYSICAL_CAPTURE_MINIMUM_MS = 3_000L
+internal const val PHYSICAL_CAPTURE_SEAL_TIMEOUT_MS = 30_000L
+internal const val NORMAL_SYNC_TIMEOUT_MS = 90_000L
+internal const val GATE_PRIVATE_DIR = "solstone-android-gate/v2"
 internal const val GATE_AUTHORITY_FILE = "pair-authority.json"
 internal const val GATE_RESULT_FILE = "action-result.json"
 internal const val GATE_PROGRESS_FILE = "action-progress.json"
@@ -126,7 +132,7 @@ internal class GateProgressWriter(private val target: File) {
     ) {
         val value = linkedMapOf<String, Any?>(
             "schema_version" to 1,
-            "driver_contract_version" to 1,
+            "driver_contract_version" to SPL_GATE_DRIVER_CONTRACT_VERSION,
             "run_nonce" to runNonce,
             "action" to "g3_interrupt_recover",
             "action_sequence" to 3,
@@ -161,7 +167,7 @@ internal class GateCutControl(private val target: File) {
                         "command",
                     ) &&
                         (root["schema_version"] as? Number)?.toInt() == 1 &&
-                        (root["driver_contract_version"] as? Number)?.toInt() == 1 &&
+                        (root["driver_contract_version"] as? Number)?.toInt() == SPL_GATE_DRIVER_CONTRACT_VERSION &&
                         root["run_nonce"] == runNonce &&
                         root["action"] == "g3_interrupt_recover" &&
                         (root["action_sequence"] as? Number)?.toInt() == 3 &&
