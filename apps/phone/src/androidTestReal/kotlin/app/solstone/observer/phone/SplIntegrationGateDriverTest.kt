@@ -497,7 +497,10 @@ class SplIntegrationGateDriverTest {
     ): GateResult {
         val errorType = throwable.message
             ?.takeIf { it.matches(Regex("[a-z0-9_]{1,64}")) }
-            ?: throwable.javaClass.simpleName.take(64)
+            ?: throwable.javaClass.simpleName
+                .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2")
+                .lowercase()
+                .take(64)
         val assertionFailure = invocation.action == GateAction.G3_INTERRUPT_RECOVER &&
             errorType in setOf(
                 "interruption_not_achieved",
