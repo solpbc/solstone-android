@@ -355,7 +355,10 @@ class SplIntegrationGateDriverTest {
             val interruptedElapsed = android.os.SystemClock.elapsedRealtime() - requestStarted
             val interruptedSnapshot = interruptedTelemetry.snapshot()
             require(
-                interruptedSnapshot.activeStreams == 0 && interruptedSnapshot.terminated,
+                interruptedSnapshot.activeStreams == 0 &&
+                    interruptedSnapshot.openedStreams >= 1 &&
+                    interruptedSnapshot.terminatedStreams == interruptedSnapshot.openedStreams &&
+                    interruptedSnapshot.failedTerminations >= 1,
             ) { "interrupted_local_cleanup_unproven" }
             progress.write(
                 invocation.runNonce,
@@ -391,17 +394,17 @@ class SplIntegrationGateDriverTest {
             val recovery = requestSegments(stores, invocation.observerDay!!, telemetry = recoveryTelemetry)
             val parsed = SegmentReconciler(noRequestClient()).parseFetchResponse(recovery)
             val semantic = semanticCommitment(parsed)
+            val recoverySnapshot = recoveryTelemetry.snapshot()
+            require(
+                recoverySnapshot.openedStreams >= 1 &&
+                    recoverySnapshot.terminatedStreams == recoverySnapshot.openedStreams &&
+                    recoverySnapshot.successfulTerminations >= 1,
+            ) { "recovery_stream_lifecycle_unproven" }
             val recoveredStatusTelemetry = GateTelemetry()
             val recovered = checkpointFromProductionStatus(
                 "g3_recovered", probeId(invocation, "recovered"),
                 realStatusProbe(stores, recoveredStatusTelemetry).probe(),
             )
-            val oldSession = requireNotNull(interruptedSnapshot.sessionIdSha256) {
-                "old_session_identity_unavailable"
-            }
-            val newSession = requireNotNull(recoveryTelemetry.snapshot().sessionIdSha256) {
-                "new_session_identity_unavailable"
-            }
             return result(
                 invocation, startedAt, listOf(interrupted, recovered),
                 interruptedSnapshot.relayDials + degradedTelemetry.snapshot().relayDials +
@@ -423,14 +426,16 @@ class SplIntegrationGateDriverTest {
                     "local_lifecycle" to linkedMapOf(
                         "active_streams_at_partial" to activeAtPartial,
                         "active_streams_after" to interruptedSnapshot.activeStreams,
-                        "interrupted_session_closed" to interruptedSnapshot.terminated,
-                        "old_relay_session_disappeared" to false,
-                        "source" to "android_driver_relay_session_lifecycle_v1",
-                        "old_session_id_sha256" to oldSession,
-                        "new_session_id_sha256" to newSession,
+                        "interrupted_streams_opened" to interruptedSnapshot.openedStreams,
+                        "interrupted_streams_terminated" to interruptedSnapshot.terminatedStreams,
+                        "interrupted_streams_failed" to interruptedSnapshot.failedTerminations,
+                        "recovery_streams_opened" to recoverySnapshot.openedStreams,
+                        "recovery_streams_terminated" to recoverySnapshot.terminatedStreams,
+                        "recovery_streams_successful" to recoverySnapshot.successfulTerminations,
+                        "source" to "android_driver_transport_stream_lifecycle_v2",
                     ),
                     "recovery" to linkedMapOf(
-                        "fresh_session_opened" to (oldSession != newSession),
+                        "fresh_transport_stream_opened" to (recoverySnapshot.openedStreams >= 1),
                         "http_status" to recovery.status,
                         "raw_body_bytes" to recovery.body.size,
                         "raw_body_sha256" to sha256Hex(recovery.body),
@@ -778,12 +783,13 @@ class SplIntegrationGateDriverTest {
             ),
             "local_lifecycle" to linkedMapOf(
                 "active_streams_at_partial" to 0, "active_streams_after" to 0,
-                "interrupted_session_closed" to false, "old_relay_session_disappeared" to false,
-                "source" to "android_driver_relay_session_lifecycle_v1",
-                "old_session_id_sha256" to null, "new_session_id_sha256" to null,
+                "interrupted_streams_opened" to 0, "interrupted_streams_terminated" to 0,
+                "interrupted_streams_failed" to 0, "recovery_streams_opened" to 0,
+                "recovery_streams_terminated" to 0, "recovery_streams_successful" to 0,
+                "source" to "android_driver_transport_stream_lifecycle_v2",
             ),
             "recovery" to linkedMapOf(
-                "fresh_session_opened" to false, "http_status" to null, "raw_body_bytes" to null,
+                "fresh_transport_stream_opened" to false, "http_status" to null, "raw_body_bytes" to null,
                 "raw_body_sha256" to null, "semantic_commitments_sha256" to null,
             ),
         )

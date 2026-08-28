@@ -128,12 +128,13 @@ object GateResultVerifier {
                     "failed", "error_type", "elapsed_ms",
                 ), this)
                 requireNestedKeys(value.facts, "local_lifecycle", setOf(
-                    "active_streams_at_partial", "active_streams_after", "interrupted_session_closed",
-                    "old_relay_session_disappeared", "source", "old_session_id_sha256",
-                    "new_session_id_sha256",
+                    "active_streams_at_partial", "active_streams_after",
+                    "interrupted_streams_opened", "interrupted_streams_terminated",
+                    "interrupted_streams_failed", "recovery_streams_opened",
+                    "recovery_streams_terminated", "recovery_streams_successful", "source",
                 ), this)
                 requireNestedKeys(value.facts, "recovery", setOf(
-                    "fresh_session_opened", "http_status", "raw_body_bytes", "raw_body_sha256",
+                    "fresh_transport_stream_opened", "http_status", "raw_body_bytes", "raw_body_sha256",
                     "semantic_commitments_sha256",
                 ), this)
             }

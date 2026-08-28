@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class GateContractV2Test {
+class GateContractV3Test {
     @Test
     fun actionsAndSequencesAreExact() {
         assertEquals(
@@ -32,7 +32,7 @@ class GateContractV2Test {
     @Test
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
-            "gate_contract_version" to "2",
+            "gate_contract_version" to "3",
             "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
             "gate_action_sequence" to "1",
@@ -90,6 +90,28 @@ class GateContractV2Test {
             val malformed = fixture.copy(facts = fixture.facts + ("reconciliation" to reconciliation))
             assertEquals(listOf("invalid_reconciliation_facts"), GateResultVerifier.violations(malformed))
         }
+    }
+
+    @Test
+    fun g3RequiresTheTransportNeutralCallbackLifecycleShape() {
+        val fixture = g3ResultFixture()
+
+        assertTrue(GateResultVerifier.violations(fixture).isEmpty())
+        val stale = fixture.copy(
+            facts = fixture.facts + (
+                "local_lifecycle" to linkedMapOf(
+                    "active_streams_at_partial" to 1,
+                    "active_streams_after" to 0,
+                    "interrupted_session_closed" to true,
+                    "old_relay_session_disappeared" to true,
+                    "source" to "android_driver_relay_session_lifecycle_v1",
+                    "old_session_id_sha256" to "a".repeat(64),
+                    "new_session_id_sha256" to "b".repeat(64),
+                )
+            ),
+        )
+
+        assertEquals(listOf("invalid_local_lifecycle_facts"), GateResultVerifier.violations(stale))
     }
 
     private fun resultFixture(): GateResult {
@@ -172,6 +194,56 @@ class GateContractV2Test {
                     "submitted_name" to "fixture.wav", "matched_name" to "fixture.wav",
                     "size" to 3, "sha256" to "a".repeat(64), "status" to "present",
                     "source" to "audio", "local_segment_id" to "local-1",
+                ),
+            ),
+        )
+    }
+
+    private fun g3ResultFixture(): GateResult {
+        val interruptedProbe = "20260729T120000Z-0123456789abcdef:g3:interrupted"
+        val recoveredProbe = "20260729T120000Z-0123456789abcdef:g3:recovered"
+        return GateResult(
+            runNonce = "20260729T120000Z-0123456789abcdef",
+            action = GateAction.G3_INTERRUPT_RECOVER,
+            actionSequence = 3,
+            result = GateOutcome.PASS,
+            startedAt = "2026-07-29T12:00:00Z",
+            finishedAt = "2026-07-29T12:00:01Z",
+            ownerStatusCheckpoints = listOf(
+                GateCheckpoint(
+                    "g3_interrupted", interruptedProbe, PlCheckpointKind.PAIRED_UNREACHABLE,
+                    "network_interrupted", null,
+                    GateHttpResult(interruptedProbe, true, false, null),
+                ),
+                GateCheckpoint(
+                    "g3_recovered", recoveredProbe, PlCheckpointKind.REACHABLE, null, 200,
+                    GateHttpResult(recoveredProbe, true, true, 200),
+                ),
+            ),
+            productionRelayDialAttempts = 1,
+            callerRetryAttempts = 0,
+            facts = linkedMapOf(
+                "expected_body_bytes" to 1_048_577,
+                "expected_body_sha256" to "a".repeat(64),
+                "expected_semantics_sha256" to "b".repeat(64),
+                "partial_body_bytes" to 1,
+                "response_completed_before_cut" to false,
+                "progress_sequence_complete" to true,
+                "cut_after_partial" to true,
+                "interrupted_request" to linkedMapOf(
+                    "failed" to true, "error_type" to "transport_interrupted", "elapsed_ms" to 1,
+                ),
+                "local_lifecycle" to linkedMapOf(
+                    "active_streams_at_partial" to 1, "active_streams_after" to 0,
+                    "interrupted_streams_opened" to 1, "interrupted_streams_terminated" to 1,
+                    "interrupted_streams_failed" to 1, "recovery_streams_opened" to 1,
+                    "recovery_streams_terminated" to 1, "recovery_streams_successful" to 1,
+                    "source" to "android_driver_transport_stream_lifecycle_v2",
+                ),
+                "recovery" to linkedMapOf(
+                    "fresh_transport_stream_opened" to true, "http_status" to 200,
+                    "raw_body_bytes" to 1_048_577, "raw_body_sha256" to "a".repeat(64),
+                    "semantic_commitments_sha256" to "b".repeat(64),
                 ),
             ),
         )

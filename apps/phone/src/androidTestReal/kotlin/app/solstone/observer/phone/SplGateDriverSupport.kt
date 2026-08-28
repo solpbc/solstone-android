@@ -8,7 +8,6 @@ import app.solstone.core.gate.G3ProgressRecord
 import app.solstone.core.gate.GateHttpResult
 import app.solstone.core.gate.PlCheckpointKind
 import app.solstone.core.gate.SPL_GATE_DRIVER_CONTRACT_VERSION
-import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.atomicWriteOwnerOnly
 import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayDialObserver
@@ -24,10 +23,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
-import java.util.UUID
 
 internal const val GATE_STAGE_TIMEOUT_MS = 35_000L
 // A physical MediaRecorder needs enough wall time to create and seal an actual audio container.
@@ -82,8 +78,10 @@ internal data class GateTelemetrySnapshot(
     val activeStreams: Int,
     val maxActiveStreams: Int,
     val consumedBytes: Int,
-    val terminated: Boolean,
-    val sessionIdSha256: String?,
+    val openedStreams: Int,
+    val terminatedStreams: Int,
+    val successfulTerminations: Int,
+    val failedTerminations: Int,
 )
 
 internal class GateTelemetry(
@@ -93,18 +91,17 @@ internal class GateTelemetry(
     private val active = AtomicInteger()
     private val maxActive = AtomicInteger()
     private val consumed = AtomicInteger()
-    private val terminated = AtomicBoolean()
-    private val sessionIdSha256 = AtomicReference<String?>()
+    private val opened = AtomicInteger()
+    private val terminated = AtomicInteger()
+    private val successful = AtomicInteger()
+    private val failed = AtomicInteger()
 
     override fun onRelayDialAttempt(attemptNumber: Int, host: String, port: Int) {
         relayDials.incrementAndGet()
     }
 
     override fun onStreamOpened(streamId: Int) {
-        sessionIdSha256.compareAndSet(
-            null,
-            sha256Hex(UUID.randomUUID().toString().toByteArray()),
-        )
+        opened.incrementAndGet()
         val count = active.incrementAndGet()
         maxActive.accumulateAndGet(count) { left, right -> maxOf(left, right) }
     }
@@ -116,12 +113,13 @@ internal class GateTelemetry(
 
     override fun onStreamTerminated(streamId: Int, successful: Boolean) {
         active.decrementAndGet()
-        terminated.set(true)
+        terminated.incrementAndGet()
+        if (successful) this.successful.incrementAndGet() else failed.incrementAndGet()
     }
 
     fun snapshot() = GateTelemetrySnapshot(
-        relayDials.get(), active.get(), maxActive.get(), consumed.get(), terminated.get(),
-        sessionIdSha256.get(),
+        relayDials.get(), active.get(), maxActive.get(), consumed.get(), opened.get(),
+        terminated.get(), successful.get(), failed.get(),
     )
 }
 

@@ -3,7 +3,7 @@
 
 package app.solstone.core.gate
 
-const val SPL_GATE_DRIVER_CONTRACT_VERSION = 2
+const val SPL_GATE_DRIVER_CONTRACT_VERSION = 3
 const val SPL_GATE_RESULT_SCHEMA_VERSION = 1
 
 enum class GateAction(
