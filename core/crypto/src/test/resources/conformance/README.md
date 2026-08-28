@@ -17,7 +17,7 @@ five-file inventory.
 2. Copy unchanged `manifest.json`, `definition.json`, `definition.schema.json`,
    `vectors.json`, and `vectors.schema.json` from `proto/definition/bundle/` into
    `bundle/`.
-3. Copy the consumed `proto/identity.md` into `proto-ref/identity.md` unchanged.
+3. Copy every normative-source document named by the adopted manifest into `proto-ref/` unchanged.
 4. Update `adoption.json` with the authority commit, manifest metadata, and the four
    manifest payload records.
 5. Update the pinned authority constants in `JournalIdentityConformanceTest`.

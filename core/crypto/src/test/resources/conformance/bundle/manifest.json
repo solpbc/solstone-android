@@ -1,14 +1,14 @@
 {
   "bundle_schema_identity": "spl.pair-link-definition-bundle.schema.v1",
-  "bundle_semver": "5.0.0",
+  "bundle_semver": "6.0.0",
   "files": [
     {
       "path": "definition.json",
-      "sha256": "3e11d71c12dc200d84c0f39ad130f557bd0a5a35ad29bfdadd4144d42aa2ea93"
+      "sha256": "6edede4da4be355d4a2569693630a63cc93cf5a577feee65fadaaa39a5f6615b"
     },
     {
       "path": "definition.schema.json",
-      "sha256": "8f20c198d40c3bc299c24bb601dc7ea245fe08f17063ae765248d7f1aaf88c21"
+      "sha256": "e52b0fa33e732de6a48336571e541c6fb4d6551de047c3b4e037323e0fe5f69a"
     },
     {
       "path": "vectors.json",
@@ -25,7 +25,7 @@
       "id": "definition.authored_source",
       "path": "proto/definition/definition.toml",
       "role": "authored_source",
-      "sha256": "be740d038622d82b2d78e96d18e65bc6aa6adb3b2a42d066cbd8f569a7ccc542"
+      "sha256": "c42c90ad15d5737d97b34664d88b95258afe7e5dd23cacbca9989e1c42a01fb6"
     },
     {
       "id": "definition.conformance_corpus",
@@ -37,13 +37,13 @@
       "id": "definition.generator",
       "path": "proto/definition/generate.py",
       "role": "generator",
-      "sha256": "09fb65c334cb3e23992720cdbb383fdf0d73599e5ef529aa4bb3262600477566"
+      "sha256": "58a6c3ad93c7f0f72b8ef62adff6a2cb9312f6c06df92833d401f17233b7b513"
     },
     {
       "id": "source.identity",
       "path": "proto/identity.md",
       "role": "normative_source_document",
-      "sha256": "e333fa6a9db7aa7ac7a701144454622130c56ad63d9a993885644ae522a732b4"
+      "sha256": "9ce16c7404c3ef7228bb25ec0391f859255cc6e2b0efe9fc94af0bdf8be2e520"
     },
     {
       "id": "source.pair_window",
@@ -55,7 +55,7 @@
       "id": "source.pairing",
       "path": "proto/pairing.md",
       "role": "normative_source_document",
-      "sha256": "526b1b479ba875501b965d531ab0a1214d06820d1db4d7e354196af8c910de91"
+      "sha256": "47832c100475bfe2748fbcc2b9b2c07c9cfe8e3bafa1c3b484d5d064cca4096b"
     }
   ],
   "schema_dialect_uri": "https://json-schema.org/draft/2020-12/schema"
