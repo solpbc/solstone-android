@@ -8,6 +8,14 @@ plugins {
 
 val gateReceiptMainDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/main/assets")
 val gateReceiptTestDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/androidTest/assets")
+val gateDriverContractVersion = Regex(
+    """const val SPL_GATE_DRIVER_CONTRACT_VERSION = (\d+)""",
+).find(
+    rootProject.file(
+        "core/gate/src/main/kotlin/app/solstone/core/gate/GateAction.kt",
+    ).readText(),
+)?.groupValues?.get(1)?.toIntOrNull()
+    ?: error("could not derive SPL gate driver contract version from GateAction.kt")
 val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT")
     .map(String::trim)
     .filter { it.isNotEmpty() }
@@ -24,10 +32,11 @@ val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT")
     }
 val generateSolstoneGateBuildReceipt by tasks.registering {
     inputs.property("sourceCommit", gateSourceCommit)
+    inputs.property("driverContractVersion", gateDriverContractVersion)
     outputs.dirs(gateReceiptMainDir, gateReceiptTestDir)
     doLast {
         val receipt = """
-            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":2}
+            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":$gateDriverContractVersion}
         """.trimIndent() + "\n"
         listOf(gateReceiptMainDir.get().asFile, gateReceiptTestDir.get().asFile).forEach { directory ->
             directory.mkdirs()
@@ -123,12 +132,13 @@ tasks.matching {
 
 tasks.register("verifySolstoneGateBuildReceipts") {
     group = "verification"
-    description = "Verifies the exact contract-v2 source receipt embedded in both realDebug APKs."
+    description = "Verifies the exact current-contract source receipt embedded in both realDebug APKs."
     dependsOn("assembleRealDebug", "assembleRealDebugAndroidTest")
     inputs.property("sourceCommit", gateSourceCommit)
+    inputs.property("driverContractVersion", gateDriverContractVersion)
     doLast {
         val expected = """
-            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":2}
+            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":$gateDriverContractVersion}
         """.trimIndent() + "\n"
         val apks = listOf(
             layout.buildDirectory.file("outputs/apk/real/debug/phone-real-debug.apk").get().asFile,
