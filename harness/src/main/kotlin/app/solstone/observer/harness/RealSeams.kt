@@ -13,6 +13,7 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.QueueState
+import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.PlStreamObserver
@@ -104,6 +105,7 @@ class RealPlStatusProbe(
     private val identityStore: IdentityStore,
     private val streamObserver: PlStreamObserver? = null,
     private val dialObserver: RelayDialObserver? = null,
+    private val directDialObserver: DirectDialObserver? = null,
 ) : PlStatusProbe {
     override fun probe(): HarnessPlStatus {
         val credential = credentialStore.load()
@@ -124,7 +126,12 @@ class RealPlStatusProbe(
             ?: return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
         return try {
             when (transport) {
-                is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
+                is SyncTransport.Direct -> openAuthenticatedClient(
+                    transport.endpoint,
+                    credential,
+                    streamObserver,
+                    directDialObserver,
+                )
                 is SyncTransport.Relay -> openRelaySyncClient(
                     transport.relayOrigin,
                     transport.instanceId,

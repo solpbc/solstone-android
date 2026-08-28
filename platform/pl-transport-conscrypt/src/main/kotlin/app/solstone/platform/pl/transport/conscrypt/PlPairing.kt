@@ -20,6 +20,7 @@ import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
+import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
@@ -258,8 +259,16 @@ fun openAuthenticatedClient(
     endpoint: DirectEndpoint,
     credential: ClientCredential,
     streamObserver: PlStreamObserver? = null,
+    directDialObserver: DirectDialObserver? = null,
 ): ConscryptPlHttpClient =
-    ConscryptPlHttpClient(openAuthenticatedSession(endpoint, credential, streamObserver))
+    ConscryptPlHttpClient(
+        openAuthenticatedSession(
+            endpoint,
+            credential,
+            streamObserver,
+            directDialObserver,
+        ),
+    )
 
 internal data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 
@@ -287,8 +296,14 @@ private fun openAuthenticatedSession(
     endpoint: DirectEndpoint,
     credential: ClientCredential,
     streamObserver: PlStreamObserver?,
+    directDialObserver: DirectDialObserver?,
 ): MuxSession {
-    val socket = connectedSslSocket(authenticatedFactory(credential), endpoint.host, endpoint.port)
+    val socket = connectedSslSocket(
+        authenticatedFactory(credential),
+        endpoint.host,
+        endpoint.port,
+        directDialObserver,
+    )
     try {
         configureSocket(socket)
         socket.startHandshake()
@@ -299,9 +314,26 @@ private fun openAuthenticatedSession(
     }
 }
 
-private fun connectedSslSocket(factory: SSLSocketFactory, host: String, port: Int): SSLSocket {
+private fun notifyDirectDialObserver(
+    observer: DirectDialObserver?,
+    endpoint: DirectEndpoint,
+) {
+    try {
+        observer?.onDirectDialAttempt(endpoint.host, endpoint.port)
+    } catch (_: Throwable) {
+        // Optional gate telemetry must never change the production direct dial.
+    }
+}
+
+private fun connectedSslSocket(
+    factory: SSLSocketFactory,
+    host: String,
+    port: Int,
+    directDialObserver: DirectDialObserver? = null,
+): SSLSocket {
     val plainSocket = Socket()
     try {
+        notifyDirectDialObserver(directDialObserver, DirectEndpoint(host, port))
         plainSocket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         return factory.createSocket(plainSocket, host, port, true) as SSLSocket
     } catch (e: Exception) {

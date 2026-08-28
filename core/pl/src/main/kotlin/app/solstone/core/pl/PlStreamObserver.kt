@@ -14,3 +14,7 @@ interface PlStreamObserver {
 fun interface RelayDialObserver {
     fun onRelayDialAttempt(attemptNumber: Int, host: String, port: Int)
 }
+
+fun interface DirectDialObserver {
+    fun onDirectDialAttempt(host: String, port: Int)
+}

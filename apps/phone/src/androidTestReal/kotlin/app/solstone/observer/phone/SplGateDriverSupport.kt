@@ -9,6 +9,7 @@ import app.solstone.core.gate.GateHttpResult
 import app.solstone.core.gate.PlCheckpointKind
 import app.solstone.core.gate.SPL_GATE_DRIVER_CONTRACT_VERSION
 import app.solstone.core.identity.atomicWriteOwnerOnly
+import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.parseJson
@@ -75,6 +76,7 @@ internal fun checkpointFromProductionStatus(
 
 internal data class GateTelemetrySnapshot(
     val relayDials: Int,
+    val directDials: Int,
     val activeStreams: Int,
     val maxActiveStreams: Int,
     val consumedBytes: Int,
@@ -86,8 +88,9 @@ internal data class GateTelemetrySnapshot(
 
 internal class GateTelemetry(
     private val onResponseData: ((Int) -> Unit)? = null,
-) : PlStreamObserver, RelayDialObserver {
+) : PlStreamObserver, RelayDialObserver, DirectDialObserver {
     private val relayDials = AtomicInteger()
+    private val directDials = AtomicInteger()
     private val active = AtomicInteger()
     private val maxActive = AtomicInteger()
     private val consumed = AtomicInteger()
@@ -98,6 +101,10 @@ internal class GateTelemetry(
 
     override fun onRelayDialAttempt(attemptNumber: Int, host: String, port: Int) {
         relayDials.incrementAndGet()
+    }
+
+    override fun onDirectDialAttempt(host: String, port: Int) {
+        directDials.incrementAndGet()
     }
 
     override fun onStreamOpened(streamId: Int) {
@@ -118,7 +125,7 @@ internal class GateTelemetry(
     }
 
     fun snapshot() = GateTelemetrySnapshot(
-        relayDials.get(), active.get(), maxActive.get(), consumed.get(), opened.get(),
+        relayDials.get(), directDials.get(), active.get(), maxActive.get(), consumed.get(), opened.get(),
         terminated.get(), successful.get(), failed.get(),
     )
 }

@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class GateContractV3Test {
+class GateContractV4Test {
     @Test
     fun actionsAndSequencesAreExact() {
         assertEquals(
@@ -32,7 +32,7 @@ class GateContractV3Test {
     @Test
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
-            "gate_contract_version" to "3",
+            "gate_contract_version" to "4",
             "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
             "gate_action_sequence" to "1",
@@ -86,6 +86,8 @@ class GateContractV3Test {
     fun nestedFactGroupsMustBeObjects() {
         val fixture = g1ResultFixture()
 
+        assertTrue(GateResultVerifier.violations(fixture).isEmpty())
+
         listOf<Any?>(null, "not-an-object").forEach { reconciliation ->
             val malformed = fixture.copy(facts = fixture.facts + ("reconciliation" to reconciliation))
             assertEquals(listOf("invalid_reconciliation_facts"), GateResultVerifier.violations(malformed))
@@ -112,6 +114,18 @@ class GateContractV3Test {
         )
 
         assertEquals(listOf("invalid_local_lifecycle_facts"), GateResultVerifier.violations(stale))
+    }
+
+    @Test
+    fun g4RequiresTheTransportNeutralDialShape() {
+        val fixture = g4ResultFixture()
+
+        assertTrue(GateResultVerifier.violations(fixture).isEmpty())
+        val stale = fixture.copy(
+            facts = linkedMapOf("relay_origin" to "https://link.solstone.app", "elapsed_ms" to 1),
+        )
+
+        assertEquals(listOf("invalid_action_facts", "invalid_transport_facts"), GateResultVerifier.violations(stale))
     }
 
     private fun resultFixture(): GateResult {
@@ -172,9 +186,10 @@ class GateContractV3Test {
                 ),
                 "pair" to linkedMapOf(
                     "route" to "RELAY", "relay_origin" to "https://link.solstone.app",
+                    "endpoint_host" to null, "endpoint_port" to null,
                     "handshake_pinned" to true, "pair_http_status" to 200, "enroll_http_status" to 200,
                     "credential_persisted" to true, "paired_identity_persisted" to true,
-                    "device_token_persisted" to true,
+                    "device_token_persisted" to true, "client_cert_cid" to "sha256:" + "a".repeat(64),
                 ),
                 "authenticated_status" to 200,
                 "capture" to linkedMapOf(
@@ -245,6 +260,34 @@ class GateContractV3Test {
                     "raw_body_bytes" to 1_048_577, "raw_body_sha256" to "a".repeat(64),
                     "semantic_commitments_sha256" to "b".repeat(64),
                 ),
+            ),
+        )
+    }
+
+    private fun g4ResultFixture(): GateResult {
+        val probe = "20260729T120000Z-0123456789abcdef:g4:degraded"
+        return GateResult(
+            runNonce = "20260729T120000Z-0123456789abcdef",
+            action = GateAction.G4_DEGRADED_PROBE,
+            actionSequence = 4,
+            result = GateOutcome.PASS,
+            startedAt = "2026-07-29T12:00:00Z",
+            finishedAt = "2026-07-29T12:00:01Z",
+            ownerStatusCheckpoints = listOf(
+                GateCheckpoint(
+                    "g4_degraded", probe, PlCheckpointKind.PAIRED_UNREACHABLE,
+                    "network_denied", null, GateHttpResult(probe, true, false, null),
+                ),
+            ),
+            productionRelayDialAttempts = 0,
+            callerRetryAttempts = 0,
+            facts = linkedMapOf(
+                "transport" to linkedMapOf(
+                    "route" to "DIRECT", "relay_origin" to null,
+                    "endpoint_host" to "10.0.0.40", "endpoint_port" to 7657,
+                    "direct_dial_attempts" to 1,
+                ),
+                "elapsed_ms" to 1,
             ),
         )
     }

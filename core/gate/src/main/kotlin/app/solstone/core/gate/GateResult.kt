@@ -97,7 +97,7 @@ object GateResultVerifier {
                     "cut_after_partial", "interrupted_request", "local_lifecycle", "recovery",
                 )
             GateAction.G4_DEGRADED_PROBE, GateAction.G4_RECOVERY_PROBE ->
-                setOf("relay_origin", "elapsed_ms")
+                setOf("transport", "elapsed_ms")
         }
         if (value.facts.keys != expectedFactKeys) add("invalid_action_facts")
         when (value.action) {
@@ -106,9 +106,10 @@ object GateResultVerifier {
                     "credential_absent", "identity_absent", "endpoint_absent", "observer_handle_absent",
                 ), this)
                 requireNestedKeys(value.facts, "pair", setOf(
-                    "route", "relay_origin", "handshake_pinned", "pair_http_status",
+                    "route", "relay_origin", "endpoint_host", "endpoint_port",
+                    "handshake_pinned", "pair_http_status",
                     "enroll_http_status", "credential_persisted", "paired_identity_persisted",
-                    "device_token_persisted",
+                    "device_token_persisted", "client_cert_cid",
                 ), this)
                 requireNestedKeys(value.facts, "round_trip", setOf(
                     "sync_enqueued", "sync_work_state", "queue_state_after_sync", "actual_bytes",
@@ -138,6 +139,11 @@ object GateResultVerifier {
                     "semantic_commitments_sha256",
                 ), this)
             }
+            GateAction.G4_DEGRADED_PROBE, GateAction.G4_RECOVERY_PROBE ->
+                requireNestedKeys(value.facts, "transport", setOf(
+                    "route", "relay_origin", "endpoint_host", "endpoint_port",
+                    "direct_dial_attempts",
+                ), this)
             else -> Unit
         }
     }

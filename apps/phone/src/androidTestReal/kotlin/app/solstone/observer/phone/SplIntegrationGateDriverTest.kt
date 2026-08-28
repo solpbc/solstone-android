@@ -123,6 +123,8 @@ class SplIntegrationGateDriverTest {
                         linkedMapOf(
                             "route" to "RELAY",
                             "relay_origin" to identity.relayOrigin,
+                            "endpoint_host" to null,
+                            "endpoint_port" to null,
                             "device_token_persisted" to true,
                         )
                     }
@@ -134,6 +136,7 @@ class SplIntegrationGateDriverTest {
                         }
                         linkedMapOf(
                             "route" to "DIRECT",
+                            "relay_origin" to null,
                             "endpoint_host" to endpoint.host,
                             "endpoint_port" to endpoint.port,
                             "device_token_persisted" to false,
@@ -485,9 +488,28 @@ class SplIntegrationGateDriverTest {
             probeId(invocation, if (degraded) "degraded" else "recovered"),
             status,
         )
+        val snapshot = telemetry.snapshot()
+        val transport = identity.relayOrigin?.let { relayOrigin ->
+            linkedMapOf(
+                "route" to "RELAY",
+                "relay_origin" to relayOrigin,
+                "endpoint_host" to null,
+                "endpoint_port" to null,
+                "direct_dial_attempts" to snapshot.directDials,
+            )
+        } ?: run {
+            val endpoint = requireNotNull(stores.endpointStore.load()) { "direct_endpoint_absent" }
+            linkedMapOf(
+                "route" to "DIRECT",
+                "relay_origin" to null,
+                "endpoint_host" to endpoint.host,
+                "endpoint_port" to endpoint.port,
+                "direct_dial_attempts" to snapshot.directDials,
+            )
+        }
         return result(
-            invocation, startedAt, listOf(checkpoint), telemetry.snapshot().relayDials,
-            linkedMapOf("relay_origin" to identity.relayOrigin, "elapsed_ms" to elapsed),
+            invocation, startedAt, listOf(checkpoint), snapshot.relayDials,
+            linkedMapOf("transport" to transport, "elapsed_ms" to elapsed),
         )
     }
 
@@ -529,8 +551,7 @@ class SplIntegrationGateDriverTest {
                 "interrupted_local_cleanup_unproven",
                 "degraded_status_unproven",
                 "network_restore_unverified",
-                "old_session_identity_unavailable",
-                "new_session_identity_unavailable",
+                "recovery_stream_lifecycle_unproven",
             )
         return GateResult(
             runNonce = invocation.runNonce,
@@ -630,6 +651,7 @@ class SplIntegrationGateDriverTest {
             requireNotNull(stores.endpointStore.load()) { "direct_endpoint_absent" },
             credential,
             telemetry,
+            telemetry,
         )
         return client.use { client ->
             client.request(
@@ -679,7 +701,7 @@ class SplIntegrationGateDriverTest {
 
     private fun realStatusProbe(stores: SyncStores, telemetry: GateTelemetry) =
         RealPlStatusProbe(
-            stores.endpointStore, stores.credentialStore, stores.identityStore, telemetry, telemetry,
+            stores.endpointStore, stores.credentialStore, stores.identityStore, telemetry, telemetry, telemetry,
         )
 
     private fun requirePairedIdentity(stores: SyncStores) =
@@ -744,7 +766,8 @@ class SplIntegrationGateDriverTest {
                 "endpoint_absent" to false, "observer_handle_absent" to false,
             ),
             "pair" to linkedMapOf(
-                "route" to null, "relay_origin" to null, "handshake_pinned" to false,
+                "route" to null, "relay_origin" to null, "endpoint_host" to null,
+                "endpoint_port" to null, "handshake_pinned" to false,
                 "pair_http_status" to null, "enroll_http_status" to null,
                 "credential_persisted" to false, "paired_identity_persisted" to false,
                 "device_token_persisted" to false, "client_cert_cid" to null,
@@ -794,7 +817,13 @@ class SplIntegrationGateDriverTest {
             ),
         )
         GateAction.G4_DEGRADED_PROBE, GateAction.G4_RECOVERY_PROBE ->
-            linkedMapOf("relay_origin" to null, "elapsed_ms" to null)
+            linkedMapOf(
+                "transport" to linkedMapOf(
+                    "route" to null, "relay_origin" to null, "endpoint_host" to null,
+                    "endpoint_port" to null, "direct_dial_attempts" to 0,
+                ),
+                "elapsed_ms" to null,
+            )
     }
 
 }
