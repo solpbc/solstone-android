@@ -198,6 +198,11 @@ class SplIntegrationGateDriverTest {
                             "credential_persisted" to true,
                             "paired_identity_persisted" to true,
                             "device_token_persisted" to true,
+                            // The host-side receipt must bind the accepted segment to
+                            // this exact certificate, not to a mutable device label.
+                            // `RelayPairing` derives this fingerprint from the leaf
+                            // certificate after it verifies the pair response.
+                            "client_cert_cid" to identity.clientCertFingerprint,
                         ),
                         "authenticated_status" to authenticated.status,
                         "capture" to linkedMapOf(
@@ -714,7 +719,7 @@ class SplIntegrationGateDriverTest {
                 "route" to null, "relay_origin" to null, "handshake_pinned" to false,
                 "pair_http_status" to null, "enroll_http_status" to null,
                 "credential_persisted" to false, "paired_identity_persisted" to false,
-                "device_token_persisted" to false,
+                "device_token_persisted" to false, "client_cert_cid" to null,
             ),
             "authenticated_status" to null,
             "capture" to linkedMapOf(
