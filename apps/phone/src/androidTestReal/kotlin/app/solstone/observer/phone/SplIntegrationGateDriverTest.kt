@@ -572,7 +572,11 @@ class SplIntegrationGateDriverTest {
     }
 
     private fun gateErrorType(throwable: Throwable): String {
-        if (throwable is ReconcileUnavailableException && throwable.status == 200) {
+        if (throwable is ReconcileUnavailableException) {
+            val status = throwable.status
+            if (status != 200) {
+                return "segments_response_http_${status ?: "unavailable"}"
+            }
             return when (throwable.cause?.message) {
                 "segments response must be an object" -> "segments_response_not_envelope"
                 "segments response missing items" -> "segments_response_missing_items"
