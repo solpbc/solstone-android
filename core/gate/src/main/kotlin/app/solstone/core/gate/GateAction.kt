@@ -3,7 +3,7 @@
 
 package app.solstone.core.gate
 
-const val SPL_GATE_DRIVER_CONTRACT_VERSION = 4
+const val SPL_GATE_DRIVER_CONTRACT_VERSION = 5
 const val SPL_GATE_RESULT_SCHEMA_VERSION = 1
 
 enum class GateAction(
@@ -73,7 +73,8 @@ data class GateInvocation(
                 ?: return GateInvocationDecision.Invalid("unknown_action")
             val expectedKeys = COMMON_KEYS + when (action) {
                 GateAction.G1_PAIR_ROUND_TRIP -> emptySet()
-                GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
+                GateAction.G2_LARGE_RESPONSE -> setOf("gate_observer_day")
+                GateAction.G3_INTERRUPT_RECOVER ->
                     setOf(
                         "gate_observer_day", "gate_expected_body_bytes", "gate_expected_body_sha256",
                         "gate_expected_semantics_sha256",
@@ -100,7 +101,11 @@ data class GateInvocation(
             val semanticSha = digest("gate_expected_semantics_sha256")
             when (action) {
                 GateAction.G1_PAIR_ROUND_TRIP -> Unit
-                GateAction.G2_LARGE_RESPONSE, GateAction.G3_INTERRUPT_RECOVER ->
+                GateAction.G2_LARGE_RESPONSE ->
+                    if (day == null || !DAY.matches(day)) {
+                        return GateInvocationDecision.Invalid("invalid_observer_day")
+                    }
+                GateAction.G3_INTERRUPT_RECOVER ->
                     if (day == null || !DAY.matches(day) || bodyBytes == null || bodySha == null || semanticSha == null) {
                         return GateInvocationDecision.Invalid("invalid_response_commitment")
                     }

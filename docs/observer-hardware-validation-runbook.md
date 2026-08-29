@@ -165,10 +165,11 @@ populate the ingest envelope metadata.
 
 ## Phone realDebug SPL integration gate (G1–G5)
 
-This is the coordinator-owned contract-v1 live-relay gate, not part of `make ci-device`. Invoke it
-through `android_gate_coordinator.py`; the sole operator option is its absolute clean Android
-checkout. `GateAction` in `core/gate/src/main/kotlin/app/solstone/core/gate/GateAction.kt` is the
-Android action truth source. The coordinator supplies its exact wire names and sequences.
+This is the coordinator-owned contract-v5 physical gate, not part of `make ci-device`.
+`GateAction` in `core/gate/src/main/kotlin/app/solstone/core/gate/GateAction.kt` is the Android
+truth source; `android_gate_coordinator.py` supplies its exact action names and sequences against a
+clean checkout. It runs separately for the production relay/full-profile and paired direct/plain
+topologies.
 
 The fixed instrumentation identity is:
 
@@ -179,81 +180,43 @@ CLASS=app.solstone.observer.phone.SplIntegrationGateDriverTest
 COMPONENT=app.solstone.observer.phone.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-The coordinator atomically installs the mode-0600 G1 authority at the exact target-app path below.
-It contains exact contract-v1 correlation keys and the pair authority. The driver bounded-reads it
-once and deletes it before parsing or network work. Pair authority never appears in argv:
+Every invocation has `gate_contract_version=5`, `gate_action`, `gate_run_nonce`, and
+`gate_action_sequence`. G1 receives no argv authority: the coordinator writes it atomically to
+`files/solstone-android-gate/v2/pair-authority.json`, and the driver reads and deletes it before
+parsing or network work. G2 receives only `gate_observer_day`; its authenticated production listing
+response becomes the exact body and semantic commitments passed to G3 together with that day. No
+pair link, observer handle, token, credential, package, host, or raw response is an argument.
+
+G1 uses a visible 3-second audio capture, seals it locally, and uses normal app sync. The independent
+host corroboration reads the frozen journal's authorization ledger, certificate/source-bound stream,
+ingest manifest, and retained bytes; it does not stand in for the phone's capture or network path.
+G2 uses a run-owned disposable native durable fixture only to exercise a 1–2 MiB authenticated
+listing response. That fixture is not an ingest claim and is removed during cleanup.
+
+G3 atomically reports ordered progress at:
 
 ```bash
-files/solstone-android-gate/v1/pair-authority.json
+files/solstone-android-gate/v2/action-progress.json
 ```
 
-Every invocation uses only `class`, `gate_contract_version`, `gate_action`, `gate_run_nonce`, and
-`gate_action_sequence`, plus the action-specific non-secret commitments defined by `GateAction` and
-the coordinator contract. The command shape is:
-
-```bash
-adb shell am instrument -w \
-  -e class "$CLASS" \
-  -e gate_contract_version 1 \
-  -e gate_action "$ACTION" \
-  -e gate_run_nonce "$RUN_NONCE" \
-  -e gate_action_sequence "$SEQUENCE" \
-  "$COMPONENT"
-```
-
-G1 additionally supplies `gate_fixture_path`, `gate_observer_day`, `gate_segment`,
-`gate_expected_round_trip_bytes`, and `gate_expected_round_trip_sha256`. The path is a readable
-target-device WAV fixture; the two commitment arguments are its exact byte length and lowercase
-SHA-256. G2 and G3 additionally supply `gate_observer_day`,
-`gate_expected_body_bytes`, `gate_expected_body_sha256`, and
-`gate_expected_semantics_sha256`. All are independently derived by the coordinator's
-`gate_identity.py` and host snapshots. No pair link, observer handle, token, credential, origin,
-package, or host is an argument.
-
-For a run nonce matching `YYYYMMDDTHHMMSSZ-<16 lowercase hex>`, hostname derivation is exact:
-
-- `suffix` is characters `17:33`.
-- `observer_hostname` is `android-gate-<suffix>.test`.
-- G1 receives `gate_observer_day` and `gate_segment` explicitly and uses the supplied
-  `gate_fixture_path` bytes without a generated fallback.
-- `gate_expected_round_trip_bytes` and `gate_expected_round_trip_sha256` commit to that fixture.
-
-The driver derives the hostname independently and validates the supplied G1 fixture length and
-digest before consuming pair authority, constructing stores, probing status, or opening any socket.
-It uses the explicit day, segment, and fixture bytes for production ingest/reconciliation.
-
-G3 uses the exact atomic progress path below. The coordinator applies package denial only after
-`partial_response_consumed`, restores it only after `degraded_status_recorded`, and permits recovery
-after `network_restore_observed`. The Android driver does not toggle device radios or infer package
-policy from device-wide network validation: request failure is the cut observation, the denied
-production status probe must be named unreachable, and a bounded production status probe must
-return HTTP 200 before restoration is recorded:
-
-```bash
-files/solstone-android-gate/v1/action-progress.json
-```
+The coordinator applies package denial only after `partial_response_consumed`, restores it only after
+`degraded_status_recorded`, and permits recovery after `network_restore_observed`. The Android driver
+does not toggle device radios or infer package policy from device-wide validation. Request failure is
+the cut observation; the denied production status probe is explicitly unreachable; and a bounded
+production status probe must return HTTP 200 before restoration is recorded.
 
 The result is atomically replaced at:
 
 ```bash
 adb exec-out run-as "$APP" \
-  cat files/solstone-android-gate/v1/action-result.json > action-result.json
+  cat files/solstone-android-gate/v2/action-result.json > action-result.json
 ```
 
-Accept only the exact snake_case schema with contract version 1, current run nonce and action, and
-the exact next sequence. Malformed, stale, duplicate, future, or out-of-order evidence fails closed
-regardless of timestamps. The coordinator owns package-policy restoration and verifies both
-connectivity getters during cleanup. The app and instrumentation APKs must both contain the exact
+Accept only the exact snake_case schema with contract version 5, current run nonce, action, and
+sequence. Malformed, stale, duplicate, future, or out-of-order evidence fails closed regardless of
+timestamps. The coordinator owns package-policy restoration and verifies both connectivity getters
+during cleanup. Both app and instrumentation APKs must embed
 `assets/solstone-android-gate-build-receipt.json` bound to the clean checkout HEAD.
-
-For G1, `facts.pre_pair` proves empty persisted pairing state, including
-`observer_handle_absent`; `facts.pair` records relay pairing; and
-`facts.authenticated_status` records post-pair status. `facts.round_trip` is the local
-fixture-integrity check: the coordinator commitment is in `expected_bytes`/`expected_sha256` and
-the bytes read from `gate_fixture_path` are in `actual_bytes`/`actual_sha256`.
-`facts.reconciliation` is the separate server-derived proof with exactly `server_segment`,
-`server_name`, `submitted_name`, `matched_name`, `size`, `sha256`, and `status`; it is read from
-the parsed journal collection response.
 
 ## Cleanup
 

@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class GateContractV4Test {
+class GateContractV5Test {
     @Test
     fun actionsAndSequencesAreExact() {
         assertEquals(
@@ -32,7 +32,7 @@ class GateContractV4Test {
     @Test
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
-            "gate_contract_version" to "4",
+            "gate_contract_version" to "5",
             "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
             "gate_action_sequence" to "1",
@@ -44,6 +44,34 @@ class GateContractV4Test {
         )
         assertIs<GateInvocationDecision.Invalid>(
             GateInvocation.decide(valid + ("gate_action_sequence" to "5")),
+        )
+    }
+
+    @Test
+    fun g2AcceptsOnlyItsRunBoundDayWhileG3RequiresTheObservedResponseCommitment() {
+        val common = mapOf(
+            "gate_contract_version" to "5",
+            "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
+        )
+        val g2 = common + mapOf(
+            "gate_action" to "g2_large_response",
+            "gate_action_sequence" to "2",
+            "gate_observer_day" to "20260729",
+        )
+        assertIs<GateInvocationDecision.Run>(GateInvocation.decide(g2))
+        assertIs<GateInvocationDecision.Invalid>(
+            GateInvocation.decide(g2 + ("gate_expected_body_bytes" to "1048577")),
+        )
+        val g3 = g2 - "gate_action" - "gate_action_sequence" + mapOf(
+            "gate_action" to "g3_interrupt_recover",
+            "gate_action_sequence" to "3",
+            "gate_expected_body_bytes" to "1048577",
+            "gate_expected_body_sha256" to "a".repeat(64),
+            "gate_expected_semantics_sha256" to "b".repeat(64),
+        )
+        assertIs<GateInvocationDecision.Run>(GateInvocation.decide(g3))
+        assertIs<GateInvocationDecision.Invalid>(
+            GateInvocation.decide(g3 - "gate_expected_semantics_sha256"),
         )
     }
 
