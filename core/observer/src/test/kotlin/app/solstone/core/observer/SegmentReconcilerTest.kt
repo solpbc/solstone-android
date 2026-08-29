@@ -7,6 +7,7 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.HttpResponse
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -183,6 +184,40 @@ class SegmentReconcilerTest {
                 SegmentReconciler(RecordingPlHttpClient(response)).fetch("20260616")
             }
         }
+    }
+
+    @Test
+    fun parseFetchResponseAcceptsProductionEnvelopeBeyondInitialReceiveWindow() {
+        val itemCount = 7_000
+        val body = buildString {
+            append("{\"protocol_version\":3,\"total\":")
+            append(itemCount)
+            append(",\"items\":[")
+            repeat(itemCount) { index ->
+                if (index > 0) append(',')
+                val seconds = index % 86_400
+                append("{\"key\":\"")
+                append("%02d%02d%02d_%d".format(Locale.ROOT,
+                    seconds / 3_600,
+                    (seconds % 3_600) / 60,
+                    seconds % 60,
+                    10_000 + index,
+                ))
+                append("\",\"observed\":false,\"files\":[{\"name\":\"fixture.bin\",\"size\":40,\"sha256\":\"")
+                append(SHA_A)
+                append("\",\"status\":\"present\"}]}")
+            }
+            append("]}")
+        }.toByteArray()
+        require(body.size > 1 * 1024 * 1024)
+        require(body.size < 2 * 1024 * 1024)
+
+        val parsed = SegmentReconciler(RecordingPlHttpClient(HttpResponse(200, emptyMap(), body)))
+            .fetch("20260616")
+
+        assertEquals(itemCount, parsed.size)
+        assertEquals("000000_10000", parsed.first().key)
+        assertEquals("015639_16999", parsed.last().key)
     }
 
     @Test
