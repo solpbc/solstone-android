@@ -455,7 +455,12 @@ class SplIntegrationGateDriverTest {
     private fun awaitRestoredProductionStatus(stores: SyncStores): GateTelemetry {
         val telemetry = GateTelemetry()
         val started = android.os.SystemClock.elapsedRealtime()
-        repeat(2) { attempt ->
+        while (true) {
+            val remainingBeforeProbe = GATE_STAGE_TIMEOUT_MS -
+                (android.os.SystemClock.elapsedRealtime() - started)
+            if (remainingBeforeProbe <= 0L) {
+                error("network_restore_unverified")
+            }
             val status = realStatusProbe(stores, telemetry).probe()
             if (status is app.solstone.observer.harness.HarnessPlStatus.Reachable &&
                 status.status == 200
@@ -464,12 +469,11 @@ class SplIntegrationGateDriverTest {
             }
             val elapsed = android.os.SystemClock.elapsedRealtime() - started
             val remaining = GATE_STAGE_TIMEOUT_MS - elapsed
-            if (attempt == 1 || remaining < 30_250L) {
+            if (remaining <= 0L) {
                 error("network_restore_unverified")
             }
-            Thread.sleep(250L)
+            Thread.sleep(minOf(250L, remaining))
         }
-        error("network_restore_unverified")
     }
 
     private fun runStatusAction(
