@@ -12,6 +12,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 
+/**
+ * The journal pill's slot at the bottom of home.
+ *
+ * The shell owns the placement; what it holds is [PhoneJournalMarkPill], passed in by
+ * the screen. ⚠ The slot defaulted to nothing *and the screen passed nothing*, which is
+ * how home ended up with a 48dp invisible box where § 3 puts "a journal pill floating
+ * at the bottom".
+ */
 @Composable
 fun PhoneJournalPill(
     modifier: Modifier = Modifier,

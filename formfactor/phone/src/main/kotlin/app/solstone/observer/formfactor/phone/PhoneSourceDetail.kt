@@ -4,13 +4,15 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -24,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.SourceStatus
@@ -85,7 +88,9 @@ internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reas
         retryHonest = false,
     )
     ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailRule(
-        diagnosis = "open sol to resume observing",
+        // `sol` retired as a product name 2026-08-19. mobile-shell.md section 5.6
+        // scoped this exact substitution and left it pending; landing it here.
+        diagnosis = "open solstone to resume observing",
         action = null,
         retryHonest = false,
     )
@@ -113,6 +118,22 @@ internal fun resolveSourceDetailReason(
     else -> ReasonCode.NONE
 }
 
+/**
+ * `source detail` (§ 3): **verdict → plain-language reason → one action → the facts**,
+ * then `give this a tile on home`.
+ *
+ * ⚠ **The facts block restated the two lines above it.** It rendered the source's own
+ * label and its wish word — so a screen already titled `audio`, already leading with
+ * `on`, ended with `audio` / `on` again. That is the same defect class as iOS's tile
+ * rendering "off / off": a line that repeats the line above it is noise, and here it
+ * was the whole facts section. The facts now say what the verdict cannot — what the
+ * owner asked for, which is a different thing from what the source is doing, and § 5.1
+ * is explicit that collapsing intent and state tells an owner they made a choice they
+ * did not make.
+ *
+ * ⚠ **The source's own switch was missing here entirely.** A source hidden from home
+ * had no reachable control anywhere in the app; this is the view § 3 calls "a way in".
+ */
 @Composable
 internal fun PhoneSourceDetail(
     loadState: LoadState<SourcesReadModel>,
@@ -121,20 +142,31 @@ internal fun PhoneSourceDetail(
     onStartObserving: () -> Unit,
     onConnectJournal: () -> Unit,
     modifier: Modifier = Modifier,
+    onToggle: (SourceWish) -> Unit = {},
 ) {
     val readModel = (loadState as? LoadState.Loaded)?.value
-    Column(modifier = modifier.fillMaxSize()) {
+    val paired = readModel?.observer?.reason != ReasonCode.UNPAIRED
+    PhonePaneScaffold(modifier) {
         readModel?.let { model ->
             model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->
                 SourceDetailTemplate(
                     status = status,
                     reason = resolveSourceDetailReason(status, model.observer),
+                    paired = paired,
                     onStartObserving = onStartObserving,
                     onConnectJournal = onConnectJournal,
+                    onToggle = onToggle,
                 )
             }
         }
-        HomeTileControl(sourceId = sourceId, homeTileStore = homeTileStore)
+        PaneSectionTitle("on home")
+        PaneCard {
+            HomeTileControl(sourceId = sourceId, homeTileStore = homeTileStore)
+        }
+        PaneNote(
+            "taking a tile off home does not turn the source off. " +
+                "it just keeps home to what you actually look at.",
+        )
     }
 }
 
@@ -142,27 +174,54 @@ internal fun PhoneSourceDetail(
 private fun SourceDetailTemplate(
     status: SourceStatus,
     reason: ReasonCode,
+    paired: Boolean,
     onStartObserving: () -> Unit,
     onConnectJournal: () -> Unit,
+    onToggle: (SourceWish) -> Unit,
 ) {
     val rule = sourceDetailRule(reason)
-    Text(
-        text = sourceStateCopy(status.state),
+    val subLine = sourceSubLine(status, paired)
+    Spacer(Modifier.height(ShellMetrics.sectionGap))
+    // The verdict: the state, said once, in the words the deck tile used.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp)
             .testTag(VERDICT_TEST_TAG),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhoneTileDot(status.state)
+        Text(
+            text = sourceStateCopy(status.state),
+            style = MaterialTheme.typography.headlineSmall,
+            color = if (status.state == SourceState.NEEDS_ATTENTION) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onBackground
+            },
+            modifier = Modifier.padding(start = 10.dp),
+        )
+    }
+    if (subLine != null && subLine != rule.diagnosis) {
+        Text(
+            text = subLine,
+            style = MaterialTheme.typography.bodyMedium,
+            color = shellSecondaryInk,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
     rule.diagnosis?.let { diagnosis ->
         Text(
             text = diagnosis,
+            style = MaterialTheme.typography.bodyMedium,
+            color = shellSecondaryInk,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(top = 4.dp)
                 .testTag(REASON_TEST_TAG),
         )
     }
     rule.action?.let { action ->
+        Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         SourceDetailActionControl(
             action = action,
             retryHonest = rule.retryHonest,
@@ -170,14 +229,47 @@ private fun SourceDetailTemplate(
             onConnectJournal = onConnectJournal,
         )
     }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp)
-            .testTag(FACTS_TEST_TAG),
-    ) {
-        Text(text = sourceLabel(status.sourceId))
-        Text(text = sourceWishCopy(status.wish))
+    if (sourceEarnsSwitch(status.sourceId)) {
+        // ⛔ No section heading here: the app bar already names the source, and a
+        // heading repeating it is the same restating-the-line-above defect this pane's
+        // facts block carried.
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
+        PaneCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = ShellMetrics.rowMinHeight)
+                    .padding(horizontal = ShellMetrics.surfacePadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "taking it in",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Switch(
+                        checked = status.wish == SourceWish.On,
+                        onCheckedChange = { checked ->
+                            onToggle(if (checked) SourceWish.On else SourceWish.Off)
+                        },
+                        modifier = Modifier.testTag(SOURCE_SWITCH_TEST_TAG),
+                    )
+                }
+            }
+        }
+    }
+    // The facts. ⛔ Not the label and not the state word — both are already on screen.
+    PaneSectionTitle("details")
+    PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
+        PaneFactRow(label = "you asked for", value = sourceWishCopy(status.wish))
+        PaneRowDivider()
+        PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
     }
 }
 
@@ -195,7 +287,6 @@ private fun SourceDetailActionControl(
         enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp)
             .testTag(ACTION_TEST_TAG),
     ) {
         Text(action.label)
@@ -210,11 +301,13 @@ private fun HomeTileControl(sourceId: String, homeTileStore: PhoneHomeTileStore)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp),
+            .heightIn(min = ShellMetrics.rowMinHeight)
+            .padding(horizontal = ShellMetrics.surfacePadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "give this a tile on home",
+            style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )
         Box(
@@ -223,7 +316,6 @@ private fun HomeTileControl(sourceId: String, homeTileStore: PhoneHomeTileStore)
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
             contentAlignment = Alignment.Center,
         ) {
-            // This state affordance will be replaced when the ruled glyph pair arrives.
             Switch(
                 checked = hasTile,
                 onCheckedChange = { checked ->
@@ -241,3 +333,4 @@ internal const val REASON_TEST_TAG = "sourceDetailReason"
 internal const val ACTION_TEST_TAG = "sourceDetailAction"
 internal const val FACTS_TEST_TAG = "sourceDetailFacts"
 internal const val HOME_TILE_CONTROL_TEST_TAG = "sourceDetailHomeTile"
+internal const val SOURCE_SWITCH_TEST_TAG = "sourceDetailSwitch"

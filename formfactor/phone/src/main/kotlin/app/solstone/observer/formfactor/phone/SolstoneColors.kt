@@ -45,6 +45,31 @@ object SolstoneColors {
     /** Dark surfaceBright and raised containers. */
     val surfaceDarkLift = Color(0xFF2E2E2E)
 
+    /**
+     * The dark GROUND, and the surface that sits on it. Warm, not grey.
+     *
+     * `mobile-shell.md` section 2.6: "the ground is warm in both appearances -- sol
+     * cream by day, a warm near-black by night." [surfaceDark] and [surfaceDarkLift]
+     * are pure neutral greys (R=G=B), so the whole dark shell read as a competent
+     * generic Android app -- which is the same defect iOS shipped from
+     * `systemGroupedBackground`, arrived at by a different route.
+     *
+     * These are USAGE values, not identity: [surfaceDark] is a CMO brand seed and is
+     * unchanged, and it stays the ink on light grounds, where it belongs. Same split
+     * iOS made -- `Colors.swift` keeps the seeds, `DeckStyle.swift` owns the ground --
+     * and the same two values it landed on, so the two platforms' dark grounds match.
+     *
+     * Both are DARKER than the greys they replace, so every white-ink contrast ratio
+     * moves up rather than down.
+     */
+    val darkGround = Color(0xFF121010)
+
+    /** A tile, a card, a grouped row on the dark ground. Warm sibling of [surfaceDarkLift]. */
+    val darkSurface = Color(0xFF201D19)
+
+    /** One step above [darkSurface]: a raised container, a bright surface. */
+    val darkSurfaceRaised = Color(0xFF2B2721)
+
     /** Light error / onErrorContainer. Error cannot be brand orange. */
     val errorRed = Color(0xFFB3261E)
 
@@ -75,6 +100,39 @@ object SolstoneColors {
     /** Status-on green, dark high. */
     val statusOnGreenDarkHigh = Color(0xFF00A434)
 
+    // -- journal-mark values --------------------------------------------------
+    // NOT theme colours, and deliberately non-adapting. `journal-mark.md` is a locked
+    // cross-platform contract whose whole premise is that the mark renders identically
+    // on web, iOS, Android, macOS and Windows, so an owner can match the mark their
+    // device shows against the one their journal shows. They live in this object
+    // because this module allows exactly one home for a colour literal, not because
+    // they belong to the scheme -- and they stay out of `palette` for the same reason.
+
+    /**
+     * `journal-mark.md` section 4.3 -- the generic mark's upright chip, dashed.
+     *
+     * This is `#E8923A` and [solOrange] is `#E8913A`. Both are documented as "sol
+     * orange": sections 4.3 and 8.5 of the mark spec give this value, CMO's brand seed
+     * gives the other. One green-channel unit apart and visually identical, so neither
+     * surface has ever looked wrong -- but two canon documents disagree about one brand
+     * value, and the mark's contract is the one whose premise is "pixel-for-pixel". The
+     * mark spec's own value is used here; the discrepancy is raised to CMO/VPX rather
+     * than silently resolved inside an implementation file.
+     */
+    val markGenericChipOne = Color(0xFFE8923A)
+
+    /** `journal-mark.md` section 4.3 -- the generic mark's 45 degree chip: mark-palette gold. */
+    val markGenericChipTwo = Color(0xFFD4A017)
+
+    /** `journal-mark.md` section 2.2 -- `mark.words.sep`, the middot's muted warm ink. */
+    val markMiddotInk = Color(0xFF6E6453)
+
+    /** `journal-mark.md` section 3 -- `mark.card.fill`, fixed warm-bright in every appearance. */
+    val markCardFill = Color(0xFFFFFDF9)
+
+    /** `journal-mark.md` section 3 -- `mark.card.border`, the warm hairline. */
+    val markCardBorder = Color(0xFFE7D8C6)
+
     val palette: Set<Color>
         get() = setOf(
             solOrange,
@@ -88,6 +146,9 @@ object SolstoneColors {
             surfaceWhite,
             surfaceBlack,
             surfaceDarkLift,
+            darkGround,
+            darkSurface,
+            darkSurfaceRaised,
             errorRed,
             errorPink,
             errorContainerLight,

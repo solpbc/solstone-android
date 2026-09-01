@@ -44,6 +44,9 @@ internal fun PhoneDetailPane(
     onOpenSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     leadingSlot: (@Composable () -> Unit)? = null,
+    version: String = "",
+    isOnHome: (String) -> Boolean = { true },
+    onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
     Column(modifier.fillMaxSize()) {
         leadingSlot?.let { slot ->
@@ -59,6 +62,9 @@ internal fun PhoneDetailPane(
             onConnectJournal = onConnectJournal,
             onOpenLicences = onOpenLicences,
             onOpenSource = onOpenSource,
+            version = version,
+            isOnHome = isOnHome,
+            onToggle = onToggle,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -77,6 +83,9 @@ private fun PhoneDetailContent(
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
     modifier: Modifier,
+    version: String = "",
+    isOnHome: (String) -> Boolean = { true },
+    onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
     when (top) {
         null -> Box(
@@ -86,22 +95,32 @@ private fun PhoneDetailContent(
         )
         PhoneRoute.AboutSolstone -> PhoneAboutPane(
             onOpenLicences = onOpenLicences,
+            version = version,
             modifier = modifier,
         )
         PhoneRoute.Licences -> PhoneLicencesPane(modifier = modifier)
         PhoneRoute.Import -> PhoneImportPane(modifier = modifier)
         PhoneRoute.AddMore -> PhoneAddMorePane(
             onOpenSource = onOpenSource,
+            isOnHome = isOnHome,
             modifier = modifier,
         )
+        PhoneRoute.YourJournal -> PhoneYourJournalPane(
+            onConnectJournal = onConnectJournal,
+            modifier = modifier,
+        )
+        PhoneRoute.ThisDevice -> PhoneThisDevicePane(
+            version = version,
+            modifier = modifier,
+        )
+        PhoneRoute.Notifications -> PhoneNotificationsPane(modifier = modifier)
+        PhoneRoute.Help -> PhoneHelpPane(modifier = modifier)
+        // Deliberately unimplemented placeholder routes, kept for the navigation
+        // tests. They are the only surfaces allowed to expose an identifier.
         PhoneRoute.RouteA,
         PhoneRoute.RouteB,
         PhoneRoute.RouteC,
-        PhoneRoute.RouteCChild,
-        PhoneRoute.YourJournal,
-        PhoneRoute.ThisDevice,
-        PhoneRoute.Notifications,
-        PhoneRoute.Help -> {
+        PhoneRoute.RouteCChild -> {
             Box(
                 modifier
                     .fillMaxSize()
@@ -119,6 +138,7 @@ private fun PhoneDetailContent(
                 homeTileStore = homeTileStore,
                 onStartObserving = onStartObserving,
                 onConnectJournal = onConnectJournal,
+                onToggle = { wish -> onToggle(top.sourceId, wish) },
             )
         }
     }

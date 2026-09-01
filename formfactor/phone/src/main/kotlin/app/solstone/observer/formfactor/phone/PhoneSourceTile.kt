@@ -6,19 +6,25 @@ package app.solstone.observer.formfactor.phone
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -31,8 +37,23 @@ import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 
-private val PHONE_SOURCE_TILE_INLINE_MIN_WIDTH = 224.dp
-
+/**
+ * The deck tile — a real surface, not four lines of text on the ground.
+ *
+ * ⚠ **The previous tile had no container at all.** It was a bare `Column` with 12dp of
+ * padding: no background, no shape, no border, no height. That is why the deck read as
+ * loose text rather than as a grid, why rows had wildly different heights, and why
+ * `import` and a source were visually indistinguishable. Every fix below is at that
+ * cause rather than at the symptom.
+ *
+ * Composition matches the approved mock and the iOS tile it is a sibling of: the
+ * source's glyph and its control share the top line, then the name in the brand face,
+ * then the state (dot + word), then the state's own sub-line.
+ *
+ * 🔴 **Every tile fills its row** ([Modifier.fillMaxHeight] inside the grid's row), so
+ * a row is one band rather than differently-sized cards top-aligned against each
+ * other. That, plus a fixed column count, is what makes the deck a grid.
+ */
 @Composable
 fun PhoneSourceTile(
     status: SourceStatus,
@@ -41,14 +62,15 @@ fun PhoneSourceTile(
     onOpen: () -> Unit,
     onToggle: (SourceWish) -> Unit,
     modifier: Modifier = Modifier,
+    paired: Boolean = false,
 ) {
     val label = sourceLabel(status.sourceId)
     val stateCopy = sourceStateCopy(status.state)
     val earnsSwitch = sourceEarnsSwitch(status.sourceId)
     val wishOn = status.wish == SourceWish.On
-    BoxWithConstraints(
-        modifier
-            .fillMaxWidth()
+    val subLine = sourceSubLine(status, paired)
+    PhoneTileSurface(
+        modifier = modifier
             .testTag("sourceTile-${status.sourceId}")
             .clearAndSetSemantics {
                 stateDescription = "$label $stateCopy"
@@ -65,104 +87,126 @@ fun PhoneSourceTile(
                     }
                 }
             },
+        onClick = onOpen,
+        bodyTestTag = "sourceBody-${status.sourceId}",
     ) {
-        if (maxWidth < PHONE_SOURCE_TILE_INLINE_MIN_WIDTH) {
-            Column {
-                PhoneSourceBody(
-                    label = label,
-                    state = status.state,
-                    stateCopy = stateCopy,
-                    onOpen = onOpen,
-                    sourceId = status.sourceId,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (earnsSwitch) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        PhoneSourceSwitch(
-                            sourceId = status.sourceId,
-                            wishOn = wishOn,
-                            onToggle = onToggle,
-                        )
-                    }
-                }
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PhoneSourceBody(
-                    label = label,
-                    state = status.state,
-                    stateCopy = stateCopy,
-                    onOpen = onOpen,
-                    sourceId = status.sourceId,
-                    modifier = Modifier.weight(1f),
-                )
-                if (earnsSwitch) {
-                    PhoneSourceSwitch(
-                        sourceId = status.sourceId,
-                        wishOn = wishOn,
-                        onToggle = onToggle,
+        // Glyph and control share the top line. The switch keeps its own 48dp target
+        // at the tile's trailing edge; the previous layout dropped it onto a row of
+        // its own *below* the body, which is most of why a source tile stood half
+        // again as tall as the `import` tile beside it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (earnsSwitch) 48.dp else 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Icon(
+                painter = painterResource(sourceGlyph(status.sourceId)),
+                contentDescription = null,
+                // The glyph carries the state's warmth: brand ink while the source is
+                // running, the error ink when it needs attention, quiet otherwise. The
+                // approved mock does the same, and it means the tile reads on/off from
+                // across the room before any word is read.
+                tint = when (status.state) {
+                    SourceState.ON -> MaterialTheme.colorScheme.onSurfaceVariant
+                    SourceState.NEEDS_ATTENTION -> MaterialTheme.colorScheme.error
+                    else -> shellSecondaryInk
+                },
+                modifier = Modifier.size(22.dp),
+            )
+            if (earnsSwitch) {
+                Box(
+                    Modifier
+                        .minimumInteractiveComponentSize()
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .semantics(mergeDescendants = true) {}
+                        .testTag("sourceSwitch-${status.sourceId}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Switch(
+                        checked = wishOn,
+                        onCheckedChange = { checked ->
+                            onToggle(if (checked) SourceWish.On else SourceWish.Off)
+                        },
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PhoneSourceBody(
-    label: String,
-    state: SourceState,
-    stateCopy: String,
-    onOpen: () -> Unit,
-    sourceId: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier
-            .clickable { onOpen() }
-            .padding(12.dp)
-            .testTag("sourceBody-$sourceId"),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.testTag("sourceLabel-$sourceId"),
-        ) {
-            PhoneTileDot(state)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            softWrap = false,
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .testTag("sourceLabel-${status.sourceId}"),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PhoneTileDot(status.state)
             Text(
-                text = label,
+                text = stateCopy,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (status.state == SourceState.NEEDS_ATTENTION) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 modifier = Modifier.padding(start = 8.dp),
-                softWrap = false,
             )
         }
-        Text(text = stateCopy)
-        if (state == SourceState.OFF) {
-            Text(text = "turn it on any time.")
+        if (subLine != null) {
+            Text(
+                text = subLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = shellSecondaryInk,
+                maxLines = 3,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
 
+/**
+ * The one tile container.
+ *
+ * `import` and `add more` use it too, so a destination tile and a source tile are the
+ * same object with different contents — which is what § 2.1's parity rule (an even
+ * grid that must not promote one thing over another) actually requires. ⛔ Do not add
+ * a second tile surface for a new kind of tile; that is how two drawings of one object
+ * drift, which is exactly what happened to the journal mark on iOS.
+ */
 @Composable
-private fun PhoneSourceSwitch(
-    sourceId: String,
-    wishOn: Boolean,
-    onToggle: (SourceWish) -> Unit,
+internal fun PhoneTileSurface(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    bodyTestTag: String? = null,
+    dashed: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    Box(
-        Modifier
-            .minimumInteractiveComponentSize()
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .semantics(mergeDescendants = true) {}
-            .testTag("sourceSwitch-$sourceId"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Switch(
-            checked = wishOn,
-            onCheckedChange = { checked ->
-                onToggle(if (checked) SourceWish.On else SourceWish.Off)
-            },
-        )
-    }
+    val hairline = shellHairline
+    val surface = shellSurface
+    Column(
+        modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .heightIn(
+                min = if (dashed) ShellMetrics.utilTileMinHeight else ShellMetrics.tileMinHeight,
+            )
+            .then(
+                if (dashed) {
+                    Modifier.shellDashedSurface(hairline, ShellMetrics.tileRadius)
+                } else {
+                    Modifier.shellSurface(surface, hairline, ShellMetrics.tileShape)
+                },
+            )
+            .clickable(onClick = onClick)
+            .padding(ShellMetrics.tilePadding)
+            .then(if (bodyTestTag != null) Modifier.testTag(bodyTestTag) else Modifier),
+        // ⚠ A rhythm, not a height. `PhoneDeckSourceCheckTest` forbids any fixed
+        // height in a tile so the tile always grows with the owner's text size, and an
+        // arrangement satisfies that by construction rather than by review.
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        content = content,
+    )
 }

@@ -17,7 +17,14 @@ internal class SharedPreferencesPhoneHomeTileStore(
 ) : PhoneHomeTileStore {
     private val preferences = context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
 
-    override fun hasTile(sourceId: String): Boolean = preferences.getBoolean(key(sourceId), false)
+    /**
+     * ⚠ **Defaults to true.** A source the owner has is on home until they hide it —
+     * `give this a tile on home` is a visibility control, and § 5 is explicit that
+     * hiding never turns a source off. The default was `false` while nothing read this
+     * store, so flipping the deck to honour it on a `false` default would have shipped
+     * an empty deck.
+     */
+    override fun hasTile(sourceId: String): Boolean = preferences.getBoolean(key(sourceId), true)
 
     override fun setHasTile(sourceId: String, hasTile: Boolean) {
         preferences.edit().putBoolean(key(sourceId), hasTile).apply()

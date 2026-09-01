@@ -25,7 +25,15 @@ fun PhoneTheme(variant: ThemeVariant, content: @Composable () -> Unit) {
     val scheme = SolstoneColorSchemes.scheme(variant)
     ApplySystemBarPolarity(variant)
     CompositionLocalProvider(LocalStatusOnGreen provides statusOnGreen(variant)) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        // The type pairing is applied here, at the one theme every surface passes
+        // through, for the same reason iOS applies its ground at the single shell
+        // destination container: a pane added later cannot then quietly arrive in the
+        // platform default face.
+        MaterialTheme(
+            colorScheme = scheme,
+            typography = solstoneTypography(),
+            content = content,
+        )
     }
 }
 

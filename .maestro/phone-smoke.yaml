@@ -1,68 +1,136 @@
-# Real-hardware human-usability gate for the sol phone observer.
+# Real-hardware human-usability gate for the solstone phone app.
 #
 # This is the gate that would have stopped solstone-android 0.2.0 from reaching a paid contract
 # tester with a screen he physically could not use. It runs against the RELEASE APK — the exact
 # artifact `make dist-phone` ships — on the Galaxy A36 (API 36, matching targetSdk 36).
 #
 # It asserts REACHABILITY, not pixels. Maestro drives the real accessibility tree: if a control is
-# hidden behind the status bar, drawn under an ActionBar, or off-screen with nothing to scroll,
+# hidden behind the status bar, drawn under an app bar, or off-screen with nothing to scroll,
 # tapping it fails here — which is exactly what happened to the tester.
+#
+# RETARGETED 2026-09-01 (VPX Android design pass). It drove the old `ObserverActivity` harness menu
+# — "Permissions", "Scan pair QR", "PL status probe". Commit e5acda1 (2026-08-25) moved MAIN/LAUNCHER
+# to PhoneShellActivity and did not update this flow, so `launchApp` had been opening the shell and
+# asserting on a menu that is no longer reachable from it. The gate had been RED since that commit,
+# and because `dist-phone` hard-depends on it with no bypass, no phone build could be distributed at
+# all. A gate asserting a screen the owner cannot reach is not a weaker gate, it is a stopped one.
+#
+# What it walks now is the shell an owner actually opens: every deck tile, the status pane, all five
+# shelf panes, and the deepest control on each. Same guarantee, current surface.
 appId: app.solstone.observer.phone
 ---
-- launchApp:
-    clearState: true
+# No `clearState`. `make hitl-phone` uninstalls and reinstalls with `-g` immediately before
+# this runs, so the app is already clean AND holds its runtime permissions; `clearState` would
+# revoke them mid-gate and put every source into needs-attention, testing a state the gate is
+# not for.
+- launchApp
 
-# --- The menu. All six items, every one of them actually tappable. ---
-# 0.2.0 hid "Permissions" and "Scan pair QR" behind the top bar entirely, and the menu was shorter
-# than the viewport so there was nothing to scroll. Asserting visibility is the whole point.
-- assertVisible: "Permissions"
-- assertVisible: "Scan pair QR"
-- assertVisible: "PL status probe"
-- assertVisible: "Start/stop observing"
-- assertVisible: 'Status \+ queue/sync'
-- assertVisible: 'Evidence \+ export'
-- takeScreenshot: artifacts/hitl/menu
+# --- The deck. Both destinations, the journal pill, the status pill. ---
+# The deck's sources load asynchronously, so the first assertion waits rather than racing the
+# first frame.
+- extendedWaitUntil:
+    visible: "import"
+    timeout: 15000
+- assertVisible: "add more"
+- assertVisible: "photos and files"
+- assertVisible: "sources and devices"
+- assertVisible: "connect a journal"
+- assertVisible: "not paired"
+- takeScreenshot: artifacts/hitl/home
 
-# --- Every submenu opens, shows its readout, and system back returns to the menu. ---
-# The readout renders FIRST on each screen — it was rendering into the band the top bar covered,
-# which is why the tester reported "most of the menus appear empty".
+# --- The status pane opens from its pill and can be dismissed. ---
+# The pane is a popup anchored under the pill; it had been rendering off the top of the screen,
+# over the app bar, which is precisely the class of defect this gate exists to catch.
+- tapOn: "not paired"
+- assertVisible: "status"
+- takeScreenshot: artifacts/hitl/status
+- tapOn:
+    point: "50%,88%"
+- assertVisible: "import"
 
-- tapOn: "Permissions"
-- assertVisible: "Request permissions"
-- takeScreenshot: artifacts/hitl/permissions
+# --- import: three availability rows, none of them pretending to be tappable. ---
+- tapOn: "import"
+- assertVisible: "photos"
+- assertVisible: "files"
+- assertVisible: "recently imported"
+- takeScreenshot: artifacts/hitl/import
 - pressKey: Back
-- assertVisible: "Permissions"
+- assertVisible: "add more"
 
-- tapOn: "PL status probe"
-- assertVisible: "Probe"
-- takeScreenshot: artifacts/hitl/pl-status-probe
-- pressKey: Back
-- assertVisible: "PL status probe"
+# --- add more: the not-on-home / already-on-home split, and every row opens a source. ---
+# A deck tile is NOT reachable by name here, deliberately: a source tile clears its semantics
+# and publishes the source only as a state description, so no text selector can see it. That is
+# a real question for the next accessibility pass and is recorded in this arc's outcome; the
+# gate routes through `add more`, whose rows are ordinary labelled list items.
+- tapOn: "add more"
+- assertVisible: "already on home"
+- assertVisible: "audio"
+- assertVisible: "location"
+- assertVisible: "camera"
+- takeScreenshot: artifacts/hitl/add-more
 
-- tapOn: "Start/stop observing"
-- assertVisible: "Start"
-- assertVisible: "Stop"
-- takeScreenshot: artifacts/hitl/start-stop
+# --- A source's own view. `give this a tile on home` is the LAST control on the screen,
+#     so asserting it proves the whole pane is reachable, not just its top. ---
+- tapOn: "audio"
+- assertVisible: "taking it in"
+- assertVisible: "give this a tile on home"
+- takeScreenshot: artifacts/hitl/source-audio
 - pressKey: Back
-- assertVisible: "Start/stop observing"
+- assertVisible: "import"
 
-# --- "Sync now" while unpaired must say so, not fail silently. ---
-- tapOn: 'Status \+ queue/sync'
-- assertVisible: "Refresh"
-- assertVisible: "Sync now"
-- tapOn: "Sync now"
-- assertVisible:
-    text: ".*Not paired.*"
-    enabled: true
-- takeScreenshot: artifacts/hitl/status-queue-sync-unpaired
-- pressKey: Back
-- assertVisible: 'Status \+ queue/sync'
+# --- The shelf, and every pane behind it. Four of these five opened a blank screen
+#     before this pass; each assertion below names something that pane now actually holds. ---
+- tapOn:
+    point: "6%,7%"
+- assertVisible: "your journal"
+- assertVisible: "this device"
+- assertVisible: "notifications"
+- assertVisible: "help"
+- assertVisible: "about solstone"
+- assertVisible: "privacy"
+- takeScreenshot: artifacts/hitl/shelf
 
-- tapOn: 'Evidence \+ export'
-- takeScreenshot: artifacts/hitl/evidence-export
+- tapOn: "your journal"
+- assertVisible: "connect a journal"
+- takeScreenshot: artifacts/hitl/your-journal
 - pressKey: Back
-- assertVisible: 'Evidence \+ export'
 
-# --- Back from the MENU exits the app (it must not trap the owner). ---
+- tapOn:
+    point: "6%,7%"
+- tapOn: "this device"
+- assertVisible: "app permissions"
+- takeScreenshot: artifacts/hitl/this-device
 - pressKey: Back
-- assertNotVisible: 'Status \+ queue/sync'
+
+- tapOn:
+    point: "6%,7%"
+- tapOn: "notifications"
+- assertVisible: "open notification settings"
+- takeScreenshot: artifacts/hitl/notifications
+- pressKey: Back
+
+- tapOn:
+    point: "6%,7%"
+- tapOn: "help"
+- assertVisible: "support site"
+- assertVisible: "email support"
+- takeScreenshot: artifacts/hitl/help
+- pressKey: Back
+
+- tapOn:
+    point: "6%,7%"
+- tapOn: "about solstone"
+- assertVisible: "version"
+- assertVisible: "open source"
+- assertVisible: "privacy policy"
+- takeScreenshot: artifacts/hitl/about
+- tapOn: "licenses"
+- assertVisible: "SIL OFL 1.1"
+- takeScreenshot: artifacts/hitl/licenses
+- pressKey: Back
+- pressKey: Back
+
+# --- Back from home exits. It must not trap the owner. ---
+- assertVisible: "import"
+- pressKey: Back
+- assertNotVisible: "sources and devices"

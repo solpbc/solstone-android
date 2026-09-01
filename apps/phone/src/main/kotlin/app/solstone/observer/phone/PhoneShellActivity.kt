@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,8 +14,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
+import app.solstone.observer.formfactor.phone.PhoneRouteStack
 import app.solstone.observer.formfactor.phone.PhoneStatusViewModel
 import app.solstone.observer.formfactor.phone.SourcesViewModel
+import app.solstone.observer.formfactor.phone.decodePhoneRoute
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReader
@@ -57,6 +60,7 @@ class PhoneShellActivity : ComponentActivity() {
             factory,
         ).get(SourcesViewModel::class.java)
         statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
+        val capture = captureSurfaceFromIntent()
         setContent {
             val snapshot = (statusViewModel.statusState as? LoadState.Loaded)?.value
             PhoneObserverScreen(
@@ -71,9 +75,44 @@ class PhoneShellActivity : ComponentActivity() {
                             .putExtra(ObserverActivity.EXTRA_SCAN_PAIR_QR, true),
                     )
                 },
+                initial = capture.stack,
+                initialShelfOpen = capture.shelfOpen,
+                initialStatusOpen = capture.statusOpen,
                 version = appVersion,
             )
         }
+    }
+
+    /**
+     * Where a design capture asked the shell to open, or home.
+     *
+     * A design pass has to look at every surface, and reaching one by synthetic taps lands on the
+     * wrong surface silently rather than failing — so the capture names the surface and the shell
+     * opens it. Debuggable builds only: [captureSurfaceFromIntent] returns [CaptureSurface.Home]
+     * unconditionally in a release build, so the launcher activity's exported intent surface is
+     * unchanged for a shipped APK.
+     */
+    private data class CaptureSurface(
+        val stack: PhoneRouteStack = PhoneRouteStack.Empty,
+        val shelfOpen: Boolean = false,
+        val statusOpen: Boolean = false,
+    ) {
+        companion object {
+            val Home = CaptureSurface()
+        }
+    }
+
+    private fun captureSurfaceFromIntent(): CaptureSurface {
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!debuggable) return CaptureSurface.Home
+        val extras = intent?.extras ?: return CaptureSurface.Home
+        val shelfOpen = extras.getBoolean(EXTRA_CAPTURE_SHELF, false)
+        val statusOpen = extras.getBoolean(EXTRA_CAPTURE_STATUS, false)
+        val stack = extras.getString(EXTRA_CAPTURE_ROUTE)
+            ?.let(::decodePhoneRoute)
+            ?.let(PhoneRouteStack.Empty::showInDetail)
+            ?: PhoneRouteStack.Empty
+        return CaptureSurface(stack = stack, shelfOpen = shelfOpen, statusOpen = statusOpen)
     }
 
 
@@ -118,5 +157,10 @@ class PhoneShellActivity : ComponentActivity() {
 
     private companion object {
         const val RECOVERY_POLL_INTERVAL_MS = 50L
+
+        /** Route key from [decodePhoneRoute] — e.g. `import`, `add-more`, `sd/audio`. */
+        const val EXTRA_CAPTURE_ROUTE = "solstone.design.route"
+        const val EXTRA_CAPTURE_SHELF = "solstone.design.shelf"
+        const val EXTRA_CAPTURE_STATUS = "solstone.design.status"
     }
 }

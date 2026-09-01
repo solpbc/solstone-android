@@ -69,6 +69,7 @@ fun PhoneObserverScreen(
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
+    initialStatusOpen: Boolean = false,
     version: String = "",
 ) {
     PhoneObserverScreen(
@@ -81,6 +82,7 @@ fun PhoneObserverScreen(
         modifier = modifier,
         initial = initial,
         initialShelfOpen = initialShelfOpen,
+        initialStatusOpen = initialStatusOpen,
         version = version,
         windowAdaptiveInfo = currentWindowAdaptiveInfo(
             supportLargeAndXLargeWidth = true,
@@ -100,11 +102,14 @@ internal fun PhoneObserverScreen(
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
+    initialStatusOpen: Boolean = false,
     version: String = "",
     windowAdaptiveInfo: WindowAdaptiveInfo,
 ) {
     var paneStates by rememberPaneStates(
-        initial = if (initialShelfOpen) PaneStates.Empty.open(PhonePane.SHELF) else PaneStates.Empty,
+        initial = PaneStates.Empty
+            .let { if (initialShelfOpen) it.open(PhonePane.SHELF) else it }
+            .let { if (initialStatusOpen) it.open(PhonePane.STATUS) else it },
     )
     var detailStack by rememberPhoneRouteStack(initial)
     val drawerState = rememberDrawerState(
@@ -189,12 +194,24 @@ internal fun PhoneObserverScreen(
                                 paneStates = paneStates.close(PhonePane.STATUS)
                                 detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                             },
+                            onConnectJournal = onConnectJournal,
                         )
                     }
                 }
             }
         },
-        journalMark = {},
+        // § 2.5: the mark appears on the home pill and inside the journal pane, and
+        // NOWHERE else in the shell — "one screen never shows the mark twice". The
+        // shell draws the pill over whatever the content slot holds, so without this
+        // the pill floated over every source detail and every shelf pane, and on
+        // `your journal` it sat under the pane's own mark card.
+        journalMark = {
+            val marksOwnPane = top == PhoneRoute.YourJournal
+            val showsDeck = top == null || renderSplit
+            if (showsDeck && !marksOwnPane) {
+                PhoneJournalMarkPill(onClick = onConnectJournal)
+            }
+        },
         navigationIcon = {
             if (!renderSplit && popsDetail) {
                 IconButton(
@@ -267,6 +284,7 @@ internal fun PhoneObserverScreen(
                         detailStack = detailStack.showInDetail(PhoneRoute.AddMore)
                     },
                     hour = hour,
+                    isOnHome = homeTileStore::hasTile,
                     modifier = deckModifier,
                 )
             }
@@ -302,6 +320,9 @@ internal fun PhoneObserverScreen(
                                 onOpenSource = { id ->
                                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                                 },
+                                version = version,
+                                isOnHome = homeTileStore::hasTile,
+                                onToggle = onToggle,
                                 modifier = Modifier.padding(paddingValues),
                                 leadingSlot = if (top != null) {
                                     {
@@ -338,6 +359,9 @@ internal fun PhoneObserverScreen(
                     onOpenSource = { id ->
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
+                    version = version,
+                    isOnHome = homeTileStore::hasTile,
+                    onToggle = onToggle,
                     modifier = modifier.padding(paddingValues),
                 )
             }

@@ -12,7 +12,13 @@ class SourceEarnsSwitchTest {
     fun predicateMatchesApprovedDesign() {
         assertTrue(sourceEarnsSwitch("audio"))
         assertTrue(sourceEarnsSwitch("location"))
-        assertFalse(sourceEarnsSwitch("camera"))
+        // ⚠ Was asserted FALSE. Camera runs on this device and is registered with the
+        // same wish machinery as audio and location, so a switch performs exactly what
+        // it names — which is § 2.4's actual rule. The exclusion came from reading the
+        // contract's "audio, screen and location" enumeration, which is iOS's source
+        // set and never had a chance to name Android's camera.
+        assertTrue(sourceEarnsSwitch("camera"))
+        // These carry none, anywhere: the phone cannot start a session on them.
         assertFalse(sourceEarnsSwitch("watch"))
         assertFalse(sourceEarnsSwitch("pendant"))
     }

@@ -31,6 +31,24 @@ fun PhoneTileDot(
         TileDotMark.DIAMOND -> error
         TileDotMark.RING, TileDotMark.ARC, TileDotMark.SQUARE -> onSurface
     }
+    PhoneTileDot(mark = mark, color = color, modifier = modifier)
+}
+
+/**
+ * The same dot, drawn for a caller that resolves its own mark and colour.
+ *
+ * The status pill needs this: its four states are not source states, and it had been
+ * calling the state overload with a hardcoded `SourceState.ON` — so `not paired` and
+ * `offline` both drew the green "on" disc, which says the opposite of the word beside
+ * it. Shape *and* colour carry the state, which is also what keeps the distinction for
+ * an owner who cannot separate the hues.
+ */
+@Composable
+fun PhoneTileDot(
+    mark: TileDotMark,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
     Canvas(
         modifier
             .size(12.dp)
