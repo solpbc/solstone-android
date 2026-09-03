@@ -3,7 +3,11 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.SourceStatus
+import app.solstone.observer.harness.SourceWish
 
 enum class PhoneStatusCapture {
     LOADING,
@@ -41,16 +45,23 @@ private fun capturedStatusState(
     paired: Boolean,
     online: Boolean,
     pendingCount: Int,
-): LoadState<PhoneStatusSnapshot> = LoadState.Loaded(
-    PhoneStatusSnapshot(
-        status = PhoneStatusModel(
-            paired = paired,
-            online = online,
-            pendingCount = pendingCount,
-            hasContentPending = false,
+): LoadState<PhoneStatusSnapshot> {
+    val waiting = if (pendingCount > 0) {
+        listOf(SourceStatus("audio", SourceWish.On, SourceState.ON, ReasonCode.NONE))
+    } else {
+        emptyList()
+    }
+    return LoadState.Loaded(
+        PhoneStatusSnapshot(
+            status = PhoneStatusModel(
+                paired = paired,
+                online = online,
+                pendingCount = pendingCount,
+                hasContentPending = waiting.isNotEmpty(),
+            ),
+            waiting = waiting,
         ),
-        waiting = emptyList(),
-    ),
-)
+    )
+}
 
 private object CapturedPhoneStatusFailure : IllegalStateException()

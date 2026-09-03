@@ -137,7 +137,7 @@ internal fun PhoneObserverScreen(
     val directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(windowAdaptiveInfo)
     val deckWidth = deckPaneWidth(widthClass)
     val deckGridState = rememberLazyGridState()
-    val renderSplit = shouldRenderSplit(
+    val renderSplit = widthClass != WidthClass.COMPACT && shouldRenderSplit(
         maxHorizontalPartitions = directive.maxHorizontalPartitions,
         deckPaneWidthDp = deckWidth.value.toInt(),
     )

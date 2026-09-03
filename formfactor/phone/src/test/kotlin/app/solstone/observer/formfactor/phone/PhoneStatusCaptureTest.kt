@@ -40,6 +40,8 @@ class PhoneStatusCaptureTest {
         assertEquals(true, offline.status.paired)
         assertEquals(false, offline.status.online)
         assertEquals(1, offline.status.pendingCount)
+        assertEquals(true, offline.status.hasContentPending)
+        assertEquals(listOf("audio"), offline.waiting.map { it.sourceId })
 
         val caughtUp = loadedCapture("paired-caught-up")
         assertEquals(true, caughtUp.status.paired)

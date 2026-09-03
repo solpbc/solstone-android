@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.Posture
+import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +20,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.window.core.layout.WindowSizeClass
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
@@ -30,6 +34,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 class PhoneDefaultDetailPaneTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -46,6 +51,7 @@ class PhoneDefaultDetailPaneTest {
         )
 
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneDefaultStatusHeading").assertIsDisplayed()
         composeRule.onNodeWithText("on this device").assertIsDisplayed()
         composeRule.onNodeWithTag("waitingRow-audio").performClick()
 
@@ -103,11 +109,13 @@ class PhoneDefaultDetailPaneTest {
         }
 
         composeRule.onNodeWithTag("phoneDefaultDetailLoading").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneDefaultStatusHeading").assertIsDisplayed()
         composeRule.onNodeWithText("connected").assertDoesNotExist()
         composeRule.onNodeWithText("not paired").assertDoesNotExist()
 
         composeRule.runOnIdle { detailStatus = PhoneDefaultDetailStatus.Failed }
         composeRule.onNodeWithTag("phoneDefaultDetailFailed").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneDefaultStatusHeading").assertIsDisplayed()
         composeRule.onNodeWithText("status unavailable").assertIsDisplayed()
         composeRule.onNodeWithTag("phoneDefaultDetailFailedRetry").performClick()
         assertEquals(1, retries)
@@ -146,27 +154,22 @@ class PhoneDefaultDetailPaneTest {
 
     @Test
     fun defaultDetailIsAbsentAt599DpAndPresentAt600Dp() {
+        var adaptiveInfo by mutableStateOf(adaptiveInfo(widthDp = 599))
         composeRule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(599.dp, 800.dp))) {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
                 PhoneObserverScreen(
                     loadState = loadedSources(),
                     status = null,
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    windowAdaptiveInfo = adaptiveInfo,
                 )
             }
         }
         composeRule.onNodeWithTag("phoneDefaultDetail").assertDoesNotExist()
 
-        composeRule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(600.dp, 800.dp))) {
-                PhoneObserverScreen(
-                    loadState = loadedSources(),
-                    status = null,
-                    onToggle = { _, _ -> },
-                    onStartObserving = {},
-                )
-            }
+        composeRule.runOnIdle {
+            adaptiveInfo = adaptiveInfo(widthDp = 600)
         }
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
     }
@@ -193,6 +196,11 @@ class PhoneDefaultDetailPaneTest {
 
     private companion object {
         val WIDE_SIZE = DpSize(800.dp, 800.dp)
+
+        fun adaptiveInfo(widthDp: Int) = WindowAdaptiveInfo(
+            windowSizeClass = WindowSizeClass(widthDp, 800),
+            windowPosture = Posture(),
+        )
     }
 }
 

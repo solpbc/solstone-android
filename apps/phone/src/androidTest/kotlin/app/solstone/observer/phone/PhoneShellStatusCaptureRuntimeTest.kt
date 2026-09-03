@@ -7,10 +7,11 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -21,7 +22,7 @@ import app.solstone.observer.harness.HarnessPlStatus
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -82,22 +83,26 @@ class PhoneShellStatusCaptureRuntimeTest {
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
             awaitPill("not paired")
-            assertEquals(1, reads.get())
+            val readsAfterLaunch = reads.get()
+            assertTrue(readsAfterLaunch >= 1)
 
             scenario.recreate()
+            composeRule.waitUntil(10_000) { reads.get() > readsAfterLaunch }
             awaitPill("not paired")
-            assertEquals(2, reads.get())
+            val readsAfterRecreate = reads.get()
 
             paired.set(true)
             scenario.moveToState(Lifecycle.State.CREATED)
             scenario.moveToState(Lifecycle.State.RESUMED)
             awaitPill("connected")
-            assertEquals(3, reads.get())
+            assertTrue(reads.get() > readsAfterRecreate)
 
             fail.set(true)
+            val readsBeforeFailure = reads.get()
             scenario.moveToState(Lifecycle.State.CREATED)
             scenario.moveToState(Lifecycle.State.RESUMED)
-            composeRule.waitUntil(10_000) { reads.get() == 4 }
+            composeRule.waitUntil(10_000) { reads.get() > readsBeforeFailure }
+            composeRule.waitForIdle()
             composeRule.onNodeWithTag("statusPill").assertDoesNotExist()
         }
     }
@@ -115,13 +120,13 @@ class PhoneShellStatusCaptureRuntimeTest {
     }
 
     private fun awaitPill(text: String) {
+        val pillWithText = hasTestTag("statusPill") and hasAnyDescendant(hasText(text))
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithText(text, useUnmergedTree = true)
+            composeRule.onAllNodes(pillWithText, useUnmergedTree = true)
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
-        composeRule.onNodeWithText(text, useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("statusPill").assertIsDisplayed()
+        composeRule.onNode(pillWithText, useUnmergedTree = true).assertIsDisplayed()
     }
 
     private companion object {

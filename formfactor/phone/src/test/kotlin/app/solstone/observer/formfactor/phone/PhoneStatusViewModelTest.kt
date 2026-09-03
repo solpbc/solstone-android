@@ -100,6 +100,33 @@ class PhoneStatusViewModelTest {
     }
 
     @Test
+    fun staleSuccessDoesNotPublishAfterNewerFailure() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val first = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 1, emptyList())
+        val newerFailure = IllegalStateException("newer read failed")
+        val results = ArrayDeque<() -> HarnessBacklogStatus>(listOf({ first }, { throw newerFailure }))
+        var reads = 0
+        val viewModel = viewModel(runner, poster) {
+            reads += 1
+            results.removeFirst().invoke()
+        }
+
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+
+        assertIs<LoadState.Loading>(viewModel.statusState)
+        assertEquals(1, runner.pendingCount)
+
+        runner.runNext()
+        poster.runNext()
+        val failed = assertIs<LoadState.Failed>(viewModel.statusState)
+        assertEquals(newerFailure, failed.error)
+        assertEquals(2, reads)
+    }
+
+    @Test
     fun repeatedRefreshDuringFlightCollapsesToOneTrailingRead() {
         val runner = ManualRunner()
         val poster = ManualPoster()

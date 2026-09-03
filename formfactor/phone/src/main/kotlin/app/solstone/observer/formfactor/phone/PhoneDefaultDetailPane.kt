@@ -4,8 +4,9 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import app.solstone.observer.harness.LoadState
 
 sealed interface PhoneDefaultDetailStatus {
@@ -55,11 +57,19 @@ internal fun PhoneDefaultDetailPane(
     ) {
         when (status) {
             PhoneDefaultDetailStatus.Loading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .testTag("phoneDefaultDetailLoading"),
-                )
+                PhoneDefaultStatusPane(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .testTag("phoneDefaultDetailLoading"),
+                        )
+                    }
+                }
             }
             PhoneDefaultDetailStatus.Failed -> PhoneDefaultDetailFailure(
                 onRefreshStatus = onRefreshStatus,
@@ -83,10 +93,7 @@ private fun PhoneDefaultDetailFailure(
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier,
 ) {
-    PhonePaneScaffold(
-        modifier = modifier.semantics { paneTitle = spokenPaneTitle(PhonePane.STATUS) },
-    ) {
-        Spacer(Modifier.height(ShellMetrics.sectionGap))
+    PhoneDefaultStatusPane(modifier = modifier) {
         Text(
             text = "status unavailable",
             modifier = Modifier.testTag("phoneDefaultDetailFailed"),
@@ -108,14 +115,27 @@ private fun PhoneDefaultDetailPaired(
     onOpenSource: (String) -> Unit,
     modifier: Modifier,
 ) {
-    PhonePaneScaffold(
-        modifier = modifier.semantics { paneTitle = spokenPaneTitle(PhonePane.STATUS) },
-    ) {
-        Spacer(Modifier.height(ShellMetrics.sectionGap))
+    PhoneDefaultStatusPane(modifier = modifier) {
         PhonePairedStatusContent(
             model = snapshot.status,
             waiting = snapshot.waiting,
             onOpenSource = onOpenSource,
         )
+    }
+}
+
+@Composable
+private fun PhoneDefaultStatusPane(
+    modifier: Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    PhonePaneScaffold(
+        modifier = modifier.semantics { paneTitle = spokenPaneTitle(PhonePane.STATUS) },
+    ) {
+        PaneSectionTitle(
+            text = headingText(PhonePane.STATUS).orEmpty(),
+            modifier = Modifier.testTag("phoneDefaultStatusHeading"),
+        )
+        content()
     }
 }
