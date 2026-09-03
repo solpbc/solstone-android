@@ -717,7 +717,8 @@ class PhoneObserverScreenTest {
             )
         }
         composeRule.onNodeWithText("SETTING_UP", useUnmergedTree = true).assertDoesNotExist()
-        assertEquals("audio setting up", tileStateDescription("audio"))
+        assertEquals("setting up", tileStateDescription("audio"))
+        assertEquals("audio", tileAccessibleName("audio"))
     }
 
     @Test
@@ -732,7 +733,8 @@ class PhoneObserverScreenTest {
         }
         composeRule.onNodeWithText("paused", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("PAUSED", useUnmergedTree = true).assertDoesNotExist()
-        assertEquals("audio paused", tileStateDescription("audio"))
+        assertEquals("paused", tileStateDescription("audio"))
+        assertEquals("audio", tileAccessibleName("audio"))
     }
 
     @Test
@@ -748,7 +750,8 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
             .assertTextEquals("audio")
         composeRule.onNodeWithText("on", useUnmergedTree = true).assertIsDisplayed()
-        assertEquals("audio on", tileStateDescription("audio"))
+        assertEquals("on", tileStateDescription("audio"))
+        assertEquals("audio", tileAccessibleName("audio"))
     }
 
     @Test
@@ -768,9 +771,22 @@ class PhoneObserverScreenTest {
             "the reason it couldn't reach your journal isn't clear.",
             useUnmergedTree = true,
         ).assertIsDisplayed()
-        assertEquals("audio needs attention", tileStateDescription("audio"))
+        assertEquals("needs attention", tileStateDescription("audio"))
+        assertEquals("audio", tileAccessibleName("audio"))
         composeRule.onNodeWithText("tap to fix", useUnmergedTree = true).assertDoesNotExist()
     }
+
+    /**
+     * The tile's accessible NAME. Section 5.5 splits it from the value: the name is the
+     * source's own label, the value is the state word alone. Both were previously merged
+     * into the value, which left the tile with no name at all.
+     */
+    private fun tileAccessibleName(sourceId: String): String? =
+        composeRule.onNodeWithTag("sourceTile-$sourceId", useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .config
+            .getOrNull(SemanticsProperties.ContentDescription)
+            ?.firstOrNull()
 
     private fun tileStateDescription(sourceId: String): String? =
         composeRule.onNodeWithTag("sourceTile-$sourceId")

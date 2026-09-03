@@ -58,25 +58,29 @@ appId: app.solstone.observer.phone
 - assertVisible: "add more"
 
 # --- add more: the not-on-home / already-on-home split, and every row opens a source. ---
-# A deck tile is NOT reachable by name here, deliberately: a source tile clears its semantics
-# and publishes the source only as a state description, so no text selector can see it. That is
-# a real question for the next accessibility pass and is recorded in this arc's outcome; the
-# gate routes through `add more`, whose rows are ordinary labelled list items.
 - tapOn: "add more"
 - assertVisible: "already on home"
 - assertVisible: "audio"
 - assertVisible: "location"
 - assertVisible: "camera"
 - takeScreenshot: artifacts/hitl/add-more
+- pressKey: Back
+- assertVisible: "import"
 
-# --- A source's own view. `give this a tile on home` is the LAST control on the screen,
-#     so asserting it proves the whole pane is reachable, not just its top. ---
+# --- A source's own view, reached FROM THE DECK, the way an owner reaches it. ---
+# This tap is itself an accessibility assertion. A source tile used to publish its source only
+# inside a merged state description, with no accessible name and no role, so no text selector
+# could see it and this gate had to detour through `add more` to reach a source at all. The tile
+# now carries the label as its accessible NAME and the state word as its VALUE (contract § 5.5),
+# so tapping `audio` here passing means a screen reader can find the tile too.
 - tapOn: "audio"
 - assertVisible: "taking it in"
+# `give this a tile on home` is the LAST control on the screen, so asserting it proves the whole
+# pane is reachable rather than just its top.
 - assertVisible: "give this a tile on home"
 - takeScreenshot: artifacts/hitl/source-audio
 - pressKey: Back
-- assertVisible: "import"
+- assertVisible: "add more"
 
 # --- The shelf, and every pane behind it. Four of these five opened a blank screen
 #     before this pass; each assertion below names something that pane now actually holds. ---

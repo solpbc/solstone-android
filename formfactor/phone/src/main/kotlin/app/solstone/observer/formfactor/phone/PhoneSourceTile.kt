@@ -27,9 +27,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -73,7 +76,23 @@ fun PhoneSourceTile(
         modifier = modifier
             .testTag("sourceTile-${status.sourceId}")
             .clearAndSetSemantics {
-                stateDescription = "$label $stateCopy"
+                // Section 5.5: the accessible VALUE is the state word from section 5.1 --
+                // "the same word the sighted owner reads, nothing added and nothing
+                // translated" -- and the NAME is the source's own label, so a screen
+                // reader says "audio, on, button" where the screen reads audio / on.
+                // Parity is the whole requirement.
+                //
+                // This was one merged `stateDescription = "$label $stateCopy"` with no
+                // name and no role. Three consequences, all real: a screen reader
+                // announced "audio on" as an undifferentiated value with nothing
+                // identifying it as a control; the label was duplicated INTO the value,
+                // which is the "nothing added" half of 5.5; and because the tile
+                // published no name and no text, no text selector could find it --
+                // the release gate had to reach a source through `add more` instead of
+                // off the deck.
+                contentDescription = label
+                stateDescription = stateCopy
+                role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {
                     add(CustomAccessibilityAction(label) { onOpen(); true })
