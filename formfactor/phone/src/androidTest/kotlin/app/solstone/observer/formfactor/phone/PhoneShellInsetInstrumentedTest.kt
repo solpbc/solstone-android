@@ -106,8 +106,33 @@ class PhoneShellInsetInstrumentedTest {
         assertTrue("app bar height ${bar.size.height} > $maxPx", bar.size.height <= maxPx + 2f)
     }
 
+    /**
+     * ⚠ **Needs a GESTURE-NAVIGATION device, and says so now instead of failing.**
+     *
+     * `safeGestures` exceeds `navigationBars` only where the system reserves a gesture inset.
+     * On a 3-button-navigation device both resolve to the nav bar's height and are equal, so this
+     * assertion is false there by configuration rather than by regression. The GMD `pixel5api35`
+     * the device gate runs on uses gesture navigation, which is what the method name records.
+     *
+     * ⛔ It previously just failed. Run on the bench Galaxy A36 (3-button nav) it reported
+     * `Values should be different. Actual: 135` — a red that reads as a real inset regression and
+     * is not one, in a module whose other 96 tests pass on the same hardware. `navigation_mode`
+     * is `0` three-button, `1` two-button, `2` gesture; an unreadable value assumes gesture so
+     * the gate keeps asserting rather than silently skipping where it matters.
+     */
     @Test
     fun safeGesturesDiffersFromNavigationBarsOnGmd() {
+        val navigationMode = runCatching {
+            android.provider.Settings.Secure.getInt(
+                androidx.test.platform.app.InstrumentationRegistry
+                    .getInstrumentation().targetContext.contentResolver,
+                "navigation_mode",
+            )
+        }.getOrDefault(GESTURE_NAVIGATION_MODE)
+        org.junit.Assume.assumeTrue(
+            "needs gesture navigation; safeGestures == navigationBars on button nav",
+            navigationMode == GESTURE_NAVIGATION_MODE,
+        )
         var gestures = -1
         var nav = -1
         composeRule.setContent {
@@ -145,5 +170,10 @@ class PhoneShellInsetInstrumentedTest {
         val padding = requireNotNull(captured)
         val start = padding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
         assertTrue("horizontal cutout leg should be non-zero, was $start", start > 0.dp)
+    }
+
+    private companion object {
+        /** `Settings.Secure.navigation_mode`: 0 three-button, 1 two-button, 2 gesture. */
+        const val GESTURE_NAVIGATION_MODE = 2
     }
 }

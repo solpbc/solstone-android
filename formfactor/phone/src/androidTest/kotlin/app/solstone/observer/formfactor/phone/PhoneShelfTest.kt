@@ -61,7 +61,10 @@ class PhoneShelfTest {
         composeRule.onNodeWithTag("shelfRow-yourJournal").assertTextEquals("your journal")
         composeRule.onNodeWithTag("shelfHeading").assertTextEquals("settings")
         composeRule.onNodeWithTag("shelfPrivacy").assertTextEquals("privacy")
-        composeRule.onNodeWithTag("shelfTerms").assertTextEquals("terms")
+        // `terms` is deliberately absent: the app owes no terms-of-service document
+        // (CLO 2026-09-03), so the footer no longer names one. `licenses` took the
+        // slot and, unlike either word before it, is a real control.
+        composeRule.onNodeWithTag("shelfLicenses").assertTextEquals("licenses")
         composeRule.onNodeWithTag("shelfVersion").assertTextEquals("version-sentinel")
         val sheetLeft = composeRule.onNodeWithTag("phoneShelfSheet").fetchSemanticsNode().boundsInRoot.left
         val textLeft = composeRule

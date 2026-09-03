@@ -6,6 +6,7 @@ package app.solstone.observer.formfactor.phone
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -81,7 +82,9 @@ internal fun PhoneShelfContent(
     onNavigate: (PhoneRoute) -> Unit,
     version: String,
     firstRowFocusRequester: FocusRequester,
+    onOpenPrivacy: () -> Unit = {},
 ) {
+    val onOpenLicences = { onNavigate(PhoneRoute.Licences) }
     var previousShelfOpen by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(shelfOpen) {
         val previous = previousShelfOpen
@@ -139,9 +142,24 @@ internal fun PhoneShelfContent(
             showDivider = false,
         )
         Spacer(Modifier.height(ShellMetrics.sectionGap))
-        // The footer (§ 4: privacy · terms · version). It was three left-flush `Text`s
-        // at x=0, outside the rows' own inset, so it read as unrelated debris below the
-        // list rather than as the shelf's own footer.
+        // The footer. It was three left-flush `Text`s at x=0, outside the rows' own
+        // inset, so it read as unrelated debris below the list rather than as the
+        // shelf's own footer.
+        //
+        // 🔴 **`terms` is gone and the other two are now real controls.** § 4 prescribed
+        // `privacy · terms · version`, and CLO's read (2026-09-03) is that the app owes
+        // no terms-of-service document at all: it is free, has no account and no service
+        // relationship, and the AGPL's own §§ 15-16 already carry the warranty and
+        // liability disclaimers a client-app EULA exists for — while AGPL § 7/§ 10 make
+        // adding further terms on top either near-empty or strikeable. So there is no
+        // gap behind the word; `solpbc.org/terms` 404s because nothing is owed there.
+        //
+        // ⚠ **And § 2.4 was the wrong authority for removing it.** These were inert
+        // `Text` nodes, so `terms` was never a control that failed. The real defect is
+        // notice quality: in footer position a reader takes these words for links, so an
+        // inert word naming a document we do not have is a misleading label — and the
+        // *more* serious half was that `privacy` was equally inert, when a reachable
+        // privacy link is the one thing app stores actually require.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -149,18 +167,16 @@ internal fun PhoneShelfContent(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            FooterLink(
                 text = "privacy",
-                style = MaterialTheme.typography.bodySmall,
-                color = shellSecondaryInk,
-                modifier = Modifier.testTag("shelfPrivacy"),
+                tag = "shelfPrivacy",
+                onClick = onOpenPrivacy,
             )
             Text("·", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
-            Text(
-                text = "terms",
-                style = MaterialTheme.typography.bodySmall,
-                color = shellSecondaryInk,
-                modifier = Modifier.testTag("shelfTerms"),
+            FooterLink(
+                text = "licenses",
+                tag = "shelfLicenses",
+                onClick = onOpenLicences,
             )
             Text("·", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
             Text(
@@ -171,6 +187,30 @@ internal fun PhoneShelfContent(
             )
         }
         Spacer(Modifier.height(20.dp))
+    }
+}
+
+/**
+ * A footer word that is actually a control.
+ *
+ * ⛔ It carries a 48dp touch height even though the text is small — a footer link an owner
+ * cannot reliably hit is the same defect as one that goes nowhere.
+ */
+@Composable
+private fun FooterLink(text: String, tag: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .clickable(onClick = onClick)
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

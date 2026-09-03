@@ -280,6 +280,7 @@ internal fun PhoneObserverScreen(
                 },
                 version = version,
                 firstRowFocusRequester = firstShelfRowFocusRequester,
+                onOpenPrivacy = { openPrivacyPolicy(applicationContext) },
             )
         },
         content = { paddingValues ->

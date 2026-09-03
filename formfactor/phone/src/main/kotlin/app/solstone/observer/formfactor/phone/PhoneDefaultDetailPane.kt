@@ -103,7 +103,10 @@ private fun PhoneDefaultDetailFailure(
                 onClick = refresh,
                 modifier = Modifier.testTag("phoneDefaultDetailFailedRetry"),
             ) {
-                Text("try again")
+                // ⛔ `try now`, not `try again`: iOS ships this control as `try now`
+                    // (SourceVocabulary), and a second word for one control on a
+                    // surface § 6 makes shared canon is the exact § 5.1 defect.
+                    Text("try now")
             }
         }
     }

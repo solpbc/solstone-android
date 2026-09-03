@@ -74,7 +74,7 @@ mkdir -p "$OUT"
 SURFACES=$(cat <<'EOF'
 home||--ez solstone.design.shelf false|good
 status||--ez solstone.design.status true|window:Pop-Up Window
-shelf||--ez solstone.design.shelf true|settings
+shelf||--ez solstone.design.shelf true|about solstone
 import|import||import
 add-more|add-more||add more
 source-audio|sd/audio||audio
@@ -121,6 +121,18 @@ trap restore EXIT
 
 adb shell input keyevent KEYCODE_WAKEUP >/dev/null
 adb shell settings put system screen_off_timeout 1800000 >/dev/null
+
+# The capture route is debuggable-build-only. If a RELEASE build is installed -- which is what
+# `make hitl-phone` leaves on the bench device -- every extra is ignored and every launch lands on
+# home, so each surface's screenshot silently shows home instead. Fail here rather than there.
+if adb shell pm list packages -f "$PKG" >/dev/null 2>&1; then
+  if ! adb shell dumpsys package "$PKG" | grep -qE "flags=\[.*DEBUGGABLE" ; then
+    echo "design-shots: the installed $PKG is NOT debuggable, so the capture route is inert." >&2
+    echo "Every surface would silently photograph home. Install a debug APK first:" >&2
+    echo "  adb -s $SERIAL uninstall $PKG && adb -s $SERIAL install -r -g <debug apk>" >&2
+    exit 1
+  fi
+fi
 
 failed=0
 captured=0

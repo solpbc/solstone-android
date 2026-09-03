@@ -183,7 +183,20 @@ internal fun PhoneSourceGrid(
         item(key = "addMoreTile") {
             PhoneNonSourceTile(
                 label = "add more",
-                subLine = "sources and devices",
+                // ⚠ Was `sources and devices`. `devices` is a category the product's
+                // taxonomy has on NEITHER platform -- iOS's watch is a *source* in
+                // § 5.2's source-label table, and `grep '"devices"'` over solstone-swift
+                // returns nothing. The word had a home once and lost it: the pane's
+                // original section headers were `on this phone` / `devices` / `not set
+                // up yet`, replaced at v3/v5 by `not on home` / `already on home`
+                // (copy-deck.md), and this sub-line survived the grouping's deletion.
+                //
+                // § 5's rule: a sub-line enumerates a set's members only when that set
+                // is fixed and identical on every platform; where § 5.2 varies it by
+                // platform, the sub-line names the CATEGORY. `photos and files`
+                // enumerates because the import paths are shared and fixed; this one
+                // categorizes. The non-parallelism is the rule working.
+                subLine = "sources",
                 glyph = R.drawable.phone_add_more,
                 index = 1,
                 count = sources.size + LEADING_NON_SOURCE_TILE_COUNT,

@@ -116,7 +116,10 @@ class PhoneDeckNonSourceTileTest {
         setScreen()
 
         assertTileTexts("importTile", listOf("import", "photos and files"))
-        assertTileTexts("addMoreTile", listOf("add more", "sources and devices"))
+        // `sources`, not `sources and devices`: the product has no device category on
+        // either platform, and the word survived the deletion of the pane grouping it
+        // named. See PhoneDeck.kt and mobile-shell.md § 5.
+        assertTileTexts("addMoreTile", listOf("add more", "sources"))
     }
 
     @Test

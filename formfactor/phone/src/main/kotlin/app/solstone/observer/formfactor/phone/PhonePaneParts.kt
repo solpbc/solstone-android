@@ -256,3 +256,27 @@ internal const val SUPPORT_SITE_URL = "https://support.solstone.app"
 internal const val SUPPORT_EMAIL = "support@solstone.app"
 internal const val PRIVACY_URL = "https://solpbc.org/privacy"
 internal const val SOURCE_URL = "https://github.com/solpbc/solstone-android"
+
+/**
+ * Opens the published privacy policy.
+ *
+ * ⚠ `solpbc.org`, not `solstone.app`, and that is settled rather than convenient:
+ * `solpbc.org/privacy` is the policy the org publishes and the URL registered as the
+ * store-submission privacy URL (`clo/matters.md` matter 16, discharged 2026-08-28).
+ * `solstone.app/privacy` 404s by design — the founder ruled 2026-07-04 that a scoped notice
+ * gets its own URL only when the flagship policy cannot carry the disclosure, and here it can.
+ * ⛔ Do not mint a second privacy page for this app.
+ *
+ * One function, so the shelf footer and the about pane's row cannot drift to two URLs.
+ */
+internal fun openPrivacyPolicy(context: android.content.Context) {
+    val intent = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse(PRIVACY_URL),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: android.content.ActivityNotFoundException) {
+        // No browser on this device. Declining beats crashing.
+    }
+}

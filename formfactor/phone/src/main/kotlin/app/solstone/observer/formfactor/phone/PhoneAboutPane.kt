@@ -59,7 +59,7 @@ fun PhoneAboutPane(
             PaneExternalRow(
                 label = "privacy policy",
                 subLine = "solpbc.org/privacy",
-                onClick = { context.open(PRIVACY_URL) },
+                onClick = { openPrivacyPolicy(context) },
                 modifier = Modifier.testTag("aboutPrivacyRow"),
             )
         }
