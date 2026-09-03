@@ -52,7 +52,11 @@ class PhoneStatusViewModelTest {
         val first = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 1, emptyList())
         val second = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 2, emptyList())
         val results = ArrayDeque<() -> HarnessBacklogStatus>(listOf({ first }, { second }))
-        val viewModel = viewModel(runner, poster) { results.removeFirst().invoke() }
+        var reads = 0
+        val viewModel = viewModel(runner, poster) {
+            reads += 1
+            results.removeFirst().invoke()
+        }
 
         viewModel.refresh()
         runner.runNext()
@@ -65,6 +69,7 @@ class PhoneStatusViewModelTest {
         poster.runNext()
         val loaded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
         assertEquals(2, loaded.value.status.pendingCount)
+        assertEquals(2, reads)
     }
 
     @Test
@@ -74,7 +79,11 @@ class PhoneStatusViewModelTest {
         val boom = IllegalStateException("old read failed")
         val second = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 3, emptyList())
         val results = ArrayDeque<() -> HarnessBacklogStatus>(listOf({ throw boom }, { second }))
-        val viewModel = viewModel(runner, poster) { results.removeFirst().invoke() }
+        var reads = 0
+        val viewModel = viewModel(runner, poster) {
+            reads += 1
+            results.removeFirst().invoke()
+        }
 
         viewModel.refresh()
         runner.runNext()
@@ -87,13 +96,16 @@ class PhoneStatusViewModelTest {
         poster.runNext()
         val loaded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
         assertEquals(3, loaded.value.status.pendingCount)
+        assertEquals(2, reads)
     }
 
     @Test
     fun repeatedRefreshDuringFlightCollapsesToOneTrailingRead() {
         val runner = ManualRunner()
         val poster = ManualPoster()
+        var reads = 0
         val viewModel = viewModel(runner, poster) {
+            reads += 1
             HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList())
         }
 
@@ -105,6 +117,12 @@ class PhoneStatusViewModelTest {
         runner.runNext()
         poster.runNext()
         assertEquals(1, runner.pendingCount)
+
+        runner.runNext()
+        poster.runNext()
+        assertEquals(0, runner.pendingCount)
+        assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        assertEquals(2, reads)
     }
 
     private fun viewModel(
