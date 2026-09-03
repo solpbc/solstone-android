@@ -142,7 +142,7 @@ class PhoneDeckNonSourceTileTest {
     fun unavailableImportPaneDoesNotClaimJournalReceipt() {
         setScreen(initial = PhoneRoute.Import)
 
-        composeRule.onNodeWithText("in your journal").assertDoesNotExist()
+        composeRule.onNodeWithText("in your journal", substring = true).assertDoesNotExist()
     }
 
     @Test

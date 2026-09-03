@@ -146,6 +146,7 @@ class PhoneObserverScreenTest {
             )
         }
         composeRule.onNodeWithTag("sourceTile-audio").performTouchInput { click(center) }
+        composeRule.onNode(paneTitleMatcher("audio")).assertIsDisplayed()
         assertEquals(0, toggles)
     }
 
@@ -680,7 +681,20 @@ class PhoneObserverScreenTest {
             val minPx = with(density) { MINIMUM_TOUCH_TARGET_DP.dp.toPx() }
 
             assertTrue("$scale label must follow its switch", toggle.boundsInRoot.bottom <= label.boundsInRoot.top)
-            assertTrue("$scale tile must contain the label and switch", tile.boundsInRoot.height > label.boundsInRoot.height)
+            assertTrue(
+                "$scale switch must remain inside the tile",
+                tile.boundsInRoot.left <= toggle.boundsInRoot.left &&
+                    tile.boundsInRoot.top <= toggle.boundsInRoot.top &&
+                    tile.boundsInRoot.right >= toggle.boundsInRoot.right &&
+                    tile.boundsInRoot.bottom >= toggle.boundsInRoot.bottom,
+            )
+            assertTrue(
+                "$scale label must remain inside the tile",
+                tile.boundsInRoot.left <= label.boundsInRoot.left &&
+                    tile.boundsInRoot.top <= label.boundsInRoot.top &&
+                    tile.boundsInRoot.right >= label.boundsInRoot.right &&
+                    tile.boundsInRoot.bottom >= label.boundsInRoot.bottom,
+            )
             assertTrue("$scale switch width", toggle.size.width >= minPx - 1f)
             assertTrue("$scale switch height", toggle.size.height >= minPx - 1f)
 
@@ -738,7 +752,7 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun needsAttentionAudioTileRendersLabelAndStateOnly() {
+    fun needsAttentionAudioTileRendersHonestUnknownDiagnosis() {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(status("audio", SourceState.NEEDS_ATTENTION, SourceWish.On)),
@@ -750,6 +764,10 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
             .assertTextEquals("audio")
         composeRule.onNodeWithText("needs attention", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "the reason it couldn't reach your journal isn't clear.",
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
         assertEquals("audio needs attention", tileStateDescription("audio"))
         composeRule.onNodeWithText("tap to fix", useUnmergedTree = true).assertDoesNotExist()
     }
