@@ -33,7 +33,7 @@ appId: app.solstone.observer.phone
     timeout: 15000
 - assertVisible: "add more"
 - assertVisible: "photos and files"
-- assertVisible: "sources and devices"
+- assertVisible: "sources"
 - assertVisible: "connect a journal"
 - assertVisible: "not paired"
 - takeScreenshot: artifacts/hitl/home
@@ -137,4 +137,4 @@ appId: app.solstone.observer.phone
 # --- Back from home exits. It must not trap the owner. ---
 - assertVisible: "import"
 - pressKey: Back
-- assertNotVisible: "sources and devices"
+- assertNotVisible: "photos and files"
