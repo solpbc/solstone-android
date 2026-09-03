@@ -25,6 +25,8 @@ class PhoneStatusCaptureTest {
         assertNull(decodePhoneStatusCapture("unknown"))
         assertNull(resolvePhoneStatusCapture(null, debuggable = true))
         assertNull(resolvePhoneStatusCapture("unknown", debuggable = true))
+        assertNull(resolvePhoneCaptureWidthDp(null, debuggable = true))
+        assertNull(resolvePhoneCaptureWidthDp("unknown", debuggable = true))
     }
 
     @Test
@@ -54,6 +56,15 @@ class PhoneStatusCaptureTest {
         listOf("loading", "failed", "unpaired", "paired-offline", "paired-caught-up").forEach { raw ->
             assertNull(resolvePhoneStatusCapture(raw, debuggable = false))
         }
+        listOf("compact", "wide").forEach { raw ->
+            assertNull(resolvePhoneCaptureWidthDp(raw, debuggable = false))
+        }
+    }
+
+    @Test
+    fun debugWindowCapturesBindTheBreakpointSides() {
+        assertEquals(599, resolvePhoneCaptureWidthDp("compact", debuggable = true))
+        assertEquals(800, resolvePhoneCaptureWidthDp("wide", debuggable = true))
     }
 
     private fun loadedCapture(raw: String): PhoneStatusSnapshot =

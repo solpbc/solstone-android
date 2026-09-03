@@ -20,6 +20,7 @@ import app.solstone.observer.formfactor.phone.PhoneStatusViewModel
 import app.solstone.observer.formfactor.phone.SourcesViewModel
 import app.solstone.observer.formfactor.phone.decodePhoneRoute
 import app.solstone.observer.formfactor.phone.phoneDefaultDetailStatusOf
+import app.solstone.observer.formfactor.phone.resolvePhoneCaptureWidthDp
 import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
@@ -86,6 +87,7 @@ class PhoneShellActivity : ComponentActivity() {
                 initialShelfOpen = capture.shelfOpen,
                 initialStatusOpen = capture.statusOpen,
                 version = appVersion,
+                captureWidthDp = capture.windowWidthDp,
             )
         }
     }
@@ -104,6 +106,7 @@ class PhoneShellActivity : ComponentActivity() {
         val shelfOpen: Boolean = false,
         val statusOpen: Boolean = false,
         val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
+        val windowWidthDp: Int? = null,
     ) {
         companion object {
             val Home = CaptureSurface()
@@ -120,6 +123,10 @@ class PhoneShellActivity : ComponentActivity() {
             raw = extras.getString(EXTRA_CAPTURE_DEFAULT_DETAIL_STATUS),
             debuggable = debuggable,
         )
+        val windowWidthDp = resolvePhoneCaptureWidthDp(
+            raw = extras.getString(EXTRA_CAPTURE_WINDOW_WIDTH),
+            debuggable = debuggable,
+        )
         val stack = extras.getString(EXTRA_CAPTURE_ROUTE)
             ?.let(::decodePhoneRoute)
             ?.let(PhoneRouteStack.Empty::showInDetail)
@@ -129,6 +136,7 @@ class PhoneShellActivity : ComponentActivity() {
             shelfOpen = shelfOpen,
             statusOpen = statusOpen,
             capturedStatusState = capturedStatusState,
+            windowWidthDp = windowWidthDp,
         )
     }
 
@@ -182,5 +190,6 @@ class PhoneShellActivity : ComponentActivity() {
         const val EXTRA_CAPTURE_SHELF = "solstone.design.shelf"
         const val EXTRA_CAPTURE_STATUS = "solstone.design.status"
         const val EXTRA_CAPTURE_DEFAULT_DETAIL_STATUS = "solstone.design.default-detail-status"
+        const val EXTRA_CAPTURE_WINDOW_WIDTH = "solstone.design.window-width"
     }
 }

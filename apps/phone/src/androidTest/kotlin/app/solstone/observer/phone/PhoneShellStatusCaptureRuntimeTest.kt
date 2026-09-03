@@ -67,6 +67,33 @@ class PhoneShellStatusCaptureRuntimeTest {
     }
 
     @Test
+    fun capturedStatusIsLaunchScopedAndProductionStatusReachesTheMountedWidePane() {
+        val reads = AtomicInteger(0)
+        PhoneStatusSupplier.override = {
+            reads.incrementAndGet()
+            HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList())
+        }
+
+        val capturedIntent = Intent(context, PhoneShellActivity::class.java)
+            .putExtra(CAPTURE_STATUS_EXTRA, "unpaired")
+            .putExtra(CAPTURE_WIDTH_EXTRA, "wide")
+        ActivityScenario.launch<PhoneShellActivity>(capturedIntent).use {
+            awaitTag("yourJournalConnect")
+        }
+        val readsAfterCapturedLaunch = reads.get()
+
+        val productionIntent = Intent(context, PhoneShellActivity::class.java)
+            .putExtra(CAPTURE_WIDTH_EXTRA, "wide")
+        ActivityScenario.launch<PhoneShellActivity>(productionIntent).use {
+            awaitTag("phoneDefaultDetail")
+            awaitTag("phoneDefaultStatusHeading")
+            awaitText("all caught up")
+            composeRule.onNodeWithTag("yourJournalConnect").assertDoesNotExist()
+            assertTrue(reads.get() > readsAfterCapturedLaunch)
+        }
+    }
+
+    @Test
     fun retainedViewModelRefreshesOnLaterResumeAndReplacesPriorStatus() {
         val reads = AtomicInteger(0)
         val paired = AtomicBoolean(false)
@@ -129,7 +156,26 @@ class PhoneShellStatusCaptureRuntimeTest {
         composeRule.onNode(pillWithText, useUnmergedTree = true).assertIsDisplayed()
     }
 
+    private fun awaitTag(tag: String) {
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasTestTag(tag), useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag(tag, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    private fun awaitText(text: String) {
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasText(text), useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNode(hasText(text), useUnmergedTree = true).assertIsDisplayed()
+    }
+
     private companion object {
         const val CAPTURE_STATUS_EXTRA = "solstone.design.default-detail-status"
+        const val CAPTURE_WIDTH_EXTRA = "solstone.design.window-width"
     }
 }

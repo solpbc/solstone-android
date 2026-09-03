@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -39,8 +40,8 @@ class PhoneTwoPaneLayoutTest {
 
         composeRule.onNodeWithTag("importTile").performClick()
         composeRule.onNodeWithTag("addMoreTile").performClick()
-        composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
-        composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag("addMoreRow-audio", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag(VERDICT_TEST_TAG).assertExists()
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
         composeRule.onNodeWithTag("shelfRow-aboutSolstone").performClick()
@@ -55,6 +56,8 @@ class PhoneTwoPaneLayoutTest {
         Espresso.pressBack()
 
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+        composeRule.onNodeWithTag("phoneDefaultStatusHeading").assertIsDisplayed()
+        composeRule.onNodeWithText("all caught up").assertExists()
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
     }
 
@@ -94,13 +97,17 @@ class PhoneTwoPaneLayoutTest {
     }
 
     private fun setWideContent() {
+        val status = connected()
         composeRule.setContent {
             DeviceConfigurationOverride(
                 DeviceConfigurationOverride.ForcedSize(MEDIUM_SIZE),
             ) {
                 PhoneObserverScreen(
                     loadState = loaded(audioOn()),
-                    status = connected(),
+                    status = status,
+                    defaultDetailStatus = PhoneDefaultDetailStatus.Paired(
+                        PhoneStatusSnapshot(status, emptyList()),
+                    ),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
                 )

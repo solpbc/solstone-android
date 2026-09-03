@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.Posture
 import androidx.compose.material3.adaptive.WindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
@@ -39,6 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.window.core.layout.WindowSizeClass
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
@@ -73,7 +75,11 @@ fun PhoneObserverScreen(
     initialShelfOpen: Boolean = false,
     initialStatusOpen: Boolean = false,
     version: String = "",
+    captureWidthDp: Int? = null,
 ) {
+    val windowAdaptiveInfo = currentWindowAdaptiveInfo(
+        supportLargeAndXLargeWidth = true,
+    )
     PhoneObserverScreen(
         loadState = loadState,
         status = status,
@@ -88,11 +94,16 @@ fun PhoneObserverScreen(
         initialShelfOpen = initialShelfOpen,
         initialStatusOpen = initialStatusOpen,
         version = version,
-        windowAdaptiveInfo = currentWindowAdaptiveInfo(
-            supportLargeAndXLargeWidth = true,
-        ),
+        windowAdaptiveInfo = captureWidthDp?.let { widthDp ->
+            WindowAdaptiveInfo(
+                windowSizeClass = WindowSizeClass(widthDp, CAPTURE_HEIGHT_DP),
+                windowPosture = Posture(),
+            )
+        } ?: windowAdaptiveInfo,
     )
 }
+
+private const val CAPTURE_HEIGHT_DP = 800
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable

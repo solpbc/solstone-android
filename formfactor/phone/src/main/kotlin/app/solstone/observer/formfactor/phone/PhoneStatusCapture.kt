@@ -26,6 +26,15 @@ fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
     else -> null
 }
 
+fun resolvePhoneCaptureWidthDp(raw: String?, debuggable: Boolean): Int? {
+    if (!debuggable) return null
+    return when (raw) {
+        "compact" -> 599
+        "wide" -> 800
+        else -> null
+    }
+}
+
 fun resolvePhoneStatusCapture(
     raw: String?,
     debuggable: Boolean,
