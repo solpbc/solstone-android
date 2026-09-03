@@ -63,6 +63,8 @@ fun PhoneObserverScreen(
     loadState: LoadState<SourcesReadModel>,
     status: PhoneStatusModel?,
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
+    defaultDetailStatus: PhoneDefaultDetailStatus = PhoneDefaultDetailStatus.Loading,
+    onRefreshStatus: (() -> Unit)? = null,
     onToggle: (String, SourceWish) -> Unit,
     onStartObserving: () -> Unit,
     onConnectJournal: () -> Unit = {},
@@ -76,6 +78,8 @@ fun PhoneObserverScreen(
         loadState = loadState,
         status = status,
         waiting = waiting,
+        defaultDetailStatus = defaultDetailStatus,
+        onRefreshStatus = onRefreshStatus,
         onToggle = onToggle,
         onStartObserving = onStartObserving,
         onConnectJournal = onConnectJournal,
@@ -96,6 +100,8 @@ internal fun PhoneObserverScreen(
     loadState: LoadState<SourcesReadModel>,
     status: PhoneStatusModel?,
     waiting: List<app.solstone.observer.harness.SourceStatus> = emptyList(),
+    defaultDetailStatus: PhoneDefaultDetailStatus = PhoneDefaultDetailStatus.Loading,
+    onRefreshStatus: (() -> Unit)? = null,
     onToggle: (String, SourceWish) -> Unit,
     onStartObserving: () -> Unit,
     onConnectJournal: () -> Unit = {},
@@ -320,6 +326,8 @@ internal fun PhoneObserverScreen(
                                 onOpenSource = { id ->
                                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                                 },
+                                defaultDetailStatus = defaultDetailStatus,
+                                onRefreshStatus = onRefreshStatus,
                                 version = version,
                                 isOnHome = homeTileStore::hasTile,
                                 onToggle = onToggle,
@@ -359,6 +367,8 @@ internal fun PhoneObserverScreen(
                     onOpenSource = { id ->
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
+                    defaultDetailStatus = defaultDetailStatus,
+                    onRefreshStatus = onRefreshStatus,
                     version = version,
                     isOnHome = homeTileStore::hasTile,
                     onToggle = onToggle,

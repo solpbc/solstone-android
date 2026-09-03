@@ -15,9 +15,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRouteStack
+import app.solstone.observer.formfactor.phone.PhoneStatusSnapshot
 import app.solstone.observer.formfactor.phone.PhoneStatusViewModel
 import app.solstone.observer.formfactor.phone.SourcesViewModel
 import app.solstone.observer.formfactor.phone.decodePhoneRoute
+import app.solstone.observer.formfactor.phone.phoneDefaultDetailStatusOf
+import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReader
@@ -50,23 +53,27 @@ class PhoneShellActivity : ComponentActivity() {
             ObserverHarnessRuntime.runtime = it
         }
         container = runtime.container()
+        val capture = captureSurfaceFromIntent()
         val factory = PhoneShellViewModelFactory(
             sources = container.sources,
             readStatus = PhoneStatusSupplier.forContainer(container),
             asyncLoad = container.asyncLoad,
+            capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
             this,
             factory,
         ).get(SourcesViewModel::class.java)
         statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
-        val capture = captureSurfaceFromIntent()
         setContent {
-            val snapshot = (statusViewModel.statusState as? LoadState.Loaded)?.value
+            val statusState = statusViewModel.statusState
+            val snapshot = (statusState as? LoadState.Loaded)?.value
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
                 waiting = snapshot?.waiting.orEmpty(),
+                defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
+                onRefreshStatus = statusViewModel::refresh,
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
                 onStartObserving = { container.controller.ensureObserving() },
                 onConnectJournal = {
@@ -96,6 +103,7 @@ class PhoneShellActivity : ComponentActivity() {
         val stack: PhoneRouteStack = PhoneRouteStack.Empty,
         val shelfOpen: Boolean = false,
         val statusOpen: Boolean = false,
+        val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
     ) {
         companion object {
             val Home = CaptureSurface()
@@ -108,11 +116,20 @@ class PhoneShellActivity : ComponentActivity() {
         val extras = intent?.extras ?: return CaptureSurface.Home
         val shelfOpen = extras.getBoolean(EXTRA_CAPTURE_SHELF, false)
         val statusOpen = extras.getBoolean(EXTRA_CAPTURE_STATUS, false)
+        val capturedStatusState = resolvePhoneStatusCapture(
+            raw = extras.getString(EXTRA_CAPTURE_DEFAULT_DETAIL_STATUS),
+            debuggable = debuggable,
+        )
         val stack = extras.getString(EXTRA_CAPTURE_ROUTE)
             ?.let(::decodePhoneRoute)
             ?.let(PhoneRouteStack.Empty::showInDetail)
             ?: PhoneRouteStack.Empty
-        return CaptureSurface(stack = stack, shelfOpen = shelfOpen, statusOpen = statusOpen)
+        return CaptureSurface(
+            stack = stack,
+            shelfOpen = shelfOpen,
+            statusOpen = statusOpen,
+            capturedStatusState = capturedStatusState,
+        )
     }
 
 
@@ -128,6 +145,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        statusViewModel.onHostResumed()
         captureOwnerToken = container.captureAuthority.acquire()
         mainHandler.post(startWhenReady)
     }
@@ -143,13 +161,14 @@ class PhoneShellActivity : ComponentActivity() {
         private val sources: SourcesReader,
         private val readStatus: () -> app.solstone.observer.harness.HarnessBacklogStatus,
         private val asyncLoad: AsyncLoad,
+        private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when {
                 modelClass.isAssignableFrom(SourcesViewModel::class.java) -> SourcesViewModel(sources, asyncLoad) as T
                 modelClass.isAssignableFrom(PhoneStatusViewModel::class.java) ->
-                    PhoneStatusViewModel(readStatus, sources, asyncLoad) as T
+                    PhoneStatusViewModel(readStatus, sources, asyncLoad, capturedStatusState) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")
             }
         }
@@ -162,5 +181,6 @@ class PhoneShellActivity : ComponentActivity() {
         const val EXTRA_CAPTURE_ROUTE = "solstone.design.route"
         const val EXTRA_CAPTURE_SHELF = "solstone.design.shelf"
         const val EXTRA_CAPTURE_STATUS = "solstone.design.status"
+        const val EXTRA_CAPTURE_DEFAULT_DETAIL_STATUS = "solstone.design.default-detail-status"
     }
 }

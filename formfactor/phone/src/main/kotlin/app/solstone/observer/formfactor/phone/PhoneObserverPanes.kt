@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -42,6 +41,8 @@ internal fun PhoneDetailPane(
     onConnectJournal: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
+    defaultDetailStatus: PhoneDefaultDetailStatus,
+    onRefreshStatus: (() -> Unit)?,
     modifier: Modifier = Modifier,
     leadingSlot: (@Composable () -> Unit)? = null,
     version: String = "",
@@ -62,6 +63,8 @@ internal fun PhoneDetailPane(
             onConnectJournal = onConnectJournal,
             onOpenLicences = onOpenLicences,
             onOpenSource = onOpenSource,
+            defaultDetailStatus = defaultDetailStatus,
+            onRefreshStatus = onRefreshStatus,
             version = version,
             isOnHome = isOnHome,
             onToggle = onToggle,
@@ -82,16 +85,20 @@ private fun PhoneDetailContent(
     onConnectJournal: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
+    defaultDetailStatus: PhoneDefaultDetailStatus,
+    onRefreshStatus: (() -> Unit)?,
     modifier: Modifier,
     version: String = "",
     isOnHome: (String) -> Boolean = { true },
     onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
     when (top) {
-        null -> Box(
-            modifier
-                .fillMaxSize()
-                .testTag("phoneDefaultDetail"),
+        null -> PhoneDefaultDetailPane(
+            status = defaultDetailStatus,
+            onConnectJournal = onConnectJournal,
+            onOpenSource = onOpenSource,
+            onRefreshStatus = onRefreshStatus,
+            modifier = modifier,
         )
         PhoneRoute.AboutSolstone -> PhoneAboutPane(
             onOpenLicences = onOpenLicences,

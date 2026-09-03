@@ -65,7 +65,6 @@ fun PhoneStatusPane(
     modifier: Modifier = Modifier,
     onConnectJournal: () -> Unit = {},
 ) {
-    val kind = statusPillKind(model)
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
     val marginPx = with(density) { ShellMetrics.screenMargin.roundToPx() }
@@ -104,72 +103,100 @@ fun PhoneStatusPane(
                     )
                     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
                 }
-                when (kind) {
-                    StatusPillKind.CONNECTED -> {
-                        PaneLead("all caught up")
-                        PaneSubLine("everything is in your journal")
+                if (model.paired) {
+                    PhonePairedStatusContent(
+                        model = model,
+                        waiting = waiting,
+                        onOpenSource = onOpenSource,
+                    )
+                } else {
+                    PaneLead("not paired")
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(
+                        onClick = onConnectJournal,
+                        modifier = Modifier.testTag("statusPaneConnect"),
+                    ) {
+                        Text("connect a journal")
                     }
-                    StatusPillKind.SYNCING -> {
-                        PaneCount(model.pendingCount)
-                        // ⛔ Locked string, and it is a KNOWN-OPEN founder question
-                        // (it sits against CMO's subject register). The pill, this
-                        // pane and the aggregate label move together or not at all —
-                        // do not quietly reword one of them.
-                        PaneSubLine("syncing to your journal…")
-                    }
-                    StatusPillKind.OFFLINE -> {
-                        PaneCount(model.pendingCount)
-                        // ⛔ Never a safety claim — only where it is.
-                        PaneSubLine("on this device")
-                    }
-                    StatusPillKind.NOT_PAIRED -> {
-                        PaneLead("not paired")
-                        Spacer(Modifier.height(4.dp))
-                        TextButton(
-                            onClick = onConnectJournal,
-                            modifier = Modifier.testTag("statusPaneConnect"),
-                        ) {
-                            Text("connect a journal")
-                        }
-                    }
-                }
-                if (waiting.isNotEmpty()) {
-                    Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-                    // § 2.2: per-source breakdowns live one level down, here. Every
-                    // waiting row opens that source, so status is a way in.
-                    waiting.forEach { status ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .clickable { onOpenSource(status.sourceId) }
-                                .testTag("waitingRow-${status.sourceId}"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    painter = painterResource(sourceGlyph(status.sourceId)),
-                                    contentDescription = null,
-                                    tint = shellSecondaryInk,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    text = sourceLabel(status.sourceId),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                            }
-                            Icon(
-                                painter = painterResource(R.drawable.phone_chevron_right),
-                                contentDescription = null,
-                                tint = shellSecondaryInk,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
+                    PhoneStatusWaitingRows(waiting, onOpenSource)
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun PhonePairedStatusContent(
+    model: PhoneStatusModel,
+    waiting: List<SourceStatus>,
+    onOpenSource: (String) -> Unit,
+) {
+    PhonePairedStatusSummary(model)
+    PhoneStatusWaitingRows(waiting, onOpenSource)
+}
+
+@Composable
+private fun PhonePairedStatusSummary(model: PhoneStatusModel) {
+    when (statusPillKind(model)) {
+        StatusPillKind.CONNECTED -> {
+            PaneLead("all caught up")
+            PaneSubLine("everything is in your journal")
+        }
+        StatusPillKind.SYNCING -> {
+            PaneCount(model.pendingCount)
+            // ⛔ Locked string, and it is a KNOWN-OPEN founder question
+            // (it sits against CMO's subject register). The pill, this
+            // pane and the aggregate label move together or not at all —
+            // do not quietly reword one of them.
+            PaneSubLine("syncing to your journal…")
+        }
+        StatusPillKind.OFFLINE -> {
+            PaneCount(model.pendingCount)
+            // ⛔ Never a safety claim — only where it is.
+            PaneSubLine("on this device")
+        }
+        StatusPillKind.NOT_PAIRED -> Unit
+    }
+}
+
+@Composable
+private fun PhoneStatusWaitingRows(
+    waiting: List<SourceStatus>,
+    onOpenSource: (String) -> Unit,
+) {
+    if (waiting.isEmpty()) return
+    Spacer(Modifier.height(ShellMetrics.sectionSpacing))
+    // § 2.2: per-source breakdowns live one level down, here. Every
+    // waiting row opens that source, so status is a way in.
+    waiting.forEach { status ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable { onOpenSource(status.sourceId) }
+                .testTag("waitingRow-${status.sourceId}"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(sourceGlyph(status.sourceId)),
+                    contentDescription = null,
+                    tint = shellSecondaryInk,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = sourceLabel(status.sourceId),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            Icon(
+                painter = painterResource(R.drawable.phone_chevron_right),
+                contentDescription = null,
+                tint = shellSecondaryInk,
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
