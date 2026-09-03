@@ -115,7 +115,7 @@ class PhoneDeckNonSourceTileTest {
     fun nonSourceTileSublinesMatchApprovedCopy() {
         setScreen()
 
-        assertTileTexts("importTile", listOf("import", "photos, files, anything"))
+        assertTileTexts("importTile", listOf("import", "photos and files"))
         assertTileTexts("addMoreTile", listOf("add more", "sources and devices"))
     }
 
@@ -139,10 +139,10 @@ class PhoneDeckNonSourceTileTest {
     }
 
     @Test
-    fun importPaneShowsJournalReceipt() {
+    fun unavailableImportPaneDoesNotClaimJournalReceipt() {
         setScreen(initial = PhoneRoute.Import)
 
-        composeRule.onNodeWithText("in your journal").assertIsDisplayed()
+        composeRule.onNodeWithText("in your journal").assertDoesNotExist()
     }
 
     @Test
@@ -218,17 +218,14 @@ class PhoneDeckNonSourceTileTest {
     }
 
     private fun assertSingleAppBarHeading(expected: String) {
-        val headingMatcher = SemanticsMatcher("heading") { node ->
-            node.config.getOrNull(SemanticsProperties.Heading) != null
-        }
-        val headings = composeRule.onAllNodes(headingMatcher, useUnmergedTree = true)
-            .fetchSemanticsNodes()
-        assertEquals(1, headings.size)
-        composeRule.onNode(headingMatcher, useUnmergedTree = true).assertIsDisplayed()
-        assertEquals(listOf(expected), headings.single().texts())
+        composeRule.onNodeWithTag("phoneAppBar", useUnmergedTree = true).assertIsDisplayed()
         val appBar = composeRule.onNodeWithTag("phoneAppBar", useUnmergedTree = true)
             .fetchSemanticsNode()
-        assertTrue(appBar.hasDescendant(headings.single().id))
+        val headings = appBar.descendants().filter { node ->
+            node.config.getOrNull(SemanticsProperties.Heading) != null
+        }
+        assertEquals(1, headings.size)
+        assertEquals(listOf(expected), headings.single().texts())
     }
 
     private fun assertNoSourceChrome(testTag: String) {
@@ -262,9 +259,6 @@ private fun String?.isGridItemTag(): Boolean =
 private fun SemanticsNode.descendants(): List<SemanticsNode> = listOf(this) + children.flatMap {
     it.descendants()
 }
-
-private fun SemanticsNode.hasDescendant(id: Int): Boolean =
-    children.any { it.id == id || it.hasDescendant(id) }
 
 private fun SemanticsNode.texts(): List<String> =
     config.getOrNull(SemanticsProperties.Text)?.map { it.text } ?: emptyList()

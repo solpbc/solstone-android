@@ -69,7 +69,7 @@ class PhoneShelfTest {
             .fetchSemanticsNode()
             .boundsInRoot
             .left
-        val expected = with(composeRule.density) { 28.dp.toPx() }
+        val expected = with(composeRule.density) { 24.dp.toPx() }
         val tolerance = with(composeRule.density) { 1.dp.toPx() }
         assertTrue("text inset ${textLeft - sheetLeft} differs from $expected", abs(textLeft - sheetLeft - expected) <= tolerance)
     }

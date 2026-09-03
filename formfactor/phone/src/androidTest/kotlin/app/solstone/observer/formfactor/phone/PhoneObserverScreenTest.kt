@@ -107,7 +107,7 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun audioHasSwitchAndCameraDoesNot() {
+    fun audioAndCameraHaveSwitches() {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn(), cameraOn()),
@@ -117,7 +117,7 @@ class PhoneObserverScreenTest {
             )
         }
         composeRule.onNodeWithTag("sourceSwitch-audio", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("sourceSwitch-camera", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("sourceSwitch-camera", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -145,7 +145,7 @@ class PhoneObserverScreenTest {
                 onStartObserving = {},
             )
         }
-        composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("sourceTile-audio").performTouchInput { click(center) }
         assertEquals(0, toggles)
     }
 
@@ -646,7 +646,7 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun locationReflowsWithoutJoiningItsSwitchAtCompactFontScales() {
+    fun locationLabelStaysBelowItsSwitchAtCompactFontScales() {
         var toggles = 0
         var fontScale by mutableStateOf(1.3f)
         var screenGeneration by mutableStateOf(0)
@@ -672,8 +672,6 @@ class PhoneObserverScreenTest {
             composeRule.runOnIdle { fontScale = scale }
             val label = composeRule.onNodeWithTag("sourceLabel-location", useUnmergedTree = true)
                 .fetchSemanticsNode()
-            val body = composeRule.onNodeWithTag("sourceBody-location", useUnmergedTree = true)
-                .fetchSemanticsNode()
             val toggle = composeRule.onNodeWithTag("sourceSwitch-location", useUnmergedTree = true)
                 .fetchSemanticsNode()
             val tile = composeRule.onNodeWithTag("sourceTile-location", useUnmergedTree = true)
@@ -681,12 +679,12 @@ class PhoneObserverScreenTest {
             val density = composeRule.density
             val minPx = with(density) { MINIMUM_TOUCH_TARGET_DP.dp.toPx() }
 
-            assertTrue("$scale label must precede its switch", label.boundsInRoot.bottom <= toggle.boundsInRoot.top)
-            assertTrue("$scale tile must grow for both controls", tile.boundsInRoot.height > body.boundsInRoot.height)
+            assertTrue("$scale label must follow its switch", toggle.boundsInRoot.bottom <= label.boundsInRoot.top)
+            assertTrue("$scale tile must contain the label and switch", tile.boundsInRoot.height > label.boundsInRoot.height)
             assertTrue("$scale switch width", toggle.size.width >= minPx - 1f)
             assertTrue("$scale switch height", toggle.size.height >= minPx - 1f)
 
-            composeRule.onNodeWithTag("sourceBody-location", useUnmergedTree = true).performClick()
+            composeRule.onNodeWithTag("sourceTile-location").performTouchInput { click(center) }
             composeRule.onNode(paneTitleMatcher("location")).assertIsDisplayed()
             composeRule.runOnIdle { screenGeneration += 1 }
             composeRule.onNodeWithTag("sourceSwitch-location", useUnmergedTree = true).performClick()
@@ -733,7 +731,9 @@ class PhoneObserverScreenTest {
                 onStartObserving = {},
             )
         }
-        assertEquals(listOf("audio", "on"), unmergedTexts("sourceBody-audio"))
+        composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
+            .assertTextEquals("audio")
+        composeRule.onNodeWithText("on", useUnmergedTree = true).assertIsDisplayed()
         assertEquals("audio on", tileStateDescription("audio"))
     }
 
@@ -747,7 +747,9 @@ class PhoneObserverScreenTest {
                 onStartObserving = {},
             )
         }
-        assertEquals(listOf("audio", "needs attention"), unmergedTexts("sourceBody-audio"))
+        composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
+            .assertTextEquals("audio")
+        composeRule.onNodeWithText("needs attention", useUnmergedTree = true).assertIsDisplayed()
         assertEquals("audio needs attention", tileStateDescription("audio"))
         composeRule.onNodeWithText("tap to fix", useUnmergedTree = true).assertDoesNotExist()
     }
@@ -757,19 +759,6 @@ class PhoneObserverScreenTest {
             .fetchSemanticsNode()
             .config
             .getOrNull(SemanticsProperties.StateDescription)
-
-    private fun unmergedTexts(tag: String): List<String> {
-        val root = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
-        val texts = mutableListOf<String>()
-        fun walk(node: SemanticsNode) {
-            node.config.getOrNull(SemanticsProperties.Text)?.let { annotated ->
-                texts.addAll(annotated.map { it.text })
-            }
-            node.children.forEach(::walk)
-        }
-        walk(root)
-        return texts
-    }
 
     private fun liveRegionNode() =
         composeRule.onNodeWithTag("statusLiveRegion", useUnmergedTree = true).fetchSemanticsNode()

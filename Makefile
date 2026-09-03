@@ -46,10 +46,14 @@ format:
 # committed output (it does not run brand-sync) — run this locally when the
 # brand spec updates, then commit the diff.
 #
-# Every brand-derived asset in this repository is a raster: there are no SVGs
-# to copy, and the launcher ladder has no committed raster in the brand source
-# at Android's densities. scripts/build-launcher-icons.sh renders all three
-# families from the brand app-icon masters; see it for the geometry contract.
+# Every brand-derived asset in this repository is a raster EXCEPT the display
+# face: formfactor/phone/src/main/res/font/comfortaa_bold.ttf is vendored from
+# the brand asset source and carries its own licence. See
+# docs/third-party-assets.md -- the OFL requires the licence to travel with the
+# font, and the app surfaces the attribution in `about solstone > licenses`.
+# The launcher ladder has no committed raster in the brand source at Android's
+# densities; scripts/build-launcher-icons.sh renders all three families from the
+# brand app-icon masters, and carries the geometry contract.
 brand-sync:
 	@test -n "$(BRAND_DIR)" || { echo "brand: BRAND_DIR is required — point it at your brand asset directory (BRAND_DIR=/path/to/brand make brand-sync)"; exit 1; }
 	@test -d "$(BRAND_DIR)" || { echo "brand: BRAND_DIR=$(BRAND_DIR) not found"; exit 1; }

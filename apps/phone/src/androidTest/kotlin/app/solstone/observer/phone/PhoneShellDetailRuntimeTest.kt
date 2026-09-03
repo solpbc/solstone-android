@@ -13,7 +13,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -82,7 +84,7 @@ class PhoneShellDetailRuntimeTest {
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodesWithTag("sourceTile-audio").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("sourceBody-audio", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("sourceTile-audio").performTouchInput { click(center) }
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodes(sourceDetailPaneMatcher(), useUnmergedTree = true)
                 .fetchSemanticsNodes()

@@ -111,15 +111,17 @@ object SolstoneColors {
     /**
      * `journal-mark.md` section 4.3 -- the generic mark's upright chip, dashed.
      *
-     * This is `#E8923A` and [solOrange] is `#E8913A`. Both are documented as "sol
-     * orange": sections 4.3 and 8.5 of the mark spec give this value, CMO's brand seed
-     * gives the other. One green-channel unit apart and visually identical, so neither
-     * surface has ever looked wrong -- but two canon documents disagree about one brand
-     * value, and the mark's contract is the one whose premise is "pixel-for-pixel". The
-     * mark spec's own value is used here; the discrepancy is raised to CMO/VPX rather
-     * than silently resolved inside an implementation file.
+     * Reads [solOrange], NOT the `#E8923A` the mark spec prints. That hex is the
+     * retired 260629 pair: CMO G1 moved sol orange to `#E8913A` on 2026-08-19, and G5
+     * the next day ruled that everything derived from the mark palette follows it --
+     * naming the journal mark's chip 1 explicitly in its own decision table
+     * (`#E8923A` -> `#E8913A`). The icon GENERATOR was swept then; the mark spec's
+     * prose in sections 4.3 and 8.5 was not, so it still prints the old value.
+     *
+     * Do not "restore" the literal from the document. One green-channel unit apart and
+     * visually identical, which is exactly why it survived the sweep.
      */
-    val markGenericChipOne = Color(0xFFE8923A)
+    val markGenericChipOne = solOrange
 
     /** `journal-mark.md` section 4.3 -- the generic mark's 45 degree chip: mark-palette gold. */
     val markGenericChipTwo = Color(0xFFD4A017)
