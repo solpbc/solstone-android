@@ -89,10 +89,27 @@ licences|licences||licenses
 EOF
 )
 
+# Every device setting this script changes is captured before it changes it, and put back on
+# EXIT — including the screen timeout, which an earlier version raised and never restored, so a
+# shared bench device kept a 30-minute timeout set by a run that had long finished.
+PRIOR_TIMEOUT=$(adb shell settings get system screen_off_timeout 2>/dev/null | tr -d '\r')
+PRIOR_NIGHT=""
+if [ -n "$NIGHT" ]; then
+  case "$(adb shell cmd uimode night 2>/dev/null)" in
+    *yes*) PRIOR_NIGHT=yes ;;
+    *no*)  PRIOR_NIGHT=no ;;
+  esac
+fi
+
 restore() {
-  [ -n "$FONT_SCALE" ] && adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
-  [ -n "$WM_SIZE" ] && adb shell wm size reset >/dev/null 2>&1 || true
-  [ -n "$WM_DENSITY" ] && adb shell wm density reset >/dev/null 2>&1 || true
+  [ -n "$FONT_SCALE" ] && adb shell settings put system font_scale 1.0 >/dev/null 2>&1
+  [ -n "$WM_SIZE" ] && adb shell wm size reset >/dev/null 2>&1
+  [ -n "$WM_DENSITY" ] && adb shell wm density reset >/dev/null 2>&1
+  [ -n "$PRIOR_NIGHT" ] && adb shell cmd uimode night "$PRIOR_NIGHT" >/dev/null 2>&1
+  case "$PRIOR_TIMEOUT" in
+    ''|*[!0-9]*) : ;;
+    *) adb shell settings put system screen_off_timeout "$PRIOR_TIMEOUT" >/dev/null 2>&1 ;;
+  esac
   return 0
 }
 trap restore EXIT
