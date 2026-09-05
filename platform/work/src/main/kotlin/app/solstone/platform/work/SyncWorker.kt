@@ -81,6 +81,14 @@ class SyncWorker(
                     host = deviceLabel(),
                     now = System::currentTimeMillis,
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
+                    onUsableConnection = {
+                        stores.journalVersionCoordinator.onUsableConnection(
+                            credentials.identity.instanceId,
+                            credentials.identity.caChainFingerprint,
+                        ) {
+                            openSyncClient(selectedTransport, credentials.credential)
+                        }
+                    },
                 )
             }
             val outcome = when (transport) {

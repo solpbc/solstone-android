@@ -20,6 +20,7 @@ internal fun <C> syncWithTransport(
     host: String,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
+    onUsableConnection: (() -> Unit)? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable =
     openClient(transport).use { client ->
         val status = try {
@@ -29,6 +30,9 @@ internal fun <C> syncWithTransport(
         } catch (e: IOException) {
             log("status probe io; retry", e)
             return@use SyncOutcome.RETRY
+        }
+        if (status == 200) {
+            onUsableConnection?.invoke()
         }
         when (decideReachability(paired = true, reachable = status == 200)) {
             ReachabilityVerdict.SKIP -> SyncOutcome.FAILURE

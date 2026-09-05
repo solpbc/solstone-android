@@ -122,7 +122,7 @@ class ObserverAppContainer(
 
     override val controller: HarnessController = flavor.controller
     override val backlogStatus: BacklogStatusReader =
-        RealBacklogStatusReader(database.segmentDao(), controller::probePlStatus)
+        flavor.backlogStatus ?: RealBacklogStatusReader(database.segmentDao(), controller::probePlStatus)
     override val sources = SourceRegistry(
         controller = controller,
         registrations = captureSetup.registrations,

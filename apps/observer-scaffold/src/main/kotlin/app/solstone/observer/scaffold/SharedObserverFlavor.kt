@@ -3,6 +3,7 @@
 
 package app.solstone.observer.scaffold
 
+import app.solstone.observer.harness.BacklogStatusReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.OpportunisticSync
 
@@ -11,6 +12,7 @@ data class SharedObserverFlavor(
     val heartbeatControl: HeartbeatControl? = null,
     val syncControl: SyncControl? = null,
     val opportunisticSync: OpportunisticSync? = null,
+    val backlogStatus: BacklogStatusReader? = null,
 )
 
 interface HeartbeatControl {

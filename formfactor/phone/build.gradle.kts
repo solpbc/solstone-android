@@ -59,6 +59,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation(project(":harness"))
     implementation(project(":core:model"))
+    implementation(project(":core:pl"))
+    implementation(project(":core:identity"))
 
     testImplementation(kotlin("test"))
     // Widget reducer tests construct the real HarnessController/SourceRegistry path. These stay

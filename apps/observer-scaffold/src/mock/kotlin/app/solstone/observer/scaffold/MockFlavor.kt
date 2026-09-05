@@ -7,10 +7,13 @@ import android.content.Context
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalVersionRecord
+import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.observer.harness.BundleExport
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessExportResult
@@ -24,6 +27,7 @@ import app.solstone.observer.harness.OpportunisticSync
 import app.solstone.observer.harness.PairConnectionMode
 import app.solstone.observer.harness.PairProbe
 import app.solstone.observer.harness.PlStatusProbe
+import app.solstone.observer.harness.RealBacklogStatusReader
 import app.solstone.observer.harness.RealEvidenceReader
 import app.solstone.observer.harness.RelayPairProbe
 import app.solstone.observer.harness.SourceRuntimeSnapshot
@@ -47,73 +51,83 @@ fun buildObserverFlavor(
     val endpointStore = MemoryEndpointStore()
     val credentialStore = MemoryCredentialStore()
     val identityStore = MemoryIdentityStore()
+    val journalVersionStore = MemoryJournalVersionStore()
+    val coordinator = JournalVersionRefreshCoordinator(journalVersionStore)
     val heartbeat = MockHeartbeat()
     val sync = MockSyncEnqueue()
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val opportunisticSync = OpportunisticSync(evidenceReader, sync, NoopNetworkAvailability)
+    val controller = HarnessController(
+        permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
+        desiredObservingStore = InMemoryDesiredObservingStore(),
+        cameraLock = cameraLock,
+        observerLifecycle = lifecycle,
+        heartbeatFreshness = heartbeat,
+        pairProbe = PairProbe { _, _ ->
+            endpointStore.save(DirectEndpoint("10.0.0.2", 7657))
+            credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
+            identityStore.save(
+                PairedHome("home", "home", null, "sha256:ca", "sha256:client", spec.deviceLabel, null, null, IdentityState.PAIRED),
+            )
+            HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657, PairConnectionMode.PAIRING)
+        },
+        relayPairProbe = RelayPairProbe { _, _ ->
+            credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
+            identityStore.save(
+                PairedHome(
+                    "home",
+                    "home",
+                    "https://link.solstone.app",
+                    "sha256:ca",
+                    "sha256:client",
+                    spec.deviceLabel,
+                    "mock-device-token",
+                    null,
+                    IdentityState.PAIRED,
+                ),
+            )
+            HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443, PairConnectionMode.PAIRING)
+        },
+        plStatusProbe = PlStatusProbe {
+            val identity = identityStore.load()
+            if (credentialStore.load() == null || identity == null || (identity.relayOrigin == null && endpointStore.load() == null)) {
+                HarnessPlStatus.NotPaired
+            } else if (heartbeat.fresh) {
+                HarnessPlStatus.Reachable(200)
+            } else {
+                HarnessPlStatus.PairedButUnreachable("mock unreachable")
+            }
+        },
+        syncEnqueue = sync,
+        evidenceReader = evidenceReader,
+        bundleExport = BundleExport {
+            HarnessExportResult(
+                sourcePath = spoolDir.resolve(it.day).resolve(it.stream).resolve(it.dirSegment).toString(),
+                destinationPath = context.filesDir.resolve("mock-export/${it.id}").absolutePath,
+                copiedFileCount = it.files.size,
+            )
+        },
+        endpointStore = endpointStore,
+        credentialStore = credentialStore,
+        identityStore = identityStore,
+        sourceSnapshot = sourceSnapshot,
+        deviceLabel = spec.deviceLabel,
+        visibleCaptureAuthority = visibleCaptureAuthority,
+        isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
+        opportunisticSync = opportunisticSync,
+    )
+    val backlogStatus = RealBacklogStatusReader(
+        dao = database.segmentDao(),
+        plStatus = controller::probePlStatus,
+        identityStore = identityStore,
+        coordinator = coordinator,
+    )
     return SharedObserverFlavor(
-        controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
-            desiredObservingStore = InMemoryDesiredObservingStore(),
-            cameraLock = cameraLock,
-            observerLifecycle = lifecycle,
-            heartbeatFreshness = heartbeat,
-            pairProbe = PairProbe { _, _ ->
-                endpointStore.save(DirectEndpoint("10.0.0.2", 7657))
-                credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
-                identityStore.save(
-                    PairedHome("home", "home", null, "sha256:ca", "sha256:client", spec.deviceLabel, null, null, IdentityState.PAIRED),
-                )
-                HarnessPairProbeResult(true, 200, 200, "ok", "home", "10.0.0.2", 7657, PairConnectionMode.PAIRING)
-            },
-            relayPairProbe = RelayPairProbe { _, _ ->
-                credentialStore.save(ClientCredential("private", "cert", listOf("ca")))
-                identityStore.save(
-                    PairedHome(
-                        "home",
-                        "home",
-                        "https://link.solstone.app",
-                        "sha256:ca",
-                        "sha256:client",
-                        spec.deviceLabel,
-                        "mock-device-token",
-                        null,
-                        IdentityState.PAIRED,
-                    ),
-                )
-                HarnessPairProbeResult(true, 200, 200, "", "home", "link.solstone.app", 443, PairConnectionMode.PAIRING)
-            },
-            plStatusProbe = PlStatusProbe {
-                val identity = identityStore.load()
-                if (credentialStore.load() == null || identity == null || (identity.relayOrigin == null && endpointStore.load() == null)) {
-                    HarnessPlStatus.NotPaired
-                } else if (heartbeat.fresh) {
-                    HarnessPlStatus.Reachable(200)
-                } else {
-                    HarnessPlStatus.PairedButUnreachable("mock unreachable")
-                }
-            },
-            syncEnqueue = sync,
-            evidenceReader = evidenceReader,
-            bundleExport = BundleExport {
-                HarnessExportResult(
-                    sourcePath = spoolDir.resolve(it.day).resolve(it.stream).resolve(it.dirSegment).toString(),
-                    destinationPath = context.filesDir.resolve("mock-export/${it.id}").absolutePath,
-                    copiedFileCount = it.files.size,
-                )
-            },
-            endpointStore = endpointStore,
-            credentialStore = credentialStore,
-            identityStore = identityStore,
-            sourceSnapshot = sourceSnapshot,
-            deviceLabel = spec.deviceLabel,
-            visibleCaptureAuthority = visibleCaptureAuthority,
-            isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
-            opportunisticSync = opportunisticSync,
-        ),
+        controller = controller,
         heartbeatControl = heartbeat,
         syncControl = sync,
         opportunisticSync = opportunisticSync,
+        backlogStatus = backlogStatus,
     )
 }
 
@@ -180,5 +194,16 @@ private class MemoryIdentityStore : IdentityStore {
     override fun load(): PairedHome? = home
     override fun clear() {
         home = null
+    }
+}
+
+private class MemoryJournalVersionStore : JournalVersionStore {
+    private var record: JournalVersionRecord? = null
+    override fun save(record: JournalVersionRecord) {
+        this.record = record
+    }
+    override fun load(): JournalVersionRecord? = record
+    override fun clear() {
+        record = null
     }
 }

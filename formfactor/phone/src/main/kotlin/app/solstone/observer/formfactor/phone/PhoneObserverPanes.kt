@@ -46,6 +46,7 @@ internal fun PhoneDetailPane(
     modifier: Modifier = Modifier,
     leadingSlot: (@Composable () -> Unit)? = null,
     version: String = "",
+    journalVersion: String = "",
     isOnHome: (String) -> Boolean = { true },
     onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
@@ -66,6 +67,7 @@ internal fun PhoneDetailPane(
             defaultDetailStatus = defaultDetailStatus,
             onRefreshStatus = onRefreshStatus,
             version = version,
+            journalVersion = journalVersion,
             isOnHome = isOnHome,
             onToggle = onToggle,
             modifier = Modifier
@@ -89,6 +91,7 @@ private fun PhoneDetailContent(
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier,
     version: String = "",
+    journalVersion: String = "",
     isOnHome: (String) -> Boolean = { true },
     onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
@@ -103,6 +106,7 @@ private fun PhoneDetailContent(
         PhoneRoute.AboutSolstone -> PhoneAboutPane(
             onOpenLicences = onOpenLicences,
             version = version,
+            journalVersion = journalVersion,
             modifier = modifier,
         )
         PhoneRoute.Licences -> PhoneLicencesPane(modifier = modifier)

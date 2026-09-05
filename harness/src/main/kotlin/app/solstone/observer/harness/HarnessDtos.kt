@@ -6,8 +6,10 @@ package app.solstone.observer.harness
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.pl.JournalVersionReading
 
 enum class PairConnectionMode { PAIRING, ALREADY_CONNECTED, RECONNECTING }
+
 
 data class HarnessPairProbeResult(
     val handshakePinned: Boolean,
@@ -64,6 +66,7 @@ data class HarnessBacklogStatus(
     val plStatus: HarnessPlStatus,
     val pendingCount: Int,
     val pendingSourceIds: List<String>,
+    val journalVersion: JournalVersionReading? = null,
 )
 
 data class HarnessExportResult(

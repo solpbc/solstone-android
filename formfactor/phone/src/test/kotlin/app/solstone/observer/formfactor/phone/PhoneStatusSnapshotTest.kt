@@ -57,6 +57,21 @@ class PhoneStatusSnapshotTest {
         assertTrue(snapshot.waiting.isEmpty())
     }
 
+    @Test
+    fun passesThroughJournalVersion() {
+        val reading = app.solstone.core.pl.JournalVersionReading("1.0.0", app.solstone.core.pl.JournalVersionFreshness.CURRENT)
+        val snapshot = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(
+                plStatus = HarnessPlStatus.Reachable(200),
+                pendingCount = 0,
+                pendingSourceIds = emptyList(),
+                journalVersion = reading,
+            ),
+            registered = emptyList(),
+        )
+        assertEquals(reading, snapshot.status.journalVersion)
+    }
+
     private fun flagsFor(plStatus: HarnessPlStatus): Pair<Boolean, Boolean> {
         val snapshot = phoneStatusSnapshotOf(HarnessBacklogStatus(plStatus, 0, emptyList()), emptyList())
         return snapshot.status.paired to snapshot.status.online

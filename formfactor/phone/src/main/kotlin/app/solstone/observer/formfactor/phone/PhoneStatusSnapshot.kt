@@ -41,6 +41,7 @@ fun phoneStatusSnapshotOf(
             online = online,
             pendingCount = backlog.pendingCount,
             hasContentPending = backlog.pendingSourceIds.isNotEmpty(),
+            journalVersion = backlog.journalVersion,
         ),
         waiting = waiting,
     )

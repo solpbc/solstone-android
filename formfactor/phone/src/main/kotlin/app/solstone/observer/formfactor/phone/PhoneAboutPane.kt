@@ -33,6 +33,7 @@ fun PhoneAboutPane(
     onOpenLicences: () -> Unit,
     modifier: Modifier = Modifier,
     version: String = "",
+    journalVersion: String = "",
 ) {
     val context = LocalContext.current
     PhonePaneScaffold(
@@ -42,6 +43,8 @@ fun PhoneAboutPane(
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             PaneFactRow(label = "version", value = version.ifBlank { "—" })
+            PaneRowDivider()
+            PaneFactRow(label = "journal version", value = journalVersion.ifBlank { "unknown" })
             PaneRowDivider()
             PaneNavRow(
                 label = "licenses",

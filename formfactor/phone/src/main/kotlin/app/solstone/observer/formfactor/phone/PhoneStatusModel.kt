@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.pl.JournalVersionFreshness
+import app.solstone.core.pl.JournalVersionReading
+
 enum class StatusPillKind {
     CONNECTED,
     SYNCING,
@@ -16,7 +19,14 @@ data class PhoneStatusModel(
     val pendingCount: Int,
     val hasContentPending: Boolean,
     val wrist: WristShare = WristShare.Unknown,
+    val journalVersion: JournalVersionReading? = null,
 )
+
+fun journalVersionDisplayText(reading: JournalVersionReading?): String = when (reading?.freshness) {
+    null, JournalVersionFreshness.NEVER_OBSERVED -> "unknown"
+    JournalVersionFreshness.LAST_KNOWN -> "${reading.version} (last known)"
+    JournalVersionFreshness.CURRENT -> reading.version.orEmpty()
+}
 
 fun statusPillKind(model: PhoneStatusModel): StatusPillKind = when {
     !model.paired -> StatusPillKind.NOT_PAIRED

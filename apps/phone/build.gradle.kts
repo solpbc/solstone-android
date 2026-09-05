@@ -162,6 +162,8 @@ dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:diagnostics"))
     implementation(project(":core:sources"))
+    implementation(project(":core:pl"))
+    implementation(project(":core:identity"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")

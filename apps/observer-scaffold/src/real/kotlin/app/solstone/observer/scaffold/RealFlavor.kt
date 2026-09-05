@@ -8,6 +8,7 @@ import app.solstone.observer.harness.AndroidNetworkAvailability
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.ObserverLifecycle
 import app.solstone.observer.harness.OpportunisticSync
+import app.solstone.observer.harness.RealBacklogStatusReader
 import app.solstone.observer.harness.RealBundleExport
 import app.solstone.observer.harness.RealEvidenceReader
 import app.solstone.observer.harness.RealHeartbeatFreshness
@@ -44,28 +45,55 @@ fun buildObserverFlavor(
         syncEnqueue = syncEnqueue,
         networkAvailability = networkAvailability,
     )
-    return SharedObserverFlavor(
-        controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
-            desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
-            cameraLock = cameraLock,
-            observerLifecycle = lifecycle,
-            heartbeatFreshness = RealHeartbeatFreshness(),
-            pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
-            relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
-            plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
-            syncEnqueue = syncEnqueue,
-            evidenceReader = evidenceReader,
-            bundleExport = RealBundleExport(spoolDir, external),
-            endpointStore = stores.endpointStore,
-            credentialStore = stores.credentialStore,
-            identityStore = stores.identityStore,
-            sourceSnapshot = sourceSnapshot,
-            deviceLabel = spec.deviceLabel,
-            visibleCaptureAuthority = visibleCaptureAuthority,
-            isUsableNetworkPresent = networkAvailability::isUsableNow,
-            opportunisticSync = opportunisticSync,
-        ),
+    val pairProbe = RealPairProbe(
+        credentialStore = stores.credentialStore,
+        identityStore = stores.identityStore,
+        endpointStore = stores.endpointStore,
+        journalVersionStore = stores.journalVersionStore,
+        coordinator = stores.journalVersionCoordinator,
+    )
+    val relayPairProbe = RealRelayPairProbe(
+        credentialStore = stores.credentialStore,
+        identityStore = stores.identityStore,
+        journalVersionStore = stores.journalVersionStore,
+        coordinator = stores.journalVersionCoordinator,
+    )
+    val plStatusProbe = RealPlStatusProbe(
+        endpointStore = stores.endpointStore,
+        credentialStore = stores.credentialStore,
+        identityStore = stores.identityStore,
+        coordinator = stores.journalVersionCoordinator,
+    )
+    val controller = HarnessController(
+        permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
+        desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
+        cameraLock = cameraLock,
+        observerLifecycle = lifecycle,
+        heartbeatFreshness = RealHeartbeatFreshness(),
+        pairProbe = pairProbe,
+        relayPairProbe = relayPairProbe,
+        plStatusProbe = plStatusProbe,
+        syncEnqueue = syncEnqueue,
+        evidenceReader = evidenceReader,
+        bundleExport = RealBundleExport(spoolDir, external),
+        endpointStore = stores.endpointStore,
+        credentialStore = stores.credentialStore,
+        identityStore = stores.identityStore,
+        sourceSnapshot = sourceSnapshot,
+        deviceLabel = spec.deviceLabel,
+        visibleCaptureAuthority = visibleCaptureAuthority,
+        isUsableNetworkPresent = networkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,
+    )
+    val backlogStatus = RealBacklogStatusReader(
+        dao = database.segmentDao(),
+        plStatus = controller::probePlStatus,
+        identityStore = stores.identityStore,
+        coordinator = stores.journalVersionCoordinator,
+    )
+    return SharedObserverFlavor(
+        controller = controller,
+        opportunisticSync = opportunisticSync,
+        backlogStatus = backlogStatus,
     )
 }

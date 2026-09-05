@@ -9,12 +9,17 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
+import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
 import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.JournalVersionRefreshCoordinator
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayDialObserver
@@ -47,9 +52,19 @@ class RealPairProbe(
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
     private val endpointStore: EndpointStore,
+    private val journalVersionStore: JournalVersionStore? = null,
+    private val coordinator: JournalVersionRefreshCoordinator? = null,
 ) : PairProbe {
     override fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult {
-        val result = conscryptPairAndProbe(pairLink, deviceLabel, credentialStore, identityStore, endpointStore)
+        val result = conscryptPairAndProbe(
+            pairLink = pairLink,
+            deviceLabel = deviceLabel,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            endpointStore = endpointStore,
+            journalVersionStore = journalVersionStore,
+            coordinator = coordinator,
+        )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
             pairStatus = result.pairStatus,
@@ -72,6 +87,8 @@ class RealRelayPairProbe(
     private val identityStore: IdentityStore,
     private val streamObserver: PlStreamObserver? = null,
     private val dialObserver: RelayDialObserver? = null,
+    private val journalVersionStore: JournalVersionStore? = null,
+    private val coordinator: JournalVersionRefreshCoordinator? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
@@ -81,6 +98,8 @@ class RealRelayPairProbe(
             relayPairDialer = defaultRelayPairDialer(streamObserver, dialObserver),
             credentialStore = credentialStore,
             identityStore = identityStore,
+            journalVersionStore = journalVersionStore,
+            coordinator = coordinator,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -106,26 +125,36 @@ class RealPlStatusProbe(
     private val streamObserver: PlStreamObserver? = null,
     private val dialObserver: RelayDialObserver? = null,
     private val directDialObserver: DirectDialObserver? = null,
+    private val coordinator: JournalVersionRefreshCoordinator? = null,
 ) : PlStatusProbe {
+    private var wasReachable: Boolean? = null
+
     override fun probe(): HarnessPlStatus {
         val credential = credentialStore.load()
         val identity = identityStore.load()
         if (credential == null && identity == null && endpointStore.load() == null) {
+            handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.NotPaired
         }
         if (credential == null) {
+            handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("missing credential")
         }
         if (identity == null) {
+            handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("missing identity")
         }
         if (identity.state != IdentityState.PAIRED) {
+            handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("identity not paired")
         }
         val transport = selectSyncTransport(identity, endpointStore)
-            ?: return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
+        if (transport == null) {
+            handleReachabilityTransition(false, null, null)
+            return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
+        }
         return try {
-            when (transport) {
+            val status = when (transport) {
                 is SyncTransport.Direct -> openAuthenticatedClient(
                     transport.endpoint,
                     credential,
@@ -141,12 +170,47 @@ class RealPlStatusProbe(
                     dialObserver,
                 )
             }.use { client ->
-                HarnessPlStatus.Reachable(
-                    client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status,
-                )
+                client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
             }
+            val reachable = status == 200
+            handleReachabilityTransition(reachable, identity, credential) {
+                when (transport) {
+                    is SyncTransport.Direct -> openAuthenticatedClient(
+                        transport.endpoint,
+                        credential,
+                        streamObserver,
+                        directDialObserver,
+                    )
+                    is SyncTransport.Relay -> openRelaySyncClient(
+                        transport.relayOrigin,
+                        transport.instanceId,
+                        transport.deviceToken,
+                        credential,
+                        streamObserver,
+                        dialObserver,
+                    )
+                }
+            }
+            HarnessPlStatus.Reachable(status)
         } catch (e: Exception) {
+            handleReachabilityTransition(false, null, null)
             HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
+        }
+    }
+
+    private fun handleReachabilityTransition(
+        reachable: Boolean,
+        identity: PairedHome?,
+        credential: ClientCredential?,
+        openClient: (() -> PlHttpClient)? = null,
+    ) {
+        val previous = wasReachable
+        wasReachable = reachable
+        val coord = coordinator ?: return
+        if (previous != true && reachable && identity != null && openClient != null) {
+            coord.onUsableConnection(identity.instanceId, identity.caChainFingerprint, openClient)
+        } else if (previous == true && !reachable) {
+            coord.onConnectionLost()
         }
     }
 }
@@ -252,13 +316,23 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
 class RealBacklogStatusReader(
     private val dao: SegmentDao,
     private val plStatus: () -> HarnessPlStatus,
+    private val identityStore: IdentityStore? = null,
+    private val coordinator: JournalVersionRefreshCoordinator? = null,
 ) : BacklogStatusReader {
-    override fun read(): HarnessBacklogStatus =
-        HarnessBacklogStatus(
+    override fun read(): HarnessBacklogStatus {
+        val identity = identityStore?.load()
+        val journalVersion = if (identity != null && coordinator != null) {
+            coordinator.currentReading(identity.instanceId, identity.caChainFingerprint)
+        } else {
+            null
+        }
+        return HarnessBacklogStatus(
             plStatus = plStatus(),
             pendingCount = dao.pendingCount(MAIN_STREAM),
             pendingSourceIds = dao.pendingSourceIds(MAIN_STREAM),
+            journalVersion = journalVersion,
         )
+    }
 }
 
 interface BundleFileOp {

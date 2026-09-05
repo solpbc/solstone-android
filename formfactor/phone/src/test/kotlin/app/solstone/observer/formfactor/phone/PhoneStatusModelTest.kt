@@ -48,4 +48,36 @@ class PhoneStatusModelTest {
         assertEquals("offline · 38 waiting", text)
         assertFalse(text.contains("38 offline"))
     }
+
+    @Test
+    fun journalVersionDisplayTextFormatsExpectedCopy() {
+        assertEquals("unknown", journalVersionDisplayText(null))
+        assertEquals(
+            "unknown",
+            journalVersionDisplayText(
+                app.solstone.core.pl.JournalVersionReading(
+                    version = "0.9.1",
+                    freshness = app.solstone.core.pl.JournalVersionFreshness.NEVER_OBSERVED,
+                ),
+            ),
+        )
+        assertEquals(
+            "0.9.1 (last known)",
+            journalVersionDisplayText(
+                app.solstone.core.pl.JournalVersionReading(
+                    version = "0.9.1",
+                    freshness = app.solstone.core.pl.JournalVersionFreshness.LAST_KNOWN,
+                ),
+            ),
+        )
+        assertEquals(
+            "0.9.1",
+            journalVersionDisplayText(
+                app.solstone.core.pl.JournalVersionReading(
+                    version = "0.9.1",
+                    freshness = app.solstone.core.pl.JournalVersionFreshness.CURRENT,
+                ),
+            ),
+        )
+    }
 }

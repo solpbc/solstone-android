@@ -17,6 +17,7 @@ import app.solstone.core.crypto.startsWith
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
@@ -24,6 +25,7 @@ import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PairRequest
@@ -90,6 +92,8 @@ fun pairAndProbe(
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
     endpointStore: EndpointStore,
+    journalVersionStore: JournalVersionStore? = null,
+    coordinator: JournalVersionRefreshCoordinator? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -98,6 +102,8 @@ fun pairAndProbe(
     endpointStore = endpointStore,
     sessionOpener = ::openCertlessSession,
     localInterfaces = readLocalIPv4Interfaces(),
+    journalVersionStore = journalVersionStore,
+    coordinator = coordinator,
 )
 
 internal fun pairAndProbe(
@@ -110,6 +116,8 @@ internal fun pairAndProbe(
     localInterfaces: List<LocalIPv4Interface>,
     materialFactory: (String) -> DirectPairMaterial = ::generateDirectPairMaterial,
     statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = ::probeDirectStatus,
+    journalVersionStore: JournalVersionStore? = null,
+    coordinator: JournalVersionRefreshCoordinator? = null,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
@@ -182,6 +190,8 @@ internal fun pairAndProbe(
                     identityStore = identityStore,
                     endpointStore = endpointStore,
                     statusProbe = statusProbe,
+                    journalVersionStore = journalVersionStore,
+                    coordinator = coordinator,
                 )
             }
             DialDecision.TERMINAL -> {
@@ -217,27 +227,39 @@ internal fun persistOrReturnDirectPairResult(
     identityStore: IdentityStore,
     endpointStore: EndpointStore,
     statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse,
+    journalVersionStore: JournalVersionStore? = null,
+    coordinator: JournalVersionRefreshCoordinator? = null,
 ): PairProbeResult {
     val prior = identityStore.load()
     if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
+        val targetEndpoint = endpointStore.load() ?: endpoint
+        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+            openAuthenticatedClient(targetEndpoint, credential)
+        }
         return PairProbeResult(
             handshakePinned = handshakePinned,
             pairStatus = pairStatus,
             statusStatus = 200,
             statusBody = "",
-            endpoint = endpointStore.load() ?: endpoint,
+            endpoint = targetEndpoint,
             connectionMode = DirectPairConnectionMode.ALREADY_CONNECTED,
         )
     }
     val connectionMode = if (prior?.instanceId == home.instanceId) {
         DirectPairConnectionMode.RECONNECTING
     } else {
+        journalVersionStore?.clear()
         DirectPairConnectionMode.PAIRING
     }
     credentialStore.save(credential)
     identityStore.save(home)
     endpointStore.save(endpoint)
     val statusHttp = statusProbe(endpoint, credential)
+    if (statusHttp.status == 200) {
+        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+            openAuthenticatedClient(endpoint, credential)
+        }
+    }
     return PairProbeResult(
         handshakePinned = handshakePinned,
         pairStatus = pairStatus,

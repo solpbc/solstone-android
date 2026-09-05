@@ -18,10 +18,12 @@ import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
 import app.solstone.core.pl.PlHttpClient
@@ -122,6 +124,8 @@ fun pairOverRelay(
     relayPairDialer: RelayPairDialer,
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
+    journalVersionStore: JournalVersionStore? = null,
+    coordinator: JournalVersionRefreshCoordinator? = null,
 ): RelayPairResult {
     val relayOrigin = normalizeRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
     val relayHost = URL(relayOrigin).host
@@ -169,6 +173,14 @@ fun pairOverRelay(
 
     val prior = identityStore.load()
     if (prior?.instanceId == pairResponse.instanceId && prior.state == IdentityState.PAIRED) {
+        val cred = credentialStore.load()
+        val origin = prior.relayOrigin
+        val token = prior.deviceToken
+        if (cred != null && token != null && origin != null) {
+            coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint) {
+                openRelaySyncClient(origin, prior.instanceId, token, cred)
+            }
+        }
         return RelayPairResult(
             handshakePinned = true,
             pairStatus = pairStatus,
@@ -182,6 +194,7 @@ fun pairOverRelay(
     val connectionMode = if (prior?.instanceId == pairResponse.instanceId) {
         RelayPairConnectionMode.RECONNECTING
     } else {
+        journalVersionStore?.clear()
         RelayPairConnectionMode.PAIRING
     }
 
@@ -200,20 +213,29 @@ fun pairOverRelay(
     val clientDer = certificateFromPem(pairResponse.clientCert).encoded
     val caDer = pemToDer(pairResponse.caChain.first(), "CERTIFICATE")
 
-    credentialStore.save(ClientCredential(privateKeyPem, pairResponse.clientCert, pairResponse.caChain))
-    identityStore.save(
-        PairedHome(
-            instanceId = pairResponse.instanceId,
-            homeLabel = pairResponse.homeLabel,
-            relayOrigin = relayOrigin,
-            caChainFingerprint = "sha256:" + sha256Hex(caDer),
-            clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
-            observerHandle = null,
-            deviceToken = deviceToken,
-            expiresAt = null,
-            state = IdentityState.PAIRED,
-        ),
+    val credential = ClientCredential(privateKeyPem, pairResponse.clientCert, pairResponse.caChain)
+    credentialStore.save(credential)
+    val home = PairedHome(
+        instanceId = pairResponse.instanceId,
+        homeLabel = pairResponse.homeLabel,
+        relayOrigin = relayOrigin,
+        caChainFingerprint = "sha256:" + sha256Hex(caDer),
+        clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
+        observerHandle = null,
+        deviceToken = deviceToken,
+        expiresAt = null,
+        state = IdentityState.PAIRED,
     )
+    identityStore.save(home)
+
+    coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+        openRelaySyncClient(
+            relayOrigin,
+            pairResponse.instanceId,
+            deviceToken,
+            credential,
+        )
+    }
 
     return RelayPairResult(
         handshakePinned = true,

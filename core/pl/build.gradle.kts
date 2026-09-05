@@ -8,6 +8,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:identity"))
     implementation(project(":core:crypto"))
     testImplementation(kotlin("test"))
 }
