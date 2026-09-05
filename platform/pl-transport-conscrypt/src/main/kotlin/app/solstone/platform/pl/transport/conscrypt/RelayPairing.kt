@@ -194,7 +194,7 @@ fun pairOverRelay(
     val connectionMode = if (prior?.instanceId == pairResponse.instanceId) {
         RelayPairConnectionMode.RECONNECTING
     } else {
-        journalVersionStore?.clear()
+        coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
         RelayPairConnectionMode.PAIRING
     }
 

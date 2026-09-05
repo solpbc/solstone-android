@@ -33,14 +33,17 @@ class JournalVersionApiTest {
     }
 
     @Test
-    fun sanitizesControlCharactersAndEscapeSequences() {
-        val raw = "1.2.3\r\n\t\u001B[31m"
-        assertEquals("1.2.3[31m", sanitizeJournalVersion(raw))
+    fun rejectsControlCharactersAndEscapeSequences() {
+        assertNull(sanitizeJournalVersion("1.2.3\r\n"))
+        assertNull(sanitizeJournalVersion("1.2.3\t"))
+        assertNull(sanitizeJournalVersion("1.2.3\u001B[31m"))
+        assertNull(sanitizeJournalVersion("1.2.3\u0000"))
+        assertNull(sanitizeJournalVersion("1.2.3\u007F"))
     }
 
     @Test
     fun returnsNullWhenSanitizedStringIsBlank() {
-        val raw = "\r\n\t  \u007F"
+        val raw = "   "
         assertNull(sanitizeJournalVersion(raw))
     }
 
@@ -55,6 +58,7 @@ class JournalVersionApiTest {
             ): HttpResponse {
                 assertEquals("GET", method)
                 assertEquals("/api/system/status", path)
+                assertEquals(mapOf("Cache-Control" to "no-cache"), headers)
                 return HttpResponse(200, emptyMap(), """{"version":{"current":"2.0.0"}}""".toByteArray())
             }
         }

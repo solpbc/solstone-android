@@ -15,11 +15,13 @@ import kotlin.test.assertNull
 class JournalVersionRefreshCoordinatorTest {
     private class FakeStore : JournalVersionStore {
         var savedRecord: JournalVersionRecord? = null
+        var onSave: (() -> Unit)? = null
 
         override fun load(): JournalVersionRecord? = savedRecord
 
         override fun save(record: JournalVersionRecord) {
             savedRecord = record
+            onSave?.invoke()
         }
 
         override fun clear() {
@@ -45,13 +47,16 @@ class JournalVersionRefreshCoordinatorTest {
     @Test
     fun successfulFetchPersistsAndMarksCurrent() {
         val store = FakeStore()
-        val executor = Executors.newSingleThreadExecutor()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
             FakeClient("1.2.3")
         }
 
+        saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
 
@@ -64,7 +69,8 @@ class JournalVersionRefreshCoordinatorTest {
     @Test
     fun lateCompletionFromEarlierGenerationDoesNotClobberNewerGeneration() {
         val store = FakeStore()
-        val executor = Executors.newFixedThreadPool(2)
+        val secondSaved = CountDownLatch(1)
+        val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         val firstLatch = CountDownLatch(1)
@@ -78,12 +84,16 @@ class JournalVersionRefreshCoordinatorTest {
 
         firstClientStarted.await(3, TimeUnit.SECONDS)
 
+        store.onSave = { secondSaved.countDown() }
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
             FakeClient("2.0.0-fresh")
         }
 
-        // Release first after second has bumped generation
+        secondSaved.await(3, TimeUnit.SECONDS)
+
+        // Release first after second has completed
         firstLatch.countDown()
+        Thread.sleep(100)
 
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
@@ -97,15 +107,16 @@ class JournalVersionRefreshCoordinatorTest {
     @Test
     fun connectionLostDemotesFreshnessWithoutModifyingStore() {
         val store = FakeStore()
-        val executor = Executors.newSingleThreadExecutor()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
             FakeClient("1.2.3")
         }
 
-        executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        saved.await(3, TimeUnit.SECONDS)
 
         assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
 
@@ -115,6 +126,9 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals("1.2.3", reading.version)
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
         assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3"), store.savedRecord)
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
     }
 
     @Test
@@ -130,6 +144,62 @@ class JournalVersionRefreshCoordinatorTest {
         val mismatchCa = coordinator.currentReading("jid-1", "sha256:other")
         assertNull(mismatchCa.version)
         assertEquals(JournalVersionFreshness.NEVER_OBSERVED, mismatchCa.freshness)
+    }
+
+    @Test
+    fun completionArrivingAfterConnectionLostDoesNotMarkCurrent() {
+        val store = FakeStore()
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val fetchBlocker = CountDownLatch(1)
+        val clientStarted = CountDownLatch(1)
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+            clientStarted.countDown()
+            fetchBlocker.await(3, TimeUnit.SECONDS)
+            FakeClient("1.2.3")
+        }
+
+        clientStarted.await(3, TimeUnit.SECONDS)
+        coordinator.onConnectionLost()
+        fetchBlocker.countDown()
+        Thread.sleep(100)
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+        assertEquals(JournalVersionFreshness.NEVER_OBSERVED, reading.freshness)
+        assertNull(store.savedRecord)
+    }
+
+    @Test
+    fun inFlightFetchDroppedWhenIdentityChanged() {
+        val store = FakeStore()
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val fetchBlocker = CountDownLatch(1)
+        val clientStarted = CountDownLatch(1)
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+            clientStarted.countDown()
+            fetchBlocker.await(3, TimeUnit.SECONDS)
+            FakeClient("1.2.3")
+        }
+
+        clientStarted.await(3, TimeUnit.SECONDS)
+        coordinator.onIdentityChanged()
+        fetchBlocker.countDown()
+        Thread.sleep(100)
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+        assertEquals(JournalVersionFreshness.NEVER_OBSERVED, reading.freshness)
+        assertNull(store.savedRecord)
     }
 
     @Test

@@ -3,10 +3,10 @@
 
 package app.solstone.core.pl
 
-fun sanitizeJournalVersion(raw: String): String? =
-    raw.filter { it !in '\u0000'..'\u001F' && it != '\u007F' }
-        .trim()
-        .ifBlank { null }
+fun sanitizeJournalVersion(raw: String): String? {
+    if (raw.any { it in '\u0000'..'\u001F' || it == '\u007F' }) return null
+    return raw.trim().ifBlank { null }
+}
 
 fun parseJournalVersionCurrent(bodyText: String): String? {
     val root = runCatching { parseJson(bodyText) as? Map<*, *> }.getOrNull() ?: return null
@@ -17,7 +17,7 @@ fun parseJournalVersionCurrent(bodyText: String): String? {
 
 fun fetchJournalVersion(client: PlHttpClient): String? =
     try {
-        val response = client.request("GET", "/api/system/status", emptyMap(), null)
+        val response = client.request("GET", "/api/system/status", mapOf("Cache-Control" to "no-cache"), null)
         if (response.status == 200) {
             parseJournalVersionCurrent(response.bodyText())
         } else {

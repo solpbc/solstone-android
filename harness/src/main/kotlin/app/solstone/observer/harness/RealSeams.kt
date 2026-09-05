@@ -320,6 +320,7 @@ class RealBacklogStatusReader(
     private val coordinator: JournalVersionRefreshCoordinator? = null,
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
+        val status = plStatus()
         val identity = identityStore?.load()
         val journalVersion = if (identity != null && coordinator != null) {
             coordinator.currentReading(identity.instanceId, identity.caChainFingerprint)
@@ -327,7 +328,7 @@ class RealBacklogStatusReader(
             null
         }
         return HarnessBacklogStatus(
-            plStatus = plStatus(),
+            plStatus = status,
             pendingCount = dao.pendingCount(MAIN_STREAM),
             pendingSourceIds = dao.pendingSourceIds(MAIN_STREAM),
             journalVersion = journalVersion,

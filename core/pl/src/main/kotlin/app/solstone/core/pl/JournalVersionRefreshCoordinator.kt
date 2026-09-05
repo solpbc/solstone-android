@@ -6,10 +6,10 @@ package app.solstone.core.pl
 import app.solstone.core.identity.JournalVersionRecord
 import app.solstone.core.identity.JournalVersionStore
 import java.io.Closeable
-import java.util.Timer
-import java.util.TimerTask
+import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 enum class JournalVersionFreshness { NEVER_OBSERVED, LAST_KNOWN, CURRENT }
@@ -31,22 +31,37 @@ class JournalVersionRefreshCoordinator(
         caChainFingerprint: String,
         openClient: () -> PlHttpClient,
     ) {
-        val gen = generation.incrementAndGet()
-        freshForLatestGeneration = false
+        val gen = synchronized(this) {
+            val g = generation.incrementAndGet()
+            freshForLatestGeneration = false
+            g
+        }
         executor.submit {
             val version = boundedFetch(openClient)
             synchronized(this) {
-                if (gen != generation.get()) return@synchronized
-                if (version != null) {
-                    store.save(JournalVersionRecord(instanceId, caChainFingerprint, version))
-                    freshForLatestGeneration = true
+                if (gen == generation.get()) {
+                    if (version != null) {
+                        store.save(JournalVersionRecord(instanceId, caChainFingerprint, version))
+                        freshForLatestGeneration = true
+                    }
                 }
             }
         }
     }
 
     fun onConnectionLost() {
-        freshForLatestGeneration = false
+        synchronized(this) {
+            generation.incrementAndGet()
+            freshForLatestGeneration = false
+        }
+    }
+
+    fun onIdentityChanged() {
+        synchronized(this) {
+            generation.incrementAndGet()
+            freshForLatestGeneration = false
+            store.clear()
+        }
     }
 
     fun currentReading(instanceId: String, caChainFingerprint: String): JournalVersionReading {
@@ -60,35 +75,25 @@ class JournalVersionRefreshCoordinator(
     }
 
     private fun boundedFetch(openClient: () -> PlHttpClient): String? {
-        var client: PlHttpClient? = null
-        val timer = Timer("journal-version-timeout", true)
-        return try {
-            client = openClient()
-            val c = client
-            val watchdog = object : TimerTask() {
-                override fun run() {
-                    try {
-                        (c as? Closeable)?.close()
-                    } catch (_: Throwable) {
-                    }
-                }
-            }
-            timer.schedule(watchdog, boundMillis)
+        val future = executor.submit(Callable<String?> {
+            var client: PlHttpClient? = null
             try {
-                val version = fetchJournalVersion(c)
-                watchdog.cancel()
-                version
+                client = openClient()
+                fetchJournalVersion(client)
             } catch (_: Exception) {
                 null
+            } finally {
+                try {
+                    (client as? Closeable)?.close()
+                } catch (_: Exception) {
+                }
             }
+        })
+        return try {
+            future.get(boundMillis, TimeUnit.MILLISECONDS)
         } catch (_: Exception) {
+            future.cancel(true)
             null
-        } finally {
-            timer.cancel()
-            try {
-                (client as? Closeable)?.close()
-            } catch (_: Exception) {
-            }
         }
     }
 }

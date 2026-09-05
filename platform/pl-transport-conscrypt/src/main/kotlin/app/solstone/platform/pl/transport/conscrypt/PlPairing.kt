@@ -248,7 +248,7 @@ internal fun persistOrReturnDirectPairResult(
     val connectionMode = if (prior?.instanceId == home.instanceId) {
         DirectPairConnectionMode.RECONNECTING
     } else {
-        journalVersionStore?.clear()
+        coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
         DirectPairConnectionMode.PAIRING
     }
     credentialStore.save(credential)

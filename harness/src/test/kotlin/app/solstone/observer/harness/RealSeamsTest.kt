@@ -13,8 +13,10 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
@@ -54,6 +56,55 @@ class RealSeamsTest {
         )
 
         val status = reader.read()
+        assertEquals("0.9.5", status.journalVersion?.version)
+        assertEquals(JournalVersionFreshness.LAST_KNOWN, status.journalVersion?.freshness)
+    }
+
+    @Test
+    fun backlogStatusReaderReflectsInvalidationFromPlStatusCall() {
+        val versionStore = TestJournalVersionStore()
+        versionStore.save(JournalVersionRecord("inst-1", "fp-1", "0.9.5"))
+        val coordinator = JournalVersionRefreshCoordinator(versionStore)
+        coordinator.onUsableConnection("inst-1", "fp-1") {
+            object : PlHttpClient {
+                override fun request(
+                    method: String,
+                    path: String,
+                    headers: Map<String, String>,
+                    body: ByteArray?,
+                ): HttpResponse = HttpResponse(200, emptyMap(), """{"version":{"current":"0.9.5"}}""".toByteArray())
+            }
+        }
+        Thread.sleep(100)
+        assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("inst-1", "fp-1").freshness)
+
+        val identityStore = TestIdentityStore()
+        identityStore.save(
+            PairedHome(
+                instanceId = "inst-1",
+                homeLabel = "home",
+                relayOrigin = null,
+                caChainFingerprint = "fp-1",
+                clientCertFingerprint = "fp-client",
+                observerHandle = "phone",
+                deviceToken = null,
+                expiresAt = null,
+                state = IdentityState.PAIRED,
+            ),
+        )
+
+        val reader = RealBacklogStatusReader(
+            dao = TestSegmentDao(),
+            plStatus = {
+                coordinator.onConnectionLost()
+                HarnessPlStatus.PairedButUnreachable("connection lost")
+            },
+            identityStore = identityStore,
+            coordinator = coordinator,
+        )
+
+        val status = reader.read()
+        assertEquals(HarnessPlStatus.PairedButUnreachable("connection lost"), status.plStatus)
         assertEquals("0.9.5", status.journalVersion?.version)
         assertEquals(JournalVersionFreshness.LAST_KNOWN, status.journalVersion?.freshness)
     }
