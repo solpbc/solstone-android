@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class RelayPairLinkToStringHazardTripwireTest {
     /**
      * This pins a known secret-rendering hazard so any behavior change is reviewed deliberately.
-     * It is not an endorsement. Redaction belongs in a separate lode with its own blast-radius review.
+     * It is not an endorsement. Redaction belongs in separate work with its own blast-radius review.
      */
     @Test
     fun currentToStringRendersPairingSecretAndFingerprint() {

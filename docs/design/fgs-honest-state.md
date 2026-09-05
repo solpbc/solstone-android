@@ -114,7 +114,7 @@ Remove trust defaults and require explicit call-site choices:
 - Remove the default always-visible capture authority from `HarnessController`.
 - ~~Remove `exemptionVerified: () -> Boolean = { true }` defaults from `PhoneHarnessFlavor`, `WatchHarnessFlavor`, and `GlassesHarnessFlavor`.~~ **SUPERSEDED 2026-08-23** — the battery-exemption diagnosis was retired outright, so these identifiers no longer exist anywhere in the tree. Kept struck rather than deleted: this section records that default-true trust values were removed for a reason, and that reasoning still governs any future default.
 - Remove `isUsableNetworkPresent: () -> Boolean = { true }` default from `GlassesHarnessFlavor`.
-- Phone/watch temporarily passed an explicit always-visible capture authority in this lode; the later scaffold consolidation replaced that with a real visible-owner registry.
+- Phone/watch temporarily passed an explicit always-visible capture authority in this change; the later scaffold consolidation replaced that with a real visible-owner registry.
 - Chase compile errors for direct data-class construction and tests.
 
 ### I. Production-Wiring Self-Heal Tests
@@ -232,11 +232,11 @@ Flavor trust defaults currently have no inherited production/mock construction s
 7. Remove `ForegroundStartAllowed` seam and update all real/mock/test call sites.
 8. Add/replace harness production-wiring self-heal tests.
 9. Update `platform/fgs/FGS_MATRIX.md` Boot behavior if needed.
-10. Run `make ci`; because this lode touches on-device app surfaces and platform adapters, also run `make ci-device` even though `platform/fgs` itself is not directly instrumented.
+10. Run `make ci`; because this change touches on-device app surfaces and platform adapters, also run `make ci-device` even though `platform/fgs` itself is not directly instrumented.
 
 ## Risks And Open Questions
 
 - Open gate decision: choose `ReasonCode.DESIRED_OFF` versus removing the desired-off blocker entirely. Recommendation is `DESIRED_OFF`.
 - `NotificationManager.notify`, `startForeground`, service-start exceptions, and launch-intent construction cannot be fully automated in this repo's current test tiers.
-- Phone/watch boot attention remains temporarily disabled by their in-memory desired store until the sibling store consolidation lode.
-- Adding a `ReasonCode` is source-compatible in Kotlin but can affect serialized/externally interpreted enum names if any downstream code assumes a closed set. Grep did not show such serialization in this lode's target path, but release notes should mention the additive enum if exposed.
+- Phone/watch boot attention remains temporarily disabled by their in-memory desired store until the sibling store consolidation work lands.
+- Adding a `ReasonCode` is source-compatible in Kotlin but can affect serialized/externally interpreted enum names if any downstream code assumes a closed set. Grep did not show such serialization in this change's target path, but release notes should mention the additive enum if exposed.
