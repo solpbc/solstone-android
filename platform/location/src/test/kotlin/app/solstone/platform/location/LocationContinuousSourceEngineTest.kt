@@ -154,6 +154,63 @@ class LocationContinuousSourceEngineTest {
             captureEndEpochMs = emission.captureEndEpochMs,
         )
 
+    @Test
+    fun samplesAtTheDeclaredIntervalRatherThanEverySleepSlice() {
+        // One reading per declared interval, not one per sleep slice. Before the slice loop was
+        // fixed, SLEEP_SLICE_MS was the real interval and this window carried 300 rows.
+        val rows = firstWindowRowCount { nowEpochMs -> LocationFix("network", nowEpochMs, 1.0, 2.0, 5.0, 0L) }
+        assertEquals(
+            (LocationContinuousSourceEngine.WINDOW_MS / LocationContinuousSourceEngine.SAMPLE_EVERY_MS).toInt(),
+            rows,
+        )
+    }
+
+    @Test
+    fun anUnchangedFixIsRecordedOncePerWindow() {
+        val rows = firstWindowRowCount { nowEpochMs ->
+            LocationFix("network", STATIONARY_FIX_MS, 1.0, 2.0, 5.0, nowEpochMs - STATIONARY_FIX_MS)
+        }
+        assertEquals(1, rows)
+    }
+
+    /**
+     * Runs one full window against a fake clock and returns the row count of its payload.
+     * The body is read inside emit, before the engine's bounded payload cache can evict it.
+     */
+    private fun firstWindowRowCount(fix: (Long) -> LocationFix): Int {
+        var now = BASE_EPOCH_MS
+        val bodies = CopyOnWriteArrayList<String>()
+        lateinit var engine: LocationContinuousSourceEngine
+        val sink = object : EmissionSink {
+            override fun emit(emission: SourceEmission) {
+                if (emission.payloadRefs.isNotEmpty() && bodies.isEmpty()) {
+                    bodies += engine.open(payloadFor(emission)).readBytes().decodeToString()
+                }
+            }
+        }
+        engine = LocationContinuousSourceEngine(
+            source = object : LocationSource {
+                override fun lastFix(nowEpochMs: Long): LocationFix = fix(nowEpochMs)
+
+                override fun noFixReason(): NoFixReason = NoFixReason.NO_FIX
+            },
+            nowProvider = { now },
+            sleeper = {
+                now += it
+                if (bodies.isNotEmpty()) throw InterruptedException()
+            },
+        )
+
+        engine.start(sink)
+        repeat(200) {
+            if (bodies.isNotEmpty()) return@repeat
+            Thread.sleep(5L)
+        }
+        engine.stop()
+        if (bodies.isEmpty()) throw AssertionError("no payload was emitted")
+        return bodies.first().trim().lines().size
+    }
+
     private class FixedLocationSource : LocationSource {
         override fun lastFix(nowEpochMs: Long): LocationFix =
             LocationFix(
@@ -186,5 +243,6 @@ class LocationContinuousSourceEngineTest {
 
     private companion object {
         const val BASE_EPOCH_MS = 1_772_582_400_000L
+        const val STATIONARY_FIX_MS = BASE_EPOCH_MS - 30_000L
     }
 }

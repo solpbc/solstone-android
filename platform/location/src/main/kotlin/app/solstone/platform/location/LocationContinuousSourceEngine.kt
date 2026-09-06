@@ -101,10 +101,18 @@ class LocationContinuousSourceEngine(
 
     private fun captureWindow(windowStart: Long, windowEnd: Long, token: Any): SourceEmission {
         val records = StringBuilder()
+        // The underlying platform fix updates far more slowly than we sample, so without this
+        // every window repeats one fix N times, differing only in fixAge.
+        var lastRecordedFixMs: Long? = null
         while (running.get() && currentToken.get() === token) {
             val now = nowProvider()
             if (now >= windowEnd) break
-            source.lastFix(now)?.let { records.append(buildLocationRecord(it)) }
+            source.lastFix(now)?.let { fix ->
+                if (fix.timestampEpochMs != lastRecordedFixMs) {
+                    records.append(buildLocationRecord(fix))
+                    lastRecordedFixMs = fix.timestampEpochMs
+                }
+            }
             if (!sleepUntilNextSampleOrWindowEnd(windowEnd, token)) break
         }
 
@@ -136,12 +144,16 @@ class LocationContinuousSourceEngine(
     }
 
     private fun sleepUntilNextSampleOrWindowEnd(windowEnd: Long, token: Any): Boolean {
+        // Sleep in short slices so stop() stays responsive, but keep slicing until the sample
+        // interval has actually elapsed. Returning after the first slice makes SLEEP_SLICE_MS
+        // the sample interval and sampleEveryMs dead, which sampled 60x too often.
+        val sampleDeadline = nowProvider() + sampleEveryMs
+        val wakeAt = minOf(windowEnd, sampleDeadline)
         while (running.get() && currentToken.get() === token) {
-            val remaining = windowEnd - nowProvider()
+            val remaining = wakeAt - nowProvider()
             if (remaining <= 0L) return true
             try {
-                sleeper(minOf(sampleEveryMs, remaining, SLEEP_SLICE_MS))
-                return true
+                sleeper(minOf(remaining, SLEEP_SLICE_MS))
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return false
