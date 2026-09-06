@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
@@ -75,6 +76,10 @@ class PhoneObserverNotificationRuntimeTest {
 
     @Test
     fun stopActionBroadcastStopsObserverAndRemovesForegroundServiceNotification() {
+        // A visible start requires a visible capture owner. Without an Activity in the
+        // foreground startReadiness blocks and the service never enters the foreground, so the
+        // wait below times out before this test reaches the behaviour it is about.
+        ActivityScenario.launch(app.solstone.observer.scaffold.ObserverActivity::class.java).use {
         val container = obtainObserverContainer()
         assertTrue(waitForRecovery(container))
         assertTrue(container.controller.onScannedPairLink(validDirectPairLink()) != null)
@@ -84,8 +89,10 @@ class PhoneObserverNotificationRuntimeTest {
             serviceNotification() != null
         }
 
-        // Seed camera wish on so a naive audio-only toggle will leave camera on and fail
-        container.sources.setWish("camera", SourceWish.On)
+        // Seed a non-audio source's wish on, so an implementation that only turns audio off
+        // leaves it on and fails here. Uses location rather than camera: the mock flavor this
+        // gate runs registers audio and location only, and has no camera source at all.
+        container.sources.setWish("location", SourceWish.On)
 
         val stopIntent = Intent(context, PhoneObserverStopReceiver::class.java)
         context.sendBroadcast(stopIntent)
@@ -94,8 +101,9 @@ class PhoneObserverNotificationRuntimeTest {
         waitUntil("service notification removed") { serviceNotification() == null }
 
         assertFalse(container.controller.desiredOn)
-        val cameraStatus = container.sources.snapshot().sources.singleOrNull { it.sourceId == "camera" }
-        assertEquals(SourceWish.On, cameraStatus?.wish)
+        val locationStatus = container.sources.snapshot().sources.singleOrNull { it.sourceId == "location" }
+        assertEquals(SourceWish.On, locationStatus?.wish)
+        }
     }
 
     @Test
