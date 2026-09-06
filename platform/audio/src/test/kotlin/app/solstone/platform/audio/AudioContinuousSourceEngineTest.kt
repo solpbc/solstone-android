@@ -426,7 +426,9 @@ class AudioContinuousSourceEngineTest {
         engine.start(sink)
         waitForEmissions(sink, 1)
 
-        assertFalse(engine.condition().running)
+        // The worker clears `running` in its finally block, after the emission the wait above
+        // observes, so asserting it directly is a race that reddens roughly one run in eight.
+        waitForCondition { !engine.condition().running }
         assertEquals("engine_failed type=IllegalStateException message=sleep failed", sink.emissions.single().gaps.single().detail)
         assertTrue("capture event=engine-failed source=audio type=IllegalStateException message=sleep failed" in diags)
     }
