@@ -19,7 +19,6 @@ val phoneSpec = FormFactorSpec(
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
-                Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.POST_NOTIFICATIONS,
             )
@@ -27,7 +26,6 @@ val phoneSpec = FormFactorSpec(
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
-                Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             )
         }

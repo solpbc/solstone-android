@@ -83,7 +83,7 @@ class HarnessControllerTest {
         assertNotEquals(SourceState.ON, cameraDenied.controller.diagnostics().state)
 
         val locationDenied = fixture(
-            permissionStatus = grantedPermissions().copy(fineLocationGranted = false, coarseLocationGranted = false),
+            permissionStatus = grantedPermissions().copy(locationGranted = false),
         )
         assertFalse(locationDenied.controller.start())
         assertEquals(0, locationDenied.lifecycle.starts)
@@ -92,13 +92,6 @@ class HarnessControllerTest {
         val granted = fixture()
         assertTrue(granted.controller.start())
         assertEquals(1, granted.lifecycle.starts)
-    }
-
-    @Test
-    fun backgroundLocationDoesNotGateStart() {
-        val f = fixture(permissionStatus = grantedPermissions().copy(backgroundLocationGranted = false))
-        assertTrue(f.controller.start())
-        assertEquals(1, f.lifecycle.starts)
     }
 
     @Test

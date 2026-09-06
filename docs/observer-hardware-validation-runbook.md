@@ -61,15 +61,14 @@ observing on launch.
 ### 2. Grant permissions
 
 ```bash
-for p in RECORD_AUDIO CAMERA ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+for p in RECORD_AUDIO CAMERA ACCESS_COARSE_LOCATION; do
   adb -s $DEV shell pm grant $APP android.permission.$p
 done
-# API 29+ only (A36): ACCESS_BACKGROUND_LOCATION ; API 33+ only (A36): POST_NOTIFICATIONS
+# API 33+ only (A36): POST_NOTIFICATIONS
 ```
 
 In the historical API-28 Rogbid record, `ACCESS_BACKGROUND_LOCATION` and `POST_NOTIFICATIONS` did not exist; the
-permission model treats them as non-applicable / non-gating there. The Permissions screen reflects
-each permission's grant state.
+phone app does not request background location, and the Permissions screen reflects each permission's grant state.
 
 ### 3. Pair
 

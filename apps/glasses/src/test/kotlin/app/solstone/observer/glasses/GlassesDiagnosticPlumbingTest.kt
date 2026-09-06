@@ -193,9 +193,7 @@ class GlassesDiagnosticPlumbingTest {
         PermissionStatus(
             microphoneGranted = true,
             cameraGranted = true,
-            fineLocationGranted = true,
-            coarseLocationGranted = false,
-            backgroundLocationGranted = false,
+            locationGranted = true,
             notificationsGranted = true,
             requireLocation = false,
         )

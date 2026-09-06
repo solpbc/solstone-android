@@ -32,10 +32,7 @@ class SourceRegistryFactsTest {
     @Test
     fun locationPermissionFaultMarksObserverAndLocationRow() {
         val f = fixture(
-            permissionStatus = grantedPermissions().copy(
-                fineLocationGranted = false,
-                coarseLocationGranted = false,
-            ),
+            permissionStatus = grantedPermissions().copy(locationGranted = false),
             snapshot = snapshot(),
         )
         f.desiredStore.setDesiredOn(true)
@@ -45,7 +42,7 @@ class SourceRegistryFactsTest {
                 SourceRegistration(
                     sourceId = "location",
                     engine = FakeSourceEngine(conditionValue = unavailableCondition()),
-                    requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+                    requiredPermissionsGranted = { it.locationGranted },
                 ),
             ),
         )
@@ -67,7 +64,7 @@ class SourceRegistryFactsTest {
                 SourceRegistration(
                     sourceId = "location",
                     engine = FakeSourceEngine(conditionValue = unavailableCondition()),
-                    requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+                    requiredPermissionsGranted = { it.locationGranted },
                 ),
             ),
         )

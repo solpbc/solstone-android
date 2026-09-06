@@ -33,7 +33,6 @@ class PhoneShellActivityRuntimeTest {
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(
         Manifest.permission.RECORD_AUDIO,
         Manifest.permission.CAMERA,
-        Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION,
         Manifest.permission.POST_NOTIFICATIONS,
     )

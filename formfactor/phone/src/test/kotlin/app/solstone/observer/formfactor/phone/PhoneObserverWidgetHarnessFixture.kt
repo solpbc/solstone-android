@@ -80,7 +80,7 @@ internal class PhoneObserverWidgetHarnessFixture {
             SourceRegistration(
                 sourceId = "location",
                 engine = location,
-                requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+                requiredPermissionsGranted = { it.locationGranted },
             ),
         ),
         main = MainPoster { task -> task() },
@@ -122,9 +122,7 @@ internal class PhoneObserverWidgetHarnessFixture {
         override fun read(): PermissionStatus = PermissionStatus(
             microphoneGranted = true,
             cameraGranted = true,
-            fineLocationGranted = true,
-            coarseLocationGranted = false,
-            backgroundLocationGranted = false,
+            locationGranted = true,
             notificationsGranted = true,
         )
     }

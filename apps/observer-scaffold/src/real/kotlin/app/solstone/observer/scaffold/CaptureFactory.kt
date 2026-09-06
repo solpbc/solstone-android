@@ -40,7 +40,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
             SourceRegistration(
                 sourceId = LocationContinuousSourceEngine.SOURCE_ID,
                 engine = location,
-                requiredPermissionsGranted = { it.fineLocationGranted || it.coarseLocationGranted },
+                requiredPermissionsGranted = { it.locationGranted },
             ),
             SourceRegistration(
                 sourceId = StillCaptureEngine.SOURCE_ID,

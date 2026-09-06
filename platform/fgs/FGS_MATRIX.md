@@ -10,7 +10,7 @@ Per-app `foregroundServiceType` (never the data-sync type):
 - `apps/validation-rogbid` (hardware-validation target, not an observer app): `camera|microphone`
 
 API 28-32:
-- Required manifest permissions: `FOREGROUND_SERVICE`, `RECORD_AUDIO`, `CAMERA`, plus `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` on phone/watch.
+- Required manifest permissions: `FOREGROUND_SERVICE`, `RECORD_AUDIO`, `CAMERA`, plus `ACCESS_COARSE_LOCATION` on phone (`ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` on parked watch).
 - Notification permission is not runtime-gated.
 - Start the observer engine only from the visible launcher after the runtime permissions are granted.
 

@@ -9,8 +9,7 @@ fun permissionRowsText(status: PermissionStatus): String =
     listOf(
         "Microphone: ${status.microphoneGranted}",
         "Camera: ${status.cameraGranted}",
-        "Fine location: ${status.fineLocationGranted}",
-        "Coarse location: ${status.coarseLocationGranted}",
+        "Location: ${status.locationGranted}",
         "Notifications: ${status.notificationsGranted}",
         "Permissions ready: ${status.allRequiredGranted}",
     ).joinToString("\n")

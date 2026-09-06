@@ -140,9 +140,7 @@ class QrClassifiedFailureRuntimeTest {
                 PermissionStatus(
                     microphoneGranted = true,
                     cameraGranted = true,
-                    fineLocationGranted = true,
-                    coarseLocationGranted = true,
-                    backgroundLocationGranted = true,
+                    locationGranted = true,
                     notificationsGranted = true,
                 )
             },

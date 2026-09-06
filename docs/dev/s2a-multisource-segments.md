@@ -138,15 +138,14 @@ production code changes are intentionally not included here.
 - `VirtualMonotonicClock` is removed if no remaining caller needs `MonotonicClock`.
 - Both `MainActivity` classes construct `Segmenter(ZoneId.systemDefault())` and `CapturePipeline(...)`.
 - `onDestroy` calls `pipeline.stop()` before closing the database.
-- Runtime permissions include audio, fine/coarse location, and notifications when applicable.
+- Runtime permissions include audio, coarse location on phone (fine/coarse on parked watch), and notifications when applicable.
 - State rendering continues through `reduce(SourceFacts)`; location permission must be reflected honestly.
 
 ### Manifests, gate, and build
 
 - Both app manifests add:
   - `FOREGROUND_SERVICE_LOCATION`
-  - `ACCESS_FINE_LOCATION`
-  - `ACCESS_COARSE_LOCATION`
+  - `ACCESS_COARSE_LOCATION` (plus `ACCESS_FINE_LOCATION` on parked watch)
 - Both services use `foregroundServiceType="microphone|location"`.
 - Keep the existing API 28 untyped `startForeground` call in `ObserverForegroundService`.
 - Do not add `dataSync`.

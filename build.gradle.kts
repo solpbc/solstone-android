@@ -1409,7 +1409,7 @@ tasks.named("check") {
     )
 }
 
-fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true) {
+fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true, coarseLocationOnly: Boolean = false) {
     tasks.register("checkRealDebugMicrophoneManifest") {
         group = "verification"
         description = "Checks the realDebug merged manifest for microphone foreground service declarations."
@@ -1451,6 +1451,17 @@ fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true) {
                 }
                 if ("location" in foregroundServiceTypes) {
                     failures += "foregroundServiceType must not include location"
+                }
+            }
+            if (coarseLocationOnly) {
+                if (!text.contains("android.permission.ACCESS_COARSE_LOCATION")) {
+                    failures += "missing ACCESS_COARSE_LOCATION permission"
+                }
+                if (text.contains("android.permission.ACCESS_FINE_LOCATION")) {
+                    failures += "must not declare ACCESS_FINE_LOCATION permission"
+                }
+                if (text.contains("android.permission.ACCESS_BACKGROUND_LOCATION")) {
+                    failures += "must not declare ACCESS_BACKGROUND_LOCATION permission"
                 }
             }
             if (text.contains("dataSync")) {
@@ -1681,7 +1692,7 @@ project(":apps:watch") {
 }
 
 project(":apps:phone") {
-    registerMicrophoneManifestCheck()
+    registerMicrophoneManifestCheck(coarseLocationOnly = true)
     registerLauncherHomeManifestCheck(requireHome = false)
     registerAppLinksManifestCheck()
     registerReleaseAppLinksManifestCheck()

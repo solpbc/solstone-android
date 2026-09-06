@@ -14,9 +14,7 @@ class PermissionRowsTest {
         val status = PermissionStatus(
             microphoneGranted = true,
             cameraGranted = false,
-            fineLocationGranted = true,
-            coarseLocationGranted = false,
-            backgroundLocationGranted = true,
+            locationGranted = true,
             notificationsGranted = true,
         )
 
@@ -24,8 +22,7 @@ class PermissionRowsTest {
         val expected = listOf(
             "Microphone: true",
             "Camera: false",
-            "Fine location: true",
-            "Coarse location: false",
+            "Location: true",
             "Notifications: true",
             "Permissions ready: false",
         ).joinToString("\n")

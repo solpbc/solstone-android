@@ -23,9 +23,7 @@ internal fun grantedPermissions(): PermissionStatus =
     PermissionStatus(
         microphoneGranted = true,
         cameraGranted = true,
-        fineLocationGranted = true,
-        coarseLocationGranted = false,
-        backgroundLocationGranted = false,
+        locationGranted = true,
         notificationsGranted = true,
     )
 

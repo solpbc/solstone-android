@@ -142,21 +142,20 @@ class FgsLogicTest {
         assertTrue(granted().allRequiredGranted)
         assertFalse(granted().copy(microphoneGranted = false).allRequiredGranted)
         assertFalse(granted().copy(cameraGranted = false).allRequiredGranted)
-        assertFalse(granted().copy(fineLocationGranted = false, coarseLocationGranted = false).allRequiredGranted)
+        assertFalse(granted().copy(locationGranted = false).allRequiredGranted)
         assertFalse(granted().copy(notificationsGranted = false).allRequiredGranted)
-        assertTrue(granted().copy(backgroundLocationGranted = false).allRequiredGranted)
     }
 
     @Test
     fun permissionStatusCanMakeLocationOptional() {
         assertTrue(
             granted()
-                .copy(fineLocationGranted = false, coarseLocationGranted = false, requireLocation = false)
+                .copy(locationGranted = false, requireLocation = false)
                 .allRequiredGranted,
         )
         assertFalse(
             granted()
-                .copy(fineLocationGranted = false, coarseLocationGranted = false, requireLocation = true)
+                .copy(locationGranted = false, requireLocation = true)
                 .allRequiredGranted,
         )
     }
@@ -279,9 +278,7 @@ class FgsLogicTest {
         PermissionStatus(
             microphoneGranted = true,
             cameraGranted = true,
-            fineLocationGranted = true,
-            coarseLocationGranted = false,
-            backgroundLocationGranted = true,
+            locationGranted = true,
             notificationsGranted = true,
         )
 }
