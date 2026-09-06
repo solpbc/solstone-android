@@ -77,17 +77,22 @@ class HarnessControllerTest {
 
     @Test
     fun startRefusedUntilRequiredPermissionsAreGranted() {
-        val cameraDenied = fixture(permissionStatus = grantedPermissions().copy(cameraGranted = false))
-        assertFalse(cameraDenied.controller.start())
-        assertEquals(0, cameraDenied.lifecycle.starts)
-        assertNotEquals(SourceState.ON, cameraDenied.controller.diagnostics().state)
-
-        val locationDenied = fixture(
-            permissionStatus = grantedPermissions().copy(locationGranted = false),
+        val allDenied = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
         )
-        assertFalse(locationDenied.controller.start())
-        assertEquals(0, locationDenied.lifecycle.starts)
-        assertNotEquals(SourceState.ON, locationDenied.controller.diagnostics().state)
+        assertFalse(allDenied.controller.start())
+        assertEquals(0, allDenied.lifecycle.starts)
+        assertNotEquals(SourceState.ON, allDenied.controller.diagnostics().state)
+
+        val subsetGranted = fixture(
+            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+        )
+        assertTrue(subsetGranted.controller.start())
+        assertEquals(1, subsetGranted.lifecycle.starts)
 
         val granted = fixture()
         assertTrue(granted.controller.start())
@@ -106,7 +111,11 @@ class HarnessControllerTest {
     @Test
     fun refusedStartDoesNotStartOpportunisticSync() {
         val f = fixture(
-            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
             networkAvailability = FakeNetworkAvailability(),
         )
 

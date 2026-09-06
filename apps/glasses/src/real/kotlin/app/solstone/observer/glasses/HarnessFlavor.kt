@@ -21,6 +21,7 @@ import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.power.AndroidDeviceFingerprintProvider
 import app.solstone.platform.power.OemGuidanceCatalog
@@ -53,7 +54,7 @@ fun createGlassesHarnessFlavor(
     )
     return GlassesHarnessFlavor(
         controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
+            permissionStatusReader = AndroidPermissionStatusReader(context),
             desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
@@ -73,6 +74,7 @@ fun createGlassesHarnessFlavor(
             isUsableNetworkPresent = networkAvailability::isUsableNow,
             opportunisticSync = opportunisticSync,
             diag = { GlassesDiagLog.appendRaw(it) },
+            declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(GLASSES_DECLARED_CAPTURE_FOREGROUND_TYPES),
         ),
         audioFeedback = if (guidance.id == "rokid") {
             RokidTtsAudioFeedback(

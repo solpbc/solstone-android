@@ -16,6 +16,7 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverServiceRehydrator
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.power.AndroidDeviceFingerprintProvider
 import app.solstone.platform.power.OemGuidanceCatalog
 import app.solstone.platform.work.SyncScheduler
@@ -29,6 +30,8 @@ class GlassesApplication : Application() {
         super.onCreate()
         GlassesDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { GlassesDiagLog.appendRaw(it) }
+        ObserverForegroundService.declaredCaptureForegroundTypes =
+            captureForegroundTypesFromTokens(GLASSES_DECLARED_CAPTURE_FOREGROUND_TYPES)
         SyncScheduler.enqueuePeriodic(applicationContext, GLASSES_STREAM)
         runtime = GlassesObserverRuntime(applicationContext)
         GlassesHarnessRuntime.runtime = runtime

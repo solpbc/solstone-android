@@ -34,6 +34,7 @@ data class SourceFacts(
   val engineStartIssued: Boolean = true,
   val conditionNeedsAttention: Boolean = false,
   val paused: Boolean = false,
+  val foregroundTypeHeld: Boolean = true,
 )
 
 // NONE is correct for off, on, paused, and setting up. Only a needs-attention row with NONE is a
@@ -42,6 +43,7 @@ data class SourceFacts(
 fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
     when {
         !f.permissionGranted -> SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED
+        f.desiredOn && !f.foregroundTypeHeld -> SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED
         f.pairing == PairingFact.REVOKED -> SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED
         f.desiredOn && !f.fgsHeartbeatFresh -> SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED
         !f.storageOk -> SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL

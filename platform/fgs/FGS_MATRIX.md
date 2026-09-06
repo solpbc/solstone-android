@@ -21,7 +21,7 @@ API 33:
 API 34+:
 - Adds `FOREGROUND_SERVICE_MICROPHONE` and `FOREGROUND_SERVICE_CAMERA` everywhere, plus `FOREGROUND_SERVICE_LOCATION` on phone/watch.
 - The service declaration must carry exactly the per-app type list above.
-- Microphone, camera, and location access are while-in-use; start the service only from a visible activity after runtime permissions are granted.
+- Microphone, camera, and location access are while-in-use; start the service only from a visible activity or widget/notification action after runtime permissions are granted.
 
 Location behavior:
 - Location permission is requested in the launcher alongside audio (phone/watch only).
@@ -32,3 +32,10 @@ Boot behavior:
 - `BOOT_COMPLETED` may re-arm a tappable needs-attention notification only when observing was persisted as desired-on.
 - The service cancels that boot attention notification after a successful non-stopping foreground-service start.
 - Boot must not start the service or begin microphone input.
+
+Subset FGS at entry:
+- At service start (`onStartCommand`), the service computes the satisfiable subset of declared capture foreground types for which runtime permissions are currently granted (`granted ∩ declared`).
+- The service enters foreground with the bitwise OR of only the satisfiable types (`ServiceCompat.startForeground`); on API < 29, `ServiceCompat` drops the type mask.
+- If the satisfiable subset is empty, the service fails closed without calling `startForeground` and posts a needs-attention notification.
+- While the service runs, its held types are published in `ObserverForegroundService.heldCaptureForegroundTypes`.
+- Registered sources whose capture foreground type was not included at service entry report `FOREGROUND_START_NOT_ALLOWED` in diagnostics when enabled.

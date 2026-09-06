@@ -14,6 +14,7 @@ import app.solstone.platform.camera.legacy.LegacyStillCamera
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.camera.still.StillCamera
 import app.solstone.platform.camera.still.StillCaptureEngine
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.location.AndroidLocationSource
 import app.solstone.platform.location.LocationContinuousSourceEngine
 import app.solstone.platform.power.FileUsableSpaceProvider
@@ -36,16 +37,19 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                 sourceId = AudioContinuousSourceEngine.SOURCE_ID,
                 engine = audio,
                 requiredPermissionsGranted = { it.microphoneGranted },
+                captureForegroundType = CaptureForegroundType.MICROPHONE,
             ),
             SourceRegistration(
                 sourceId = LocationContinuousSourceEngine.SOURCE_ID,
                 engine = location,
                 requiredPermissionsGranted = { it.locationGranted },
+                captureForegroundType = CaptureForegroundType.LOCATION,
             ),
             SourceRegistration(
                 sourceId = StillCaptureEngine.SOURCE_ID,
                 engine = camera,
                 requiredPermissionsGranted = { it.cameraGranted },
+                captureForegroundType = CaptureForegroundType.CAMERA,
             ),
         ),
         payloadBytesProvider = object : PayloadBytesProvider {

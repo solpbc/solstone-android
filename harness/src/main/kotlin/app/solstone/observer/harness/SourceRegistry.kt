@@ -10,6 +10,7 @@ import app.solstone.core.model.SilencedFact
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
+import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.PermissionStatus
 
 class SourcesSubscription(private val closeAction: () -> Unit) {
@@ -177,6 +178,16 @@ class SourceRegistry(
         private fun sourceFacts(globalFacts: SourceFacts, permissionStatus: PermissionStatus): SourceFacts {
             val condition = runCatching { conditionFor(SourceWish.On) }.getOrNull()
             val started = synchronized(lock) { started }
+            val heldTypes = ObserverForegroundService.heldCaptureForegroundTypes
+            val foregroundTypeHeld = if (heldTypes != null && registration.captureForegroundType != null) {
+                if (registration.captureForegroundType !in heldTypes && registration.requiredPermissionsGranted(permissionStatus)) {
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            }
             // Global inputs: storageOk is shared by every desired-on row. All-required permissions,
             // FGS heartbeat, provider freshness, and pairing remain observer-only and are neutral here.
             // Per-source inputs: wish, start-issued, running, declared permissions, silenced, paused,
@@ -193,6 +204,7 @@ class SourceRegistry(
                 engineStartIssued = started,
                 conditionNeedsAttention = condition?.let { it.needsAttention || !it.available } ?: true,
                 paused = condition?.paused == true,
+                foregroundTypeHeld = foregroundTypeHeld,
             )
         }
 

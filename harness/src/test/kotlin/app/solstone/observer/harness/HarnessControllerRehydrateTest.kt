@@ -138,7 +138,11 @@ class HarnessControllerRehydrateTest {
     @Test
     fun startReadinessSurfacesCanonicalReasons() {
         val permission = fixture(
-            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
             plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
         )
         permission.desiredStore.setDesiredOn(true)

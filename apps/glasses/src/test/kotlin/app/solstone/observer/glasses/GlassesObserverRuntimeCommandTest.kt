@@ -35,6 +35,7 @@ import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -120,7 +121,9 @@ class GlassesObserverRuntimeCommandTest {
     fun observeStartMissingPermissionsReportsBlocked() {
         val runtime = GlassesObserverRuntime(
             FakeRuntimeContainer(
-                controller = controller(permissionStatus = grantedPermissions().copy(cameraGranted = false)),
+                controller = controller(
+                    permissionStatus = grantedPermissions().copy(cameraGranted = false, microphoneGranted = false),
+                ),
             ),
         )
 
@@ -133,7 +136,9 @@ class GlassesObserverRuntimeCommandTest {
         val sink = GlassesDiagLog.install(dir.toFile())
         val runtime = GlassesObserverRuntime(
             FakeRuntimeContainer(
-                controller = controller(permissionStatus = grantedPermissions().copy(cameraGranted = false)),
+                controller = controller(
+                    permissionStatus = grantedPermissions().copy(cameraGranted = false, microphoneGranted = false),
+                ),
             ),
         )
 
@@ -150,7 +155,9 @@ class GlassesObserverRuntimeCommandTest {
         val sink = GlassesDiagLog.install(dir.toFile())
         val runtime = GlassesObserverRuntime(
             FakeRuntimeContainer(
-                controller = controller(permissionStatus = grantedPermissions().copy(microphoneGranted = false)),
+                controller = controller(
+                    permissionStatus = grantedPermissions().copy(cameraGranted = false, microphoneGranted = false),
+                ),
             ),
         )
 
@@ -159,6 +166,19 @@ class GlassesObserverRuntimeCommandTest {
         assertTrue(
             sink.readAll().contains("kind=capture-refused source=runtime-command reason=mic-permission-missing"),
         )
+    }
+
+    @Test
+    fun observeStartWithSubsetGrantedSucceeds() {
+        val container = FakeRuntimeContainer(
+            controller = controller(
+                permissionStatus = grantedPermissions().copy(cameraGranted = false, microphoneGranted = true),
+            ),
+        )
+        val runtime = GlassesObserverRuntime(container)
+
+        assertEquals(CommandSucceeded, runtime.observeStart())
+        assertEquals(1, container.lifecycle.starts)
     }
 
     @Test
@@ -455,6 +475,7 @@ class GlassesObserverRuntimeCommandTest {
             visibleCaptureAuthority = visibleCaptureAuthority,
             isUsableNetworkPresent = { true },
             opportunisticSync = opportunisticSync,
+            declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(GLASSES_DECLARED_CAPTURE_FOREGROUND_TYPES),
         ).also {
             syncByController[it] = sync
             lifecycleByController[it] = lifecycle
@@ -473,7 +494,6 @@ class GlassesObserverRuntimeCommandTest {
                 cameraGranted = true,
                 locationGranted = true,
                 notificationsGranted = true,
-                requireLocation = false,
             )
 
         fun credential(): ClientCredential =

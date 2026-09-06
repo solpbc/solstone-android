@@ -9,6 +9,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.camera.still.CameraLock
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.testing.FakeContinuousSource
 import app.solstone.testing.fakePayloadBytes
 import java.io.ByteArrayInputStream
@@ -36,11 +37,13 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                 sourceId = "audio",
                 engine = audio,
                 requiredPermissionsGranted = { it.microphoneGranted },
+                captureForegroundType = CaptureForegroundType.MICROPHONE,
             ),
             SourceRegistration(
                 sourceId = "location",
                 engine = location,
                 requiredPermissionsGranted = { it.locationGranted },
+                captureForegroundType = CaptureForegroundType.LOCATION,
             ),
         ),
         payloadBytesProvider = object : PayloadBytesProvider {

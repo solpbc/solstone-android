@@ -7,6 +7,7 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 import app.solstone.core.sources.SourceCondition
+import app.solstone.platform.fgs.CaptureForegroundType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -43,16 +44,20 @@ class SourceRegistryReadModelTest {
 
     @Test
     fun permissionRevokedLivesOnObserverNeverOnSourceReason() {
-        val f = fixture(permissionStatus = grantedPermissions().copy(cameraGranted = false))
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+        )
         f.controller.ensureObserving()
         val engine = FakeSourceEngine()
         val registry = sourceRegistry(
             f = f,
-            registrations = listOf(SourceRegistration("audio", engine)),
+            registrations = listOf(
+                SourceRegistration("audio", engine, captureForegroundType = CaptureForegroundType.MICROPHONE),
+            ),
         )
 
         val snapshot = registry.snapshot()
-        assertEquals(ReasonCode.PERMISSION_REVOKED, snapshot.observer.reason)
+        assertEquals(ReasonCode.NONE, snapshot.observer.reason)
         assertTrue(snapshot.sources.none { it.reason == ReasonCode.PERMISSION_REVOKED })
     }
 

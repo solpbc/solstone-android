@@ -20,8 +20,10 @@ import app.solstone.core.pl.parsePairLink
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.camera.still.CameraLock
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
+import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 import app.solstone.platform.pl.transport.conscrypt.relayPairEndpoint
 
 enum class ObserverStartMode { VisibleStart, Rehydrate, ForegroundServiceStart }
@@ -59,6 +61,11 @@ class HarnessController(
     private val isUsableNetworkPresent: () -> Boolean,
     private val opportunisticSync: OpportunisticSync? = null,
     private val diag: (String) -> Unit = {},
+    private val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
+        CaptureForegroundType.MICROPHONE,
+        CaptureForegroundType.LOCATION,
+        CaptureForegroundType.CAMERA,
+    ),
 ) {
     var desiredOn: Boolean
         get() = desiredObservingStore.isDesiredOn()
@@ -98,7 +105,13 @@ class HarnessController(
     fun startReadiness(mode: ObserverStartMode): ObserverStartReadiness {
         refreshPermissions()
         val blockers = linkedSetOf<ReasonCode>()
-        if (!permissionStatus.allRequiredGranted) {
+        val subset = satisfiableCaptureForegroundTypes(
+            microphoneGranted = permissionStatus.microphoneGranted,
+            cameraGranted = permissionStatus.cameraGranted,
+            locationGranted = permissionStatus.locationGranted,
+            declared = declaredCaptureForegroundTypes,
+        )
+        if (subset.isEmpty()) {
             blockers += ReasonCode.PERMISSION_REVOKED
         }
         if (mode != ObserverStartMode.ForegroundServiceStart && !visibleCaptureAuthority.isVisibleOwnerPresent()) {
@@ -341,6 +354,7 @@ class HarnessController(
             identityState = identity?.state,
             silenced = snapshot.silenced,
             engineStartIssued = snapshot.engineStartIssued,
+            declaredCaptureForegroundTypes = declaredCaptureForegroundTypes,
         )
     }
 

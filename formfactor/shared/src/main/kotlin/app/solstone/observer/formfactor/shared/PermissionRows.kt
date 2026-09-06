@@ -3,13 +3,29 @@
 
 package app.solstone.observer.formfactor.shared
 
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.PermissionStatus
+import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 
-fun permissionRowsText(status: PermissionStatus): String =
-    listOf(
+fun permissionRowsText(
+    status: PermissionStatus,
+    declared: Set<CaptureForegroundType> = setOf(
+        CaptureForegroundType.MICROPHONE,
+        CaptureForegroundType.LOCATION,
+        CaptureForegroundType.CAMERA,
+    ),
+): String {
+    val ready = satisfiableCaptureForegroundTypes(
+        microphoneGranted = status.microphoneGranted,
+        cameraGranted = status.cameraGranted,
+        locationGranted = status.locationGranted,
+        declared = declared,
+    ).isNotEmpty()
+    return listOf(
         "Microphone: ${status.microphoneGranted}",
         "Camera: ${status.cameraGranted}",
         "Location: ${status.locationGranted}",
         "Notifications: ${status.notificationsGranted}",
-        "Permissions ready: ${status.allRequiredGranted}",
+        "Permissions ready: $ready",
     ).joinToString("\n")
+}

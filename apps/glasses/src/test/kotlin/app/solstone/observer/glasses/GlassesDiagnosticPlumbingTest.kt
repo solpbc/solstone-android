@@ -47,6 +47,7 @@ import app.solstone.observer.harness.AlwaysVisibleCaptureAuthority
 import app.solstone.observer.harness.assembleDiagnostics
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.platform.camera.still.CameraLock
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
@@ -187,6 +188,10 @@ class GlassesDiagnosticPlumbingTest {
             visibleCaptureAuthority = AlwaysVisibleCaptureAuthority,
             isUsableNetworkPresent = { true },
             diag = diag,
+            declaredCaptureForegroundTypes = setOf(
+                CaptureForegroundType.MICROPHONE,
+                CaptureForegroundType.CAMERA,
+            ),
         )
 
     private fun grantedPermissions(): PermissionStatus =
@@ -195,11 +200,10 @@ class GlassesDiagnosticPlumbingTest {
             cameraGranted = true,
             locationGranted = true,
             notificationsGranted = true,
-            requireLocation = false,
         )
 
     private fun revokedMicrophonePermissions(): PermissionStatus =
-        grantedPermissions().copy(microphoneGranted = false)
+        grantedPermissions().copy(microphoneGranted = false, cameraGranted = false)
 
     private class NoopEngine : ContinuousSourceEngine {
         override fun start(sink: EmissionSink) = Unit

@@ -44,7 +44,11 @@ class WatchForegroundServiceRuntimeTest {
     fun startStopStaleHeartbeatAndSyncNowAreHarnessBound() {
         ActivityScenario.launch(ObserverActivity::class.java).use {
             val container = waitForObserverContainer()
-            assertTrue(container.controller.refreshPermissions().allRequiredGranted)
+            val permissions = container.controller.refreshPermissions()
+            assertTrue(permissions.microphoneGranted)
+            assertTrue(permissions.cameraGranted)
+            assertTrue(permissions.locationGranted)
+            assertTrue(permissions.notificationsGranted)
             val sync = requireNotNull(container.flavor.syncControl)
 
             val unpairedBaseline = sync.enqueueNowCalls

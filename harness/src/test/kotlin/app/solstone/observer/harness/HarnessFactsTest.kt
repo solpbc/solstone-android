@@ -15,8 +15,20 @@ import kotlin.test.assertNotEquals
 class HarnessFactsTest {
     @Test
     fun missingPermissionsAndStaleHeartbeatAreNeverOn() {
+        val allPermissionsDenied = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
+        )
+        allPermissionsDenied.controller.start()
+        assertNotEquals(SourceState.ON, allPermissionsDenied.controller.diagnostics().state)
+        assertEquals(ReasonCode.PERMISSION_REVOKED, allPermissionsDenied.controller.diagnostics().reason)
+
         val cameraDenied = fixture(permissionStatus = grantedPermissions().copy(cameraGranted = false))
-        assertNotEquals(SourceState.ON, cameraDenied.controller.diagnostics().state)
+        cameraDenied.controller.start()
+        assertNotEquals(ReasonCode.PERMISSION_REVOKED, cameraDenied.controller.diagnostics().reason)
 
         val f = fixture()
         f.controller.start()

@@ -31,6 +31,8 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     private var lastObservedAudioState: SourceState? = null
 
     override fun onCreate() {
+        PhoneDiagLog.install(applicationContext.filesDir)
+        ObserverForegroundService.lifecycleDiag = { PhoneDiagLog.appendRaw(it) }
         super.onCreate()
         widgetStartOutcomes = PhoneWidgetStartOutcomeStore(applicationContext)
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)

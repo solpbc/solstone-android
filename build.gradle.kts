@@ -176,6 +176,17 @@ fun foregroundServiceTypeTokens(manifestText: String): Set<String> =
         .filter { it.isNotEmpty() }
         .toSet()
 
+fun parseDeclaredCaptureForegroundTypes(sourceText: String, tokenName: String): Set<String> {
+    val regex = Regex("""val\s+$tokenName\s*=\s*setOf\(([^)]*)\)""")
+    val match = regex.find(sourceText)
+        ?: error("could not parse declared capture foreground types for $tokenName")
+    return match.groupValues[1]
+        .split(",")
+        .map { it.trim().removeSurrounding("\"") }
+        .filter { it.isNotEmpty() }
+        .toSet()
+}
+
 fun intentFilterTokenGroups(manifestText: String): List<Set<String>> =
     Regex("""<intent-filter[^>]*>(.*?)</intent-filter>""", RegexOption.DOT_MATCHES_ALL)
         .findAll(manifestText)
@@ -731,16 +742,17 @@ tasks.register("manifestGuardSelfTest") {
     description = "Exercises manifest foreground service type token parsing."
 
     doLast {
-        val tokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|location|camera" />""")
-        check("microphone" in tokens)
-        check("location" in tokens)
-        check("camera" in tokens)
+        val manifestXml = """<service android:foregroundServiceType="microphone|location|camera" />"""
+        val tokens = foregroundServiceTypeTokens(manifestXml)
+        check(tokens == setOf("microphone", "location", "camera"))
         check("dataSync" !in tokens)
 
+        val kotlinSource = """val SAMPLE_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "camera")"""
+        val parsedKotlinTypes = parseDeclaredCaptureForegroundTypes(kotlinSource, "SAMPLE_DECLARED_CAPTURE_FOREGROUND_TYPES")
+        check(parsedKotlinTypes == tokens)
+
         val noLocationTokens = foregroundServiceTypeTokens("""<service android:foregroundServiceType="microphone|camera" />""")
-        check("microphone" in noLocationTokens)
-        check("camera" in noLocationTokens)
-        check("location" !in noLocationTokens)
+        check(noLocationTokens == setOf("microphone", "camera"))
     }
 }
 
@@ -1409,7 +1421,12 @@ tasks.named("check") {
     )
 }
 
-fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true, coarseLocationOnly: Boolean = false) {
+fun Project.registerMicrophoneManifestCheck(
+    requireLocation: Boolean = true,
+    coarseLocationOnly: Boolean = false,
+    declaredTypesSource: File,
+    declaredTypesToken: String,
+) {
     tasks.register("checkRealDebugMicrophoneManifest") {
         group = "verification"
         description = "Checks the realDebug merged manifest for microphone foreground service declarations."
@@ -1423,6 +1440,10 @@ fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true, coa
             if (!manifest.exists()) {
                 throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
             }
+            if (!declaredTypesSource.exists()) {
+                throw GradleException("Declared types source not found: ${declaredTypesSource.relativeTo(rootProject.projectDir)}")
+            }
+            val expectedTypes = parseDeclaredCaptureForegroundTypes(declaredTypesSource.readText(), declaredTypesToken)
             val text = manifest.readText()
             val failures = mutableListOf<String>()
             if (!text.contains("android.permission.FOREGROUND_SERVICE_MICROPHONE")) {
@@ -1432,25 +1453,22 @@ fun Project.registerMicrophoneManifestCheck(requireLocation: Boolean = true, coa
                 failures += "missing FOREGROUND_SERVICE_CAMERA permission"
             }
             val foregroundServiceTypes = foregroundServiceTypeTokens(text)
-            if ("microphone" !in foregroundServiceTypes) {
-                failures += "foregroundServiceType must include microphone"
-            }
-            if ("camera" !in foregroundServiceTypes) {
-                failures += "foregroundServiceType must include camera"
+            if (foregroundServiceTypes != expectedTypes) {
+                failures += "foregroundServiceType tokens $foregroundServiceTypes != declared $expectedTypes"
             }
             if (requireLocation) {
                 if (!text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
                     failures += "missing FOREGROUND_SERVICE_LOCATION permission"
                 }
                 if ("location" !in foregroundServiceTypes) {
-                    failures += "foregroundServiceType must include location"
+                    failures += "missing location in foregroundServiceType"
                 }
             } else {
                 if (text.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
                     failures += "must not declare FOREGROUND_SERVICE_LOCATION permission"
                 }
                 if ("location" in foregroundServiceTypes) {
-                    failures += "foregroundServiceType must not include location"
+                    failures += "must not declare location in foregroundServiceType"
                 }
             }
             if (coarseLocationOnly) {
@@ -1687,12 +1705,19 @@ fun Project.registerOnBackInvokedCallbackManifestCheck() {
 }
 
 project(":apps:watch") {
-    registerMicrophoneManifestCheck()
+    registerMicrophoneManifestCheck(
+        declaredTypesSource = file("src/main/kotlin/app/solstone/observer/watch/WatchSpec.kt"),
+        declaredTypesToken = "WATCH_DECLARED_CAPTURE_FOREGROUND_TYPES",
+    )
     registerLauncherHomeManifestCheck(requireHome = false)
 }
 
 project(":apps:phone") {
-    registerMicrophoneManifestCheck(coarseLocationOnly = true)
+    registerMicrophoneManifestCheck(
+        coarseLocationOnly = true,
+        declaredTypesSource = file("src/main/kotlin/app/solstone/observer/phone/PhoneSpec.kt"),
+        declaredTypesToken = "PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES",
+    )
     registerLauncherHomeManifestCheck(requireHome = false)
     registerAppLinksManifestCheck()
     registerReleaseAppLinksManifestCheck()
@@ -1702,7 +1727,11 @@ project(":apps:phone") {
 }
 
 project(":apps:glasses") {
-    registerMicrophoneManifestCheck(requireLocation = false)
+    registerMicrophoneManifestCheck(
+        requireLocation = false,
+        declaredTypesSource = file("src/main/kotlin/app/solstone/observer/glasses/GlassesDeclaredCaptureForegroundTypes.kt"),
+        declaredTypesToken = "GLASSES_DECLARED_CAPTURE_FOREGROUND_TYPES",
+    )
     registerLauncherHomeManifestCheck(requireHome = true)
 }
 

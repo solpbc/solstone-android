@@ -64,100 +64,169 @@ class FgsLogicTest {
     fun startCommandPlanCoversFreshStartAndStickyRestart() {
         assertEquals(
             ObserverStartCommandPlan(
+                enterForeground = true,
                 initialNeedsAttention = true,
                 dispatchRehydrate = true,
                 postAttentionOn102 = false,
                 stopSelf = false,
             ),
-            onStartCommandPlan(hasIntent = true, hasRehydrator = true),
+            onStartCommandPlan(hasIntent = true, hasRehydrator = true, subsetEmpty = false),
         )
         assertEquals(
             ObserverStartCommandPlan(
+                enterForeground = true,
                 initialNeedsAttention = true,
                 dispatchRehydrate = false,
                 postAttentionOn102 = false,
                 stopSelf = false,
             ),
-            onStartCommandPlan(hasIntent = true, hasRehydrator = false),
+            onStartCommandPlan(hasIntent = true, hasRehydrator = false, subsetEmpty = false),
         )
         assertEquals(
             ObserverStartCommandPlan(
+                enterForeground = true,
                 initialNeedsAttention = true,
                 dispatchRehydrate = false,
                 postAttentionOn102 = true,
                 stopSelf = true,
             ),
-            onStartCommandPlan(hasIntent = false, hasRehydrator = false),
-        )
-    }
-
-    @Test
-    fun notificationAttentionFollowsState() {
-        assertFalse(needsAttentionForState(SourceState.ON))
-        assertTrue(needsAttentionForState(SourceState.OFF))
-        assertTrue(needsAttentionForState(SourceState.NEEDS_ATTENTION))
-    }
-
-    @Test
-    fun startActionOfferedOnlyWhenCaptureNotRunning() {
-        assertFalse(shouldOfferStartAction(isRunning = true))
-        assertTrue(shouldOfferStartAction(isRunning = false))
-    }
-
-    @Test
-    fun stoppedNotificationRequiresObservedOnToOff() {
-        assertTrue(shouldNotifyCaptureStopped(SourceState.ON, SourceState.OFF))
-        assertFalse(shouldNotifyCaptureStopped(null, SourceState.OFF))
-        assertFalse(shouldNotifyCaptureStopped(SourceState.OFF, SourceState.OFF))
-        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.SETTING_UP))
-        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.PAUSED))
-        assertFalse(shouldNotifyCaptureStopped(SourceState.ON, SourceState.NEEDS_ATTENTION))
-    }
-
-    @Test
-    fun stoppedNotificationTextIsDistinctAndSelected() {
-        assertNotEquals(ObserverNotification.TEXT_ON, ObserverNotification.TEXT_OFF)
-        assertNotEquals(ObserverNotification.TEXT_NEEDS_ATTENTION, ObserverNotification.TEXT_OFF)
-        assertEquals(
-            ObserverNotification.TEXT_OFF,
-            ObserverNotification.ongoingContentText(needsAttention = false, stopped = true),
+            onStartCommandPlan(hasIntent = false, hasRehydrator = false, subsetEmpty = false),
         )
         assertEquals(
-            ObserverNotification.TEXT_ON,
-            ObserverNotification.ongoingContentText(needsAttention = false, stopped = false),
+            ObserverStartCommandPlan(
+                enterForeground = false,
+                initialNeedsAttention = true,
+                dispatchRehydrate = false,
+                postAttentionOn102 = true,
+                stopSelf = true,
+            ),
+            onStartCommandPlan(hasIntent = true, hasRehydrator = true, subsetEmpty = true),
         )
         assertEquals(
-            ObserverNotification.TEXT_NEEDS_ATTENTION,
-            ObserverNotification.ongoingContentText(needsAttention = true, stopped = false),
+            ObserverStartCommandPlan(
+                enterForeground = false,
+                initialNeedsAttention = true,
+                dispatchRehydrate = false,
+                postAttentionOn102 = true,
+                stopSelf = true,
+            ),
+            onStartCommandPlan(hasIntent = false, hasRehydrator = false, subsetEmpty = true),
         )
     }
 
     @Test
-    fun startFailureDiagLineEmbedsExceptionClass() {
-        assertTrue(startFailureDiagLine("SecurityException").contains("SecurityException"))
+    fun satisfiableSubsetMatchesDeclaredAndGranted() {
+        val allDeclared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION, CaptureForegroundType.CAMERA)
+        assertEquals(
+            allDeclared,
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = true,
+                cameraGranted = true,
+                locationGranted = true,
+                declared = allDeclared,
+            ),
+        )
+        assertEquals(
+            emptySet(),
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+                declared = allDeclared,
+            ),
+        )
+        assertEquals(
+            setOf(CaptureForegroundType.MICROPHONE),
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = true,
+                cameraGranted = false,
+                locationGranted = false,
+                declared = allDeclared,
+            ),
+        )
+        assertEquals(
+            setOf(CaptureForegroundType.LOCATION),
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = true,
+                declared = allDeclared,
+            ),
+        )
+        assertEquals(
+            setOf(CaptureForegroundType.CAMERA),
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = false,
+                cameraGranted = true,
+                locationGranted = false,
+                declared = allDeclared,
+            ),
+        )
+        val glassesDeclared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.CAMERA)
+        assertEquals(
+            setOf(CaptureForegroundType.MICROPHONE),
+            satisfiableCaptureForegroundTypes(
+                microphoneGranted = true,
+                cameraGranted = false,
+                locationGranted = true,
+                declared = glassesDeclared,
+            ),
+        )
     }
 
     @Test
-    fun permissionStatusRequiresStartPermissions() {
-        assertTrue(granted().allRequiredGranted)
-        assertFalse(granted().copy(microphoneGranted = false).allRequiredGranted)
-        assertFalse(granted().copy(cameraGranted = false).allRequiredGranted)
-        assertFalse(granted().copy(locationGranted = false).allRequiredGranted)
-        assertFalse(granted().copy(notificationsGranted = false).allRequiredGranted)
+    fun notificationsDoNotAffectSatisfiableSubset() {
+        val declared = setOf(CaptureForegroundType.MICROPHONE)
+        val withNotif = satisfiableCaptureForegroundTypes(
+            microphoneGranted = true,
+            cameraGranted = false,
+            locationGranted = false,
+            declared = declared,
+        )
+        assertEquals(setOf(CaptureForegroundType.MICROPHONE), withNotif)
     }
 
     @Test
-    fun permissionStatusCanMakeLocationOptional() {
-        assertTrue(
-            granted()
-                .copy(locationGranted = false, requireLocation = false)
-                .allRequiredGranted,
+    fun captureForegroundTokensConversion() {
+        assertEquals(
+            setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION, CaptureForegroundType.CAMERA),
+            captureForegroundTypesFromTokens(setOf("microphone", "location", "camera")),
         )
-        assertFalse(
-            granted()
-                .copy(locationGranted = false, requireLocation = true)
-                .allRequiredGranted,
+        assertEquals(
+            setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.CAMERA),
+            captureForegroundTypesFromTokens(setOf("microphone", "camera")),
         )
+    }
+
+    @Test
+    fun typesDiagLineFormatsCorrectly() {
+        val line = typesDiagLine(
+            granted = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION),
+            declared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.CAMERA),
+            subset = setOf(CaptureForegroundType.MICROPHONE),
+        )
+        assertEquals("fgs phase=types granted=microphone,location declared=microphone,camera subset=microphone", line)
+    }
+
+    @Test
+    fun handledStartExceptionNamesAndWidgetRefusalReasons() {
+        val handled = handledForegroundStartExceptionNames()
+        assertTrue("SecurityException" in handled)
+        assertTrue("IllegalArgumentException" in handled)
+        assertTrue("ForegroundServiceStartNotAllowedException" in handled)
+        assertTrue("MissingForegroundServiceTypeException" in handled)
+        assertTrue("InvalidForegroundServiceTypeException" in handled)
+
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("SecurityException"))
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("java.lang.SecurityException"))
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("IllegalArgumentException"))
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("MissingForegroundServiceTypeException"))
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("InvalidForegroundServiceTypeException"))
+        assertEquals(ReasonCode.PERMISSION_REVOKED, widgetRefusalReasonForStartException("EmptyCaptureForegroundSubset"))
+
+        assertEquals(ReasonCode.FOREGROUND_START_NOT_ALLOWED, widgetRefusalReasonForStartException("ForegroundServiceStartNotAllowedException"))
+        assertEquals(ReasonCode.FOREGROUND_START_NOT_ALLOWED, widgetRefusalReasonForStartException("android.app.ForegroundServiceStartNotAllowedException"))
+        assertEquals(ReasonCode.FOREGROUND_START_NOT_ALLOWED, widgetRefusalReasonForStartException("IllegalStateException"))
     }
 
     @Test

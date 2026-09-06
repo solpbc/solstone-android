@@ -8,12 +8,15 @@ import app.solstone.core.sources.WATCH_STREAM
 import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
 
+val WATCH_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "camera")
+
 val watchSpec = FormFactorSpec(
     stream = WATCH_STREAM,
     deviceLabel = "solstone watch",
     handlesPairLinks = false,
     qrBackend = QrBackend.Legacy,
     previewHeightPx = 220,
+    declaredCaptureForegroundTypes = WATCH_DECLARED_CAPTURE_FOREGROUND_TYPES,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {
             arrayOf(

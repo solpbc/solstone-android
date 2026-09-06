@@ -4,14 +4,16 @@
 package app.solstone.platform.fgs
 
 import android.app.NotificationManager
-import android.app.Service
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.core.app.ServiceCompat
 import app.solstone.core.model.ReasonCode
 import java.util.concurrent.atomic.AtomicLong
 
@@ -34,9 +36,57 @@ class ObserverForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val hook = rehydrator
         val widgetSourceId = widgetSourceId(intent)
-        val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null)
+        val liveHeldTypes = heldCaptureForegroundTypes
+        if (liveHeldTypes != null) {
+            val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null, subsetEmpty = false)
+            refreshOngoingNotification(this, needsAttention = plan.initialNeedsAttention)
+            if (!plan.stopSelf) {
+                cancelAttentionNotification(this)
+            }
+            dispatchLifecycle("fgs phase=start startId=$startId flags=$flags intent=${intent != null}")
+            refreshHeartbeat()
+            if (plan.dispatchRehydrate) {
+                dispatchRehydrate(hook)
+            }
+            widgetSourceId?.let(::dispatchWidgetStartAccepted)
+            if (plan.postAttentionOn102) {
+                postAttentionNotification(this)
+            }
+            if (plan.stopSelf) {
+                removeForegroundNotification()
+                stopSelf()
+            }
+            return START_STICKY
+        }
+
+        val permissions = AndroidPermissionStatusReader(this).read()
+        val declared = declaredCaptureForegroundTypes ?: emptySet()
+        val granted = linkedSetOf<CaptureForegroundType>().apply {
+            if (permissions.microphoneGranted) add(CaptureForegroundType.MICROPHONE)
+            if (permissions.locationGranted) add(CaptureForegroundType.LOCATION)
+            if (permissions.cameraGranted) add(CaptureForegroundType.CAMERA)
+        }
+        val subset = satisfiableCaptureForegroundTypes(
+            microphoneGranted = permissions.microphoneGranted,
+            cameraGranted = permissions.cameraGranted,
+            locationGranted = permissions.locationGranted,
+            declared = declared,
+        )
+        dispatchLifecycle(typesDiagLine(granted = granted, declared = declared, subset = subset))
+        val plan = onStartCommandPlan(
+            hasIntent = intent != null,
+            hasRehydrator = hook != null,
+            subsetEmpty = subset.isEmpty(),
+        )
+        if (!plan.enterForeground) {
+            handleStartFailure(this, "EmptyCaptureForegroundSubset")
+            widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
+            stopSelf()
+            return START_STICKY
+        }
         try {
-            startForeground(
+            ServiceCompat.startForeground(
+                this,
                 ObserverNotification.SERVICE_NOTIFICATION_ID,
                 ObserverNotification.ongoing(
                     this,
@@ -44,16 +94,23 @@ class ObserverForegroundService : Service() {
                     decorate = true,
                     requestPromotion = true,
                 ),
+                captureForegroundTypeMask(subset),
             )
+            heldCaptureForegroundTypes = subset
         } catch (e: SecurityException) {
             handleStartFailure(this, e.javaClass.simpleName)
             widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
             stopSelf()
             return START_STICKY
-        } catch (e: RuntimeException) {
-            if (!isForegroundStartNotAllowedException(e)) throw e
+        } catch (e: IllegalArgumentException) {
             handleStartFailure(this, e.javaClass.simpleName)
-            widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.FOREGROUND_START_NOT_ALLOWED) }
+            widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
+            stopSelf()
+            return START_STICKY
+        } catch (e: RuntimeException) {
+            handleStartFailure(this, e.javaClass.simpleName)
+            val reason = widgetRefusalReasonForStartException(e.javaClass.simpleName)
+            widgetSourceId?.let { dispatchWidgetStartRefused(it, reason) }
             stopSelf()
             return START_STICKY
         }
@@ -78,6 +135,7 @@ class ObserverForegroundService : Service() {
 
     override fun onDestroy() {
         dispatchLifecycle("fgs phase=destroy")
+        heldCaptureForegroundTypes = null
         handler.removeCallbacks(heartbeat)
         invalidateHeartbeat()
         super.onDestroy()
@@ -101,6 +159,8 @@ class ObserverForegroundService : Service() {
         private val lastBeatNanos = AtomicLong(0L)
         private val lastStartRequestedNanos = AtomicLong(0L)
 
+        @Volatile var declaredCaptureForegroundTypes: Set<CaptureForegroundType>? = null
+        @Volatile var heldCaptureForegroundTypes: Set<CaptureForegroundType>? = null
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
         @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
@@ -132,8 +192,9 @@ class ObserverForegroundService : Service() {
                 }
             } catch (e: SecurityException) {
                 handleStartFailure(context, e.javaClass.simpleName)
+            } catch (e: IllegalArgumentException) {
+                handleStartFailure(context, e.javaClass.simpleName)
             } catch (e: RuntimeException) {
-                if (!isForegroundStartNotAllowedException(e)) throw e
                 handleStartFailure(context, e.javaClass.simpleName)
             }
         }
@@ -169,6 +230,20 @@ class ObserverForegroundService : Service() {
 
         private fun invalidateHeartbeat() {
             lastBeatNanos.set(0L)
+        }
+
+        private fun captureForegroundTypeMask(types: Set<CaptureForegroundType>): Int {
+            var mask = 0
+            if (CaptureForegroundType.MICROPHONE in types) {
+                mask = mask or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            if (CaptureForegroundType.LOCATION in types) {
+                mask = mask or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            if (CaptureForegroundType.CAMERA in types) {
+                mask = mask or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
+            return mask
         }
 
         fun refreshOngoingNotification(context: Context, needsAttention: Boolean) {
@@ -229,10 +304,6 @@ class ObserverForegroundService : Service() {
             dispatchLifecycle(startFailureDiagLine(exceptionClassName))
             postAttentionNotification(context)
         }
-
-        private fun isForegroundStartNotAllowedException(exception: RuntimeException): Boolean =
-            Build.VERSION.SDK_INT >= 31 &&
-                exception.javaClass.name == "android.app.ForegroundServiceStartNotAllowedException"
 
         private fun launchPendingIntent(context: Context): PendingIntent? {
             val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null

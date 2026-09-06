@@ -6,6 +6,7 @@ package app.solstone.observer.scaffold
 import android.app.Application
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverServiceRehydrator
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.work.SyncScheduler
 
 open class ObserverApplication(val spec: FormFactorSpec) : Application() {
@@ -14,6 +15,8 @@ open class ObserverApplication(val spec: FormFactorSpec) : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ObserverForegroundService.declaredCaptureForegroundTypes =
+            captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes)
         SyncScheduler.enqueuePeriodic(applicationContext, spec.stream)
         runtime = ObserverRuntime(applicationContext, spec)
         ObserverHarnessRuntime.runtime = runtime

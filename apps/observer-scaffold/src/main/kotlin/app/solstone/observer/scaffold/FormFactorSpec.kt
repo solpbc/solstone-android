@@ -11,5 +11,6 @@ data class FormFactorSpec(
     val handlesPairLinks: Boolean,
     val qrBackend: QrBackend,
     val previewHeightPx: Int,
+    val declaredCaptureForegroundTypes: Set<String>,
     val permissions: (sdkInt: Int) -> Array<String>,
 )

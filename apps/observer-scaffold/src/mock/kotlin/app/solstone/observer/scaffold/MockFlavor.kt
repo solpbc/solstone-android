@@ -35,6 +35,7 @@ import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import java.nio.file.Path
 
@@ -58,7 +59,7 @@ fun buildObserverFlavor(
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val opportunisticSync = OpportunisticSync(evidenceReader, sync, NoopNetworkAvailability)
     val controller = HarnessController(
-        permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
+        permissionStatusReader = AndroidPermissionStatusReader(context),
         desiredObservingStore = InMemoryDesiredObservingStore(),
         cameraLock = cameraLock,
         observerLifecycle = lifecycle,
@@ -115,6 +116,7 @@ fun buildObserverFlavor(
         visibleCaptureAuthority = visibleCaptureAuthority,
         isUsableNetworkPresent = NoopNetworkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,
+        declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
     )
     val backlogStatus = RealBacklogStatusReader(
         dao = database.segmentDao(),

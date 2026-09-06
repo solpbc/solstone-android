@@ -49,6 +49,35 @@ class SourceRegistryFactsTest {
 
         val readModel = registry.snapshot()
 
+        assertEquals(ReasonCode.NONE, readModel.observer.reason)
+        assertEquals(SourceState.NEEDS_ATTENTION, readModel.sources.single().state)
+        assertEquals(ReasonCode.PERMISSION_REVOKED, readModel.sources.single().reason)
+    }
+
+    @Test
+    fun allCapturePermissionsDeniedMarksObserverAndLocationRow() {
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
+            snapshot = snapshot(),
+        )
+        f.desiredStore.setDesiredOn(true)
+        val registry = sourceRegistry(
+            f = f,
+            registrations = listOf(
+                SourceRegistration(
+                    sourceId = "location",
+                    engine = FakeSourceEngine(conditionValue = unavailableCondition()),
+                    requiredPermissionsGranted = { it.locationGranted },
+                ),
+            ),
+        )
+
+        val readModel = registry.snapshot()
+
         assertEquals(ReasonCode.PERMISSION_REVOKED, readModel.observer.reason)
         assertEquals(SourceState.NEEDS_ATTENTION, readModel.sources.single().state)
         assertEquals(ReasonCode.PERMISSION_REVOKED, readModel.sources.single().reason)
@@ -88,7 +117,45 @@ class SourceRegistryFactsTest {
                 SourceRegistration(
                     sourceId = "audio",
                     engine = FakeSourceEngine(conditionValue = runningCondition()),
-                    requiredPermissionsGranted = { it.microphoneGranted },
+                ),
+            ),
+        )
+
+        val readModel = registry.snapshot()
+
+        assertEquals(ReasonCode.NONE, readModel.observer.reason)
+        assertTrue(readModel.sources.none { it.reason == ReasonCode.PERMISSION_REVOKED })
+    }
+
+    @Test
+    fun notificationsPermissionDenialDoesNotVanishWithoutAnOwningSource() {
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(notificationsGranted = false),
+            snapshot = snapshot(),
+        )
+        f.desiredStore.setDesiredOn(true)
+        val registry = sourceRegistry(f = f, registrations = emptyList())
+
+        assertEquals(ReasonCode.NONE, registry.snapshot().observer.reason)
+    }
+
+    @Test
+    fun permissionDenialAppearsOnObserverWithoutSmearingToSources() {
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
+            snapshot = snapshot(),
+        )
+        f.desiredStore.setDesiredOn(true)
+        val registry = sourceRegistry(
+            f = f,
+            registrations = listOf(
+                SourceRegistration(
+                    sourceId = "audio",
+                    engine = FakeSourceEngine(conditionValue = runningCondition()),
                 ),
             ),
         )
@@ -100,9 +167,13 @@ class SourceRegistryFactsTest {
     }
 
     @Test
-    fun notificationsPermissionDenialDoesNotVanishWithoutAnOwningSource() {
+    fun permissionDenialDoesNotVanishWithoutAnOwningSource() {
         val f = fixture(
-            permissionStatus = grantedPermissions().copy(notificationsGranted = false),
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
             snapshot = snapshot(),
         )
         f.desiredStore.setDesiredOn(true)

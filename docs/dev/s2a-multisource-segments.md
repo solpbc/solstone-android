@@ -147,7 +147,7 @@ production code changes are intentionally not included here.
   - `FOREGROUND_SERVICE_LOCATION`
   - `ACCESS_COARSE_LOCATION` (plus `ACCESS_FINE_LOCATION` on parked watch)
 - Both services use `foregroundServiceType="microphone|location"`.
-- Keep the existing API 28 untyped `startForeground` call in `ObserverForegroundService`.
+- Use typed subset via `ServiceCompat.startForeground` in `ObserverForegroundService`; API < 29 drops the mask.
 - Do not add `dataSync`.
 - Extend `registerMicrophoneManifestCheck` to require:
   - microphone foreground service permission

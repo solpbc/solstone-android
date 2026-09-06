@@ -45,7 +45,10 @@ class GlassesCaptureRuntimeTest {
 
         ActivityScenario.launch(MainActivity::class.java).use {
             val container = waitForContainer()
-            assertTrue(container.controller.refreshPermissions().allRequiredGranted)
+            val permissions = container.controller.refreshPermissions()
+            assertTrue(permissions.microphoneGranted)
+            assertTrue(permissions.cameraGranted)
+            assertTrue(permissions.notificationsGranted)
             assertEquals(1, container.flavor.syncControl?.enqueuePeriodicCalls)
 
             container.controller.start()

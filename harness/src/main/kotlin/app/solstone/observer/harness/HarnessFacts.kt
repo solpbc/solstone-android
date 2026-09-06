@@ -10,7 +10,9 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.PermissionStatus
+import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 
 data class HarnessFactInputs(
     val desiredOn: Boolean,
@@ -25,6 +27,11 @@ data class HarnessFactInputs(
     val identityState: IdentityState?,
     val silenced: SilencedFact,
     val engineStartIssued: Boolean = true,
+    val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
+        CaptureForegroundType.MICROPHONE,
+        CaptureForegroundType.LOCATION,
+        CaptureForegroundType.CAMERA,
+    ),
 )
 
 fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
@@ -33,11 +40,17 @@ fun assembleDiagnostics(inputs: HarnessFactInputs): HarnessDiagnostics {
     return HarnessDiagnostics(state = state, reason = reason, display = displayFor(state, reason))
 }
 
-internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts =
-    SourceFacts(
+internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts {
+    val subset = satisfiableCaptureForegroundTypes(
+        microphoneGranted = inputs.permissionStatus.microphoneGranted,
+        cameraGranted = inputs.permissionStatus.cameraGranted,
+        locationGranted = inputs.permissionStatus.locationGranted,
+        declared = inputs.declaredCaptureForegroundTypes,
+    )
+    return SourceFacts(
         desiredOn = inputs.desiredOn,
         engineRunning = inputs.engineRunning,
-        permissionGranted = inputs.permissionStatus.allRequiredGranted,
+        permissionGranted = subset.isNotEmpty(),
         fgsHeartbeatFresh = inputs.fgsHeartbeatFresh,
         providerEmitting = inputs.providerEmitting,
         storageOk = inputs.storageOk,
@@ -50,6 +63,7 @@ internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts =
         silenced = inputs.silenced,
         engineStartIssued = inputs.engineStartIssued,
     )
+}
 
 fun displayFor(state: SourceState, reason: ReasonCode): String =
     reason.text()?.let { "${state.label()}: $it" } ?: state.label()

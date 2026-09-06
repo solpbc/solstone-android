@@ -21,6 +21,7 @@ import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
@@ -65,7 +66,7 @@ fun buildObserverFlavor(
         coordinator = stores.journalVersionCoordinator,
     )
     val controller = HarnessController(
-        permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = true),
+        permissionStatusReader = AndroidPermissionStatusReader(context),
         desiredObservingStore = SharedPreferencesDesiredObservingStore(context),
         cameraLock = cameraLock,
         observerLifecycle = lifecycle,
@@ -84,6 +85,7 @@ fun buildObserverFlavor(
         visibleCaptureAuthority = visibleCaptureAuthority,
         isUsableNetworkPresent = networkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,
+        declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
     )
     val backlogStatus = RealBacklogStatusReader(
         dao = database.segmentDao(),

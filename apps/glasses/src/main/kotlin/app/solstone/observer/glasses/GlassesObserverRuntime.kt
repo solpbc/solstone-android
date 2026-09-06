@@ -102,14 +102,16 @@ class GlassesObserverRuntime(
                 return CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable)
             }
             val permissions = controller.permissionStatus
-            when {
-                !permissions.cameraGranted -> GlassesDiagLog.emit(
+            if (!permissions.cameraGranted) {
+                GlassesDiagLog.emit(
                     DiagEvent.CaptureRefused(
                         source = DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
                         reason = DiagEvent.CaptureRefusalReason.CAMERA_PERMISSION_MISSING,
                     ),
                 )
-                !permissions.microphoneGranted -> GlassesDiagLog.emit(
+            }
+            if (!permissions.microphoneGranted) {
+                GlassesDiagLog.emit(
                     DiagEvent.CaptureRefused(
                         source = DiagEvent.CaptureRefusalSource.RUNTIME_COMMAND,
                         reason = DiagEvent.CaptureRefusalReason.MIC_PERMISSION_MISSING,

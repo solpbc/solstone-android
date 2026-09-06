@@ -27,9 +27,29 @@ class HarnessControllerForegroundServiceStartTest {
     }
 
     @Test
-    fun alreadyForegroundStartStillRefusesMissingPermissions() {
+    fun alreadyForegroundStartPermitsSubsetWhenMicrophoneDenied() {
         val f = fixture(
             permissionStatus = grantedPermissions().copy(microphoneGranted = false),
+            visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
+            snapshot = stoppedSnapshot(),
+        )
+
+        val readiness = f.controller.startWhenAlreadyForeground()
+
+        assertTrue(readiness.allowed)
+        assertEquals(1, f.lifecycle.starts)
+        assertTrue(f.controller.desiredOn)
+        assertFalse(f.controller.lastStartRefused)
+    }
+
+    @Test
+    fun alreadyForegroundStartStillRefusesWhenAllCapturePermissionsDenied() {
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
             visibleCaptureAuthority = FakeVisibleCaptureAuthority(present = false),
             snapshot = stoppedSnapshot(),
         )

@@ -28,6 +28,7 @@ import app.solstone.observer.harness.SyncEnqueue
 import app.solstone.observer.harness.VisibleCaptureAuthority
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import java.nio.file.Path
 
@@ -47,7 +48,7 @@ fun createGlassesHarnessFlavor(
     val sync = MockSyncEnqueue()
     return GlassesHarnessFlavor(
         controller = HarnessController(
-            permissionStatusReader = AndroidPermissionStatusReader(context, requireLocation = false),
+            permissionStatusReader = AndroidPermissionStatusReader(context),
             desiredObservingStore = InMemoryDesiredObservingStore(),
             cameraLock = cameraLock,
             observerLifecycle = lifecycle,
@@ -104,6 +105,7 @@ fun createGlassesHarnessFlavor(
             visibleCaptureAuthority = visibleCaptureAuthority,
             isUsableNetworkPresent = { true },
             opportunisticSync = null,
+            declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(GLASSES_DECLARED_CAPTURE_FOREGROUND_TYPES),
         ),
         audioFeedback = FakeAudioFeedback(),
         heartbeatControl = heartbeat,

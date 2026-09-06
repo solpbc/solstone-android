@@ -24,9 +24,29 @@ class PermissionRowsTest {
             "Camera: false",
             "Location: true",
             "Notifications: true",
-            "Permissions ready: false",
+            "Permissions ready: true",
         ).joinToString("\n")
         assertContentEquals(expected.toByteArray(Charsets.UTF_8), rendered.toByteArray(Charsets.UTF_8))
         assertFalse(rendered.contains("Background" + " location"))
+    }
+
+    @Test
+    fun rendersNotReadyWhenNoCapturePermissionsGranted() {
+        val status = PermissionStatus(
+            microphoneGranted = false,
+            cameraGranted = false,
+            locationGranted = false,
+            notificationsGranted = true,
+        )
+
+        val rendered = permissionRowsText(status)
+        val expected = listOf(
+            "Microphone: false",
+            "Camera: false",
+            "Location: false",
+            "Notifications: true",
+            "Permissions ready: false",
+        ).joinToString("\n")
+        assertContentEquals(expected.toByteArray(Charsets.UTF_8), rendered.toByteArray(Charsets.UTF_8))
     }
 }

@@ -53,7 +53,11 @@ class HarnessControllerVisibleStartTest {
     @Test
     fun visibleStartStillRequiresPermissions() {
         val f = fixture(
-            permissionStatus = grantedPermissions().copy(cameraGranted = false),
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
             snapshot = stoppedSnapshot(),
         )
 

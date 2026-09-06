@@ -22,6 +22,8 @@ import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
 import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
+import app.solstone.platform.fgs.CaptureForegroundType
+import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 
 class GlassesHarnessUi(
     private val context: Context,
@@ -252,11 +254,17 @@ class GlassesHarnessUi(
 
     private fun permissionText(): String {
         val p = controller.refreshPermissions()
+        val ready = satisfiableCaptureForegroundTypes(
+            microphoneGranted = p.microphoneGranted,
+            cameraGranted = p.cameraGranted,
+            locationGranted = p.locationGranted,
+            declared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.CAMERA),
+        ).isNotEmpty()
         return listOf(
             "Microphone: ${p.microphoneGranted}",
             "Camera: ${p.cameraGranted}",
             "Notifications: ${p.notificationsGranted}",
-            "Ready: ${p.allRequiredGranted}",
+            "Ready: $ready",
         ).joinToString("\n")
     }
 

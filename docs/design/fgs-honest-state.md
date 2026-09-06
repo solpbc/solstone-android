@@ -37,12 +37,16 @@ Add a service-side notification update seam:
 
 ### C. Initial Post And Sticky Restart
 
-Unify honest start behavior through a pure `onStartCommandPlan(hasIntent, hasRehydrator)`:
+Unify honest start behavior through a pure `onStartCommandPlan(hasIntent, hasRehydrator, subsetEmpty)`:
 
 - `onStartCommand` always begins with id 101 as needs-attention. At service start time, capture is not yet confirmed ON.
+- Compute the satisfiable subset of declared capture foreground types for which runtime permissions are currently granted.
+- If the subset is non-empty, call `ServiceCompat.startForeground` with the combined type mask and record `heldCaptureForegroundTypes`.
+- If the subset is empty, do not enter foreground; post id 102 needs-attention, stop self, and record start failure diagnostic.
 - The re-post seam in B is the only path that can flip id 101 to `on`, after diagnostics confirm ON. The accepted latency is the existing glasses poll cadence, up to 5 seconds.
-- If sticky restart arrives with no rehydrator registered: call `startForeground(101, needs-attention)`, post id 102 needs-attention, then `stopSelf()`. Stopping removes id 101; id 102 survives as the non-observing attention signal.
-- If a rehydrator exists: post id 101 needs-attention, dispatch rehydrate, and let diagnostics later flip id 101 to `on` only if capture is truly ON.
+- If sticky restart arrives with no rehydrator registered and a non-empty subset: call `startForeground(101, needs-attention)`, post id 102 needs-attention, then `stopSelf()`. Stopping removes id 101; id 102 survives as the non-observing attention signal.
+- If sticky restart arrives with an empty subset or nothing satisfiable: post id 102 needs-attention and `stopSelf()` without calling `startForeground()`.
+- If a rehydrator exists and subset is non-empty: post id 101 needs-attention via `startForeground`, dispatch rehydrate, and let diagnostics later flip id 101 to `on` only if capture is truly ON.
 
 ### D. Start-Failure Handling
 
@@ -50,7 +54,7 @@ Catch platform start failures and surface attention without crashing:
 
 - Wrap `startForeground` in `onStartCommand`.
 - Wrap requester calls in `startFromVisibleContext`: `startForegroundService` / `startService`.
-- Catch `SecurityException` and, on API 31+, `ForegroundServiceStartNotAllowedException`.
+- Catch the full set of start exceptions: `SecurityException`, `ForegroundServiceStartNotAllowedException`, `MissingForegroundServiceTypeException`, `InvalidForegroundServiceTypeException`, `IllegalArgumentException`, and any other `RuntimeException`.
 - On catch, emit a lifecycle diagnostic containing the exception class name.
 - Post id 102 needs-attention when notifications are permitted.
 - Never rethrow from these wrappers.

@@ -11,7 +11,13 @@ import kotlin.test.assertEquals
 class HarnessFirstLaunchTest {
     @Test
     fun firstLaunchWithoutPermissionsNeedsAttention() {
-        val f = fixture(permissionStatus = grantedPermissions().copy(microphoneGranted = false))
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
+        )
         val diagnostics = f.controller.diagnostics()
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.PERMISSION_REVOKED, diagnostics.reason)

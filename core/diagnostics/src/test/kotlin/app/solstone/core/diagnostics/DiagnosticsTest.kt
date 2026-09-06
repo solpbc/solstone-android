@@ -14,12 +14,29 @@ class DiagnosticsTest {
     @Test
     fun reduceMapsFailureFactsInPrecedenceOrder() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED, reduce(healthy().copy(foregroundTypeHeld = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(healthy().copy(storageOk = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT, reduce(healthy().copy(providerEmitting = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED, reduce(healthy().copy(pairing = PairingFact.REVOKED)))
+    }
+
+    @Test
+    fun foregroundTypeNotHeldReducesToNeedsAttentionForegroundStartNotAllowed() {
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            reduce(healthy().copy(foregroundTypeHeld = false)),
+        )
+        assertEquals(
+            SourceState.OFF to ReasonCode.NONE,
+            reduce(healthy().copy(desiredOn = false, foregroundTypeHeld = false)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED,
+            reduce(healthy().copy(permissionGranted = false, foregroundTypeHeld = false)),
+        )
     }
 
     @Test
