@@ -9,7 +9,7 @@ import app.solstone.observer.harness.PairRoute
 import app.solstone.observer.harness.PairLinkDispatchResult
 
 private const val DIRECT_PAIR_CODE_EXPIRED =
-    "This pairing code has expired. Generate a new one on your solstone."
+    "This pairing code has expired. Generate a new one from your journal."
 
 fun pairLinkDispatchText(result: PairLinkDispatchResult): String? =
     when (result) {

@@ -88,7 +88,7 @@ class QrPairingRendererTest {
     @Test
     fun directExpiredCodeUsesRegenerationInstruction() {
         assertEquals(
-            "This pairing code has expired. Generate a new one on your solstone.",
+            "This pairing code has expired. Generate a new one from your journal.",
             pairStatusText(PairAttemptOutcome.WindowClosed(410)),
         )
         assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))

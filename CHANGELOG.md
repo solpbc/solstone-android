@@ -1,21 +1,22 @@
 # Changelog
 
-All notable changes to the sol Android app (part of solstone) are recorded here. The format
+All notable changes to the solstone app on android are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
-- sol now shows how much space its local copy of your observations uses on your device and lets you choose a limit. when it needs room, sol removes only data your journal has already confirmed it has; anything it cannot safely remove stays in place and is reported honestly.
-- tapping a solstone pair link now opens sol and starts pairing right away, whether sol is already running or not. scan the pairing code with your phone's regular camera or tap a pair link wherever it appears; sol takes it from there. a link that is not a valid pairing link says so plainly instead of doing nothing.
+- the solstone app now shows how much space its local copy of your memories uses on your phone and lets you choose a limit. when it needs room, it removes only what your journal has already confirmed; anything it cannot safely remove stays in place, and the app tells you what it kept.
+- tapping a pairing link now opens the solstone app and starts pairing right away, whether it is already running or not. scan the pairing code with your phone's regular camera or tap a pairing link wherever it appears; the app takes it from there.
 
 ### Changed
 - the solstone app now asks for approximate location instead of precise. location in your journal is approximate now, not street-level. the app reads whatever position your phone has already worked out, and approximate is enough for what your journal does with it.
 
 ### Fixed
 - the solstone app now reads your phone's position once a minute instead of every second, so far fewer location points reach your journal. before this the app wrote down every reading, which filled your journal with copies of one position.
-- an expired pairing code now says plainly that you need to generate a new one on your solstone.
+- a link that isn't a valid pairing link now tells you so instead of doing nothing.
+- an expired pairing code now says plainly that you need to generate a new one from your journal.
 
 ## [0.2.2] - 2026-07-16
 

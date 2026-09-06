@@ -48,7 +48,7 @@ object OemGuidanceCatalog {
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "No reliable normal-app or ADB autostart path is known, and sol cannot toggle Wi-Fi as a normal app. After reboot, start sol explicitly if the OS did not preserve it.",
+            instructionText = "No reliable normal-app or ADB autostart path is known, and the solstone app cannot toggle Wi-Fi as a normal app. After reboot, start it explicitly if the OS did not preserve it.",
         ),
         autostartAvailable = false,
     )
