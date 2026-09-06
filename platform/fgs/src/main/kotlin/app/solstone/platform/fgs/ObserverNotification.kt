@@ -23,7 +23,7 @@ object ObserverNotification {
     const val TEXT_OFF = "off"
     const val TEXT_NEEDS_ATTENTION = "needs attention"
     const val TEXT_STOP = "stop"
-    const val TEXT_START_CAPTURE = "Start capture"
+    const val TEXT_START_CAPTURE = "start capture"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
     @Volatile var startAction: Notification.Action? = null
