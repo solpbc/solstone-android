@@ -15,15 +15,15 @@ import androidx.core.app.NotificationCompat
 
 object ObserverNotification {
     const val CHANNEL_ID = "solstone_observer"
-    const val TITLE = "solstone"
-    const val CHANNEL_NAME = "solstone"
+    const val TITLE = "intake"
+    const val CHANNEL_NAME = "intake"
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
     const val TEXT_ON = "on"
     const val TEXT_OFF = "off"
     const val TEXT_NEEDS_ATTENTION = "needs attention"
-    const val TEXT_STOP = "stop"
-    const val TEXT_START_CAPTURE = "start capture"
+    const val TEXT_STOP = "stop intake"
+    const val TEXT_START_INTAKE = "start intake"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
     @Volatile var startAction: Notification.Action? = null

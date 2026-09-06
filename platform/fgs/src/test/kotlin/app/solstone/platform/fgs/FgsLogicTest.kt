@@ -372,7 +372,7 @@ class FgsLogicTest {
             ObserverNotification.TEXT_OFF,
             ObserverNotification.TEXT_NEEDS_ATTENTION,
             ObserverNotification.TEXT_STOP,
-            ObserverNotification.TEXT_START_CAPTURE,
+            ObserverNotification.TEXT_START_INTAKE,
         ).joinToString(" ")
 
         assertFalse(Regex("\\bsol\\b").containsMatchIn(userVisibleNotificationCopy))

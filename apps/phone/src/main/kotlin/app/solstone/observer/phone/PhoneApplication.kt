@@ -140,7 +140,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         @Suppress("DEPRECATION")
-        return Notification.Action.Builder(0, ObserverNotification.TEXT_START_CAPTURE, pendingIntent).build()
+        return Notification.Action.Builder(0, ObserverNotification.TEXT_START_INTAKE, pendingIntent).build()
     }
 
     private fun decorateObserverNotification(context: Context, builder: Notification.Builder) {
