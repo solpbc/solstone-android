@@ -9,6 +9,7 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceEmission
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -173,6 +174,111 @@ class LocationContinuousSourceEngineTest {
         assertEquals(1, rows)
     }
 
+    @Test
+    fun eachWindowIssuesOneFreshFixRequest() {
+        val source = ScriptedLocationSource()
+        val sink = CapturingSink()
+        var now = BASE_EPOCH_MS
+        val engine = LocationContinuousSourceEngine(
+            source = source,
+            nowProvider = { now },
+            sleeper = { now += LocationContinuousSourceEngine.WINDOW_MS },
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 2)
+        engine.stop()
+
+        assertTrue(source.requestCount.get() >= 2)
+        assertEquals(listOf("request", "cancel", "request", "cancel"), source.events.toList().take(4))
+    }
+
+    @Test
+    fun freshFixIsRecordedInTheRequestingWindow() {
+        val fresh = LocationFix("network", BASE_EPOCH_MS + 1_000L, 51.5, -0.1, 25.0, 0L)
+        val source = ScriptedLocationSource(
+            last = { null },
+            onRequest = { onResult -> onResult(fresh) },
+        )
+        val body = firstWindowBody(source)
+
+        assertEquals(1, source.requestCount.get())
+        assertTrue("\"timestamp\":${fresh.timestampEpochMs}" in body)
+        assertTrue("\"lat\":51.5" in body)
+        assertEquals(1, body.trim().lines().size)
+    }
+
+    @Test
+    fun freshFixMatchingLastKnownTimestampIsNotASecondRow() {
+        val shared = LocationFix("network", STATIONARY_FIX_MS, 1.0, 2.0, 5.0, 0L)
+        val source = ScriptedLocationSource(
+            last = { nowEpochMs -> shared.copy(fixAgeMs = nowEpochMs - STATIONARY_FIX_MS) },
+            onRequest = { onResult -> onResult(shared) },
+        )
+
+        assertEquals(1, firstWindowBody(source).trim().lines().size)
+    }
+
+    @Test
+    fun distinctLastKnownAndFreshFixAreBothRecorded() {
+        val lastKnown = LocationFix("network", STATIONARY_FIX_MS, 1.0, 2.0, 5.0, 0L)
+        val fresh = LocationFix("network", BASE_EPOCH_MS + 2_000L, 3.0, 4.0, 15.0, 0L)
+        val source = ScriptedLocationSource(
+            last = { nowEpochMs -> lastKnown.copy(fixAgeMs = nowEpochMs - STATIONARY_FIX_MS) },
+            onRequest = { onResult -> onResult(fresh) },
+        )
+        val lines = firstWindowBody(source).trim().lines()
+
+        assertTrue(lines.any { "\"timestamp\":${lastKnown.timestampEpochMs}" in it })
+        assertTrue(lines.any { "\"timestamp\":${fresh.timestampEpochMs}" in it })
+    }
+
+    @Test
+    fun timeoutWithNoLastKnownSealsExistingGap() {
+        val source = ScriptedLocationSource(last = { null })
+        val sink = CapturingSink()
+        var now = BASE_EPOCH_MS
+        val engine = LocationContinuousSourceEngine(
+            source = source,
+            nowProvider = { now },
+            sleeper = { now = BASE_EPOCH_MS + LocationContinuousSourceEngine.WINDOW_MS },
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+
+        val first = sink.emissions.first()
+        assertEquals(emptyList(), first.payloadRefs)
+        assertEquals("location_gap", first.gaps.single().kind)
+        assertEquals(NoFixReason.NO_FIX.detail, first.gaps.single().detail)
+        assertTrue(source.requestCount.get() >= 1)
+        assertTrue(source.cancelCount.get() >= 1)
+    }
+
+    @Test
+    fun postCancelFreshFixIsNotRecorded() {
+        val late = LocationFix("network", BASE_EPOCH_MS + 9_000L, 10.0, 11.0, 8.0, 0L)
+        val source = ScriptedLocationSource(last = { null })
+        val sink = CapturingSink()
+        var now = BASE_EPOCH_MS
+        val engine = LocationContinuousSourceEngine(
+            source = source,
+            nowProvider = { now },
+            sleeper = { now += LocationContinuousSourceEngine.WINDOW_MS },
+        )
+
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        source.callbacks.first().invoke(late)
+        waitForEmissions(sink, 2)
+        engine.stop()
+
+        assertEquals(emptyList(), sink.emissions[0].payloadRefs)
+        assertEquals(emptyList(), sink.emissions[1].payloadRefs)
+        assertEquals("location_gap", sink.emissions[1].gaps.single().kind)
+    }
+
     /**
      * Runs one full window against a fake clock and returns the row count of its payload.
      * The body is read inside emit, before the engine's bounded payload cache can evict it.
@@ -186,6 +292,7 @@ class LocationContinuousSourceEngineTest {
                 if (emission.payloadRefs.isNotEmpty() && bodies.isEmpty()) {
                     bodies += engine.open(payloadFor(emission)).readBytes().decodeToString()
                 }
+                throw InterruptedException()
             }
         }
         engine = LocationContinuousSourceEngine(
@@ -193,22 +300,51 @@ class LocationContinuousSourceEngineTest {
                 override fun lastFix(nowEpochMs: Long): LocationFix = fix(nowEpochMs)
 
                 override fun noFixReason(): NoFixReason = NoFixReason.NO_FIX
+
+                override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel =
+                    FreshFixCancel { }
             },
             nowProvider = { now },
-            sleeper = {
-                now += it
-                if (bodies.isNotEmpty()) throw InterruptedException()
-            },
+            sleeper = { now += it },
         )
 
         engine.start(sink)
-        repeat(200) {
-            if (bodies.isNotEmpty()) return@repeat
-            Thread.sleep(5L)
-        }
+        waitUntil { bodies.isNotEmpty() }
         engine.stop()
         if (bodies.isEmpty()) throw AssertionError("no payload was emitted")
         return bodies.first().trim().lines().size
+    }
+
+    private fun firstWindowBody(source: LocationSource): String {
+        var now = BASE_EPOCH_MS
+        val bodies = CopyOnWriteArrayList<String>()
+        lateinit var engine: LocationContinuousSourceEngine
+        val sink = object : EmissionSink {
+            override fun emit(emission: SourceEmission) {
+                if (emission.payloadRefs.isNotEmpty() && bodies.isEmpty()) {
+                    bodies += engine.open(payloadFor(emission)).readBytes().decodeToString()
+                }
+                throw InterruptedException()
+            }
+        }
+        engine = LocationContinuousSourceEngine(
+            source = source,
+            nowProvider = { now },
+            sleeper = { now += it },
+        )
+
+        engine.start(sink)
+        waitUntil { bodies.isNotEmpty() }
+        engine.stop()
+        if (bodies.isEmpty()) throw AssertionError("no payload was emitted")
+        return bodies.first()
+    }
+
+    private fun waitUntil(predicate: () -> Boolean) {
+        repeat(200) {
+            if (predicate()) return
+            Thread.sleep(5L)
+        }
     }
 
     private class FixedLocationSource : LocationSource {
@@ -223,6 +359,35 @@ class LocationContinuousSourceEngineTest {
             )
 
         override fun noFixReason(): NoFixReason = NoFixReason.NO_FIX
+
+        override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel =
+            FreshFixCancel { }
+    }
+
+    private class ScriptedLocationSource(
+        private val last: (Long) -> LocationFix? = { null },
+        private val reason: NoFixReason = NoFixReason.NO_FIX,
+        private val onRequest: ((LocationFix?) -> Unit) -> Unit = {},
+    ) : LocationSource {
+        val requestCount = AtomicInteger()
+        val cancelCount = AtomicInteger()
+        val events = CopyOnWriteArrayList<String>()
+        val callbacks = CopyOnWriteArrayList<(LocationFix?) -> Unit>()
+
+        override fun lastFix(nowEpochMs: Long): LocationFix? = last(nowEpochMs)
+
+        override fun noFixReason(): NoFixReason = reason
+
+        override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel {
+            requestCount.incrementAndGet()
+            events += "request"
+            callbacks += onResult
+            onRequest(onResult)
+            return FreshFixCancel {
+                cancelCount.incrementAndGet()
+                events += "cancel"
+            }
+        }
     }
 
     private class CapturingSink : EmissionSink {

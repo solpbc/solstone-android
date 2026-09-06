@@ -25,7 +25,7 @@ API 34+:
 
 Location behavior:
 - Location permission is requested in the launcher alongside audio (phone/watch only).
-- Location capture uses passive/network fixes only and never forces continuous GPS.
+- While location is on, each segment issues one single-fix request and keeps last-known sampling; it never opens a continuous GPS or location subscription.
 - A no-fix window seals an honest zero-file location segment with a gap; it never fabricates a position.
 
 Boot behavior:

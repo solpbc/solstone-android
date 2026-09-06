@@ -26,5 +26,6 @@ dependencies {
     implementation(project(":core:sources"))
     implementation(project(":core:segment"))
     implementation(project(":core:spool"))
+    implementation("androidx.core:core:1.17.0")
     testImplementation(kotlin("test"))
 }

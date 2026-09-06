@@ -19,9 +19,14 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+fun interface FreshFixCancel {
+    fun cancel()
+}
+
 interface LocationSource {
     fun lastFix(nowEpochMs: Long): LocationFix?
     fun noFixReason(): NoFixReason
+    fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel
 }
 
 class LocationContinuousSourceEngine(
@@ -34,6 +39,7 @@ class LocationContinuousSourceEngine(
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
     private val currentToken = AtomicReference<Any?>(null)
+    private val inFlightCancel = AtomicReference<FreshFixCancel?>(null)
     private val payloads = ConcurrentHashMap<PayloadKey, ByteArray>()
     private var worker: Thread? = null
 
@@ -48,6 +54,7 @@ class LocationContinuousSourceEngine(
         val localWorker = worker
         running.set(false)
         currentToken.set(null)
+        cancelInFlight()
         localWorker?.interrupt()
         localWorker?.join(JOIN_TIMEOUT_MS)
         worker = null
@@ -104,16 +111,52 @@ class LocationContinuousSourceEngine(
         // The underlying platform fix updates far more slowly than we sample, so without this
         // every window repeats one fix N times, differing only in fixAge.
         var lastRecordedFixMs: Long? = null
-        while (running.get() && currentToken.get() === token) {
-            val now = nowProvider()
-            if (now >= windowEnd) break
-            source.lastFix(now)?.let { fix ->
-                if (fix.timestampEpochMs != lastRecordedFixMs) {
-                    records.append(buildLocationRecord(fix))
-                    lastRecordedFixMs = fix.timestampEpochMs
-                }
+        val pendingFreshFix = AtomicReference<LocationFix?>(null)
+        val requestDeadline = minOf(windowEnd, nowProvider() + FRESH_FIX_TIMEOUT_MS)
+        var nextSampleAt = nowProvider()
+        var wakeAlsoAt = requestDeadline
+        fun recordIfNew(fix: LocationFix) {
+            if (fix.timestampEpochMs != lastRecordedFixMs) {
+                records.append(buildLocationRecord(fix))
+                lastRecordedFixMs = fix.timestampEpochMs
             }
-            if (!sleepUntilNextSampleOrWindowEnd(windowEnd, token)) break
+        }
+        fun drainFresh() {
+            pendingFreshFix.getAndSet(null)?.let { recordIfNew(it) }
+        }
+        // One one-shot request per window; cancel before seal so a late callback cannot land here.
+        inFlightCancel.set(
+            source.requestFreshFix { fix ->
+                if (fix != null && currentToken.get() === token) {
+                    pendingFreshFix.set(fix)
+                }
+            },
+        )
+        if (!running.get() || currentToken.get() !== token) {
+            cancelInFlight()
+        }
+        try {
+            while (running.get() && currentToken.get() === token) {
+                val now = nowProvider()
+                if (now >= windowEnd) break
+                if (now >= nextSampleAt) {
+                    source.lastFix(now)?.let { recordIfNew(it) }
+                    nextSampleAt = now + sampleEveryMs
+                }
+                drainFresh()
+                if (nowProvider() >= requestDeadline) {
+                    cancelInFlight()
+                    wakeAlsoAt = Long.MAX_VALUE
+                }
+                val wakeAt = minOf(windowEnd, nextSampleAt, wakeAlsoAt)
+                if (!sleepUntil(wakeAt, token)) break
+            }
+            if (running.get() && currentToken.get() === token) {
+                drainFresh()
+            }
+        } finally {
+            cancelInFlight()
+            pendingFreshFix.set(null)
         }
 
         val completed = nowProvider() >= windowEnd
@@ -143,12 +186,13 @@ class LocationContinuousSourceEngine(
         )
     }
 
-    private fun sleepUntilNextSampleOrWindowEnd(windowEnd: Long, token: Any): Boolean {
-        // Sleep in short slices so stop() stays responsive, but keep slicing until the sample
-        // interval has actually elapsed. Returning after the first slice makes SLEEP_SLICE_MS
-        // the sample interval and sampleEveryMs dead, which sampled 60x too often.
-        val sampleDeadline = nowProvider() + sampleEveryMs
-        val wakeAt = minOf(windowEnd, sampleDeadline)
+    private fun cancelInFlight() {
+        inFlightCancel.getAndSet(null)?.cancel()
+    }
+
+    private fun sleepUntil(wakeAt: Long, token: Any): Boolean {
+        // Sleep in short slices so stop() stays responsive. Keep slicing until wakeAt; returning
+        // after the first slice would make SLEEP_SLICE_MS the sample interval.
         while (running.get() && currentToken.get() === token) {
             val remaining = wakeAt - nowProvider()
             if (remaining <= 0L) return true
@@ -212,6 +256,7 @@ class LocationContinuousSourceEngine(
         const val SAMPLE_EVERY_MS = 60_000L
         const val MAX_CACHED_WINDOWS = 3
         const val WORKER_THREAD_NAME = "solstone-location-source"
+        const val FRESH_FIX_TIMEOUT_MS = 30_000L
         private const val SLEEP_SLICE_MS = 1_000L
         private const val JOIN_TIMEOUT_MS = 5_000L
     }

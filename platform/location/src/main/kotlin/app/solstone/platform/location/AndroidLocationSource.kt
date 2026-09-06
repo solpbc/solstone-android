@@ -10,6 +10,10 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
+import android.os.CancellationSignal
+import androidx.core.location.LocationManagerCompat
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AndroidLocationSource(private val context: Context) : LocationSource {
     private val manager: LocationManager =
@@ -18,9 +22,9 @@ class AndroidLocationSource(private val context: Context) : LocationSource {
     @SuppressLint("MissingPermission")
     override fun lastFix(nowEpochMs: Long): LocationFix? {
         if (!hasPermission()) return null
-        val location = listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        val location = lastKnownProviders()
             .asSequence()
-            .filter { provider -> runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false) }
+            .filter { provider -> isEnabled(provider) }
             .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
             .maxByOrNull { it.time }
             ?: return null
@@ -34,13 +38,60 @@ class AndroidLocationSource(private val context: Context) : LocationSource {
             else -> NoFixReason.NO_FIX
         }
 
+    @SuppressLint("MissingPermission")
+    override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel {
+        if (!hasPermission()) return FreshFixCancel { }
+        val provider = freshFixProvider() ?: return FreshFixCancel { }
+        val signal = CancellationSignal()
+        val finished = AtomicBoolean(false)
+        return try {
+            LocationManagerCompat.getCurrentLocation(
+                manager,
+                provider,
+                signal,
+                DIRECT_EXECUTOR,
+            ) { location ->
+                if (finished.compareAndSet(false, true)) {
+                    onResult(location?.toFix(System.currentTimeMillis()))
+                }
+            }
+            FreshFixCancel {
+                finished.set(true)
+                signal.cancel()
+            }
+        } catch (_: SecurityException) {
+            FreshFixCancel { }
+        } catch (_: IllegalArgumentException) {
+            FreshFixCancel { }
+        }
+    }
+
     private fun hasPermission(): Boolean =
         context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     private fun hasAnyProvider(): Boolean =
-        listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER)
-            .any { provider -> runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false) }
+        lastKnownProviders().any { provider -> isEnabled(provider) }
+
+    // Coarse-legal providers that can produce a new fix. PASSIVE does not generate one; GPS is precise.
+    private fun freshFixProvider(): String? {
+        if (Build.VERSION.SDK_INT >= 31 && isEnabled(LocationManager.FUSED_PROVIDER)) {
+            return LocationManager.FUSED_PROVIDER
+        }
+        if (isEnabled(LocationManager.NETWORK_PROVIDER)) {
+            return LocationManager.NETWORK_PROVIDER
+        }
+        return null
+    }
+
+    private fun lastKnownProviders(): List<String> = buildList {
+        if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+        add(LocationManager.PASSIVE_PROVIDER)
+        add(LocationManager.NETWORK_PROVIDER)
+    }
+
+    private fun isEnabled(provider: String): Boolean =
+        runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
 
     private fun Location.toFix(nowEpochMs: Long): LocationFix =
         LocationFix(
@@ -55,4 +106,8 @@ class AndroidLocationSource(private val context: Context) : LocationSource {
                 maxOf(0L, nowEpochMs - time)
             },
         )
+
+    private companion object {
+        val DIRECT_EXECUTOR = Executor { command -> command.run() }
+    }
 }

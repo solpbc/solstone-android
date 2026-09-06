@@ -6,10 +6,12 @@ package app.solstone.platform.location
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceEmission
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class LocationInterruptTest {
     @Test
@@ -20,8 +22,9 @@ class LocationInterruptTest {
 
         try {
             val sink = CapturingSink()
+            val source = FixedLocationSource()
             val engine = LocationContinuousSourceEngine(
-                source = FixedLocationSource(),
+                source = source,
                 nowProvider = { BASE_EPOCH_MS },
                 sampleEveryMs = 50L,
             )
@@ -32,12 +35,15 @@ class LocationInterruptTest {
 
             assertFalse(worker.isAlive)
             assertEquals(null, uncaught.get())
+            assertTrue(source.cancelCount.get() >= 1)
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(previousHandler)
         }
     }
 
     private class FixedLocationSource : LocationSource {
+        val cancelCount = AtomicInteger()
+
         override fun lastFix(nowEpochMs: Long): LocationFix =
             LocationFix(
                 provider = "gps",
@@ -49,6 +55,9 @@ class LocationInterruptTest {
             )
 
         override fun noFixReason(): NoFixReason = NoFixReason.NO_FIX
+
+        override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel =
+            FreshFixCancel { cancelCount.incrementAndGet() }
     }
 
     private class CapturingSink : EmissionSink {
