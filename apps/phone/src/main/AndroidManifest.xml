@@ -59,6 +59,9 @@
             </intent-filter>
         </receiver>
         <receiver
+            android:name=".PhoneObserverStopReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".PhoneObserverWidgetReceiver"
             android:exported="true">
             <intent-filter>

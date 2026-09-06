@@ -10,6 +10,7 @@ import android.os.SystemClock
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.observer.isProviderFresh
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.model.SourceState
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
@@ -93,7 +94,7 @@ class ObserverAppContainer(
     )
     private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
-    private var lastPostedNotification: Pair<Boolean, Int> = true to 0
+    private var lastPostedState: SourceState? = null
     @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
     private val lifecycle = IdempotentPipelineLifecycle(
         startForeground = { ObserverForegroundService.startFromVisibleContext(context) },
@@ -209,14 +210,12 @@ class ObserverAppContainer(
 
     private fun refreshServiceNotification(current: HarnessDiagnostics) {
         if (!controller.desiredOn) {
-            lastPostedNotification = true to 0
+            lastPostedState = null
             return
         }
-        val needsAttention = needsAttentionForState(current.state)
-        val notification = needsAttention to controller.syncState().pendingCount
-        if (notification == lastPostedNotification) return
-        ObserverForegroundService.refreshOngoingNotification(context, needsAttention)
-        lastPostedNotification = notification
+        if (current.state == lastPostedState) return
+        ObserverForegroundService.refreshOngoingNotification(context, needsAttentionForState(current.state))
+        lastPostedState = current.state
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {

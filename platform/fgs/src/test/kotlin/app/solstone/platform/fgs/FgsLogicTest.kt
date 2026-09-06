@@ -343,6 +343,41 @@ class FgsLogicTest {
         assertTrue(observerBootAction(persistedDesiredOn = true).postNotification)
     }
 
+    @Test
+    fun shouldOfferStartActionGatedByRunning() {
+        assertTrue(shouldOfferStartAction(isRunning = false))
+        assertFalse(shouldOfferStartAction(isRunning = true))
+    }
+
+    @Test
+    fun shouldOfferStopActionGatedByLiveForegroundService() {
+        assertTrue(shouldOfferStopAction(isLiveForegroundService = true))
+        assertFalse(shouldOfferStopAction(isLiveForegroundService = false))
+    }
+
+    @Test
+    fun ongoingContentTextDerivesFromCaptureConstants() {
+        assertEquals(ObserverNotification.TEXT_OFF, ObserverNotification.ongoingContentText(needsAttention = false, stopped = true))
+        assertEquals(ObserverNotification.TEXT_OFF, ObserverNotification.ongoingContentText(needsAttention = true, stopped = true))
+        assertEquals(ObserverNotification.TEXT_NEEDS_ATTENTION, ObserverNotification.ongoingContentText(needsAttention = true, stopped = false))
+        assertEquals(ObserverNotification.TEXT_ON, ObserverNotification.ongoingContentText(needsAttention = false, stopped = false))
+    }
+
+    @Test
+    fun notificationCopyDoesNotContainRetiredStandaloneName() {
+        val userVisibleNotificationCopy = listOf(
+            ObserverNotification.TITLE,
+            ObserverNotification.CHANNEL_NAME,
+            ObserverNotification.TEXT_ON,
+            ObserverNotification.TEXT_OFF,
+            ObserverNotification.TEXT_NEEDS_ATTENTION,
+            ObserverNotification.TEXT_STOP,
+            ObserverNotification.TEXT_START_CAPTURE,
+        ).joinToString(" ")
+
+        assertFalse(Regex("\\bsol\\b").containsMatchIn(userVisibleNotificationCopy))
+    }
+
     private fun granted(): PermissionStatus =
         PermissionStatus(
             microphoneGranted = true,
@@ -351,3 +386,4 @@ class FgsLogicTest {
             notificationsGranted = true,
         )
 }
+

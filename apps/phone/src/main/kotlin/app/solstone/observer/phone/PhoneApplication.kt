@@ -6,6 +6,7 @@ package app.solstone.observer.phone
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
@@ -39,6 +40,14 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         runtime.onContainerInitialized(::onContainerInitialized)
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
         ObserverNotification.startAction = startCaptureAction(applicationContext, cachedWidgetModel.audioChecked)
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            applicationContext,
+            STOP_CAPTURE_REQUEST_CODE,
+            Intent(applicationContext, PhoneObserverStopReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        @Suppress("DEPRECATION")
+        ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, stopPendingIntent).build()
         ObserverForegroundService.widgetStartHandler = object : ObserverWidgetStartHandler {
             override fun onForegroundServiceStarted(sourceId: String) {
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
@@ -68,6 +77,10 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     internal fun turnAudioOffFromWidget() {
         runtime.containerIfInitialized?.sources?.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
         refreshWidgetAndUpdate()
+    }
+
+    internal fun stopObserverFromNotification() {
+        runtime.containerIfInitialized?.controller?.stop()
     }
 
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
@@ -127,19 +140,18 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         @Suppress("DEPRECATION")
-        return Notification.Action.Builder(0, "Start capture", pendingIntent).build()
+        return Notification.Action.Builder(0, ObserverNotification.TEXT_START_CAPTURE, pendingIntent).build()
     }
 
     private fun decorateObserverNotification(context: Context, builder: Notification.Builder) {
         // Notification decoration performs no Room or filesystem I/O; it renders only the snapshot
         // refreshed from background work.
         val model = widgetModel()
-        builder
-            .setContentTitle(model.stateWord)
-            .setContentText(model.syncText)
+        builder.setContentText(model.stateWord)
     }
 
     private companion object {
         const val START_CAPTURE_REQUEST_CODE = 201
+        const val STOP_CAPTURE_REQUEST_CODE = 202
     }
 }

@@ -121,6 +121,8 @@ fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.O
 
 fun shouldOfferStartAction(isRunning: Boolean): Boolean = !isRunning
 
+fun shouldOfferStopAction(isLiveForegroundService: Boolean): Boolean = isLiveForegroundService
+
 fun shouldNotifyCaptureStopped(lastObserved: SourceState?, now: SourceState): Boolean =
     lastObserved == SourceState.ON && now == SourceState.OFF
 

@@ -15,14 +15,19 @@ import androidx.core.app.NotificationCompat
 
 object ObserverNotification {
     const val CHANNEL_ID = "solstone_observer"
+    const val TITLE = "solstone"
+    const val CHANNEL_NAME = "solstone"
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
     const val TEXT_ON = "on"
     const val TEXT_OFF = "off"
     const val TEXT_NEEDS_ATTENTION = "needs attention"
+    const val TEXT_STOP = "stop"
+    const val TEXT_START_CAPTURE = "Start capture"
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
     @Volatile var startAction: Notification.Action? = null
+    @Volatile var stopAction: Notification.Action? = null
 
     fun ongoingContentText(needsAttention: Boolean, stopped: Boolean): String = when {
         stopped -> TEXT_OFF
@@ -33,7 +38,7 @@ object ObserverNotification {
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(CHANNEL_ID, "sol", NotificationManager.IMPORTANCE_LOW)
+        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
         manager.createNotificationChannel(channel)
     }
 
@@ -47,7 +52,7 @@ object ObserverNotification {
     ): Notification {
         ensureChannel(context)
         val builder = builder(context)
-            .setContentTitle("sol")
+            .setContentTitle(TITLE)
             .setContentText(ongoingContentText(needsAttention, stopped))
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
@@ -55,6 +60,9 @@ object ObserverNotification {
             builder.setContentIntent(contentIntent)
         }
         startAction?.let { builder.addAction(it) }
+        if (shouldOfferStopAction(decorate)) {
+            stopAction?.let { builder.addAction(it) }
+        }
         if (decorate) {
             dispatchDecoration { decorator?.decorate(context, builder) }
         }
