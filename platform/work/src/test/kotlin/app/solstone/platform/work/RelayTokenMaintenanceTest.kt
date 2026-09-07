@@ -212,6 +212,88 @@ class RelayTokenMaintenanceTest {
         assertEquals(home(oldToken), store.load())
     }
 
+    @Test
+    fun changedOriginDuringIoDoesNotPersistOrDialNewToken() {
+        val oldJwt = jwt(iat = 100, exp = 200)
+        val newToken = jwt(iat = 100, exp = 2000000100)
+        val store = createStore(home(token = oldJwt))
+        val mutator = FileIdentityMutator(store)
+        val hookPoster = HookingPoster(
+            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()),
+        ) {
+            mutator.installNewPairing(home(token = oldJwt).copy(relayOrigin = "https://other.origin"))
+        }
+
+        val maintainResult = maintainRelayToken(home(token = oldJwt), transport(token = oldJwt), hookPoster, mutator, nowEpochMs = 181_000L)
+        assertEquals(oldJwt, assertIs<RelayTokenResult.Ready>(maintainResult).transport.deviceToken)
+        assertEquals(oldJwt, store.load()?.deviceToken)
+        assertEquals("https://other.origin", store.load()?.relayOrigin)
+
+        val dialOld = jwt(iat = 100, exp = 2000000000)
+        val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
+        val dialResult = dialWithReactiveRefresh(home(token = dialOld), transport(token = dialOld), hookPoster, mutator, dial)
+        assertEquals(SyncOutcome.SUCCESS, dialResult)
+        assertEquals(listOf(dialOld, dialOld), dial.tokens)
+    }
+
+    @Test
+    fun changedPairingCertDuringIoAbortsTokenMutation() {
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val newToken = jwt(iat = 100, exp = 2000000100)
+        val store = createStore(home(oldToken))
+        val mutator = FileIdentityMutator(store)
+        val hookPoster = HookingPoster(
+            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()),
+        ) {
+            mutator.installNewPairing(home(oldToken).copy(clientCertFingerprint = "sha256:different"))
+        }
+
+        val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
+        val dialResult = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), hookPoster, mutator, dial)
+        assertEquals(SyncOutcome.SUCCESS, dialResult)
+        assertEquals(listOf(oldToken, oldToken), dial.tokens)
+        assertEquals(oldToken, store.load()?.deviceToken)
+    }
+
+    @Test
+    fun durabilityUncertainDoesNotDialNewToken() {
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val newToken = jwt(iat = 100, exp = 2000000100)
+        val initialHome = home(oldToken)
+        val mutator = object : app.solstone.core.identity.IdentityMutator {
+            override fun current(): PairedHome? = initialHome
+            override fun currentPairingGeneration() = app.solstone.core.identity.PairingGeneration(initialHome.instanceId, initialHome.clientCertFingerprint)
+            override fun currentAccessMutationGen(): Long = 0
+            override fun isRelayLiveEligible(): Boolean = true
+            override fun disableRelayLive() {}
+            override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = app.solstone.core.identity.PersistenceIssue.DURABILITY_UNCERTAIN
+            override fun installNewPairing(home: PairedHome): Boolean = true
+            override fun mutate(
+                expectedPairing: app.solstone.core.identity.PairingGeneration,
+                expectedAccessMutationGen: Long,
+                transform: (PairedHome) -> PairedHome,
+            ): app.solstone.core.identity.AccessMutationResult =
+                app.solstone.core.identity.AccessMutationResult.DurabilityUncertain(java.io.IOException("disk uncertain"))
+        }
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()))
+        val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
+
+        val result = dialWithReactiveRefresh(initialHome, transport(token = oldToken), poster, mutator, dial)
+
+        assertEquals(SyncOutcome.SUCCESS, result)
+        assertEquals(listOf(oldToken, oldToken), dial.tokens)
+    }
+
+    private class HookingPoster(
+        private val response: HttpResponse,
+        private val onPost: () -> Unit,
+    ) : HttpsPoster {
+        override fun post(url: String, body: ByteArray, headers: Map<String, String>): HttpResponse {
+            onPost()
+            return response
+        }
+    }
+
     private class FakePoster(
         private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"${jwt(100, 2000000000)}","protocol_version":2}""".toByteArray()),
     ) : HttpsPoster {

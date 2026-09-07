@@ -141,6 +141,268 @@ class RealSeamsTest {
         assertEquals(HarnessPlStatus.NotPaired, probe.probe())
     }
 
+    @Test
+    fun directConnectExceptionFallsBackToRelayAndSchedulesCoordinatorsWhenLiveEligible() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = "token_abc",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val mutator = TestMutator(home, liveEligible = true)
+        val journalVersionStore = TestJournalVersionStore()
+        val journalCoord = JournalVersionRefreshCoordinator(journalVersionStore)
+        val relayCoord = app.solstone.core.pl.RelayAccessRefreshCoordinator(mutator)
+
+        var directOpened = false
+        var relayOpened = false
+        val journalLatch = java.util.concurrent.CountDownLatch(1)
+        val relayLatch = java.util.concurrent.CountDownLatch(1)
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            coordinator = journalCoord,
+            relayAccessCoordinator = relayCoord,
+            mutator = mutator,
+            localDescriptionProvider = { app.solstone.core.pl.ClientReportedDescription("Phone", "1.0", "Android") },
+            openTransport = { transport, _ ->
+                when (transport) {
+                    is app.solstone.platform.work.SyncTransport.Direct -> {
+                        directOpened = true
+                        throw java.net.ConnectException("direct refused")
+                    }
+                    is app.solstone.platform.work.SyncTransport.Relay -> {
+                        relayOpened = true
+                        object : PlHttpClient {
+                            override fun request(
+                                method: String,
+                                path: String,
+                                headers: Map<String, String>,
+                                body: ByteArray?,
+                                maxResponseBytes: Int,
+                            ): HttpResponse {
+                                if (path == "/app/network/api/status") {
+                                    return HttpResponse(200, emptyMap(), ByteArray(0))
+                                }
+                                if (path.startsWith("/app/network/api/clients/self")) {
+                                    journalLatch.countDown()
+                                    return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"}}""".toByteArray())
+                                }
+                                if (path.startsWith("/app/network/api/relay/access")) {
+                                    relayLatch.countDown()
+                                    return HttpResponse(200, emptyMap(), """{"protocol_version":1,"status":"not_configured"}""".toByteArray())
+                                }
+                                return HttpResponse(200, emptyMap(), ByteArray(0))
+                            }
+                        }
+                    }
+                }
+            },
+        )
+
+        val result = probe.probe()
+        assertEquals(HarnessPlStatus.Reachable(200), result)
+        kotlin.test.assertTrue(directOpened)
+        kotlin.test.assertTrue(relayOpened)
+        kotlin.test.assertTrue(journalLatch.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        kotlin.test.assertTrue(relayLatch.await(3, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun directTrustRefusalDoesNotOpenRelay() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = "token_abc",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val mutator = TestMutator(home, liveEligible = true)
+        var relayOpened = false
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            mutator = mutator,
+            openTransport = { transport, _ ->
+                when (transport) {
+                    is app.solstone.platform.work.SyncTransport.Direct -> {
+                        throw javax.net.ssl.SSLPeerUnverifiedException("peer not verified")
+                    }
+                    is app.solstone.platform.work.SyncTransport.Relay -> {
+                        relayOpened = true
+                        object : PlHttpClient {
+                            override fun request(
+                                method: String,
+                                path: String,
+                                headers: Map<String, String>,
+                                body: ByteArray?,
+                                maxResponseBytes: Int,
+                            ): HttpResponse = HttpResponse(200, emptyMap(), ByteArray(0))
+                        }
+                    }
+                }
+            },
+        )
+
+        val result = probe.probe()
+        kotlin.test.assertIs<HarnessPlStatus.PairedButUnreachable>(result)
+        kotlin.test.assertFalse(relayOpened)
+    }
+
+    @Test
+    fun directConnectExceptionDoesNotOpenRelayWhenLiveIneligible() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = "token_abc",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val mutator = TestMutator(home, liveEligible = false)
+        var relayOpened = false
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            mutator = mutator,
+            openTransport = { transport, _ ->
+                when (transport) {
+                    is app.solstone.platform.work.SyncTransport.Direct -> {
+                        throw java.net.ConnectException("direct refused")
+                    }
+                    is app.solstone.platform.work.SyncTransport.Relay -> {
+                        relayOpened = true
+                        object : PlHttpClient {
+                            override fun request(
+                                method: String,
+                                path: String,
+                                headers: Map<String, String>,
+                                body: ByteArray?,
+                                maxResponseBytes: Int,
+                            ): HttpResponse = HttpResponse(200, emptyMap(), ByteArray(0))
+                        }
+                    }
+                }
+            },
+        )
+
+        val result = probe.probe()
+        kotlin.test.assertIs<HarnessPlStatus.PairedButUnreachable>(result)
+        kotlin.test.assertFalse(relayOpened)
+    }
+
+    @Test
+    fun opportunisticSyncEmptySpoolInvokesRecoveryProbeAndSchedulesJobs() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val journalVersionStore = TestJournalVersionStore()
+        val journalCoord = JournalVersionRefreshCoordinator(journalVersionStore)
+        val journalLatch = java.util.concurrent.CountDownLatch(1)
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            coordinator = journalCoord,
+            openTransport = { _, _ ->
+                object : PlHttpClient {
+                    override fun request(
+                        method: String,
+                        path: String,
+                        headers: Map<String, String>,
+                        body: ByteArray?,
+                        maxResponseBytes: Int,
+                    ): HttpResponse {
+                        if (path == "/app/network/api/status") {
+                            return HttpResponse(200, emptyMap(), ByteArray(0))
+                        }
+                        if (path.startsWith("/app/network/api/clients/self")) {
+                            journalLatch.countDown()
+                            return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"}}""".toByteArray())
+                        }
+                        return HttpResponse(200, emptyMap(), ByteArray(0))
+                    }
+                }
+            },
+        )
+
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        var enqueued = false
+        val syncEnqueue = object : SyncEnqueue {
+            override fun enqueueNow() {
+                enqueued = true
+            }
+            override fun enqueuePeriodic() {}
+        }
+        val network = object : NetworkAvailability {
+            private var listener: (() -> Unit)? = null
+            override fun isUsableNow(): Boolean = true
+            override fun start(onUsable: () -> Unit) {
+                listener = onUsable
+            }
+            override fun stop() {
+                listener = null
+            }
+            fun trigger() {
+                listener?.invoke()
+            }
+        }
+
+        val opportunisticSync = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = syncEnqueue,
+            networkAvailability = network,
+            emptySpoolRecovery = { probe.probe() },
+        )
+
+        opportunisticSync.start()
+        network.trigger()
+        kotlin.test.assertFalse(enqueued)
+        kotlin.test.assertTrue(journalLatch.await(3, java.util.concurrent.TimeUnit.SECONDS))
+
+        opportunisticSync.onPairingSuccess()
+        kotlin.test.assertTrue(enqueued)
+    }
+
     private class TestEndpointStore : EndpointStore {
         private var endpoint: DirectEndpoint? = null
         override fun save(endpoint: DirectEndpoint) {
@@ -207,6 +469,32 @@ class RealSeamsTest {
         override fun load(): PairedHome? = home
         override fun clear() {
             home = null
+        }
+    }
+
+    private class TestMutator(
+        private var home: PairedHome?,
+        private var liveEligible: Boolean = true,
+    ) : app.solstone.core.identity.IdentityMutator {
+        override fun current(): PairedHome? = home
+        override fun currentPairingGeneration(): app.solstone.core.identity.PairingGeneration? =
+            home?.let { app.solstone.core.identity.PairingGeneration(it.instanceId, it.clientCertFingerprint) }
+        override fun currentAccessMutationGen(): Long = 0
+        override fun isRelayLiveEligible(): Boolean = liveEligible
+        override fun disableRelayLive() {
+            liveEligible = false
+        }
+        override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
+        override fun installNewPairing(home: PairedHome): Boolean = true
+        override fun mutate(
+            expectedPairing: app.solstone.core.identity.PairingGeneration,
+            expectedAccessMutationGen: Long,
+            transform: (PairedHome) -> PairedHome,
+        ): app.solstone.core.identity.AccessMutationResult {
+            val h = home ?: return app.solstone.core.identity.AccessMutationResult.Conflict("missing")
+            val next = transform(h)
+            home = next
+            return app.solstone.core.identity.AccessMutationResult.Applied(next, 1)
         }
     }
 }

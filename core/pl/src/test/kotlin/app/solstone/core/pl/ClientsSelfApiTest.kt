@@ -90,6 +90,30 @@ class ClientsSelfApiTest {
     }
 
     @Test
+    fun parseClientsSelfResponseRejectsInvalidProtocolsRevisionsAndTypes() {
+        // Missing protocol_version
+        assertNull(parseClientsSelfResponse("""{"revision":1,"journal":{"name":"J","version":"1"}}"""))
+        // protocol 1.5 (float)
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1.5,"revision":1}"""))
+        // protocol string
+        assertNull(parseClientsSelfResponse("""{"protocol_version":"1","revision":1}"""))
+        // protocol 2
+        assertNull(parseClientsSelfResponse("""{"protocol_version":2,"revision":1}"""))
+        // missing revision
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1}"""))
+        // non-integral revision (float)
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1,"revision":1.5}"""))
+        // negative revision
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1,"revision":-1}"""))
+        // wrong type for journal (string instead of map)
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1,"revision":1,"journal":"bad"}"""))
+        // wrong type for reported (array instead of map)
+        assertNull(parseClientsSelfResponse("""{"protocol_version":1,"revision":1,"reported":[]}"""))
+        // empty json
+        assertNull(parseClientsSelfResponse("{}"))
+    }
+
+    @Test
     fun fetchClientsSelfReturnsSuccessOn200() {
         val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"2.0"}}"""
         val client = FakePlHttpClient { method, path, _, _, _ ->

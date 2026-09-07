@@ -143,4 +143,51 @@ class CoalescingBoundedJobTest {
             assertEquals(listOf(2), persistedValues)
         }
     }
+
+    @Test
+    fun closeThenSubmitDoesNotRun() {
+        val executor = Executors.newCachedThreadPool()
+        val runner = CoalescingBoundedJob<String>("test-job", boundMillis = 2000L, executor = executor)
+        val ran = AtomicInteger(0)
+
+        runner.close()
+        runner.submit("payload") { _, _ ->
+            ran.incrementAndGet()
+        }
+
+        Thread.sleep(100)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertEquals(0, ran.get())
+    }
+
+    @Test
+    fun drainerFinalizationRacingSuccessorStillRunsSuccessor() {
+        val executor = Executors.newCachedThreadPool()
+        val runner = CoalescingBoundedJob<Int>("test-job", boundMillis = 2000L, executor = executor)
+        val firstLatch = CountDownLatch(1)
+        val secondLatch = CountDownLatch(1)
+        val ran = mutableListOf<Int>()
+
+        runner.submit(1) { value, _ ->
+            synchronized(ran) { ran += value }
+            firstLatch.countDown()
+        }
+
+        firstLatch.await(3, TimeUnit.SECONDS)
+        // Submit second task right as first completes/exits
+        runner.submit(2) { value, _ ->
+            synchronized(ran) { ran += value }
+            secondLatch.countDown()
+        }
+
+        secondLatch.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        synchronized(ran) {
+            assertEquals(listOf(1, 2), ran)
+        }
+    }
 }

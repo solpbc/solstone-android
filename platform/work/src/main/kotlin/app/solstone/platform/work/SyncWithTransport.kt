@@ -21,15 +21,48 @@ internal fun <C> syncWithTransport(
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
     onUsableConnection: (() -> Unit)? = null,
-): SyncOutcome where C : PlHttpClient, C : Closeable =
-    openClient(transport).use { client ->
+): SyncOutcome where C : PlHttpClient, C : Closeable {
+    val client = try {
+        openClient(transport)
+    } catch (e: RelayWebSocketClosedException) {
+        throw e
+    } catch (t: Throwable) {
+        when (classifyOpenerFailure(t)) {
+            OpenerFailureKind.TRUST_REFUSAL -> {
+                log("trust refusal opening client", t)
+                return SyncOutcome.FAILURE
+            }
+            OpenerFailureKind.AVAILABILITY -> {
+                log("availability error opening client; retry", t)
+                return SyncOutcome.RETRY
+            }
+            OpenerFailureKind.NONE -> {
+                log("fatal error opening client", t)
+                return SyncOutcome.FAILURE
+            }
+        }
+    }
+
+    return client.use { c ->
         val status = try {
-            client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+            c.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
         } catch (e: RelayWebSocketClosedException) {
             throw e
-        } catch (e: IOException) {
-            log("status probe io; retry", e)
-            return@use SyncOutcome.RETRY
+        } catch (t: Throwable) {
+            when (classifyOpenerFailure(t)) {
+                OpenerFailureKind.TRUST_REFUSAL -> {
+                    log("trust refusal on status probe", t)
+                    return@use SyncOutcome.FAILURE
+                }
+                OpenerFailureKind.AVAILABILITY -> {
+                    log("availability error on status probe; retry", t)
+                    return@use SyncOutcome.RETRY
+                }
+                OpenerFailureKind.NONE -> {
+                    log("fatal error on status probe", t)
+                    return@use SyncOutcome.FAILURE
+                }
+            }
         }
         if (status == 200) {
             onUsableConnection?.invoke()
@@ -40,9 +73,9 @@ internal fun <C> syncWithTransport(
             ReachabilityVerdict.DRAIN -> {
                 val report = drainSegments(
                     store = store,
-                    reconcile = SegmentReconciler(client)::diff,
+                    reconcile = SegmentReconciler(c)::diff,
                     ingest = { manifest, fileBytes ->
-                        ObserverIngestClient(client) { "solstoneSync${System.nanoTime()}" }.ingest(
+                        ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(
                             manifest = manifest,
                             fileBytes = fileBytes,
                             host = host,
@@ -57,3 +90,4 @@ internal fun <C> syncWithTransport(
             }
         }
     }
+}

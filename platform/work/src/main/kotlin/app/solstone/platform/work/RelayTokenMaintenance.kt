@@ -34,17 +34,22 @@ fun maintainRelayToken(
     if (!shouldRefreshDeviceToken(transport.deviceToken, nowEpochMs)) {
         return RelayTokenResult.Ready(transport)
     }
+    val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+    val accessGen = mutator.currentAccessMutationGen()
     return when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster, nowEpochMs = nowEpochMs)) {
         is DeviceTokenRefresh.Refreshed -> {
-            val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
-            val accessGen = mutator.currentAccessMutationGen()
-            val mutateResult = mutator.mutate(pairing, accessGen) { current ->
-                current.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
-            }
-            if (mutateResult is AccessMutationResult.Applied || mutateResult is AccessMutationResult.DurabilityUncertain) {
-                RelayTokenResult.Ready(transport.copy(deviceToken = refresh.deviceToken))
-            } else {
+            val current = mutator.current()
+            if (current?.relayOrigin != transport.relayOrigin) {
                 RelayTokenResult.Ready(transport)
+            } else {
+                val mutateResult = mutator.mutate(pairing, accessGen) { c ->
+                    c.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
+                }
+                if (mutateResult is AccessMutationResult.Applied) {
+                    RelayTokenResult.Ready(transport.copy(deviceToken = refresh.deviceToken))
+                } else {
+                    RelayTokenResult.Ready(transport)
+                }
             }
         }
         DeviceTokenRefresh.ReconnectNeeded -> RelayTokenResult.ReconnectNeeded
@@ -67,14 +72,19 @@ fun dialWithReactiveRefresh(
         if (e.code != 4401) {
             SyncOutcome.RETRY
         } else {
+            val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+            val accessGen = mutator.currentAccessMutationGen()
             when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster)) {
                 is DeviceTokenRefresh.Refreshed -> {
-                    val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
-                    val accessGen = mutator.currentAccessMutationGen()
-                    val mutateResult = mutator.mutate(pairing, accessGen) { current ->
-                        current.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
+                    val current = mutator.current()
+                    val mutateResult = if (current?.relayOrigin == transport.relayOrigin) {
+                        mutator.mutate(pairing, accessGen) { c ->
+                            c.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
+                        }
+                    } else {
+                        null
                     }
-                    val tokenToDial = if (mutateResult is AccessMutationResult.Applied || mutateResult is AccessMutationResult.DurabilityUncertain) {
+                    val tokenToDial = if (mutateResult is AccessMutationResult.Applied) {
                         refresh.deviceToken
                     } else {
                         transport.deviceToken

@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":core:model"))
+    implementation(project(":core:crypto"))
     implementation(project(":core:queue"))
     implementation(project(":core:sources"))
 

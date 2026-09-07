@@ -17,6 +17,11 @@ sealed interface AccessMutationResult {
     data class DurabilityUncertain(val cause: Throwable) : AccessMutationResult
 }
 
+enum class PersistenceIssue {
+    PERSISTENCE_FAILED,
+    DURABILITY_UNCERTAIN,
+}
+
 interface IdentityMutator {
     fun current(): PairedHome?
     fun currentPairingGeneration(): PairingGeneration?
@@ -24,6 +29,7 @@ interface IdentityMutator {
     fun isRelayLiveEligible(): Boolean
     fun disableRelayLive()
     fun installNewPairing(home: PairedHome): Boolean
+    fun lastPersistenceIssue(): PersistenceIssue?
     fun mutate(
         expectedPairing: PairingGeneration,
         expectedAccessMutationGen: Long,

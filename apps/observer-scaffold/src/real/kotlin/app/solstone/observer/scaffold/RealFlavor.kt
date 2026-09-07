@@ -23,6 +23,7 @@ import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import app.solstone.platform.work.currentPhoneDeviceDescription
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
 
@@ -41,11 +42,6 @@ fun buildObserverFlavor(
     val evidenceReader = RealEvidenceReader(database.segmentDao())
     val syncEnqueue = RealSyncEnqueue(context, spec.stream)
     val networkAvailability = AndroidNetworkAvailability(context)
-    val opportunisticSync = OpportunisticSync(
-        evidenceReader = evidenceReader,
-        syncEnqueue = syncEnqueue,
-        networkAvailability = networkAvailability,
-    )
     val pairProbe = RealPairProbe(
         credentialStore = stores.credentialStore,
         identityStore = stores.identityStore,
@@ -69,6 +65,15 @@ fun buildObserverFlavor(
         credentialStore = stores.credentialStore,
         identityStore = stores.identityStore,
         coordinator = stores.journalVersionCoordinator,
+        relayAccessCoordinator = stores.relayAccessCoordinator,
+        mutator = stores.identityMutator,
+        localDescriptionProvider = { currentPhoneDeviceDescription(context) },
+    )
+    val opportunisticSync = OpportunisticSync(
+        evidenceReader = evidenceReader,
+        syncEnqueue = syncEnqueue,
+        networkAvailability = networkAvailability,
+        emptySpoolRecovery = { plStatusProbe.probe() },
     )
     val controller = HarnessController(
         permissionStatusReader = AndroidPermissionStatusReader(context),
@@ -90,6 +95,7 @@ fun buildObserverFlavor(
         visibleCaptureAuthority = visibleCaptureAuthority,
         isUsableNetworkPresent = networkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,
+        identityMutator = stores.identityMutator,
         declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
     )
     val backlogStatus = RealBacklogStatusReader(

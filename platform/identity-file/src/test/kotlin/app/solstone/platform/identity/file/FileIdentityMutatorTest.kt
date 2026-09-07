@@ -168,4 +168,112 @@ class FileIdentityMutatorTest {
         mutator.disableRelayLive()
         assertFalse(mutator.isRelayLiveEligible())
     }
+
+    @Test
+    fun postRenameFailureDoesNotSilentlyPromoteUncertainToCurrentAccepted() {
+        val file = File(temp.root, "identity.tsv")
+        val throwingAfterWriteWriter = object : AtomicFileWriter {
+            override fun write(target: File, bytes: ByteArray) {
+                AtomicFileWriter.Default.write(target, bytes)
+                throw IOException("post-rename fsync failure")
+            }
+        }
+        val initial = createHome("jid-1", "https://relay.solstone.app", "token-1")
+        FileIdentityStore(file, SpySecretProtector()).save(initial)
+
+        val store = FileIdentityStore(file, SpySecretProtector(), fileWriter = throwingAfterWriteWriter)
+        val mutator = FileIdentityMutator(store)
+
+        val pairingGen = mutator.currentPairingGeneration()!!
+        val accessGen = mutator.currentAccessMutationGen()
+        val result = mutator.mutate(pairingGen, accessGen) { home ->
+            home.copy(deviceToken = "token-new")
+        }
+
+        assertTrue(result is AccessMutationResult.DurabilityUncertain)
+        assertEquals(app.solstone.core.identity.PersistenceIssue.DURABILITY_UNCERTAIN, mutator.lastPersistenceIssue())
+        // current() must still return old accepted snapshot, not uncertain token-new
+        assertEquals("token-1", mutator.current()?.deviceToken)
+        assertFalse(mutator.isRelayLiveEligible())
+    }
+
+    @Test
+    fun installNewPairingFailureClassifiesPersistenceIssue() {
+        val file = File(temp.root, "identity.tsv")
+        val preRenameFailingWriter = object : AtomicFileWriter {
+            override fun write(target: File, bytes: ByteArray) {
+                throw IOException("disk full before write")
+            }
+        }
+        val store = FileIdentityStore(file, SpySecretProtector(), fileWriter = preRenameFailingWriter)
+        val mutator = FileIdentityMutator(store)
+
+        val home = createHome("jid-1", "https://relay.solstone.app", "token-1")
+        val success = mutator.installNewPairing(home)
+        assertFalse(success)
+        assertEquals(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED, mutator.lastPersistenceIssue())
+        assertEquals(null, mutator.current())
+        assertFalse(mutator.isRelayLiveEligible())
+    }
+
+    @Test
+    fun externalDiskReplacementWithRelayCredentialsDoesNotSetLiveEligibleViaCurrent() {
+        val file = File(temp.root, "identity.tsv")
+        val store = FileIdentityStore(file, SpySecretProtector())
+        val mutator = FileIdentityMutator(store)
+
+        // External process writes new home with relay to disk
+        val diskHome = createHome("jid-1", "https://relay.solstone.app", "token-1")
+        store.save(diskHome)
+
+        val current = mutator.current()
+        assertEquals("jid-1", current?.instanceId)
+        assertEquals("https://relay.solstone.app", current?.relayOrigin)
+        assertEquals("token-1", current?.deviceToken)
+        assertFalse(mutator.isRelayLiveEligible())
+    }
+
+    @Test
+    fun appliedClearSetsLiveIneligible() {
+        val file = File(temp.root, "identity.tsv")
+        val store = FileIdentityStore(file, SpySecretProtector())
+        val mutator = FileIdentityMutator(store)
+
+        val initial = createHome("jid-1", "https://relay.solstone.app", "token-1")
+        mutator.installNewPairing(initial)
+        assertTrue(mutator.isRelayLiveEligible())
+
+        val pairingGen = mutator.currentPairingGeneration()!!
+        val accessGen = mutator.currentAccessMutationGen()
+        val result = mutator.mutate(pairingGen, accessGen) { home ->
+            home.copy(relayOrigin = null, deviceToken = null)
+        }
+
+        assertTrue(result is AccessMutationResult.Applied)
+        assertFalse(mutator.isRelayLiveEligible())
+        assertEquals(null, mutator.current()?.relayOrigin)
+    }
+
+    @Test
+    fun rePairWithSameHomeInvalidatesOldMutateWithConflict() {
+        val file = File(temp.root, "identity.tsv")
+        val store = FileIdentityStore(file, SpySecretProtector())
+        val mutator = FileIdentityMutator(store)
+
+        val home1 = createHome("jid-1").copy(clientCertFingerprint = "sha256:cert1")
+        mutator.installNewPairing(home1)
+
+        val pairingGen1 = mutator.currentPairingGeneration()!!
+        val accessGen1 = mutator.currentAccessMutationGen()
+
+        // Re-pair with same jid but new cert fingerprint
+        val home2 = createHome("jid-1").copy(clientCertFingerprint = "sha256:cert2")
+        mutator.installNewPairing(home2)
+
+        val result = mutator.mutate(pairingGen1, accessGen1) { home ->
+            home.copy(deviceToken = "token-new")
+        }
+
+        assertTrue(result is AccessMutationResult.Conflict)
+    }
 }

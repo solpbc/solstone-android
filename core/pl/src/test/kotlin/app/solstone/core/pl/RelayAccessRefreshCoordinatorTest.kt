@@ -39,6 +39,7 @@ class RelayAccessRefreshCoordinatorTest {
             liveEligible = false
             disabledLiveCalled.set(true)
         }
+        override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
         override fun installNewPairing(home: PairedHome): Boolean {
             this.home = home
             liveEligible = home.relayOrigin != null && home.deviceToken != null
@@ -330,5 +331,95 @@ class RelayAccessRefreshCoordinatorTest {
 
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun lateNotConfiguredAfterPairingChangedDoesNotDisableRelayLiveOrClearCredentials() {
+        val initialHome = PairedHome(
+            instanceId = "jid-1",
+            homeLabel = "Home",
+            relayOrigin = "https://relay.solstone.app",
+            caChainFingerprint = "sha256:ca1",
+            clientCertFingerprint = "sha256:cert1",
+            observerHandle = null,
+            deviceToken = "token-1",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val mutator = FakeMutator(initialHome, liveEligible = true)
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = RelayAccessRefreshCoordinator(mutator, executor)
+
+        val fetchStarted = CountDownLatch(1)
+        val fetchBlocker = CountDownLatch(1)
+
+        val responseJson = """{"protocol_version": 2, "status": "not_configured"}"""
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1") {
+            FakePlHttpClient { _, _ ->
+                fetchStarted.countDown()
+                fetchBlocker.await(3, TimeUnit.SECONDS)
+                HttpResponse(200, emptyMap(), responseJson.toByteArray())
+            }
+        }
+
+        assertTrue(fetchStarted.await(3, TimeUnit.SECONDS))
+        // Pairing changed before response completes
+        coordinator.onPairingChanged()
+        fetchBlocker.countDown()
+
+        Thread.sleep(200)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertFalse(mutator.disabledLiveCalled.get())
+        assertTrue(mutator.isRelayLiveEligible())
+        assertEquals("https://relay.solstone.app", mutator.home?.relayOrigin)
+        assertEquals("token-1", mutator.home?.deviceToken)
+    }
+
+    @Test
+    fun lateNotConfiguredAfterTimeoutDoesNotDisableRelayLiveOrClearCredentials() {
+        val initialHome = PairedHome(
+            instanceId = "jid-1",
+            homeLabel = "Home",
+            relayOrigin = "https://relay.solstone.app",
+            caChainFingerprint = "sha256:ca1",
+            clientCertFingerprint = "sha256:cert1",
+            observerHandle = null,
+            deviceToken = "token-1",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val mutator = FakeMutator(initialHome, liveEligible = true)
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = RelayAccessRefreshCoordinator(mutator, executor, boundMillis = 50L)
+
+        val fetchStarted = CountDownLatch(1)
+        val fetchBlocker = CountDownLatch(1)
+
+        val responseJson = """{"protocol_version": 2, "status": "not_configured"}"""
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1") {
+            FakePlHttpClient { _, _ ->
+                fetchStarted.countDown()
+                fetchBlocker.await(3, TimeUnit.SECONDS)
+                HttpResponse(200, emptyMap(), responseJson.toByteArray())
+            }
+        }
+
+        assertTrue(fetchStarted.await(3, TimeUnit.SECONDS))
+        // Wait for boundMillis (50ms) to timeout and fence generation
+        Thread.sleep(150)
+        fetchBlocker.countDown()
+
+        Thread.sleep(200)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertFalse(mutator.disabledLiveCalled.get())
+        assertTrue(mutator.isRelayLiveEligible())
+        assertEquals("https://relay.solstone.app", mutator.home?.relayOrigin)
+        assertEquals("token-1", mutator.home?.deviceToken)
     }
 }

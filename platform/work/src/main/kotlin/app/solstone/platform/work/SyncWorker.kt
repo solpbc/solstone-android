@@ -11,6 +11,12 @@ import androidx.work.WorkerParameters
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
 import app.solstone.core.pl.ClientReportedDescription
+import app.solstone.core.identity.IdentityMutator
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.JournalVersionRefreshCoordinator
+import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
@@ -24,6 +30,36 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val TAG = "SyncWorker"
+
+fun scheduleOptionalJobsIfPairingCurrent(
+    snapshotIdentity: PairedHome,
+    mutator: IdentityMutator,
+    journalVersionCoordinator: JournalVersionRefreshCoordinator,
+    relayAccessCoordinator: RelayAccessRefreshCoordinator,
+    localDescriptionProvider: () -> ClientReportedDescription,
+    openClient: () -> PlHttpClient,
+): Boolean {
+    val currentPairing = mutator.currentPairingGeneration()
+    val snapshotPairing = PairingGeneration(snapshotIdentity.instanceId, snapshotIdentity.clientCertFingerprint)
+    if (currentPairing != snapshotPairing) {
+        return false
+    }
+    journalVersionCoordinator.onUsableConnection(
+        instanceId = snapshotIdentity.instanceId,
+        caChainFingerprint = snapshotIdentity.caChainFingerprint,
+        clientCertFingerprint = snapshotIdentity.clientCertFingerprint,
+        localDescriptionProvider = localDescriptionProvider,
+        pairingMatches = { mutator.currentPairingGeneration() == snapshotPairing },
+        openClient = openClient,
+    )
+    relayAccessCoordinator.onUsableConnection(
+        instanceId = snapshotIdentity.instanceId,
+        caChainFingerprint = snapshotIdentity.caChainFingerprint,
+        clientCertFingerprint = snapshotIdentity.clientCertFingerprint,
+        openClient = openClient,
+    )
+    return true
+}
 
 class SyncWorker(
     context: Context,
@@ -75,22 +111,14 @@ class SyncWorker(
                     now = System::currentTimeMillis,
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
                     onUsableConnection = {
-                        val currentHome = stores.identityMutator.current() ?: credentials.identity
-                        stores.journalVersionCoordinator.onUsableConnection(
-                            instanceId = currentHome.instanceId,
-                            caChainFingerprint = currentHome.caChainFingerprint,
-                            clientCertFingerprint = currentHome.clientCertFingerprint,
+                        scheduleOptionalJobsIfPairingCurrent(
+                            snapshotIdentity = credentials.identity,
+                            mutator = stores.identityMutator,
+                            journalVersionCoordinator = stores.journalVersionCoordinator,
+                            relayAccessCoordinator = stores.relayAccessCoordinator,
                             localDescriptionProvider = { currentPhoneDeviceDescription(applicationContext) },
-                        ) {
-                            openSyncClient(selectedTransport, credentials.credential)
-                        }
-                        stores.relayAccessCoordinator.onUsableConnection(
-                            instanceId = currentHome.instanceId,
-                            caChainFingerprint = currentHome.caChainFingerprint,
-                            clientCertFingerprint = currentHome.clientCertFingerprint,
-                        ) {
-                            openSyncClient(selectedTransport, credentials.credential)
-                        }
+                            openClient = { openSyncClient(selectedTransport, credentials.credential) },
+                        )
                     },
                 )
             }
@@ -119,15 +147,15 @@ class SyncWorker(
                 }
             }
 
-            // If direct probe failed and relay is live-eligible, retry once via Relay
-            if (outcome != SyncOutcome.SUCCESS && credentials.transport is SyncTransport.Direct && stores.identityMutator.isRelayLiveEligible()) {
-                val currentHome = stores.identityMutator.current()
-                val relayOrigin = currentHome?.relayOrigin
-                val deviceToken = currentHome?.deviceToken
-                if (relayOrigin != null && deviceToken != null) {
-                    val relayTransport = SyncTransport.Relay(relayOrigin, currentHome.instanceId, deviceToken)
+            // If direct probe returned RETRY and relay is live-eligible, retry once via Relay
+            if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct) {
+                val relayTransport = relayFallbackTransport(
+                    identity = credentials.identity,
+                    relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
+                )
+                if (relayTransport != null) {
                     val maintained = maintainRelayToken(
-                        identity = currentHome,
+                        identity = credentials.identity,
                         transport = relayTransport,
                         poster = poster,
                         mutator = stores.identityMutator,
@@ -135,7 +163,7 @@ class SyncWorker(
                     )
                     if (maintained is RelayTokenResult.Ready) {
                         outcome = dialWithReactiveRefresh(
-                            identity = currentHome,
+                            identity = credentials.identity,
                             transport = maintained.transport,
                             poster = poster,
                             mutator = stores.identityMutator,

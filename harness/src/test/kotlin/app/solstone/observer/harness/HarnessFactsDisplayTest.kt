@@ -17,6 +17,7 @@ class HarnessFactsDisplayTest {
             ReasonCode.NONE to "Needs attention",
             ReasonCode.PERMISSION_REVOKED to "Needs attention: permissions needed",
             ReasonCode.SERVICE_KILLED to "Needs attention: observing was stopped by the system",
+            ReasonCode.PERSISTENCE_FAILED to "Needs attention: journal access wasn't saved",
             ReasonCode.REBOOTED to "Needs attention: restart observing after reboot",
             ReasonCode.UNPAIRED to "Needs attention: not paired with your journal",
             ReasonCode.STORAGE_FULL to "Needs attention: phone storage is full",

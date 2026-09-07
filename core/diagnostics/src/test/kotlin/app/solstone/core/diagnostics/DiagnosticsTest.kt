@@ -17,6 +17,7 @@ class DiagnosticsTest {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD, reduce(healthy().copy(foregroundTypeHeld = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED, reduce(healthy().copy(startRefused = true)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERSISTENCE_FAILED, reduce(healthy().copy(identityPersistenceOk = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(healthy().copy(storageOk = false)))

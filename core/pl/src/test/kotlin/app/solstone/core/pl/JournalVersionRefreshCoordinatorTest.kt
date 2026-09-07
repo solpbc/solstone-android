@@ -3,15 +3,23 @@
 
 package app.solstone.core.pl
 
+import app.solstone.core.identity.AccessMutationResult
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.JournalVersionRecord
 import app.solstone.core.identity.JournalVersionStore
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.model.IdentityState
+import app.solstone.core.model.PairedHome
+import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class JournalVersionRefreshCoordinatorTest {
     private class FakeStore : JournalVersionStore {
@@ -33,13 +41,17 @@ class JournalVersionRefreshCoordinatorTest {
     private class RoutingFakeClient(
         private val handler: (method: String, path: String, body: ByteArray?) -> HttpResponse,
     ) : PlHttpClient {
+        var lastMaxResponseBytes: Int = -1
         override fun request(
             method: String,
             path: String,
             headers: Map<String, String>,
             body: ByteArray?,
             maxResponseBytes: Int,
-        ): HttpResponse = handler(method, path, body)
+        ): HttpResponse {
+            lastMaxResponseBytes = maxResponseBytes
+            return handler(method, path, body)
+        }
     }
 
     @Test
@@ -351,5 +363,325 @@ class JournalVersionRefreshCoordinatorTest {
         org.junit.Assert.assertNotNull(body)
         org.junit.Assert.assertFalse(body!!.contains("owner_label"))
         org.junit.Assert.assertTrue(body.contains("reported"))
+    }
+
+    @Test
+    fun omittedProviderIsReadOnlyGetAndCacheWithZeroPuts() {
+        val store = FakeStore()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Read Only Journal", "version": "3.2.1"},
+            "reported": {"name": "Old"}
+        }
+        """.trimIndent()
+
+        val putCalls = AtomicInteger(0)
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1", localDescriptionProvider = null) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        putCalls.incrementAndGet()
+                        HttpResponse(200, emptyMap(), ByteArray(0))
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+
+        saved.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertEquals(0, putCalls.get())
+        assertEquals("3.2.1", coordinator.currentReading("jid-1", "sha256:ca1").version)
+        assertEquals("Read Only Journal", coordinator.currentReading("jid-1", "sha256:ca1").name)
+        assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+    }
+
+    @Test
+    fun delayedGetAfterPairingMismatchOrGenBumpDoesNotPut() {
+        val store = FakeStore()
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val getStarted = CountDownLatch(1)
+        val getBlocker = CountDownLatch(1)
+        val putCalls = AtomicInteger(0)
+        var pairingMatches = true
+
+        val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
+            "reported": {"name": "Old"}
+        }
+        """.trimIndent()
+
+        coordinator.onUsableConnection(
+            instanceId = "jid-1",
+            caChainFingerprint = "sha256:ca1",
+            clientCertFingerprint = "sha256:cert1",
+            localDescriptionProvider = { localDesc },
+            pairingMatches = { pairingMatches },
+        ) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> {
+                        getStarted.countDown()
+                        getBlocker.await(3, TimeUnit.SECONDS)
+                        HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    }
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        putCalls.incrementAndGet()
+                        HttpResponse(200, emptyMap(), ByteArray(0))
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+
+        getStarted.await(3, TimeUnit.SECONDS)
+        // Pairing changes / invalidates while GET is in flight
+        pairingMatches = false
+        getBlocker.countDown()
+
+        Thread.sleep(200)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertEquals(0, putCalls.get())
+        assertNull(store.savedRecord)
+    }
+
+    @Test
+    fun legacyNotFoundPreservesPreviouslyCachedNameAndUses64k() {
+        val store = FakeStore()
+        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.0.0", "Previously Cached Name"))
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        var clientUsed: RoutingFakeClient? = null
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1") {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(404, emptyMap(), ByteArray(0))
+                    method == "GET" && path == "/api/system/status" -> HttpResponse(
+                        200,
+                        emptyMap(),
+                        """{"version":{"current":"2.0.0"}}""".toByteArray(),
+                    )
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }.also { clientUsed = it }
+        }
+
+        saved.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertEquals(64 * 1024, clientUsed?.lastMaxResponseBytes)
+        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+        assertEquals("2.0.0", reading.version)
+        assertEquals("Previously Cached Name", reading.name)
+        assertEquals(JournalVersionFreshness.CURRENT, reading.freshness)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "2.0.0", "Previously Cached Name"), store.savedRecord)
+    }
+
+    private class FakeMutator(
+        var home: PairedHome?,
+        var liveEligible: Boolean = true,
+    ) : IdentityMutator {
+        val mutationGen = AtomicLong(1L)
+        var mutateCallback: (() -> Unit)? = null
+
+        override fun current(): PairedHome? = home
+        override fun currentPairingGeneration(): PairingGeneration? =
+            home?.let { PairingGeneration(it.instanceId, it.clientCertFingerprint) }
+        override fun currentAccessMutationGen(): Long = mutationGen.get()
+        override fun isRelayLiveEligible(): Boolean = liveEligible
+        override fun disableRelayLive() {
+            liveEligible = false
+        }
+        override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
+        override fun installNewPairing(home: PairedHome): Boolean {
+            this.home = home
+            liveEligible = home.relayOrigin != null && home.deviceToken != null
+            return true
+        }
+        override fun mutate(
+            expectedPairing: PairingGeneration,
+            expectedAccessMutationGen: Long,
+            transform: (PairedHome) -> PairedHome,
+        ): AccessMutationResult {
+            val cur = home ?: return AccessMutationResult.Conflict("missing home")
+            if (expectedPairing != currentPairingGeneration()) return AccessMutationResult.Conflict("pairing mismatch")
+            if (expectedAccessMutationGen != mutationGen.get()) return AccessMutationResult.Conflict("gen mismatch")
+            val updated = transform(cur)
+            home = updated
+            val newGen = mutationGen.incrementAndGet()
+            mutateCallback?.invoke()
+            return AccessMutationResult.Applied(updated, newGen)
+        }
+    }
+
+    private fun createJwt(claimsJson: String): String {
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        val header = encoder.encodeToString("""{"alg":"none","typ":"JWT"}""".toByteArray())
+        val payload = encoder.encodeToString(claimsJson.toByteArray())
+        return "$header.$payload.sig"
+    }
+
+    private fun awaitUninterruptibly(latch: CountDownLatch, timeout: Long, unit: TimeUnit): Boolean {
+        var interrupted = false
+        try {
+            val deadline = System.nanoTime() + unit.toNanos(timeout)
+            var remaining = unit.toNanos(timeout)
+            while (true) {
+                try {
+                    return latch.await(remaining, TimeUnit.NANOSECONDS)
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                    remaining = deadline - System.nanoTime()
+                    if (remaining <= 0) return false
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
+    }
+
+    @Test
+    fun accessGenAdvancesUnderSamePairingDoesNotDropPut() {
+        val initialHome = PairedHome(
+            instanceId = "jid-1",
+            homeLabel = "Home",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca1",
+            clientCertFingerprint = "sha256:cert1",
+            observerHandle = "phone",
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val mutator = FakeMutator(initialHome)
+        val store = FakeStore()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val journalCoordinator = JournalVersionRefreshCoordinator(store, executor)
+        val relayCoordinator = RelayAccessRefreshCoordinator(mutator, executor)
+
+        val getStarted = CountDownLatch(1)
+        val getBlocker = CountDownLatch(1)
+        val putCalls = AtomicInteger(0)
+        val relayMutated = CountDownLatch(1)
+        mutator.mutateCallback = { relayMutated.countDown() }
+
+        val localDesc = ClientReportedDescription(name = "Pixel 8 New", platform = "android")
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
+            "reported": {"name": "Old"}
+        }
+        """.trimIndent()
+        val putJson = """
+        {
+            "protocol_version": 1,
+            "revision": 2,
+            "reported": {"name": "Pixel 8 New"}
+        }
+        """.trimIndent()
+
+        val expectedPairing = PairingGeneration("jid-1", "sha256:cert1")
+
+        journalCoordinator.onUsableConnection(
+            instanceId = "jid-1",
+            caChainFingerprint = "sha256:ca1",
+            clientCertFingerprint = "sha256:cert1",
+            localDescriptionProvider = { localDesc },
+            pairingMatches = { mutator.currentPairingGeneration() == expectedPairing },
+        ) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> {
+                        getStarted.countDown()
+                        awaitUninterruptibly(getBlocker, 15, TimeUnit.SECONDS)
+                        HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    }
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        putCalls.incrementAndGet()
+                        HttpResponse(200, emptyMap(), putJson.toByteArray())
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+
+        assertTrue(getStarted.await(3, TimeUnit.SECONDS))
+
+        // While GET is blocked, drive RelayAccessRefreshCoordinator with a Ready response under the same pairing
+        val exp = System.currentTimeMillis() / 1000L + 86400L
+        val jwt = createJwt("""
+        {
+            "iss": "solstone",
+            "ver": 2,
+            "aud": "spl-relay",
+            "scope": "session.dial",
+            "instance_id": "jid-1",
+            "sub": "instance:jid-1",
+            "iat": 1700000000,
+            "exp": $exp,
+            "jti": "jti-1"
+        }
+        """.trimIndent())
+        val expiresAt = java.time.Instant.ofEpochSecond(exp).toString()
+        val readyJson = """
+        {
+            "protocol_version": 2,
+            "status": "ready",
+            "relay_origin": "https://relay.solstone.app",
+            "instance_id": "jid-1",
+            "device_token": "$jwt",
+            "expires_at": "$expiresAt"
+        }
+        """.trimIndent()
+
+        relayCoordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1") {
+            RoutingFakeClient { _, _, _ ->
+                HttpResponse(200, emptyMap(), readyJson.toByteArray())
+            }
+        }
+
+        assertTrue(relayMutated.await(3, TimeUnit.SECONDS))
+        assertEquals(2L, mutator.currentAccessMutationGen())
+        assertEquals("https://relay.solstone.app", mutator.home?.relayOrigin)
+        assertEquals(jwt, mutator.home?.deviceToken)
+
+        // Unblock GET within the 15s bound
+        getBlocker.countDown()
+
+        assertTrue(saved.await(3, TimeUnit.SECONDS))
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        assertEquals(1, putCalls.get())
+        assertEquals("Pixel 8 New", localDesc.name)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Jer's Journal"), store.savedRecord)
     }
 }

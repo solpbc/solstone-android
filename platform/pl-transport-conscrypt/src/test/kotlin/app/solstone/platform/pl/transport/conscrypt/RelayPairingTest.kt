@@ -558,6 +558,7 @@ class RelayPairingTest {
             override fun currentAccessMutationGen(): Long = accessGen
             override fun isRelayLiveEligible(): Boolean = true
             override fun disableRelayLive() {}
+            override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
             override fun installNewPairing(home: PairedHome): Boolean {
                 identityStore.save(home)
                 return true

@@ -92,49 +92,50 @@ class RelayAccessRefreshCoordinator(
         try {
             client = snap.openClient()
             val result = fetchRelayAccess(client, snap.instanceId)
+            val expectedPairing = PairingGeneration(snap.instanceId, snap.clientCertFingerprint)
             when (result) {
                 is RelayAccessResponse.Ready -> {
-                    val expectedPairing = PairingGeneration(snap.instanceId, snap.clientCertFingerprint)
-                    val expectedGen = mutator.currentAccessMutationGen()
-                    val mutationResult = synchronized(this) {
-                        if (gen == job.currentGeneration()) {
-                            mutator.mutate(expectedPairing, expectedGen) { current ->
-                                current.copy(
-                                    relayOrigin = result.relayOrigin,
-                                    deviceToken = result.deviceToken,
-                                    expiresAt = result.expiresAt,
-                                )
-                            }
-                        } else null
-                    }
-                    if (mutationResult is AccessMutationResult.Applied) {
-                        pendingClear = null
+                    synchronized(this) {
+                        if (gen != job.currentGeneration() || mutator.currentPairingGeneration() != expectedPairing) {
+                            return
+                        }
+                        val expectedGen = mutator.currentAccessMutationGen()
+                        val mutationResult = mutator.mutate(expectedPairing, expectedGen) { current ->
+                            current.copy(
+                                relayOrigin = result.relayOrigin,
+                                deviceToken = result.deviceToken,
+                                expiresAt = result.expiresAt,
+                            )
+                        }
+                        if (mutationResult is AccessMutationResult.Applied) {
+                            pendingClear = null
+                        }
                     }
                 }
                 is RelayAccessResponse.NotConfigured -> {
-                    mutator.disableRelayLive()
-                    val expectedPairing = PairingGeneration(snap.instanceId, snap.clientCertFingerprint)
-                    val expectedGen = mutator.currentAccessMutationGen()
-                    val mutationResult = synchronized(this) {
-                        if (gen == job.currentGeneration()) {
-                            mutator.mutate(expectedPairing, expectedGen) { current ->
-                                current.copy(
-                                    relayOrigin = null,
-                                    deviceToken = null,
-                                    expiresAt = null,
-                                )
+                    synchronized(this) {
+                        if (gen != job.currentGeneration() || mutator.currentPairingGeneration() != expectedPairing) {
+                            return
+                        }
+                        mutator.disableRelayLive()
+                        val expectedGen = mutator.currentAccessMutationGen()
+                        val mutationResult = mutator.mutate(expectedPairing, expectedGen) { current ->
+                            current.copy(
+                                relayOrigin = null,
+                                deviceToken = null,
+                                expiresAt = null,
+                            )
+                        }
+                        when (mutationResult) {
+                            is AccessMutationResult.Applied -> {
+                                pendingClear = null
                             }
-                        } else null
-                    }
-                    when (mutationResult) {
-                        is AccessMutationResult.Applied -> {
-                            pendingClear = null
+                            is AccessMutationResult.PersistenceFailed,
+                            is AccessMutationResult.DurabilityUncertain -> {
+                                pendingClear = PendingClear(expectedPairing, expectedGen)
+                            }
+                            else -> {}
                         }
-                        is AccessMutationResult.PersistenceFailed,
-                        is AccessMutationResult.DurabilityUncertain -> {
-                            pendingClear = PendingClear(expectedPairing, expectedGen)
-                        }
-                        else -> {}
                     }
                 }
                 is RelayAccessResponse.Unavailable,

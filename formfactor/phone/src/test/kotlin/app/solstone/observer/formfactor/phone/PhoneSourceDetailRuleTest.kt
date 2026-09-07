@@ -78,6 +78,13 @@ class PhoneSourceDetailRuleTest {
                 true,
                 SourceDetailActionKind.RETRY,
             ),
+            ExpectedRule(
+                ReasonCode.PERSISTENCE_FAILED,
+                "couldn't save journal access on this phone",
+                "try again",
+                true,
+                SourceDetailActionKind.RETRY,
+            ),
         )
 
         expected.forEach { expectedRule ->
@@ -96,6 +103,7 @@ class PhoneSourceDetailRuleTest {
         assertNotEquals("nothing observed recently", sourceDetailRule(ReasonCode.PROVIDER_SILENT).diagnosis)
         assertNotEquals("access was revoked - pair again", sourceDetailRule(ReasonCode.AUTH_REVOKED).diagnosis)
         assertNotEquals("restart observing after reboot", sourceDetailRule(ReasonCode.REBOOTED).diagnosis)
+        assertNotEquals("journal access wasn't saved", sourceDetailRule(ReasonCode.PERSISTENCE_FAILED).diagnosis)
     }
 
     @Test
@@ -116,6 +124,7 @@ class PhoneSourceDetailRuleTest {
             ReasonCode.UNPAIRED,
             ReasonCode.AUTH_REVOKED,
             ReasonCode.SERVICE_KILLED,
+            ReasonCode.PERSISTENCE_FAILED,
         ).forEach { deviceReason ->
             assertEquals(
                 deviceReason,

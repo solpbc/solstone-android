@@ -169,4 +169,24 @@ class OpportunisticSyncTest {
         assertEquals(3, sync.calls)
         assertEquals(1, network.stopCalls)
     }
+
+    @Test
+    fun usableNetworkInvokesEmptySpoolRecoveryWhenZeroPendingWithoutEnqueuing() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        val sync = RecordingSyncEnqueue()
+        val network = FakeNetworkAvailability()
+        var recoveryCalls = 0
+        val opportunistic = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = sync,
+            networkAvailability = network,
+            emptySpoolRecovery = { recoveryCalls++ },
+        )
+
+        opportunistic.start()
+        network.triggerUsableNetwork()
+
+        assertEquals(0, sync.calls)
+        assertEquals(1, recoveryCalls)
+    }
 }

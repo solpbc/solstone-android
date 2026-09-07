@@ -14,9 +14,11 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalVersionStore
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
+import app.solstone.core.pl.ClientReportedDescription
 import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
@@ -36,7 +38,9 @@ import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe as conscryptPairAndProbe
 import app.solstone.platform.pl.transport.conscrypt.pairOverRelay as conscryptPairOverRelay
+import app.solstone.platform.work.OpenerFailureKind
 import app.solstone.platform.work.SyncTransport
+import app.solstone.platform.work.classifyOpenerFailure
 import app.solstone.platform.work.selectSyncTransport
 import app.solstone.platform.work.SyncScheduler
 import java.io.IOException
@@ -138,12 +142,34 @@ class RealPlStatusProbe(
     private val dialObserver: RelayDialObserver? = null,
     private val directDialObserver: DirectDialObserver? = null,
     private val coordinator: JournalVersionRefreshCoordinator? = null,
+    private val relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
+    private val mutator: IdentityMutator? = null,
+    private val localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    private val openTransport: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
 ) : PlStatusProbe {
     private var wasReachable: Boolean? = null
 
+    private fun openClientFor(t: SyncTransport, credential: ClientCredential): PlHttpClient =
+        openTransport?.invoke(t, credential) ?: when (t) {
+            is SyncTransport.Direct -> openAuthenticatedClient(
+                t.endpoint,
+                credential,
+                streamObserver,
+                directDialObserver,
+            )
+            is SyncTransport.Relay -> openRelaySyncClient(
+                t.relayOrigin,
+                t.instanceId,
+                t.deviceToken,
+                credential,
+                streamObserver,
+                dialObserver,
+            )
+        }
+
     override fun probe(): HarnessPlStatus {
         val credential = credentialStore.load()
-        val identity = identityStore.load()
+        val identity = mutator?.current() ?: identityStore.load()
         if (credential == null && identity == null && endpointStore.load() == null) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.NotPaired
@@ -160,53 +186,60 @@ class RealPlStatusProbe(
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("identity not paired")
         }
-        val transport = selectSyncTransport(identity, endpointStore)
+        val relayLiveEligible = mutator?.isRelayLiveEligible() ?: false
+        val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
         if (transport == null) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
         }
-        return try {
-            val status = when (transport) {
-                is SyncTransport.Direct -> openAuthenticatedClient(
-                    transport.endpoint,
-                    credential,
-                    streamObserver,
-                    directDialObserver,
-                )
-                is SyncTransport.Relay -> openRelaySyncClient(
-                    transport.relayOrigin,
-                    transport.instanceId,
-                    transport.deviceToken,
-                    credential,
-                    streamObserver,
-                    dialObserver,
-                )
-            }.use { client ->
-                client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+
+        fun tryTransport(t: SyncTransport): Pair<Int?, Throwable?> {
+            return try {
+                val client = openClientFor(t, credential)
+                try {
+                    val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+                    status to null
+                } finally {
+                    (client as? java.io.Closeable)?.close()
+                }
+            } catch (e: Throwable) {
+                null to e
             }
-            val reachable = status == 200
-            handleReachabilityTransition(reachable, identity, credential) {
-                when (transport) {
-                    is SyncTransport.Direct -> openAuthenticatedClient(
-                        transport.endpoint,
-                        credential,
-                        streamObserver,
-                        directDialObserver,
-                    )
-                    is SyncTransport.Relay -> openRelaySyncClient(
-                        transport.relayOrigin,
-                        transport.instanceId,
-                        transport.deviceToken,
-                        credential,
-                        streamObserver,
-                        dialObserver,
-                    )
+        }
+
+        var (status, failure) = tryTransport(transport)
+        var usedTransport = transport
+
+        // If direct probe encounters availability error and relay is live-eligible, retry once with relay
+        if (status == null && failure != null && transport is SyncTransport.Direct && relayLiveEligible) {
+            val failureKind = classifyOpenerFailure(failure)
+            if (failureKind == OpenerFailureKind.AVAILABILITY) {
+                val relayOrigin = identity.relayOrigin
+                val deviceToken = identity.deviceToken
+                if (relayOrigin != null && deviceToken != null) {
+                    val relayTransport = SyncTransport.Relay(relayOrigin, identity.instanceId, deviceToken)
+                    val (relayStatus, relayFailure) = tryTransport(relayTransport)
+                    if (relayStatus != null) {
+                        status = relayStatus
+                        failure = null
+                        usedTransport = relayTransport
+                    } else {
+                        failure = relayFailure
+                    }
                 }
             }
-            HarnessPlStatus.Reachable(status)
-        } catch (e: Exception) {
+        }
+
+        if (status != null) {
+            val reachable = status == 200
+            handleReachabilityTransition(reachable, identity, credential) {
+                openClientFor(usedTransport, credential)
+            }
+            return HarnessPlStatus.Reachable(status)
+        } else {
             handleReachabilityTransition(false, null, null)
-            HarnessPlStatus.PairedButUnreachable(plFailureDetail(e))
+            val err = failure ?: IllegalStateException("probe failed")
+            return HarnessPlStatus.PairedButUnreachable(plFailureDetail(err))
         }
     }
 
@@ -218,21 +251,30 @@ class RealPlStatusProbe(
     ) {
         val previous = wasReachable
         wasReachable = reachable
-        val coord = coordinator ?: return
         if (previous != true && reachable && identity != null && openClient != null) {
-            coord.onUsableConnection(
+            val snapshotPairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+            coordinator?.onUsableConnection(
+                instanceId = identity.instanceId,
+                caChainFingerprint = identity.caChainFingerprint,
+                clientCertFingerprint = identity.clientCertFingerprint,
+                localDescriptionProvider = localDescriptionProvider,
+                pairingMatches = { mutator?.currentPairingGeneration() == snapshotPairing },
+                openClient = openClient,
+            )
+            relayAccessCoordinator?.onUsableConnection(
                 instanceId = identity.instanceId,
                 caChainFingerprint = identity.caChainFingerprint,
                 clientCertFingerprint = identity.clientCertFingerprint,
                 openClient = openClient,
             )
         } else if (previous == true && !reachable) {
-            coord.onConnectionLost()
+            coordinator?.onConnectionLost()
+            relayAccessCoordinator?.onConnectionLost()
         }
     }
 }
 
-internal fun plFailureDetail(exception: Exception): String {
+internal fun plFailureDetail(exception: Throwable): String {
     val type = exception.javaClass.simpleName
     return exception.message?.takeIf(String::isNotBlank)?.let { "$type: $it" } ?: type
 }

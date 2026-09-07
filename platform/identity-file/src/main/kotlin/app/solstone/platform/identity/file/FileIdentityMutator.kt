@@ -7,6 +7,7 @@ import app.solstone.core.identity.AccessMutationResult
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PersistenceIssue
 import app.solstone.core.model.PairedHome
 import java.util.concurrent.atomic.AtomicLong
 
@@ -16,17 +17,46 @@ class FileIdentityMutator(
     private val lock = Any()
     private val accessMutationGen = AtomicLong(0)
     @Volatile private var relayLiveEligible: Boolean = false
+    private var accepted: PairedHome? = null
+    private var uncertainCandidate: PairedHome? = null
+    private var lastPersistenceIssue: PersistenceIssue? = null
+
     init {
-        val initial = store.load()
+        val initial = runCatching { store.load() }.getOrNull()
+        accepted = initial
         relayLiveEligible = initial?.relayOrigin != null && initial.deviceToken != null
     }
 
+    private fun reconcileLocked() {
+        val disk = runCatching { store.load() }.getOrNull()
+        when {
+            disk == null -> {
+                accepted = null
+                uncertainCandidate = null
+                relayLiveEligible = false
+            }
+            disk == accepted -> {
+                uncertainCandidate = null
+            }
+            uncertainCandidate != null && disk == uncertainCandidate -> {
+                // Uncertain disk state is not promoted to accepted; accepted stays old and live stays false
+            }
+            else -> {
+                accepted = disk
+                uncertainCandidate = null
+                relayLiveEligible = false
+            }
+        }
+    }
+
     override fun current(): PairedHome? = synchronized(lock) {
-        store.load()
+        reconcileLocked()
+        accepted
     }
 
     override fun currentPairingGeneration(): PairingGeneration? = synchronized(lock) {
-        val home = store.load() ?: return null
+        reconcileLocked()
+        val home = accepted ?: return null
         PairingGeneration(home.instanceId, home.clientCertFingerprint)
     }
 
@@ -38,13 +68,32 @@ class FileIdentityMutator(
         relayLiveEligible = false
     }
 
-    override fun installNewPairing(home: PairedHome): Boolean {
-        synchronized(lock) {
+    override fun lastPersistenceIssue(): PersistenceIssue? = synchronized(lock) {
+        lastPersistenceIssue
+    }
+
+    override fun installNewPairing(home: PairedHome): Boolean = synchronized(lock) {
+        reconcileLocked()
+        try {
             store.save(home)
-            accessMutationGen.incrementAndGet()
-            relayLiveEligible = home.relayOrigin != null && home.deviceToken != null
+        } catch (t: Throwable) {
+            val reloaded = runCatching { store.load() }.getOrNull()
+            if (reloaded == home) {
+                uncertainCandidate = home
+                lastPersistenceIssue = PersistenceIssue.DURABILITY_UNCERTAIN
+                relayLiveEligible = false
+            } else {
+                lastPersistenceIssue = PersistenceIssue.PERSISTENCE_FAILED
+                relayLiveEligible = false
+            }
+            return false
         }
-        return true
+        accepted = home
+        uncertainCandidate = null
+        lastPersistenceIssue = null
+        accessMutationGen.incrementAndGet()
+        relayLiveEligible = home.relayOrigin != null && home.deviceToken != null
+        true
     }
 
     override fun mutate(
@@ -52,7 +101,8 @@ class FileIdentityMutator(
         expectedAccessMutationGen: Long,
         transform: (PairedHome) -> PairedHome,
     ): AccessMutationResult = synchronized(lock) {
-        val current = store.load() ?: return AccessMutationResult.Conflict("identity not present")
+        reconcileLocked()
+        val current = accepted ?: return AccessMutationResult.Conflict("identity not present")
         val currentPairing = PairingGeneration(current.instanceId, current.clientCertFingerprint)
         if (currentPairing != expectedPairing) {
             return AccessMutationResult.Conflict("pairing generation mismatch: expected $expectedPairing, current $currentPairing")
@@ -71,16 +121,21 @@ class FileIdentityMutator(
             // Check whether new bytes became visible (e.g. post-rename exception)
             val reloaded = runCatching { store.load() }.getOrNull()
             return if (reloaded == transformed) {
+                uncertainCandidate = transformed
+                lastPersistenceIssue = PersistenceIssue.DURABILITY_UNCERTAIN
+                relayLiveEligible = false
                 AccessMutationResult.DurabilityUncertain(t)
             } else {
+                lastPersistenceIssue = PersistenceIssue.PERSISTENCE_FAILED
                 AccessMutationResult.PersistenceFailed(t)
             }
         }
 
+        accepted = transformed
+        uncertainCandidate = null
+        lastPersistenceIssue = null
         val newGen = accessMutationGen.incrementAndGet()
-        if (transformed.relayOrigin != null && transformed.deviceToken != null) {
-            relayLiveEligible = true
-        }
+        relayLiveEligible = transformed.relayOrigin != null && transformed.deviceToken != null
         AccessMutationResult.Applied(transformed, newGen)
     }
 }

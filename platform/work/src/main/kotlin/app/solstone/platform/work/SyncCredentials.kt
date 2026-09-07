@@ -43,6 +43,16 @@ fun selectSyncTransport(
     return null
 }
 
+fun relayFallbackTransport(
+    identity: PairedHome,
+    relayLiveEligible: Boolean,
+): SyncTransport.Relay? {
+    if (!relayLiveEligible) return null
+    val origin = identity.relayOrigin ?: return null
+    val token = identity.deviceToken ?: return null
+    return SyncTransport.Relay(origin, identity.instanceId, token)
+}
+
 fun recoverSyncCredentials(
     endpointStore: EndpointStore,
     credentialStore: ClientCredentialStore,
@@ -57,4 +67,30 @@ fun recoverSyncCredentials(
     val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
         ?: return SyncCredentials.NeedsRepair("missing endpoint and relay credentials")
     return SyncCredentials.Ready(transport, credential, identity)
+}
+
+enum class OpenerFailureKind {
+    TRUST_REFUSAL,
+    AVAILABILITY,
+    NONE,
+}
+
+fun isTrustRefusal(t: Throwable): Boolean {
+    var curr: Throwable? = t
+    while (curr != null) {
+        if (curr is javax.net.ssl.SSLException ||
+            curr is java.security.cert.CertificateException ||
+            curr is app.solstone.core.crypto.CaPinException
+        ) {
+            return true
+        }
+        curr = curr.cause
+    }
+    return false
+}
+
+fun classifyOpenerFailure(t: Throwable): OpenerFailureKind = when {
+    isTrustRefusal(t) -> OpenerFailureKind.TRUST_REFUSAL
+    t is java.io.IOException -> OpenerFailureKind.AVAILABILITY
+    else -> OpenerFailureKind.NONE
 }

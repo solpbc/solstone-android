@@ -26,6 +26,7 @@ data class HarnessFactInputs(
     val relayOriginPresent: Boolean,
     val identityState: IdentityState?,
     val silenced: SilencedFact,
+    val identityPersistenceOk: Boolean = true,
     val engineStartIssued: Boolean = true,
     val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
         CaptureForegroundType.MICROPHONE,
@@ -54,6 +55,7 @@ internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts {
         fgsHeartbeatFresh = inputs.fgsHeartbeatFresh,
         providerEmitting = inputs.providerEmitting,
         storageOk = inputs.storageOk,
+        identityPersistenceOk = inputs.identityPersistenceOk,
         pairing = pairingFactOf(
             inputs.credentialPresent,
             inputs.endpointPresent,
@@ -73,6 +75,7 @@ private fun ReasonCode.text(): String? =
         ReasonCode.NONE -> null
         ReasonCode.PERMISSION_REVOKED -> "permissions needed"
         ReasonCode.SERVICE_KILLED -> "observing was stopped by the system"
+        ReasonCode.PERSISTENCE_FAILED -> "journal access wasn't saved"
         ReasonCode.REBOOTED -> "restart observing after reboot"
         ReasonCode.UNPAIRED -> "not paired with your journal"
         ReasonCode.STORAGE_FULL -> "phone storage is full"

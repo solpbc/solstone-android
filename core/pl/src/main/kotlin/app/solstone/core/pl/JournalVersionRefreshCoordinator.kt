@@ -17,7 +17,8 @@ data class MetadataSnapshot(
     val instanceId: String,
     val caChainFingerprint: String,
     val clientCertFingerprint: String,
-    val localDescriptionProvider: () -> ClientReportedDescription,
+    val localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    val pairingMatches: () -> Boolean = { true },
     val openClient: () -> PlHttpClient,
 )
 
@@ -39,7 +40,8 @@ class JournalVersionRefreshCoordinator(
         instanceId: String,
         caChainFingerprint: String,
         clientCertFingerprint: String = "",
-        localDescriptionProvider: () -> ClientReportedDescription = { ClientReportedDescription() },
+        localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+        pairingMatches: () -> Boolean = { true },
         openClient: () -> PlHttpClient,
     ) {
         val snapshot = MetadataSnapshot(
@@ -47,6 +49,7 @@ class JournalVersionRefreshCoordinator(
             caChainFingerprint = caChainFingerprint,
             clientCertFingerprint = clientCertFingerprint,
             localDescriptionProvider = localDescriptionProvider,
+            pairingMatches = pairingMatches,
             openClient = openClient,
         )
         job.submit(snapshot) { snap, gen ->
@@ -63,52 +66,59 @@ class JournalVersionRefreshCoordinator(
                     val getResp = getResult.response
                     var finalName = getResp.journalName
                     var finalVersion = getResp.journalVersion
-                    val localDesc = sanitizeReportedDescription(snap.localDescriptionProvider())
+                    val provider = snap.localDescriptionProvider
 
-                    if (getResp.reported == null || getResp.reported != localDesc) {
-                        val putReq = ClientsSelfPutRequest(
-                            protocolVersion = 1,
-                            expectedRevision = getResp.revision,
-                            reported = localDesc,
-                        )
-                        when (val putResult = putClientsSelf(client, putReq)) {
-                            is ClientsSelfPutResult.Success -> {
-                                if (putResult.response.journalVersion != null) {
-                                    finalVersion = putResult.response.journalVersion
-                                    finalName = putResult.response.journalName
-                                }
-                            }
-                            is ClientsSelfPutResult.Conflict -> {
-                                // HTTP 409 CAS conflict: reread GET, resample now, retry at most once
-                                val retryGet = fetchClientsSelf(client)
-                                if (retryGet is ClientsSelfGetResult.Success) {
-                                    val freshLocal = sanitizeReportedDescription(snap.localDescriptionProvider())
-                                    if (retryGet.response.reported != freshLocal) {
-                                        val retryPut = putClientsSelf(
-                                            client,
-                                            ClientsSelfPutRequest(1, retryGet.response.revision, freshLocal),
-                                        )
-                                        if (retryPut is ClientsSelfPutResult.Success && retryPut.response.journalVersion != null) {
-                                            finalVersion = retryPut.response.journalVersion
-                                            finalName = retryPut.response.journalName
-                                        }
-                                    } else {
-                                        if (retryGet.response.journalVersion != null) {
-                                            finalVersion = retryGet.response.journalVersion
-                                            finalName = retryGet.response.journalName
+                    if (provider != null) {
+                        val localDesc = sanitizeReportedDescription(provider())
+                        if (getResp.reported == null || getResp.reported != localDesc) {
+                            if (gen == job.currentGeneration() && snap.pairingMatches()) {
+                                val putReq = ClientsSelfPutRequest(
+                                    protocolVersion = 1,
+                                    expectedRevision = getResp.revision,
+                                    reported = localDesc,
+                                )
+                                when (val putResult = putClientsSelf(client, putReq)) {
+                                    is ClientsSelfPutResult.Success -> {
+                                        if (putResult.response.journalVersion != null) {
+                                            finalVersion = putResult.response.journalVersion
+                                            finalName = putResult.response.journalName
                                         }
                                     }
+                                    is ClientsSelfPutResult.Conflict -> {
+                                        // HTTP 409 CAS conflict: reread GET, resample now, retry at most once
+                                        val retryGet = fetchClientsSelf(client)
+                                        if (retryGet is ClientsSelfGetResult.Success) {
+                                            val freshLocal = sanitizeReportedDescription(provider())
+                                            if (retryGet.response.reported != freshLocal) {
+                                                if (gen == job.currentGeneration() && snap.pairingMatches()) {
+                                                    val retryPut = putClientsSelf(
+                                                        client,
+                                                        ClientsSelfPutRequest(1, retryGet.response.revision, freshLocal),
+                                                    )
+                                                    if (retryPut is ClientsSelfPutResult.Success && retryPut.response.journalVersion != null) {
+                                                        finalVersion = retryPut.response.journalVersion
+                                                        finalName = retryPut.response.journalName
+                                                    }
+                                                }
+                                            } else {
+                                                if (retryGet.response.journalVersion != null) {
+                                                    finalVersion = retryGet.response.journalVersion
+                                                    finalName = retryGet.response.journalName
+                                                }
+                                            }
+                                        }
+                                    }
+                                    is ClientsSelfPutResult.Failure -> {
+                                        // Keep GET response journal name/version
+                                    }
                                 }
-                            }
-                            is ClientsSelfPutResult.Failure -> {
-                                // Keep GET response journal name/version
                             }
                         }
                     }
 
                     if (finalVersion != null) {
                         synchronized(this) {
-                            if (gen == job.currentGeneration()) {
+                            if (gen == job.currentGeneration() && snap.pairingMatches()) {
                                 store.save(
                                     JournalVersionRecord(
                                         instanceId = snap.instanceId,
@@ -127,13 +137,14 @@ class JournalVersionRefreshCoordinator(
                     val legacyVersion = fetchJournalVersion(client)
                     if (legacyVersion != null) {
                         synchronized(this) {
-                            if (gen == job.currentGeneration()) {
+                            if (gen == job.currentGeneration() && snap.pairingMatches()) {
+                                val existingName = store.load()?.takeIf { it.instanceId == snap.instanceId }?.name
                                 store.save(
                                     JournalVersionRecord(
                                         instanceId = snap.instanceId,
                                         caChainFingerprint = snap.caChainFingerprint,
                                         version = legacyVersion,
-                                        name = null,
+                                        name = existingName,
                                     ),
                                 )
                                 freshForLatestGeneration = true

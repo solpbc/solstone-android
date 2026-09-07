@@ -11,6 +11,7 @@ class OpportunisticSync(
     private val evidenceReader: EvidenceReader,
     private val syncEnqueue: SyncEnqueue,
     private val networkAvailability: NetworkAvailability,
+    private val emptySpoolRecovery: (() -> Unit)? = null,
     private val failureReporter: (String, Throwable) -> Unit = { message, throwable ->
         runCatching { Log.w(TAG, message, throwable) }
     },
@@ -55,11 +56,15 @@ class OpportunisticSync(
 
     fun onUsableNetwork() {
         val pending = pendingCountOrNull() ?: return
-        val shouldEnqueue = synchronized(lock) {
-            if (pending == 0) {
+        if (pending == 0) {
+            synchronized(lock) {
                 lastEnqueuedPending = null
-                false
-            } else if (pending != lastEnqueuedPending) {
+            }
+            emptySpoolRecovery?.invoke()
+            return
+        }
+        val shouldEnqueue = synchronized(lock) {
+            if (pending != lastEnqueuedPending) {
                 lastEnqueuedPending = pending
                 true
             } else {

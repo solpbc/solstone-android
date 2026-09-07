@@ -68,6 +68,7 @@ fun recoverSyncCredentials(
     endpointStore: EndpointStore,
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
+    relayLiveEligible: Boolean = true,
 ): SyncCredentials
 
 fun selectDrainSegments(segments: List<SegmentRow>): List<SegmentRow>
@@ -109,7 +110,7 @@ fun nextSyncState(
 - `recoverSyncCredentials` is fail-closed:
   - `NeedsRepair` if credential, identity, or paired state is missing.
   - Direct transport also requires a durable endpoint.
-  - Relay transport requires durable `relayOrigin`, `instanceId`, and `deviceToken` on the identity record.
+  - Relay transport requires durable `relayOrigin`, `instanceId`, `deviceToken` on the identity record, and `relayLiveEligible == true`.
   - `Ready` only when the selected transport, credential, identity, and `IdentityState.PAIRED` are durable facts.
 - `selectDrainSegments` keeps only `QueueState.SEALED` and `MAIN_STREAM`; import `MAIN_STREAM` from `core:sources`, do not hardcode it. Location stream rows are excluded.
 - `reconstructManifest` maps one `SegmentRow` plus its `SegmentFileRow`s to `BundleManifest(SegmentKey(segment.day, segment.segment), files, gaps = emptyList())`.

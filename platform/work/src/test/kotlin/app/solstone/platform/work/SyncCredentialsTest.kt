@@ -158,6 +158,22 @@ class SyncCredentialsTest {
         )
     }
 
+    @Test
+    fun relayFallbackTransportReturnsRelayWhenLiveEligibleAndOriginAndTokenPresent() {
+        val id = identity(
+            observerHandle = "obs_123",
+            state = IdentityState.PAIRED,
+            relayOrigin = "https://link.solstone.app",
+            deviceToken = "token_abc",
+        )
+        val transport = relayFallbackTransport(id, relayLiveEligible = true)
+        assertEquals(SyncTransport.Relay("https://link.solstone.app", "home", "token_abc"), transport)
+
+        assertEquals(null, relayFallbackTransport(id, relayLiveEligible = false))
+        assertEquals(null, relayFallbackTransport(id.copy(deviceToken = null), relayLiveEligible = true))
+        assertEquals(null, relayFallbackTransport(id.copy(relayOrigin = null), relayLiveEligible = true))
+    }
+
     private fun assertRepair(
         reason: String,
         endpoint: DirectEndpoint?,

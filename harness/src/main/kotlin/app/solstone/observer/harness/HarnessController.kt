@@ -6,6 +6,7 @@ package app.solstone.observer.harness
 import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.ReasonCode
@@ -60,6 +61,7 @@ class HarnessController(
     private val visibleCaptureAuthority: VisibleCaptureAuthority,
     private val isUsableNetworkPresent: () -> Boolean,
     private val opportunisticSync: OpportunisticSync? = null,
+    private val identityMutator: IdentityMutator? = null,
     private val diag: (String) -> Unit = {},
     private val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
         CaptureForegroundType.MICROPHONE,
@@ -360,6 +362,7 @@ class HarnessController(
         val identity = identityStore.load()
         val credentialPresent = credentialStore.load() != null
         val endpointPresent = endpointStore.load() != null
+        val identityPersistenceOk = identityMutator?.lastPersistenceIssue() == null
         return HarnessFactInputs(
             desiredOn = desiredOn,
             engineRunning = snapshot.engineRunning,
@@ -367,6 +370,7 @@ class HarnessController(
             fgsHeartbeatFresh = heartbeatFreshness.isFresh(),
             providerEmitting = snapshot.providerEmitting,
             storageOk = snapshot.storageOk,
+            identityPersistenceOk = identityPersistenceOk,
             credentialPresent = credentialPresent,
             endpointPresent = endpointPresent,
             relayOriginPresent = identity?.relayOrigin != null,

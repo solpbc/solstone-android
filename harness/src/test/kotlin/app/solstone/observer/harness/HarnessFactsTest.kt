@@ -133,4 +133,28 @@ class HarnessFactsTest {
             paused = false,
             silenced = silenced,
         )
+
+    @Test
+    fun persistenceFailedInputsReduceToNeedsAttention() {
+        val diagnostics = assembleDiagnostics(
+            HarnessFactInputs(
+                desiredOn = true,
+                engineRunning = true,
+                permissionStatus = grantedPermissions(),
+                fgsHeartbeatFresh = true,
+                providerEmitting = true,
+                storageOk = true,
+                identityPersistenceOk = false,
+                credentialPresent = true,
+                endpointPresent = true,
+                relayOriginPresent = false,
+                identityState = IdentityState.PAIRED,
+                silenced = SilencedFact.NOT_SILENCED,
+            ),
+        )
+
+        assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
+        assertEquals(ReasonCode.PERSISTENCE_FAILED, diagnostics.reason)
+        assertEquals("Needs attention: journal access wasn't saved", diagnostics.display)
+    }
 }

@@ -119,6 +119,33 @@ class SyncWithTransportTest {
         }
     }
 
+    @Test
+    fun openerTrustRefusalReturnsFailureWhileAvailabilityReturnsRetry() {
+        val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
+
+        val trustOutcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { throw javax.net.ssl.SSLPeerUnverifiedException("bad cert") },
+            store = store,
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+        )
+        assertEquals(SyncOutcome.FAILURE, trustOutcome)
+
+        val availOutcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { throw java.net.ConnectException("connection refused") },
+            store = store,
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+        )
+        assertEquals(SyncOutcome.RETRY, availOutcome)
+    }
+
     private fun runTrace(
         transport: SyncTransport,
         responses: List<HttpResponse>,

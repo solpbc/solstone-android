@@ -97,6 +97,11 @@ fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
         action = SourceDetailAction("start intake again"),
         retryHonest = true,
     )
+    ReasonCode.PERSISTENCE_FAILED -> SourceDetailRule(
+        diagnosis = "couldn't save journal access on this phone",
+        action = SourceDetailAction("try again"),
+        retryHonest = true,
+    )
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> SourceDetailRule(
         diagnosis = null,
@@ -109,6 +114,7 @@ private val DEVICE_LEVEL_REASONS = setOf(
     ReasonCode.UNPAIRED,
     ReasonCode.AUTH_REVOKED,
     ReasonCode.SERVICE_KILLED,
+    ReasonCode.PERSISTENCE_FAILED,
 )
 
 fun resolveSourceDetailReason(

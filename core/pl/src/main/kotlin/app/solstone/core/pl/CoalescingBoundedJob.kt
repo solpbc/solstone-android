@@ -22,6 +22,8 @@ class CoalescingBoundedJob<T>(
     private var inFlight = false
     private var latestPending: T? = null
     private var hasPending = false
+    private var closed = false
+    private var activeFuture: java.util.concurrent.Future<*>? = null
 
     fun bumpGeneration(): Long = synchronized(lock) {
         val gen = generation.incrementAndGet()
@@ -38,6 +40,7 @@ class CoalescingBoundedJob<T>(
 
     fun submit(snapshot: T, executeTask: (snapshot: T, generation: Long) -> Unit) {
         synchronized(lock) {
+            if (closed) return
             latestPending = snapshot
             hasPending = true
             if (inFlight) {
@@ -52,11 +55,13 @@ class CoalescingBoundedJob<T>(
     }
 
     private fun drainLoop(executeTask: (snapshot: T, generation: Long) -> Unit) {
+        var released = false
         try {
             while (true) {
                 val (snapshot, targetGen) = synchronized(lock) {
-                    if (!hasPending) {
+                    if (closed || !hasPending) {
                         inFlight = false
+                        released = true
                         return
                     }
                     val snap = latestPending
@@ -70,27 +75,43 @@ class CoalescingBoundedJob<T>(
                 val future = executor.submit(Callable {
                     executeTask(snapshot, targetGen)
                 })
+                synchronized(lock) {
+                    activeFuture = future
+                }
 
                 try {
                     future.get(boundMillis, TimeUnit.MILLISECONDS)
                 } catch (_: Throwable) {
                     future.cancel(true)
                     fenceGeneration()
+                } finally {
+                    synchronized(lock) {
+                        if (activeFuture === future) {
+                            activeFuture = null
+                        }
+                    }
                 }
             }
         } finally {
-            synchronized(lock) {
-                inFlight = false
+            if (!released) {
+                synchronized(lock) {
+                    inFlight = false
+                }
             }
         }
     }
 
     override fun close() {
-        synchronized(lock) {
+        val futureToCancel = synchronized(lock) {
+            closed = true
             generation.incrementAndGet()
             hasPending = false
             latestPending = null
             inFlight = false
+            val f = activeFuture
+            activeFuture = null
+            f
         }
+        futureToCancel?.cancel(true)
     }
 }

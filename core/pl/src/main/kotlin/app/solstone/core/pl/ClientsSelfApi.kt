@@ -61,28 +61,59 @@ fun sanitizeReportedDescription(raw: ClientReportedDescription): ClientReportedD
 
 fun parseClientsSelfResponse(bodyText: String): ClientsSelfResponse? = runCatching {
     val root = parseJson(bodyText) as? Map<*, *> ?: return null
-    val protocolVersion = (root["protocol_version"] as? Number)?.toInt() ?: return null
-    if (protocolVersion != 1) return null
-    val revision = (root["revision"] as? Number)?.toLong() ?: return null
-    val reportedMap = root["reported"] as? Map<*, *>
-    val reported = if (reportedMap != null) {
-        ClientReportedDescription(
-            name = reportedMap["name"] as? String,
-            platform = reportedMap["platform"] as? String,
-            deviceType = reportedMap["device_type"] as? String,
-            appId = reportedMap["app_id"] as? String,
-            appVersion = reportedMap["app_version"] as? String,
-        )
-    } else {
-        null
-    }
-    val ownerLabel = root["owner_label"] as? String
-    val displayLabel = root["display_label"] as? String
-    val updatedAt = root["updated_at"] as? String
+    val pvNum = root["protocol_version"] as? Number ?: return null
+    if (pvNum.toDouble() != 1.0 || pvNum.toLong() != 1L) return null
+    val protocolVersion = pvNum.toInt()
 
-    val journalMap = root["journal"] as? Map<*, *>
-    val journalName = (journalMap?.get("name") as? String)?.let { sanitizeField(it, 128) }
-    val journalVersion = (journalMap?.get("version") as? String)?.let { sanitizeJournalVersion(it) }
+    val revNum = root["revision"] as? Number ?: return null
+    val revDouble = revNum.toDouble()
+    val revLong = revNum.toLong()
+    if (revDouble != revLong.toDouble() || revLong < 0) return null
+    val revision = revLong
+
+    val reportedRaw = root["reported"]
+    val reported = if (reportedRaw is Map<*, *>) {
+        val nameRaw = reportedRaw["name"]
+        if (nameRaw != null && nameRaw !is String) return null
+        val platRaw = reportedRaw["platform"]
+        if (platRaw != null && platRaw !is String) return null
+        val dtRaw = reportedRaw["device_type"]
+        if (dtRaw != null && dtRaw !is String) return null
+        val appRaw = reportedRaw["app_id"]
+        if (appRaw != null && appRaw !is String) return null
+        val verRaw = reportedRaw["app_version"]
+        if (verRaw != null && verRaw !is String) return null
+        ClientReportedDescription(
+            name = nameRaw as? String,
+            platform = platRaw as? String,
+            deviceType = dtRaw as? String,
+            appId = appRaw as? String,
+            appVersion = verRaw as? String,
+        )
+    } else if (reportedRaw == null) {
+        null
+    } else {
+        return null
+    }
+
+    val ownerLabel = root["owner_label"]?.let { (it as? String) ?: return null }
+    val displayLabel = root["display_label"]?.let { (it as? String) ?: return null }
+    val updatedAt = root["updated_at"]?.let { (it as? String) ?: return null }
+
+    val journalRaw = root["journal"]
+    val (journalName, journalVersion) = if (journalRaw is Map<*, *>) {
+        val jnRaw = journalRaw["name"]
+        if (jnRaw != null && jnRaw !is String) return null
+        val jvRaw = journalRaw["version"]
+        if (jvRaw != null && jvRaw !is String) return null
+        val jn = (jnRaw as? String)?.let { sanitizeField(it, 128) }
+        val jv = (jvRaw as? String)?.let { sanitizeJournalVersion(it) ?: return null }
+        jn to jv
+    } else if (journalRaw == null) {
+        null to null
+    } else {
+        return null
+    }
 
     ClientsSelfResponse(
         protocolVersion = protocolVersion,
