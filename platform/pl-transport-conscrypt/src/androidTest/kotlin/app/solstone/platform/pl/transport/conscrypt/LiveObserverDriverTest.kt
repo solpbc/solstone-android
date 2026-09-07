@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.core.crypto.sha256Hex
+import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.BundleFile
@@ -17,6 +18,9 @@ import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.RelayPairLink
+import app.solstone.core.pl.parsePairLink
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
@@ -87,21 +91,43 @@ class LiveObserverDriverTest {
         val link = pairLink!!
         result("t1.pairLinkHost=${hostOf(link)}")
         try {
-            val probe = pairAndProbe(
-                pairLink = link,
-                deviceLabel = arg("deviceLabel", "android-validation"),
-                credentialStore = credStore(),
-                identityStore = idStore(),
-                endpointStore = endpointStore(),
-            )
-            result("t1.handshakePinned=${probe.handshakePinned}")
-            result("t1.pairStatus=${probe.pairStatus}")
-            result("t1.plStatusStatus=${probe.statusStatus}")
-            result("t1.endpoint=${probe.endpoint.host}:${probe.endpoint.port}")
+            val (pinned, pairStatus, statusStatus) = when (val parsed = parsePairLink(link)) {
+                is DirectPairLink -> {
+                    result("t1.pairTransport=direct")
+                    val probe = pairAndProbe(
+                        pairLink = link,
+                        deviceLabel = arg("deviceLabel", "android-validation"),
+                        credentialStore = credStore(),
+                        identityStore = idStore(),
+                        endpointStore = endpointStore(),
+                    )
+                    result("t1.endpoint=${probe.endpoint.host}:${probe.endpoint.port}")
+                    Triple(probe.handshakePinned, probe.pairStatus, probe.statusStatus)
+                }
+                is RelayPairLink -> {
+                    result("t1.pairTransport=relay")
+                    val probe = pairOverRelay(
+                        link = parsed,
+                        deviceLabel = arg("deviceLabel", "android-validation"),
+                        httpsPoster = defaultHttpsPoster(),
+                        relayPairDialer = defaultRelayPairDialer(),
+                        credentialStore = credStore(),
+                        identityStore = idStore(),
+                        endpointStore = endpointStore(),
+                    )
+                    val status = openClient(requireNotNull(credStore().load())).use { client ->
+                        client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+                    }
+                    Triple(probe.handshakePinned, probe.pairStatus, status.status)
+                }
+            }
+            result("t1.handshakePinned=$pinned")
+            result("t1.pairStatus=$pairStatus")
+            result("t1.plStatusStatus=$statusStatus")
 
-            assertTrue("CA-fp pin must hold during the cert-less pair handshake", probe.handshakePinned)
-            assertEquals("pair POST must return 200", 200, probe.pairStatus)
-            assertEquals("authenticated PL status probe must return 200", 200, probe.statusStatus)
+            assertTrue("CA-fp pin must hold during the cert-less pair handshake", pinned)
+            assertEquals("pair POST must return 200", 200, pairStatus)
+            assertEquals("authenticated PL status probe must return 200", 200, statusStatus)
         } catch (t: Throwable) {
             result("t1.ERROR=${t.javaClass.simpleName}: ${t.message}")
             throw t
@@ -111,9 +137,9 @@ class LiveObserverDriverTest {
     @Test
     fun t2_authorizePairedIdentity() {
         val credential = credStore().load()
-        assumeTrue("t1 must pair first (no stored credential or endpoint)", credential != null && endpointFile.exists())
+        assumeTrue("t1 must pair first (no stored credential or endpoint)", credential != null && hasStoredTransport())
         try {
-            openAuthenticatedClient(endpoint(), credential!!).use { client ->
+            openClient(credential!!).use { client ->
                 val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
                 result("t2.authorizedStatus=${status.status}")
                 assertEquals("persisted credential must authorize PL status", 200, status.status)
@@ -154,7 +180,7 @@ class LiveObserverDriverTest {
                 gaps = emptyList(),
             )
 
-            val outcome = openAuthenticatedClient(endpoint(), credential!!).use { client ->
+            val outcome = openClient(credential!!).use { client ->
                 ObserverIngestClient(client) { "solstoneAndroidValidation${System.nanoTime()}" }.ingest(
                     manifest = manifest,
                     fileBytes = { payload },
@@ -210,7 +236,7 @@ class LiveObserverDriverTest {
             val expectedSize = record.getValue("size").toLong()
             val expectedSha = record.getValue("sha")
 
-            val segments = openAuthenticatedClient(endpoint(), credential!!).use { client ->
+            val segments = openClient(credential!!).use { client ->
                 SegmentReconciler(client).fetch(day)
             }
             result("t4.day=$day")
@@ -244,9 +270,9 @@ class LiveObserverDriverTest {
         // Loads ONLY disk state — in a fresh `am instrument` invocation this process never
         // paired in-memory, so a 200 here proves the persisted credential alone re-handshakes.
         val credential = credStore().load()
-        assumeTrue("needs a stored credential + endpoint from a prior pairing", credential != null && endpointFile.exists())
+        assumeTrue("needs a stored credential + endpoint from a prior pairing", credential != null && hasStoredTransport())
         try {
-            val status = openAuthenticatedClient(endpoint(), credential!!).use { client ->
+            val status = openClient(credential!!).use { client ->
                 client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
             }
             result("t5.rehandshakeStatus=${status.status}")
@@ -254,6 +280,23 @@ class LiveObserverDriverTest {
         } catch (t: Throwable) {
             result("t5.ERROR=${t.javaClass.simpleName}: ${t.message}")
             throw t
+        }
+    }
+
+    private fun hasStoredTransport(): Boolean {
+        val home = idStore().load()
+        return if (home?.relayOrigin != null) home.deviceToken != null else endpointFile.exists()
+    }
+
+    private fun openClient(credential: ClientCredential): ConscryptPlHttpClient {
+        val home = idStore().load()
+        val origin = home?.relayOrigin
+        return if (origin != null) {
+            result("transport=relay")
+            openRelaySyncClient(origin, home.instanceId, requireNotNull(home.deviceToken), credential)
+        } else {
+            result("transport=direct")
+            openAuthenticatedClient(endpoint(), credential)
         }
     }
 
