@@ -30,6 +30,7 @@ internal fun grantedPermissions(): PermissionStatus =
 internal class FakeLifecycle : ObserverLifecycle {
     var starts = 0
     var stops = 0
+    var restarts = 0
 
     override fun start() {
         starts += 1
@@ -37,6 +38,10 @@ internal class FakeLifecycle : ObserverLifecycle {
 
     override fun stop() {
         stops += 1
+    }
+
+    override fun restartCaptureForHeldTypes() {
+        restarts += 1
     }
 }
 

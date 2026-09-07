@@ -14,7 +14,8 @@ class DiagnosticsTest {
     @Test
     fun reduceMapsFailureFactsInPrecedenceOrder() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))
-        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED, reduce(healthy().copy(foregroundTypeHeld = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD, reduce(healthy().copy(foregroundTypeHeld = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED, reduce(healthy().copy(startRefused = true)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED, reduce(healthy().copy(fgsHeartbeatFresh = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED, reduce(healthy().copy(engineRunning = false)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
@@ -24,9 +25,9 @@ class DiagnosticsTest {
     }
 
     @Test
-    fun foregroundTypeNotHeldReducesToNeedsAttentionForegroundStartNotAllowed() {
+    fun foregroundTypeNotHeldReducesToNeedsAttentionForegroundTypeNotHeld() {
         assertEquals(
-            SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD,
             reduce(healthy().copy(foregroundTypeHeld = false)),
         )
         assertEquals(
@@ -36,6 +37,26 @@ class DiagnosticsTest {
         assertEquals(
             SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED,
             reduce(healthy().copy(permissionGranted = false, foregroundTypeHeld = false)),
+        )
+    }
+
+    @Test
+    fun startRefusedReducesToNeedsAttentionForegroundStartNotAllowed() {
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            reduce(healthy().copy(startRefused = true)),
+        )
+        assertEquals(
+            SourceState.OFF to ReasonCode.NONE,
+            reduce(healthy().copy(desiredOn = false, startRefused = true)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED,
+            reduce(healthy().copy(permissionGranted = false, startRefused = true)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD,
+            reduce(healthy().copy(foregroundTypeHeld = false, startRefused = true)),
         )
     }
 

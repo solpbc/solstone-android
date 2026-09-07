@@ -33,20 +33,20 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
-internal enum class SourceDetailActionKind { RETRY, CONNECT_JOURNAL }
+enum class SourceDetailActionKind { RETRY, CONNECT_JOURNAL }
 
-internal data class SourceDetailAction(
+data class SourceDetailAction(
     val label: String,
     val kind: SourceDetailActionKind = SourceDetailActionKind.RETRY,
 )
 
-internal data class SourceDetailRule(
+data class SourceDetailRule(
     val diagnosis: String?,
     val action: SourceDetailAction?,
     val retryHonest: Boolean,
 )
 
-internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
+fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
     ReasonCode.PERMISSION_REVOKED -> SourceDetailRule(
         diagnosis = "permissions needed",
         action = SourceDetailAction("grant permissions"),
@@ -58,8 +58,8 @@ internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reas
         retryHonest = false,
     )
     ReasonCode.SERVICE_KILLED -> SourceDetailRule(
-        diagnosis = "observing was stopped by the system",
-        action = SourceDetailAction("start observing again"),
+        diagnosis = "intake was stopped by the system",
+        action = SourceDetailAction("start intake again"),
         retryHonest = true,
     )
     ReasonCode.STORAGE_FULL -> SourceDetailRule(
@@ -78,8 +78,8 @@ internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reas
         retryHonest = false,
     )
     ReasonCode.REBOOTED -> SourceDetailRule(
-        diagnosis = "this device restarted and observing didn't resume on its own",
-        action = SourceDetailAction("start observing again"),
+        diagnosis = "this device restarted and intake didn't resume on its own",
+        action = SourceDetailAction("start intake again"),
         retryHonest = true,
     )
     ReasonCode.TRANSPORT_UNAVAILABLE -> SourceDetailRule(
@@ -88,11 +88,14 @@ internal fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reas
         retryHonest = false,
     )
     ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailRule(
-        // `sol` retired as a product name 2026-08-19. mobile-shell.md section 5.6
-        // scoped this exact substitution and left it pending; landing it here.
-        diagnosis = "open solstone to resume observing",
-        action = null,
-        retryHonest = false,
+        diagnosis = "intake couldn't start from the background",
+        action = SourceDetailAction("start intake"),
+        retryHonest = true,
+    )
+    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailRule(
+        diagnosis = "this source needs intake to restart",
+        action = SourceDetailAction("start intake again"),
+        retryHonest = true,
     )
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> SourceDetailRule(
@@ -108,7 +111,7 @@ private val DEVICE_LEVEL_REASONS = setOf(
     ReasonCode.SERVICE_KILLED,
 )
 
-internal fun resolveSourceDetailReason(
+fun resolveSourceDetailReason(
     status: SourceStatus,
     observer: ObserverStatus,
 ): ReasonCode = when {

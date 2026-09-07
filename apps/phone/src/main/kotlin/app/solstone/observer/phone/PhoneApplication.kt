@@ -15,6 +15,7 @@ import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourceToggleResult
+import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.observer.scaffold.ForegroundSourceActivation
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverRuntimeContainer
@@ -25,11 +26,24 @@ import app.solstone.platform.fgs.ObserverNotificationDecorator
 import app.solstone.platform.fgs.shouldOfferStartAction
 import app.solstone.platform.fgs.shouldNotifyCaptureStopped
 
+import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
+import app.solstone.observer.formfactor.phone.PhoneIntakeNotificationModel
+import app.solstone.observer.formfactor.phone.PhoneRoute
+import app.solstone.observer.formfactor.phone.STATUS_UNAVAILABLE
+import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotification
+import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotificationCatching
+import app.solstone.observer.formfactor.phone.encodePhoneRoute
+
 class PhoneApplication : ObserverApplication(phoneSpec) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
     @Volatile private var cachedWidgetModel = emptyWidgetModel()
-    private var lastObservedAudioState: SourceState? = null
+    @Volatile private var cachedIntakeModel = derivePhoneIntakeNotification(
+        snapshot = null,
+        fgsLive = false,
+        desiredOn = false,
+    )
+    @Volatile private var lastIntakeStateWord: String? = null
 
     override fun onCreate() {
         PhoneDiagLog.install(applicationContext.filesDir)
@@ -39,7 +53,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
         runtime.onContainerInitialized(::onContainerInitialized)
         ObserverNotification.decorator = ObserverNotificationDecorator(::decorateObserverNotification)
-        ObserverNotification.startAction = startCaptureAction(applicationContext, cachedWidgetModel.audioChecked)
+        ObserverNotification.startAction = startCaptureAction(applicationContext, isRunning = false, hasEnabledSources = false)
         val stopPendingIntent = PendingIntent.getBroadcast(
             applicationContext,
             STOP_CAPTURE_REQUEST_CODE,
@@ -48,6 +62,9 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         )
         @Suppress("DEPRECATION")
         ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, stopPendingIntent).build()
+        ObserverForegroundService.intakeStartHandler = {
+            runtime.containerIfInitialized?.controller?.startWhenAlreadyForeground()
+        }
         ObserverForegroundService.widgetStartHandler = object : ObserverWidgetStartHandler {
             override fun onForegroundServiceStarted(sourceId: String) {
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
@@ -74,6 +91,8 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     internal fun widgetModel(): PhoneObserverWidgetModel =
         if (runtime.containerIfInitialized == null) emptyWidgetModel() else cachedWidgetModel
 
+    internal fun intakeModel(): PhoneIntakeNotificationModel = cachedIntakeModel
+
     internal fun turnAudioOffFromWidget() {
         runtime.containerIfInitialized?.sources?.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
         refreshWidgetAndUpdate()
@@ -98,12 +117,6 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             if (audio?.state == SourceState.ON) {
                 widgetStartOutcomes.clear()
             }
-            val previousAudioState = lastObservedAudioState
-            lastObservedAudioState = audio?.state
-            if (audio != null && shouldNotifyCaptureStopped(previousAudioState, audio.state)) {
-                ObserverNotification.startAction = startCaptureAction(applicationContext, isRunning = false)
-                ObserverForegroundService.postStoppedNotification(applicationContext)
-            }
             refreshWidgetAndUpdate()
         }
         refreshWidgetAndUpdate()
@@ -114,7 +127,32 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     }
 
     private fun refreshWidgetModel(container: ObserverRuntimeContainer? = runtime.containerIfInitialized) {
-        val readModel = container?.sources?.snapshot()
+        val desiredOn = container?.controller?.desiredOn ?: false
+        val fgsLive = ObserverForegroundService.heldCaptureForegroundTypes != null
+        val previousStateWord = lastIntakeStateWord
+        var readModel: SourcesReadModel? = null
+        cachedIntakeModel = derivePhoneIntakeNotificationCatching(
+            supplier = {
+                container?.sources?.snapshot().also { readModel = it }
+            },
+            fgsLive = fgsLive,
+            desiredOn = desiredOn,
+        )
+        val currentStateWord = cachedIntakeModel.stateWord
+        lastIntakeStateWord = currentStateWord
+
+        val hasEnabledSources = readModel?.sources?.any { it.wish == SourceWish.On } == true
+        if (shouldNotifyCaptureStopped(previousStateWord, currentStateWord)) {
+            ObserverNotification.startAction = startCaptureAction(
+                applicationContext,
+                isRunning = false,
+                hasEnabledSources = hasEnabledSources,
+            )
+            ObserverForegroundService.postStoppedNotification(applicationContext)
+        } else if (currentStateWord == "on") {
+            ObserverForegroundService.cancelAttentionNotification(applicationContext)
+        }
+
         val statusModel = container?.let { initialized ->
             runCatching {
                 phoneStatusSnapshotOf(
@@ -128,15 +166,23 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             statusModel = statusModel,
             startOutcome = widgetStartOutcomes.read(),
         )
-        ObserverNotification.startAction = startCaptureAction(applicationContext, cachedWidgetModel.audioChecked)
+        ObserverNotification.startAction = startCaptureAction(
+            applicationContext,
+            isRunning = fgsLive,
+            hasEnabledSources = hasEnabledSources,
+        )
     }
 
-    private fun startCaptureAction(context: Context, isRunning: Boolean): Notification.Action? {
-        if (!shouldOfferStartAction(isRunning)) return null
+    private fun startCaptureAction(
+        context: Context,
+        isRunning: Boolean,
+        hasEnabledSources: Boolean,
+    ): Notification.Action? {
+        if (!shouldOfferStartAction(isRunning = isRunning, hasEnabledSources = hasEnabledSources)) return null
         val pendingIntent = PendingIntent.getForegroundService(
             context,
             START_CAPTURE_REQUEST_CODE,
-            ObserverForegroundService.widgetStartIntent(context, PHONE_WIDGET_AUDIO_SOURCE_ID),
+            ObserverForegroundService.intakeStartIntent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         @Suppress("DEPRECATION")
@@ -146,12 +192,37 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     private fun decorateObserverNotification(context: Context, builder: Notification.Builder) {
         // Notification decoration performs no Room or filesystem I/O; it renders only the snapshot
         // refreshed from background work.
-        val model = widgetModel()
+        val model = cachedIntakeModel
         builder.setContentText(model.stateWord)
+        val routeIntent = pendingIntentForRoute(context, model.route)
+        if (routeIntent != null) {
+            builder.setContentIntent(routeIntent)
+        }
+    }
+
+    private fun pendingIntentForRoute(context: Context, route: PhoneRoute?): PendingIntent? {
+        val launchIntent = if (route != null) {
+            Intent(context, PhoneShellActivity::class.java).apply {
+                putExtra(EXTRA_PHONE_ROUTE, encodePhoneRoute(route))
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        } else {
+            context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            } ?: return null
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return PendingIntent.getActivity(
+            context,
+            PHONE_ROUTE_REQUEST_CODE,
+            launchIntent,
+            flags,
+        )
     }
 
     private companion object {
         const val START_CAPTURE_REQUEST_CODE = 201
         const val STOP_CAPTURE_REQUEST_CODE = 202
+        const val PHONE_ROUTE_REQUEST_CODE = 203
     }
 }

@@ -50,6 +50,7 @@ class SourceRegistry(
         registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.On }
         bound = registrations.map(::BoundSource)
         engines = bound
+        controller.sourcesReader = this
     }
 
     override fun snapshot(): SourcesReadModel {
@@ -205,6 +206,7 @@ class SourceRegistry(
                 conditionNeedsAttention = condition?.let { it.needsAttention || !it.available } ?: true,
                 paused = condition?.paused == true,
                 foregroundTypeHeld = foregroundTypeHeld,
+                startRefused = controller.lastStartRefused,
             )
         }
 

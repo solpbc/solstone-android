@@ -119,12 +119,13 @@ fun widgetRefusalReasonForStartException(className: String): ReasonCode =
 
 fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.ON
 
-fun shouldOfferStartAction(isRunning: Boolean): Boolean = !isRunning
+fun shouldOfferStartAction(isRunning: Boolean, hasEnabledSources: Boolean = true): Boolean =
+    !isRunning && hasEnabledSources
 
 fun shouldOfferStopAction(isLiveForegroundService: Boolean): Boolean = isLiveForegroundService
 
-fun shouldNotifyCaptureStopped(lastObserved: SourceState?, now: SourceState): Boolean =
-    lastObserved == SourceState.ON && now == SourceState.OFF
+fun shouldNotifyCaptureStopped(lastObservedStateWord: String?, currentStateWord: String): Boolean =
+    lastObservedStateWord == "on" && currentStateWord == "off"
 
 fun startFailureDiagLine(exceptionClassName: String): String =
     "fgs start-failure exception=$exceptionClassName"

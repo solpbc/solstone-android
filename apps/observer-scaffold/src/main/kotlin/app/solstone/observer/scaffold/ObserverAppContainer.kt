@@ -40,6 +40,9 @@ import app.solstone.platform.persistence.room.JournalCacheLimitStore
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
+import app.solstone.observer.harness.CaptureRestartSequencer
+import app.solstone.observer.harness.ServiceDestroyWaitSeam
+import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
 import java.time.ZoneId
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -92,10 +95,25 @@ class ObserverAppContainer(
         nowEpochMs = System::currentTimeMillis,
         runPass = journalCacheService::runPass,
     )
+
     private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
-    private var lastPostedState: SourceState? = null
+    private var lastPostedSignature: String? = null
     @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
+    private val destroyLock = Object()
+    private val destroyWaitSeam = ServiceDestroyWaitSeam { timeoutMs ->
+        synchronized(destroyLock) {
+            if (ObserverForegroundService.heldCaptureForegroundTypes == null) return@ServiceDestroyWaitSeam true
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (System.currentTimeMillis() < deadline) {
+                if (ObserverForegroundService.heldCaptureForegroundTypes == null) return@ServiceDestroyWaitSeam true
+                val waitMs = deadline - System.currentTimeMillis()
+                if (waitMs <= 0) break
+                destroyLock.wait(waitMs.coerceAtMost(100L))
+            }
+            ObserverForegroundService.heldCaptureForegroundTypes == null
+        }
+    }
     private val lifecycle = IdempotentPipelineLifecycle(
         startForeground = { ObserverForegroundService.startFromVisibleContext(context) },
         stopForeground = { ObserverForegroundService.stop(context) },
@@ -108,6 +126,10 @@ class ObserverAppContainer(
         onStartDeferred = { deferredStartMode = ObserverStartMode.VisibleStart },
         onAlreadyForegroundStartDeferred = { deferredStartMode = ObserverStartMode.ForegroundServiceStart },
         onStartCancelled = { deferredStartMode = null },
+        destroySeam = destroyWaitSeam,
+        isDesiredOn = { controller.desiredOn },
+        isVisibleOwnerPresent = { captureAuthority.isVisibleOwnerPresent() },
+        asyncExecutor = { task -> background.execute(task) },
     )
 
     override val flavor: SharedObserverFlavor = buildObserverFlavor(
@@ -152,6 +174,11 @@ class ObserverAppContainer(
     }
 
     init {
+        ObserverForegroundService.onDestroyCallback = {
+            synchronized(destroyLock) {
+                destroyLock.notifyAll()
+            }
+        }
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
@@ -168,6 +195,7 @@ class ObserverAppContainer(
     }
 
     override fun close() {
+        ObserverForegroundService.onDestroyCallback = null
         journalCacheCoordinator.close()
         mainHandler.removeCallbacks(pollRunnable)
         runCatching { controller.stop() }
@@ -208,14 +236,17 @@ class ObserverAppContainer(
             tickIntervalMs = TICK_INTERVAL_MS,
         )
 
-    private fun refreshServiceNotification(current: HarnessDiagnostics) {
-        if (!controller.desiredOn) {
-            lastPostedState = null
+    fun refreshServiceNotification(current: HarnessDiagnostics = controller.diagnostics()) {
+        if (!controller.desiredOn || ObserverForegroundService.heldCaptureForegroundTypes == null) {
+            lastPostedSignature = null
             return
         }
-        if (current.state == lastPostedState) return
-        ObserverForegroundService.refreshOngoingNotification(context, needsAttentionForState(current.state))
-        lastPostedState = current.state
+        val snapshot = sources.snapshot()
+        val needsAttention = snapshot.sources.any { it.wish == SourceWish.On && it.state == SourceState.NEEDS_ATTENTION } || current.state == SourceState.NEEDS_ATTENTION
+        val signature = "${snapshot.sources.map { "${it.sourceId}:${it.wish}:${it.state}:${it.reason}" }}:$needsAttention"
+        if (signature == lastPostedSignature) return
+        ObserverForegroundService.refreshOngoingNotification(context, needsAttention)
+        lastPostedSignature = signature
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {
@@ -260,8 +291,37 @@ internal class IdempotentPipelineLifecycle<T>(
     private val onStartDeferred: () -> Unit,
     private val onAlreadyForegroundStartDeferred: () -> Unit = onStartDeferred,
     private val onStartCancelled: () -> Unit,
+    destroySeam: ServiceDestroyWaitSeam = ServiceDestroyWaitSeam { true },
+    isDesiredOn: () -> Boolean = { false },
+    isVisibleOwnerPresent: () -> Boolean = { false },
+    private val asyncExecutor: (Runnable) -> Unit = { it.run() },
 ) : ObserverLifecycle {
     private var active: T? = null
+    private val sequencer = CaptureRestartSequencer(
+        stopPipeline = {
+            active?.let { pipeline ->
+                stopPipeline(pipeline)
+                active = null
+                onActiveChanged(null)
+            }
+        },
+        stopForeground = stopForeground,
+        startServiceAndPipeline = {
+            start(
+                startForeground = startForeground,
+                onDeferred = onStartDeferred,
+            )
+        },
+        destroySeam = destroySeam,
+        isDesiredOn = isDesiredOn,
+        isVisibleOwnerPresent = isVisibleOwnerPresent,
+    )
+
+    override fun restartCaptureForHeldTypes() {
+        asyncExecutor {
+            sequencer.requestRestart()
+        }
+    }
 
     override fun start() = start(
         startForeground = startForeground,
@@ -296,6 +356,7 @@ internal class IdempotentPipelineLifecycle<T>(
     }
 
     override fun stop() {
+        sequencer.onOwnerStop()
         active?.let { pipeline ->
             stopPipeline(pipeline)
             active = null

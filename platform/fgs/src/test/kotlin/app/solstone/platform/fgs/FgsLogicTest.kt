@@ -344,9 +344,21 @@ class FgsLogicTest {
     }
 
     @Test
-    fun shouldOfferStartActionGatedByRunning() {
-        assertTrue(shouldOfferStartAction(isRunning = false))
-        assertFalse(shouldOfferStartAction(isRunning = true))
+    fun shouldOfferStartActionGatedByRunningAndEnabledSources() {
+        assertTrue(shouldOfferStartAction(isRunning = false, hasEnabledSources = true))
+        assertFalse(shouldOfferStartAction(isRunning = true, hasEnabledSources = true))
+        assertFalse(shouldOfferStartAction(isRunning = false, hasEnabledSources = false))
+        assertFalse(shouldOfferStartAction(isRunning = true, hasEnabledSources = false))
+    }
+
+    @Test
+    fun shouldNotifyCaptureStoppedTriggersOnlyWhenLeavingOn() {
+        assertTrue(shouldNotifyCaptureStopped(lastObservedStateWord = "on", currentStateWord = "off"))
+        assertFalse(shouldNotifyCaptureStopped(lastObservedStateWord = "on", currentStateWord = "needs attention"))
+        assertFalse(shouldNotifyCaptureStopped(lastObservedStateWord = "on", currentStateWord = "on"))
+        assertFalse(shouldNotifyCaptureStopped(lastObservedStateWord = "off", currentStateWord = "off"))
+        assertFalse(shouldNotifyCaptureStopped(lastObservedStateWord = "setting up", currentStateWord = "off"))
+        assertFalse(shouldNotifyCaptureStopped(lastObservedStateWord = null, currentStateWord = "off"))
     }
 
     @Test

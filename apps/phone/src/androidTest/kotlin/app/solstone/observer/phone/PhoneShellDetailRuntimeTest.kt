@@ -72,6 +72,36 @@ class PhoneShellDetailRuntimeTest {
         }
     }
 
+    @Test
+    fun launchWithPhoneRouteOpensDetailPane() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        val intent = android.content.Intent(context, PhoneShellActivity::class.java).apply {
+            putExtra(app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE, "sd/audio")
+        }
+        ActivityScenario.launch<PhoneShellActivity>(intent).use {
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodes(sourceDetailPaneMatcher(), useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+            composeRule.onNode(sourceDetailPaneMatcher(), useUnmergedTree = true).assertExists()
+            composeRule.onNode(audioHeadingMatcher()).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun launchWithMalformedRouteOpensHomeWithoutCrashing() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        val intent = android.content.Intent(context, PhoneShellActivity::class.java).apply {
+            putExtra(app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE, "garbage/invalid-route")
+        }
+        ActivityScenario.launch<PhoneShellActivity>(intent).use {
+            assertDeckWithoutSourceDetail()
+        }
+    }
+
     private fun assertDeckWithoutSourceDetail() {
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
         composeRule.onNodeWithTag("sourceDetailHomeTile", useUnmergedTree = true).assertDoesNotExist()

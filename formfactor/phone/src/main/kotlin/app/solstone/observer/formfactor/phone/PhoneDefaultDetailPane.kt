@@ -95,7 +95,7 @@ private fun PhoneDefaultDetailFailure(
 ) {
     PhoneDefaultStatusPane(modifier = modifier) {
         Text(
-            text = "status unavailable",
+            text = STATUS_UNAVAILABLE,
             modifier = Modifier.testTag("phoneDefaultDetailFailed"),
         )
         onRefreshStatus?.let { refresh ->

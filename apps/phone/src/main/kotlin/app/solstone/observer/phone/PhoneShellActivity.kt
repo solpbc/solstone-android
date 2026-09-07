@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRouteStack
 import app.solstone.observer.formfactor.phone.PhoneStatusSnapshot
@@ -114,9 +115,16 @@ class PhoneShellActivity : ComponentActivity() {
     }
 
     private fun captureSurfaceFromIntent(): CaptureSurface {
+        val extras = intent?.extras
+        val phoneRouteStack = extras?.getString(EXTRA_PHONE_ROUTE)
+            ?.let(::decodePhoneRoute)
+            ?.let(PhoneRouteStack.Empty::showInDetail)
+
         val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        if (!debuggable) return CaptureSurface.Home
-        val extras = intent?.extras ?: return CaptureSurface.Home
+        if (!debuggable) {
+            return CaptureSurface(stack = phoneRouteStack ?: PhoneRouteStack.Empty)
+        }
+        if (extras == null) return CaptureSurface.Home
         val shelfOpen = extras.getBoolean(EXTRA_CAPTURE_SHELF, false)
         val statusOpen = extras.getBoolean(EXTRA_CAPTURE_STATUS, false)
         val capturedStatusState = resolvePhoneStatusCapture(
@@ -127,9 +135,10 @@ class PhoneShellActivity : ComponentActivity() {
             raw = extras.getString(EXTRA_CAPTURE_WINDOW_WIDTH),
             debuggable = debuggable,
         )
-        val stack = extras.getString(EXTRA_CAPTURE_ROUTE)
-            ?.let(::decodePhoneRoute)
-            ?.let(PhoneRouteStack.Empty::showInDetail)
+        val stack = phoneRouteStack
+            ?: extras.getString(EXTRA_CAPTURE_ROUTE)
+                ?.let(::decodePhoneRoute)
+                ?.let(PhoneRouteStack.Empty::showInDetail)
             ?: PhoneRouteStack.Empty
         return CaptureSurface(
             stack = stack,

@@ -89,6 +89,8 @@ class HarnessController(
     var lastStartRefused: Boolean = false
         private set
 
+    var sourcesReader: SourcesReader? = null
+
     private var scanSessionHeld = false
     private var reconcileInFlight = false
     private var reconcileRerunRequested = false
@@ -164,6 +166,7 @@ class HarnessController(
         opportunisticSync?.stop()
         observerLifecycle.stop()
         desiredOn = false
+        lastStartRefused = false
     }
 
     fun reconcile(mode: ObserverStartMode) {
@@ -198,9 +201,23 @@ class HarnessController(
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
-        if (diagnostics().state == SourceState.ON) return
+        val hasTypeNotHeld = sourcesReader?.snapshot()?.sources?.any {
+            it.wish == SourceWish.On && it.reason == ReasonCode.FOREGROUND_TYPE_NOT_HELD
+        } == true
+        if (diagnostics().state == SourceState.ON && !hasTypeNotHeld) return
+
+        if (hasTypeNotHeld) {
+            if (visibleCaptureAuthority.isVisibleOwnerPresent()) {
+                observerLifecycle.restartCaptureForHeldTypes()
+            }
+            return
+        }
+
         val readiness = startReadiness(mode)
         if (!readiness.allowed) {
+            if (readiness.blockers.contains(ReasonCode.FOREGROUND_START_NOT_ALLOWED)) {
+                lastStartRefused = true
+            }
             emitDiag("reconcile mode=$mode result=blocked blockers=${readiness.blockers.map { it.name }.sorted().joinToString(",")}")
             return
         }
@@ -210,6 +227,7 @@ class HarnessController(
         } else {
             observerLifecycle.start()
         }
+        lastStartRefused = false
         opportunisticSync?.start()
     }
 

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+const val EXTRA_PHONE_ROUTE = "app.solstone.phone.route"
+
 sealed interface PhoneRoute : PhoneSurface {
     data object RouteA : PhoneRoute {
         override val paneTitle: String get() = "surface_route_a"

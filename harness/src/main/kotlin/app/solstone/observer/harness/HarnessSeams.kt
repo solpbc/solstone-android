@@ -8,6 +8,7 @@ import app.solstone.core.pl.RelayPairLink
 interface ObserverLifecycle {
     fun start()
     fun startWhenAlreadyForeground() = start()
+    fun restartCaptureForHeldTypes() { stop(); start() }
     fun stop()
 }
 

@@ -24,6 +24,7 @@ class HarnessFactsDisplayTest {
             ReasonCode.AUTH_REVOKED to "Needs attention: access was revoked - pair again",
             ReasonCode.TRANSPORT_UNAVAILABLE to "Needs attention: can't reach your journal",
             ReasonCode.FOREGROUND_START_NOT_ALLOWED to "Needs attention: open sol to resume observing",
+            ReasonCode.FOREGROUND_TYPE_NOT_HELD to "Needs attention: intake restart needed",
             ReasonCode.DESIRED_OFF to "Needs attention: observing is turned off",
         )
 

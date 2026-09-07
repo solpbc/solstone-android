@@ -38,4 +38,4 @@ Subset FGS at entry:
 - The service enters foreground with the bitwise OR of only the satisfiable types (`ServiceCompat.startForeground`); on API < 29, `ServiceCompat` drops the type mask.
 - If the satisfiable subset is empty, the service fails closed without calling `startForeground` and posts a needs-attention notification.
 - While the service runs, its held types are published in `ObserverForegroundService.heldCaptureForegroundTypes`.
-- Registered sources whose capture foreground type was not included at service entry report `FOREGROUND_START_NOT_ALLOWED` in diagnostics when enabled.
+- Registered sources whose capture foreground type was not included at service entry report `FOREGROUND_TYPE_NOT_HELD` in diagnostics when enabled.

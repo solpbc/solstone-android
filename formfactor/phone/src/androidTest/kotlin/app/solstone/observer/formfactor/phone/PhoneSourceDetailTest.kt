@@ -79,15 +79,28 @@ class PhoneSourceDetailTest {
 
     @Test
     fun retryAffordanceAppearsOnlyForServiceKilledAndRebooted() {
-        val retryLabel = sourceDetailRule(ReasonCode.SERVICE_KILLED).action!!.label
-        ReasonCode.values().forEach { reason ->
+        val expectedRetryable = setOf(
+            ReasonCode.SERVICE_KILLED,
+            ReasonCode.REBOOTED,
+            ReasonCode.FOREGROUND_TYPE_NOT_HELD,
+            ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+        )
+        ReasonCode.entries.forEach { reason ->
             render(loadState = loaded(source("audio", reason)))
+            val rule = sourceDetailRule(reason)
 
-            if (sourceDetailRule(reason).retryHonest) {
-                composeRule.onNodeWithText(retryLabel).assertIsDisplayed()
+            if (reason in expectedRetryable) {
+                assertTrue("expected retryHonest=true for $reason", rule.retryHonest)
+                val label = rule.action!!.label
+                composeRule.onNodeWithText(label).assertIsDisplayed()
                 composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled()
             } else {
-                composeRule.onNodeWithText(retryLabel).assertDoesNotExist()
+                org.junit.Assert.assertFalse("expected retryHonest=false for $reason", rule.retryHonest)
+                if (rule.action == null) {
+                    composeRule.onNodeWithTag(ACTION_TEST_TAG).assertDoesNotExist()
+                } else {
+                    composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsNotEnabled()
+                }
             }
         }
     }

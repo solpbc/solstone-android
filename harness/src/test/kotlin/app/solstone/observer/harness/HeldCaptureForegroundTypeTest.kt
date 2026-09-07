@@ -68,7 +68,7 @@ class HeldCaptureForegroundTypeTest {
     }
 
     @Test
-    fun sourceNeedsAttentionForegroundStartNotAllowedWhenSourceTypeNotInHeldSetAndPermissionGranted() {
+    fun sourceNeedsAttentionForegroundTypeNotHeldWhenSourceTypeNotInHeldSetAndPermissionGranted() {
         ObserverForegroundService.heldCaptureForegroundTypes = setOf(CaptureForegroundType.MICROPHONE)
         val f = fixture(snapshot = testSnapshot())
         f.desiredStore.setDesiredOn(true)
@@ -88,7 +88,7 @@ class HeldCaptureForegroundTypeTest {
         val sources = registry.snapshot().sources
         val locationRow = sources.first { it.sourceId == "location" }
         assertEquals(SourceState.NEEDS_ATTENTION, locationRow.state)
-        assertEquals(ReasonCode.FOREGROUND_START_NOT_ALLOWED, locationRow.reason)
+        assertEquals(ReasonCode.FOREGROUND_TYPE_NOT_HELD, locationRow.reason)
     }
 
     @Test

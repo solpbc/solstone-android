@@ -36,6 +36,7 @@ class ObserverForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val hook = rehydrator
         val widgetSourceId = widgetSourceId(intent)
+        val isIntakeStart = intent?.getBooleanExtra(EXTRA_INTAKE_START, false) == true
         val liveHeldTypes = heldCaptureForegroundTypes
         if (liveHeldTypes != null) {
             val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null, subsetEmpty = false)
@@ -49,6 +50,9 @@ class ObserverForegroundService : Service() {
                 dispatchRehydrate(hook)
             }
             widgetSourceId?.let(::dispatchWidgetStartAccepted)
+            if (isIntakeStart && widgetSourceId == null) {
+                intakeStartHandler?.invoke()
+            }
             if (plan.postAttentionOn102) {
                 postAttentionNotification(this)
             }
@@ -123,6 +127,9 @@ class ObserverForegroundService : Service() {
             dispatchRehydrate(hook)
         }
         widgetSourceId?.let(::dispatchWidgetStartAccepted)
+        if (isIntakeStart && widgetSourceId == null) {
+            intakeStartHandler?.invoke()
+        }
         if (plan.postAttentionOn102) {
             postAttentionNotification(this)
         }
@@ -138,6 +145,7 @@ class ObserverForegroundService : Service() {
         heldCaptureForegroundTypes = null
         handler.removeCallbacks(heartbeat)
         invalidateHeartbeat()
+        onDestroyCallback?.invoke()
         super.onDestroy()
     }
 
@@ -164,6 +172,7 @@ class ObserverForegroundService : Service() {
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
         @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
+        @Volatile var onDestroyCallback: (() -> Unit)? = null
 
         fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
             hook?.onForegroundServiceStarted()
@@ -246,7 +255,16 @@ class ObserverForegroundService : Service() {
             return mask
         }
 
+        const val EXTRA_INTAKE_START = "app.solstone.platform.fgs.extra.INTAKE_START"
+
+        fun intakeStartIntent(context: Context): Intent =
+            Intent(context, ObserverForegroundService::class.java).putExtra(EXTRA_INTAKE_START, true)
+
+        @Volatile
+        var intakeStartHandler: (() -> Unit)? = null
+
         fun refreshOngoingNotification(context: Context, needsAttention: Boolean) {
+            if (heldCaptureForegroundTypes == null) return
             if (!ObserverNotification.notificationsPermitted(context)) {
                 dispatchLifecycle("fgs notif suppressed permission=denied")
                 return
@@ -317,7 +335,7 @@ class ObserverForegroundService : Service() {
         private fun widgetSourceId(intent: Intent?): String? =
             intent?.getStringExtra(EXTRA_WIDGET_SOURCE_ID)?.takeIf(String::isNotBlank)
 
-        private const val EXTRA_WIDGET_SOURCE_ID = "app.solstone.platform.fgs.extra.WIDGET_SOURCE_ID"
+        const val EXTRA_WIDGET_SOURCE_ID = "app.solstone.platform.fgs.extra.WIDGET_SOURCE_ID"
     }
 
     private fun removeForegroundNotification() {

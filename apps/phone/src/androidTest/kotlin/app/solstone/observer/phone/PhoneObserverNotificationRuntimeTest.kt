@@ -13,6 +13,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
+import app.solstone.observer.formfactor.phone.PhoneRoute
+import app.solstone.observer.formfactor.phone.decodePhoneRoute
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
 import app.solstone.observer.formfactor.phone.statusPillText
 import app.solstone.observer.harness.HarnessBacklogStatus
@@ -25,6 +28,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -139,6 +143,87 @@ class PhoneObserverNotificationRuntimeTest {
             assertFalse(title.contains(syncText))
         } finally {
             PhoneStatusSupplier.override = null
+        }
+    }
+
+    @Test
+    fun startActionTargetsForegroundServiceWithIntakeStartAndNoSourceId() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        container.sources.setWish("audio", SourceWish.On)
+
+        val notification = ObserverNotification.ongoing(context, decorate = true)
+        val startAction = notification.actions.orEmpty().firstOrNull(::isStartAction)
+        assertNotNull(startAction)
+        val intent = actionIntent(startAction!!)
+        if (intent != null) {
+            assertTrue(intent.getBooleanExtra(ObserverForegroundService.EXTRA_INTAKE_START, false))
+            assertFalse(intent.hasExtra(ObserverForegroundService.EXTRA_WIDGET_SOURCE_ID))
+        }
+    }
+
+    @Test
+    fun startActionOmittedWhenNoSourcesWishOn() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        container.sources.snapshot().sources.forEach {
+            container.sources.setWish(it.sourceId, SourceWish.Off)
+        }
+        val notification = ObserverNotification.ongoing(context, decorate = true)
+        val actions = notification.actions.orEmpty()
+        assertFalse(actions.any(::isStartAction))
+    }
+
+    @Test
+    fun notification101NotPostedWhenFgsDownEvenWithDesiredOn() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel(ObserverNotification.SERVICE_NOTIFICATION_ID)
+        ObserverForegroundService.heldCaptureForegroundTypes = null
+
+        ObserverForegroundService.refreshOngoingNotification(context, needsAttention = false)
+        val serviceNotif = manager.activeNotifications.firstOrNull { it.id == ObserverNotification.SERVICE_NOTIFICATION_ID }
+        assertNull(serviceNotif)
+    }
+
+    @Test
+    fun stoppedNotification102NotPostedWhenAudioStopsWhileAnotherSourceIsOn() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
+
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        container.sources.setWish("audio", SourceWish.On)
+        container.sources.setWish("location", SourceWish.On)
+
+        // Turn only audio off
+        application.turnAudioOffFromWidget()
+
+        val attentionNotif = manager.activeNotifications.firstOrNull { it.id == ObserverNotification.BOOT_NOTIFICATION_ID }
+        assertNull(attentionNotif)
+    }
+
+    @Test
+    fun contentIntentCarriesExpectedRouteExtraForAttentionSource() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        container.sources.setWish("location", SourceWish.On)
+        container.controller.recordStartRefusal()
+
+        val notification = ObserverNotification.ongoing(context, decorate = true)
+        val contentIntent = notification.contentIntent
+        assertNotNull(contentIntent)
+        val intent = runCatching {
+            val method = contentIntent.javaClass.getDeclaredMethod("getIntent")
+            method.isAccessible = true
+            method.invoke(contentIntent) as? Intent
+        }.getOrNull()
+        if (intent != null) {
+            val routeExtra = intent.getStringExtra(EXTRA_PHONE_ROUTE)
+            assertNotNull(routeExtra)
+            assertTrue(routeExtra!!.startsWith("sd/"))
+            assertEquals(PhoneRoute.SourceDetail("location"), decodePhoneRoute(routeExtra))
+        } else {
+            assertEquals(PhoneRoute.SourceDetail("location"), application.intakeModel().route)
         }
     }
 

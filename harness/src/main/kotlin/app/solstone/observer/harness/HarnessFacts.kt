@@ -80,6 +80,7 @@ private fun ReasonCode.text(): String? =
         ReasonCode.AUTH_REVOKED -> "access was revoked - pair again"
         ReasonCode.TRANSPORT_UNAVAILABLE -> "can't reach your journal"
         ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "open sol to resume observing"
+        ReasonCode.FOREGROUND_TYPE_NOT_HELD -> "intake restart needed"
         ReasonCode.DESIRED_OFF -> "observing is turned off"
     }
 
