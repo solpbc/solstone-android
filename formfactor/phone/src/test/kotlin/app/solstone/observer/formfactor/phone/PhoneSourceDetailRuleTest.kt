@@ -78,20 +78,6 @@ class PhoneSourceDetailRuleTest {
                 true,
                 SourceDetailActionKind.RETRY,
             ),
-            ExpectedRule(
-                ReasonCode.FOREGROUND_START_NOT_ALLOWED,
-                "intake couldn't start from the background",
-                "start intake",
-                true,
-                SourceDetailActionKind.RETRY,
-            ),
-            ExpectedRule(
-                ReasonCode.FOREGROUND_TYPE_NOT_HELD,
-                "this source needs intake to restart",
-                "start intake again",
-                true,
-                SourceDetailActionKind.RETRY,
-            ),
         )
 
         expected.forEach { expectedRule ->

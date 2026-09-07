@@ -96,7 +96,7 @@ class ObserverAppContainer(
         runPass = journalCacheService::runPass,
     )
 
-    private var activePipeline: CapturePipeline? = null
+    @Volatile private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
     private var lastPostedSignature: String? = null
     @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
@@ -130,6 +130,7 @@ class ObserverAppContainer(
         isDesiredOn = { controller.desiredOn },
         isVisibleOwnerPresent = { captureAuthority.isVisibleOwnerPresent() },
         asyncExecutor = { task -> background.execute(task) },
+        onRestartFinished = { backgroundStatusRefreshListener?.invoke() },
     )
 
     override val flavor: SharedObserverFlavor = buildObserverFlavor(
@@ -295,14 +296,19 @@ internal class IdempotentPipelineLifecycle<T>(
     isDesiredOn: () -> Boolean = { false },
     isVisibleOwnerPresent: () -> Boolean = { false },
     private val asyncExecutor: (Runnable) -> Unit = { it.run() },
+    private val onRestartFinished: () -> Unit = {},
 ) : ObserverLifecycle {
+    private val lifecycleLock = Any()
+    private val restartQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private var active: T? = null
     private val sequencer = CaptureRestartSequencer(
         stopPipeline = {
-            active?.let { pipeline ->
-                stopPipeline(pipeline)
-                active = null
-                onActiveChanged(null)
+            synchronized(lifecycleLock) {
+                active?.let { pipeline ->
+                    stopPipeline(pipeline)
+                    active = null
+                    onActiveChanged(null)
+                }
             }
         },
         stopForeground = stopForeground,
@@ -318,51 +324,64 @@ internal class IdempotentPipelineLifecycle<T>(
     )
 
     override fun restartCaptureForHeldTypes() {
-        asyncExecutor {
-            sequencer.requestRestart()
+        if (!restartQueued.compareAndSet(false, true)) return
+        try {
+            asyncExecutor {
+                try {
+                    sequencer.requestRestart()
+                } finally {
+                    restartQueued.set(false)
+                    onRestartFinished()
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            restartQueued.set(false)
+            throw error
         }
     }
 
-    override fun start() = start(
-        startForeground = startForeground,
-        onDeferred = onStartDeferred,
-    )
+    override fun start() {
+        if (!restartQueued.get()) start(startForeground, onStartDeferred)
+    }
 
-    override fun startWhenAlreadyForeground() = start(
-        startForeground = null,
-        onDeferred = onAlreadyForegroundStartDeferred,
-    )
+    override fun startWhenAlreadyForeground() {
+        if (!restartQueued.get()) start(null, onAlreadyForegroundStartDeferred)
+    }
 
     private fun start(
         startForeground: (() -> Unit)?,
         onDeferred: () -> Unit,
     ) {
-        if (!canStart()) {
-            onDeferred()
-            return
+        synchronized(lifecycleLock) {
+            if (!canStart()) {
+                onDeferred()
+                return
+            }
+            startForeground?.invoke()
+            val current = active
+            if (current != null && isRunning(current)) return
+            if (current != null) {
+                stopPipeline(current)
+                active = null
+                onActiveChanged(null)
+            }
+            val pipeline = buildPipeline()
+            active = pipeline
+            onActiveChanged(pipeline)
+            startPipeline(pipeline)
         }
-        startForeground?.invoke()
-        val current = active
-        if (current != null && isRunning(current)) return
-        if (current != null) {
-            stopPipeline(current)
-            active = null
-            onActiveChanged(null)
-        }
-        val pipeline = buildPipeline()
-        active = pipeline
-        onActiveChanged(pipeline)
-        startPipeline(pipeline)
     }
 
     override fun stop() {
         sequencer.onOwnerStop()
-        active?.let { pipeline ->
-            stopPipeline(pipeline)
-            active = null
-            onActiveChanged(null)
+        synchronized(lifecycleLock) {
+            active?.let { pipeline ->
+                stopPipeline(pipeline)
+                active = null
+                onActiveChanged(null)
+            }
+            onStartCancelled()
+            stopForeground()
         }
-        onStartCancelled()
-        stopForeground()
     }
 }

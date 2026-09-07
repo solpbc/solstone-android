@@ -78,7 +78,7 @@ class PhoneSourceDetailTest {
     }
 
     @Test
-    fun retryAffordanceAppearsOnlyForServiceKilledAndRebooted() {
+    fun recoveryAffordanceMatchesTheFaultClass() {
         val expectedRetryable = setOf(
             ReasonCode.SERVICE_KILLED,
             ReasonCode.REBOOTED,
@@ -98,6 +98,8 @@ class PhoneSourceDetailTest {
                 org.junit.Assert.assertFalse("expected retryHonest=false for $reason", rule.retryHonest)
                 if (rule.action == null) {
                     composeRule.onNodeWithTag(ACTION_TEST_TAG).assertDoesNotExist()
+                } else if (reason == ReasonCode.UNPAIRED) {
+                    composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsEnabled()
                 } else {
                     composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsNotEnabled()
                 }

@@ -74,8 +74,7 @@ class PhoneObserverNotificationRuntimeTest {
         val undecoratedActions = undecoratedNotification.actions.orEmpty()
         assertFalse(undecoratedActions.any(::isStopAction))
 
-        // Start action is offered when not running and targets the foreground service
-        assertTrue(liveActions.any(::isStartAction) || stoppedActions.any(::isStartAction))
+        // Start availability is tested separately against known enabled-source wishes.
     }
 
     @Test
@@ -132,7 +131,8 @@ class PhoneObserverNotificationRuntimeTest {
         }
 
         try {
-            val model = application.widgetModel()
+            application.refreshWidgetModel(container)
+            val model = application.intakeModel()
             val notification = ObserverNotification.ongoing(context, decorate = true)
 
             val title = notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
@@ -151,6 +151,7 @@ class PhoneObserverNotificationRuntimeTest {
         val container = obtainObserverContainer()
         assertTrue(waitForRecovery(container))
         container.sources.setWish("audio", SourceWish.On)
+        application.refreshWidgetModel(container)
 
         val notification = ObserverNotification.ongoing(context, decorate = true)
         val startAction = notification.actions.orEmpty().firstOrNull(::isStartAction)
@@ -169,6 +170,7 @@ class PhoneObserverNotificationRuntimeTest {
         container.sources.snapshot().sources.forEach {
             container.sources.setWish(it.sourceId, SourceWish.Off)
         }
+        application.refreshWidgetModel(container)
         val notification = ObserverNotification.ongoing(context, decorate = true)
         val actions = notification.actions.orEmpty()
         assertFalse(actions.any(::isStartAction))
@@ -207,7 +209,10 @@ class PhoneObserverNotificationRuntimeTest {
         val container = obtainObserverContainer()
         assertTrue(waitForRecovery(container))
         container.sources.setWish("location", SourceWish.On)
-        container.controller.recordStartRefusal()
+        container.sources.setWish("audio", SourceWish.Off)
+        container.controller.ensureObserving()
+        assertTrue(container.controller.lastStartRefused)
+        application.refreshWidgetModel(container)
 
         val notification = ObserverNotification.ongoing(context, decorate = true)
         val contentIntent = notification.contentIntent

@@ -24,12 +24,10 @@ import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHa
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
 import app.solstone.platform.fgs.shouldOfferStartAction
-import app.solstone.platform.fgs.shouldNotifyCaptureStopped
 
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneIntakeNotificationModel
 import app.solstone.observer.formfactor.phone.PhoneRoute
-import app.solstone.observer.formfactor.phone.STATUS_UNAVAILABLE
 import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotification
 import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotificationCatching
 import app.solstone.observer.formfactor.phone.encodePhoneRoute
@@ -43,7 +41,8 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         fgsLive = false,
         desiredOn = false,
     )
-    @Volatile private var lastIntakeStateWord: String? = null
+    @Volatile private var inactiveNotificationRequested = false
+    @Volatile internal var sourceReadOverride: ((ObserverRuntimeContainer?) -> SourcesReadModel?)? = null
 
     override fun onCreate() {
         PhoneDiagLog.install(applicationContext.filesDir)
@@ -62,6 +61,10 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         )
         @Suppress("DEPRECATION")
         ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, stopPendingIntent).build()
+        ObserverForegroundService.onForegroundChanged = { live ->
+            inactiveNotificationRequested = !live
+            refreshWidgetAndUpdate()
+        }
         ObserverForegroundService.intakeStartHandler = {
             runtime.containerIfInitialized?.controller?.startWhenAlreadyForeground()
         }
@@ -103,6 +106,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     }
 
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
+        inactiveNotificationRequested = false
         if (widgetStartOutcomes.read() is PhoneWidgetStartOutcome.Refused) {
             container.controller.recordStartRefusal()
         }
@@ -111,46 +115,47 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             widgetCoordinator.updateAll()
         }
         container.sources.subscribe {
-            val audio = container.sources.snapshot().sources.singleOrNull {
-                it.sourceId == PHONE_WIDGET_AUDIO_SOURCE_ID
-            }
-            if (audio?.state == SourceState.ON) {
-                widgetStartOutcomes.clear()
-            }
             refreshWidgetAndUpdate()
         }
         refreshWidgetAndUpdate()
     }
 
     private fun refreshWidgetAndUpdate() {
-        widgetCoordinator.refreshAndUpdateAll(::refreshWidgetModel)
+        widgetCoordinator.refreshAndUpdateAll { refreshWidgetModel() }
     }
 
-    private fun refreshWidgetModel(container: ObserverRuntimeContainer? = runtime.containerIfInitialized) {
+    @Synchronized
+    internal fun refreshWidgetModel(
+        container: ObserverRuntimeContainer? = runtime.containerIfInitialized,
+        readSources: () -> SourcesReadModel? = {
+            val override = sourceReadOverride
+            if (override != null) override(container) else container?.sources?.snapshot()
+        },
+    ) {
         val desiredOn = container?.controller?.desiredOn ?: false
         val fgsLive = ObserverForegroundService.heldCaptureForegroundTypes != null
-        val previousStateWord = lastIntakeStateWord
         var readModel: SourcesReadModel? = null
         cachedIntakeModel = derivePhoneIntakeNotificationCatching(
             supplier = {
-                container?.sources?.snapshot().also { readModel = it }
+                readSources().also { readModel = it }
             },
             fgsLive = fgsLive,
             desiredOn = desiredOn,
         )
-        val currentStateWord = cachedIntakeModel.stateWord
-        lastIntakeStateWord = currentStateWord
-
         val hasEnabledSources = readModel?.sources?.any { it.wish == SourceWish.On } == true
-        if (shouldNotifyCaptureStopped(previousStateWord, currentStateWord)) {
-            ObserverNotification.startAction = startCaptureAction(
-                applicationContext,
-                isRunning = false,
-                hasEnabledSources = hasEnabledSources,
-            )
-            ObserverForegroundService.postStoppedNotification(applicationContext)
-        } else if (currentStateWord == "on") {
-            ObserverForegroundService.cancelAttentionNotification(applicationContext)
+        if (readModel?.sources?.any { it.sourceId == PHONE_WIDGET_AUDIO_SOURCE_ID && it.state == SourceState.ON } == true) {
+            widgetStartOutcomes.clear()
+        }
+        ObserverNotification.startAction = startCaptureAction(applicationContext, fgsLive, hasEnabledSources)
+        // Publish the prepared result even when the source read failed. Neither a
+        // second source read nor the journal status read may suppress this update.
+        if (fgsLive) {
+            ObserverForegroundService.refreshOngoingNotification(applicationContext, cachedIntakeModel.stateWord == "needs attention")
+        } else if (inactiveNotificationRequested) {
+            if (desiredOn) ObserverForegroundService.postAttentionNotification(applicationContext)
+            else ObserverForegroundService.postStoppedNotification(applicationContext)
+        } else {
+            ObserverForegroundService.refreshInactiveNotification(applicationContext, stopped = !desiredOn)
         }
 
         val statusModel = container?.let { initialized ->
@@ -165,11 +170,6 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             readModel = readModel,
             statusModel = statusModel,
             startOutcome = widgetStartOutcomes.read(),
-        )
-        ObserverNotification.startAction = startCaptureAction(
-            applicationContext,
-            isRunning = fgsLive,
-            hasEnabledSources = hasEnabledSources,
         )
     }
 

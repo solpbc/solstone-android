@@ -73,6 +73,7 @@ class HarnessControllerReconcileTypeMissingTest {
         assertEquals(ReasonCode.FOREGROUND_TYPE_NOT_HELD, locationRow.reason)
         assertEquals(SourceState.ON, f.controller.diagnostics().state)
 
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
         assertEquals(0, f.lifecycle.restarts)
         f.controller.reconcile(ObserverStartMode.VisibleStart)
         assertEquals(1, f.lifecycle.restarts)

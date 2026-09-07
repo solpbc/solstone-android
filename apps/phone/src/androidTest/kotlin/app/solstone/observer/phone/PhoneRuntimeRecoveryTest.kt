@@ -7,12 +7,14 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.observer.formfactor.phone.STATUS_UNAVAILABLE
 import app.solstone.observer.formfactor.phone.resolveSourceDetailReason
 import app.solstone.observer.formfactor.phone.sourceDetailRule
 import app.solstone.observer.harness.SourceWish
@@ -21,7 +23,6 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverNotification
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -40,41 +41,49 @@ class PhoneRuntimeRecoveryTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    private var declaredTypes: Set<CaptureForegroundType>? = null
+
     @Before
     fun setUp() {
         resetObserverRuntime()
+        waitUntil("prior service destruction") { ObserverForegroundService.heldCaptureForegroundTypes == null }
         resetPersistence(context)
+        context.getSystemService(NotificationManager::class.java).cancelAll()
+        declaredTypes = ObserverForegroundService.declaredCaptureForegroundTypes
     }
 
     @After
     fun tearDown() {
-        ObserverForegroundService.heldCaptureForegroundTypes = null
+        ObserverForegroundService.declaredCaptureForegroundTypes = declaredTypes
         resetObserverRuntime()
+        waitUntil("service destruction") { ObserverForegroundService.heldCaptureForegroundTypes == null }
     }
 
     @Test
     fun visibleTypeMissingRecoveryExercisesRestartAndPreservesWishes() {
-        ObserverForegroundService.heldCaptureForegroundTypes = setOf(CaptureForegroundType.MICROPHONE)
-        val container = obtainObserverContainer()
-        assertTrue(waitForRecovery(container))
-
-        container.sources.setWish("audio", SourceWish.On)
-        container.sources.setWish("location", SourceWish.On)
-
-        val beforeSnapshot = container.sources.snapshot()
-        val locBefore = beforeSnapshot.sources.single { it.sourceId == "location" }
-        assertEquals(SourceState.NEEDS_ATTENTION, locBefore.state)
-        assertEquals(ReasonCode.FOREGROUND_TYPE_NOT_HELD, locBefore.reason)
-
+        // Start a real microphone-only foreground entry, then make location eligible.
+        ObserverForegroundService.declaredCaptureForegroundTypes = setOf(CaptureForegroundType.MICROPHONE)
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
+            val container = obtainObserverContainer()
+            assertTrue(waitForRecovery(container))
+            container.sources.setWish("audio", SourceWish.On)
+            container.sources.setWish("location", SourceWish.Off)
+            container.controller.start()
+            waitUntil("microphone foreground entry") {
+                ObserverForegroundService.heldCaptureForegroundTypes == setOf(CaptureForegroundType.MICROPHONE)
+            }
+            ObserverForegroundService.declaredCaptureForegroundTypes = declaredTypes
+            container.sources.setWish("location", SourceWish.On)
+            assertEquals(ReasonCode.FOREGROUND_TYPE_NOT_HELD,
+                container.sources.snapshot().sources.single { it.sourceId == "location" }.reason)
             container.controller.ensureObserving()
-
-            val afterSnapshot = container.sources.snapshot()
-            val locAfter = afterSnapshot.sources.single { it.sourceId == "location" }
-            val audioAfter = afterSnapshot.sources.single { it.sourceId == "audio" }
-
-            assertEquals(SourceWish.On, locAfter.wish)
-            assertEquals(SourceWish.On, audioAfter.wish)
+            waitUntil("fresh foreground entry with location") {
+                ObserverForegroundService.heldCaptureForegroundTypes?.contains(CaptureForegroundType.LOCATION) == true &&
+                    container.sources.snapshot().sources.single { it.sourceId == "location" }.state == SourceState.ON
+            }
+            val rows = container.sources.snapshot().sources
+            assertEquals(SourceWish.On, rows.single { it.sourceId == "location" }.wish)
+            assertEquals(SourceWish.On, rows.single { it.sourceId == "audio" }.wish)
         }
     }
 
@@ -103,29 +112,49 @@ class PhoneRuntimeRecoveryTest {
 
     @Test
     fun nonAudioAttentionUpdatesPosted101ContentWhileAudioOn() {
-        ObserverForegroundService.heldCaptureForegroundTypes = setOf(CaptureForegroundType.MICROPHONE)
+        ObserverForegroundService.declaredCaptureForegroundTypes = setOf(CaptureForegroundType.MICROPHONE)
+        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+            val container = obtainObserverContainer()
+            assertTrue(waitForRecovery(container))
+            container.sources.setWish("audio", SourceWish.On)
+            container.sources.setWish("location", SourceWish.Off)
+            container.controller.start()
+            waitUntil("posted on notification") { postedText() == ObserverNotification.TEXT_ON }
+            scenario.moveToState(Lifecycle.State.CREATED)
+            container.sources.setWish("location", SourceWish.On)
+            waitUntil("automatically posted non-audio attention") {
+                postedText() == ObserverNotification.TEXT_NEEDS_ATTENTION
+            }
+            assertEquals(SourceState.ON, container.sources.snapshot().sources.single { it.sourceId == "audio" }.state)
+            assertTrue(container.controller.desiredOn)
+        }
+    }
+
+    @Test
+    fun failedSourceRefreshReplacesPreviouslyPostedOn() {
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             val container = obtainObserverContainer()
             assertTrue(waitForRecovery(container))
-
-            container.controller.start()
-            assertTrue(container.controller.desiredOn)
-
             container.sources.setWish("audio", SourceWish.On)
-            container.sources.setWish("location", SourceWish.On)
-
-            val snapshot = container.sources.snapshot()
-            val locRow = snapshot.sources.single { it.sourceId == "location" }
-            assertEquals(SourceState.NEEDS_ATTENTION, locRow.state)
-
-            container.refreshServiceNotification()
-
-            val manager = context.getSystemService(NotificationManager::class.java)
-            val notification101 = manager.activeNotifications.singleOrNull { it.id == ObserverNotification.SERVICE_NOTIFICATION_ID }
-            assertNotNull(notification101)
-
-            val text = notification101!!.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-            assertEquals(ObserverNotification.TEXT_NEEDS_ATTENTION, text)
+            container.sources.setWish("location", SourceWish.Off)
+            container.controller.start()
+            waitUntil("posted on notification") { postedText() == ObserverNotification.TEXT_ON }
+            val application = context as PhoneApplication
+            // Hold the underlying read in failure across every background refresh.
+            // A one-shot failure can legitimately recover before the queued notify executes.
+            application.sourceReadOverride = { error("source read failed") }
+            try {
+                application.refreshWidgetModel(container)
+                waitUntil("published unavailable state") { postedText() == STATUS_UNAVAILABLE }
+            } finally {
+                application.sourceReadOverride = null
+            }
+            application.refreshWidgetModel(container)
+            waitUntil("published recovered state") { postedText() == ObserverNotification.TEXT_ON }
         }
     }
+
+    private fun postedText(): String? = context.getSystemService(NotificationManager::class.java)
+        .activeNotifications.singleOrNull { it.id == ObserverNotification.SERVICE_NOTIFICATION_ID }
+        ?.notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()
 }

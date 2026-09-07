@@ -16,6 +16,15 @@ import kotlin.test.assertNull
 class PhoneIntakeNotificationModelTest {
 
     @Test
+    fun serviceFailureOutranksPausedAndUnconfirmedSources() {
+        for (state in listOf(SourceState.ON, SourceState.PAUSED, SourceState.SETTING_UP)) {
+            val snapshot = readModel(listOf(SourceStatus("audio", SourceWish.On, state, ReasonCode.NONE)))
+                .copy(observer = ObserverStatus(SourceState.NEEDS_ATTENTION, ReasonCode.SERVICE_KILLED))
+            assertEquals("needs attention", derivePhoneIntakeNotification(snapshot, false, true).stateWord)
+        }
+    }
+
+    @Test
     fun nullSnapshotReturnsStatusUnavailable() {
         val model = derivePhoneIntakeNotification(snapshot = null, fgsLive = true, desiredOn = true)
         assertEquals(STATUS_UNAVAILABLE, model.stateWord)

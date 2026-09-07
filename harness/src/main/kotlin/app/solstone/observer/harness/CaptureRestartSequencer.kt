@@ -3,8 +3,6 @@
 
 package app.solstone.observer.harness
 
-import java.util.concurrent.atomic.AtomicLong
-
 fun interface ServiceDestroyWaitSeam {
     fun awaitDestroy(timeoutMs: Long): Boolean
 }
@@ -18,30 +16,33 @@ class CaptureRestartSequencer(
     private val isVisibleOwnerPresent: () -> Boolean,
     private val timeoutMs: Long = 5_000L,
 ) {
-    private val generation = AtomicLong(0L)
+    private val lock = Any()
+    private var generation = 0L
 
     fun onOwnerStop() {
-        generation.incrementAndGet()
+        synchronized(lock) { generation++ }
     }
 
     fun requestRestart(): Boolean {
-        if (!isDesiredOn() || !isVisibleOwnerPresent()) {
-            return false
+        val gen = synchronized(lock) {
+            if (!isDesiredOn() || !isVisibleOwnerPresent()) return false
+            val requested = ++generation
+            stopPipeline()
+            stopForeground()
+            requested
         }
-        val gen = generation.incrementAndGet()
-        stopPipeline()
-        stopForeground()
 
         val destroyed = destroySeam.awaitDestroy(timeoutMs)
         if (!destroyed) {
             return false
         }
 
-        if (generation.get() != gen || !isDesiredOn()) {
-            return false
+        return synchronized(lock) {
+            if (generation != gen || !isDesiredOn() || !isVisibleOwnerPresent()) return false
+            // An owner stop either cancels this start or runs after it and stops the
+            // resulting pipeline. It cannot return while this callback can still start it.
+            startServiceAndPipeline()
+            true
         }
-
-        startServiceAndPipeline()
-        return true
     }
 }

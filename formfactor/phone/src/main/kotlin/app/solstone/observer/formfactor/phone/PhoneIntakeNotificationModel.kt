@@ -50,6 +50,14 @@ fun derivePhoneIntakeNotification(
         )
     }
 
+    if (snapshot.observer.reason in setOf(
+            ReasonCode.SERVICE_KILLED,
+            ReasonCode.REBOOTED,
+            ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+        )) {
+        return PhoneIntakeNotificationModel("needs attention", null)
+    }
+
     if (enabledSources.any { it.state == SourceState.SETTING_UP }) {
         return PhoneIntakeNotificationModel(
             stateWord = "setting up",

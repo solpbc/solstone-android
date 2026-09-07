@@ -97,10 +97,12 @@ class ObserverForegroundService : Service() {
                     needsAttention = plan.initialNeedsAttention,
                     decorate = true,
                     requestPromotion = true,
+                    initialForegroundEntry = true,
                 ),
                 captureForegroundTypeMask(subset),
             )
             heldCaptureForegroundTypes = subset
+            dispatchForegroundChanged(true)
         } catch (e: SecurityException) {
             handleStartFailure(this, e.javaClass.simpleName)
             widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
@@ -145,6 +147,7 @@ class ObserverForegroundService : Service() {
         heldCaptureForegroundTypes = null
         handler.removeCallbacks(heartbeat)
         invalidateHeartbeat()
+        dispatchForegroundChanged(false)
         onDestroyCallback?.invoke()
         super.onDestroy()
     }
@@ -173,6 +176,7 @@ class ObserverForegroundService : Service() {
         @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
         @Volatile var onDestroyCallback: (() -> Unit)? = null
+        @Volatile var onForegroundChanged: ((Boolean) -> Unit)? = null
 
         fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
             hook?.onForegroundServiceStarted()
@@ -263,59 +267,62 @@ class ObserverForegroundService : Service() {
         @Volatile
         var intakeStartHandler: (() -> Unit)? = null
 
-        fun refreshOngoingNotification(context: Context, needsAttention: Boolean) {
-            if (heldCaptureForegroundTypes == null) return
-            if (!ObserverNotification.notificationsPermitted(context)) {
-                dispatchLifecycle("fgs notif suppressed permission=denied")
-                return
+        private fun dispatchForegroundChanged(live: Boolean) {
+            runCatching { onForegroundChanged?.invoke(live) }.onFailure {
+                dispatchLifecycle("fgs notification refresh failed=${it.javaClass.simpleName}")
             }
-            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        }
+
+        private fun onNotificationThread(action: () -> Unit) {
+            if (Looper.myLooper() == Looper.getMainLooper()) action()
+            else Handler(Looper.getMainLooper()).post { action() }
+        }
+
+        fun refreshOngoingNotification(context: Context, needsAttention: Boolean) = onNotificationThread {
+            // The check and notify share the service lifecycle's main thread. A queued
+            // refresh cannot pass the check, race onDestroy, then resurrect notification 101.
+            if (heldCaptureForegroundTypes == null || !ObserverNotification.notificationsPermitted(context)) {
+                return@onNotificationThread
+            }
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return@onNotificationThread
             manager.notify(
                 ObserverNotification.SERVICE_NOTIFICATION_ID,
-                ObserverNotification.ongoing(
-                    context,
-                    needsAttention = needsAttention,
-                    decorate = true,
-                    requestPromotion = true,
-                ),
+                ObserverNotification.ongoing(context, needsAttention = needsAttention, decorate = true, requestPromotion = true),
             )
-        }
-
-        fun postAttentionNotification(context: Context) {
-            if (!ObserverNotification.notificationsPermitted(context)) {
-                dispatchLifecycle("fgs attention notif suppressed permission=denied")
-                return
-            }
-            val manager = context.getSystemService(NotificationManager::class.java) ?: return
-            manager.notify(
-                ObserverNotification.BOOT_NOTIFICATION_ID,
-                ObserverNotification.ongoing(
-                    context,
-                    needsAttention = true,
-                    contentIntent = launchPendingIntent(context),
-                ),
-            )
-        }
-
-        fun postStoppedNotification(context: Context) {
-            if (!ObserverNotification.notificationsPermitted(context)) {
-                dispatchLifecycle("fgs stopped notif suppressed permission=denied")
-                return
-            }
-            val manager = context.getSystemService(NotificationManager::class.java) ?: return
-            manager.notify(
-                ObserverNotification.BOOT_NOTIFICATION_ID,
-                ObserverNotification.ongoing(
-                    context,
-                    stopped = true,
-                    contentIntent = launchPendingIntent(context),
-                ),
-            )
-        }
-
-        fun cancelAttentionNotification(context: Context) {
-            val manager = context.getSystemService(NotificationManager::class.java) ?: return
             manager.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
+        }
+
+        fun postAttentionNotification(context: Context) = postInactiveNotification(context, stopped = false)
+
+        fun postStoppedNotification(context: Context) = postInactiveNotification(context, stopped = true)
+
+        fun refreshInactiveNotification(context: Context, stopped: Boolean) =
+            postInactiveNotification(context, stopped, onlyIfPresent = true)
+
+        private fun postInactiveNotification(context: Context, stopped: Boolean, onlyIfPresent: Boolean = false) =
+            onNotificationThread {
+                if (heldCaptureForegroundTypes != null || !ObserverNotification.notificationsPermitted(context)) {
+                    return@onNotificationThread
+                }
+                val manager = context.getSystemService(NotificationManager::class.java) ?: return@onNotificationThread
+                if (onlyIfPresent && manager.activeNotifications.none { it.id == ObserverNotification.BOOT_NOTIFICATION_ID }) {
+                    return@onNotificationThread
+                }
+                manager.notify(
+                    ObserverNotification.BOOT_NOTIFICATION_ID,
+                    ObserverNotification.ongoing(
+                        context,
+                        needsAttention = !stopped,
+                        stopped = stopped,
+                        decorate = true,
+                        includeStopAction = false,
+                        contentIntent = launchPendingIntent(context),
+                    ),
+                )
+            }
+
+        fun cancelAttentionNotification(context: Context) = onNotificationThread {
+            context.getSystemService(NotificationManager::class.java)?.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
         }
 
         private fun handleStartFailure(context: Context, exceptionClassName: String) {

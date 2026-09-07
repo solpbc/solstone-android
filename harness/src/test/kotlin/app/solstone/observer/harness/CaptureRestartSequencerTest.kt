@@ -97,4 +97,64 @@ class CaptureRestartSequencerTest {
         visibleOwner = false
         assertFalse(sequencer.requestRestart())
     }
+    @Test
+    fun losesVisibleAuthorityWhileWaitingForServiceDestruction() {
+        var visible = true
+        var starts = 0
+        val sequencer = CaptureRestartSequencer(
+            stopPipeline = {},
+            stopForeground = {},
+            startServiceAndPipeline = { starts++ },
+            destroySeam = { visible = false; true },
+            isDesiredOn = { true },
+            isVisibleOwnerPresent = { visible },
+        )
+        assertFalse(sequencer.requestRestart())
+        assertEquals(0, starts)
+    }
+
+    @Test
+    fun ownerStopCannotFinishBeforeAnAlreadyCommittedRestartStart() {
+        val enteredStart = java.util.concurrent.CountDownLatch(1)
+        val releaseStart = java.util.concurrent.CountDownLatch(1)
+        val attemptedStop = java.util.concurrent.CountDownLatch(1)
+        val finishedStop = java.util.concurrent.CountDownLatch(1)
+        val running = java.util.concurrent.atomic.AtomicBoolean(false)
+        val sequencer = CaptureRestartSequencer(
+            stopPipeline = { running.set(false) },
+            stopForeground = {},
+            startServiceAndPipeline = {
+                enteredStart.countDown()
+                check(releaseStart.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                running.set(true)
+            },
+            destroySeam = { true },
+            isDesiredOn = { true },
+            isVisibleOwnerPresent = { true },
+        )
+        val restart = Thread { sequencer.requestRestart() }
+        val stop = Thread {
+            attemptedStop.countDown()
+            sequencer.onOwnerStop()
+            running.set(false)
+            finishedStop.countDown()
+        }
+        restart.start()
+        try {
+            assertTrue(enteredStart.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            stop.start()
+            assertTrue(attemptedStop.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val stopOvertookStart = finishedStop.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+            releaseStart.countDown()
+            restart.join(5_000)
+            stop.join(5_000)
+            assertFalse(stopOvertookStart, "owner stop returned while restart could still start intake")
+            assertFalse(running.get())
+        } finally {
+            releaseStart.countDown()
+            restart.join(5_000)
+            if (stop.state != Thread.State.NEW) stop.join(5_000)
+        }
+    }
+
 }

@@ -21,6 +21,7 @@ object ObserverNotification {
     const val BOOT_NOTIFICATION_ID = 102
     const val TEXT_ON = "on"
     const val TEXT_OFF = "off"
+    const val TEXT_SETTING_UP = "setting up"
     const val TEXT_NEEDS_ATTENTION = "needs attention"
     const val TEXT_STOP = "stop intake"
     const val TEXT_START_INTAKE = "start intake"
@@ -49,6 +50,8 @@ object ObserverNotification {
         decorate: Boolean = false,
         contentIntent: PendingIntent? = null,
         requestPromotion: Boolean = false,
+        includeStopAction: Boolean = decorate && !stopped,
+        initialForegroundEntry: Boolean = false,
     ): Notification {
         ensureChannel(context)
         val builder = builder(context)
@@ -60,7 +63,7 @@ object ObserverNotification {
             builder.setContentIntent(contentIntent)
         }
         startAction?.let { builder.addAction(it) }
-        if (shouldOfferStopAction(decorate)) {
+        if (shouldOfferStopAction(includeStopAction)) {
             stopAction?.let { builder.addAction(it) }
         }
         if (decorate) {
@@ -69,8 +72,13 @@ object ObserverNotification {
         if (requestPromotion) {
             requestPromotedOngoing(builder)
         }
-        return builder
-            .build()
+        return builder.build().also { notification ->
+            if (initialForegroundEntry &&
+                notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() in setOf(TEXT_ON, TEXT_OFF)
+            ) {
+                notification.extras.putCharSequence(Notification.EXTRA_TEXT, TEXT_SETTING_UP)
+            }
+        }
     }
 
     fun notificationsPermitted(context: Context): Boolean =

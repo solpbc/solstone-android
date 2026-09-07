@@ -207,7 +207,8 @@ class HarnessController(
         if (diagnostics().state == SourceState.ON && !hasTypeNotHeld) return
 
         if (hasTypeNotHeld) {
-            if (visibleCaptureAuthority.isVisibleOwnerPresent()) {
+            // A periodic refresh reports this condition; a visible owner action recovers it.
+            if (mode == ObserverStartMode.VisibleStart && visibleCaptureAuthority.isVisibleOwnerPresent()) {
                 observerLifecycle.restartCaptureForHeldTypes()
             }
             return
