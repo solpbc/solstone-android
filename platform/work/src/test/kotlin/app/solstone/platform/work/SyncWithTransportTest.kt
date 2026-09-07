@@ -30,7 +30,7 @@ class SyncWithTransportTest {
             assertEquals(
                 listOf(
                     "GET /app/network/api/status",
-                    "GET $SEGMENTS_PATH/$WORK_TEST_DAY",
+                    "GET $SEGMENTS_PATH/$WORK_TEST_DAY?source=audio",
                     "POST $INGEST_PATH",
                 ),
                 trace.client.requests.map { "${it.method} ${it.path}" },
@@ -58,7 +58,7 @@ class SyncWithTransportTest {
             assertEquals(null, trace.store.row("a").lastAttemptAt)
             assertTrue(trace.store.events.isEmpty())
             assertEquals(
-                listOf("GET /app/network/api/status", "GET $SEGMENTS_PATH/$WORK_TEST_DAY"),
+                listOf("GET /app/network/api/status", "GET $SEGMENTS_PATH/$WORK_TEST_DAY?source=audio"),
                 trace.client.requests.map { "${it.method} ${it.path}" },
             )
             assertNoLegacyHeaders(trace.client.requests)
@@ -86,7 +86,7 @@ class SyncWithTransportTest {
                 assertEquals(
                     listOf(
                         "GET /app/network/api/status",
-                        "GET $SEGMENTS_PATH/$WORK_TEST_DAY",
+                        "GET $SEGMENTS_PATH/$WORK_TEST_DAY?source=audio",
                         "POST $INGEST_PATH",
                     ),
                     trace.client.requests.map { "${it.method} ${it.path}" },

@@ -7,6 +7,7 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.PlHttpClient
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,6 +40,41 @@ class SegmentReconcilerTest {
             ),
             segments,
         )
+    }
+
+    @Test
+    fun fetchEncodesTheRequestedSource() {
+        val http = RecordingPlHttpClient(response())
+        SegmentReconciler(http).fetch("20260907", "audio &other=source")
+        assertEquals("/app/devices/ingest/segments/20260907?source=audio+%26other%3Dsource", http.lastRequest.path)
+    }
+
+    @Test
+    fun diffRequiresEvidenceFromEachFilesOwnSource() {
+        val paths = mutableListOf<String>()
+        var holdPhoto = false
+        val http = object : PlHttpClient {
+            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse {
+                paths += path
+                return if (path.endsWith("?source=audio") || holdPhoto) {
+                    response(segmentJson("093000_60", fileJson("shared.bin", SHA_A)))
+                } else {
+                    response()
+                }
+            }
+        }
+        val local = manifest("093000_60", "shared.bin" to SHA_A).let { original ->
+            val file = original.files.single()
+            original.copy(files = listOf(file.copy(sourceId = "audio"), file.copy(sourceId = "photo")))
+        }
+        val reconciler = SegmentReconciler(http)
+        assertEquals(listOf(ReconcileVerdict(local.key, true)), reconciler.diff(listOf(local), "20260616"))
+        assertEquals(listOf(
+            "/app/devices/ingest/segments/20260616?source=audio",
+            "/app/devices/ingest/segments/20260616?source=photo",
+        ), paths)
+        holdPhoto = true
+        assertEquals(listOf(ReconcileVerdict(local.key, false)), reconciler.diff(listOf(local), "20260616"))
     }
 
     @Test

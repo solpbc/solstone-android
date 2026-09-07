@@ -237,7 +237,7 @@ class LiveObserverDriverTest {
             val expectedSha = record.getValue("sha")
 
             val segments = openClient(credential!!).use { client ->
-                SegmentReconciler(client).fetch(day)
+                SegmentReconciler(client).fetch(day, "validation")
             }
             result("t4.day=$day")
             result("t4.segmentCount=${segments.size}")

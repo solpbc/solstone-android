@@ -9,6 +9,7 @@ import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
+import java.net.URLEncoder
 
 // Per-file statuses that prove reconcile convergence after name and SHA match.
 // "processed" means the journal intentionally consumed the raw byte after verified
@@ -24,10 +25,11 @@ class ReconcileUnavailableException(val status: Int?, cause: Throwable? = null) 
     ReconcileException("reconcile unavailable: $status", cause)
 
 class SegmentReconciler(private val http: PlHttpClient) {
-    fun fetch(day: String): List<ServerSegment> {
+    fun fetch(day: String, source: String = ""): List<ServerSegment> {
+        val query = if (source.isBlank()) "" else "?source=" + URLEncoder.encode(source, "UTF-8")
         val response = http.request(
             method = "GET",
-            path = "$SEGMENTS_PATH/$day",
+            path = "$SEGMENTS_PATH/$day$query",
             headers = mapOf(
                 PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
             ),
@@ -63,18 +65,20 @@ class SegmentReconciler(private val http: PlHttpClient) {
     }
 
     fun diff(localManifests: List<BundleManifest>, day: String): List<ReconcileVerdict> {
-        val remote = fetch(day)
-        val remoteByKey = remote.associateBy { it.key }
-        val remoteByOriginalKey = remote
-            .filter { it.originalKey != null }
-            .associateBy { requireNotNull(it.originalKey) }
+        val remoteBySource = localManifests.flatMap { it.files }.map { it.sourceId }.distinct().associateWith { source ->
+            val remote = fetch(day, source)
+            remote.associateBy { it.key } to remote.filter { it.originalKey != null }
+                .associateBy { requireNotNull(it.originalKey) }
+        }
         return localManifests.map { manifest ->
-            val remoteFiles = (remoteByKey[manifest.key.segment] ?: remoteByOriginalKey[manifest.key.segment])
-                ?.files
-                .orEmpty()
             ReconcileVerdict(
                 key = manifest.key,
-                needsUpload = !manifest.files.all { local -> isProvenHeld(local, remoteFiles) },
+                needsUpload = !manifest.files.all { local ->
+                    val (byKey, byOriginalKey) = remoteBySource.getValue(local.sourceId)
+                    val remoteFiles = (byKey[manifest.key.segment] ?: byOriginalKey[manifest.key.segment])
+                        ?.files.orEmpty()
+                    isProvenHeld(local, remoteFiles)
+                },
             )
         }
     }
