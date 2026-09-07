@@ -41,6 +41,7 @@ import app.solstone.core.pl.isRelayTokenUsableNow
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.parseProductionRelayOrigin
 import app.solstone.core.pl.parseRelayAccessJwtV2
+import app.solstone.core.pl.parseRelayTokenReplacement
 import app.solstone.core.pl.parseRelayAccessMap
 import app.solstone.core.pl.parseRfc3339ToEpochSeconds
 import app.solstone.core.pl.supportedDirectDialEndpoint
@@ -271,35 +272,13 @@ fun pairOverRelay(
         decoded
     }
 
-    val prior = mutator?.current() ?: identityStore.load()
+    val prior = if (mutator != null) mutator.current() else identityStore.load()
     if (prior?.instanceId == pairResponse.instanceId && prior.state == IdentityState.PAIRED) {
         if (relayAccessDecoded != null) {
-            if (mutator != null) {
-                val pairingGen = mutator.currentPairingGeneration()
-                if (pairingGen != null) {
-                    mutator.mutate(
-                        expectedPairing = pairingGen,
-                        expectedAccessMutationGen = mutator.currentAccessMutationGen(),
-                    ) { p ->
-                        p.copy(
-                            relayOrigin = relayAccessDecoded.relayOrigin,
-                            deviceToken = relayAccessDecoded.deviceToken,
-                            expiresAt = relayAccessDecoded.expiresAt,
-                        )
-                    }
-                }
-            } else {
-                identityStore.save(
-                    prior.copy(
-                        relayOrigin = relayAccessDecoded.relayOrigin,
-                        deviceToken = relayAccessDecoded.deviceToken,
-                        expiresAt = relayAccessDecoded.expiresAt,
-                    ),
-                )
-            }
+            publishRelayBootstrap(prior, relayAccessDecoded.relayOrigin, relayAccessDecoded.deviceToken, relayAccessDecoded.expiresAt, identityStore, mutator)
         }
         val cred = credentialStore.load()
-        val currentHome = mutator?.current() ?: identityStore.load()
+        val currentHome = if (mutator != null) mutator.current() else identityStore.load()
         val curOrigin = currentHome?.relayOrigin
         val curToken = currentHome?.deviceToken
         if (cred != null && curToken != null && curOrigin != null) {
@@ -334,8 +313,6 @@ fun pairOverRelay(
     val clientDer = certificateFromPem(pairResponse.clientCert).encoded
     val caDer = pemToDer(pairResponse.caChain.first(), "CERTIFICATE")
     val credential = ClientCredential(privateKeyPem, pairResponse.clientCert, pairResponse.caChain)
-    credentialStore.save(credential)
-
     fun saveLocalEndpoints() {
         val firstAdmitted = pairResponse.localEndpoints.firstNotNullOfOrNull { ep ->
             val ip = ep["ip"] as? String ?: return@firstNotNullOfOrNull null
@@ -361,11 +338,7 @@ fun pairOverRelay(
             expiresAt = relayAccessDecoded.expiresAt,
             state = IdentityState.PAIRED,
         )
-        if (mutator != null) {
-            mutator.installNewPairing(home)
-        } else {
-            identityStore.save(home)
-        }
+        publishPairing(home, credential, credentialStore, identityStore, mutator)
         saveLocalEndpoints()
 
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
@@ -398,13 +371,10 @@ fun pairOverRelay(
         expiresAt = null,
         state = IdentityState.PAIRED,
     )
-    if (mutator != null) {
-        mutator.installNewPairing(homeInitial)
-    } else {
-        identityStore.save(homeInitial)
-    }
+    publishPairing(homeInitial, credential, credentialStore, identityStore, mutator)
     saveLocalEndpoints()
 
+    val enrollAccess = mutator?.accessSnapshot()
     var enrollStatus: Int? = null
     try {
         val enrollBody = toJson(
@@ -436,17 +406,9 @@ fun pairOverRelay(
                             else -> null
                         }
                     } else {
-                        val token = root["device_token"] as? String ?: return@run null
-                        val expiresAt = root["expires_at"] as? String
-                        val v2 = parseRelayAccessJwtV2(token, pairResponse.instanceId) ?: return@run null
-                        val now = System.currentTimeMillis()
-                        if (v2.iat > (now / 1000L) + 60L) return@run null
-                        if (!isRelayTokenUsableNow(v2.exp, now)) return@run null
-                        if (expiresAt != null) {
-                            val expSec = parseRfc3339ToEpochSeconds(expiresAt) ?: return@run null
-                            if (expSec != v2.exp) return@run null
-                        }
-                        Pair(token, expiresAt)
+                        val replacement = parseRelayTokenReplacement(root, pairResponse.instanceId, false, System.currentTimeMillis())
+                            ?: return@run null
+                        Pair(replacement.token, replacement.expiresAt)
                     }
                 }
 
@@ -458,20 +420,13 @@ fun pairOverRelay(
                         expiresAt = expiresAt,
                     )
                     if (mutator != null) {
-                        val pairingGen = mutator.currentPairingGeneration()
-                        if (pairingGen != null) {
-                            mutator.mutate(
-                                expectedPairing = pairingGen,
-                                expectedAccessMutationGen = mutator.currentAccessMutationGen(),
-                            ) { p ->
-                                p.copy(
-                                    relayOrigin = updatedHome.relayOrigin,
-                                    deviceToken = updatedHome.deviceToken,
-                                    expiresAt = updatedHome.expiresAt,
-                                )
-                            }
+                        val expected = enrollAccess ?: return RelayPairResult(true, pairStatus, enrollStatus, pairResponse.homeLabel, relayOrigin, relayHost, connectionMode)
+                        val result = mutator.mutateIfCurrent(expected) { p ->
+                            p.copy(relayOrigin = updatedHome.relayOrigin, deviceToken = updatedHome.deviceToken, expiresAt = updatedHome.expiresAt)
                         }
+                        if (result !is app.solstone.core.identity.AccessMutationResult.Applied) throw IOException("relay control request failed")
                     } else {
+                        if (identityStore.load() != homeInitial) throw IOException("relay control request failed")
                         identityStore.save(updatedHome)
                     }
 

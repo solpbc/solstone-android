@@ -30,6 +30,17 @@ class RelayAccessApiTest {
     }
 
     @Test
+    fun parsedOriginsRejectAmbiguousAuthoritiesAndPreserveNormalizedPorts() {
+        val origin = parseProductionRelayOrigin("HTTPS://EXAMPLE.COM:8443/")!!
+        assertEquals("https://example.com:8443", origin.httpsBase)
+        assertEquals("wss://example.com:8443", origin.wssBase)
+        assertEquals("wss://[::1]:8443", parseProductionRelayOrigin("https://[::1]:8443/")?.wssBase)
+        for (raw in listOf("https://example.com:", "https://example.com:0", "https://example.com:65536", "https://[no-ip]", "https://example.com\\evil", "https://user@example.com", "https://example.com/path", "https://example.com?x", "https://example.com#x", "https://2130706433")) {
+            assertEquals(null, parseProductionRelayOrigin(raw), raw)
+        }
+    }
+
+    @Test
     fun fetchRelayAccessReturnsReadyWhenValid() {
         val iat = 1700000000L
         val exp = 1800000000L
@@ -394,8 +405,9 @@ class RelayAccessApiTest {
         assertTrue(!isRelayTokenUsableNow(expSec, expSec * 1000L))
         assertTrue(!isRelayTokenUsableNow(expSec, (expSec + 1) * 1000L))
 
-        // Within refresh grace: now <= exp + 30d
-        assertTrue(isRelayTokenWithinRefreshGrace(expSec, lastGraceSec * 1000L))
+        // Within refresh grace: now < exp + 30d
+        assertTrue(isRelayTokenWithinRefreshGrace(expSec, (lastGraceSec - 1) * 1000L))
+        assertTrue(!isRelayTokenWithinRefreshGrace(expSec, lastGraceSec * 1000L))
         assertTrue(!isRelayTokenWithinRefreshGrace(expSec, (lastGraceSec + 1) * 1000L))
     }
 
@@ -408,6 +420,7 @@ class RelayAccessApiTest {
             "aud": "spl-relay",
             "scope": "session.dial",
             "sub": "device:dev-1",
+            "instance_id": "j1",
             "device_fp": "$validFp",
             "iat": 1700000000,
             "exp": 1800000000,
@@ -421,11 +434,11 @@ class RelayAccessApiTest {
         assertEquals(validFp, parsed?.deviceFp)
 
         // Invalid fp
-        val badFpJwt = createJwt("""{"iss":"s","aud":"spl-relay","scope":"session.dial","sub":"device:d1","device_fp":"sha256:invalid","iat":1700000000,"exp":1800000000,"jti":"1"}""")
+        val badFpJwt = createJwt("""{"iss":"s","aud":"spl-relay","scope":"session.dial","sub":"device:d1","instance_id":"j1","device_fp":"sha256:invalid","iat":1700000000,"exp":1800000000,"jti":"1"}""")
         assertEquals(null, parseLegacyDeviceTokenJwt(badFpJwt, "j1"))
 
         // Extra claim
-        val extraClaimJwt = createJwt("""{"iss":"s","aud":"spl-relay","scope":"session.dial","sub":"device:d1","device_fp":"$validFp","ver":1,"iat":1700000000,"exp":1800000000,"jti":"1"}""")
+        val extraClaimJwt = createJwt("""{"iss":"s","aud":"spl-relay","scope":"session.dial","sub":"device:d1","instance_id":"j1","device_fp":"$validFp","ver":1,"iat":1700000000,"exp":1800000000,"jti":"1"}""")
         assertEquals(null, parseLegacyDeviceTokenJwt(extraClaimJwt, "j1"))
     }
 

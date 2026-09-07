@@ -82,8 +82,8 @@ class CoalescingBoundedJob<T>(
                 try {
                     future.get(boundMillis, TimeUnit.MILLISECONDS)
                 } catch (_: Throwable) {
-                    future.cancel(true)
                     fenceGeneration()
+                    future.cancel(true)
                 } finally {
                     synchronized(lock) {
                         if (activeFuture === future) {

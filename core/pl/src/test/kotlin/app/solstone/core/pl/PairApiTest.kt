@@ -36,7 +36,7 @@ class PairApiTest {
         assertEquals("jwt", response.homeAttestation)
         assertEquals("sha256:abc", response.fingerprint)
         assertEquals("10.0.0.2", response.localEndpoints.single()["ip"])
-        assertEquals(7657.0, response.localEndpoints.single()["port"])
+        assertEquals(7657, (response.localEndpoints.single()["port"] as Number).toInt())
     }
 
     @Test
@@ -61,7 +61,7 @@ class PairApiTest {
 
         val obj = PairResponse.fromJson("""$base,"relay_access":{"protocol_version":2,"status":"ready"}}""")
         assert(obj.relayAccess is PairRelayAccess.Object)
-        assertEquals(2.0, (obj.relayAccess as PairRelayAccess.Object).fields["protocol_version"])
+        assertEquals(2, ((obj.relayAccess as PairRelayAccess.Object).fields["protocol_version"] as Number).toInt())
 
         val nonObj = PairResponse.fromJson("""$base,"relay_access":"string_val"}""")
         assert(nonObj.relayAccess is PairRelayAccess.NonObject)

@@ -61,18 +61,13 @@ fun sanitizeReportedDescription(raw: ClientReportedDescription): ClientReportedD
 
 fun parseClientsSelfResponse(bodyText: String): ClientsSelfResponse? = runCatching {
     val root = parseJson(bodyText) as? Map<*, *> ?: return null
-    val pvNum = root["protocol_version"] as? Number ?: return null
-    if (pvNum.toDouble() != 1.0 || pvNum.toLong() != 1L) return null
-    val protocolVersion = pvNum.toInt()
-
-    val revNum = root["revision"] as? Number ?: return null
-    val revDouble = revNum.toDouble()
-    val revLong = revNum.toLong()
-    if (revDouble != revLong.toDouble() || revLong < 0) return null
-    val revision = revLong
+    if (!root.keys.containsAll(listOf("protocol_version", "revision", "reported", "owner_label", "display_label", "updated_at", "journal"))) return null
+    val protocolVersion = exactJsonInteger(root["protocol_version"])?.takeIf { it == 1L }?.toInt() ?: return null
+    val revision = exactJsonInteger(root["revision"]) ?: return null
 
     val reportedRaw = root["reported"]
     val reported = if (reportedRaw is Map<*, *>) {
+        if (!reportedRaw.keys.containsAll(listOf("name", "platform", "device_type", "app_id", "app_version"))) return null
         val nameRaw = reportedRaw["name"]
         if (nameRaw != null && nameRaw !is String) return null
         val platRaw = reportedRaw["platform"]
@@ -97,20 +92,19 @@ fun parseClientsSelfResponse(bodyText: String): ClientsSelfResponse? = runCatchi
     }
 
     val ownerLabel = root["owner_label"]?.let { (it as? String) ?: return null }
-    val displayLabel = root["display_label"]?.let { (it as? String) ?: return null }
+    val displayLabel = root["display_label"] as? String ?: return null
     val updatedAt = root["updated_at"]?.let { (it as? String) ?: return null }
 
     val journalRaw = root["journal"]
     val (journalName, journalVersion) = if (journalRaw is Map<*, *>) {
+        if (!journalRaw.keys.containsAll(listOf("name", "version"))) return null
         val jnRaw = journalRaw["name"]
         if (jnRaw != null && jnRaw !is String) return null
         val jvRaw = journalRaw["version"]
         if (jvRaw != null && jvRaw !is String) return null
         val jn = (jnRaw as? String)?.let { sanitizeField(it, 128) }
-        val jv = (jvRaw as? String)?.let { sanitizeJournalVersion(it) ?: return null }
+        val jv = sanitizeJournalVersion(jvRaw as? String ?: return null) ?: return null
         jn to jv
-    } else if (journalRaw == null) {
-        null to null
     } else {
         return null
     }

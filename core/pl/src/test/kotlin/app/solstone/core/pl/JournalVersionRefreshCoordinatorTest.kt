@@ -63,21 +63,8 @@ class JournalVersionRefreshCoordinatorTest {
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android", appId = "app.solstone.phone")
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
-            "reported": {"name": "Old Name"}
-        }
-        """.trimIndent()
-        val putJson = """
-        {
-            "protocol_version": 1,
-            "revision": 2,
-            "reported": {"name": "Pixel 8"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Jer's Journal","version":"1.2.3"},"reported":{"name":"Old Name","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
+        val putJson = """{"protocol_version":1,"revision":2,"reported":{"name":"Pixel 8","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"Jer's Journal","version":"1.2.3"}}""".trimIndent()
 
         val putCalled = AtomicInteger(0)
 
@@ -115,14 +102,7 @@ class JournalVersionRefreshCoordinatorTest {
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
-            "reported": {"name": "Pixel 8", "platform": "android"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Jer's Journal","version":"1.2.3"},"reported":{"name":"Pixel 8","platform":"android","device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
 
         val putCalled = AtomicInteger(0)
 
@@ -169,7 +149,7 @@ class JournalVersionRefreshCoordinatorTest {
                 when {
                     method == "GET" && path == "/app/network/api/clients/self" -> {
                         getCount.incrementAndGet()
-                        val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.0"},"reported":{"name":"Other"}}"""
+                        val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.0"},"reported":{"name":"Other","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}"""
                         HttpResponse(200, emptyMap(), json.toByteArray())
                     }
                     method == "PUT" && path == "/app/network/api/clients/self" -> {
@@ -177,7 +157,7 @@ class JournalVersionRefreshCoordinatorTest {
                         if (call == 1) {
                             HttpResponse(409, emptyMap(), ByteArray(0))
                         } else {
-                            HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Name-2"}}""".toByteArray())
+                            HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Name-2","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"Jer's Journal","version":"1.2.3"}}""".toByteArray())
                         }
                     }
                     else -> HttpResponse(404, emptyMap(), ByteArray(0))
@@ -234,7 +214,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
             RoutingFakeClient { _, _, _ ->
-                HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.2.3"}}""".toByteArray())
+                HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.2.3"},"reported":null,"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
             }
         }
 
@@ -331,14 +311,7 @@ class JournalVersionRefreshCoordinatorTest {
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
-            "reported": {"name": "Old"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Jer's Journal","version":"1.2.3"},"reported":{"name":"Old","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
 
         var capturedPutBody: String? = null
 
@@ -348,7 +321,7 @@ class JournalVersionRefreshCoordinatorTest {
                     method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), getJson.toByteArray())
                     method == "PUT" && path == "/app/network/api/clients/self" -> {
                         capturedPutBody = body?.toString(Charsets.UTF_8)
-                        HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Pixel 8"}}""".toByteArray())
+                        HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Pixel 8","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"Jer's Journal","version":"1.2.3"}}""".toByteArray())
                     }
                     else -> HttpResponse(404, emptyMap(), ByteArray(0))
                 }
@@ -373,14 +346,7 @@ class JournalVersionRefreshCoordinatorTest {
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Read Only Journal", "version": "3.2.1"},
-            "reported": {"name": "Old"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Read Only Journal","version":"3.2.1"},"reported":{"name":"Old","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
 
         val putCalls = AtomicInteger(0)
 
@@ -419,14 +385,7 @@ class JournalVersionRefreshCoordinatorTest {
         var pairingMatches = true
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
-            "reported": {"name": "Old"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Jer's Journal","version":"1.2.3"},"reported":{"name":"Old","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
 
         coordinator.onUsableConnection(
             instanceId = "jid-1",
@@ -592,21 +551,8 @@ class JournalVersionRefreshCoordinatorTest {
         mutator.mutateCallback = { relayMutated.countDown() }
 
         val localDesc = ClientReportedDescription(name = "Pixel 8 New", platform = "android")
-        val getJson = """
-        {
-            "protocol_version": 1,
-            "revision": 1,
-            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
-            "reported": {"name": "Old"}
-        }
-        """.trimIndent()
-        val putJson = """
-        {
-            "protocol_version": 1,
-            "revision": 2,
-            "reported": {"name": "Pixel 8 New"}
-        }
-        """.trimIndent()
+        val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Jer's Journal","version":"1.2.3"},"reported":{"name":"Old","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
+        val putJson = """{"protocol_version":1,"revision":2,"reported":{"name":"Pixel 8 New","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"Jer's Journal","version":"1.2.3"}}""".trimIndent()
 
         val expectedPairing = PairingGeneration("jid-1", "sha256:cert1")
 

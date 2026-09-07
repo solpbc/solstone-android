@@ -164,7 +164,7 @@ private class JsonParser(private val text: String) {
         return hex.toInt(16).toChar()
     }
 
-    private fun readNumber(): Double {
+    private fun readNumber(): Number {
         val start = index
         consume('-')
         if (consume('0')) {
@@ -182,7 +182,7 @@ private class JsonParser(private val text: String) {
             }
             readDigits()
         }
-        return text.substring(start, index).toDouble()
+        return text.substring(start, index).toBigDecimal()
     }
 
     private fun readDigits() {

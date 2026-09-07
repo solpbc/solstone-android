@@ -34,6 +34,34 @@ import kotlin.test.assertNull
 
 class DirectPairRelayAccessTest {
     @Test
+    fun failedPublicationStopsBeforeStatusAndRestoresUnpairedCredentialState() {
+        val credentials = FakeCredentialStore()
+        val identity = FakeIdentityStore()
+        val endpoints = FakeEndpointStore()
+        var pairRequests = 0
+        var statusRequests = 0
+        kotlin.test.assertFailsWith<java.io.IOException> {
+            pairAndProbe(
+                pairLink = validPairLink(), deviceLabel = "phone", credentialStore = credentials,
+                identityStore = identity, endpointStore = endpoints,
+                sessionOpener = { _, _ ->
+                    pairRequests++
+                    CertlessSession(app.solstone.core.pl.MuxSession(responseDuplex(200, pairResponseWithRelayAccess(relayAccessJson = null))), true)
+                },
+                localInterfaces = emptyList(),
+                materialFactory = { DirectPairMaterial("KEY", leafPublicKey(), "CSR".toByteArray()) },
+                statusProbe = { _, _ -> statusRequests++; HttpResponse(200, emptyMap(), ByteArray(0)) },
+                mutator = FakeMutator(identity, failPublication = true),
+            )
+        }
+        assertEquals(1, pairRequests)
+        assertEquals(0, statusRequests)
+        assertNull(identity.load())
+        assertNull(credentials.load())
+        assertNull(endpoints.load())
+    }
+
+    @Test
     fun directPairWithReadyBootstrapAttachesRelayOriginAndDeviceToken() {
         val credStore = FakeCredentialStore()
         val identStore = FakeIdentityStore()
@@ -347,7 +375,7 @@ class DirectPairRelayAccessTest {
         override fun clear() { ep = null }
     }
 
-    private class FakeMutator(private val store: FakeIdentityStore) : IdentityMutator {
+    private class FakeMutator(private val store: FakeIdentityStore, private val failPublication: Boolean = false) : IdentityMutator {
         private var accessGen = 1L
         override fun current(): PairedHome? = store.load()
         override fun currentPairingGeneration(): PairingGeneration? {
@@ -359,6 +387,7 @@ class DirectPairRelayAccessTest {
         override fun disableRelayLive() {}
         override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
         override fun installNewPairing(home: PairedHome): Boolean {
+            if (failPublication) return false
             store.save(home)
             return true
         }

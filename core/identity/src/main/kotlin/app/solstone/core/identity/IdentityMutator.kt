@@ -13,8 +13,8 @@ data class PairingGeneration(
 sealed interface AccessMutationResult {
     data class Applied(val home: PairedHome, val accessMutationGen: Long) : AccessMutationResult
     data class Conflict(val reason: String) : AccessMutationResult
-    data class PersistenceFailed(val cause: Throwable) : AccessMutationResult
-    data class DurabilityUncertain(val cause: Throwable) : AccessMutationResult
+    data class PersistenceFailed(val cause: Throwable, val accessMutationGen: Long? = null) : AccessMutationResult
+    data class DurabilityUncertain(val cause: Throwable, val accessMutationGen: Long? = null) : AccessMutationResult
 }
 
 enum class PersistenceIssue {
@@ -22,7 +22,30 @@ enum class PersistenceIssue {
     DURABILITY_UNCERTAIN,
 }
 
+data class AccessSnapshot(val home: PairedHome, val generation: Long, val relayLiveEligible: Boolean) {
+    val pairing: PairingGeneration get() = PairingGeneration(home.instanceId, home.clientCertFingerprint)
+    override fun toString(): String = "AccessSnapshot(generation=$generation, relayLiveEligible=$relayLiveEligible)"
+}
+
 interface IdentityMutator {
+    fun <T> withMutationBoundary(block: () -> T): T = synchronized(this) { block() }
+    fun accessSnapshot(): AccessSnapshot? = current()?.let {
+        AccessSnapshot(it, currentAccessMutationGen(), isRelayLiveEligible())
+    }
+    fun mutateIfCurrent(
+        snapshot: AccessSnapshot,
+        stillCurrent: () -> Boolean = { true },
+        transform: (PairedHome) -> PairedHome,
+    ): AccessMutationResult {
+        if (!stillCurrent() || accessSnapshot() != snapshot) return AccessMutationResult.Conflict("obsolete access")
+        return mutate(snapshot.pairing, snapshot.generation, transform)
+    }
+    fun clearRelayAccess(snapshot: AccessSnapshot, stillCurrent: () -> Boolean = { true }): AccessMutationResult {
+        if (!stillCurrent() || accessSnapshot() != snapshot) return AccessMutationResult.Conflict("obsolete access")
+        disableRelayLive()
+        return mutate(snapshot.pairing, snapshot.generation) { it.copy(relayOrigin = null, deviceToken = null, expiresAt = null) }
+    }
+
     fun current(): PairedHome?
     fun currentPairingGeneration(): PairingGeneration?
     fun currentAccessMutationGen(): Long

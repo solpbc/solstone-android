@@ -16,6 +16,24 @@ import kotlin.test.assertIs
 
 class SyncCredentialsTest {
     @Test
+    fun optionalOpenUsesCurrentAccessWithoutSuppressingSamePairingMetadata() {
+        val initial = identity(null, IdentityState.PAIRED, "https://old.example", "old-token")
+        val mutator = app.solstone.platform.identity.file.FileIdentityMutator(FakeIdentityStore(initial))
+        val direct = SyncTransport.Direct(endpoint())
+        val oldRelay = SyncTransport.Relay("https://old.example", "home", "old-token")
+        mutator.mutateIfCurrent(mutator.accessSnapshot()!!) {
+            it.copy(relayOrigin = "https://new.example", deviceToken = "new-token")
+        }
+        assertEquals(direct, currentOptionalTransport(direct, initial, mutator))
+        assertEquals(SyncTransport.Relay("https://new.example", "home", "new-token"), currentOptionalTransport(oldRelay, initial, mutator))
+        mutator.clearRelayAccess(mutator.accessSnapshot()!!)
+        assertEquals(direct, currentOptionalTransport(direct, initial, mutator))
+        assertEquals(null, currentOptionalTransport(oldRelay, initial, mutator))
+        mutator.installNewPairing(initial.copy(clientCertFingerprint = "sha256:other"))
+        assertEquals(null, currentOptionalTransport(direct, initial, mutator))
+    }
+
+    @Test
     fun readyWhenEndpointCredentialAndPairedIdentityWithHandleExist() {
         val result = recoverSyncCredentials(
             endpointStore = FakeEndpointStore(endpoint()),

@@ -3,6 +3,7 @@
 
 package app.solstone.platform.pl.transport.conscrypt
 
+import app.solstone.core.pl.parseRelayTokenReplacement
 import app.solstone.core.pl.inspectRelayTokenPayload
 import app.solstone.core.pl.isRelayTokenUsableNow
 import app.solstone.core.pl.isRelayTokenWithinRefreshGrace
@@ -25,7 +26,7 @@ sealed interface DeviceTokenRefresh {
 
 private data class DecodedCurrentToken(
     val isV2: Boolean,
-    val instanceId: String?,
+    val instanceId: String,
     val exp: Long,
 )
 
@@ -37,20 +38,21 @@ private fun decodeCurrentToken(token: String): DecodedCurrentToken? {
         val v2 = parseRelayAccessJwtV2(token, instanceId) ?: return null
         return DecodedCurrentToken(isV2 = true, instanceId = instanceId, exp = v2.exp)
     }
-    val legacy = parseLegacyDeviceTokenJwt(token, "") ?: return null
-    return DecodedCurrentToken(isV2 = false, instanceId = null, exp = legacy.exp)
+    val instanceId = root["instance_id"] as? String ?: return null
+    val legacy = parseLegacyDeviceTokenJwt(token, instanceId) ?: return null
+    return DecodedCurrentToken(isV2 = false, instanceId = instanceId, exp = legacy.exp)
 }
 
 fun refreshDeviceToken(
     currentToken: String,
     relayOrigin: String,
     poster: HttpsPoster,
-    nowEpochMs: Long = System.currentTimeMillis(),
+    nowEpochMs: Long? = null,
 ): DeviceTokenRefresh {
     return try {
         val origin = parseProductionRelayOrigin(relayOrigin) ?: return DeviceTokenRefresh.TransientError
         val decoded = decodeCurrentToken(currentToken) ?: return DeviceTokenRefresh.TransientError
-        if (!isRelayTokenWithinRefreshGrace(decoded.exp, nowEpochMs)) {
+        if (!isRelayTokenWithinRefreshGrace(decoded.exp, nowEpochMs ?: System.currentTimeMillis())) {
             return DeviceTokenRefresh.ReconnectNeeded
         }
 
@@ -63,40 +65,9 @@ fun refreshDeviceToken(
         when (response.status) {
             200 -> {
                 val root = parseJson(response.bodyText()) as? Map<*, *> ?: return DeviceTokenRefresh.TransientError
-                val newToken = root["device_token"] as? String ?: return DeviceTokenRefresh.TransientError
-                val protocolVersionNum = root["protocol_version"] as? Number
-                val expiresAt = root["expires_at"] as? String
-
-                val isExplicitV2 = protocolVersionNum != null
-                if (isExplicitV2) {
-                    if (protocolVersionNum?.toInt() != 2) return DeviceTokenRefresh.TransientError
-                }
-
-                // Check if newToken is a v2 JWT
-                val newTokenPayload = inspectRelayTokenPayload(newToken)
-                val isV2Token = (newTokenPayload?.get("ver") as? Number)?.toInt() == 2
-
-                if (isExplicitV2 || isV2Token) {
-                    val targetInstanceId = decoded.instanceId
-                        ?: (newTokenPayload?.get("instance_id") as? String)
-                        ?: return DeviceTokenRefresh.TransientError
-                    val v2 = parseRelayAccessJwtV2(newToken, targetInstanceId) ?: return DeviceTokenRefresh.TransientError
-                    if (v2.iat > (nowEpochMs / 1000L) + 60L) return DeviceTokenRefresh.TransientError
-                    if (!isRelayTokenUsableNow(v2.exp, nowEpochMs)) return DeviceTokenRefresh.TransientError
-                    if (expiresAt != null) {
-                        val expSec = parseRfc3339ToEpochSeconds(expiresAt) ?: return DeviceTokenRefresh.TransientError
-                        if (expSec != v2.exp) return DeviceTokenRefresh.TransientError
-                    }
-                    DeviceTokenRefresh.Refreshed(newToken, expiresAt)
-                } else {
-                    if (decoded.isV2) {
-                        DeviceTokenRefresh.TransientError
-                    } else {
-                        val legacy = parseLegacyDeviceTokenJwt(newToken, "") ?: return DeviceTokenRefresh.TransientError
-                        if (!isRelayTokenUsableNow(legacy.exp, nowEpochMs)) return DeviceTokenRefresh.TransientError
-                        DeviceTokenRefresh.Refreshed(newToken, expiresAt)
-                    }
-                }
+                val replacement = parseRelayTokenReplacement(root, decoded.instanceId, decoded.isV2, nowEpochMs ?: System.currentTimeMillis())
+                    ?: return DeviceTokenRefresh.TransientError
+                DeviceTokenRefresh.Refreshed(replacement.token, replacement.expiresAt)
             }
             401 -> {
                 val root = runCatching { parseJson(response.bodyText()) as? Map<*, *> }.getOrNull()

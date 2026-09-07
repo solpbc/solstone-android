@@ -276,4 +276,45 @@ class FileIdentityMutatorTest {
 
         assertTrue(result is AccessMutationResult.Conflict)
     }
+    @Test
+    fun failedClearFencesOldRefreshAndNewerReadyWins() {
+        var fail = false
+        val writer = object : AtomicFileWriter {
+            override fun write(target: File, bytes: ByteArray) {
+                if (fail) throw IOException("disk full")
+                AtomicFileWriter.Default.write(target, bytes)
+            }
+        }
+        val store = FileIdentityStore(File(temp.root, "clear.tsv"), SpySecretProtector(), fileWriter = writer)
+        val mutator = FileIdentityMutator(store)
+        mutator.installNewPairing(createHome("jid-1", "https://relay.solstone.app", "token-old"))
+        val before = mutator.accessSnapshot()!!
+        fail = true
+        val failed = mutator.clearRelayAccess(before)
+        assertTrue(failed is AccessMutationResult.PersistenceFailed)
+        assertFalse(mutator.isRelayLiveEligible())
+        val disabled = mutator.accessSnapshot()!!
+        assertTrue(disabled.generation > before.generation)
+        fail = false
+        val oldRefresh = mutator.mutateIfCurrent(before) { it.copy(deviceToken = "token-stale") }
+        assertTrue(oldRefresh is AccessMutationResult.Conflict)
+        assertFalse(mutator.isRelayLiveEligible())
+        val ready = mutator.mutateIfCurrent(disabled) { it.copy(relayOrigin = "https://new.example", deviceToken = "token-ready") }
+        assertTrue(ready is AccessMutationResult.Applied)
+        assertTrue(mutator.clearRelayAccess(disabled) is AccessMutationResult.Conflict)
+        assertEquals("token-ready", store.load()?.deviceToken)
+        assertTrue(mutator.isRelayLiveEligible())
+    }
+
+    @Test
+    fun obsoleteClearHasNoLiveOrDurableEffect() {
+        val store = FileIdentityStore(File(temp.root, "obsolete.tsv"), SpySecretProtector())
+        val mutator = FileIdentityMutator(store)
+        mutator.installNewPairing(createHome("jid-1", "https://relay.solstone.app", "token-current"))
+        val snapshot = mutator.accessSnapshot()!!
+        assertTrue(mutator.clearRelayAccess(snapshot) { false } is AccessMutationResult.Conflict)
+        assertEquals(snapshot, mutator.accessSnapshot())
+        assertEquals(snapshot.home, store.load())
+    }
+
 }

@@ -43,6 +43,26 @@ import kotlin.test.assertTrue
 
 class RelayPairingTest {
     @Test
+    fun failedPublicationDoesNotEnrollOrClaimPairing() {
+        val token = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val ready = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$token","expires_at":"2033-05-18T03:33:20Z"}"""
+        for (bootstrap in listOf(null, ready)) {
+            val stores = Stores(failPublication = true)
+            val session = DynamicFakeSession(relayAccessJson = bootstrap)
+            val poster = FakePoster(session)
+            assertFailsWith<java.io.IOException> {
+                pairOverRelay(link(), "phone", poster, FakeDialer(session), stores.credentialStore, stores.identityStore,
+                    endpointStore = stores.endpointStore, mutator = stores.mutator)
+            }
+            assertEquals(1, session.requests.size)
+            assertEquals(0, poster.enrollBodies.size)
+            assertNull(stores.identityStore.load())
+            assertNull(stores.credentialStore.load())
+            assertNull(stores.endpointStore.load())
+        }
+    }
+
+    @Test
     fun nullRelayOriginUsesNormalizedDefaultEndpoint() {
         val endpoint = relayPairEndpoint(RelayPairLink(ByteArray(8), ByteArray(16), null))
 
@@ -448,7 +468,7 @@ class RelayPairingTest {
                     enrollBodies += body
                     sessionClosedBeforeEnroll = session?.closed == true
                     val validToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
-                    val responseText = enrollResponseBody ?: """{"device_token":"$validToken","expires_at":"2033-05-18T03:33:20Z"}"""
+                    val responseText = enrollResponseBody ?: """{"device_token":"$validToken","protocol_version":2,"expires_at":"2033-05-18T03:33:20Z"}"""
                     HttpResponse(enrollStatus, emptyMap(), responseText.toByteArray())
                 }
                 else -> error("unexpected URL $url")
@@ -544,7 +564,7 @@ class RelayPairingTest {
         val body: ByteArray?,
     )
 
-    private class Stores(home: PairedHome? = null) {
+    private class Stores(home: PairedHome? = null, failPublication: Boolean = false) {
         val credentialStore = FakeCredentialStore()
         val identityStore = FakeIdentityStore(home)
         val endpointStore = FakeEndpointStore()
@@ -560,6 +580,7 @@ class RelayPairingTest {
             override fun disableRelayLive() {}
             override fun lastPersistenceIssue(): app.solstone.core.identity.PersistenceIssue? = null
             override fun installNewPairing(home: PairedHome): Boolean {
+                if (failPublication) return false
                 identityStore.save(home)
                 return true
             }

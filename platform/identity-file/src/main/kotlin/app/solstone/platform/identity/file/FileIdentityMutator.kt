@@ -3,6 +3,7 @@
 
 package app.solstone.platform.identity.file
 
+import app.solstone.core.identity.AccessSnapshot
 import app.solstone.core.identity.AccessMutationResult
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
@@ -31,6 +32,7 @@ class FileIdentityMutator(
         val disk = runCatching { store.load() }.getOrNull()
         when {
             disk == null -> {
+                if (accepted != null || uncertainCandidate != null) accessMutationGen.incrementAndGet()
                 accepted = null
                 uncertainCandidate = null
                 relayLiveEligible = false
@@ -42,6 +44,7 @@ class FileIdentityMutator(
                 // Uncertain disk state is not promoted to accepted; accepted stays old and live stays false
             }
             else -> {
+                accessMutationGen.incrementAndGet()
                 accepted = disk
                 uncertainCandidate = null
                 relayLiveEligible = false
@@ -64,8 +67,39 @@ class FileIdentityMutator(
 
     override fun isRelayLiveEligible(): Boolean = relayLiveEligible
 
-    override fun disableRelayLive() {
+    override fun disableRelayLive() = synchronized(lock) {
+        accessMutationGen.incrementAndGet()
         relayLiveEligible = false
+    }
+
+    override fun <T> withMutationBoundary(block: () -> T): T = synchronized(lock) { block() }
+
+    override fun accessSnapshot(): AccessSnapshot? = synchronized(lock) {
+        reconcileLocked()
+        accepted?.let { AccessSnapshot(it, accessMutationGen.get(), relayLiveEligible) }
+    }
+
+    override fun mutateIfCurrent(
+        snapshot: AccessSnapshot,
+        stillCurrent: () -> Boolean,
+        transform: (PairedHome) -> PairedHome,
+    ): AccessMutationResult = synchronized(lock) {
+        if (!stillCurrent() || accessSnapshot() != snapshot) return AccessMutationResult.Conflict("obsolete access")
+        mutate(snapshot.pairing, snapshot.generation, transform)
+    }
+
+    override fun clearRelayAccess(snapshot: AccessSnapshot, stillCurrent: () -> Boolean): AccessMutationResult = synchronized(lock) {
+        if (!stillCurrent() || accessSnapshot() != snapshot) return AccessMutationResult.Conflict("obsolete access")
+        // The disabling revision exists even if the durable clear fails.
+        val disablingGen = accessMutationGen.incrementAndGet()
+        relayLiveEligible = false
+        when (val result = mutate(snapshot.pairing, disablingGen) {
+            it.copy(relayOrigin = null, deviceToken = null, expiresAt = null)
+        }) {
+            is AccessMutationResult.PersistenceFailed -> result.copy(accessMutationGen = accessMutationGen.get())
+            is AccessMutationResult.DurabilityUncertain -> result.copy(accessMutationGen = accessMutationGen.get())
+            else -> result
+        }
     }
 
     override fun lastPersistenceIssue(): PersistenceIssue? = synchronized(lock) {
@@ -79,12 +113,12 @@ class FileIdentityMutator(
         } catch (t: Throwable) {
             val reloaded = runCatching { store.load() }.getOrNull()
             if (reloaded == home) {
+                accessMutationGen.incrementAndGet()
                 uncertainCandidate = home
                 lastPersistenceIssue = PersistenceIssue.DURABILITY_UNCERTAIN
                 relayLiveEligible = false
             } else {
                 lastPersistenceIssue = PersistenceIssue.PERSISTENCE_FAILED
-                relayLiveEligible = false
             }
             return false
         }
@@ -111,7 +145,12 @@ class FileIdentityMutator(
             return AccessMutationResult.Conflict("access mutation generation mismatch: expected $expectedAccessMutationGen, current ${accessMutationGen.get()}")
         }
 
+        val diskBefore = runCatching { store.load() }.getOrNull()
         val transformed = transform(current)
+        if (diskBefore == null || runCatching { store.load() }.getOrNull() != diskBefore) {
+            reconcileLocked()
+            return AccessMutationResult.Conflict("identity changed during mutation")
+        }
         try {
             store.save(transformed)
         } catch (t: Throwable) {
@@ -121,6 +160,7 @@ class FileIdentityMutator(
             // Check whether new bytes became visible (e.g. post-rename exception)
             val reloaded = runCatching { store.load() }.getOrNull()
             return if (reloaded == transformed) {
+                accessMutationGen.incrementAndGet()
                 uncertainCandidate = transformed
                 lastPersistenceIssue = PersistenceIssue.DURABILITY_UNCERTAIN
                 relayLiveEligible = false

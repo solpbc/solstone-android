@@ -255,39 +255,20 @@ internal fun persistOrReturnDirectPairResult(
     mutator: IdentityMutator? = null,
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ): PairProbeResult {
-    val prior = mutator?.current() ?: identityStore.load()
+    val prior = if (mutator != null) mutator.current() else identityStore.load()
     if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
         if (home.deviceToken != null && home.relayOrigin != null) {
-            if (mutator != null) {
-                val pairingGen = mutator.currentPairingGeneration()
-                if (pairingGen != null) {
-                    mutator.mutate(
-                        expectedPairing = pairingGen,
-                        expectedAccessMutationGen = mutator.currentAccessMutationGen(),
-                    ) { p ->
-                        p.copy(
-                            relayOrigin = home.relayOrigin,
-                            deviceToken = home.deviceToken,
-                            expiresAt = home.expiresAt,
-                        )
-                    }
-                }
-            } else {
-                identityStore.save(
-                    prior.copy(
-                        relayOrigin = home.relayOrigin,
-                        deviceToken = home.deviceToken,
-                        expiresAt = home.expiresAt,
-                    ),
-                )
-            }
+            publishRelayBootstrap(prior, requireNotNull(home.relayOrigin), requireNotNull(home.deviceToken), home.expiresAt, identityStore, mutator)
         }
         val targetEndpoint = endpointStore.load() ?: endpoint
-        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openAuthenticatedClient(targetEndpoint, credential)
-        }
-        relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openAuthenticatedClient(targetEndpoint, credential)
+        val retainedCredential = credentialStore.load()
+        if (retainedCredential != null) {
+            coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
+                openAuthenticatedClient(targetEndpoint, retainedCredential)
+            }
+            relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
+                openAuthenticatedClient(targetEndpoint, retainedCredential)
+            }
         }
         return PairProbeResult(
             handshakePinned = handshakePinned,
@@ -307,12 +288,7 @@ internal fun persistOrReturnDirectPairResult(
         relayAccessCoordinator?.onIdentityChanged()
         DirectPairConnectionMode.PAIRING
     }
-    credentialStore.save(credential)
-    if (mutator != null) {
-        mutator.installNewPairing(home)
-    } else {
-        identityStore.save(home)
-    }
+    publishPairing(home, credential, credentialStore, identityStore, mutator)
     endpointStore.save(endpoint)
     val statusHttp = statusProbe(endpoint, credential)
     if (statusHttp.status == 200) {
@@ -459,3 +435,66 @@ private fun configureSocket(socket: SSLSocket) {
 
 private const val CONNECT_TIMEOUT_MS = 5000
 private const val PAIR_TLS_CA_PIN_MISMATCH = "pair TLS peer chain did not match QR CA pin"
+
+internal fun publishPairing(
+    home: PairedHome,
+    credential: ClientCredential,
+    credentialStore: ClientCredentialStore,
+    identityStore: IdentityStore,
+    mutator: IdentityMutator?,
+) {
+    if (mutator != null) {
+        mutator.withMutationBoundary { publishPairingLocked(home, credential, credentialStore, identityStore, mutator) }
+    } else {
+        synchronized(identityStore) { publishPairingLocked(home, credential, credentialStore, identityStore, null) }
+    }
+}
+
+private fun publishPairingLocked(
+    home: PairedHome,
+    credential: ClientCredential,
+    credentialStore: ClientCredentialStore,
+    identityStore: IdentityStore,
+    mutator: IdentityMutator?,
+) {
+    val oldHome = identityStore.load()
+    val oldCredential = credentialStore.load()
+    try {
+        credentialStore.save(credential)
+        if (mutator != null) {
+            if (!mutator.installNewPairing(home)) throw IOException(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED.name)
+        } else {
+            identityStore.save(home)
+        }
+    } catch (failure: Exception) {
+        // Restore only when publication did not replace the prior identity. A
+        // post-rename failure may have published the complete new identity.
+        if (identityStore.load() == oldHome && credentialStore.load() == credential) {
+            if (oldCredential == null) credentialStore.clear() else credentialStore.save(oldCredential)
+        }
+        throw failure
+    }
+}
+
+internal fun publishRelayBootstrap(
+    prior: PairedHome,
+    origin: String,
+    token: String,
+    expiry: String?,
+    identityStore: IdentityStore,
+    mutator: IdentityMutator?,
+) {
+    if (mutator != null) {
+        val snapshot = mutator.accessSnapshot() ?: throw IOException("missing identity")
+        if (snapshot.home != prior) throw IOException("missing identity")
+        val result = mutator.mutateIfCurrent(snapshot) {
+            it.copy(relayOrigin = origin, deviceToken = token, expiresAt = expiry)
+        }
+        if (result !is app.solstone.core.identity.AccessMutationResult.Applied) {
+            throw IOException(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED.name)
+        }
+    } else {
+        if (identityStore.load() != prior) throw IOException("missing identity")
+        identityStore.save(prior.copy(relayOrigin = origin, deviceToken = token, expiresAt = expiry))
+    }
+}

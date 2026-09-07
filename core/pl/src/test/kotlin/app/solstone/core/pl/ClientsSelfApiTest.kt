@@ -3,6 +3,7 @@
 
 package app.solstone.core.pl
 
+import kotlin.test.assertNotNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -60,23 +61,7 @@ class ClientsSelfApiTest {
 
     @Test
     fun parseClientsSelfResponseExtractsJournalAndReportedFields() {
-        val json = """
-        {
-            "protocol_version": 1,
-            "revision": 3,
-            "journal": {
-                "name": "My Daily Journal",
-                "version": "1.4.2"
-            },
-            "reported": {
-                "name": "Pixel 8",
-                "platform": "android",
-                "device_type": "phone",
-                "app_id": "app.solstone.phone",
-                "app_version": "1.0.0"
-            }
-        }
-        """.trimIndent()
+        val json = """{"protocol_version":1,"revision":3,"journal":{"name":"My Daily Journal","version":"1.4.2"},"reported":{"name":"Pixel 8","platform":"android","device_type":"phone","app_id":"app.solstone.phone","app_version":"1.0.0"},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
         val response = parseClientsSelfResponse(json)
         assertEquals(1, response?.protocolVersion)
         assertEquals(3L, response?.revision)
@@ -115,7 +100,7 @@ class ClientsSelfApiTest {
 
     @Test
     fun fetchClientsSelfReturnsSuccessOn200() {
-        val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"2.0"}}"""
+        val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"2.0"},"reported":null,"owner_label":null,"display_label":"Phone","updated_at":null}"""
         val client = FakePlHttpClient { method, path, _, _, _ ->
             assertEquals("GET", method)
             assertEquals("/app/network/api/clients/self", path)
@@ -147,7 +132,7 @@ class ClientsSelfApiTest {
 
     @Test
     fun putClientsSelfReturnsSuccessOn200() {
-        val json = """{"protocol_version":1,"revision":2,"reported":{"name":"Phone"}}"""
+        val json = """{"protocol_version":1,"revision":2,"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"J","version":"1.0.0"}}"""
         val client = FakePlHttpClient { _, _, _, _, _ ->
             HttpResponse(200, emptyMap(), json.toByteArray())
         }
@@ -155,4 +140,27 @@ class ClientsSelfApiTest {
         assertTrue(result is ClientsSelfPutResult.Success)
         assertEquals("Phone", result.response.reported?.name)
     }
+    @Test
+    fun requiredNullableFieldsMustBePresentAndRevisionMustBeBounded() {
+        val complete = """{"protocol_version":1,"revision":1,"reported":{"name":null,"platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"J","version":"1.0.0"}}"""
+        assertNotNull(parseClientsSelfResponse(complete))
+        assertNull(parseClientsSelfResponse(complete.replace("\"protocol_version\":1", "\"protocol_version\":1.000000000000000001")))
+        assertNull(parseClientsSelfResponse(complete.replace("\"revision\":1", "\"revision\":1.000000000000000001")))
+        val root = parseJson(complete) as Map<String, Any?>
+        assertNotNull(parseClientsSelfResponse(toJson(root + ("journal" to mapOf("name" to null, "version" to "1.0.0")))))
+        assertNull(parseClientsSelfResponse(toJson(root + ("display_label" to null))))
+        assertNull(parseClientsSelfResponse(toJson(root + ("journal" to mapOf("name" to "J", "version" to null)))))
+        for (key in root.keys) {
+            assertNull(parseClientsSelfResponse(toJson(root - key)), key)
+        }
+        val reported = root["reported"] as Map<String, Any?>
+        for (key in reported.keys) {
+            assertNull(parseClientsSelfResponse(toJson(root + ("reported" to (reported - key)))), key)
+        }
+        assertNotNull(parseClientsSelfResponse(toJson(root + ("reported" to null))))
+        for (revision in listOf(1.5, -1, 9007199254740992.0)) {
+            assertNull(parseClientsSelfResponse(toJson(root + ("revision" to revision))))
+        }
+    }
+
 }

@@ -129,7 +129,7 @@ class RelayTokenMaintenanceTest {
         val newToken = jwt(iat = 100, exp = 2000000000)
         val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
-        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()))
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"${java.time.Instant.ofEpochSecond((app.solstone.core.pl.inspectRelayTokenPayload(newToken)!!["exp"] as Number).toLong())}"}""".toByteArray()))
         val dial = FakeDial(Close(4401), Close(4401))
 
         val result = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), poster, mutator, dial)
@@ -219,21 +219,21 @@ class RelayTokenMaintenanceTest {
         val store = createStore(home(token = oldJwt))
         val mutator = FileIdentityMutator(store)
         val hookPoster = HookingPoster(
-            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()),
+            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"${java.time.Instant.ofEpochSecond((app.solstone.core.pl.inspectRelayTokenPayload(newToken)!!["exp"] as Number).toLong())}"}""".toByteArray()),
         ) {
             mutator.installNewPairing(home(token = oldJwt).copy(relayOrigin = "https://other.origin"))
         }
 
         val maintainResult = maintainRelayToken(home(token = oldJwt), transport(token = oldJwt), hookPoster, mutator, nowEpochMs = 181_000L)
-        assertEquals(oldJwt, assertIs<RelayTokenResult.Ready>(maintainResult).transport.deviceToken)
+        assertIs<RelayTokenResult.Obsolete>(maintainResult)
         assertEquals(oldJwt, store.load()?.deviceToken)
         assertEquals("https://other.origin", store.load()?.relayOrigin)
 
         val dialOld = jwt(iat = 100, exp = 2000000000)
         val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
         val dialResult = dialWithReactiveRefresh(home(token = dialOld), transport(token = dialOld), hookPoster, mutator, dial)
-        assertEquals(SyncOutcome.SUCCESS, dialResult)
-        assertEquals(listOf(dialOld, dialOld), dial.tokens)
+        assertEquals(SyncOutcome.RETRY, dialResult)
+        assertEquals(emptyList(), dial.tokens)
     }
 
     @Test
@@ -243,15 +243,15 @@ class RelayTokenMaintenanceTest {
         val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
         val hookPoster = HookingPoster(
-            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()),
+            HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"${java.time.Instant.ofEpochSecond((app.solstone.core.pl.inspectRelayTokenPayload(newToken)!!["exp"] as Number).toLong())}"}""".toByteArray()),
         ) {
             mutator.installNewPairing(home(oldToken).copy(clientCertFingerprint = "sha256:different"))
         }
 
         val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
         val dialResult = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), hookPoster, mutator, dial)
-        assertEquals(SyncOutcome.SUCCESS, dialResult)
-        assertEquals(listOf(oldToken, oldToken), dial.tokens)
+        assertEquals(SyncOutcome.RETRY, dialResult)
+        assertEquals(listOf(oldToken), dial.tokens)
         assertEquals(oldToken, store.load()?.deviceToken)
     }
 
@@ -275,13 +275,13 @@ class RelayTokenMaintenanceTest {
             ): app.solstone.core.identity.AccessMutationResult =
                 app.solstone.core.identity.AccessMutationResult.DurabilityUncertain(java.io.IOException("disk uncertain"))
         }
-        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()))
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"${java.time.Instant.ofEpochSecond((app.solstone.core.pl.inspectRelayTokenPayload(newToken)!!["exp"] as Number).toLong())}"}""".toByteArray()))
         val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
 
         val result = dialWithReactiveRefresh(initialHome, transport(token = oldToken), poster, mutator, dial)
 
-        assertEquals(SyncOutcome.SUCCESS, result)
-        assertEquals(listOf(oldToken, oldToken), dial.tokens)
+        assertEquals(SyncOutcome.RETRY, result)
+        assertEquals(listOf(oldToken), dial.tokens)
     }
 
     private class HookingPoster(
@@ -295,7 +295,7 @@ class RelayTokenMaintenanceTest {
     }
 
     private class FakePoster(
-        private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"${jwt(100, 2000000000)}","protocol_version":2}""".toByteArray()),
+        private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"${jwt(100, 2000000000)}","protocol_version":2,"expires_at":"2033-05-18T03:33:20Z"}""".toByteArray()),
     ) : HttpsPoster {
         var calls = 0
         override fun post(url: String, body: ByteArray, headers: Map<String, String>): HttpResponse {

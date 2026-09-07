@@ -3,6 +3,7 @@
 
 package app.solstone.core.pl
 
+import app.solstone.core.identity.AccessSnapshot
 import app.solstone.core.identity.AccessMutationResult
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.PairingGeneration
@@ -15,6 +16,7 @@ data class RelayAccessSnapshot(
     val caChainFingerprint: String,
     val clientCertFingerprint: String,
     val openClient: () -> PlHttpClient,
+    val access: AccessSnapshot,
 )
 
 data class PendingClear(
@@ -47,11 +49,14 @@ class RelayAccessRefreshCoordinator(
     ) {
         retryPendingClearIfMatching()
 
+        val access = mutator.accessSnapshot() ?: return
+        if (access.pairing != PairingGeneration(instanceId, clientCertFingerprint)) return
         val snapshot = RelayAccessSnapshot(
             instanceId = instanceId,
             caChainFingerprint = caChainFingerprint,
             clientCertFingerprint = clientCertFingerprint,
             openClient = openClient,
+            access = access,
         )
         job.submit(snapshot) { snap, gen ->
             executeAccessJob(snap, gen)
@@ -90,6 +95,7 @@ class RelayAccessRefreshCoordinator(
     private fun executeAccessJob(snap: RelayAccessSnapshot, gen: Long) {
         var client: PlHttpClient? = null
         try {
+            if (gen != job.currentGeneration() || mutator.accessSnapshot() != snap.access) return
             client = snap.openClient()
             val result = fetchRelayAccess(client, snap.instanceId)
             val expectedPairing = PairingGeneration(snap.instanceId, snap.clientCertFingerprint)
@@ -99,8 +105,7 @@ class RelayAccessRefreshCoordinator(
                         if (gen != job.currentGeneration() || mutator.currentPairingGeneration() != expectedPairing) {
                             return
                         }
-                        val expectedGen = mutator.currentAccessMutationGen()
-                        val mutationResult = mutator.mutate(expectedPairing, expectedGen) { current ->
+                        val mutationResult = mutator.mutateIfCurrent(snap.access, { gen == job.currentGeneration() }) { current ->
                             current.copy(
                                 relayOrigin = result.relayOrigin,
                                 deviceToken = result.deviceToken,
@@ -117,22 +122,19 @@ class RelayAccessRefreshCoordinator(
                         if (gen != job.currentGeneration() || mutator.currentPairingGeneration() != expectedPairing) {
                             return
                         }
-                        mutator.disableRelayLive()
-                        val expectedGen = mutator.currentAccessMutationGen()
-                        val mutationResult = mutator.mutate(expectedPairing, expectedGen) { current ->
-                            current.copy(
-                                relayOrigin = null,
-                                deviceToken = null,
-                                expiresAt = null,
-                            )
-                        }
+                        val mutationResult = mutator.clearRelayAccess(snap.access) { gen == job.currentGeneration() }
                         when (mutationResult) {
                             is AccessMutationResult.Applied -> {
                                 pendingClear = null
                             }
                             is AccessMutationResult.PersistenceFailed,
                             is AccessMutationResult.DurabilityUncertain -> {
-                                pendingClear = PendingClear(expectedPairing, expectedGen)
+                                val disablingGen = when (mutationResult) {
+                                    is AccessMutationResult.PersistenceFailed -> mutationResult.accessMutationGen
+                                    is AccessMutationResult.DurabilityUncertain -> mutationResult.accessMutationGen
+                                    else -> null
+                                } ?: snap.access.generation
+                                pendingClear = PendingClear(expectedPairing, disablingGen)
                             }
                             else -> {}
                         }

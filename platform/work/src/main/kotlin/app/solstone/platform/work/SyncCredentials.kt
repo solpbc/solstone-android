@@ -5,6 +5,7 @@ package app.solstone.platform.work
 
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
@@ -58,9 +59,17 @@ fun recoverSyncCredentials(
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
     relayLiveEligible: Boolean = true,
+    mutator: IdentityMutator? = null,
 ): SyncCredentials {
     val credential = credentialStore.load() ?: return SyncCredentials.NeedsRepair("missing credential")
-    val identity = identityStore.load() ?: return SyncCredentials.NeedsRepair("missing identity")
+    val identity = (if (mutator != null) mutator.current() else identityStore.load())
+        ?: return SyncCredentials.NeedsRepair("missing identity")
+    if (mutator != null) {
+        val fingerprint = runCatching {
+            "sha256:" + app.solstone.core.crypto.sha256Hex(app.solstone.core.crypto.certificateFromPem(credential.clientCertPem).encoded)
+        }.getOrNull()
+        if (fingerprint != identity.clientCertFingerprint) return SyncCredentials.NeedsRepair("missing credential")
+    }
     if (identity.state != IdentityState.PAIRED) {
         return SyncCredentials.NeedsRepair("identity not paired")
     }
@@ -93,4 +102,17 @@ fun classifyOpenerFailure(t: Throwable): OpenerFailureKind = when {
     isTrustRefusal(t) -> OpenerFailureKind.TRUST_REFUSAL
     t is java.io.IOException -> OpenerFailureKind.AVAILABILITY
     else -> OpenerFailureKind.NONE
+}
+
+fun currentOptionalTransport(
+    selected: SyncTransport,
+    identity: PairedHome,
+    mutator: IdentityMutator,
+): SyncTransport? {
+    val access = mutator.accessSnapshot() ?: return null
+    if (access.pairing != app.solstone.core.identity.PairingGeneration(identity.instanceId, identity.clientCertFingerprint)) return null
+    return when (selected) {
+        is SyncTransport.Direct -> selected
+        is SyncTransport.Relay -> relayFallbackTransport(access.home, access.relayLiveEligible)
+    }
 }

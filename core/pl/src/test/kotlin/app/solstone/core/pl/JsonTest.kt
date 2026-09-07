@@ -15,7 +15,7 @@ class JsonTest {
         val first = items[0] as Map<*, *>
         assertEquals("a\nb", first["name"])
         assertEquals(true, first["ok"])
-        assertEquals(12.5, first["n"])
+        assertEquals(12.5, (first["n"] as Number).toDouble())
         assertEquals("""{"items":[{"name":"a\nb","ok":true,"n":12.5}],"none":null}""", toJson(parsed))
     }
 

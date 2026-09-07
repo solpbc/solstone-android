@@ -74,6 +74,7 @@ class SyncWorker(
                     credentialStore = stores.credentialStore,
                     identityStore = stores.identityStore,
                     relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
+                    mutator = stores.identityMutator,
                 )
             ) {
                 is SyncCredentials.NeedsRepair -> {
@@ -101,10 +102,16 @@ class SyncWorker(
         try {
             val store = RoomDrainStore(db.segmentDao())
             val spoolDir = File(applicationContext.filesDir, "spool")
-            val syncTransport: (SyncTransport) -> SyncOutcome = { selectedTransport ->
+            val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
+                val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
+                if (access.pairing != PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)) return@transportAttempt SyncOutcome.RETRY
+                if (selectedTransport is SyncTransport.Relay && relaySnapshot(credentials.identity, selectedTransport, stores.identityMutator) != access) return@transportAttempt SyncOutcome.RETRY
                 syncWithTransport(
                     transport = selectedTransport,
-                    openClient = { openSyncClient(it, credentials.credential) },
+                    openClient = {
+                        if (stores.identityMutator.accessSnapshot() != access) throw IOException("missing identity")
+                        openSyncClient(selectedTransport, credentials.credential)
+                    },
                     store = store,
                     readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
                     host = deviceLabel(),
@@ -117,7 +124,11 @@ class SyncWorker(
                             journalVersionCoordinator = stores.journalVersionCoordinator,
                             relayAccessCoordinator = stores.relayAccessCoordinator,
                             localDescriptionProvider = { currentPhoneDeviceDescription(applicationContext) },
-                            openClient = { openSyncClient(selectedTransport, credentials.credential) },
+                            openClient = {
+                                val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
+                                    ?: throw IOException("missing identity")
+                                openSyncClient(currentTransport, credentials.credential)
+                            },
                         )
                     },
                 )
@@ -131,7 +142,6 @@ class SyncWorker(
                         transport = transport,
                         poster = poster,
                         mutator = stores.identityMutator,
-                        nowEpochMs = System.currentTimeMillis(),
                     )
                     when (maintained) {
                         is RelayTokenResult.Ready -> dialWithReactiveRefresh(
@@ -143,6 +153,7 @@ class SyncWorker(
                             log = { message, throwable -> Log.w(TAG, message, throwable) },
                         )
                         RelayTokenResult.ReconnectNeeded -> return Result.failure()
+                        RelayTokenResult.Obsolete -> return Result.retry()
                     }
                 }
             }
@@ -151,7 +162,7 @@ class SyncWorker(
             if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct) {
                 val relayTransport = relayFallbackTransport(
                     identity = credentials.identity,
-                    relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
+                    relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
                 )
                 if (relayTransport != null) {
                     val maintained = maintainRelayToken(
@@ -159,7 +170,6 @@ class SyncWorker(
                         transport = relayTransport,
                         poster = poster,
                         mutator = stores.identityMutator,
-                        nowEpochMs = System.currentTimeMillis(),
                     )
                     if (maintained is RelayTokenResult.Ready) {
                         outcome = dialWithReactiveRefresh(

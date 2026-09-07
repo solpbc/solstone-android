@@ -117,7 +117,7 @@ class ScheduleOptionalJobsTest {
             body: ByteArray?,
             maxResponseBytes: Int,
         ): HttpResponse {
-            return HttpResponse(200, emptyMap(), """{"journal_name":"Test Journal","protocol_version":1,"revision":1}""".toByteArray())
+            return HttpResponse(200, emptyMap(), """{"journal_name":"Test Journal","protocol_version":1,"revision":1,"reported":null,"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"J","version":"1.0.0"}}""".toByteArray())
         }
     }
 

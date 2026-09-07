@@ -77,7 +77,7 @@ class RealSeamsTest {
                     "/app/network/api/clients/self" -> HttpResponse(
                         200,
                         emptyMap(),
-                        """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"home","version":"0.9.5"}}""".toByteArray(),
+                        """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"home","version":"0.9.5"},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray(),
                     )
                     else -> HttpResponse(200, emptyMap(), """{"version":{"current":"0.9.5"}}""".toByteArray())
                 }
@@ -196,7 +196,7 @@ class RealSeamsTest {
                                 }
                                 if (path.startsWith("/app/network/api/clients/self")) {
                                     journalLatch.countDown()
-                                    return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"}}""".toByteArray())
+                                    return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
                                 }
                                 if (path.startsWith("/app/network/api/relay/access")) {
                                     relayLatch.countDown()
@@ -357,7 +357,7 @@ class RealSeamsTest {
                         }
                         if (path.startsWith("/app/network/api/clients/self")) {
                             journalLatch.countDown()
-                            return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"}}""".toByteArray())
+                            return HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"Home","version":"1.0.0"},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
                         }
                         return HttpResponse(200, emptyMap(), ByteArray(0))
                     }

@@ -169,7 +169,7 @@ class RealPlStatusProbe(
 
     override fun probe(): HarnessPlStatus {
         val credential = credentialStore.load()
-        val identity = mutator?.current() ?: identityStore.load()
+        val identity = if (mutator != null) mutator.current() else identityStore.load()
         if (credential == null && identity == null && endpointStore.load() == null) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.NotPaired
@@ -186,7 +186,9 @@ class RealPlStatusProbe(
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("identity not paired")
         }
-        val relayLiveEligible = mutator?.isRelayLiveEligible() ?: false
+        val access = mutator?.accessSnapshot()
+        if (access != null && access.home != identity) return HarnessPlStatus.PairedButUnreachable("missing identity")
+        val relayLiveEligible = access?.relayLiveEligible ?: false
         val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
         if (transport == null) {
             handleReachabilityTransition(false, null, null)
@@ -195,6 +197,7 @@ class RealPlStatusProbe(
 
         fun tryTransport(t: SyncTransport): Pair<Int?, Throwable?> {
             return try {
+                if (mutator != null && mutator.accessSnapshot() != access) throw java.io.IOException("missing identity")
                 val client = openClientFor(t, credential)
                 try {
                     val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
@@ -230,10 +233,18 @@ class RealPlStatusProbe(
             }
         }
 
+        if (mutator != null && mutator.accessSnapshot() != access) {
+            handleReachabilityTransition(false, null, null)
+            return HarnessPlStatus.PairedButUnreachable("missing identity")
+        }
         if (status != null) {
             val reachable = status == 200
             handleReachabilityTransition(reachable, identity, credential) {
-                openClientFor(usedTransport, credential)
+                val currentTransport = if (mutator != null) {
+                    app.solstone.platform.work.currentOptionalTransport(usedTransport, identity, mutator)
+                        ?: throw java.io.IOException("missing identity")
+                } else usedTransport
+                openClientFor(currentTransport, credential)
             }
             return HarnessPlStatus.Reachable(status)
         } else {

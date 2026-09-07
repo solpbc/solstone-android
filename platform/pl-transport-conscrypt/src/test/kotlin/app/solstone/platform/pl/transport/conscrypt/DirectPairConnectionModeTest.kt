@@ -17,6 +17,35 @@ import kotlin.test.assertFailsWith
 
 class DirectPairConnectionModeTest {
     @Test
+    fun credentialFailureAfterPublicationRestoresPriorPairingCredential() {
+        val prior = home(instanceId = "old", label = "Old")
+        val oldCredential = credential("old")
+        val stores = Stores(prior, credential = oldCredential)
+        val writer = object : ClientCredentialStore {
+            var failOnce = true
+            override fun load() = stores.credentialStore.load()
+            override fun clear() = stores.credentialStore.clear()
+            override fun save(value: ClientCredential) {
+                stores.credentialStore.save(value)
+                if (failOnce) {
+                    failOnce = false
+                    throw java.io.IOException("credential save failed")
+                }
+            }
+        }
+        assertFailsWith<java.io.IOException> {
+            persistOrReturnDirectPairResult(
+                home = home(instanceId = "new", label = "New"), credential = credential("new"),
+                endpoint = DirectEndpoint("10.0.0.2", 7657), handshakePinned = true, pairStatus = 200,
+                credentialStore = writer, identityStore = stores.identityStore, endpointStore = stores.endpointStore,
+                statusProbe = { _, _ -> error("publication failure must not probe") },
+            )
+        }
+        assertEquals(oldCredential, writer.load())
+        assertEquals(prior, stores.identityStore.load())
+    }
+
+    @Test
     fun samePairedInstanceReturnsAlreadyConnectedWithoutOverwritingStores() {
         val existing = home(instanceId = "same", label = "Existing")
         val stores = Stores(existing, endpoint = DirectEndpoint("10.0.0.9", 7657), credential = credential("old"))
@@ -89,7 +118,7 @@ class DirectPairConnectionModeTest {
     }
 
     @Test
-    fun emptyStoresRetainWritesCompletedBeforeEachFailure() {
+    fun emptyStoresRestoreCredentialWhenIdentityPublicationFails() {
         FailureStage.entries.forEach { stage ->
             val stores = Stores(failureStage = stage)
 
@@ -102,7 +131,7 @@ class DirectPairConnectionModeTest {
                     assertEquals(null, stores.endpointStore.load())
                 }
                 FailureStage.IDENTITY -> {
-                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals(null, stores.credentialStore.load()?.privateKeyPem)
                     assertEquals(null, stores.identityStore.load())
                     assertEquals(null, stores.endpointStore.load())
                 }
@@ -117,7 +146,7 @@ class DirectPairConnectionModeTest {
     }
 
     @Test
-    fun preseededStoresAreNeverRolledBackOrClearedAfterFailure() {
+    fun preseededStoresRestoreCoherentCredentialsWhenIdentityPublicationFails() {
         FailureStage.entries.forEach { stage ->
             val oldHome = home(instanceId = "old")
             val oldEndpoint = DirectEndpoint("10.0.0.9", 7657)
@@ -137,7 +166,7 @@ class DirectPairConnectionModeTest {
                     assertEquals(oldEndpoint, stores.endpointStore.load())
                 }
                 FailureStage.IDENTITY -> {
-                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
                     assertEquals(oldHome, stores.identityStore.load())
                     assertEquals(oldEndpoint, stores.endpointStore.load())
                 }
