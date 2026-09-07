@@ -33,6 +33,8 @@ import javax.net.ssl.SSLEngine
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import javax.security.auth.x500.X500Principal
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -48,6 +50,11 @@ class TlsEngineMuxInstrumentedTest {
         val (clientRaw, serverRaw) = pairedDuplexes()
         val serverEngine = serverEngine()
         var serverError: Throwable? = null
+        // The server must not close its side of the pipes while the client may still be writing.
+        // Its two readFrame calls are satisfied before the client's last TLS records have landed,
+        // so exiting `use` here closed serverInput under an in-flight write and the client's next
+        // write threw "Pipe closed". Hold the transport open until the client says it is done.
+        val clientFinished = CountDownLatch(1)
         val serverThread = thread(start = true) {
             try {
                 TlsEngineDuplex(serverEngine, serverRaw).use { serverTls ->
@@ -70,6 +77,7 @@ class TlsEngineMuxInstrumentedTest {
                         ).toByteArray(Charsets.US_ASCII) + body
                     serverTls.output.write(encodeFrame(request.streamId, FLAG_DATA or FLAG_CLOSE, response))
                     serverTls.output.flush()
+                    clientFinished.await(JOIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 }
             } catch (t: Throwable) {
                 serverError = t
@@ -83,7 +91,8 @@ class TlsEngineMuxInstrumentedTest {
             assertEquals(200, response.status)
             assertArrayEquals("healthy".toByteArray(Charsets.US_ASCII), response.body)
         }
-        serverThread.join(5000)
+        clientFinished.countDown()
+        serverThread.join(JOIN_TIMEOUT_MS)
         serverError?.let { throw it }
         assertEquals(false, serverThread.isAlive)
     }
@@ -185,6 +194,7 @@ class TlsEngineMuxInstrumentedTest {
     private companion object {
         val PASSWORD: CharArray = "test".toCharArray()
         const val PIPE_SIZE = 128 * 1024
+        const val JOIN_TIMEOUT_MS = 5_000L
         val ECDSA_WITH_SHA256_OID = byteArrayOf(
             0x06,
             0x08,
