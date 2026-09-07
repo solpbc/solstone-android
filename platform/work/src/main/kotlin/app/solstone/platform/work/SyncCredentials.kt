@@ -26,26 +26,35 @@ sealed interface SyncCredentials {
     data class NeedsRepair(val reason: String) : SyncCredentials
 }
 
-fun selectSyncTransport(identity: PairedHome, endpointStore: EndpointStore): SyncTransport? {
-    val relayOrigin = identity.relayOrigin
-    return if (relayOrigin != null) {
-        identity.deviceToken?.let { deviceToken -> SyncTransport.Relay(relayOrigin, identity.instanceId, deviceToken) }
-    } else {
-        endpointStore.load()?.let { endpoint -> SyncTransport.Direct(endpoint) }
+fun selectSyncTransport(
+    identity: PairedHome,
+    endpointStore: EndpointStore,
+    relayLiveEligible: Boolean = true,
+): SyncTransport? {
+    val endpoint = endpointStore.load()
+    if (endpoint != null) {
+        return SyncTransport.Direct(endpoint)
     }
+    val relayOrigin = identity.relayOrigin
+    val deviceToken = identity.deviceToken
+    if (relayLiveEligible && relayOrigin != null && deviceToken != null) {
+        return SyncTransport.Relay(relayOrigin, identity.instanceId, deviceToken)
+    }
+    return null
 }
 
 fun recoverSyncCredentials(
     endpointStore: EndpointStore,
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
+    relayLiveEligible: Boolean = true,
 ): SyncCredentials {
     val credential = credentialStore.load() ?: return SyncCredentials.NeedsRepair("missing credential")
     val identity = identityStore.load() ?: return SyncCredentials.NeedsRepair("missing identity")
     if (identity.state != IdentityState.PAIRED) {
         return SyncCredentials.NeedsRepair("identity not paired")
     }
-    val transport = selectSyncTransport(identity, endpointStore)
-        ?: return SyncCredentials.NeedsRepair(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
+    val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
+        ?: return SyncCredentials.NeedsRepair("missing endpoint and relay credentials")
     return SyncCredentials.Ready(transport, credential, identity)
 }

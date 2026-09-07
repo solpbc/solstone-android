@@ -138,6 +138,17 @@ class OpportunisticSyncTest {
     }
 
     @Test
+    fun pairingSuccessEnqueuesEvenWhenZeroPending() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        val sync = RecordingSyncEnqueue()
+        val network = FakeNetworkAvailability()
+        val opportunistic = OpportunisticSync(evidence, sync, network)
+
+        opportunistic.onPairingSuccess()
+        assertEquals(1, sync.calls)
+    }
+
+    @Test
     fun pairingSuccessAndStopFlushPendingWithoutChangingNetworkDedupe() {
         val evidence = FakeEvidenceReader(sync = HarnessSyncState(2, null, null))
         val sync = RecordingSyncEnqueue()

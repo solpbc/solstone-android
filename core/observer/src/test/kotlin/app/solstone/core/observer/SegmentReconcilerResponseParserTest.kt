@@ -85,6 +85,7 @@ class SegmentReconcilerResponseParserTest {
             path: String,
             headers: Map<String, String>,
             body: ByteArray?,
+            maxResponseBytes: Int,
         ): HttpResponse {
             this.path = path
             return response

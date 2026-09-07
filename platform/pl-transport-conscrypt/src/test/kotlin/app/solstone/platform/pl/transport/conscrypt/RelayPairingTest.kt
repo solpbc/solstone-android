@@ -350,7 +350,13 @@ class RelayPairingTest {
         val requests = mutableListOf<RequestRecord>()
         var closed = false
         override val client: PlHttpClient = object : PlHttpClient {
-            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+                maxResponseBytes: Int,
+            ): HttpResponse {
                 requests += RequestRecord(method, path, headers, body)
                 return response
             }

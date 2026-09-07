@@ -3,7 +3,9 @@
 
 package app.solstone.platform.work
 
-import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.AccessMutationResult
+import app.solstone.core.identity.IdentityMutator
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.shouldRefreshDeviceToken
 import app.solstone.platform.pl.transport.conscrypt.DeviceTokenRefresh
@@ -26,7 +28,7 @@ fun maintainRelayToken(
     identity: PairedHome,
     transport: SyncTransport.Relay,
     poster: HttpsPoster,
-    identityStore: IdentityStore,
+    mutator: IdentityMutator,
     nowEpochMs: Long,
 ): RelayTokenResult {
     if (!shouldRefreshDeviceToken(transport.deviceToken, nowEpochMs)) {
@@ -34,8 +36,16 @@ fun maintainRelayToken(
     }
     return when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster)) {
         is DeviceTokenRefresh.Refreshed -> {
-            identityStore.save(identity.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt))
-            RelayTokenResult.Ready(transport.copy(deviceToken = refresh.deviceToken))
+            val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+            val accessGen = mutator.currentAccessMutationGen()
+            val mutateResult = mutator.mutate(pairing, accessGen) { current ->
+                current.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
+            }
+            if (mutateResult is AccessMutationResult.Applied || mutateResult is AccessMutationResult.DurabilityUncertain) {
+                RelayTokenResult.Ready(transport.copy(deviceToken = refresh.deviceToken))
+            } else {
+                RelayTokenResult.Ready(transport)
+            }
         }
         DeviceTokenRefresh.ReconnectNeeded -> RelayTokenResult.ReconnectNeeded
         DeviceTokenRefresh.TransientError -> RelayTokenResult.Ready(transport)
@@ -46,7 +56,7 @@ fun dialWithReactiveRefresh(
     identity: PairedHome,
     transport: SyncTransport.Relay,
     poster: HttpsPoster,
-    identityStore: IdentityStore,
+    mutator: IdentityMutator,
     dial: RelayDial,
     log: (String, Throwable?) -> Unit = { _, _ -> },
 ): SyncOutcome =
@@ -59,9 +69,18 @@ fun dialWithReactiveRefresh(
         } else {
             when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster)) {
                 is DeviceTokenRefresh.Refreshed -> {
-                    identityStore.save(identity.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt))
+                    val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+                    val accessGen = mutator.currentAccessMutationGen()
+                    val mutateResult = mutator.mutate(pairing, accessGen) { current ->
+                        current.copy(deviceToken = refresh.deviceToken, expiresAt = refresh.expiresAt)
+                    }
+                    val tokenToDial = if (mutateResult is AccessMutationResult.Applied || mutateResult is AccessMutationResult.DurabilityUncertain) {
+                        refresh.deviceToken
+                    } else {
+                        transport.deviceToken
+                    }
                     try {
-                        dial.dial(transport.copy(deviceToken = refresh.deviceToken))
+                        dial.dial(transport.copy(deviceToken = tokenToDial))
                     } catch (retryClose: RelayWebSocketClosedException) {
                         log("relay websocket closed after token refresh", retryClose)
                         SyncOutcome.RETRY

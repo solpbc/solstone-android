@@ -262,6 +262,42 @@ class MuxSessionTest {
         finishHome(home)
     }
 
+    @Test
+    fun customMaxResponseBytesEnforced() {
+        val (client, server) = pairedDuplexes()
+        val response = responseBytes(100)
+        val home = startHome(server) { duplex ->
+            val streamId = readRequest(duplex)
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, response)
+        }
+        client.use {
+            val error = assertFailsWith<IOException> {
+                MuxSession(it).request("GET", "/limit", emptyMap(), null, maxResponseBytes = 50)
+            }
+            assertEquals("PL response too large", error.message)
+        }
+        finishHome(home)
+    }
+
+    @Test
+    fun redirectResponsesReturnedDirectlyWithoutSecondRequest() {
+        val (client, server) = pairedDuplexes()
+        val redirectHeader = "HTTP/1.1 302 Found\r\nLocation: https://example.com/other\r\n\r\n".toByteArray(Charsets.US_ASCII)
+        var serverRequests = 0
+        val home = startHome(server) { duplex ->
+            val streamId = readRequest(duplex)
+            serverRequests += 1
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, redirectHeader)
+            pollFrame(duplex.input, iterations = 20)
+        }
+        client.use {
+            val response = MuxSession(it).request("GET", "/redirect", emptyMap(), null)
+            assertEquals(302, response.status)
+            assertEquals(1, serverRequests)
+        }
+        finishHome(home)
+    }
+
     private fun assertMalformedControlPoisons(flags: Int, payload: ByteArray) {
         val (client, server) = pairedDuplexes()
         val home = startHome(server) { duplex ->

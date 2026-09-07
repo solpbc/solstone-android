@@ -143,7 +143,13 @@ internal class RecordingPlHttpClient(vararg responses: HttpResponse) : PlHttpCli
     var closed = false
         private set
 
-    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
+    override fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int,
+    ): HttpResponse {
         requests += RecordedRequest(method, path, headers, body)
         return scripted.removeFirst()
     }

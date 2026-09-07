@@ -54,10 +54,10 @@ class ObserverSyncSchedulingRuntimeTest {
     }
 
     /**
-     * AC2 red proof: successful pairing only enqueues opportunistic sync when pending evidence exists.
+     * Successful pairing always enqueues opportunistic sync for initial contact and metadata publication.
      */
     @Test
-    fun pairingSuccessEnqueuesOnlyWhenPendingEvidenceExists() {
+    fun pairingSuccessAlwaysEnqueuesSync() {
         assertEquals(0, pendingEvidenceCount(context))
 
         ActivityScenario.launch(ObserverActivity::class.java).use {
@@ -67,20 +67,6 @@ class ObserverSyncSchedulingRuntimeTest {
 
             val initialEnqueueNowCalls = sync.enqueueNowCalls
             container.controller.onScannedPairLink(validDirectPairLink())
-            assertEquals(initialEnqueueNowCalls, sync.enqueueNowCalls)
-        }
-
-        resetObserverRuntime()
-        seededObserverContainer { seedPendingEvidence(context) }
-
-        ActivityScenario.launch(ObserverActivity::class.java).use {
-            val container = waitForObserverContainer()
-            waitForRecovery(container)
-            val sync = requireNotNull(container.flavor.syncControl)
-
-            val initialEnqueueNowCalls = sync.enqueueNowCalls
-            container.controller.onScannedPairLink(validDirectPairLink())
-
             assertEquals(initialEnqueueNowCalls + 1, sync.enqueueNowCalls)
         }
     }

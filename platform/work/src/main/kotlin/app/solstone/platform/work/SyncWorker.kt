@@ -10,6 +10,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.model.BundleFile
+import app.solstone.core.pl.ClientReportedDescription
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
@@ -31,7 +32,14 @@ class SyncWorker(
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
             val stores = syncStores(applicationContext)
-            when (val credentials = recoverSyncCredentials(stores.endpointStore, stores.credentialStore, stores.identityStore)) {
+            when (
+                val credentials = recoverSyncCredentials(
+                    endpointStore = stores.endpointStore,
+                    credentialStore = stores.credentialStore,
+                    identityStore = stores.identityStore,
+                    relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
+                )
+            ) {
                 is SyncCredentials.NeedsRepair -> {
                     Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
                     Result.failure()
@@ -55,21 +63,6 @@ class SyncWorker(
         val db = openSolstonePersistenceDatabase(applicationContext)
         val poster = defaultHttpsPoster()
         try {
-            val transport = when (val current = credentials.transport) {
-                is SyncTransport.Direct -> current
-                is SyncTransport.Relay -> when (
-                    val maintained = maintainRelayToken(
-                        identity = credentials.identity,
-                        transport = current,
-                        poster = poster,
-                        identityStore = stores.identityStore,
-                        nowEpochMs = System.currentTimeMillis(),
-                    )
-                ) {
-                    is RelayTokenResult.Ready -> maintained.transport
-                    RelayTokenResult.ReconnectNeeded -> return Result.failure()
-                }
-            }
             val store = RoomDrainStore(db.segmentDao())
             val spoolDir = File(applicationContext.filesDir, "spool")
             val syncTransport: (SyncTransport) -> SyncOutcome = { selectedTransport ->
@@ -82,28 +75,77 @@ class SyncWorker(
                     now = System::currentTimeMillis,
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
                     onUsableConnection = {
+                        val currentHome = stores.identityMutator.current() ?: credentials.identity
                         stores.journalVersionCoordinator.onUsableConnection(
-                            credentials.identity.instanceId,
-                            credentials.identity.caChainFingerprint,
+                            instanceId = currentHome.instanceId,
+                            caChainFingerprint = currentHome.caChainFingerprint,
+                            clientCertFingerprint = currentHome.clientCertFingerprint,
+                            localDescriptionProvider = { currentPhoneDeviceDescription(applicationContext) },
+                        ) {
+                            openSyncClient(selectedTransport, credentials.credential)
+                        }
+                        stores.relayAccessCoordinator.onUsableConnection(
+                            instanceId = currentHome.instanceId,
+                            caChainFingerprint = currentHome.caChainFingerprint,
+                            clientCertFingerprint = currentHome.clientCertFingerprint,
                         ) {
                             openSyncClient(selectedTransport, credentials.credential)
                         }
                     },
                 )
             }
-            val outcome = when (transport) {
+
+            var outcome = when (val transport = credentials.transport) {
                 is SyncTransport.Direct -> syncTransport(transport)
-                is SyncTransport.Relay -> dialWithReactiveRefresh(
-                    identity = credentials.identity,
-                    transport = transport,
-                    poster = poster,
-                    identityStore = stores.identityStore,
-                    dial = RelayDial { relayTransport ->
-                        syncTransport(relayTransport)
-                    },
-                    log = { message, throwable -> Log.w(TAG, message, throwable) },
-                )
+                is SyncTransport.Relay -> {
+                    val maintained = maintainRelayToken(
+                        identity = credentials.identity,
+                        transport = transport,
+                        poster = poster,
+                        mutator = stores.identityMutator,
+                        nowEpochMs = System.currentTimeMillis(),
+                    )
+                    when (maintained) {
+                        is RelayTokenResult.Ready -> dialWithReactiveRefresh(
+                            identity = credentials.identity,
+                            transport = maintained.transport,
+                            poster = poster,
+                            mutator = stores.identityMutator,
+                            dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
+                            log = { message, throwable -> Log.w(TAG, message, throwable) },
+                        )
+                        RelayTokenResult.ReconnectNeeded -> return Result.failure()
+                    }
+                }
             }
+
+            // If direct probe failed and relay is live-eligible, retry once via Relay
+            if (outcome != SyncOutcome.SUCCESS && credentials.transport is SyncTransport.Direct && stores.identityMutator.isRelayLiveEligible()) {
+                val currentHome = stores.identityMutator.current()
+                val relayOrigin = currentHome?.relayOrigin
+                val deviceToken = currentHome?.deviceToken
+                if (relayOrigin != null && deviceToken != null) {
+                    val relayTransport = SyncTransport.Relay(relayOrigin, currentHome.instanceId, deviceToken)
+                    val maintained = maintainRelayToken(
+                        identity = currentHome,
+                        transport = relayTransport,
+                        poster = poster,
+                        mutator = stores.identityMutator,
+                        nowEpochMs = System.currentTimeMillis(),
+                    )
+                    if (maintained is RelayTokenResult.Ready) {
+                        outcome = dialWithReactiveRefresh(
+                            identity = currentHome,
+                            transport = maintained.transport,
+                            poster = poster,
+                            mutator = stores.identityMutator,
+                            dial = RelayDial { t -> syncTransport(t) },
+                            log = { message, throwable -> Log.w(TAG, message, throwable) },
+                        )
+                    }
+                }
+            }
+
             return outcome.toWorkResult()
         } catch (e: RelayDialWaitingException) {
             Log.i(TAG, "home offline, waiting; will retry", e)
@@ -145,7 +187,31 @@ class SyncWorker(
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .ifBlank { "android" }
+}
 
+// Resamples device descriptions from platform facts at trigger time.
+// Note: Android provides no system hostname/device-name broadcast listener; no polling is used.
+fun currentPhoneDeviceDescription(context: Context): ClientReportedDescription {
+    val manufacturer = Build.MANUFACTURER.orEmpty().trim()
+    val model = Build.MODEL.orEmpty().trim()
+    val name = when {
+        model.isEmpty() -> manufacturer
+        manufacturer.isEmpty() -> model
+        model.startsWith(manufacturer, ignoreCase = true) -> model
+        else -> "$manufacturer $model"
+    }.trim().ifBlank { null }
+
+    val appVersion = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    }.getOrNull()
+
+    return ClientReportedDescription(
+        name = name,
+        platform = "android",
+        deviceType = "phone",
+        appId = context.packageName,
+        appVersion = appVersion,
+    )
 }
 
 internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {

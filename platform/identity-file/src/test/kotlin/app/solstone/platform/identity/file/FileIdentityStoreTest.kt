@@ -119,7 +119,7 @@ class FileIdentityStoreTest {
         val original = file.readBytes()
         val logs = mutableListOf<String>()
 
-        assertNull(FileIdentityStore(file, SpySecretProtector(failUnprotect = true), logs::add).load())
+        assertNull(FileIdentityStore(file, SpySecretProtector(failUnprotect = true), log = { logs.add(it) }).load())
 
         assertTrue(file.exists())
         assertContentEquals(original, file.readBytes())

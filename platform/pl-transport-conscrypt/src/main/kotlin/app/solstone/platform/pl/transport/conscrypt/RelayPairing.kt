@@ -17,17 +17,19 @@ import app.solstone.core.crypto.pemToDer
 import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
-import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.parseJson
@@ -126,6 +128,8 @@ fun pairOverRelay(
     identityStore: IdentityStore,
     journalVersionStore: JournalVersionStore? = null,
     coordinator: JournalVersionRefreshCoordinator? = null,
+    mutator: IdentityMutator? = null,
+    relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ): RelayPairResult {
     val relayOrigin = normalizeRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
     val relayHost = URL(relayOrigin).host
@@ -171,13 +175,16 @@ fun pairOverRelay(
         session.close()
     }
 
-    val prior = identityStore.load()
+    val prior = mutator?.current() ?: identityStore.load()
     if (prior?.instanceId == pairResponse.instanceId && prior.state == IdentityState.PAIRED) {
         val cred = credentialStore.load()
         val origin = prior.relayOrigin
         val token = prior.deviceToken
         if (cred != null && token != null && origin != null) {
-            coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint) {
+            coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
+                openRelaySyncClient(origin, prior.instanceId, token, cred)
+            }
+            relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
                 openRelaySyncClient(origin, prior.instanceId, token, cred)
             }
         }
@@ -192,9 +199,12 @@ fun pairOverRelay(
         )
     }
     val connectionMode = if (prior?.instanceId == pairResponse.instanceId) {
+        coordinator?.onPairingChanged()
+        relayAccessCoordinator?.onPairingChanged()
         RelayPairConnectionMode.RECONNECTING
     } else {
         coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
+        relayAccessCoordinator?.onIdentityChanged()
         RelayPairConnectionMode.PAIRING
     }
 
@@ -226,9 +236,21 @@ fun pairOverRelay(
         expiresAt = null,
         state = IdentityState.PAIRED,
     )
-    identityStore.save(home)
+    if (mutator != null) {
+        mutator.installNewPairing(home)
+    } else {
+        identityStore.save(home)
+    }
 
-    coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+    coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
+        openRelaySyncClient(
+            relayOrigin,
+            pairResponse.instanceId,
+            deviceToken,
+            credential,
+        )
+    }
+    relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
         openRelaySyncClient(
             relayOrigin,
             pairResponse.instanceId,

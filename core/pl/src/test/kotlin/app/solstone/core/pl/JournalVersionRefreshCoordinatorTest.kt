@@ -8,6 +8,7 @@ import app.solstone.core.identity.JournalVersionStore
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -29,31 +30,56 @@ class JournalVersionRefreshCoordinatorTest {
         }
     }
 
-    private class FakeClient(private val version: String?) : PlHttpClient {
+    private class RoutingFakeClient(
+        private val handler: (method: String, path: String, body: ByteArray?) -> HttpResponse,
+    ) : PlHttpClient {
         override fun request(
             method: String,
             path: String,
             headers: Map<String, String>,
             body: ByteArray?,
-        ): HttpResponse {
-            return if (version != null) {
-                HttpResponse(200, emptyMap(), """{"version":{"current":"$version"}}""".toByteArray())
-            } else {
-                HttpResponse(500, emptyMap(), ByteArray(0))
-            }
-        }
+            maxResponseBytes: Int,
+        ): HttpResponse = handler(method, path, body)
     }
 
     @Test
-    fun successfulFetchPersistsAndMarksCurrent() {
+    fun successfulClientsSelfGetAndPutPersistsNameAndVersion() {
         val store = FakeStore()
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            FakeClient("1.2.3")
+        val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android", appId = "app.solstone.phone")
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
+            "reported": {"name": "Old Name"}
+        }
+        """.trimIndent()
+        val putJson = """
+        {
+            "protocol_version": 1,
+            "revision": 2,
+            "reported": {"name": "Pixel 8"}
+        }
+        """.trimIndent()
+
+        val putCalled = AtomicInteger(0)
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1", localDescriptionProvider = { localDesc }) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        putCalled.incrementAndGet()
+                        HttpResponse(200, emptyMap(), putJson.toByteArray())
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
         }
 
         saved.await(3, TimeUnit.SECONDS)
@@ -62,46 +88,128 @@ class JournalVersionRefreshCoordinatorTest {
 
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
         assertEquals("1.2.3", reading.version)
+        assertEquals("Jer's Journal", reading.name)
         assertEquals(JournalVersionFreshness.CURRENT, reading.freshness)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3"), store.savedRecord)
+        assertEquals(1, putCalled.get())
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Jer's Journal"), store.savedRecord)
     }
 
     @Test
-    fun lateCompletionFromEarlierGenerationDoesNotClobberNewerGeneration() {
+    fun skipsPutWhenReportedMatchesLocalSnapshot() {
         val store = FakeStore()
-        val secondSaved = CountDownLatch(1)
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        val firstLatch = CountDownLatch(1)
-        val firstClientStarted = CountDownLatch(1)
+        val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
+            "reported": {"name": "Pixel 8", "platform": "android"}
+        }
+        """.trimIndent()
 
-        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            firstClientStarted.countDown()
-            firstLatch.await(3, TimeUnit.SECONDS)
-            FakeClient("1.0.0-stale")
+        val putCalled = AtomicInteger(0)
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1", localDescriptionProvider = { localDesc }) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        putCalled.incrementAndGet()
+                        HttpResponse(200, emptyMap(), ByteArray(0))
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
         }
 
-        firstClientStarted.await(3, TimeUnit.SECONDS)
+        saved.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
 
-        store.onSave = { secondSaved.countDown() }
-        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            FakeClient("2.0.0-fresh")
+        assertEquals(0, putCalled.get())
+        assertEquals("Jer's Journal", coordinator.currentReading("jid-1", "sha256:ca1").name)
+    }
+
+    @Test
+    fun putConflictRetriesGetAndResamplesSnapshotOnce() {
+        val store = FakeStore()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val getCount = AtomicInteger(0)
+        val putCount = AtomicInteger(0)
+        val descCount = AtomicInteger(0)
+
+        val descProvider = {
+            val count = descCount.incrementAndGet()
+            ClientReportedDescription(name = "Name-$count")
         }
 
-        secondSaved.await(3, TimeUnit.SECONDS)
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1", localDescriptionProvider = descProvider) {
+            RoutingFakeClient { method, path, _ ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> {
+                        getCount.incrementAndGet()
+                        val json = """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.0"},"reported":{"name":"Other"}}"""
+                        HttpResponse(200, emptyMap(), json.toByteArray())
+                    }
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        val call = putCount.incrementAndGet()
+                        if (call == 1) {
+                            HttpResponse(409, emptyMap(), ByteArray(0))
+                        } else {
+                            HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Name-2"}}""".toByteArray())
+                        }
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
 
-        // Release first after second has completed
-        firstLatch.countDown()
-        Thread.sleep(100)
+        saved.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
 
+        assertEquals(2, getCount.get())
+        assertEquals(2, putCount.get())
+        assertEquals(2, descCount.get())
+    }
+
+    @Test
+    fun clientsSelf404FallsBackToSystemStatus() {
+        val store = FakeStore()
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+
+        val statusJson = """{"version":{"current":"0.9.5"}}"""
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+            RoutingFakeClient { _, path, _ ->
+                when {
+                    path == "/app/network/api/clients/self" -> HttpResponse(404, emptyMap(), ByteArray(0))
+                    path == "/api/system/status" -> HttpResponse(200, emptyMap(), statusJson.toByteArray())
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+
+        saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
 
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
-        assertEquals("2.0.0-fresh", reading.version)
+        assertEquals("0.9.5", reading.version)
+        assertNull(reading.name)
         assertEquals(JournalVersionFreshness.CURRENT, reading.freshness)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "2.0.0-fresh"), store.savedRecord)
     }
 
     @Test
@@ -113,19 +221,21 @@ class JournalVersionRefreshCoordinatorTest {
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            FakeClient("1.2.3")
+            RoutingFakeClient { _, _, _ ->
+                HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"1.2.3"}}""".toByteArray())
+            }
         }
 
         saved.await(3, TimeUnit.SECONDS)
-
         assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
 
         coordinator.onConnectionLost()
 
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
         assertEquals("1.2.3", reading.version)
+        assertEquals("J", reading.name)
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3"), store.savedRecord)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J"), store.savedRecord)
 
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
@@ -134,7 +244,7 @@ class JournalVersionRefreshCoordinatorTest {
     @Test
     fun identityMismatchReadsAsNeverObserved() {
         val store = FakeStore()
-        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3"))
+        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J"))
         val coordinator = JournalVersionRefreshCoordinator(store)
 
         val mismatchJid = coordinator.currentReading("jid-other", "sha256:ca1")
@@ -147,68 +257,99 @@ class JournalVersionRefreshCoordinatorTest {
     }
 
     @Test
-    fun completionArrivingAfterConnectionLostDoesNotMarkCurrent() {
+    fun corruptGetRetainsLastKnown() {
         val store = FakeStore()
+        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Initial Journal"))
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        val fetchBlocker = CountDownLatch(1)
-        val clientStarted = CountDownLatch(1)
-
+        val latch = CountDownLatch(1)
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            clientStarted.countDown()
-            fetchBlocker.await(3, TimeUnit.SECONDS)
-            FakeClient("1.2.3")
+            latch.countDown()
+            RoutingFakeClient { _, _, _ ->
+                HttpResponse(200, emptyMap(), "not-valid-json".toByteArray())
+            }
         }
 
-        clientStarted.await(3, TimeUnit.SECONDS)
-        coordinator.onConnectionLost()
-        fetchBlocker.countDown()
-        Thread.sleep(100)
+        latch.await(3, TimeUnit.SECONDS)
+        Thread.sleep(200)
+
+        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+        assertEquals("1.2.3", reading.version)
+        assertEquals("Initial Journal", reading.name)
+        assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
 
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
-
-        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
-        assertEquals(JournalVersionFreshness.NEVER_OBSERVED, reading.freshness)
-        assertNull(store.savedRecord)
     }
 
     @Test
-    fun inFlightFetchDroppedWhenIdentityChanged() {
+    fun timeoutOrErrorRetainsLastKnown() {
         val store = FakeStore()
+        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Initial Journal"))
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        val fetchBlocker = CountDownLatch(1)
-        val clientStarted = CountDownLatch(1)
-
+        val latch = CountDownLatch(1)
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
-            clientStarted.countDown()
-            fetchBlocker.await(3, TimeUnit.SECONDS)
-            FakeClient("1.2.3")
+            latch.countDown()
+            RoutingFakeClient { _, _, _ ->
+                throw java.io.IOException("network reset")
+            }
         }
 
-        clientStarted.await(3, TimeUnit.SECONDS)
-        coordinator.onIdentityChanged()
-        fetchBlocker.countDown()
-        Thread.sleep(100)
+        latch.await(3, TimeUnit.SECONDS)
+        Thread.sleep(200)
+
+        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+        assertEquals("1.2.3", reading.version)
+        assertEquals("Initial Journal", reading.name)
+        assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
 
         executor.shutdown()
         executor.awaitTermination(3, TimeUnit.SECONDS)
-
-        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
-        assertEquals(JournalVersionFreshness.NEVER_OBSERVED, reading.freshness)
-        assertNull(store.savedRecord)
     }
 
     @Test
-    fun missingStoreRecordReadsAsNeverObserved() {
+    fun ownerLabelNotSentOnPut() {
         val store = FakeStore()
-        val coordinator = JournalVersionRefreshCoordinator(store)
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor)
 
-        val reading = coordinator.currentReading("jid-1", "sha256:ca1")
-        assertNull(reading.version)
-        assertEquals(JournalVersionFreshness.NEVER_OBSERVED, reading.freshness)
+        val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
+        val getJson = """
+        {
+            "protocol_version": 1,
+            "revision": 1,
+            "journal": {"name": "Jer's Journal", "version": "1.2.3"},
+            "reported": {"name": "Old"}
+        }
+        """.trimIndent()
+
+        var capturedPutBody: String? = null
+
+        coordinator.onUsableConnection("jid-1", "sha256:ca1", "sha256:cert1", localDescriptionProvider = { localDesc }) {
+            RoutingFakeClient { method, path, body ->
+                when {
+                    method == "GET" && path == "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), getJson.toByteArray())
+                    method == "PUT" && path == "/app/network/api/clients/self" -> {
+                        capturedPutBody = body?.toString(Charsets.UTF_8)
+                        HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":2,"reported":{"name":"Pixel 8"}}""".toByteArray())
+                    }
+                    else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                }
+            }
+        }
+
+        saved.await(3, TimeUnit.SECONDS)
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        val body = capturedPutBody
+        org.junit.Assert.assertNotNull(body)
+        org.junit.Assert.assertFalse(body!!.contains("owner_label"))
+        org.junit.Assert.assertTrue(body.contains("reported"))
     }
 }

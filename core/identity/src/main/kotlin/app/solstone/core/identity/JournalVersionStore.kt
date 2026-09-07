@@ -7,6 +7,7 @@ data class JournalVersionRecord(
     val instanceId: String,
     val caChainFingerprint: String,
     val version: String,
+    val name: String? = null,
 )
 
 interface JournalVersionStore {

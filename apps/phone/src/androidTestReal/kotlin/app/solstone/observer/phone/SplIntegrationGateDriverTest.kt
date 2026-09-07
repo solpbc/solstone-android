@@ -775,6 +775,7 @@ class SplIntegrationGateDriverTest {
                 path: String,
                 headers: Map<String, String>,
                 body: ByteArray?,
+                maxResponseBytes: Int,
             ): HttpResponse = error("unexpected_second_request")
         }
 

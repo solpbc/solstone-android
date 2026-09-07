@@ -72,7 +72,15 @@ class RealSeamsTest {
                     path: String,
                     headers: Map<String, String>,
                     body: ByteArray?,
-                ): HttpResponse = HttpResponse(200, emptyMap(), """{"version":{"current":"0.9.5"}}""".toByteArray())
+                    maxResponseBytes: Int,
+                ): HttpResponse = when (path) {
+                    "/app/network/api/clients/self" -> HttpResponse(
+                        200,
+                        emptyMap(),
+                        """{"protocol_version":1,"revision":1,"reported":null,"journal":{"name":"home","version":"0.9.5"}}""".toByteArray(),
+                    )
+                    else -> HttpResponse(200, emptyMap(), """{"version":{"current":"0.9.5"}}""".toByteArray())
+                }
             }
         }
         Thread.sleep(100)

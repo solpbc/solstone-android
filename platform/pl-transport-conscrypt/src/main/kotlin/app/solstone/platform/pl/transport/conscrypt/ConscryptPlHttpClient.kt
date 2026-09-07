@@ -9,8 +9,14 @@ import app.solstone.core.pl.PlHttpClient
 import java.io.Closeable
 
 class ConscryptPlHttpClient internal constructor(private val session: MuxSession) : PlHttpClient, Closeable {
-    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
-        return session.request(method, path, headers, body)
+    override fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int,
+    ): HttpResponse {
+        return session.request(method, path, headers, body, maxResponseBytes)
     }
 
     override fun close() {

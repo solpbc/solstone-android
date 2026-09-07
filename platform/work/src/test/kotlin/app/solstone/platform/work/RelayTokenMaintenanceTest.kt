@@ -3,13 +3,18 @@
 
 package app.solstone.platform.work
 
-import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.HttpResponse
+import app.solstone.platform.identity.file.FileIdentityMutator
+import app.solstone.platform.identity.file.FileIdentityStore
+import app.solstone.platform.identity.file.SecretProtector
 import app.solstone.platform.pl.transport.conscrypt.HttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,13 +22,31 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class RelayTokenMaintenanceTest {
+    @get:Rule
+    val temp = TemporaryFolder()
+
+    private class NoOpSecretProtector : SecretProtector {
+        override fun protect(plaintext: ByteArray): ByteArray = plaintext
+        override fun unprotect(ciphertext: ByteArray): ByteArray = ciphertext
+    }
+
+    private fun createStore(initial: PairedHome? = null): FileIdentityStore {
+        val file = File(temp.root, "identity.tsv")
+        val store = FileIdentityStore(file, NoOpSecretProtector())
+        if (initial != null) {
+            store.save(initial)
+        }
+        return store
+    }
+
     @Test
     fun maintainSkipsTokenBelowRefreshThreshold() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster()
         val transport = transport(token = jwt(iat = 100, exp = 200))
 
-        val result = maintainRelayToken(home(), transport, poster, store, nowEpochMs = 150_000L)
+        val result = maintainRelayToken(home(), transport, poster, mutator, nowEpochMs = 150_000L)
 
         assertEquals(transport, assertIs<RelayTokenResult.Ready>(result).transport)
         assertEquals(0, poster.calls)
@@ -32,10 +55,11 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun maintainPersistsAndReturnsRefreshedToken() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new","expires_at":"2026-01-01T00:00:00Z"}""".toByteArray()))
 
-        val result = maintainRelayToken(home(), transport(), poster, store, nowEpochMs = 181_000L)
+        val result = maintainRelayToken(home(), transport(), poster, mutator, nowEpochMs = 181_000L)
 
         assertEquals("new", assertIs<RelayTokenResult.Ready>(result).transport.deviceToken)
         assertEquals("new", store.load()?.deviceToken)
@@ -45,10 +69,11 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun maintainReconnectDoesNotPersist() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster(HttpResponse(401, emptyMap(), """{"reason":"expired"}""".toByteArray()))
 
-        val result = maintainRelayToken(home(), transport(), poster, store, nowEpochMs = 181_000L)
+        val result = maintainRelayToken(home(), transport(), poster, mutator, nowEpochMs = 181_000L)
 
         assertEquals(RelayTokenResult.ReconnectNeeded, result)
         assertEquals(home(), store.load())
@@ -56,10 +81,11 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun maintainTransientKeepsOldToken() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val transport = transport()
 
-        val result = maintainRelayToken(home(), transport, FakePoster(HttpResponse(500, emptyMap(), ByteArray(0))), store, nowEpochMs = 181_000L)
+        val result = maintainRelayToken(home(), transport, FakePoster(HttpResponse(500, emptyMap(), ByteArray(0))), mutator, nowEpochMs = 181_000L)
 
         assertEquals(transport, assertIs<RelayTokenResult.Ready>(result).transport)
         assertEquals(home(), store.load())
@@ -67,10 +93,11 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactiveDialSuccessDoesNotRefresh() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val dial = FakeDial(SyncOutcome.SUCCESS)
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), FakePoster(), store, dial)
+        val result = dialWithReactiveRefresh(home(), transport(token = "old"), FakePoster(), mutator, dial)
 
         assertEquals(SyncOutcome.SUCCESS, result)
         assertEquals(listOf("old"), dial.tokens)
@@ -78,11 +105,12 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactive4401RefreshesOncePersistsAndRedials() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new","expires_at":"2026-01-01T00:00:00Z"}""".toByteArray()))
         val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, store, dial)
+        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
 
         assertEquals(SyncOutcome.SUCCESS, result)
         assertEquals(listOf("old", "new"), dial.tokens)
@@ -93,11 +121,12 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactiveSecond4401RetriesWithoutLoop() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new"}""".toByteArray()))
         val dial = FakeDial(Close(4401), Close(4401))
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, store, dial)
+        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
 
         assertEquals(SyncOutcome.RETRY, result)
         assertEquals(listOf("old", "new"), dial.tokens)
@@ -106,11 +135,13 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactive4401ReconnectFails() {
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val result = dialWithReactiveRefresh(
             home(),
             transport(token = "old"),
             FakePoster(HttpResponse(401, emptyMap(), """{"reason":"expired"}""".toByteArray())),
-            FakeIdentityStore(home()),
+            mutator,
             FakeDial(Close(4401)),
         )
 
@@ -119,11 +150,13 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactive4401TransientRetries() {
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val result = dialWithReactiveRefresh(
             home(),
             transport(token = "old"),
             FakePoster(HttpResponse(500, emptyMap(), ByteArray(0))),
-            FakeIdentityStore(home()),
+            mutator,
             FakeDial(Close(4401)),
         )
 
@@ -132,6 +165,8 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactiveNon4401RetriesWithoutRefresh() {
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster()
         val dial = FakeDial(Close(4403))
         val logs = mutableListOf<String>()
@@ -140,7 +175,7 @@ class RelayTokenMaintenanceTest {
             home(),
             transport(token = "old"),
             poster,
-            FakeIdentityStore(home()),
+            mutator,
             dial,
             log = { message, _ -> logs += message },
         )
@@ -153,12 +188,13 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun waitingExceptionPropagatesWithoutTokenRefresh() {
-        val store = FakeIdentityStore(home())
+        val store = createStore(home())
+        val mutator = FileIdentityMutator(store)
         val poster = FakePoster()
         val dial = FakeDial(RelayDialWaitingException(30_000L))
 
         assertFailsWith<RelayDialWaitingException> {
-            dialWithReactiveRefresh(home(), transport(token = "old"), poster, store, dial)
+            dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
         }
 
         assertEquals(0, poster.calls)
@@ -194,18 +230,6 @@ class RelayTokenMaintenanceTest {
     }
 
     private data class Close(val code: Int)
-
-    private class FakeIdentityStore(private var home: PairedHome?) : IdentityStore {
-        override fun save(home: PairedHome) {
-            this.home = home
-        }
-
-        override fun load(): PairedHome? = home
-
-        override fun clear() {
-            home = null
-        }
-    }
 
     private fun home(token: String = "old"): PairedHome =
         PairedHome(

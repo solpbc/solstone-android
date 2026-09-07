@@ -50,7 +50,7 @@ class OpportunisticSync(
     }
 
     fun onPairingSuccess() {
-        enqueueIfPending()
+        syncEnqueue.enqueueNow()
     }
 
     fun onUsableNetwork() {

@@ -16,6 +16,7 @@ import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.crypto.startsWith
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
@@ -26,6 +27,7 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
+import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PairRequest
@@ -94,6 +96,8 @@ fun pairAndProbe(
     endpointStore: EndpointStore,
     journalVersionStore: JournalVersionStore? = null,
     coordinator: JournalVersionRefreshCoordinator? = null,
+    mutator: IdentityMutator? = null,
+    relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -104,6 +108,8 @@ fun pairAndProbe(
     localInterfaces = readLocalIPv4Interfaces(),
     journalVersionStore = journalVersionStore,
     coordinator = coordinator,
+    mutator = mutator,
+    relayAccessCoordinator = relayAccessCoordinator,
 )
 
 internal fun pairAndProbe(
@@ -118,6 +124,8 @@ internal fun pairAndProbe(
     statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = ::probeDirectStatus,
     journalVersionStore: JournalVersionStore? = null,
     coordinator: JournalVersionRefreshCoordinator? = null,
+    mutator: IdentityMutator? = null,
+    relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
@@ -192,6 +200,8 @@ internal fun pairAndProbe(
                     statusProbe = statusProbe,
                     journalVersionStore = journalVersionStore,
                     coordinator = coordinator,
+                    mutator = mutator,
+                    relayAccessCoordinator = relayAccessCoordinator,
                 )
             }
             DialDecision.TERMINAL -> {
@@ -229,11 +239,16 @@ internal fun persistOrReturnDirectPairResult(
     statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse,
     journalVersionStore: JournalVersionStore? = null,
     coordinator: JournalVersionRefreshCoordinator? = null,
+    mutator: IdentityMutator? = null,
+    relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ): PairProbeResult {
-    val prior = identityStore.load()
+    val prior = mutator?.current() ?: identityStore.load()
     if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
         val targetEndpoint = endpointStore.load() ?: endpoint
-        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
+            openAuthenticatedClient(targetEndpoint, credential)
+        }
+        relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
             openAuthenticatedClient(targetEndpoint, credential)
         }
         return PairProbeResult(
@@ -246,17 +261,27 @@ internal fun persistOrReturnDirectPairResult(
         )
     }
     val connectionMode = if (prior?.instanceId == home.instanceId) {
+        coordinator?.onPairingChanged()
+        relayAccessCoordinator?.onPairingChanged()
         DirectPairConnectionMode.RECONNECTING
     } else {
         coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
+        relayAccessCoordinator?.onIdentityChanged()
         DirectPairConnectionMode.PAIRING
     }
     credentialStore.save(credential)
-    identityStore.save(home)
+    if (mutator != null) {
+        mutator.installNewPairing(home)
+    } else {
+        identityStore.save(home)
+    }
     endpointStore.save(endpoint)
     val statusHttp = statusProbe(endpoint, credential)
     if (statusHttp.status == 200) {
-        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint) {
+        coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
+            openAuthenticatedClient(endpoint, credential)
+        }
+        relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
             openAuthenticatedClient(endpoint, credential)
         }
     }

@@ -3,8 +3,8 @@
 
 package app.solstone.platform.identity.file
 
+import app.solstone.core.identity.AtomicFileWriter
 import app.solstone.core.identity.IdentityStore
-import app.solstone.core.identity.atomicWriteOwnerOnly
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import java.io.File
@@ -12,6 +12,7 @@ import java.io.File
 class FileIdentityStore(
     private val file: File,
     private val protector: SecretProtector,
+    private val fileWriter: AtomicFileWriter = AtomicFileWriter.Default,
     private val log: (String) -> Unit = { java.util.logging.Logger.getLogger("FileIdentityStore").warning(it) },
 ) : IdentityStore {
     override fun save(home: PairedHome) {
@@ -27,7 +28,7 @@ class FileIdentityStore(
             add("state\t${home.state.name}")
         }
         val wrapped = protector.protect(lines.joinToString(separator = "\n", postfix = "\n").toByteArray())
-        atomicWriteOwnerOnly(file, WRAP_MARKER + wrapped)
+        fileWriter.write(file, WRAP_MARKER + wrapped)
     }
 
     override fun load(): PairedHome? {

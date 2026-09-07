@@ -61,6 +61,7 @@ class SegmentDrainerTest {
                 path: String,
                 headers: Map<String, String>,
                 body: ByteArray?,
+                maxResponseBytes: Int,
             ): HttpResponse = HttpResponse(
                 200,
                 emptyMap(),

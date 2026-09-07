@@ -23,13 +23,14 @@ class FileJournalVersionStoreTest {
     }
 
     @Test
-    fun savesAndLoadsRecord() {
+    fun savesAndLoadsRecordWithName() {
         val file = File(temp.root, "journal_version.tsv")
         val store = FileJournalVersionStore(file)
         val record = JournalVersionRecord(
             instanceId = "jid-12345",
             caChainFingerprint = "sha256:abcde",
             version = "2.5.1",
+            name = "My Personal Journal",
         )
 
         store.save(record)
@@ -39,11 +40,29 @@ class FileJournalVersionStoreTest {
     }
 
     @Test
+    fun loadsLegacyThreeColumnFileWithNullName() {
+        val file = File(temp.root, "journal_version.tsv")
+        file.writeText("instanceId\tjid-12345\ncaChainFingerprint\tsha256:abcde\nversion\t2.5.1\n")
+        val store = FileJournalVersionStore(file)
+        val loaded = store.load()
+
+        assertEquals(
+            JournalVersionRecord(
+                instanceId = "jid-12345",
+                caChainFingerprint = "sha256:abcde",
+                version = "2.5.1",
+                name = null,
+            ),
+            loaded,
+        )
+    }
+
+    @Test
     fun overwritesExistingRecord() {
         val file = File(temp.root, "journal_version.tsv")
         val store = FileJournalVersionStore(file)
-        val first = JournalVersionRecord("jid-1", "sha256:111", "1.0.0")
-        val second = JournalVersionRecord("jid-2", "sha256:222", "2.0.0")
+        val first = JournalVersionRecord("jid-1", "sha256:111", "1.0.0", "Old Name")
+        val second = JournalVersionRecord("jid-2", "sha256:222", "2.0.0", "New Name")
 
         store.save(first)
         store.save(second)

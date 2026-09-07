@@ -14,6 +14,7 @@ class FileJournalVersionStore(private val file: File) : JournalVersionStore {
             add("instanceId\t${record.instanceId}")
             add("caChainFingerprint\t${record.caChainFingerprint}")
             add("version\t${record.version}")
+            record.name?.let { add("name\t$it") }
         }
         atomicWriteOwnerOnly(file, lines.joinToString(separator = "\n", postfix = "\n").toByteArray())
     }
@@ -30,8 +31,9 @@ class FileJournalVersionStore(private val file: File) : JournalVersionStore {
             val instanceId = map["instanceId"] ?: return null
             val caChainFingerprint = map["caChainFingerprint"] ?: return null
             val version = map["version"] ?: return null
+            val name = map["name"]?.ifBlank { null }
             if (instanceId.isBlank() || caChainFingerprint.isBlank() || version.isBlank()) return null
-            JournalVersionRecord(instanceId, caChainFingerprint, version)
+            JournalVersionRecord(instanceId, caChainFingerprint, version, name)
         }.getOrNull()
     }
 

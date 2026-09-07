@@ -17,7 +17,13 @@ class MuxSession(
     private val dialer = FrameDialer()
     private var poisoned = false
 
-    fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
+    fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int = MAX_RESPONSE_BYTES,
+    ): HttpResponse {
         if (poisoned) {
             throw IOException(SESSION_UNUSABLE)
         }
@@ -73,7 +79,7 @@ class MuxSession(
                             throw IOException("PL receive window exceeded")
                         }
                         // This hard total-response ceiling is distinct from replenished flow credit.
-                        if (response.size() + size > MAX_RESPONSE_BYTES) {
+                        if (response.size() + size > maxResponseBytes) {
                             writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
                             throw IOException("PL response too large")
                         }

@@ -42,7 +42,7 @@ class SyncCredentialsTest {
     }
 
     @Test
-    fun readyForRelayWhenIdentityHasRelayOriginAndDeviceToken() {
+    fun readyForRelayWhenIdentityHasRelayOriginAndDeviceTokenAndNoDirectEndpoint() {
         val result = recoverSyncCredentials(
             endpointStore = FakeEndpointStore(null),
             credentialStore = FakeCredentialStore(credential()),
@@ -62,7 +62,7 @@ class SyncCredentialsTest {
     }
 
     @Test
-    fun relayOriginSelectsRelayEvenWhenDirectEndpointExists() {
+    fun directEndpointWinsEvenWhenRelayConfigured() {
         val result = recoverSyncCredentials(
             endpointStore = FakeEndpointStore(endpoint()),
             credentialStore = FakeCredentialStore(credential()),
@@ -77,13 +77,52 @@ class SyncCredentialsTest {
         )
 
         val ready = assertIs<SyncCredentials.Ready>(result)
-        assertEquals(SyncTransport.Relay("https://link.solstone.app", "home", "device-token"), ready.transport)
+        assertEquals(SyncTransport.Direct(endpoint()), ready.transport)
+    }
+
+    @Test
+    fun relayIneligibleFallsBackToMissingEndpointWhenNoDirectEndpoint() {
+        val result = recoverSyncCredentials(
+            endpointStore = FakeEndpointStore(null),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(
+                identity(
+                    observerHandle = "obs_123",
+                    state = IdentityState.PAIRED,
+                    relayOrigin = "https://link.solstone.app",
+                    deviceToken = "device-token",
+                ),
+            ),
+            relayLiveEligible = false,
+        )
+
+        val repair = assertIs<SyncCredentials.NeedsRepair>(result)
+        assertEquals("missing endpoint and relay credentials", repair.reason)
+    }
+
+    @Test
+    fun directWinsWithoutDeviceToken() {
+        val result = recoverSyncCredentials(
+            endpointStore = FakeEndpointStore(endpoint()),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(
+                identity(
+                    observerHandle = "obs_123",
+                    state = IdentityState.PAIRED,
+                    relayOrigin = "https://link.solstone.app",
+                    deviceToken = null,
+                ),
+            ),
+        )
+
+        val ready = assertIs<SyncCredentials.Ready>(result)
+        assertEquals(SyncTransport.Direct(endpoint()), ready.transport)
     }
 
     @Test
     fun needsRepairNamesMissingFacts() {
         assertRepair(
-            "missing endpoint",
+            "missing endpoint and relay credentials",
             endpoint = null,
             credential = credential(),
             identity = identity(observerHandle = "obs_123", state = IdentityState.PAIRED),
@@ -107,7 +146,7 @@ class SyncCredentialsTest {
             identity = identity(observerHandle = "obs_123", state = IdentityState.REVOKED),
         )
         assertRepair(
-            "missing device token",
+            "missing endpoint and relay credentials",
             endpoint = null,
             credential = credential(),
             identity = identity(

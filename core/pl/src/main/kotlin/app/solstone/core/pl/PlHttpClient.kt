@@ -4,5 +4,12 @@
 package app.solstone.core.pl
 
 interface PlHttpClient {
-    fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse
+    fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int = MAX_RESPONSE_BYTES,
+    ): HttpResponse
 }
+

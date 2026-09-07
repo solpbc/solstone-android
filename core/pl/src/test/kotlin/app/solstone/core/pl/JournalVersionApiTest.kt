@@ -55,6 +55,7 @@ class JournalVersionApiTest {
                 path: String,
                 headers: Map<String, String>,
                 body: ByteArray?,
+                maxResponseBytes: Int,
             ): HttpResponse {
                 assertEquals("GET", method)
                 assertEquals("/api/system/status", path)
@@ -74,6 +75,7 @@ class JournalVersionApiTest {
                 path: String,
                 headers: Map<String, String>,
                 body: ByteArray?,
+                maxResponseBytes: Int,
             ): HttpResponse = HttpResponse(500, emptyMap(), "server error".toByteArray())
         }
 
@@ -88,6 +90,7 @@ class JournalVersionApiTest {
                 path: String,
                 headers: Map<String, String>,
                 body: ByteArray?,
+                maxResponseBytes: Int,
             ): HttpResponse = throw RuntimeException("connection reset")
         }
 

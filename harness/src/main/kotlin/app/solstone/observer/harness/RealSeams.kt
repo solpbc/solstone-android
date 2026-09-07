@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
@@ -20,9 +21,10 @@ import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
-import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.RelayDialObserver
+import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
@@ -54,6 +56,8 @@ class RealPairProbe(
     private val endpointStore: EndpointStore,
     private val journalVersionStore: JournalVersionStore? = null,
     private val coordinator: JournalVersionRefreshCoordinator? = null,
+    private val mutator: IdentityMutator? = null,
+    private val relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ) : PairProbe {
     override fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairAndProbe(
@@ -64,6 +68,8 @@ class RealPairProbe(
             endpointStore = endpointStore,
             journalVersionStore = journalVersionStore,
             coordinator = coordinator,
+            mutator = mutator,
+            relayAccessCoordinator = relayAccessCoordinator,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -89,6 +95,8 @@ class RealRelayPairProbe(
     private val dialObserver: RelayDialObserver? = null,
     private val journalVersionStore: JournalVersionStore? = null,
     private val coordinator: JournalVersionRefreshCoordinator? = null,
+    private val mutator: IdentityMutator? = null,
+    private val relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
@@ -100,6 +108,8 @@ class RealRelayPairProbe(
             identityStore = identityStore,
             journalVersionStore = journalVersionStore,
             coordinator = coordinator,
+            mutator = mutator,
+            relayAccessCoordinator = relayAccessCoordinator,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -208,7 +218,12 @@ class RealPlStatusProbe(
         wasReachable = reachable
         val coord = coordinator ?: return
         if (previous != true && reachable && identity != null && openClient != null) {
-            coord.onUsableConnection(identity.instanceId, identity.caChainFingerprint, openClient)
+            coord.onUsableConnection(
+                instanceId = identity.instanceId,
+                caChainFingerprint = identity.caChainFingerprint,
+                clientCertFingerprint = identity.clientCertFingerprint,
+                openClient = openClient,
+            )
         } else if (previous == true && !reachable) {
             coord.onConnectionLost()
         }

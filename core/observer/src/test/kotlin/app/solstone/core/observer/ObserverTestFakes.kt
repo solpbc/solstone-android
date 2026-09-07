@@ -18,7 +18,13 @@ class RecordingPlHttpClient(var response: HttpResponse) : PlHttpClient {
     val lastRequest: RecordedRequest
         get() = requests.last()
 
-    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
+    override fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int,
+    ): HttpResponse {
         requests += RecordedRequest(method, path, headers, body)
         return response
     }
