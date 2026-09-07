@@ -84,6 +84,7 @@ class PhoneSourceDetailTest {
             ReasonCode.REBOOTED,
             ReasonCode.FOREGROUND_TYPE_NOT_HELD,
             ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+            ReasonCode.PERSISTENCE_FAILED,
         )
         ReasonCode.entries.forEach { reason ->
             render(loadState = loaded(source("audio", reason)))
