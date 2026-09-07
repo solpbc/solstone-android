@@ -10,8 +10,9 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
-import android.os.CancellationSignal
+import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
+import androidx.core.location.LocationRequestCompat
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,26 +43,33 @@ class AndroidLocationSource(private val context: Context) : LocationSource {
     override fun requestFreshFix(onResult: (LocationFix?) -> Unit): FreshFixCancel {
         if (!hasPermission()) return FreshFixCancel { }
         val provider = freshFixProvider() ?: return FreshFixCancel { }
-        val signal = CancellationSignal()
         val finished = AtomicBoolean(false)
-        return try {
-            LocationManagerCompat.getCurrentLocation(
-                manager,
-                provider,
-                signal,
-                DIRECT_EXECUTOR,
-            ) { location ->
+        // Measured on a physical device: getCurrentLocation returns whatever the platform already
+        // holds, so with the app stopped entirely the fused fix still refreshed on the system's own
+        // ten-minute cadence, unchanged. Asking for a location is not the same as causing one. A
+        // bounded single-update request is what actually makes the provider produce a new fix; it
+        // is not a continuous subscription because it delivers at most one and expires on its own.
+        val listener = object : LocationListenerCompat {
+            override fun onLocationChanged(location: Location) {
                 if (finished.compareAndSet(false, true)) {
-                    onResult(location?.toFix(System.currentTimeMillis()))
+                    runCatching { LocationManagerCompat.removeUpdates(manager, this) }
+                    onResult(location.toFix(System.currentTimeMillis()))
                 }
             }
+        }
+        val request = LocationRequestCompat.Builder(0L)
+            .setMaxUpdates(1)
+            .setDurationMillis(FRESH_FIX_TIMEOUT_MS)
+            .setQuality(LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY)
+            .build()
+        return try {
+            LocationManagerCompat.requestLocationUpdates(manager, provider, request, DIRECT_EXECUTOR, listener)
             FreshFixCancel {
-                finished.set(true)
-                signal.cancel()
+                if (finished.compareAndSet(false, true)) {
+                    runCatching { LocationManagerCompat.removeUpdates(manager, listener) }
+                }
             }
         } catch (_: SecurityException) {
-            FreshFixCancel { }
-        } catch (_: IllegalArgumentException) {
             FreshFixCancel { }
         }
     }
@@ -109,5 +117,6 @@ class AndroidLocationSource(private val context: Context) : LocationSource {
 
     private companion object {
         val DIRECT_EXECUTOR = Executor { command -> command.run() }
+        const val FRESH_FIX_TIMEOUT_MS = 60_000L
     }
 }
