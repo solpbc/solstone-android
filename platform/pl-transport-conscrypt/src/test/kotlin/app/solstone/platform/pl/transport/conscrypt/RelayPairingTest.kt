@@ -6,18 +6,32 @@ package app.solstone.platform.pl.transport.conscrypt
 import app.solstone.core.crypto.caSpkiFp16
 import app.solstone.core.crypto.CaPinException
 import app.solstone.core.crypto.certificateFromPem
+import app.solstone.core.crypto.generateP256KeyPair
 import app.solstone.core.crypto.hex
 import app.solstone.core.crypto.jidFromCaPem
+import app.solstone.core.crypto.pem
+import app.solstone.core.crypto.pemToDer
 import app.solstone.core.crypto.sha256Hex
+import app.solstone.core.identity.AccessMutationResult
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
+import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.parseJson
+import app.solstone.core.pl.parseProductionRelayOrigin
+import java.io.IOException
+import java.security.KeyPair
+import java.security.Signature
+import java.util.Base64
+import javax.security.auth.x500.X500Principal
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -37,12 +51,44 @@ class RelayPairingTest {
     }
 
     @Test
-    fun happyPathPersistsAfterEnrollAndClosesSessionBeforeEnroll() {
+    fun happyPathWithReadyBootstrapPersistsDirectlyWithoutEnroll() {
         val stores = Stores()
-        val session = FakeSession(
-            HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
+        val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
+        val session = DynamicFakeSession(relayAccessJson = relayAccessJson)
+        val poster = FakePoster(session)
+
+        val result = pairOverRelay(
+            link(),
+            "glasses",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
         )
+
+        assertEquals(200, result.pairStatus)
+        assertNull(result.enrollStatus)
+        assertEquals("relay-home", result.homeLabel)
+        assertEquals("link.solstone.app", result.relayHost)
+        assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
+        assertEquals(0, poster.enrollBodies.size)
+        assertTrue(session.closed)
+
+        val credential = assertNotNull(stores.credentialStore.load())
+        assertContains(credential.clientCertPem, "BEGIN CERTIFICATE")
+        val home = assertNotNull(stores.identityStore.load())
+        assertEquals(INSTANCE_ID, home.instanceId)
+        assertEquals("https://link.solstone.app", home.relayOrigin)
+        assertEquals(bootstrapToken, home.deviceToken)
+        assertEquals(DirectEndpoint("10.0.0.5", 7657), stores.endpointStore.load())
+    }
+
+    @Test
+    fun happyPathOmittedBootstrapPerformsTransitionalEnroll() {
+        val stores = Stores()
+        val session = DynamicFakeSession(relayAccessJson = null)
         val poster = FakePoster(session)
         val result = pairOverRelay(
             link(),
@@ -51,6 +97,7 @@ class RelayPairingTest {
             FakeDialer(session),
             stores.credentialStore,
             stores.identityStore,
+            endpointStore = stores.endpointStore,
         )
 
         assertEquals(200, result.pairStatus)
@@ -63,9 +110,10 @@ class RelayPairingTest {
         assertEquals("glasses", pairBody["device_label"])
         assertTrue((pairBody["csr"] as String).contains("BEGIN CERTIFICATE REQUEST"))
         val enrollBody = parseJson(poster.enrollBodies.single().toString(Charsets.UTF_8)) as Map<*, *>
-        assertEquals(setOf("instance_id", "home_attestation"), enrollBody.keys)
+        assertEquals(setOf("instance_id", "home_attestation", "protocol_version"), enrollBody.keys)
         assertEquals(INSTANCE_ID, enrollBody["instance_id"])
         assertEquals("attestation.jwt", enrollBody["home_attestation"])
+        assertEquals(2, (enrollBody["protocol_version"] as Number).toInt())
         assertTrue(poster.sessionClosedBeforeEnroll)
 
         val credential = assertNotNull(stores.credentialStore.load())
@@ -73,38 +121,188 @@ class RelayPairingTest {
         val home = assertNotNull(stores.identityStore.load())
         assertEquals(INSTANCE_ID, home.instanceId)
         assertEquals("https://link.solstone.app", home.relayOrigin)
-        assertEquals("mock-device-token", home.deviceToken)
-        assertEquals("sha256:" + sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded), home.clientCertFingerprint)
+        val expectedToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        assertEquals(expectedToken, home.deviceToken)
+    }
+
+    @Test
+    fun omittedBootstrapEnroll200WithGarbageTokenLeavesStoresWithPairingAndNullTokens() {
+        val stores = Stores()
+        val session = DynamicFakeSession(relayAccessJson = null)
+        val poster = FakePoster(session, enrollStatus = 200, enrollResponseBody = """{"device_token":"garbage.invalid.token"}""")
+
+        val result = pairOverRelay(
+            link(),
+            "device",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(200, result.enrollStatus)
+        val credential = assertNotNull(stores.credentialStore.load())
+        assertContains(credential.clientCertPem, "BEGIN CERTIFICATE")
+        val home = assertNotNull(stores.identityStore.load())
+        assertEquals(INSTANCE_ID, home.instanceId)
+        assertNull(home.relayOrigin)
+        assertNull(home.deviceToken)
+        assertNull(home.expiresAt)
+        assertEquals(DirectEndpoint("10.0.0.5", 7657), stores.endpointStore.load())
+    }
+
+    @Test
+    fun relayWebSocketRequestAndPairDialRequestIncludePortAndBracketedIpv6() {
+        val originHostPort = parseProductionRelayOrigin("https://link.solstone.app:8443")!!
+        val wsReq = relayWebSocketRequest(originHostPort, "/session/dial", "inst-1", "tok-1")
+        assertEquals("https://link.solstone.app:8443/session/dial?instance=inst-1&token=tok-1", wsReq.url.toString())
+        assertEquals(8443, wsReq.url.port)
+        assertEquals("spl", wsReq.header("User-Agent"))
+
+        val originIpv6 = parseProductionRelayOrigin("https://[2001:db8::1]:8443")!!
+        val wsIpv6Req = relayWebSocketRequest(originIpv6, "/session/dial", "inst-1", "tok-1")
+        assertEquals("https://[2001:db8::1]:8443/session/dial?instance=inst-1&token=tok-1", wsIpv6Req.url.toString())
+        assertEquals(8443, wsIpv6Req.url.port)
+        assertEquals("spl", wsIpv6Req.header("User-Agent"))
+
+        val pairDialReq = relayPairDialRequest(originHostPort, byteArrayOf(0x01, 0x02, 0x03))
+        assertEquals("https://link.solstone.app:8443/session/pair-dial", pairDialReq.url.toString())
+        assertEquals(8443, pairDialReq.url.port)
+        assertEquals("spl", pairDialReq.header("User-Agent"))
+        assertEquals("010203", pairDialReq.header("Sec-Pair-Key"))
+
+        val pairDialIpv6Req = relayPairDialRequest(originIpv6, byteArrayOf(0x01, 0x02, 0x03))
+        assertEquals("https://[2001:db8::1]:8443/session/pair-dial", pairDialIpv6Req.url.toString())
+        assertEquals(8443, pairDialIpv6Req.url.port)
+        assertEquals("spl", pairDialIpv6Req.header("User-Agent"))
+    }
+
+    @Test
+    fun omittedBootstrapEnrollFailureKeepsPairingInStores() {
+        val stores = Stores()
+        val session = DynamicFakeSession(relayAccessJson = null)
+        val poster = FakePoster(session, enrollStatus = 503)
+
+        val result = pairOverRelay(
+            link(),
+            "device",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(503, result.enrollStatus)
+        val credential = assertNotNull(stores.credentialStore.load())
+        assertContains(credential.clientCertPem, "BEGIN CERTIFICATE")
+        val home = assertNotNull(stores.identityStore.load())
+        assertEquals(INSTANCE_ID, home.instanceId)
+        assertNull(home.deviceToken)
+    }
+
+    @Test
+    fun clientCertificatePublicKeyMismatchThrowsAndLeavesStoresEmpty() {
+        val stores = Stores()
+        val session = DynamicFakeSession(mismatchPublicKey = true)
+
+        val error = assertFailsWith<IOException> {
+            pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
+        }
+
+        assertEquals("pair response client certificate key mismatch", error.message)
+        assertNull(stores.credentialStore.load())
+        assertNull(stores.identityStore.load())
+    }
+
+    @Test
+    fun samePairedInstanceWithInvalidBootstrapThrowsBootstrapInvalid() {
+        val prior = pairedHome(label = "existing-home")
+        val stores = Stores(prior)
+        val session = DynamicFakeSession(relayAccessJson = """{"invalid":"shape"}""")
+
+        val error = assertFailsWith<IOException> {
+            pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore, mutator = stores.mutator)
+        }
+
+        assertEquals("relay pair bootstrap invalid", error.message)
+        assertEquals(prior, stores.identityStore.load())
+    }
+
+    @Test
+    fun samePairedInstanceWithReadyBootstrapMutatesAndReturnsAlreadyConnected() {
+        val prior = pairedHome(label = "existing-home")
+        val stores = Stores(prior)
+        val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
+        val session = DynamicFakeSession(relayAccessJson = relayAccessJson)
+        val poster = FakePoster(session)
+
+        val result = pairOverRelay(
+            link(),
+            "device",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            mutator = stores.mutator,
+        )
+
+        assertEquals(RelayPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
+        assertNull(result.enrollStatus)
+        assertEquals("existing-home", result.homeLabel)
+        assertTrue(session.closed)
+        assertEquals(0, poster.enrollBodies.size)
+        val updatedHome = assertNotNull(stores.identityStore.load())
+        assertEquals("https://link.solstone.app", updatedHome.relayOrigin)
+        assertEquals(bootstrapToken, updatedHome.deviceToken)
+    }
+
+    @Test
+    fun samePairedInstanceWithoutBootstrapReturnsAlreadyConnected() {
+        val prior = pairedHome(label = "existing-home")
+        val stores = Stores(prior)
+        val session = DynamicFakeSession(relayAccessJson = null)
+        val poster = FakePoster(session)
+
+        val result = pairOverRelay(
+            link(),
+            "device",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+        )
+
+        assertEquals(RelayPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
+        assertNull(result.enrollStatus)
+        assertEquals("existing-home", result.homeLabel)
+        assertTrue(session.closed)
+        assertEquals(0, poster.enrollBodies.size)
+        assertEquals(prior, stores.identityStore.load())
     }
 
     @Test
     fun prePersistFailuresLeaveStoresEmpty() {
         assertNoPersist("pair non-200") { stores ->
-            val session = FakeSession(HttpResponse(503, emptyMap(), "no".toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
+            val session = DynamicFakeSession(customStatus = 503)
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("pin mismatch") { stores ->
-            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
-            val wrongPin = caSpkiFp16(PAIR_TEST_CA_PEM).also { it[0] = (it[0].toInt() xor 0xff).toByte() }
+            val session = DynamicFakeSession()
+            val wrongPin = CA_FP.copyOf().also { it[0] = (it[0].toInt() xor 0xff).toByte() }
             pairOverRelay(link(caFp = wrongPin), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("instance mismatch") { stores ->
-            val session = FakeSession(
-                HttpResponse(200, emptyMap(), pairResponse(instanceId = "00000000-0000-0000-0000-000000000000").toByteArray()),
-                certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-            )
+            val session = DynamicFakeSession(customInstanceId = "00000000-0000-0000-0000-000000000000")
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("fingerprint mismatch") { stores ->
-            val session = FakeSession(
-                HttpResponse(200, emptyMap(), pairResponse(fingerprint = "sha256:nope").toByteArray()),
-                certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-            )
+            val session = DynamicFakeSession(customFingerprint = "sha256:nope")
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
-        }
-        assertNoPersist("enroll non-200") { stores ->
-            val session = FakeSession(HttpResponse(200, emptyMap(), pairResponse().toByteArray()), certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)
-            pairOverRelay(link(), "device", FakePoster(session, enrollStatus = 503), FakeDialer(session), stores.credentialStore, stores.identityStore)
         }
         assertNoPersist("window closed") { stores ->
             pairOverRelay(
@@ -166,62 +364,9 @@ class RelayPairingTest {
     }
 
     @Test
-    fun samePairedInstanceReturnsAlreadyConnectedWithoutEnrollOrPersist() {
-        val prior = pairedHome(label = "existing-home")
-        val stores = Stores(prior)
-        val session = FakeSession(
-            HttpResponse(200, emptyMap(), pairResponse(homeLabel = "relay-home").toByteArray(Charsets.UTF_8)),
-            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-        )
-        val poster = FakePoster(session)
-
-        val result = pairOverRelay(link(), "device", poster, FakeDialer(session), stores.credentialStore, stores.identityStore)
-
-        assertEquals(RelayPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
-        assertEquals(200, result.enrollStatus)
-        assertEquals("existing-home", result.homeLabel)
-        assertTrue(session.closed)
-        assertEquals(0, poster.enrollBodies.size)
-        assertEquals(0, stores.credentialStore.saves)
-        assertEquals(0, stores.identityStore.saves)
-        assertEquals(prior, stores.identityStore.load())
-    }
-
-    @Test
-    fun sameNonPairedInstancePersistsAndMarksReconnecting() {
-        val stores = Stores(pairedHome(state = IdentityState.REVOKED))
-        val session = FakeSession(
-            HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-        )
-
-        val result = pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
-
-        assertEquals(RelayPairConnectionMode.RECONNECTING, result.connectionMode)
-        assertEquals(1, stores.credentialStore.saves)
-        assertEquals(1, stores.identityStore.saves)
-        assertEquals(IdentityState.PAIRED, stores.identityStore.load()?.state)
-    }
-
-    @Test
-    fun noPriorInstancePersistsAndMarksPairing() {
-        val stores = Stores()
-        val session = FakeSession(
-            HttpResponse(200, emptyMap(), pairResponse().toByteArray(Charsets.UTF_8)),
-            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-        )
-
-        val result = pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
-
-        assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
-        assertEquals(1, stores.credentialStore.saves)
-        assertEquals(1, stores.identityStore.saves)
-    }
-
-    @Test
     fun matchingCaAndSignedLeafSendsPairRequest() {
         val stores = Stores()
-        val session = FakeSession()
+        val session = DynamicFakeSession()
 
         pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
 
@@ -231,8 +376,8 @@ class RelayPairingTest {
     @Test
     fun noMatchingCaAbortsBeforeSendingS() {
         val stores = Stores()
-        val session = FakeSession(
-            peerCertificateChainDer = listOf(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded),
+        val session = DynamicFakeSession(
+            customPeerChain = listOf(certificateFromPem(TEST_SERVER_LEAF_PEM).encoded),
         )
 
         assertFailsWith<CaPinException> {
@@ -246,7 +391,7 @@ class RelayPairingTest {
     @Test
     fun emptyChainAbortsBeforeSendingS() {
         val stores = Stores()
-        val session = FakeSession(peerCertificateChainDer = emptyList())
+        val session = DynamicFakeSession(customPeerChain = emptyList())
 
         assertFailsWith<CaPinException> {
             pairOverRelay(link(), "device", FakePoster(session), FakeDialer(session), stores.credentialStore, stores.identityStore)
@@ -259,11 +404,11 @@ class RelayPairingTest {
     @Test
     fun wrongLeafAbortsBeforeSendingS() {
         val stores = Stores()
-        val session = FakeSession(
-            peerLeafCertificateDer = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
-            peerCertificateChainDer = listOf(
+        val session = DynamicFakeSession(
+            customPeerLeaf = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
+            customPeerChain = listOf(
                 certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded,
-                certificateFromPem(PAIR_TEST_CA_PEM).encoded,
+                certificateFromPem(TEST_CA_PEM).encoded,
             ),
         )
 
@@ -283,32 +428,15 @@ class RelayPairingTest {
     }
 
     private fun link(
-        caFp: ByteArray = caSpkiFp16(PAIR_TEST_CA_PEM),
+        caFp: ByteArray = CA_FP,
         relayOrigin: String? = null,
     ): RelayPairLink =
         RelayPairLink(hexBytes("0123456789abcdef"), caFp, relayOrigin)
 
-    private fun pairResponse(
-        instanceId: String = INSTANCE_ID,
-        homeLabel: String = "relay-home",
-        fingerprint: String = "sha256:" + sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded),
-    ): String =
-        """
-        {
-          "ca_chain":[${jsonString(PAIR_TEST_CA_PEM)}],
-          "client_cert":${jsonString(PAIR_TEST_LEAF_PEM)},
-          "instance_id":"$instanceId",
-          "home_label":"$homeLabel",
-          "home_attestation":"attestation.jwt",
-          "fingerprint":"$fingerprint"
-        }
-        """.trimIndent()
-
-    private fun jsonString(value: String): String = app.solstone.core.pl.toJson(value)
-
     private class FakePoster(
-        private val session: FakeSession? = null,
+        private val session: DynamicFakeSession? = null,
         private val enrollStatus: Int = 200,
+        private val enrollResponseBody: String? = null,
     ) : HttpsPoster {
         val enrollBodies = mutableListOf<ByteArray>()
         var sessionClosedBeforeEnroll = false
@@ -319,7 +447,9 @@ class RelayPairingTest {
                 url.endsWith("/enroll/device") -> {
                     enrollBodies += body
                     sessionClosedBeforeEnroll = session?.closed == true
-                    HttpResponse(enrollStatus, emptyMap(), """{"device_token":"mock-device-token"}""".toByteArray())
+                    val validToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+                    val responseText = enrollResponseBody ?: """{"device_token":"$validToken","expires_at":"2033-05-18T03:33:20Z"}"""
+                    HttpResponse(enrollStatus, emptyMap(), responseText.toByteArray())
                 }
                 else -> error("unexpected URL $url")
             }
@@ -327,7 +457,7 @@ class RelayPairingTest {
     }
 
     private class FakeDialer(
-        private val session: FakeSession = FakeSession(),
+        private val session: DynamicFakeSession = DynamicFakeSession(),
         private val openException: Exception? = null,
     ) : RelayPairDialer {
         override fun open(host: String, port: Int, rk: ByteArray): RelayDialSession {
@@ -339,16 +469,27 @@ class RelayPairingTest {
         }
     }
 
-    private class FakeSession(
-        private val response: HttpResponse = HttpResponse(200, emptyMap(), pairResponseStatic().toByteArray()),
-        override val peerLeafCertificateDer: ByteArray? = certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-        override val peerCertificateChainDer: List<ByteArray>? = listOf(
-            certificateFromPem(PAIR_TEST_LEAF_PEM).encoded,
-            certificateFromPem(PAIR_TEST_CA_PEM).encoded,
-        ),
+    private class DynamicFakeSession(
+        private val relayAccessJson: String? = null,
+        private val mismatchPublicKey: Boolean = false,
+        private val customStatus: Int = 200,
+        private val customInstanceId: String? = null,
+        private val customFingerprint: String? = null,
+        private val customPeerLeaf: ByteArray? = null,
+        private val customPeerChain: List<ByteArray>? = null,
     ) : RelayDialSession {
         val requests = mutableListOf<RequestRecord>()
         var closed = false
+
+        override val peerLeafCertificateDer: ByteArray?
+            get() = customPeerLeaf ?: certificateFromPem(TEST_SERVER_LEAF_PEM).encoded
+
+        override val peerCertificateChainDer: List<ByteArray>?
+            get() = customPeerChain ?: listOf(
+                certificateFromPem(TEST_SERVER_LEAF_PEM).encoded,
+                certificateFromPem(TEST_CA_PEM).encoded,
+            )
+
         override val client: PlHttpClient = object : PlHttpClient {
             override fun request(
                 method: String,
@@ -358,7 +499,36 @@ class RelayPairingTest {
                 maxResponseBytes: Int,
             ): HttpResponse {
                 requests += RequestRecord(method, path, headers, body)
-                return response
+                if (customStatus != 200) {
+                    return HttpResponse(customStatus, emptyMap(), "error".toByteArray())
+                }
+                val bodyStr = body?.toString(Charsets.UTF_8).orEmpty()
+                val parsed = parseJson(bodyStr) as? Map<*, *>
+                val csrPem = parsed?.get("csr") as? String
+                val spkiBytes = if (mismatchPublicKey) {
+                    generateP256KeyPair().public.encoded
+                } else if (csrPem != null) {
+                    extractPublicKeyFromCsrPem(csrPem)
+                } else {
+                    generateP256KeyPair().public.encoded
+                }
+                val clientCertPem = issueLeafCertPem(spkiBytes, TEST_CA_KEY_PAIR)
+                val certDer = certificateFromPem(clientCertPem).encoded
+                val fingerprint = customFingerprint ?: ("sha256:" + sha256Hex(certDer))
+                val instanceId = customInstanceId ?: INSTANCE_ID
+
+                val responseJson = """
+                {
+                  "ca_chain":[${app.solstone.core.pl.toJson(TEST_CA_PEM)}],
+                  "client_cert":${app.solstone.core.pl.toJson(clientCertPem)},
+                  "instance_id":"$instanceId",
+                  "home_label":"relay-home",
+                  "home_attestation":"attestation.jwt",
+                  "fingerprint":"$fingerprint",
+                  "local_endpoints":[{"ip":"10.0.0.5","port":7657}]${if (relayAccessJson != null) ",\n  \"relay_access\":$relayAccessJson" else ""}
+                }
+                """.trimIndent()
+                return HttpResponse(200, emptyMap(), responseJson.toByteArray(Charsets.UTF_8))
             }
         }
 
@@ -377,6 +547,33 @@ class RelayPairingTest {
     private class Stores(home: PairedHome? = null) {
         val credentialStore = FakeCredentialStore()
         val identityStore = FakeIdentityStore(home)
+        val endpointStore = FakeEndpointStore()
+        val mutator = object : IdentityMutator {
+            private var accessGen = 1L
+            override fun current(): PairedHome? = identityStore.load()
+            override fun currentPairingGeneration(): PairingGeneration? {
+                val h = identityStore.load() ?: return null
+                return PairingGeneration(h.instanceId, h.clientCertFingerprint)
+            }
+            override fun currentAccessMutationGen(): Long = accessGen
+            override fun isRelayLiveEligible(): Boolean = true
+            override fun disableRelayLive() {}
+            override fun installNewPairing(home: PairedHome): Boolean {
+                identityStore.save(home)
+                return true
+            }
+            override fun mutate(
+                expectedPairing: PairingGeneration,
+                expectedAccessMutationGen: Long,
+                transform: (PairedHome) -> PairedHome,
+            ): AccessMutationResult {
+                val h = identityStore.load() ?: return AccessMutationResult.Conflict("missing home")
+                val next = transform(h)
+                identityStore.save(next)
+                accessGen++
+                return AccessMutationResult.Applied(next, accessGen)
+            }
+        }
     }
 
     private class FakeCredentialStore : ClientCredentialStore {
@@ -404,20 +601,149 @@ class RelayPairingTest {
         }
     }
 
-    companion object {
-        val INSTANCE_ID = jidFromCaPem(PAIR_TEST_CA_PEM)
+    private class FakeEndpointStore : EndpointStore {
+        private var ep: DirectEndpoint? = null
+        override fun save(endpoint: DirectEndpoint) {
+            this.ep = endpoint
+        }
+        override fun load(): DirectEndpoint? = ep
+        override fun clear() {
+            ep = null
+        }
+    }
 
-        fun pairResponseStatic(): String =
-            """
-            {
-              "ca_chain":[${app.solstone.core.pl.toJson(PAIR_TEST_CA_PEM)}],
-              "client_cert":${app.solstone.core.pl.toJson(PAIR_TEST_LEAF_PEM)},
-              "instance_id":"$INSTANCE_ID",
-              "home_label":"relay-home",
-              "home_attestation":"attestation.jwt",
-              "fingerprint":"sha256:${sha256Hex(certificateFromPem(PAIR_TEST_LEAF_PEM).encoded)}"
+    companion object {
+        private const val ECDSA_WITH_SHA256_OID_HEX = "06082a8648ce3d040302"
+        private val ECDSA_OID_BYTES = hexBytes(ECDSA_WITH_SHA256_OID_HEX)
+
+        val TEST_CA_KEY_PAIR: KeyPair = generateP256KeyPair()
+        val TEST_CA_PEM: String = issueCaCertPem(TEST_CA_KEY_PAIR)
+        val CA_FP: ByteArray = caSpkiFp16(TEST_CA_PEM)
+        val INSTANCE_ID: String = jidFromCaPem(TEST_CA_PEM)
+
+        val TEST_SERVER_KEY_PAIR: KeyPair = generateP256KeyPair()
+        val TEST_SERVER_LEAF_PEM: String = issueLeafCertPem(TEST_SERVER_KEY_PAIR.public.encoded, TEST_CA_KEY_PAIR, "relay-server")
+
+        fun issueCaCertPem(caKeyPair: KeyPair, cn: String = "solstone-test-ca"): String {
+            val tbs = der(
+                0x30,
+                concat(
+                    der(0xa0, der(0x02, byteArrayOf(0x02))),
+                    der(0x02, byteArrayOf(0x01)),
+                    der(0x30, ECDSA_OID_BYTES),
+                    X500Principal("CN=$cn").encoded,
+                    der(0x30, concat(der(0x17, "260101000000Z".toByteArray()), der(0x17, "360101000000Z".toByteArray()))),
+                    X500Principal("CN=$cn").encoded,
+                    caKeyPair.public.encoded,
+                    der(0xa3, der(0x30, der(0x30, concat(
+                        byteArrayOf(0x06, 0x03, 0x55, 0x1d, 0x13),
+                        der(0x01, byteArrayOf(0xff.toByte())),
+                        der(0x04, der(0x30, der(0x01, byteArrayOf(0xff.toByte()))))
+                    )))),
+                ),
+            )
+            val sig = Signature.getInstance("SHA256withECDSA").apply {
+                initSign(caKeyPair.private)
+                update(tbs)
+            }.sign()
+            val certDer = der(0x30, concat(tbs, der(0x30, ECDSA_OID_BYTES), der(0x03, concat(byteArrayOf(0x00), sig))))
+            return pem("CERTIFICATE", certDer)
+        }
+
+        fun issueLeafCertPem(spkiDer: ByteArray, caKeyPair: KeyPair, cn: String = "relay-leaf"): String {
+            val tbs = der(
+                0x30,
+                concat(
+                    der(0xa0, der(0x02, byteArrayOf(0x02))),
+                    der(0x02, byteArrayOf(0x01)),
+                    der(0x30, ECDSA_OID_BYTES),
+                    X500Principal("CN=solstone-test-ca").encoded,
+                    der(0x30, concat(der(0x17, "260101000000Z".toByteArray()), der(0x17, "360101000000Z".toByteArray()))),
+                    X500Principal("CN=$cn").encoded,
+                    spkiDer,
+                ),
+            )
+            val sig = Signature.getInstance("SHA256withECDSA").apply {
+                initSign(caKeyPair.private)
+                update(tbs)
+            }.sign()
+            val certDer = der(0x30, concat(tbs, der(0x30, ECDSA_OID_BYTES), der(0x03, concat(byteArrayOf(0x00), sig))))
+            return pem("CERTIFICATE", certDer)
+        }
+
+        fun extractPublicKeyFromCsrPem(csrPem: String): ByteArray {
+            val der = pemToDer(csrPem, "CERTIFICATE REQUEST")
+            val reader = DerTlvReader(der)
+            val root = reader.readTlv()
+            val rootChildren = DerTlvReader(root.content).readAll()
+            val cri = rootChildren[0]
+            val criChildren = DerTlvReader(cri.content).readAll()
+            val spki = criChildren[2]
+            return spki.fullBytes
+        }
+
+        fun v2Jwt(instanceId: String, iat: Long, exp: Long): String {
+            val payload = """{"iss":"https://link.solstone.app","sub":"instance:$instanceId","aud":"spl-relay","scope":"session.dial","ver":2,"instance_id":"$instanceId","iat":$iat,"exp":$exp,"jti":"test-jti"}"""
+            val enc = Base64.getUrlEncoder().withoutPadding()
+            return "${enc.encodeToString("{}".toByteArray())}.${enc.encodeToString(payload.toByteArray())}.sig"
+        }
+    }
+}
+
+private fun der(tag: Int, content: ByteArray): ByteArray {
+    val lenBytes = if (content.size < 128) {
+        byteArrayOf(content.size.toByte())
+    } else if (content.size < 256) {
+        byteArrayOf(0x81.toByte(), content.size.toByte())
+    } else {
+        byteArrayOf(0x82.toByte(), (content.size shr 8).toByte(), (content.size and 0xff).toByte())
+    }
+    val out = ByteArray(1 + lenBytes.size + content.size)
+    out[0] = tag.toByte()
+    System.arraycopy(lenBytes, 0, out, 1, lenBytes.size)
+    System.arraycopy(content, 0, out, 1 + lenBytes.size, content.size)
+    return out
+}
+
+private fun concat(vararg parts: ByteArray): ByteArray {
+    var total = 0
+    for (p in parts) total += p.size
+    val out = ByteArray(total)
+    var offset = 0
+    for (p in parts) {
+        System.arraycopy(p, 0, out, offset, p.size)
+        offset += p.size
+    }
+    return out
+}
+
+private class DerTlv(val tag: Int, val fullBytes: ByteArray, val content: ByteArray)
+
+private class DerTlvReader(private val bytes: ByteArray) {
+    private var index = 0
+
+    fun readAll(): List<DerTlv> {
+        val out = ArrayList<DerTlv>()
+        while (index < bytes.size) {
+            out += readTlv()
+        }
+        return out
+    }
+
+    fun readTlv(): DerTlv {
+        val start = index
+        val tag = bytes[index++].toInt() and 0xff
+        var length = bytes[index++].toInt() and 0xff
+        if ((length and 0x80) != 0) {
+            val count = length and 0x7f
+            length = 0
+            repeat(count) {
+                length = (length shl 8) or (bytes[index++].toInt() and 0xff)
             }
-            """.trimIndent()
+        }
+        val contentStart = index
+        index += length
+        return DerTlv(tag, bytes.copyOfRange(start, index), bytes.copyOfRange(contentStart, index))
     }
 }
 

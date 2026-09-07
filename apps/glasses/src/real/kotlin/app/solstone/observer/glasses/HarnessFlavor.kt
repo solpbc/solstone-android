@@ -60,7 +60,7 @@ fun createGlassesHarnessFlavor(
             observerLifecycle = lifecycle,
             heartbeatFreshness = RealHeartbeatFreshness(),
             pairProbe = RealPairProbe(stores.credentialStore, stores.identityStore, stores.endpointStore),
-            relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore),
+            relayPairProbe = RealRelayPairProbe(stores.credentialStore, stores.identityStore, endpointStore = stores.endpointStore),
             plStatusProbe = RealPlStatusProbe(stores.endpointStore, stores.credentialStore, stores.identityStore),
             syncEnqueue = syncEnqueue,
             evidenceReader = evidenceReader,

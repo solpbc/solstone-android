@@ -97,6 +97,7 @@ class RealRelayPairProbe(
     private val coordinator: JournalVersionRefreshCoordinator? = null,
     private val mutator: IdentityMutator? = null,
     private val relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
+    private val endpointStore: EndpointStore? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
@@ -110,15 +111,16 @@ class RealRelayPairProbe(
             coordinator = coordinator,
             mutator = mutator,
             relayAccessCoordinator = relayAccessCoordinator,
+            endpointStore = endpointStore,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
             pairStatus = result.pairStatus,
-            statusStatus = result.enrollStatus,
+            statusStatus = result.enrollStatus ?: result.pairStatus,
             statusBody = "",
             homeLabel = result.homeLabel,
             endpointHost = result.relayHost,
-            endpointPort = 443,
+            endpointPort = app.solstone.core.pl.parseProductionRelayOrigin(result.relayOrigin)?.effectivePort ?: 443,
             connectionMode = when (result.connectionMode) {
                 RelayPairConnectionMode.PAIRING -> PairConnectionMode.PAIRING
                 RelayPairConnectionMode.ALREADY_CONNECTED -> PairConnectionMode.ALREADY_CONNECTED

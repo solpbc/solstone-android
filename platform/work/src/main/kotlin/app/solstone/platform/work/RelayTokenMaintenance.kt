@@ -34,7 +34,7 @@ fun maintainRelayToken(
     if (!shouldRefreshDeviceToken(transport.deviceToken, nowEpochMs)) {
         return RelayTokenResult.Ready(transport)
     }
-    return when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster)) {
+    return when (val refresh = refreshDeviceToken(transport.deviceToken, transport.relayOrigin, poster, nowEpochMs = nowEpochMs)) {
         is DeviceTokenRefresh.Refreshed -> {
             val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
             val accessGen = mutator.currentAccessMutationGen()

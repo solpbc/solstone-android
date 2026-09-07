@@ -27,16 +27,19 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
-import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
+import app.solstone.core.pl.PairRelayAccess
 import app.solstone.core.pl.PairRequest
 import app.solstone.core.pl.PairResponse
 import app.solstone.core.pl.PlStreamObserver
+import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.core.pl.RelayAccessResponse
 import app.solstone.core.pl.SOCKET_TIMEOUT_MS
 import app.solstone.core.pl.classifyPairResponseStatus
 import app.solstone.core.pl.orderCandidatesBySubnet
 import app.solstone.core.pl.parseDirectPairLink
+import app.solstone.core.pl.parseRelayAccessMap
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetSocketAddress
@@ -176,16 +179,26 @@ internal fun pairAndProbe(
                     throw SSLException("pair response client certificate key mismatch")
                 }
 
+                val bootstrapAccess = when (val access = resp.relayAccess) {
+                    is PairRelayAccess.Object -> {
+                        when (val parsed = parseRelayAccessMap(access.fields, resp.instanceId)) {
+                            is RelayAccessResponse.Ready -> parsed
+                            else -> null
+                        }
+                    }
+                    else -> null
+                }
+
                 val credential = ClientCredential(material.privateKeyPem, resp.clientCert, resp.caChain)
                 val home = PairedHome(
                     instanceId = resp.instanceId,
                     homeLabel = resp.homeLabel,
-                    relayOrigin = null,
+                    relayOrigin = bootstrapAccess?.relayOrigin,
                     caChainFingerprint = "sha256:" + sha256Hex(caDer),
                     clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
                     observerHandle = null,
-                    deviceToken = null,
-                    expiresAt = null,
+                    deviceToken = bootstrapAccess?.deviceToken,
+                    expiresAt = bootstrapAccess?.expiresAt,
                     state = IdentityState.PAIRED,
                 )
                 return persistOrReturnDirectPairResult(
@@ -244,6 +257,31 @@ internal fun persistOrReturnDirectPairResult(
 ): PairProbeResult {
     val prior = mutator?.current() ?: identityStore.load()
     if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
+        if (home.deviceToken != null && home.relayOrigin != null) {
+            if (mutator != null) {
+                val pairingGen = mutator.currentPairingGeneration()
+                if (pairingGen != null) {
+                    mutator.mutate(
+                        expectedPairing = pairingGen,
+                        expectedAccessMutationGen = mutator.currentAccessMutationGen(),
+                    ) { p ->
+                        p.copy(
+                            relayOrigin = home.relayOrigin,
+                            deviceToken = home.deviceToken,
+                            expiresAt = home.expiresAt,
+                        )
+                    }
+                }
+            } else {
+                identityStore.save(
+                    prior.copy(
+                        relayOrigin = home.relayOrigin,
+                        deviceToken = home.deviceToken,
+                        expiresAt = home.expiresAt,
+                    ),
+                )
+            }
+        }
         val targetEndpoint = endpointStore.load() ?: endpoint
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
             openAuthenticatedClient(targetEndpoint, credential)

@@ -57,12 +57,13 @@ class RelayTokenMaintenanceTest {
     fun maintainPersistsAndReturnsRefreshedToken() {
         val store = createStore(home())
         val mutator = FileIdentityMutator(store)
-        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new","expires_at":"2026-01-01T00:00:00Z"}""".toByteArray()))
+        val newToken = jwt(iat = 100, exp = 1767225600)
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"2026-01-01T00:00:00Z"}""".toByteArray()))
 
         val result = maintainRelayToken(home(), transport(), poster, mutator, nowEpochMs = 181_000L)
 
-        assertEquals("new", assertIs<RelayTokenResult.Ready>(result).transport.deviceToken)
-        assertEquals("new", store.load()?.deviceToken)
+        assertEquals(newToken, assertIs<RelayTokenResult.Ready>(result).transport.deviceToken)
+        assertEquals(newToken, store.load()?.deviceToken)
         assertEquals("2026-01-01T00:00:00Z", store.load()?.expiresAt)
         assertEquals(1, poster.calls)
     }
@@ -96,50 +97,56 @@ class RelayTokenMaintenanceTest {
         val store = createStore(home())
         val mutator = FileIdentityMutator(store)
         val dial = FakeDial(SyncOutcome.SUCCESS)
+        val oldToken = jwt(iat = 100, exp = 200)
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), FakePoster(), mutator, dial)
+        val result = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), FakePoster(), mutator, dial)
 
         assertEquals(SyncOutcome.SUCCESS, result)
-        assertEquals(listOf("old"), dial.tokens)
+        assertEquals(listOf(oldToken), dial.tokens)
     }
 
     @Test
     fun reactive4401RefreshesOncePersistsAndRedials() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val newToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
-        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new","expires_at":"2026-01-01T00:00:00Z"}""".toByteArray()))
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2,"expires_at":"2033-05-18T03:33:20Z"}""".toByteArray()))
         val dial = FakeDial(Close(4401), SyncOutcome.SUCCESS)
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
+        val result = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), poster, mutator, dial)
 
         assertEquals(SyncOutcome.SUCCESS, result)
-        assertEquals(listOf("old", "new"), dial.tokens)
-        assertEquals("new", store.load()?.deviceToken)
-        assertEquals("2026-01-01T00:00:00Z", store.load()?.expiresAt)
+        assertEquals(listOf(oldToken, newToken), dial.tokens)
+        assertEquals(newToken, store.load()?.deviceToken)
+        assertEquals("2033-05-18T03:33:20Z", store.load()?.expiresAt)
         assertEquals(1, poster.calls)
     }
 
     @Test
     fun reactiveSecond4401RetriesWithoutLoop() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val newToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
-        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"new"}""".toByteArray()))
+        val poster = FakePoster(HttpResponse(200, emptyMap(), """{"device_token":"$newToken","protocol_version":2}""".toByteArray()))
         val dial = FakeDial(Close(4401), Close(4401))
 
-        val result = dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
+        val result = dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), poster, mutator, dial)
 
         assertEquals(SyncOutcome.RETRY, result)
-        assertEquals(listOf("old", "new"), dial.tokens)
+        assertEquals(listOf(oldToken, newToken), dial.tokens)
         assertEquals(1, poster.calls)
     }
 
     @Test
     fun reactive4401ReconnectFails() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
         val result = dialWithReactiveRefresh(
-            home(),
-            transport(token = "old"),
+            home(oldToken),
+            transport(token = oldToken),
             FakePoster(HttpResponse(401, emptyMap(), """{"reason":"expired"}""".toByteArray())),
             mutator,
             FakeDial(Close(4401)),
@@ -150,11 +157,12 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactive4401TransientRetries() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
         val result = dialWithReactiveRefresh(
-            home(),
-            transport(token = "old"),
+            home(oldToken),
+            transport(token = oldToken),
             FakePoster(HttpResponse(500, emptyMap(), ByteArray(0))),
             mutator,
             FakeDial(Close(4401)),
@@ -165,15 +173,16 @@ class RelayTokenMaintenanceTest {
 
     @Test
     fun reactiveNon4401RetriesWithoutRefresh() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
         val poster = FakePoster()
         val dial = FakeDial(Close(4403))
         val logs = mutableListOf<String>()
 
         val result = dialWithReactiveRefresh(
-            home(),
-            transport(token = "old"),
+            home(oldToken),
+            transport(token = oldToken),
             poster,
             mutator,
             dial,
@@ -182,28 +191,29 @@ class RelayTokenMaintenanceTest {
 
         assertEquals(SyncOutcome.RETRY, result)
         assertEquals(0, poster.calls)
-        assertEquals(listOf("old"), dial.tokens)
+        assertEquals(listOf(oldToken), dial.tokens)
         assertEquals(listOf("relay websocket closed"), logs)
     }
 
     @Test
     fun waitingExceptionPropagatesWithoutTokenRefresh() {
-        val store = createStore(home())
+        val oldToken = jwt(iat = 100, exp = 2000000000)
+        val store = createStore(home(oldToken))
         val mutator = FileIdentityMutator(store)
         val poster = FakePoster()
         val dial = FakeDial(RelayDialWaitingException(30_000L))
 
         assertFailsWith<RelayDialWaitingException> {
-            dialWithReactiveRefresh(home(), transport(token = "old"), poster, mutator, dial)
+            dialWithReactiveRefresh(home(oldToken), transport(token = oldToken), poster, mutator, dial)
         }
 
         assertEquals(0, poster.calls)
-        assertEquals(listOf("old"), dial.tokens)
-        assertEquals(home(), store.load())
+        assertEquals(listOf(oldToken), dial.tokens)
+        assertEquals(home(oldToken), store.load())
     }
 
     private class FakePoster(
-        private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"new"}""".toByteArray()),
+        private val response: HttpResponse = HttpResponse(200, emptyMap(), """{"device_token":"${jwt(100, 2000000000)}","protocol_version":2}""".toByteArray()),
     ) : HttpsPoster {
         var calls = 0
         override fun post(url: String, body: ByteArray, headers: Map<String, String>): HttpResponse {
@@ -231,7 +241,7 @@ class RelayTokenMaintenanceTest {
 
     private data class Close(val code: Int)
 
-    private fun home(token: String = "old"): PairedHome =
+    private fun home(token: String = jwt(iat = 100, exp = 200)): PairedHome =
         PairedHome(
             instanceId = "home",
             homeLabel = "Home",
@@ -247,12 +257,13 @@ class RelayTokenMaintenanceTest {
     private fun transport(token: String = jwt(iat = 100, exp = 200)): SyncTransport.Relay =
         SyncTransport.Relay(ORIGIN, "home", token)
 
-    private fun jwt(iat: Long, exp: Long): String =
-        listOf("{}", """{"iat":$iat,"exp":$exp}""", "sig")
-            .map { Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray(Charsets.UTF_8)) }
-            .joinToString(".")
-
     private companion object {
         const val ORIGIN = "https://link.solstone.app"
+
+        fun jwt(iat: Long, exp: Long): String {
+            val payload = """{"iss":"https://link.solstone.app","sub":"instance:home","aud":"spl-relay","scope":"session.dial","ver":2,"instance_id":"home","iat":$iat,"exp":$exp,"jti":"test-jti"}"""
+            val enc = Base64.getUrlEncoder().withoutPadding()
+            return "${enc.encodeToString("{}".toByteArray())}.${enc.encodeToString(payload.toByteArray())}.sig"
+        }
     }
 }

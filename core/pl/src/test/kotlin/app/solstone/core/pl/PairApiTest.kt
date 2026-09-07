@@ -48,4 +48,41 @@ class PairApiTest {
             PairResponse.fromJson("""{"ca_chain":[],"client_cert":"cert","instance_id":"inst","home_attestation":"jwt","fingerprint":"fp"}""")
         }
     }
+
+    @Test
+    fun pairResponseRelayAccessVariants() {
+        val base = """{"ca_chain":["ca1"],"client_cert":"cert","instance_id":"inst","home_attestation":"jwt","fingerprint":"fp""""
+
+        val omitted = PairResponse.fromJson("$base}")
+        assertEquals(PairRelayAccess.Omitted, omitted.relayAccess)
+
+        val presentNull = PairResponse.fromJson("""$base,"relay_access":null}""")
+        assertEquals(PairRelayAccess.PresentNull, presentNull.relayAccess)
+
+        val obj = PairResponse.fromJson("""$base,"relay_access":{"protocol_version":2,"status":"ready"}}""")
+        assert(obj.relayAccess is PairRelayAccess.Object)
+        assertEquals(2.0, (obj.relayAccess as PairRelayAccess.Object).fields["protocol_version"])
+
+        val nonObj = PairResponse.fromJson("""$base,"relay_access":"string_val"}""")
+        assert(nonObj.relayAccess is PairRelayAccess.NonObject)
+        assertEquals("string_val", (nonObj.relayAccess as PairRelayAccess.NonObject).json)
+    }
+
+    @Test
+    fun pairResponseToStringRedactsSensitiveFields() {
+        val response = PairResponse(
+            caChain = listOf("ca1"),
+            clientCert = "sensitive-cert",
+            instanceId = "inst",
+            homeLabel = "home",
+            homeAttestation = "sensitive-jwt",
+            fingerprint = "fp",
+            relayAccess = PairRelayAccess.Object(mapOf("device_token" to "secret-token")),
+        )
+        val stringified = response.toString()
+        assert(!stringified.contains("sensitive-cert"))
+        assert(!stringified.contains("sensitive-jwt"))
+        assert(!stringified.contains("secret-token"))
+        assert(stringified.contains("<redacted>"))
+    }
 }

@@ -3,7 +3,6 @@
 
 package app.solstone.core.pl
 
-import java.net.URL
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Base64
@@ -17,6 +16,9 @@ sealed interface RelayAccessResponse {
         val expiresAt: String,
     ) : RelayAccessResponse {
         val token: String get() = deviceToken
+
+        override fun toString(): String =
+            "Ready(protocolVersion=$protocolVersion, relayOrigin=$relayOrigin, instanceId=$instanceId, deviceToken=<redacted>, expiresAt=$expiresAt)"
     }
 
     data object NotConfigured : RelayAccessResponse
@@ -38,9 +40,92 @@ data class RelayAccessJwtV2(
     val jti: String,
 )
 
+data class RelayAccessJwtLegacy(
+    val iss: String,
+    val sub: String,
+    val aud: String,
+    val scope: String,
+    val deviceFp: String,
+    val iat: Long,
+    val exp: Long,
+    val jti: String,
+)
+
+data class RelayOrigin(
+    val scheme: String,
+    val host: String,
+    val effectivePort: Int,
+    val httpsBase: String,
+    val wssBase: String,
+)
+
 private val EXACT_JWT_V2_KEYS = setOf("iss", "sub", "aud", "scope", "ver", "instance_id", "iat", "exp", "jti")
+private val EXACT_JWT_LEGACY_KEYS = setOf("iss", "sub", "aud", "scope", "device_fp", "iat", "exp", "jti")
 private val EXACT_NOT_CONFIGURED_KEYS = setOf("protocol_version", "status")
 private val EXACT_READY_KEYS = setOf("protocol_version", "status", "relay_origin", "instance_id", "device_token", "expires_at")
+
+fun parseProductionRelayOrigin(raw: String): RelayOrigin? {
+    if (raw.isBlank()) return null
+    if (raw.any { it <= ' ' || it.code == 0x7F }) return null
+    if (raw.contains('@') || raw.contains('?') || raw.contains('#')) return null
+    if (!raw.startsWith("https://", ignoreCase = true)) return null
+
+    val afterScheme = raw.substring(8)
+    val withoutSlash = if (afterScheme.endsWith('/')) {
+        afterScheme.dropLast(1)
+    } else {
+        afterScheme
+    }
+    if (withoutSlash.contains('/')) return null
+    if (withoutSlash.isBlank()) return null
+
+    val host: String
+    val effectivePort: Int
+    if (withoutSlash.startsWith('[')) {
+        val closeIdx = withoutSlash.indexOf(']')
+        if (closeIdx < 0) return null
+        val innerHost = withoutSlash.substring(1, closeIdx)
+        if (innerHost.isBlank()) return null
+        host = innerHost
+        val afterClose = withoutSlash.substring(closeIdx + 1)
+        if (afterClose.isEmpty()) {
+            effectivePort = 443
+        } else {
+            if (!afterClose.startsWith(':')) return null
+            val portStr = afterClose.substring(1)
+            val p = portStr.toIntOrNull() ?: return null
+            if (p !in 1..65535) return null
+            effectivePort = p
+        }
+    } else {
+        val colonIdx = withoutSlash.indexOf(':')
+        if (colonIdx >= 0) {
+            if (withoutSlash.indexOf(':', colonIdx + 1) >= 0) return null
+            val h = withoutSlash.substring(0, colonIdx)
+            if (h.isBlank()) return null
+            host = h
+            val portStr = withoutSlash.substring(colonIdx + 1)
+            val p = portStr.toIntOrNull() ?: return null
+            if (p !in 1..65535) return null
+            effectivePort = p
+        } else {
+            host = withoutSlash
+            effectivePort = 443
+        }
+    }
+
+    val bracketedHost = if (host.contains(':')) "[$host]" else host
+    val httpsBase = if (effectivePort == 443) "https://$bracketedHost" else "https://$bracketedHost:$effectivePort"
+    val wssBase = if (effectivePort == 443) "wss://$bracketedHost" else "wss://$bracketedHost:$effectivePort"
+
+    return RelayOrigin(
+        scheme = "https",
+        host = host,
+        effectivePort = effectivePort,
+        httpsBase = httpsBase,
+        wssBase = wssBase,
+    )
+}
 
 fun parseRelayAccessJwtV2(token: String, pairedInstanceId: String): RelayAccessJwtV2? = runCatching {
     val parts = token.split('.')
@@ -99,6 +184,77 @@ fun parseRelayAccessJwtV2(token: String, pairedInstanceId: String): RelayAccessJ
     )
 }.getOrNull()
 
+fun inspectRelayTokenPayload(token: String): Map<String, Any?>? = runCatching {
+    val parts = token.split('.')
+    if (parts.size != 3) return null
+    val payloadBytes = Base64.getUrlDecoder().decode(parts[1])
+    val root = parseJson(payloadBytes.toString(Charsets.UTF_8)) as? Map<*, *> ?: return null
+    val map = LinkedHashMap<String, Any?>()
+    for ((k, v) in root) {
+        if (k is String) map[k] = v
+    }
+    map
+}.getOrNull()
+
+fun parseLegacyDeviceTokenJwt(token: String, pairedInstanceId: String): RelayAccessJwtLegacy? = runCatching {
+    val parts = token.split('.')
+    if (parts.size != 3) return null
+    val payloadBytes = Base64.getUrlDecoder().decode(parts[1])
+    val root = parseJson(payloadBytes.toString(Charsets.UTF_8)) as? Map<*, *> ?: return null
+
+    val keys = root.keys.map { it.toString() }.toSet()
+    if (keys != EXACT_JWT_LEGACY_KEYS) return null
+
+    val aud = root["aud"] as? String ?: return null
+    if (aud != "spl-relay") return null
+
+    val scope = root["scope"] as? String ?: return null
+    if (scope != "session.dial") return null
+
+    val sub = root["sub"] as? String ?: return null
+    if (!sub.startsWith("device:") || sub.length <= 7) return null
+
+    val deviceFp = root["device_fp"] as? String ?: return null
+    if (!deviceFp.startsWith("sha256:") || deviceFp.length != 7 + 64) return null
+    val hexPart = deviceFp.substring(7)
+    if (!hexPart.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return null
+
+    val iss = root["iss"] as? String ?: return null
+    if (iss.isBlank()) return null
+
+    val jti = root["jti"] as? String ?: return null
+    if (jti.isBlank()) return null
+
+    val iatNum = root["iat"] as? Number ?: return null
+    val iatD = iatNum.toDouble()
+    if (iatD.isNaN() || iatD.isInfinite() || iatD != Math.floor(iatD) || iatD < 0.0) return null
+    val iat = iatD.toLong()
+
+    val expNum = root["exp"] as? Number ?: return null
+    val expD = expNum.toDouble()
+    if (expD.isNaN() || expD.isInfinite() || expD != Math.floor(expD) || expD < 0.0) return null
+    val exp = expD.toLong()
+
+    if (exp <= iat) return null
+
+    RelayAccessJwtLegacy(
+        iss = iss,
+        sub = sub,
+        aud = aud,
+        scope = scope,
+        deviceFp = deviceFp,
+        iat = iat,
+        exp = exp,
+        jti = jti,
+    )
+}.getOrNull()
+
+fun isRelayTokenUsableNow(expEpochSec: Long, nowEpochMs: Long = System.currentTimeMillis()): Boolean =
+    (nowEpochMs / 1000L) < expEpochSec
+
+fun isRelayTokenWithinRefreshGrace(expEpochSec: Long, nowEpochMs: Long = System.currentTimeMillis()): Boolean =
+    (nowEpochMs / 1000L) <= (expEpochSec + 30L * 86400L)
+
 fun parseRfc3339ToEpochSeconds(timestamp: String): Long? = runCatching {
     Instant.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)).epochSecond
 }.getOrNull()
@@ -121,21 +277,16 @@ fun validateRelayAccessReady(
         return RelayAccessResponse.Malformed("ready instance_id does not match paired instance")
     }
 
-    val normalizedOrigin = relayOrigin.trimEnd('/')
-    try {
-        val url = URL(normalizedOrigin)
-        if (url.protocol != "https" && url.protocol != "http") {
-            return RelayAccessResponse.Malformed("invalid relay origin protocol")
-        }
-        if (url.host.isNullOrBlank()) {
-            return RelayAccessResponse.Malformed("empty relay origin host")
-        }
-    } catch (_: Exception) {
-        return RelayAccessResponse.Malformed("malformed relay origin url")
-    }
+    val parsedOrigin = parseProductionRelayOrigin(relayOrigin)
+        ?: return RelayAccessResponse.Malformed("invalid relay origin")
 
     val jwt = parseRelayAccessJwtV2(deviceToken, pairedInstanceId)
         ?: return RelayAccessResponse.Malformed("invalid or mismatched jwt v2 token")
+
+    val nowSec = nowEpochMs / 1000L
+    if (jwt.iat > nowSec + 60L) {
+        return RelayAccessResponse.Malformed("token issued in the future")
+    }
 
     val expiresAtSec = parseRfc3339ToEpochSeconds(expiresAt)
         ?: return RelayAccessResponse.Malformed("invalid rfc3339 expires_at")
@@ -144,21 +295,24 @@ fun validateRelayAccessReady(
         return RelayAccessResponse.Malformed("expires_at does not match jwt exp")
     }
 
-    if (nowEpochMs / 1000L >= jwt.exp) {
+    if (!isRelayTokenUsableNow(jwt.exp, nowEpochMs)) {
         return RelayAccessResponse.Malformed("token already expired")
     }
 
     return RelayAccessResponse.Ready(
         protocolVersion = protocolVersion,
-        relayOrigin = normalizedOrigin,
+        relayOrigin = parsedOrigin.httpsBase,
         instanceId = instanceId,
         deviceToken = deviceToken,
         expiresAt = expiresAt,
     )
 }
 
-fun parseRelayAccessBody(bodyText: String, pairedInstanceId: String, nowEpochMs: Long): RelayAccessResponse = runCatching {
-    val root = parseJson(bodyText) as? Map<*, *> ?: return RelayAccessResponse.Malformed("not a json map")
+fun parseRelayAccessMap(
+    root: Map<*, *>,
+    pairedInstanceId: String,
+    nowEpochMs: Long = System.currentTimeMillis(),
+): RelayAccessResponse {
     val keys = root.keys.map { it.toString() }.toSet()
 
     val protocolVersion = (root["protocol_version"] as? Number)?.toInt()
@@ -185,7 +339,44 @@ fun parseRelayAccessBody(bodyText: String, pairedInstanceId: String, nowEpochMs:
         return validateRelayAccessReady(protocolVersion, status, relayOrigin, instanceId, deviceToken, expiresAt, pairedInstanceId, nowEpochMs)
     }
     return RelayAccessResponse.Malformed("unknown status $status")
+}
+
+fun parseRelayAccessBody(
+    bodyText: String,
+    pairedInstanceId: String,
+    nowEpochMs: Long = System.currentTimeMillis(),
+): RelayAccessResponse = runCatching {
+    val root = parseJson(bodyText) as? Map<*, *> ?: return RelayAccessResponse.Malformed("not a json map")
+    parseRelayAccessMap(root, pairedInstanceId, nowEpochMs)
 }.getOrElse { RelayAccessResponse.Malformed("json parse exception: ${it.message}") }
+
+fun decodePairRelayAccess(
+    field: PairRelayAccess,
+    pairedInstanceId: String,
+    expectedOrigin: RelayOrigin,
+    nowEpochMs: Long = System.currentTimeMillis(),
+): RelayAccessResponse = when (field) {
+    PairRelayAccess.Omitted -> RelayAccessResponse.Malformed("relay access omitted")
+    PairRelayAccess.PresentNull -> RelayAccessResponse.Malformed("relay_access is null")
+    is PairRelayAccess.NonObject -> RelayAccessResponse.Malformed("relay_access must be an object")
+    is PairRelayAccess.Object -> {
+        when (val parsed = parseRelayAccessMap(field.fields, pairedInstanceId, nowEpochMs)) {
+            is RelayAccessResponse.Ready -> {
+                val origin = parseProductionRelayOrigin(parsed.relayOrigin)
+                if (origin == null ||
+                    origin.scheme != expectedOrigin.scheme ||
+                    origin.host != expectedOrigin.host ||
+                    origin.effectivePort != expectedOrigin.effectivePort
+                ) {
+                    RelayAccessResponse.Malformed("relay origin mismatch: expected ${expectedOrigin.httpsBase}, got ${parsed.relayOrigin}")
+                } else {
+                    parsed
+                }
+            }
+            else -> parsed
+        }
+    }
+}
 
 fun fetchRelayAccess(
     client: PlHttpClient,

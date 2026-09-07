@@ -212,6 +212,19 @@ private fun isLoopback(a: Int): Boolean = a == 127
 private fun isDirectDialCandidate(a: Int, b: Int): Boolean =
     isPrivateOrLinkLocal(a, b) || isCgnat(a, b) || isLoopback(a)
 
+fun supportedDirectDialEndpoint(ip: String, port: Int): DirectEndpoint? {
+    val parts = ip.split(".")
+    if (parts.size != 4) return null
+    val a = parts[0].toIntOrNull() ?: return null
+    val b = parts[1].toIntOrNull() ?: return null
+    val c = parts[2].toIntOrNull() ?: return null
+    val d = parts[3].toIntOrNull() ?: return null
+    if (a !in 0..255 || b !in 0..255 || c !in 0..255 || d !in 0..255) return null
+    if (!isDirectDialCandidate(a, b)) return null
+    val normPort = if (port <= 0) DEFAULT_DIRECT_PORT else if (port > 65535) return null else port
+    return DirectEndpoint("$a.$b.$c.$d", normPort)
+}
+
 fun orderCandidatesBySubnet(
     candidates: List<DirectEndpoint>,
     interfaces: List<LocalIPv4Interface>,
