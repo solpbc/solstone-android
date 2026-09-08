@@ -6,17 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-08
+
 ### Added
 - the solstone app now shows how much space its local copy of your memories uses on your phone and lets you choose a limit. when it needs room, it removes only what your journal has already confirmed; anything it cannot safely remove stays in place, and the app tells you what it kept.
-- tapping a pairing link now opens the solstone app and starts pairing right away, whether it is already running or not. scan the pairing code with your phone's regular camera or tap a pairing link wherever it appears; the app takes it from there.
+- tapping a pairing link now opens the solstone app on android and starts pairing, whether the app was closed or already open. invalid links are identified, and expired links tell you to create a new one from your journal.
+- a redesigned home screen brings together source controls, imports, sync status, settings, and your journal. wider screens keep the overview beside the detail you're working in.
+- a new home-screen audio widget shows its current state and lets you turn audio on or off without opening the app.
 
 ### Changed
-- the solstone app now asks for approximate location instead of precise. location in your journal is approximate now, not street-level. the app reads whatever position your phone has already worked out, and approximate is enough for what your journal does with it.
+- the solstone app on android now asks only for approximate location and no longer repeats an unchanged position every second in your journal.
 
 ### Fixed
-- the solstone app now reads your phone's position once a minute instead of every second, so far fewer location points reach your journal. before this the app wrote down every reading, which filled your journal with copies of one position.
-- a link that isn't a valid pairing link now tells you so instead of doing nothing.
-- an expired pairing code now says plainly that you need to generate a new one from your journal.
+- fixed a case where matching material from two sources could be treated as already in your journal after only one source arrived.
+- recovery buttons now work when permissions change, access to your journal is revoked, or local storage fills up, taking you directly to permissions, pairing, or local storage controls.
 
 ## [0.2.2] - 2026-07-16
 
