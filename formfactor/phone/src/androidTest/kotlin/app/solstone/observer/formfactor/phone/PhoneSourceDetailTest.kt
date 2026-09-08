@@ -99,7 +99,7 @@ class PhoneSourceDetailTest {
                 org.junit.Assert.assertFalse("expected retryHonest=false for $reason", rule.retryHonest)
                 if (rule.action == null) {
                     composeRule.onNodeWithTag(ACTION_TEST_TAG).assertDoesNotExist()
-                } else if (reason == ReasonCode.UNPAIRED) {
+                } else if (rule.action.kind != SourceDetailActionKind.RETRY) {
                     composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsEnabled()
                 } else {
                     composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsNotEnabled()
@@ -109,16 +109,16 @@ class PhoneSourceDetailTest {
     }
 
     @Test
-    fun disabledStubActionsAreDisplayedAndHaveNoClickPath() {
+    fun nonRetryRecoveryActionsAreEnabled() {
         ReasonCode.values()
             .filter { reason ->
-                sourceDetailRule(reason).action != null && !sourceDetailRule(reason).retryHonest
-                    && reason != ReasonCode.UNPAIRED
+                sourceDetailRule(reason).action?.kind != null &&
+                    sourceDetailRule(reason).action?.kind != SourceDetailActionKind.RETRY
             }
             .forEach { reason ->
                 render(loadState = loaded(source("audio", reason)))
 
-                composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsNotEnabled()
+                composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled()
             }
     }
 
@@ -176,6 +176,72 @@ class PhoneSourceDetailTest {
     }
 
     @Test
+    fun grantPermissionsActionInvokesPermissionFlowOnly() {
+        var starts = 0
+        var grants = 0
+        var connects = 0
+        var managesStorage = 0
+        render(
+            loadState = loaded(source("audio", ReasonCode.PERMISSION_REVOKED)),
+            onStartObserving = { starts += 1 },
+            onGrantPermissions = { grants += 1 },
+            onConnectJournal = { connects += 1 },
+            onManageLocalStorage = { managesStorage += 1 },
+        )
+
+        composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals(1, grants)
+        assertEquals(0, starts)
+        assertEquals(0, connects)
+        assertEquals(0, managesStorage)
+    }
+
+    @Test
+    fun pairAgainActionInvokesPairingOnly() {
+        var starts = 0
+        var grants = 0
+        var connects = 0
+        var managesStorage = 0
+        render(
+            loadState = loaded(source("audio", ReasonCode.AUTH_REVOKED)),
+            onStartObserving = { starts += 1 },
+            onGrantPermissions = { grants += 1 },
+            onConnectJournal = { connects += 1 },
+            onManageLocalStorage = { managesStorage += 1 },
+        )
+
+        composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals(1, connects)
+        assertEquals(0, starts)
+        assertEquals(0, grants)
+        assertEquals(0, managesStorage)
+    }
+
+    @Test
+    fun manageLocalStorageActionInvokesLocalCacheControlsOnly() {
+        var starts = 0
+        var grants = 0
+        var connects = 0
+        var managesStorage = 0
+        render(
+            loadState = loaded(source("audio", ReasonCode.STORAGE_FULL)),
+            onStartObserving = { starts += 1 },
+            onGrantPermissions = { grants += 1 },
+            onConnectJournal = { connects += 1 },
+            onManageLocalStorage = { managesStorage += 1 },
+        )
+
+        composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled().performClick()
+
+        assertEquals(1, managesStorage)
+        assertEquals(0, starts)
+        assertEquals(0, grants)
+        assertEquals(0, connects)
+    }
+
+    @Test
     fun homeTileControlReflectsStoredValueOnFirstComposition() {
         homeTileStore.setHasTile("audio", true)
 
@@ -188,9 +254,18 @@ class PhoneSourceDetailTest {
         sourceId: String = "audio",
         loadState: LoadState<SourcesReadModel>,
         onStartObserving: () -> Unit = {},
+        onGrantPermissions: () -> Unit = {},
         onConnectJournal: () -> Unit = {},
+        onManageLocalStorage: () -> Unit = {},
     ) {
-        val input = DetailInput(sourceId, loadState, onStartObserving, onConnectJournal)
+        val input = DetailInput(
+            sourceId,
+            loadState,
+            onStartObserving,
+            onGrantPermissions,
+            onConnectJournal,
+            onManageLocalStorage,
+        )
         if (contentSet) {
             composeRule.runOnIdle { detailInput = input }
         } else {
@@ -202,7 +277,9 @@ class PhoneSourceDetailTest {
                         sourceId = detailInput.sourceId,
                         homeTileStore = homeTileStore,
                         onStartObserving = detailInput.onStartObserving,
+                        onGrantPermissions = detailInput.onGrantPermissions,
                         onConnectJournal = detailInput.onConnectJournal,
+                        onManageLocalStorage = detailInput.onManageLocalStorage,
                     )
                 }
             }
@@ -224,7 +301,9 @@ private data class DetailInput(
     val sourceId: String,
     val loadState: LoadState<SourcesReadModel>,
     val onStartObserving: () -> Unit,
+    val onGrantPermissions: () -> Unit = {},
     val onConnectJournal: () -> Unit = {},
+    val onManageLocalStorage: () -> Unit = {},
 )
 
 private class TestPhoneHomeTileStore : PhoneHomeTileStore {

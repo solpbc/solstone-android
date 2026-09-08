@@ -14,6 +14,7 @@ import androidx.test.rule.GrantPermissionRule
 import app.solstone.observer.scaffold.ObserverActivity
 import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -70,6 +71,26 @@ class ObserverActivityDirectScanRuntimeTest {
             }
             scenario.onActivity { activity ->
                 assertFalse(activityTexts(activity).contains("Invalid pair link"))
+            }
+        }
+    }
+
+    @Test
+    fun localCacheExtraShowsLocalCacheControlsInsteadOfMenu() {
+        val intent = Intent(application, ObserverActivity::class.java)
+            .putExtra(ObserverActivity.EXTRA_SHOW_LOCAL_CACHE, true)
+        ActivityScenario.launch<ObserverActivity>(intent).use { scenario ->
+            waitUntil("local cache controls shown") {
+                var present = false
+                scenario.onActivity { activity ->
+                    val texts = activityTexts(activity)
+                    present = texts.any { it.contains("local cache", ignoreCase = true) }
+                }
+                present
+            }
+            scenario.onActivity { activity ->
+                assertFalse(activityTexts(activity).contains("Permissions"))
+                assertTrue(activityTexts(activity).any { it.contains("local cache", ignoreCase = true) })
             }
         }
     }

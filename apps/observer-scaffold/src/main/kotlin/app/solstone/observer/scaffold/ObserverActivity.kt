@@ -39,7 +39,7 @@ class ObserverActivity : Activity() {
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
         setContentView(harnessUi.view())
-        if (!routeDirectScanIntent(intent) && spec.handlesPairLinks && savedInstanceState == null) {
+        if (!routeDirectIntent(intent) && spec.handlesPairLinks && savedInstanceState == null) {
             routePairLinkIntent(intent)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -73,7 +73,7 @@ class ObserverActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (!routeDirectScanIntent(intent) && spec.handlesPairLinks) {
+        if (!routeDirectIntent(intent) && spec.handlesPairLinks) {
             routePairLinkIntent(intent)
         }
     }
@@ -97,14 +97,21 @@ class ObserverActivity : Activity() {
         harnessUi.showPairLink(uri.toString())
     }
 
-    private fun routeDirectScanIntent(intent: Intent): Boolean {
-        if (!intent.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false)) return false
-        harnessUi.showScanPairQr()
-        return true
+    private fun routeDirectIntent(intent: Intent): Boolean = when {
+        intent.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false) -> {
+            harnessUi.showScanPairQr()
+            true
+        }
+        intent.getBooleanExtra(EXTRA_SHOW_LOCAL_CACHE, false) -> {
+            harnessUi.showLocalCache()
+            true
+        }
+        else -> false
     }
 
     companion object {
         const val EXTRA_SCAN_PAIR_QR = "app.solstone.observer.scaffold.EXTRA_SCAN_PAIR_QR"
+        const val EXTRA_SHOW_LOCAL_CACHE = "app.solstone.observer.scaffold.EXTRA_SHOW_LOCAL_CACHE"
         private const val PERMISSION_REQUEST = 10
     }
 }

@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -78,10 +79,19 @@ class PhoneShellActivity : ComponentActivity() {
                 onRefreshStatus = statusViewModel::refresh,
                 onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
                 onStartObserving = { container.controller.ensureObserving() },
+                onGrantPermissions = {
+                    requestPermissions(phoneSpec.permissions(Build.VERSION.SDK_INT), PERMISSION_REQUEST)
+                },
                 onConnectJournal = {
                     startActivity(
                         Intent(this, ObserverActivity::class.java)
                             .putExtra(ObserverActivity.EXTRA_SCAN_PAIR_QR, true),
+                    )
+                },
+                onManageLocalStorage = {
+                    startActivity(
+                        Intent(this, ObserverActivity::class.java)
+                            .putExtra(ObserverActivity.EXTRA_SHOW_LOCAL_CACHE, true),
                     )
                 },
                 initial = capture.stack,
@@ -174,6 +184,20 @@ class PhoneShellActivity : ComponentActivity() {
         container.captureAuthority.release(captureOwnerToken)
     }
 
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST) {
+            container.controller.onPermissionsRequested()
+            sourcesViewModel.refresh()
+            statusViewModel.refresh()
+        }
+    }
+
     private class PhoneShellViewModelFactory(
         private val sources: SourcesReader,
         private val readStatus: () -> app.solstone.observer.harness.HarnessBacklogStatus,
@@ -192,6 +216,7 @@ class PhoneShellActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val PERMISSION_REQUEST = 10
         const val RECOVERY_POLL_INTERVAL_MS = 50L
 
         /** Route key from [decodePhoneRoute] — e.g. `import`, `add-more`, `sd/audio`. */

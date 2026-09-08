@@ -40,14 +40,14 @@ class PhoneSourceDetailRuleTest {
                 "permissions needed",
                 "grant permissions",
                 false,
-                SourceDetailActionKind.RETRY,
+                SourceDetailActionKind.GRANT_PERMISSIONS,
             ),
             ExpectedRule(
                 ReasonCode.AUTH_REVOKED,
                 "access to your journal was revoked",
                 "pair again",
                 false,
-                SourceDetailActionKind.RETRY,
+                SourceDetailActionKind.CONNECT_JOURNAL,
             ),
             ExpectedRule(
                 ReasonCode.SERVICE_KILLED,
@@ -61,7 +61,7 @@ class PhoneSourceDetailRuleTest {
                 "storage is full",
                 "manage local storage",
                 false,
-                SourceDetailActionKind.RETRY,
+                SourceDetailActionKind.MANAGE_LOCAL_STORAGE,
             ),
             ExpectedRule(
                 ReasonCode.UNPAIRED,

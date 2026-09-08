@@ -33,7 +33,12 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
-enum class SourceDetailActionKind { RETRY, CONNECT_JOURNAL }
+enum class SourceDetailActionKind {
+    RETRY,
+    GRANT_PERMISSIONS,
+    CONNECT_JOURNAL,
+    MANAGE_LOCAL_STORAGE,
+}
 
 data class SourceDetailAction(
     val label: String,
@@ -49,12 +54,12 @@ data class SourceDetailRule(
 fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
     ReasonCode.PERMISSION_REVOKED -> SourceDetailRule(
         diagnosis = "permissions needed",
-        action = SourceDetailAction("grant permissions"),
+        action = SourceDetailAction("grant permissions", SourceDetailActionKind.GRANT_PERMISSIONS),
         retryHonest = false,
     )
     ReasonCode.AUTH_REVOKED -> SourceDetailRule(
         diagnosis = "access to your journal was revoked",
-        action = SourceDetailAction("pair again"),
+        action = SourceDetailAction("pair again", SourceDetailActionKind.CONNECT_JOURNAL),
         retryHonest = false,
     )
     ReasonCode.SERVICE_KILLED -> SourceDetailRule(
@@ -64,7 +69,7 @@ fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
     )
     ReasonCode.STORAGE_FULL -> SourceDetailRule(
         diagnosis = "storage is full",
-        action = SourceDetailAction("manage local storage"),
+        action = SourceDetailAction("manage local storage", SourceDetailActionKind.MANAGE_LOCAL_STORAGE),
         retryHonest = false,
     )
     ReasonCode.UNPAIRED -> SourceDetailRule(
@@ -149,7 +154,9 @@ internal fun PhoneSourceDetail(
     sourceId: String,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
+    onGrantPermissions: () -> Unit,
     onConnectJournal: () -> Unit,
+    onManageLocalStorage: () -> Unit,
     modifier: Modifier = Modifier,
     onToggle: (SourceWish) -> Unit = {},
 ) {
@@ -163,7 +170,9 @@ internal fun PhoneSourceDetail(
                     reason = resolveSourceDetailReason(status, model.observer),
                     paired = paired,
                     onStartObserving = onStartObserving,
+                    onGrantPermissions = onGrantPermissions,
                     onConnectJournal = onConnectJournal,
+                    onManageLocalStorage = onManageLocalStorage,
                     onToggle = onToggle,
                 )
             }
@@ -185,7 +194,9 @@ private fun SourceDetailTemplate(
     reason: ReasonCode,
     paired: Boolean,
     onStartObserving: () -> Unit,
+    onGrantPermissions: () -> Unit,
     onConnectJournal: () -> Unit,
+    onManageLocalStorage: () -> Unit,
     onToggle: (SourceWish) -> Unit,
 ) {
     val rule = sourceDetailRule(reason)
@@ -235,7 +246,9 @@ private fun SourceDetailTemplate(
             action = action,
             retryHonest = rule.retryHonest,
             onStartObserving = onStartObserving,
+            onGrantPermissions = onGrantPermissions,
             onConnectJournal = onConnectJournal,
+            onManageLocalStorage = onManageLocalStorage,
         )
     }
     if (sourceEarnsSwitch(status.sourceId)) {
@@ -287,10 +300,17 @@ private fun SourceDetailActionControl(
     action: SourceDetailAction,
     retryHonest: Boolean,
     onStartObserving: () -> Unit,
+    onGrantPermissions: () -> Unit,
     onConnectJournal: () -> Unit,
+    onManageLocalStorage: () -> Unit,
 ) {
-    val enabled = action.kind == SourceDetailActionKind.CONNECT_JOURNAL || retryHonest
-    val onClick = if (action.kind == SourceDetailActionKind.CONNECT_JOURNAL) onConnectJournal else onStartObserving
+    val enabled = action.kind != SourceDetailActionKind.RETRY || retryHonest
+    val onClick = when (action.kind) {
+        SourceDetailActionKind.RETRY -> onStartObserving
+        SourceDetailActionKind.GRANT_PERMISSIONS -> onGrantPermissions
+        SourceDetailActionKind.CONNECT_JOURNAL -> onConnectJournal
+        SourceDetailActionKind.MANAGE_LOCAL_STORAGE -> onManageLocalStorage
+    }
     Button(
         onClick = onClick,
         enabled = enabled,
