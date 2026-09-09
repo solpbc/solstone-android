@@ -7,6 +7,8 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.AccessSnapshot
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
@@ -116,3 +118,32 @@ fun currentOptionalTransport(
         is SyncTransport.Relay -> relayFallbackTransport(access.home, access.relayLiveEligible)
     }
 }
+
+/**
+ * Validates the identity state that authorizes an already-selected transport.
+ *
+ * Direct transport is authorized by the pairing generation: a relay token refresh for the same
+ * certificate cannot obsolete an in-flight direct socket. Relay transport additionally depends on
+ * the exact access snapshot because its origin, token, or live eligibility may have changed.
+ */
+fun transportAccessStillCurrent(
+    selected: SyncTransport,
+    identity: PairedHome,
+    selectedAccess: AccessSnapshot?,
+    mutator: IdentityMutator,
+): Boolean {
+    val current = mutator.accessSnapshot() ?: return false
+    if (current.pairing != PairingGeneration(identity.instanceId, identity.clientCertFingerprint)) return false
+    return when (selected) {
+        is SyncTransport.Direct ->
+            current.home.state == IdentityState.PAIRED &&
+                current.home.withoutRelayAccess() == identity.withoutRelayAccess()
+        is SyncTransport.Relay -> current == selectedAccess
+    }
+}
+
+private fun PairedHome.withoutRelayAccess(): PairedHome = copy(
+    relayOrigin = null,
+    deviceToken = null,
+    expiresAt = null,
+)

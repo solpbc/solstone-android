@@ -67,31 +67,31 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
-            val stores = syncStores(applicationContext)
-            when (
-                val credentials = recoverSyncCredentials(
-                    endpointStore = stores.endpointStore,
-                    credentialStore = stores.credentialStore,
-                    identityStore = stores.identityStore,
-                    relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
-                    mutator = stores.identityMutator,
-                )
-            ) {
-                is SyncCredentials.NeedsRepair -> {
-                    Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
-                    Result.failure()
-                }
-                is SyncCredentials.Ready -> {
-                    if (!SyncDrainGate.tryAcquire()) {
-                        Log.i(TAG, "drain already running; deferring")
-                        Result.retry()
-                    } else {
-                        try {
-                            sync(stores, credentials)
-                        } finally {
-                            SyncDrainGate.release()
+            if (!SyncDrainGate.tryAcquire()) {
+                Log.i(TAG, "identity boundary already in use; deferring")
+                Result.retry()
+            } else {
+                try {
+                    val stores = syncStores(applicationContext)
+                    when (
+                        val credentials = stores.identityMutator.withMutationBoundary {
+                            recoverSyncCredentials(
+                                endpointStore = stores.endpointStore,
+                                credentialStore = stores.credentialStore,
+                                identityStore = stores.identityStore,
+                                relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
+                                mutator = stores.identityMutator,
+                            )
                         }
+                    ) {
+                        is SyncCredentials.NeedsRepair -> {
+                            Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
+                            Result.failure()
+                        }
+                        is SyncCredentials.Ready -> sync(stores, credentials)
                     }
+                } finally {
+                    SyncDrainGate.release()
                 }
             }
         }
@@ -109,7 +109,9 @@ class SyncWorker(
                 syncWithTransport(
                     transport = selectedTransport,
                     openClient = {
-                        if (stores.identityMutator.accessSnapshot() != access) throw IOException("missing identity")
+                        if (!transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
+                            throw IOException("missing identity")
+                        }
                         openSyncClient(selectedTransport, credentials.credential)
                     },
                     store = store,

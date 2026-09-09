@@ -6,6 +6,7 @@ package app.solstone.observer.harness
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.JournalVersionRecord
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
@@ -216,6 +217,51 @@ class RealSeamsTest {
         kotlin.test.assertTrue(relayOpened)
         kotlin.test.assertTrue(journalLatch.await(3, java.util.concurrent.TimeUnit.SECONDS))
         kotlin.test.assertTrue(relayLatch.await(3, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun directStatusRemainsReachableAcrossSamePairingRelayMutation() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = "https://old.example",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = "old-token",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val mutator = TestMutator(home)
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            mutator = mutator,
+            openTransport = { _, _ ->
+                object : PlHttpClient {
+                    override fun request(
+                        method: String,
+                        path: String,
+                        headers: Map<String, String>,
+                        body: ByteArray?,
+                        maxResponseBytes: Int,
+                    ): HttpResponse {
+                        val access = requireNotNull(mutator.accessSnapshot())
+                        mutator.mutate(access.pairing, access.generation) {
+                            it.copy(relayOrigin = "https://new.example", deviceToken = "new-token")
+                        }
+                        return HttpResponse(200, emptyMap(), ByteArray(0))
+                    }
+                }
+            },
+        )
+
+        assertEquals(HarnessPlStatus.Reachable(200), probe.probe())
     }
 
     @Test

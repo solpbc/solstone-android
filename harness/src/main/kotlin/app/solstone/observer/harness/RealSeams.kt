@@ -43,6 +43,7 @@ import app.solstone.platform.work.SyncTransport
 import app.solstone.platform.work.classifyOpenerFailure
 import app.solstone.platform.work.selectSyncTransport
 import app.solstone.platform.work.SyncScheduler
+import app.solstone.platform.work.transportAccessStillCurrent
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -168,8 +169,15 @@ class RealPlStatusProbe(
         }
 
     override fun probe(): HarnessPlStatus {
-        val credential = credentialStore.load()
-        val identity = if (mutator != null) mutator.current() else identityStore.load()
+        val initial = if (mutator != null) {
+            mutator.withMutationBoundary {
+                val access = mutator.accessSnapshot()
+                Triple(credentialStore.load(), access?.home, access)
+            }
+        } else {
+            Triple(credentialStore.load(), identityStore.load(), null)
+        }
+        val (credential, identity, access) = initial
         if (credential == null && identity == null && endpointStore.load() == null) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.NotPaired
@@ -186,8 +194,6 @@ class RealPlStatusProbe(
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("identity not paired")
         }
-        val access = mutator?.accessSnapshot()
-        if (access != null && access.home != identity) return HarnessPlStatus.PairedButUnreachable("missing identity")
         val relayLiveEligible = access?.relayLiveEligible ?: false
         val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
         if (transport == null) {
@@ -197,7 +203,9 @@ class RealPlStatusProbe(
 
         fun tryTransport(t: SyncTransport): Pair<Int?, Throwable?> {
             return try {
-                if (mutator != null && mutator.accessSnapshot() != access) throw java.io.IOException("missing identity")
+                if (mutator != null && !transportAccessStillCurrent(t, identity, access, mutator)) {
+                    throw java.io.IOException("missing identity")
+                }
                 val client = openClientFor(t, credential)
                 try {
                     val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
@@ -233,7 +241,7 @@ class RealPlStatusProbe(
             }
         }
 
-        if (mutator != null && mutator.accessSnapshot() != access) {
+        if (mutator != null && !transportAccessStillCurrent(usedTransport, identity, access, mutator)) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.PairedButUnreachable("missing identity")
         }

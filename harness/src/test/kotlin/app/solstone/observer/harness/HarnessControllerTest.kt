@@ -10,6 +10,7 @@ import app.solstone.core.model.SourceState
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.platform.pl.transport.conscrypt.DirectPairCodeExpiredException
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedException
+import app.solstone.platform.work.SyncDrainGate
 import java.io.IOException
 import java.net.UnknownHostException
 import java.net.ConnectException
@@ -219,6 +220,18 @@ class HarnessControllerTest {
         val f = fixture()
         assertNull(f.controller.onScannedPairLink("nope"))
         assertTrue(f.cameraLock.events.isEmpty())
+    }
+
+    @Test
+    fun scannedPairLinkReturnsBusyWhileSyncOwnsIdentityBoundary() {
+        val f = fixture()
+        assertTrue(SyncDrainGate.tryAcquire())
+        try {
+            assertNull(f.controller.onScannedPairLink(validPairLink()))
+            assertEquals(listOf("acquire", "release"), f.cameraLock.events)
+        } finally {
+            SyncDrainGate.release()
+        }
     }
 
     @Test

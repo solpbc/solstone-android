@@ -26,6 +26,7 @@ import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 import app.solstone.platform.pl.transport.conscrypt.relayPairEndpoint
+import app.solstone.platform.work.SyncDrainGate
 
 enum class ObserverStartMode { VisibleStart, Rehydrate, ForegroundServiceStart }
 
@@ -396,14 +397,17 @@ class HarnessController(
     }
 
     private fun <T> withPairLock(block: () -> T): T? {
-        if (scanSessionHeld) {
-            return block()
+        val acquiredCamera = !scanSessionHeld
+        if (acquiredCamera && !cameraLock.tryAcquire()) return null
+        if (!SyncDrainGate.tryAcquire()) {
+            if (acquiredCamera) cameraLock.release()
+            return null
         }
-        if (!cameraLock.tryAcquire()) return null
         return try {
             block()
         } finally {
-            cameraLock.release()
+            SyncDrainGate.release()
+            if (acquiredCamera) cameraLock.release()
         }
     }
 

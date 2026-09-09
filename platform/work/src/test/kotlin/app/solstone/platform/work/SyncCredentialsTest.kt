@@ -34,6 +34,62 @@ class SyncCredentialsTest {
     }
 
     @Test
+    fun directAccessRemainsCurrentAcrossSamePairingRelayMutation() {
+        val initial = identity(null, IdentityState.PAIRED, "https://old.example", "old-token")
+        val mutator = app.solstone.platform.identity.file.FileIdentityMutator(FakeIdentityStore(initial))
+        val selected = mutator.accessSnapshot()!!
+
+        mutator.mutateIfCurrent(selected) {
+            it.copy(relayOrigin = "https://new.example", deviceToken = "new-token")
+        }
+
+        assertEquals(true, transportAccessStillCurrent(SyncTransport.Direct(endpoint()), initial, selected, mutator))
+    }
+
+    @Test
+    fun relayAccessIsObsoleteAfterSamePairingRelayMutation() {
+        val initial = identity(null, IdentityState.PAIRED, "https://old.example", "old-token")
+        val mutator = app.solstone.platform.identity.file.FileIdentityMutator(FakeIdentityStore(initial))
+        val selected = mutator.accessSnapshot()!!
+
+        mutator.mutateIfCurrent(selected) {
+            it.copy(relayOrigin = "https://new.example", deviceToken = "new-token")
+        }
+
+        assertEquals(
+            false,
+            transportAccessStillCurrent(
+                SyncTransport.Relay("https://old.example", "home", "old-token"),
+                initial,
+                selected,
+                mutator,
+            ),
+        )
+    }
+
+    @Test
+    fun directAccessIsObsoleteAfterPairingGenerationChanges() {
+        val initial = identity(null, IdentityState.PAIRED, "https://old.example", "old-token")
+        val mutator = app.solstone.platform.identity.file.FileIdentityMutator(FakeIdentityStore(initial))
+        val selected = mutator.accessSnapshot()!!
+
+        mutator.installNewPairing(initial.copy(clientCertFingerprint = "sha256:replacement"))
+
+        assertEquals(false, transportAccessStillCurrent(SyncTransport.Direct(endpoint()), initial, selected, mutator))
+    }
+
+    @Test
+    fun directAccessIsObsoleteAfterSamePairingRevocation() {
+        val initial = identity(null, IdentityState.PAIRED, "https://old.example", "old-token")
+        val mutator = app.solstone.platform.identity.file.FileIdentityMutator(FakeIdentityStore(initial))
+        val selected = mutator.accessSnapshot()!!
+
+        mutator.mutateIfCurrent(selected) { it.copy(state = IdentityState.REVOKED) }
+
+        assertEquals(false, transportAccessStillCurrent(SyncTransport.Direct(endpoint()), initial, selected, mutator))
+    }
+
+    @Test
     fun readyWhenEndpointCredentialAndPairedIdentityWithHandleExist() {
         val result = recoverSyncCredentials(
             endpointStore = FakeEndpointStore(endpoint()),
