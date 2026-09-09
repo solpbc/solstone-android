@@ -164,7 +164,7 @@ populate the ingest envelope metadata.
 
 ## Phone realDebug SPL integration gate (G1–G5)
 
-This is the coordinator-owned contract-v5 physical gate, not part of `make ci-device`.
+This is the coordinator-owned contract-v6 physical gate, not part of `make ci-device`.
 `GateAction` in `core/gate/src/main/kotlin/app/solstone/core/gate/GateAction.kt` is the Android
 truth source; `android_gate_coordinator.py` supplies its exact action names and sequences against a
 clean checkout. It runs separately for the production relay/full-profile and paired direct/plain
@@ -179,7 +179,7 @@ CLASS=app.solstone.observer.phone.SplIntegrationGateDriverTest
 COMPONENT=app.solstone.observer.phone.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-Every invocation has `gate_contract_version=5`, `gate_action`, `gate_run_nonce`, and
+Every invocation has `gate_contract_version=6`, `gate_action`, `gate_run_nonce`, and
 `gate_action_sequence`. G1 receives no argv authority: the coordinator writes it atomically to
 `files/solstone-android-gate/v2/pair-authority.json`, and the driver reads and deletes it before
 parsing or network work. G2 receives only `gate_observer_day`; its authenticated production listing
@@ -211,7 +211,7 @@ adb exec-out run-as "$APP" \
   cat files/solstone-android-gate/v2/action-result.json > action-result.json
 ```
 
-Accept only the exact snake_case schema with contract version 5, current run nonce, action, and
+Accept only the exact snake_case schema with contract version 6, current run nonce, action, and
 sequence. Malformed, stale, duplicate, future, or out-of-order evidence fails closed regardless of
 timestamps. The coordinator owns package-policy restoration and verifies both connectivity getters
 during cleanup. Both app and instrumentation APKs must embed

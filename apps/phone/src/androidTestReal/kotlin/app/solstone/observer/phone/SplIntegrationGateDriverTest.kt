@@ -49,7 +49,9 @@ import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.work.SyncStores
 import app.solstone.platform.work.SyncScheduler
+import app.solstone.platform.work.SyncTransport
 import app.solstone.platform.work.plStoreDir
+import app.solstone.platform.work.selectSyncTransport
 import app.solstone.platform.work.syncStores
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
@@ -121,11 +123,14 @@ class SplIntegrationGateDriverTest {
                     is RelayPairLink -> {
                         require(identity.relayOrigin == "https://link.solstone.app") { "relay_origin_invalid" }
                         require(!identity.deviceToken.isNullOrBlank()) { "device_token_not_persisted" }
+                        val admittedDirectEndpoint = stores.endpointStore.load()
                         linkedMapOf(
                             "route" to "RELAY",
                             "relay_origin" to identity.relayOrigin,
                             "endpoint_host" to null,
                             "endpoint_port" to null,
+                            "admitted_direct_endpoint_host" to admittedDirectEndpoint?.host,
+                            "admitted_direct_endpoint_port" to admittedDirectEndpoint?.port,
                             "device_token_persisted" to true,
                         )
                     }
@@ -140,6 +145,8 @@ class SplIntegrationGateDriverTest {
                             "relay_origin" to null,
                             "endpoint_host" to endpoint.host,
                             "endpoint_port" to endpoint.port,
+                            "admitted_direct_endpoint_host" to null,
+                            "admitted_direct_endpoint_port" to null,
                             "device_token_persisted" to false,
                         )
                     }
@@ -484,6 +491,13 @@ class SplIntegrationGateDriverTest {
     ): GateResult {
         val stores = syncStores(context)
         val identity = requirePairedIdentity(stores)
+        val selectedTransport = requireNotNull(
+            selectSyncTransport(
+                identity,
+                stores.endpointStore,
+                stores.identityMutator.isRelayLiveEligible(),
+            ),
+        ) { "production_transport_absent" }
         val telemetry = GateTelemetry()
         val started = android.os.SystemClock.elapsedRealtime()
         val status = realStatusProbe(stores, telemetry).probe()
@@ -494,21 +508,19 @@ class SplIntegrationGateDriverTest {
             status,
         )
         val snapshot = telemetry.snapshot()
-        val transport = identity.relayOrigin?.let { relayOrigin ->
-            linkedMapOf(
+        val transport = when (selectedTransport) {
+            is SyncTransport.Relay -> linkedMapOf(
                 "route" to "RELAY",
-                "relay_origin" to relayOrigin,
+                "relay_origin" to selectedTransport.relayOrigin,
                 "endpoint_host" to null,
                 "endpoint_port" to null,
                 "direct_dial_attempts" to snapshot.directDials,
             )
-        } ?: run {
-            val endpoint = requireNotNull(stores.endpointStore.load()) { "direct_endpoint_absent" }
-            linkedMapOf(
+            is SyncTransport.Direct -> linkedMapOf(
                 "route" to "DIRECT",
                 "relay_origin" to null,
-                "endpoint_host" to endpoint.host,
-                "endpoint_port" to endpoint.port,
+                "endpoint_host" to selectedTransport.endpoint.host,
+                "endpoint_port" to selectedTransport.endpoint.port,
                 "direct_dial_attempts" to snapshot.directDials,
             )
         }
@@ -721,6 +733,7 @@ class SplIntegrationGateDriverTest {
     private fun realStatusProbe(stores: SyncStores, telemetry: GateTelemetry) =
         RealPlStatusProbe(
             stores.endpointStore, stores.credentialStore, stores.identityStore, telemetry, telemetry, telemetry,
+            mutator = stores.identityMutator,
         )
 
     private fun requirePairedIdentity(stores: SyncStores) =
@@ -787,7 +800,8 @@ class SplIntegrationGateDriverTest {
             ),
             "pair" to linkedMapOf(
                 "route" to null, "relay_origin" to null, "endpoint_host" to null,
-                "endpoint_port" to null, "handshake_pinned" to false,
+                "endpoint_port" to null, "admitted_direct_endpoint_host" to null,
+                "admitted_direct_endpoint_port" to null, "handshake_pinned" to false,
                 "pair_http_status" to null, "enroll_http_status" to null,
                 "credential_persisted" to false, "paired_identity_persisted" to false,
                 "device_token_persisted" to false, "client_cert_cid" to null,

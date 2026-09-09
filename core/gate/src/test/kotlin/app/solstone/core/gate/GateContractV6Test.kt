@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class GateContractV5Test {
+class GateContractV6Test {
     @Test
     fun actionsAndSequencesAreExact() {
         assertEquals(
@@ -32,7 +32,7 @@ class GateContractV5Test {
     @Test
     fun invocationRequiresExactGateKeys() {
         val valid = mapOf(
-            "gate_contract_version" to "5",
+            "gate_contract_version" to "6",
             "gate_action" to "g1_pair_round_trip",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
             "gate_action_sequence" to "1",
@@ -50,7 +50,7 @@ class GateContractV5Test {
     @Test
     fun g2AcceptsOnlyItsRunBoundDayWhileG3RequiresTheObservedResponseCommitment() {
         val common = mapOf(
-            "gate_contract_version" to "5",
+            "gate_contract_version" to "6",
             "gate_run_nonce" to "20260729T120000Z-0123456789abcdef",
         )
         val g2 = common + mapOf(
@@ -215,6 +215,8 @@ class GateContractV5Test {
                 "pair" to linkedMapOf(
                     "route" to "RELAY", "relay_origin" to "https://link.solstone.app",
                     "endpoint_host" to null, "endpoint_port" to null,
+                    "admitted_direct_endpoint_host" to "10.0.0.40",
+                    "admitted_direct_endpoint_port" to 7657,
                     "handshake_pinned" to true, "pair_http_status" to 200, "enroll_http_status" to 200,
                     "credential_persisted" to true, "paired_identity_persisted" to true,
                     "device_token_persisted" to true, "client_cert_cid" to "sha256:" + "a".repeat(64),

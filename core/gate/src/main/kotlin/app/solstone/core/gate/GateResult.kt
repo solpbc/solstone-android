@@ -107,6 +107,7 @@ object GateResultVerifier {
                 ), this)
                 requireNestedKeys(value.facts, "pair", setOf(
                     "route", "relay_origin", "endpoint_host", "endpoint_port",
+                    "admitted_direct_endpoint_host", "admitted_direct_endpoint_port",
                     "handshake_pinned", "pair_http_status",
                     "enroll_http_status", "credential_persisted", "paired_identity_persisted",
                     "device_token_persisted", "client_cert_cid",
