@@ -6,7 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val gateReceiptMainDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/main/assets")
+val gateReceiptAppDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/realDebug/assets")
 val gateReceiptTestDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/androidTest/assets")
 val gateDriverContractVersion = Regex(
     """const val SPL_GATE_DRIVER_CONTRACT_VERSION = (\d+)""",
@@ -33,12 +33,12 @@ val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT")
 val generateSolstoneGateBuildReceipt by tasks.registering {
     inputs.property("sourceCommit", gateSourceCommit)
     inputs.property("driverContractVersion", gateDriverContractVersion)
-    outputs.dirs(gateReceiptMainDir, gateReceiptTestDir)
+    outputs.dirs(gateReceiptAppDir, gateReceiptTestDir)
     doLast {
         val receipt = """
             {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":$gateDriverContractVersion}
         """.trimIndent() + "\n"
-        listOf(gateReceiptMainDir.get().asFile, gateReceiptTestDir.get().asFile).forEach { directory ->
+        listOf(gateReceiptAppDir.get().asFile, gateReceiptTestDir.get().asFile).forEach { directory ->
             directory.mkdirs()
             directory.resolve("solstone-android-gate-build-receipt.json").writeText(receipt)
         }
@@ -116,24 +116,35 @@ android {
     }
 
     sourceSets {
-        getByName("main").assets.srcDir(gateReceiptMainDir)
-        getByName("androidTest").assets.srcDir(gateReceiptTestDir)
+        // This receipt authenticates only the realDebug app/instrumentation pair consumed by the
+        // SPL gate. Mock and release artifacts must not claim this variant identity.
+        maybeCreate("realDebug").assets.srcDir(gateReceiptAppDir)
+        getByName("androidTestReal").assets.srcDir(gateReceiptTestDir)
     }
 }
 
 tasks.matching {
-    it.name.endsWith("Assets") ||
-        it.name.startsWith("lintAnalyze") ||
-        it.name.startsWith("lintVitalAnalyze") ||
-        (it.name.startsWith("generate") && it.name.contains("Lint") && it.name.endsWith("Model"))
+    it.name.contains("RealDebug") &&
+        (
+            it.name.endsWith("Assets") ||
+                it.name.startsWith("lintAnalyze") ||
+                it.name.startsWith("lintVitalAnalyze") ||
+                (it.name.startsWith("generate") && it.name.contains("Lint") && it.name.endsWith("Model"))
+            )
 }.configureEach {
     dependsOn(generateSolstoneGateBuildReceipt)
 }
 
 tasks.register("verifySolstoneGateBuildReceipts") {
     group = "verification"
-    description = "Verifies the exact current-contract source receipt embedded in both realDebug APKs."
-    dependsOn("assembleRealDebug", "assembleRealDebugAndroidTest")
+    description = "Verifies the gate receipt is exact in realDebug and absent from mock/release APKs."
+    dependsOn(
+        "assembleRealDebug",
+        "assembleRealDebugAndroidTest",
+        "assembleMockDebug",
+        "assembleMockDebugAndroidTest",
+        "assembleRealRelease",
+    )
     inputs.property("sourceCommit", gateSourceCommit)
     inputs.property("driverContractVersion", gateDriverContractVersion)
     doLast {
@@ -153,6 +164,22 @@ tasks.register("verifySolstoneGateBuildReceipts") {
                 ) { "missing gate receipt in $apk" }
                 val actual = zip.getInputStream(entry).bufferedReader().use { it.readText() }
                 check(actual == expected) { "gate receipt mismatch in $apk" }
+            }
+        }
+        val nonGateApks = listOf(
+            layout.buildDirectory.file("outputs/apk/mock/debug/phone-mock-debug.apk").get().asFile,
+            layout.buildDirectory.file(
+                "outputs/apk/androidTest/mock/debug/phone-mock-debug-androidTest.apk",
+            ).get().asFile,
+        ) + layout.buildDirectory.dir("outputs/apk/real/release").get().asFile
+            .listFiles { file -> file.extension == "apk" }
+            .orEmpty()
+        check(nonGateApks.size >= 3) { "mock or release APK missing from gate-receipt verification" }
+        nonGateApks.forEach { apk ->
+            ZipFile(apk).use { zip ->
+                check(zip.getEntry("assets/solstone-android-gate-build-receipt.json") == null) {
+                    "non-gate APK contains a realDebug gate receipt: $apk"
+                }
             }
         }
     }
