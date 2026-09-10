@@ -11,6 +11,33 @@ import kotlin.test.assertTrue
 
 class JournalCacheTextTest {
     /**
+     * 🔴 An engine's fail-safe is not a statement about the device.
+     *
+     * `JournalCacheEvictionService` hard-codes `pressureRemains = true` on any measurement failure,
+     * which is right for an eviction engine — assume pressure you cannot rule out. ⛔ Rendering it
+     * to the owner is not: driven on the A36, a fresh install whose free-space read failed showed
+     * `in use: 0.0 MB` and `there still isn't enough room` on the same screen.
+     */
+    @Test
+    fun aFailedMeasurementNeverClaimsTheDeviceIsShortOfRoom() {
+        listOf(
+            HarnessJournalCacheBlockedReason.MEASUREMENT_FAILED,
+            HarnessJournalCacheBlockedReason.FREE_SPACE_FAILED,
+            HarnessJournalCacheBlockedReason.ARITHMETIC_OVERFLOW,
+        ).forEach { reason ->
+            val text = journalCacheText(state(pass = pass(blocked = reason)))
+            assertFalse(text.contains("there still isn't enough room"), reason.name)
+            // ✅ And it still says the true thing rather than going quiet.
+            assertTrue(text.contains("needs attention:"), reason.name)
+        }
+        // ✅ Positive control: a real pressure verdict, with the measurement intact, still says so.
+        val measured = journalCacheText(
+            state(pass = pass(blocked = HarnessJournalCacheBlockedReason.NO_SAFE_ELIGIBLE_SEGMENT)),
+        )
+        assertTrue(measured.contains("there still isn't enough room"))
+    }
+
+    /**
      * 🔴 The register, as a property. ⚠ Every retired string on this screen was pinned exactly by
      * the tests above, which is how an operator voice survives a green gate: the assertion encodes
      * the defect. Asserting the SHAPE is what makes the next `Cache usage:` line fail.

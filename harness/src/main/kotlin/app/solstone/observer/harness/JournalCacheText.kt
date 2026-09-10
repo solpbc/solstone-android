@@ -55,7 +55,15 @@ fun journalCacheText(state: HarnessJournalCacheState): String = buildList {
         // ⚠ TWO causes, and naming only one of them would be confidently wrong half the time:
         // `isUnderPressure` is `usage > limit || free < floor`, so this fires both when the app is
         // over the limit the owner set AND when the device itself is nearly full.
-        if (pass.pressureRemains) {
+        //
+        // 🔴 **And it is suppressed when a measurement failed, because then it is not a fact about
+        // the device at all.** `JournalCacheEvictionService` hard-codes `pressureRemains = true` on
+        // any measurement failure — a correct fail-safe for an eviction engine, which should assume
+        // pressure it cannot rule out. ⛔ But rendering an engine's fail-safe as a statement to the
+        // owner is confident wrongness: driven on real hardware, a fresh install whose free-space
+        // read failed showed `in use: 0.0 MB` and `there still isn't enough room` on the same
+        // screen. The `needs attention: couldn't measure…` line above already says the true thing.
+        if (pass.pressureRemains && !pass.measurementFailed()) {
             add("there still isn't enough room — either this is over your limit, or the device is low on space.")
         }
         if (pass.durablyMarkedCount > 0) add("ready to remove: ${pass.durablyMarkedCount}")
@@ -102,3 +110,14 @@ fun decimalBytes(bytes: Long): String {
     }
     return String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
 }
+
+/**
+ * Whether this pass's verdict rests on a measurement that did not happen.
+ *
+ * ⚠ These three reasons are the ones where the engine could not read the device, so every derived
+ * quantity it reports — `pressureRemains` above all — is a fail-safe rather than an observation.
+ */
+private fun HarnessJournalCachePass.measurementFailed(): Boolean =
+    blockedReason == HarnessJournalCacheBlockedReason.MEASUREMENT_FAILED ||
+        blockedReason == HarnessJournalCacheBlockedReason.FREE_SPACE_FAILED ||
+        blockedReason == HarnessJournalCacheBlockedReason.ARITHMETIC_OVERFLOW

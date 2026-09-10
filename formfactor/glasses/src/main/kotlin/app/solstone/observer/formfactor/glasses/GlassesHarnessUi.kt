@@ -298,6 +298,12 @@ class GlassesHarnessUi(
     private fun LinearLayout.button(label: String, onClick: () -> Unit): Button =
         Button(context).also {
             it.text = label
+            // 🔴 The platform button style sets `textAllCaps`, so every label on these screens
+            // rendered as `USE 4 GB (YOUR LIMIT NOW)` — shouting, in an app whose entire register is
+            // lowercase. ⚠ Invisible in source and invisible to a string test: the strings were
+            // already lowercase and the widget uppercased them at draw time. Only looking at the
+            // screen finds this one.
+            it.isAllCaps = false
             it.setOnClickListener { onClick() }
             addView(it)
         }
