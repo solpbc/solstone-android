@@ -1,9 +1,36 @@
 import java.util.zip.ZipFile
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+abstract class GenerateSolstoneGateBuildReceipt : DefaultTask() {
+    @get:Input
+    abstract val sourceCommit: Property<String>
+
+    @get:Input
+    abstract val driverContractVersion: Property<Int>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val receipt = """
+            {"schema_version":1,"source_commit":"${sourceCommit.get()}","variant":"realDebug","driver_contract_version":${driverContractVersion.get()}}
+        """.trimIndent() + "\n"
+        val directory = outputDirectory.get().asFile
+        directory.mkdirs()
+        directory.resolve("solstone-android-gate-build-receipt.json").writeText(receipt)
+    }
 }
 
 val gateReceiptAppDir = layout.buildDirectory.dir("generated/solstoneGateReceipt/realDebug/assets")
@@ -30,19 +57,19 @@ val gateSourceCommit = providers.environmentVariable("GATE_SOURCE_COMMIT")
         }
         sourceCommit
     }
-val generateSolstoneGateBuildReceipt by tasks.registering {
-    inputs.property("sourceCommit", gateSourceCommit)
-    inputs.property("driverContractVersion", gateDriverContractVersion)
-    outputs.dirs(gateReceiptAppDir, gateReceiptTestDir)
-    doLast {
-        val receipt = """
-            {"schema_version":1,"source_commit":"${gateSourceCommit.get()}","variant":"realDebug","driver_contract_version":$gateDriverContractVersion}
-        """.trimIndent() + "\n"
-        listOf(gateReceiptAppDir.get().asFile, gateReceiptTestDir.get().asFile).forEach { directory ->
-            directory.mkdirs()
-            directory.resolve("solstone-android-gate-build-receipt.json").writeText(receipt)
-        }
-    }
+val generateSolstoneGateBuildReceipt = tasks.register<GenerateSolstoneGateBuildReceipt>(
+    "generateSolstoneGateBuildReceipt",
+) {
+    sourceCommit.set(gateSourceCommit)
+    driverContractVersion.set(gateDriverContractVersion)
+    outputDirectory.set(gateReceiptAppDir)
+}
+val generateSolstoneGateAndroidTestBuildReceipt = tasks.register<GenerateSolstoneGateBuildReceipt>(
+    "generateSolstoneGateAndroidTestBuildReceipt",
+) {
+    sourceCommit.set(gateSourceCommit)
+    driverContractVersion.set(gateDriverContractVersion)
+    outputDirectory.set(gateReceiptTestDir)
 }
 
 android {
@@ -115,24 +142,22 @@ android {
         }
     }
 
-    sourceSets {
-        // This receipt authenticates only the realDebug app/instrumentation pair consumed by the
-        // SPL gate. Mock and release artifacts must not claim this variant identity.
-        maybeCreate("realDebug").assets.srcDir(gateReceiptAppDir)
-        getByName("androidTestReal").assets.srcDir(gateReceiptTestDir)
-    }
 }
 
-tasks.matching {
-    it.name.contains("RealDebug") &&
-        (
-            it.name.endsWith("Assets") ||
-                it.name.startsWith("lintAnalyze") ||
-                it.name.startsWith("lintVitalAnalyze") ||
-                (it.name.startsWith("generate") && it.name.contains("Lint") && it.name.endsWith("Model"))
+androidComponents {
+    onVariants(selector().withName("realDebug")) { variant ->
+        // AGP owns both generated-asset dependencies and invalidation. The app and its
+        // instrumentation APK have independent merge chains, so register each explicitly.
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateSolstoneGateBuildReceipt,
+            GenerateSolstoneGateBuildReceipt::outputDirectory,
+        )
+        requireNotNull(variant.androidTest) { "realDebug Android test component is missing" }
+            .sources.assets?.addGeneratedSourceDirectory(
+                generateSolstoneGateAndroidTestBuildReceipt,
+                GenerateSolstoneGateBuildReceipt::outputDirectory,
             )
-}.configureEach {
-    dependsOn(generateSolstoneGateBuildReceipt)
+    }
 }
 
 tasks.register("verifySolstoneGateBuildReceipts") {
