@@ -150,26 +150,50 @@ fun PhoneNotificationsPane(modifier: Modifier = Modifier) {
 }
 
 /**
- * `settings › help` (§ 4): the support site, the support address, report a problem.
- *
- * The site and the address are the ones iOS already ships, verbatim — a second address
- * for the same purpose is the cross-platform defect the shared contract exists to
- * prevent. ⛔ No `report a problem` row: this app has no problem-report store, and the
- * support address is the honest route to the same outcome.
+ * `settings › help` (§ 4): get help, report a problem, and the support address.
  */
 @Composable
-fun PhoneHelpPane(modifier: Modifier = Modifier) {
+fun PhoneHelpPane(
+    version: String,
+    status: PhoneDefaultDetailStatus,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
+    val build = runCatching {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode.toString()
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toString()
+        }
+    }.getOrDefault("unknown")
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Help) },
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             PaneExternalRow(
-                label = "support site",
+                label = "get help",
                 subLine = "support.solstone.app",
                 onClick = { context.openUrl(SUPPORT_SITE_URL) },
                 modifier = Modifier.testTag("helpSupportSite"),
+            )
+            PaneRowDivider()
+            PaneExternalRow(
+                label = "report a problem",
+                subLine = "review and send on the support site",
+                onClick = {
+                    context.openUrl(
+                        supportReportUrl(
+                            version = version,
+                            build = build,
+                            osVersion = Build.VERSION.RELEASE,
+                            state = supportState(status),
+                        ),
+                    )
+                },
+                modifier = Modifier.testTag("helpReportProblem"),
             )
             PaneRowDivider()
             PaneExternalRow(

@@ -131,7 +131,11 @@ private fun PhoneDetailContent(
             modifier = modifier,
         )
         PhoneRoute.Notifications -> PhoneNotificationsPane(modifier = modifier)
-        PhoneRoute.Help -> PhoneHelpPane(modifier = modifier)
+        PhoneRoute.Help -> PhoneHelpPane(
+            version = version,
+            status = defaultDetailStatus,
+            modifier = modifier,
+        )
         // Deliberately unimplemented placeholder routes, kept for the navigation
         // tests. They are the only surfaces allowed to expose an identifier.
         PhoneRoute.RouteA,
