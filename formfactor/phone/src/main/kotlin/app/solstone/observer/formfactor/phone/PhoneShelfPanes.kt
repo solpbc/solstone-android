@@ -160,7 +160,13 @@ fun PhoneHelpPane(
 ) {
     val context = LocalContext.current
     val build = runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toString()
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode.toString()
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toString()
+        }
     }.getOrDefault("unknown")
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Help) },
