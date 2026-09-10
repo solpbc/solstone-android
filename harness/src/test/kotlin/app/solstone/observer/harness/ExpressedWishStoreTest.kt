@@ -210,9 +210,10 @@ class ExpressedWishStoreTest {
         assertFalse(registry.isWishExpressed("camera"))
         assertEquals(0, fakes.getValue("camera").startCalls)
 
-        // The owner goes to Settings and allows the camera. No in-app callback fires for this.
+        // The owner goes to Settings and allows the camera, then comes back to the app. No
+        // in-app callback fires for the grant itself; the activity's `onResume` is the event.
         f.permissions.status = onlyCameraGranted()
-        f.controller.refreshPermissions()
+        registry.onPermissionStatus(f.controller.refreshPermissions())
 
         assertTrue(registry.isWishExpressed("camera"), "an affirmative grant is an expression")
         assertEquals(SourceWish.On, registry.snapshot().sources.single { it.sourceId == "camera" }.wish)
@@ -227,8 +228,8 @@ class ExpressedWishStoreTest {
         assertEquals(0, fakes.getValue("audio").startCalls)
         assertEquals(0, fakes.getValue("location").startCalls)
 
-        // ✅ Idempotent: a second refresh over the same state writes nothing and starts nothing new.
-        f.controller.refreshPermissions()
+        // ✅ Idempotent: a second resume over the same state writes nothing and starts nothing new.
+        registry.onPermissionStatus(f.controller.refreshPermissions())
         assertEquals(1, fakes.getValue("camera").startCalls)
         assertEquals(mapOf("camera" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
     }
@@ -240,16 +241,16 @@ class ExpressedWishStoreTest {
         f.desiredStore.setDesiredOn(true)
         val registry = registryOn(f, chose)
         f.permissions.status = onlyCameraGranted()
-        f.controller.refreshPermissions()
+        registry.onPermissionStatus(f.controller.refreshPermissions())
         assertEquals(SourceWish.Off, (chose.read() as WishStoreState.Loaded).wishes["camera"], "a deliberate Off survives")
         assertEquals(SourceWish.Off, registry.snapshot().sources.single { it.sourceId == "camera" }.wish)
 
         val unreadable = UnreadableWishStore()
         val g = fixture(permissionStatus = allDenied(), snapshot = snapshot())
         g.desiredStore.setDesiredOn(true)
-        registryOn(g, unreadable)
+        val unreadableRegistry = registryOn(g, unreadable)
         g.permissions.status = onlyCameraGranted()
-        g.controller.refreshPermissions()
+        unreadableRegistry.onPermissionStatus(g.controller.refreshPermissions())
         assertTrue(unreadable.writes.isEmpty(), "⛔ never write over a store we could not read: ${unreadable.writes}")
     }
 

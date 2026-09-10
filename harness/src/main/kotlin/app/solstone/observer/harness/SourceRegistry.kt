@@ -50,6 +50,16 @@ interface SourcesReader {
      * nothing reconstructs the registry when the owner comes back, so a construction-only backfill
      * leaves that source reading `ready to set up` forever with the permission sitting granted.
      *
+     * 🔴 **Call this from an activity lifecycle point, never from `refreshPermissions()`.** Hooking
+     * the query was the first attempt and it was wrong twice over: a dozen internal paths call
+     * `refreshPermissions` — including `startReadiness` inside `reconcile` — so a query acquired a
+     * side effect, and `ObserverAppContainer` runs on ONE `newSingleThreadExecutor`, so expressing
+     * and actuating inside it starves whatever is queued behind. Two instrumented tests started
+     * failing **order-dependently** and passing in isolation.
+     *
+     * ✅ Returning from system Settings is an activity resume, so `onResume` is both the narrowest
+     * place the event can be observed and the only place it actually happens.
+     *
      * ⚠ Default no-op, so a fake that models only reads is unaffected.
      */
     fun onPermissionStatus(status: PermissionStatus) = Unit
