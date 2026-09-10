@@ -14,8 +14,8 @@ class DiagnosticsTest {
     /**
      * 🔴 **The branch ORDER, and it is the requirement rather than a detail.**
      *
-     * Founder, 2026-09-10: *"a source whose permission the owner declined stays `ready to set up` —
-     * never a fault, because the owner has not asked for it."* Four fault branches below carry no
+     * The rule: *a source whose permission the owner declined stays `ready to set up`* — never a
+     * fault, because the owner has not asked for it. Four fault branches below carry no
      * `desiredOn` gate — `permissionGranted`, `pairing == REVOKED`, `identityPersistenceOk`,
      * `storageOk` — so anything short of FIRST lets one of them claim a source nobody chose and
      * then blame the owner for it.

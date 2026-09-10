@@ -7,7 +7,7 @@
   launcher icon over `windowBackground`, and on API 26..30 `windowBackground` IS the whole
   starting window. `minSdk` is 26, so both paths matter.
 
-  Design contract: `vpx/design-system/mobile-shell-android.md` 10.4, "the splash — declared,
+  Design contract, "the splash - declared,
   not inherited".
 -->
 <resources>

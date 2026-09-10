@@ -122,7 +122,7 @@ fun PhoneThisDevicePane(
 /**
  * `settings › notifications` (§ 4).
  *
- * The locked copy is § 5's, verbatim from `cmo/brand/services.md`. The permission is a
+ * The locked copy is § 5's, verbatim from the brand register. The permission is a
  * real system surface, so `open notification settings` performs exactly what it names.
  * ⛔ No `send test notification` row: this app has no test-notification path, and a row
  * that names one would be the § 2.4 violation.

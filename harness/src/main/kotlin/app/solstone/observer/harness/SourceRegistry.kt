@@ -46,7 +46,7 @@ interface SourcesReader {
      *
      * 🔴 **The migration backfill has to run HERE and not only at construction, and the reason is a
      * real owner rather than a test.** A capture permission granted **outside the app, in system
-     * Settings**, is an affirmative grant — the founder's ruling makes that an expressed wish — but
+     * Settings**, is an affirmative grant, and an affirmative grant IS an expressed wish — but
      * nothing reconstructs the registry when the owner comes back, so a construction-only backfill
      * leaves that source reading `ready to set up` forever with the permission sitting granted.
      *

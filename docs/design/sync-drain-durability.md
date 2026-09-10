@@ -212,7 +212,7 @@ Catch sites to update for AC-12:
 - `SyncWorker.syncWithTransport` status probe: catch `IOException` currently returns retry without logging; log. `RelayWebSocketClosedException` rethrow can log at outer catch only.
 - Extracted drain ingest catches: every catch logs through `log` seam except rethrow if outer catch logs.
 - New claim/reconcile/payload catches in SegmentDrainer must log.
-- `RelayTokenMaintenance` has swallowed relay-close inside refresh fallback; not directly in drain AC unless Jer scopes AC-12 to all platform/work catches. If AC-12 literally means every platform/work catch, update it too.
+- `RelayTokenMaintenance` has swallowed relay-close inside refresh fallback; not directly in drain AC unless AC-12 is scoped to all platform/work catches. If AC-12 literally means every platform/work catch, update it too.
 
 ## Classification Changes
 

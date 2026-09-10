@@ -193,8 +193,8 @@ class ExpressedWishStoreTest {
             assertFalse(row.wishExpressed, row.sourceId)
             assertEquals(SourceWish.Off, row.wish, row.sourceId)
             // 🔴 Not NEEDS_ATTENTION, and the reducer order is what decides it: a missing
-            // permission on a source the owner never asked for is not a fault. Founder, 2026-09-10:
-            // "a source whose permission the owner declined stays ready to set up".
+            // permission on a source the owner never asked for is not a fault. A source whose
+            // permission the owner declined stays `ready to set up`.
             assertEquals(SourceState.READY_TO_SET_UP, row.state, row.sourceId)
             assertEquals(ReasonCode.NONE, row.reason, row.sourceId)
         }
@@ -222,7 +222,7 @@ class ExpressedWishStoreTest {
     /**
      * 🔴 **A permission granted OUTSIDE the app, in system Settings.**
      *
-     * § 5.1 and the founder's ruling both make an affirmative grant an expression, and this is the
+     * § 5.1 makes an affirmative grant an expression, and this is the
      * grant no in-app callback ever sees. The backfill used to run once, at construction, so this
      * owner's source read `ready to set up` forever with the permission sitting granted — the state
      * word saying *"you haven't asked for this"* to someone who just did.
