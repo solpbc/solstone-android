@@ -11,6 +11,7 @@ import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.fgs.ObserverForegroundService
+import app.solstone.platform.fgs.capturePermission
 import app.solstone.platform.fgs.PermissionStatus
 
 class SourcesSubscription(private val closeAction: () -> Unit) {
@@ -27,6 +28,17 @@ interface SourcesReader {
     fun snapshot(): SourcesReadModel
     fun setWish(sourceId: String, wish: SourceWish): SourceToggleResult
     fun subscribe(listener: SourcesChangeListener): SourcesSubscription
+
+    /**
+     * The runtime permissions this one source needs, so it can be asked for its own and nothing
+     * else.
+     *
+     * Empty for an unknown source and for a source that declares no capture type — ⛔ an empty
+     * result means *ask for nothing*, never *ask for everything*, which is the behaviour this
+     * replaces. ✅ That is also why the default is empty rather than abstract: asking for nothing is
+     * the fail-safe direction, so a fake that has no opinion cannot accidentally over-request.
+     */
+    fun requiredPermissions(sourceId: String): List<String> = emptyList()
 }
 
 class SourceRegistry(
@@ -79,6 +91,12 @@ class SourceRegistry(
         return result
     }
 
+    override fun requiredPermissions(sourceId: String): List<String> {
+        val registration = bound.firstOrNull { it.sourceId == sourceId }?.registration ?: return emptyList()
+        val type = registration.captureForegroundType ?: return emptyList()
+        return listOf(capturePermission(type))
+    }
+
     override fun subscribe(listener: SourcesChangeListener): SourcesSubscription {
         synchronized(lock) { listeners.add(listener) }
         return SourcesSubscription {
@@ -107,7 +125,7 @@ class SourceRegistry(
     }
 
     private inner class BoundSource(
-        private val registration: SourceRegistration,
+        val registration: SourceRegistration,
     ) : ContinuousSourceEngine {
         val sourceId = registration.sourceId
         private val inner = registration.engine

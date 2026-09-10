@@ -144,7 +144,7 @@ internal fun PhoneSourceDetail(
     sourceId: String,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
     modifier: Modifier = Modifier,
@@ -184,7 +184,7 @@ private fun SourceDetailTemplate(
     reason: ReasonCode,
     paired: Boolean,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
     onToggle: (SourceWish) -> Unit,
@@ -234,6 +234,7 @@ private fun SourceDetailTemplate(
         Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         SourceDetailActionControl(
             action = action,
+            sourceId = status.sourceId,
             retryHonest = rule.retryHonest,
             onStartObserving = onStartObserving,
             onGrantPermissions = onGrantPermissions,
@@ -302,16 +303,19 @@ private fun SourceDetailTemplate(
 @Composable
 private fun SourceDetailActionControl(
     action: SourceDetailAction,
+    sourceId: String,
     retryHonest: Boolean,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
 ) {
     val enabled = action.kind != SourceDetailActionKind.RETRY || retryHonest
     val onClick = when (action.kind) {
         SourceDetailActionKind.RETRY -> onStartObserving
-        SourceDetailActionKind.GRANT_PERMISSIONS -> onGrantPermissions
+        // ⛔ The source id is not decoration here: it is what makes the grant attributable, so the
+        // owner is asked for this source's permission and not for every declared type.
+        SourceDetailActionKind.GRANT_PERMISSIONS -> { { onGrantPermissions(sourceId) } }
         SourceDetailActionKind.CONNECT_JOURNAL -> onConnectJournal
         SourceDetailActionKind.MANAGE_LOCAL_STORAGE -> onManageLocalStorage
     }
