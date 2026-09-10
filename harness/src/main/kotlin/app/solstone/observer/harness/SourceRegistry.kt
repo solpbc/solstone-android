@@ -12,6 +12,7 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.capturePermission
+import app.solstone.platform.fgs.capturePermissionGranted
 import app.solstone.platform.fgs.PermissionStatus
 
 class SourcesSubscription(private val closeAction: () -> Unit) {
@@ -49,6 +50,22 @@ class SourceRegistry(
 ) : SourcesReader {
     private val lock = Any()
     private val wishes = LinkedHashMap<String, SourceWish>()
+
+    /**
+     * The entries the store actually holds — ⛔ never the default-filled [wishes] map.
+     *
+     * 🔴 `setWish` used to persist `wishes.toMap()`, and `wishes` is built by filling every
+     * registration with a default. So **one owner act on one source wrote an explicit entry for
+     * every registered source.** Invisible while the written value equalled the default; the moment
+     * absence carries meaning it manufactures owner intent for sources nobody chose.
+     */
+    private val persisted = LinkedHashMap<String, SourceWish>()
+
+    /** Ids the owner has actually expressed a wish for. ⛔ Not the same set as [wishes]'s keys. */
+    private val expressed = LinkedHashSet<String>()
+
+    /** A store that exists and would not read. ⛔ Not the same as one that is absent. */
+    private var storeUnreadable = false
     private val bound: List<BoundSource>
     private val listeners = mutableListOf<SourcesChangeListener>()
 
@@ -58,11 +75,25 @@ class SourceRegistry(
         require(registrations.all { it.sourceId.isNotBlank() }) { "sourceId must be non-blank" }
         val ids = registrations.map { it.sourceId }
         require(ids.size == ids.toSet().size) { "sourceId values must be unique" }
-        val persisted = wishStore.loadAll()
+        when (val state = wishStore.read()) {
+            is WishStoreState.Loaded -> {
+                persisted.putAll(state.wishes)
+                expressed.addAll(state.wishes.keys)
+            }
+            WishStoreState.Absent -> Unit
+            WishStoreState.Unreadable -> {
+                // ⛔ Do NOT fall through to "nothing expressed". A store that will not read tells us
+                // nothing about what the owner chose, so we keep today's behaviour — every source
+                // resolves on and actuates — rather than reporting the whole install as never-set-up.
+                storeUnreadable = true
+                registrations.forEach { expressed.add(it.sourceId) }
+            }
+        }
         registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.On }
         bound = registrations.map(::BoundSource)
         engines = bound
         controller.sourcesReader = this
+        backfillAlreadyRunningSources()
     }
 
     override fun snapshot(): SourcesReadModel {
@@ -83,13 +114,61 @@ class SourceRegistry(
         val wrapper = synchronized(lock) {
             if (sourceId !in wishes) return SourceToggleResult.UnknownSource
             wishes[sourceId] = wish
-            wishStore.saveAll(wishes.toMap())
+            // ⛔ One source's act writes one source's entry. Persisting the default-filled map here
+            // is what manufactured expressed wishes for every other source.
+            persistWish(sourceId, wish)
             bound.first { it.sourceId == sourceId }
         }
         val result = wrapper.actuate()
         notifyListeners()
         return result
     }
+
+    /** ⚠ Call under [lock]. */
+    private fun persistWish(sourceId: String, wish: SourceWish) {
+        persisted[sourceId] = wish
+        expressed.add(sourceId)
+        wishStore.saveAll(persisted.toMap())
+    }
+
+    /**
+     * An already-running source has an expressed wish, whatever the store says.
+     *
+     * 🔴 **A wish store that predates this rule is not evidence of absence — it is a store that was
+     * never asked the question.** No permission path ever wrote a wish, so every owner who granted a
+     * permission on an earlier build has an empty store while their sources have been capturing for
+     * months. Without this they read correctly until the day they revoke a permission in system
+     * settings, and then a source that ran for months reports never-set-up — swallowing a genuine
+     * fault across the installed base while looking like the fix working.
+     *
+     * ✅ On this platform a granted permission **is** the proof it ran: the wish defaulted on, so a
+     * granted permission meant the engine was actuated on every build up to now.
+     *
+     * ⚠ Runs at construction, once per process, off any render or refresh path — ⛔ never on the
+     * status-poll cadence. It needs no persisted marker: after the first successful pass the entries
+     * exist, so it is idempotent, and if the permission read is not yet real it simply writes
+     * nothing and a later launch retries. ⛔ It never writes over an entry the owner already has.
+     */
+    private fun backfillAlreadyRunningSources() {
+        if (storeUnreadable) return
+        val status = runCatching { controller.refreshPermissions() }.getOrNull() ?: return
+        synchronized(lock) {
+            val missing = bound.filter { it.sourceId !in expressed }
+                .filter { b ->
+                    val type = b.registration.captureForegroundType ?: return@filter false
+                    capturePermissionGranted(type, status)
+                }
+            if (missing.isEmpty()) return
+            missing.forEach {
+                persisted[it.sourceId] = SourceWish.On
+                expressed.add(it.sourceId)
+            }
+            wishStore.saveAll(persisted.toMap())
+        }
+    }
+
+    /** Whether the owner has expressed a wish for this source. */
+    fun isWishExpressed(sourceId: String): Boolean = synchronized(lock) { sourceId in expressed }
 
     override fun requiredPermissions(sourceId: String): List<String> {
         val registration = bound.firstOrNull { it.sourceId == sourceId }?.registration ?: return emptyList()
