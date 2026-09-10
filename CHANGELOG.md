@@ -7,24 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- a source you haven't set up yet now says so. it reads `ready to set up`, takes nothing in, and isn't something needing your attention. a source you never set up is never on.
+- a source you haven't set up yet now says so. it reads `ready to set up`, takes nothing in, and isn't something needing your attention. a source you never set up takes nothing in until you allow its permission.
 
 ### Changed
 - the solstone app now asks for one permission at a time, from the source you're setting up. the camera screen asks for the camera and nothing else, instead of one tap firing every prompt at once. allowing a source's permission is what turns that source on, so there's no second step to go find.
-- if you're upgrading and you already had sources running, they keep running. nothing you set up before is turned off by this release.
-- notifications now get their own step, after the first source you turn on, and you're asked once. saying no costs you the notification and nothing else: intake keeps running, and you can turn notifications on later from settings.
+- if you're upgrading and you already had sources running, they keep running.
+- notifications now get their own step, after the first source you turn on, and are asked for once. saying no costs you the ongoing notification, and the note when intake stops. intake itself keeps running, and you can turn notifications on later from settings.
 - pairing now tells you what happened and what to do next. every failure names a step you can take, and says it the way the solstone app on your iphone does.
 - the local storage screen now reads like the rest of the app: how much space is in use, how much your device has left, the limit you chose, and what the solstone app kept in place rather than remove, with the reason it kept it.
-- opening the solstone app no longer flashes a white screen first.
 
 ### Fixed
-- a source that was off could look like a source that was on. its switch drew in the same color the app uses for on, so the control and the words disagreed at a glance.
+- in light mode, a source that was off could look like a source that was on. its switch drew in the same color the app uses for on, so the control and the words disagreed at a glance.
 - `setting up` no longer says it's connecting to your journal when no journal is paired yet. it says what's actually true and points you at pairing.
 - `intake was stopped by the system` no longer appears for intake that never started. on a fresh install, while you were still working through the permission prompts, the solstone app treated intake that had never started as intake the system had stopped.
 - `start intake again` no longer appears in the middle of setting up, for the same reason.
 - turning a source on now asks for its permission in the same tap. before, saying yes landed you on `needs attention: permissions needed` with no prompt in between.
-- allowing a source's permission in your phone's own settings now starts that source. it used to stay `ready to set up` with the permission already allowed.
-- the notification prompt no longer arrives before the app has drawn anything, asking to notify you about intake that has not started.
+- opening the solstone app no longer flashes a white screen first.
 - backing out of `connect a journal` or `manage local storage` now returns you to the app instead of an internal diagnostics menu.
 - the home-screen audio widget no longer uses attention colors for a source that is simply off, or one you haven't set up yet. it does use them when the solstone app can't read its own state, which it previously reported as fine.
 - the app no longer calls itself `sol`, or its intake `observing`, anywhere in its own words.

@@ -102,12 +102,57 @@ class ExpressedWishStoreTest {
     @Test
     fun anUnreadableStoreIsNotTreatedAsNothingExpressedAndIsNotBackfilledOver() {
         val store = UnreadableWishStore()
-        val registry = registry(store, onlyCameraGranted())
+        val fakes = listOf("audio", "location", "camera").associateWith { FakeSourceEngine(conditionValue = running()) }
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+            "camera" to CaptureForegroundType.CAMERA,
+        )
+        val f = fixture(permissionStatus = onlyCameraGranted(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = SourceRegistry(
+            f.controller,
+            fakes.map { (id, engine) ->
+                SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
+            },
+            MainPoster { it() },
+            store,
+        )
 
-        listOf("audio", "location", "camera").forEach {
-            assertTrue(registry.isWishExpressed(it), "$it must not read as unexpressed")
+        // 🔴 **The WISH VALUE and the ACTUATION, not only the expressed flag.** This test asserted
+        // expressedness and the absence of writes and nothing else — and passed over an
+        // implementation that reported every source as **`off`** and started none of them, which is
+        // the catastrophe this branch exists to prevent. ⚠ It is the failure shape this session
+        // keeps repeating: verifying the claim I made and not the adjacent one.
+        // ⚠ Only camera's permission is granted here, so the other two are expressed-on WITHOUT a
+        // permission — which is a genuine fault and exactly what the pre-store app reported. Keeping
+        // today's behaviour means keeping the faults it entails, not laundering them.
+        registry.snapshot().sources.forEach { row ->
+            assertTrue(row.wishExpressed, "${row.sourceId} must not read as unexpressed")
+            assertEquals(SourceWish.On, row.wish, "${row.sourceId} must keep today's behaviour")
+            val expected = if (row.sourceId == "camera") {
+                app.solstone.core.model.SourceState.ON
+            } else {
+                app.solstone.core.model.SourceState.NEEDS_ATTENTION
+            }
+            assertEquals(expected, row.state, row.sourceId)
+            // ⛔ Never `READY_TO_SET_UP` and ⛔ never `OFF`: the first says nothing was asked for,
+            // the second says the owner asked for silence, and we know neither.
+            assertFalse(row.state == app.solstone.core.model.SourceState.READY_TO_SET_UP, row.sourceId)
+            assertFalse(row.state == app.solstone.core.model.SourceState.OFF, row.sourceId)
         }
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        fakes.forEach { (id, fake) -> assertEquals(1, fake.startCalls, "$id must actuate: $id") }
+
         assertTrue(store.writes.isEmpty(), "⛔ never write over a store we could not read: ${store.writes}")
+
+        // ✅ And an explicit owner act repairs the file with the full honest state, rather than
+        // leaving one entry behind that would read as "the other two were never asked for".
+        registry.setWish("audio", SourceWish.Off)
+        assertEquals(
+            listOf(mapOf("audio" to SourceWish.Off, "location" to SourceWish.On, "camera" to SourceWish.On)),
+            store.writes,
+        )
     }
 
     /**

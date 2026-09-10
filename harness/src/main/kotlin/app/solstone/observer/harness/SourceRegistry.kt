@@ -108,8 +108,25 @@ class SourceRegistry(
                 // ⛔ Do NOT fall through to "nothing expressed". A store that will not read tells us
                 // nothing about what the owner chose, so we keep today's behaviour — every source
                 // resolves on and actuates — rather than reporting the whole install as never-set-up.
+                //
+                // 🔴 **[persisted] is filled here, and that is the load-bearing half.** Marking the
+                // ids expressed and stopping left `persisted` empty, so the resolution below fell to
+                // `?: SourceWish.Off` and an unreadable store reported every source as **`off`** —
+                // the owner's own deliberate choice — and actuated none of them. That is the same
+                // catastrophe this branch exists to prevent, reached through the other door, and
+                // *worse* than the one it was written against: `ready to set up` at least says
+                // nothing was asked for, while `off` claims the owner asked for silence.
+                //
+                // ⚠ Filling `persisted` also decides what an owner act writes: `persistWish` sends
+                // `persisted.toMap()`, so the first explicit choice **repairs the file** with the
+                // full honest resolved state. ⛔ Nothing writes before that — [backfill] returns
+                // early while [storeUnreadable] — so unreadable bytes are never overwritten by a
+                // guess, only by an owner.
                 storeUnreadable = true
-                registrations.forEach { expressed.add(it.sourceId) }
+                registrations.forEach {
+                    expressed.add(it.sourceId)
+                    persisted[it.sourceId] = SourceWish.On
+                }
             }
         }
         // 🔴 `?: SourceWish.Off`, and the flip is the behaviour half of this rule. A source the owner
