@@ -286,6 +286,11 @@ private fun SourceDetailTemplate(
     // owner's rather than the system's. ⚠ It survives only while every value in this row is one
     // the owner can select — `SourceWish` is `{ Off, On }` and both are selectable. A computed
     // value entering this set would re-break the label. Contract: `mobile-shell.md` § 5.
+    //
+    // ⛔ When absence becomes representable — a source with no expressed wish, per § 5.1 — this row
+    // is OMITTED rather than filled with a dash, a blank or `not set`. Not merely because there is
+    // no value: once `right now` reads `ready to set up`, a wish row restates it, which is the
+    // defect that shaped this block. The row below stays.
     PaneSectionTitle("details")
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
         PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
