@@ -29,6 +29,7 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStatus
+import app.solstone.observer.harness.reasonDiagnosis
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
@@ -51,68 +52,57 @@ data class SourceDetailRule(
     val retryHonest: Boolean,
 )
 
-fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = when (reason) {
-    ReasonCode.PERMISSION_REVOKED -> SourceDetailRule(
-        diagnosis = "permissions needed",
-        action = SourceDetailAction("grant permissions", SourceDetailActionKind.GRANT_PERMISSIONS),
-        retryHonest = false,
-    )
-    ReasonCode.AUTH_REVOKED -> SourceDetailRule(
-        diagnosis = "access to your journal was revoked",
-        action = SourceDetailAction("pair again", SourceDetailActionKind.CONNECT_JOURNAL),
-        retryHonest = false,
-    )
-    ReasonCode.SERVICE_KILLED -> SourceDetailRule(
-        diagnosis = "intake was stopped by the system",
-        action = SourceDetailAction("start intake again"),
-        retryHonest = true,
-    )
-    ReasonCode.STORAGE_FULL -> SourceDetailRule(
-        diagnosis = "storage is full",
-        action = SourceDetailAction("manage local storage", SourceDetailActionKind.MANAGE_LOCAL_STORAGE),
-        retryHonest = false,
-    )
-    ReasonCode.UNPAIRED -> SourceDetailRule(
-        diagnosis = "not paired with your journal",
-        action = SourceDetailAction("connect a journal", kind = SourceDetailActionKind.CONNECT_JOURNAL),
-        retryHonest = false,
-    )
-    ReasonCode.PROVIDER_SILENT -> SourceDetailRule(
-        diagnosis = "nothing has come in recently",
-        action = null,
-        retryHonest = false,
-    )
-    ReasonCode.REBOOTED -> SourceDetailRule(
-        diagnosis = "this device restarted and intake didn't resume on its own",
-        action = SourceDetailAction("start intake again"),
-        retryHonest = true,
-    )
-    ReasonCode.TRANSPORT_UNAVAILABLE -> SourceDetailRule(
-        diagnosis = "can't reach your journal",
-        action = null,
-        retryHonest = false,
-    )
-    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailRule(
-        diagnosis = "intake couldn't start from the background",
-        action = SourceDetailAction("start intake"),
-        retryHonest = true,
-    )
-    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailRule(
-        diagnosis = "this source needs intake to restart",
-        action = SourceDetailAction("start intake again"),
-        retryHonest = true,
-    )
-    ReasonCode.PERSISTENCE_FAILED -> SourceDetailRule(
-        diagnosis = "couldn't save journal access on this phone",
-        action = SourceDetailAction("try again"),
-        retryHonest = true,
-    )
+/**
+ * The recovery half of § 5.6 — ⛔ **the diagnosis half is NOT here.**
+ *
+ * Every string this used to declare was byte-identical to [reasonDiagnosis]'s, which is what made
+ * the duplication invisible: two copies that agree read as one table. They stopped agreeing once,
+ * silently, and the stale copy kept a deleted product name alive on a reachable surface. This
+ * function now owns only what is genuinely per-renderer — which action to offer, and whether a
+ * bare retry can honestly help.
+ */
+fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = SourceDetailRule(
+    diagnosis = reasonDiagnosis(reason),
+    action = reasonAction(reason),
+    retryHonest = reasonRetryIsHonest(reason),
+)
+
+private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason) {
+    ReasonCode.PERMISSION_REVOKED ->
+        SourceDetailAction("grant permissions", SourceDetailActionKind.GRANT_PERMISSIONS)
+    ReasonCode.AUTH_REVOKED ->
+        SourceDetailAction("pair again", SourceDetailActionKind.CONNECT_JOURNAL)
+    ReasonCode.UNPAIRED ->
+        SourceDetailAction("connect a journal", SourceDetailActionKind.CONNECT_JOURNAL)
+    ReasonCode.STORAGE_FULL ->
+        SourceDetailAction("manage local storage", SourceDetailActionKind.MANAGE_LOCAL_STORAGE)
+    ReasonCode.SERVICE_KILLED,
+    ReasonCode.REBOOTED,
+    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailAction("start intake again")
+    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailAction("start intake")
+    ReasonCode.PERSISTENCE_FAILED -> SourceDetailAction("try again")
+    // ⛔ No generic retry: a lack of recent input does not establish a restartable stall, and an
+    // unreachable journal does not by itself make intake fail.
+    ReasonCode.PROVIDER_SILENT,
+    ReasonCode.TRANSPORT_UNAVAILABLE,
     ReasonCode.DESIRED_OFF,
-    ReasonCode.NONE -> SourceDetailRule(
-        diagnosis = null,
-        action = null,
-        retryHonest = false,
-    )
+    ReasonCode.NONE -> null
+}
+
+private fun reasonRetryIsHonest(reason: ReasonCode): Boolean = when (reason) {
+    ReasonCode.SERVICE_KILLED,
+    ReasonCode.REBOOTED,
+    ReasonCode.FOREGROUND_START_NOT_ALLOWED,
+    ReasonCode.FOREGROUND_TYPE_NOT_HELD,
+    ReasonCode.PERSISTENCE_FAILED -> true
+    ReasonCode.PERMISSION_REVOKED,
+    ReasonCode.AUTH_REVOKED,
+    ReasonCode.UNPAIRED,
+    ReasonCode.STORAGE_FULL,
+    ReasonCode.PROVIDER_SILENT,
+    ReasonCode.TRANSPORT_UNAVAILABLE,
+    ReasonCode.DESIRED_OFF,
+    ReasonCode.NONE -> false
 }
 
 private val DEVICE_LEVEL_REASONS = setOf(

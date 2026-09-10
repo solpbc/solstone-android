@@ -48,7 +48,7 @@ class GlassesHarnessUi(
             button("Permissions") { showPermissions() }
             button("Scan pair QR") { showScanPairQr() }
             button("PL status probe") { showPlStatusProbe() }
-            button("Start/stop observing") { showStartStop() }
+            button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
             button("Local cache") { showLocalCache() }

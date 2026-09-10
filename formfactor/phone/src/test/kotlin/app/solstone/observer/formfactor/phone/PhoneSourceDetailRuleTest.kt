@@ -6,12 +6,13 @@ package app.solstone.observer.formfactor.phone
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.ObserverStatus
+import app.solstone.observer.harness.reasonDiagnosis
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
+import kotlin.test.assertFalse
 
 class PhoneSourceDetailRuleTest {
     @Test
@@ -97,13 +98,26 @@ class PhoneSourceDetailRuleTest {
     }
 
     @Test
-    fun rewordedRulesAreNotLegacyHarnessCopy() {
-        // These superseded shipped strings must stay divergent from the phone rules.
-        assertNotEquals("phone storage is full", sourceDetailRule(ReasonCode.STORAGE_FULL).diagnosis)
-        assertNotEquals("nothing observed recently", sourceDetailRule(ReasonCode.PROVIDER_SILENT).diagnosis)
-        assertNotEquals("access was revoked - pair again", sourceDetailRule(ReasonCode.AUTH_REVOKED).diagnosis)
-        assertNotEquals("restart observing after reboot", sourceDetailRule(ReasonCode.REBOOTED).diagnosis)
-        assertNotEquals("journal access wasn't saved", sourceDetailRule(ReasonCode.PERSISTENCE_FAILED).diagnosis)
+    fun supersededHarnessCopyIsGoneFromTheSharedTable() {
+        // ⚠ This used to assert the phone rules stayed *divergent* from the legacy harness's own
+        // copy — a premise that described the defect rather than the fix. There is one table now,
+        // so these superseded strings must be absent from IT, not merely different from it.
+        listOf(
+            "phone storage is full",
+            "nothing observed recently",
+            "access was revoked - pair again",
+            "restart observing after reboot",
+            "journal access wasn't saved",
+            "observing is turned off",
+            "observing was stopped by the system",
+            "open sol to resume observing",
+            "intake restart needed",
+        ).forEach { retired ->
+            assertFalse(
+                ReasonCode.entries.any { reasonDiagnosis(it) == retired },
+                retired,
+            )
+        }
     }
 
     @Test
@@ -135,6 +149,26 @@ class PhoneSourceDetailRuleTest {
         assertEquals(
             ReasonCode.NONE,
             resolveSourceDetailReason(source("audio", ReasonCode.NONE), observer(ReasonCode.PERMISSION_REVOKED)),
+        )
+    }
+
+    /**
+     * The invariant that makes the duplication un-reintroducible.
+     *
+     * 🔴 Two renderers of this table each held their own copy of the strings. They agreed, which is
+     * why nobody saw the duplication — until a sweep corrected one and the other kept a deleted
+     * product name. ⛔ A renderer supplies its own *action*; the diagnosis has exactly one source.
+     */
+    @Test
+    fun theDetailRuleTakesItsDiagnosisFromTheOneSharedTable() {
+        ReasonCode.entries.forEach { reason ->
+            assertEquals(reasonDiagnosis(reason), sourceDetailRule(reason).diagnosis, reason.name)
+        }
+        // Positive control: the table is not uniformly null, so agreement above is a comparison of
+        // real values rather than two absences matching.
+        assertEquals(
+            "intake was stopped by the system",
+            sourceDetailRule(ReasonCode.SERVICE_KILLED).diagnosis,
         )
     }
 }

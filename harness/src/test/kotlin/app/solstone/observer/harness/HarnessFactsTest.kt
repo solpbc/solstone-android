@@ -155,6 +155,6 @@ class HarnessFactsTest {
 
         assertEquals(SourceState.NEEDS_ATTENTION, diagnostics.state)
         assertEquals(ReasonCode.PERSISTENCE_FAILED, diagnostics.reason)
-        assertEquals("Needs attention: journal access wasn't saved", diagnostics.display)
+        assertEquals("needs attention: couldn't save journal access on this phone", diagnostics.display)
     }
 }

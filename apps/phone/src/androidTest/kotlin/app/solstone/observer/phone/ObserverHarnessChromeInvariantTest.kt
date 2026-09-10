@@ -57,7 +57,7 @@ class ObserverHarnessChromeInvariantTest {
         Screen(entry = "Permissions", name = "permissions", required = listOf("Request permissions", "Back")),
         Screen(entry = "Scan pair QR", name = "scan-pair-qr", required = listOf("Back")),
         Screen(entry = "PL status probe", name = "pl-status-probe", required = listOf("Probe", "Back")),
-        Screen(entry = "Start/stop observing", name = "start-stop", required = listOf("Start", "Stop", "Back")),
+        Screen(entry = "Start/stop intake", name = "start-stop", required = listOf("Start", "Stop", "Back")),
         Screen(entry = "Status + queue/sync", name = "status-queue-sync", required = listOf("Refresh", "Sync now", "Back")),
         Screen(entry = "Evidence + export", name = "evidence-export", required = listOf("Back")),
     )
@@ -236,7 +236,7 @@ class ObserverHarnessChromeInvariantTest {
             "Permissions",
             "Scan pair QR",
             "PL status probe",
-            "Start/stop observing",
+            "Start/stop intake",
             "Status + queue/sync",
             "Evidence + export",
         )

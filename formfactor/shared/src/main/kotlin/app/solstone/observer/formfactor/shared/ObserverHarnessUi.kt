@@ -38,13 +38,35 @@ class ObserverHarnessUi(
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
+
+    /**
+     * Where leaving a screen goes, when this harness was opened for **one owner task**.
+     *
+     * 🔴 **Five of the seven screens below are operator instrumentation** — a permission probe, a
+     * transport probe, raw start/stop, queue counters, and an evidence browser that prints spool
+     * paths, wire segment ids and SHA-256s. ⛔ **None of them is an owner surface.** But the phone
+     * shell opens this harness for two tasks that *are* (`connect a journal`, `manage local
+     * storage`) and an App Link opens it for a third, and back out of any of them used to land the
+     * owner on the menu that lists the other five.
+     *
+     * When this is set, there is no menu: the task is the whole surface and leaving it returns the
+     * owner to the shell. ⛔ Nothing may route to [showMenu] while it is set.
+     */
+    private var dismiss: (() -> Unit)? = null
     private var permissionRows: TextView? = null
     private var plStatusRows: TextView? = null
     private var plStatusOutstanding: Boolean = false
 
     fun view(): View {
-        showMenu()
+        // ⛔ Not unconditional: in single-task mode the caller routes to the one screen the owner
+        // asked for, and building the menu first would put it on screen for a frame.
+        if (dismiss == null) showMenu()
         return container
+    }
+
+    /** Open this harness for one task only; [action] is where leaving that task goes. */
+    fun dismissTo(action: () -> Unit) {
+        dismiss = action
     }
 
     fun showMenu() {
@@ -52,7 +74,7 @@ class ObserverHarnessUi(
             button("Permissions") { showPermissions() }
             button("Scan pair QR") { showScanPairQr() }
             button("PL status probe") { showPlStatusProbe() }
-            button("Start/stop observing") { showStartStop() }
+            button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
             button("Local cache") { showLocalCache() }
@@ -79,7 +101,10 @@ class ObserverHarnessUi(
 
     fun showScanPairQr() {
         setScreen {
-            val status = text("Ready")
+            // Owner-reachable via the shell's `connect a journal`, so it says what to do rather
+            // than that the harness is ready. Adopted from the string iOS already ships for this
+            // screen (`QRScannerView`), not authored here.
+            val status = text("point your phone at the code")
             val preview = when (qrBackend) {
                 QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel) { message ->
                     status.text = message
@@ -101,7 +126,7 @@ class ObserverHarnessUi(
                 when (state) {
                     LoadState.Loading -> status.text = "Pairing…"
                     is LoadState.Loaded -> when (val result = state.value) {
-                        PairLinkDispatchResult.NoLink -> showMenu()
+                        PairLinkDispatchResult.NoLink -> leave()
                         else -> status.text = requireNotNull(pairLinkDispatchText(result))
                     }
                     is LoadState.Failed -> status.text = "Pairing failed"
@@ -307,9 +332,17 @@ class ObserverHarnessUi(
     }
 
     fun handleBack(): Boolean {
+        dismiss?.let {
+            it()
+            return true
+        }
         if (!inSubmenu) return false
         showMenu()
         return true
+    }
+
+    private fun leave() {
+        dismiss?.invoke() ?: showMenu()
     }
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
@@ -350,6 +383,10 @@ class ObserverHarnessUi(
         }
 
     private fun LinearLayout.backButton() {
-        button("Back") { showMenu() }
+        // ⛔ No in-screen back in single-task mode. The platform bible gives Android's back to the
+        // system gesture, and a drawn `Back` button is this harness's own idiom leaking onto a
+        // surface the shell pushed.
+        if (dismiss != null) return
+        button("Back") { leave() }
     }
 }

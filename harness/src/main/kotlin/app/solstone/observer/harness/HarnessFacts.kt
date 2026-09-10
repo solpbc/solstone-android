@@ -69,31 +69,18 @@ internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts {
     )
 }
 
+// ⛔ The reason half is NOT written here. It is [reasonDiagnosis]'s, and the local copy this
+// function used to carry is exactly how `open sol to resume observing` outlived the product name.
 fun displayFor(state: SourceState, reason: ReasonCode): String =
-    reason.text()?.let { "${state.label()}: $it" } ?: state.label()
+    reasonDiagnosis(reason)?.let { "${state.label()}: $it" } ?: state.label()
 
-private fun ReasonCode.text(): String? =
-    when (this) {
-        ReasonCode.NONE -> null
-        ReasonCode.PERMISSION_REVOKED -> "permissions needed"
-        ReasonCode.SERVICE_KILLED -> "observing was stopped by the system"
-        ReasonCode.PERSISTENCE_FAILED -> "journal access wasn't saved"
-        ReasonCode.REBOOTED -> "restart observing after reboot"
-        ReasonCode.UNPAIRED -> "not paired with your journal"
-        ReasonCode.STORAGE_FULL -> "phone storage is full"
-        ReasonCode.PROVIDER_SILENT -> "nothing observed recently"
-        ReasonCode.AUTH_REVOKED -> "access was revoked - pair again"
-        ReasonCode.TRANSPORT_UNAVAILABLE -> "can't reach your journal"
-        ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "open sol to resume observing"
-        ReasonCode.FOREGROUND_TYPE_NOT_HELD -> "intake restart needed"
-        ReasonCode.DESIRED_OFF -> "observing is turned off"
-    }
-
+// The state words are locked lowercase cross-platform; ⛔ a surface does not get to Title-Case
+// them because it happens to be a diagnostic one.
 private fun SourceState.label(): String =
     when (this) {
-        SourceState.OFF -> "Off"
-        SourceState.SETTING_UP -> "Setting up"
-        SourceState.ON -> "On"
-        SourceState.PAUSED -> "Paused"
-        SourceState.NEEDS_ATTENTION -> "Needs attention"
+        SourceState.OFF -> "off"
+        SourceState.SETTING_UP -> "setting up"
+        SourceState.ON -> "on"
+        SourceState.PAUSED -> "paused"
+        SourceState.NEEDS_ATTENTION -> "needs attention"
     }

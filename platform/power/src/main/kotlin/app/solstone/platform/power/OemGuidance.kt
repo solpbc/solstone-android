@@ -58,7 +58,7 @@ object OemGuidanceCatalog {
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open Rogbid app management and enable auto-launch for sol.",
+            instructionText = "Open Rogbid app management and enable auto-launch for the solstone app.",
         ),
     )
 
@@ -67,7 +67,7 @@ object OemGuidanceCatalog {
         autostart = GuidanceAction(
             intentAction = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             intentData = packageUri,
-            instructionText = "Open Samsung app settings and leave auto-run behavior allowed for sol.",
+            instructionText = "Open Samsung app settings and leave auto-run behavior allowed for the solstone app.",
         ),
     )
 

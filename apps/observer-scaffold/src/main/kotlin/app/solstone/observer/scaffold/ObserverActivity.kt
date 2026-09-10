@@ -38,6 +38,12 @@ class ObserverActivity : Activity() {
             onSyncLoaded = { ObserverHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
         )
+        // ⛔ Decide single-task mode BEFORE the first screen is built: the harness reads it when it
+        // lays out a screen, and its menu lists operator instrumentation an owner must not reach by
+        // backing out of the one task the shell sent them here for.
+        if (isOwnerTask(intent, firstLaunch = savedInstanceState == null)) {
+            harnessUi.dismissTo(::finish)
+        }
         setContentView(harnessUi.view())
         if (!routeDirectIntent(intent) && spec.handlesPairLinks && savedInstanceState == null) {
             routePairLinkIntent(intent)
@@ -73,9 +79,26 @@ class ObserverActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // `singleTop` on the phone, so a second App Link re-enters here rather than through
+        // onCreate — the same single-task decision has to be made again.
+        if (isOwnerTask(intent, firstLaunch = true)) {
+            harnessUi.dismissTo(::finish)
+        }
         if (!routeDirectIntent(intent) && spec.handlesPairLinks) {
             routePairLinkIntent(intent)
         }
+    }
+
+    private fun isOwnerTask(intent: Intent?, firstLaunch: Boolean): Boolean {
+        val target = intent ?: return false
+        return isOwnerTaskLaunch(
+            scansPairQr = target.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false),
+            showsLocalCache = target.getBooleanExtra(EXTRA_SHOW_LOCAL_CACHE, false),
+            isViewAction = target.action == Intent.ACTION_VIEW,
+            hasData = target.data != null,
+            handlesPairLinks = spec.handlesPairLinks,
+            firstLaunch = firstLaunch,
+        )
     }
 
     @Suppress("DEPRECATION")
