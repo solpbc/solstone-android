@@ -276,10 +276,19 @@ private fun SourceDetailTemplate(
             }
         }
     }
-    // The facts. ⛔ Not the label and not the state word — both are already on screen.
+    // The facts. ⛔ Not the label and not the state word — both are already on screen. The only
+    // thing this block adds is § 5.1's intent-vs-state split, so ⛔ do not collapse the two rows to
+    // make the labels read better: that reintroduces the defect the split exists to prevent.
+    //
+    // `you asked for` was retired 2026-09-10: it named internal wish state, and it was literally
+    // false on a fresh install, where the wish defaults to On without the owner choosing it.
+    // `your setting` is true whether the value was chosen or defaulted, and it still reads as the
+    // owner's rather than the system's. ⚠ It survives only while every value in this row is one
+    // the owner can select — `SourceWish` is `{ Off, On }` and both are selectable. A computed
+    // value entering this set would re-break the label. Contract: `mobile-shell.md` § 5.
     PaneSectionTitle("details")
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "you asked for", value = sourceWishCopy(status.wish))
+        PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
         PaneRowDivider()
         PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
     }

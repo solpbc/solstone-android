@@ -24,7 +24,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="solstone"
-        android:theme="@style/ObserverTheme">
+        android:theme="@style/PhoneShellTheme">
         <activity
             android:name="app.solstone.observer.scaffold.ObserverActivity"
             android:exported="true"

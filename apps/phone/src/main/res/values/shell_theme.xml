@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The shell's ground, declared rather than inherited.
+
+  Without this the window ground is Material's near-white and the app's first frame is a
+  white-to-cream handoff nobody chose: on API 31+ the platform composes the splash from the
+  launcher icon over `windowBackground`, and on API 26..30 `windowBackground` IS the whole
+  starting window. `minSdk` is 26, so both paths matter.
+
+  Design contract: `vpx/design-system/mobile-shell-android.md` 10.4, "the splash — declared,
+  not inherited".
+-->
+<resources>
+    <!-- surface.cream — must track `SolstoneColors.surfaceCream`, which is what the composed
+         shell actually draws. NOT `ic_launcher_background` (#FAF3E4): that is the locked icon
+         cream and a different value. Change one, change the other. -->
+    <color name="shell_surface_cream">#FCF3E4</color>
+
+    <style name="PhoneShellTheme" parent="@style/ObserverTheme">
+        <item name="android:windowBackground">@color/shell_surface_cream</item>
+    </style>
+</resources>

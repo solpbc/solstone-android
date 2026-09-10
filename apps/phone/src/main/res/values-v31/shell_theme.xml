@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 31+ composes a SplashScreen. State its ground explicitly rather than relying on the
+  fallback to `windowBackground`.
+
+  A resource qualifier REPLACES the style, it does not merge into it, so `windowBackground`
+  is repeated here on purpose.
+
+  No `windowSplashScreenAnimatedIcon`, no wordmark, no branded animation: the default splash
+  icon is the launcher icon's own sun mark, which is already the right mark, and an animated
+  icon buys a LONGER splash. See `mobile-shell.md` 2.5 and `mobile-shell-android.md` 10.4.
+-->
+<resources>
+    <style name="PhoneShellTheme" parent="@style/ObserverTheme">
+        <item name="android:windowBackground">@color/shell_surface_cream</item>
+        <item name="android:windowSplashScreenBackground">@color/shell_surface_cream</item>
+    </style>
+</resources>
