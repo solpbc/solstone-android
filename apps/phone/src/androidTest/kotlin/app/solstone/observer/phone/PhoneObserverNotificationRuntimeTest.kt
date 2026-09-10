@@ -101,6 +101,12 @@ class PhoneObserverNotificationRuntimeTest {
         context.sendBroadcast(stopIntent)
 
         waitUntil("controller desiredOn false") { !container.controller.desiredOn }
+        // ⚠ Drain the background thread before asserting the notification is gone. This suite shares
+        // one process-wide container and ONE single-threaded executor, so work queued by whatever
+        // test ran before this one sits ahead of anything the stop path needs — and the symptom is a
+        // timeout here rather than anywhere near the cause. ⛔ Not a longer timeout: that hides the
+        // queue instead of draining it.
+        assertTrue(container.awaitBackgroundIdle())
         waitUntil("service notification removed") { serviceNotification() == null }
 
         assertFalse(container.controller.desiredOn)

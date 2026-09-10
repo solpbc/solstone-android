@@ -224,6 +224,30 @@ class ObserverAppContainer(
         }
     }
 
+    /**
+     * Block until everything already queued on the background thread has run.
+     *
+     * ⚠ **A barrier, not a sleep.** The executor is single-threaded and FIFO, so a task submitted
+     * now completes only after every task submitted before it — which is exactly the ordering
+     * guarantee an assertion about "has the effect landed yet" needs.
+     *
+     * 🔴 **This exists because the instrumented phone-shell suite shares one process-wide container
+     * and this one thread, so a test's assertions race work queued by whatever ran before it.**
+     * Five device-gate runs over the same afternoon failed in five *different* places and one was
+     * fully green; each failing test passed in isolation. That is contention, and re-running until
+     * green is how a flaky gate stops meaning anything. ⛔ Do not replace a call to this with a
+     * longer timeout: the timeout hides the queue instead of draining it.
+     */
+    fun awaitBackgroundIdle(timeoutMs: Long = 10_000L): Boolean {
+        val done = java.util.concurrent.CountDownLatch(1)
+        return try {
+            background.execute { done.countDown() }
+            done.await(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            true
+        }
+    }
+
     override fun rehydrateInBackground() {
         background.execute {
             runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
