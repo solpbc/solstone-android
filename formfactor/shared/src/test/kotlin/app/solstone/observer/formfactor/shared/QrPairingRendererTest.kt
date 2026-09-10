@@ -21,14 +21,63 @@ class QrPairingRendererTest {
         val invalid = pairLinkDispatchText(PairLinkDispatchResult.InvalidLink)
         val busy = pairLinkDispatchText(PairLinkDispatchResult.Busy)
 
-        assertEquals("Invalid pair link", invalid)
-        assertEquals("Pairing already in progress. Try again.", busy)
+        assertEquals(
+            "that pairing link isn't one the solstone app can read. show a new pairing code on " +
+                "your journal and try again.",
+            invalid,
+        )
+        assertEquals("already pairing. give it a moment.", busy)
         assertEquals(null, pairLinkDispatchText(PairLinkDispatchResult.NoLink))
         assertEquals(
-            "Pairing failed",
+            "pairing didn't go through. show a new pairing code on your journal and try again.",
             pairLinkDispatchText(
                 PairLinkDispatchResult.Attempted(PairAttemptOutcome.OtherFailure("IOException", null)),
             ),
+        )
+    }
+
+    /**
+     * 🔴 The register, pinned as a property rather than string by string.
+     *
+     * ⚠ `Pairing failed` · `No network connection` · `Pairing code expired` all passed a test that
+     * asserted them exactly, which is how a retired voice survives a green gate: the assertion
+     * encodes the defect. Asserting the SHAPE — lowercase opening, a sentence, a next step — is
+     * what makes the next fragment fail.
+     */
+    @Test
+    fun everyPairingMessageIsOwnerVoiceWithANextStep() {
+        val messages = listOf(
+            pairLinkDispatchText(PairLinkDispatchResult.InvalidLink),
+            pairLinkDispatchText(PairLinkDispatchResult.Busy),
+            pairStatusText(PairAttemptOutcome.OtherFailure("IOException", null)),
+            pairStatusText(PairAttemptOutcome.WindowClosed(410)),
+            pairStatusText(PairAttemptOutcome.WindowClosed(401)),
+            pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)),
+            pairStatusText(networkFailure(ConnectivityFailure.NAME_RESOLUTION)),
+            pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER)),
+            pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
+            PAIR_DISPATCH_FAILED,
+        ).map { requireNotNull(it) }
+
+        messages.forEach { message ->
+            assertTrue(message.first().isLowerCase(), "sentence case: $message")
+            assertTrue(message.trimEnd().endsWith('.'), "a fragment, not a sentence: $message")
+            // ⛔ Naming the failure and stopping is the shape this file was converged out of.
+            assertTrue(
+                listOf("try again", "check the address", "give it a moment").any { message.contains(it) },
+                "no next step: $message",
+            )
+            assertFalse(message.contains("Pairing"), "retired register: $message")
+            assertFalse(message.contains("sol "), "deleted product name: $message")
+        }
+        // ✅ Positive controls: each matcher finds what it looks for when it is present, so the
+        // clean sweep above is a measurement rather than three dead assertions.
+        assertFalse("Pairing failed".first().isLowerCase())
+        assertFalse("No network connection".trimEnd().endsWith('.'))
+        assertTrue("Pairing code expired".contains("Pairing"))
+        assertFalse(
+            listOf("try again", "check the address", "give it a moment")
+                .any { "Pairing failed".contains(it) },
         )
     }
 
@@ -41,11 +90,17 @@ class QrPairingRendererTest {
         val pairFailure = PairAttemptOutcome.Linked(result(pairStatus = 503, statusStatus = 204))
         val statusFailure = PairAttemptOutcome.Linked(result(pairStatus = 200, statusStatus = 503))
 
-        assertEquals("Paired", pairStatusText(success))
+        assertEquals("paired", pairStatusText(success))
         assertTrue(success.isSuccessfulPair())
-        assertEquals("Pairing failed", pairStatusText(pairFailure))
+        assertEquals(
+            "pairing didn't go through. show a new pairing code on your journal and try again.",
+            pairStatusText(pairFailure),
+        )
         assertFalse(pairFailure.isSuccessfulPair())
-        assertEquals("Pairing failed", pairStatusText(statusFailure))
+        assertEquals(
+            "pairing didn't go through. show a new pairing code on your journal and try again.",
+            pairStatusText(statusFailure),
+        )
         assertFalse(statusFailure.isSuccessfulPair())
     }
 
@@ -63,35 +118,45 @@ class QrPairingRendererTest {
 
         outcomes.forEach { outcome ->
             assertFalse(outcome.isSuccessfulPair())
-            assertFalse(pairStatusText(outcome).contains("Paired"))
+            assertFalse(pairStatusText(outcome).contains("paired"))
         }
-        assertEquals("Scanning", pairStatusText(PairAttemptOutcome.Retry))
-        assertEquals("No network connection", pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)))
+        assertEquals("scanning", pairStatusText(PairAttemptOutcome.Retry))
         assertEquals(
-            "Couldn't find journal.example. Check the address.",
+            "this device isn't on a network. pairing needs to reach your journal directly, so " +
+                "join the same wi-fi as your journal and try again. everything the solstone app " +
+                "has taken in is on this device and syncs once you reconnect.",
+            pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)),
+        )
+        assertEquals(
+            "couldn't find your journal at journal.example. check the address, then try again " +
+                "with a new pairing code.",
             pairStatusText(networkFailure(ConnectivityFailure.NAME_RESOLUTION)),
         )
         assertEquals(
-            "Your journal at journal.example:7657 didn't answer. " +
-                "Check it's running and that port 7657 isn't blocked by a firewall.",
+            "couldn't reach your journal at journal.example:7657. make sure it's running and on " +
+                "the same wi-fi, then try again. some networks block devices from connecting " +
+                "directly. you can also switch your journal to private network to pair from " +
+                "anywhere.",
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER)),
         )
         assertEquals(
-            "Your journal at journal.example:443 didn't answer.",
+            "couldn't reach your journal at journal.example:443. make sure it's running, then " +
+                "try again.",
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
         )
-        assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))
-        assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(499)))
-        assertEquals("Pairing failed", pairStatusText(PairAttemptOutcome.OtherFailure("IOException", null)))
     }
 
+    /**
+     * ⚠ This test asserted the OPPOSITE: that 410 and every other status render different words.
+     * They mean the same thing to an owner — the code is no longer good — and both need the same
+     * next step, so the split told them there was a difference and declined to say what it was.
+     */
     @Test
-    fun directExpiredCodeUsesRegenerationInstruction() {
-        assertEquals(
-            "This pairing code has expired. Generate a new one from your journal.",
-            pairStatusText(PairAttemptOutcome.WindowClosed(410)),
-        )
-        assertEquals("Pairing code expired", pairStatusText(PairAttemptOutcome.WindowClosed(401)))
+    fun everyClosedWindowStatusRendersOneMessage() {
+        val expected = "the pairing window closed. show a new pairing code on your journal, then try again."
+        listOf(401, 410, 499, 200).forEach { status ->
+            assertEquals(expected, pairStatusText(PairAttemptOutcome.WindowClosed(status)), "status $status")
+        }
     }
 
     private fun networkFailure(

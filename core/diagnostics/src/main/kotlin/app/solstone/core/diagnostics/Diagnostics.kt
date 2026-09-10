@@ -43,6 +43,10 @@ data class SourceFacts(
   // carries the same conflation and [engineStartIssued] already separates it. Defaults true so a
   // caller that only models the failure keeps its existing meaning.
   val fgsStartEvidence: Boolean = true,
+  // ⚠ Whether the OWNER has expressed a wish for this source, which is not the same as the wish
+  // having a value — a defaulted wish is not an expressed one. Defaults true so a caller that
+  // models only the failure keeps its meaning.
+  val wishExpressed: Boolean = true,
 )
 
 // NONE is correct for off, on, paused, and setting up. Only a needs-attention row with NONE is a
@@ -50,6 +54,12 @@ data class SourceFacts(
 // NONE by design.
 fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
     when {
+        // 🔴 FIRST, and that position is the requirement rather than a detail. A source the owner has
+        // never asked for has not FAILED — it has not been set up, and reporting it as a fault
+        // manufactures an owner intent and then blames them for it. Four branches below carry no
+        // `desiredOn` gate (`permissionGranted`, `pairing == REVOKED`, `identityPersistenceOk`,
+        // `storageOk`), so anything short of first lets one of them claim a never-chosen source.
+        !f.wishExpressed -> SourceState.READY_TO_SET_UP to ReasonCode.NONE
         !f.permissionGranted -> SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED
         f.desiredOn && !f.foregroundTypeHeld -> SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD
         f.desiredOn && f.startRefused -> SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED

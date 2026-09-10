@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- a source you haven't set up yet now says so. it reads `ready to set up`, takes nothing in, and isn't something needing your attention.
+
+### Changed
+- the solstone app now asks for one permission at a time, from the source you're setting up. the camera screen asks for the camera and nothing else, instead of one tap firing every prompt at once. allowing a source's permission is what turns that source on, so there's no second step to go find.
+- notifications now get their own step, after the first source you turn on, and are asked for once. saying no costs you the ongoing notification and every notice about intake, including the one after a restart. intake itself keeps running, and you can turn notifications on later from settings.
+- pairing now tells you what happened and what to do next. every failure names a step you can take, and says it the way the solstone app on your iphone does.
+- the local storage screen now reads like the rest of the app: how much space is in use, how much your device has left, the limit in force and whether you chose it, and what the solstone app kept in place rather than remove, with the reason it kept it.
+
+### Fixed
+- in light mode, a source that was off could look like a source that was on. its switch drew in the same color the app uses for on, so the control and the words disagreed at a glance.
+- `setting up` no longer says it's connecting to your journal when no journal is paired yet. it says what's actually true and points you at pairing.
+- `intake was stopped by the system` no longer appears for intake that never started. on a fresh install, while you were still working through the permission prompts, the solstone app treated intake that had never started as intake the system had stopped.
+- `start intake again` no longer appears in the middle of setting up, for the same reason.
+- turning a source on now asks for its permission in the same tap. before, saying yes landed you on `needs attention: permissions needed` with no prompt in between.
+- opening the solstone app no longer flashes a white screen first.
+- backing out of `connect a journal` or `manage local storage` now returns you to the app instead of an internal diagnostics menu. those two screens no longer draw their own back button; your phone's back gesture is what leaves them.
+- the home-screen audio widget no longer uses attention colors for a source that is simply off, or one you haven't set up yet.
+- the app no longer calls itself `sol`, or its intake `observing`, anywhere in its own words.
+- the pairing scanner now says `point your phone at the code`.
+
 ## [2.0.0] - 2026-09-08
 
 ### Added

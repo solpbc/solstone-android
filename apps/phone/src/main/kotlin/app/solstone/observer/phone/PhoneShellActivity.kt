@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
@@ -26,6 +27,8 @@ import app.solstone.observer.formfactor.phone.resolvePhoneCaptureWidthDp
 import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.SourceWish
+import app.solstone.platform.fgs.shouldAskForNotifications
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.observer.scaffold.ObserverAppContainer
@@ -37,11 +40,13 @@ class PhoneShellActivity : ComponentActivity() {
     private lateinit var sourcesViewModel: SourcesViewModel
     private lateinit var statusViewModel: PhoneStatusViewModel
     private var captureOwnerToken: Long = -1L
+    private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val startWhenReady = object : Runnable {
         override fun run() {
             if (container.recoveryCompleted) {
                 container.controller.ensureObserving()
+                requestNotificationsOnce()
             } else {
                 mainHandler.postDelayed(this, RECOVERY_POLL_INTERVAL_MS)
             }
@@ -77,11 +82,9 @@ class PhoneShellActivity : ComponentActivity() {
                 waiting = snapshot?.waiting.orEmpty(),
                 defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
                 onRefreshStatus = statusViewModel::refresh,
-                onToggle = { id, wish -> sourcesViewModel.setWish(id, wish) },
+                onToggle = { id, wish -> onSourceWish(id, wish) },
                 onStartObserving = { container.controller.ensureObserving() },
-                onGrantPermissions = {
-                    requestPermissions(phoneSpec.permissions(Build.VERSION.SDK_INT), PERMISSION_REQUEST)
-                },
+                onGrantPermissions = { sourceId -> requestSourcePermissions(sourceId) },
                 onConnectJournal = {
                     startActivity(
                         Intent(this, ObserverActivity::class.java)
@@ -170,8 +173,78 @@ class PhoneShellActivity : ComponentActivity() {
             .orEmpty()
     }
 
+    /**
+     * Ask for **one source's** permission, and nothing else.
+     *
+     * 🔴 This replaced a single `requestPermissions(phoneSpec.permissions(…))` that asked for every
+     * declared type from whichever source screen the owner was on — four sequential system dialogs
+     * from one tap, and a result that could not be attributed to the source the owner had asked
+     * for. ⛔ Do not reintroduce the bundle: attribution is what makes an affirmative grant an
+     * expression of the owner's wish for *that* source.
+     *
+     * ⚠ Notifications is deliberately not in here. It is not a source permission, and it now gets
+     * its own moment at first intake start ([requestNotificationsOnce]) so each dialog has a cause
+     * the owner can see.
+     */
+    private fun requestSourcePermissions(sourceId: String) {
+        val permissions = container.sources.requiredPermissions(sourceId)
+        if (permissions.isEmpty()) return
+        requestPermissions(permissions.toTypedArray(), PERMISSION_REQUEST)
+    }
+
+    /**
+     * Turning a source on is an expression of the owner's wish — and if its permission is missing,
+     * the same act asks for it.
+     *
+     * 🔴 Without this the owner flips the switch, the wish persists, and the screen lands straight
+     * on `needs attention` / `permissions needed` with **no system dialog in between** — a fault
+     * word arriving as the direct result of saying yes. ⛔ Do not split the two: the toggle and the
+     * prompt are one owner action.
+     */
+    private fun onSourceWish(sourceId: String, wish: SourceWish) {
+        sourcesViewModel.setWish(sourceId, wish)
+        if (wish != SourceWish.On) return
+        val missing = container.sources.requiredPermissions(sourceId).any {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing) {
+            requestSourcePermissions(sourceId)
+            // ⛔ And nothing else here. Notifications wait for the result, so the owner sees one
+            // dialog at a time — stacking them is what piece one of this arc removed.
+            return
+        }
+        // Already granted, so no dialog is coming and this is the moment intake begins.
+        requestNotificationsOnce()
+    }
+
+    /**
+     * Ask for the ongoing notification, once, when intake first starts.
+     *
+     * ⚠ Denial does not break intake — capture runs and the system privacy indicator still shows;
+     * what is lost is the shade surface. So this never blocks and never re-asks: the shelf's
+     * `notifications` row is the durable route back. ⚠ *Never re-asks* is a claim about
+     * [NotificationPromptStore], not about this method — the flag it reads outlives the process,
+     * which is what makes the word true.
+     */
+    private fun requestNotificationsOnce() {
+        val ask = shouldAskForNotifications(
+            sdkInt = Build.VERSION.SDK_INT,
+            anySourceWishedOn = container.sources.snapshot().sources.any { it.wish == SourceWish.On },
+            alreadyAsked = notificationPrompt.wasAsked(),
+            alreadyGranted = container.controller.refreshPermissions().notificationsGranted,
+        )
+        if (!ask) return
+        notificationPrompt.recordAsked()
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
+    }
+
     override fun onResume() {
         super.onResume()
+        // ⚠ A capture permission the owner allowed in system Settings is an affirmative grant, and
+        // no in-app callback fires for it. Returning here is the event, so this is where it is
+        // observed. ⛔ Not inside `refreshPermissions()` — that is a query a dozen internal paths
+        // call — and ⛔ not inline: it writes a file and can start an engine.
+        container.onOwnerResumed()
         statusViewModel.onHostResumed()
         captureOwnerToken = container.captureAuthority.acquire()
         mainHandler.post(startWhenReady)
@@ -191,11 +264,15 @@ class PhoneShellActivity : ComponentActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST) {
+        if (requestCode == PERMISSION_REQUEST || requestCode == NOTIFICATIONS_REQUEST) {
             container.controller.onPermissionsRequested()
             sourcesViewModel.refresh()
             statusViewModel.refresh()
         }
+        // ⚠ Its own moment, after the source's dialog has closed rather than beside it. Gated on a
+        // source actually being wished on, so a denial of the source permission does not lead
+        // straight into a second prompt about notifying the owner of nothing.
+        if (requestCode == PERMISSION_REQUEST) requestNotificationsOnce()
     }
 
     private class PhoneShellViewModelFactory(
@@ -217,6 +294,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     private companion object {
         const val PERMISSION_REQUEST = 10
+        const val NOTIFICATIONS_REQUEST = 11
         const val RECOVERY_POLL_INTERVAL_MS = 50L
 
         /** Route key from [decodePhoneRoute] — e.g. `import`, `add-more`, `sd/audio`. */

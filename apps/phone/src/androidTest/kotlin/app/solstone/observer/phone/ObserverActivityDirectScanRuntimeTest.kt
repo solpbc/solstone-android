@@ -70,7 +70,7 @@ class ObserverActivityDirectScanRuntimeTest {
                 present
             }
             scenario.onActivity { activity ->
-                assertFalse(activityTexts(activity).contains("Invalid pair link"))
+                assertFalse(activityTexts(activity).any { it.startsWith("that pairing link isn't one") })
             }
         }
     }
@@ -84,13 +84,13 @@ class ObserverActivityDirectScanRuntimeTest {
                 var present = false
                 scenario.onActivity { activity ->
                     val texts = activityTexts(activity)
-                    present = texts.any { it.contains("local cache", ignoreCase = true) }
+                    present = texts.any { it.contains("space on this device") }
                 }
                 present
             }
             scenario.onActivity { activity ->
                 assertFalse(activityTexts(activity).contains("Permissions"))
-                assertTrue(activityTexts(activity).any { it.contains("local cache", ignoreCase = true) })
+                assertTrue(activityTexts(activity).any { it.contains("space on this device") })
             }
         }
     }

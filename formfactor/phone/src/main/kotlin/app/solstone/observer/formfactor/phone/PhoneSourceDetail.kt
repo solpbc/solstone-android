@@ -144,7 +144,7 @@ internal fun PhoneSourceDetail(
     sourceId: String,
     homeTileStore: PhoneHomeTileStore,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
     modifier: Modifier = Modifier,
@@ -173,7 +173,9 @@ internal fun PhoneSourceDetail(
         }
         PaneNote(
             "taking a tile off home does not turn the source off. " +
-                "it just keeps home to what you actually look at.",
+                // ⚠ Was "it just keeps home to what you actually look at." — `keeps home to` is
+                // not idiomatic, and three independent reads of the same frame stumbled on it.
+                "it just keeps home to the ones you actually look at.",
         )
     }
 }
@@ -184,7 +186,7 @@ private fun SourceDetailTemplate(
     reason: ReasonCode,
     paired: Boolean,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
     onToggle: (SourceWish) -> Unit,
@@ -234,6 +236,7 @@ private fun SourceDetailTemplate(
         Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         SourceDetailActionControl(
             action = action,
+            sourceId = status.sourceId,
             retryHonest = rule.retryHonest,
             onStartObserving = onStartObserving,
             onGrantPermissions = onGrantPermissions,
@@ -271,6 +274,7 @@ private fun SourceDetailTemplate(
                             onToggle(if (checked) SourceWish.On else SourceWish.Off)
                         },
                         modifier = Modifier.testTag(SOURCE_SWITCH_TEST_TAG),
+                        colors = solstoneSwitchColors(),
                     )
                 }
             }
@@ -293,8 +297,14 @@ private fun SourceDetailTemplate(
     // defect that shaped this block. The row below stays.
     PaneSectionTitle("details")
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
-        PaneRowDivider()
+        // ⛔ Omitted when the owner has expressed nothing: there is no setting to state, and the
+        // resolved `Off` behind it is the app's resolution rather than their choice. ⚠ It would also
+        // restate `right now`, which already reads `ready to set up` — the exact duplication this
+        // block was rebuilt to remove.
+        if (status.wishExpressed) {
+            PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
+            PaneRowDivider()
+        }
         PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
     }
 }
@@ -302,16 +312,19 @@ private fun SourceDetailTemplate(
 @Composable
 private fun SourceDetailActionControl(
     action: SourceDetailAction,
+    sourceId: String,
     retryHonest: Boolean,
     onStartObserving: () -> Unit,
-    onGrantPermissions: () -> Unit,
+    onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
 ) {
     val enabled = action.kind != SourceDetailActionKind.RETRY || retryHonest
     val onClick = when (action.kind) {
         SourceDetailActionKind.RETRY -> onStartObserving
-        SourceDetailActionKind.GRANT_PERMISSIONS -> onGrantPermissions
+        // ⛔ The source id is not decoration here: it is what makes the grant attributable, so the
+        // owner is asked for this source's permission and not for every declared type.
+        SourceDetailActionKind.GRANT_PERMISSIONS -> { { onGrantPermissions(sourceId) } }
         SourceDetailActionKind.CONNECT_JOURNAL -> onConnectJournal
         SourceDetailActionKind.MANAGE_LOCAL_STORAGE -> onManageLocalStorage
     }
@@ -356,6 +369,7 @@ private fun HomeTileControl(sourceId: String, homeTileStore: PhoneHomeTileStore)
                     homeTileStore.setHasTile(sourceId, checked)
                 },
                 modifier = Modifier.testTag(HOME_TILE_CONTROL_TEST_TAG),
+                colors = solstoneSwitchColors(),
             )
         }
     }

@@ -117,7 +117,57 @@ fun widgetRefusalReasonForStartException(className: String): ReasonCode =
         else -> ReasonCode.FOREGROUND_START_NOT_ALLOWED
     }
 
-fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.ON
+/**
+ * Whether a state is a fault the owner should be told about.
+ *
+ * ⚠ **`state != ON` is not the same predicate**, and the difference only became visible when
+ * `READY_TO_SET_UP` joined the vocabulary: a source the owner has never asked for is not on and is
+ * not broken. Today's only caller passes the observer-level state, which cannot be
+ * `READY_TO_SET_UP` — `wishExpressed` is per-source and defaults true — so this excludes it against
+ * a future caller rather than a current bug. ⛔ Do not re-collapse it to an inequality; the name of
+ * this function is about a state, so it owes a correct answer for every state.
+ */
+fun needsAttentionForState(state: SourceState): Boolean =
+    when (state) {
+        SourceState.ON, SourceState.READY_TO_SET_UP -> false
+        SourceState.OFF,
+        SourceState.SETTING_UP,
+        SourceState.PAUSED,
+        SourceState.NEEDS_ATTENTION,
+        -> true
+    }
+
+/**
+ * Whether this is the moment to ask for the notification permission.
+ *
+ * 🔴 **On a fresh install the dialog was the owner's FIRST FRAME.** `onResume` posted a runnable
+ * that called `ensureObserving()` and then asked, so the prompt arrived before the app had drawn
+ * anything the owner could recognise — and, since a never-set-up source is not actuated, before
+ * anything was being taken in at all. It was asking to be allowed to post an ongoing notification
+ * about intake that had not started and that the owner had not requested.
+ *
+ * ✅ The gate is [anySourceWishedOn], because that is what *"the owner has asked for intake"*
+ * means now. ⛔ Not the observer's own state word: on a fresh install the observer reduces to
+ * `setting up` (desired-on with nothing started), so keying on it would fire the dialog anyway.
+ *
+ * ⚠ Denial is never re-asked and never blocks: capture runs, the system privacy indicator still
+ * shows, and what is lost is the shade surface. The `notifications` shelf row is the route back.
+ * ⛔ **[alreadyAsked] has to come from something that outlives the process, and the caller owes
+ * that.** This function cannot tell an in-memory flag from a persisted one, and with an in-memory
+ * one *"never re-asked"* is only true until the app is killed — which is a sentence this comment
+ * carried while being false.
+ */
+fun shouldAskForNotifications(
+    sdkInt: Int,
+    anySourceWishedOn: Boolean,
+    alreadyAsked: Boolean,
+    alreadyGranted: Boolean,
+): Boolean {
+    if (sdkInt < 33) return false
+    if (alreadyAsked) return false
+    if (alreadyGranted) return false
+    return anySourceWishedOn
+}
 
 fun shouldOfferStartAction(isRunning: Boolean, hasEnabledSources: Boolean = true): Boolean =
     !isRunning && hasEnabledSources

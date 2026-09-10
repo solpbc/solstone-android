@@ -59,7 +59,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             assertTrue(waitForRecovery(container))
             waitUntil("initial local cache pass") { container.journalCacheState().latestPass != null }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Local cache")
+                clickButton(activity.findViewById(android.R.id.content), "Local storage")
                 assertEquals("filesystem/Room load must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -69,7 +69,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Use ${decimalBytes(selected)}")
+                clickButton(activity.findViewById(android.R.id.content), "use ${decimalBytes(selected)}")
                 assertEquals("durable save must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -78,11 +78,11 @@ class PhoneJournalCacheScreenRuntimeTest {
             scenario.recreate()
             loaded = CountDownLatch(1)
             ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
-            scenario.onActivity { activity -> clickButton(activity.findViewById(android.R.id.content), "Local cache") }
+            scenario.onActivity { activity -> clickButton(activity.findViewById(android.R.id.content), "Local storage") }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.any { it.contains("Current limit: ${decimalBytes(selected)}") })
+                assertTrue(texts.any { it.contains("your limit: ${decimalBytes(selected)}") })
             }
         }
     }
@@ -109,51 +109,51 @@ class PhoneJournalCacheScreenRuntimeTest {
                     onJournalCacheLoadComplete = { loaded.countDown() },
                 )
                 activity.setContentView(ui.view())
-                clickButton(activity.findViewById(android.R.id.content), "Local cache")
+                clickButton(activity.findViewById(android.R.id.content), "Local storage")
                 assertEquals("injected load must remain asynchronous", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
-                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("Attention: cache usage check failed") })
+                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("needs attention: couldn't measure how much space is in use.") })
             }
 
             state = failureState(HarnessJournalCacheBlockedReason.NO_SAFE_ELIGIBLE_SEGMENT)
             loaded = CountDownLatch(1)
             scenario.onActivity { activity ->
                 clickButton(activity.findViewById(android.R.id.content), "Back")
-                clickButton(activity.findViewById(android.R.id.content), "Local cache")
+                clickButton(activity.findViewById(android.R.id.content), "Local storage")
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
-                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("no safely removable uploaded data") })
+                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("nothing can be removed safely yet.") })
             }
 
             state = failureState(null, residuals = 1)
             loaded = CountDownLatch(1)
             scenario.onActivity { activity ->
                 clickButton(activity.findViewById(android.R.id.content), "Back")
-                clickButton(activity.findViewById(android.R.id.content), "Local cache")
+                clickButton(activity.findViewById(android.R.id.content), "Local storage")
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             loaded = CountDownLatch(1)
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.any { it.contains("Removal retry pending: 1") })
-                clickButton(activity.findViewById(android.R.id.content), "Use 1 GB")
+                assertTrue(texts.any { it.contains("still to remove: 1 — the solstone app will try again.") })
+                clickButton(activity.findViewById(android.R.id.content), "use 1 GB")
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
-                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("Previous limit kept") })
+                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("your previous limit is still in place.") })
             }
         }
     }
 
     private fun assertCompleteScreen(texts: List<String>) {
-        assertTrue(texts.any { it.contains("Local cache") })
-        assertTrue(texts.any { it.contains("Cache usage:") })
-        assertTrue(texts.any { it.contains("Current limit: 4 GB") })
+        assertTrue(texts.any { it.contains("space on this device") })
+        assertTrue(texts.any { it.contains("in use:") })
+        assertTrue(texts.any { it.contains("your limit: 4 GB") })
         JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { choice ->
-            assertTrue(texts.any { it.contains("Use ${decimalBytes(choice)}") })
+            assertTrue(texts.any { it.contains("use ${decimalBytes(choice)}") })
         }
     }
 

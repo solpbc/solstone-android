@@ -322,7 +322,12 @@ val darkStandard: ColorScheme = darkColorScheme(
         surfaceDim = SolstoneColors.surfaceBlack,
         surfaceContainer = SolstoneColors.darkGround,
         surfaceContainerHigh = SolstoneColors.darkSurface,
-        surfaceContainerHighest = SolstoneColors.surfaceCream,
+        // 🔴 Was `surfaceCream` — a LIGHT cream at the top of a dark ladder, so anything filled with
+        // this role rendered a cream panel on a dark ground carrying white `onSurface` text: white
+        // on cream, in the one mode a low-vision owner would deliberately turn on. Nothing in the
+        // shell read the role yet, which is why it had never shown up; the container ladder now
+        // ascends inside its own family, and a test holds every scheme's ladder to its polarity.
+        surfaceContainerHighest = SolstoneColors.darkSurfaceRaised,
         surfaceContainerLow = SolstoneColors.surfaceBlack,
         surfaceContainerLowest = SolstoneColors.surfaceBlack,
     ).withBrandFixed()

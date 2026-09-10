@@ -193,7 +193,7 @@ android-host-dist-phone: sync-android-host
 # monotonic int). CHANGELOG.md is Keep-a-Changelog; each release cuts the
 # [Unreleased] section to [VERSION] and that section becomes the GitHub release body
 # (which solstone.app/releases/android renders). Full sequence:
-# vpe/playbooks/solstone-android-release.md (in the extro Org).
+# the release runbook.
 PHONE_GRADLE := apps/phone/build.gradle.kts
 ARTIFACTS := artifacts
 PHONE_RELEASE_APK_LOCAL := $(ARTIFACTS)/phone-real-release.apk

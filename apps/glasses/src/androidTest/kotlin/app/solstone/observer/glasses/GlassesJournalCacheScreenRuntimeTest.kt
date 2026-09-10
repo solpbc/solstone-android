@@ -69,7 +69,7 @@ class GlassesJournalCacheScreenRuntimeTest {
                 waitForInitialPass(container).configuredLimitBytes,
             )
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Local cache")
+                clickButton(activity.findViewById(android.R.id.content), "Local storage")
                 assertEquals("filesystem/Room load must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -79,7 +79,7 @@ class GlassesJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             GlassesHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Use ${decimalBytes(selected)}")
+                clickButton(activity.findViewById(android.R.id.content), "use ${decimalBytes(selected)}")
                 assertEquals("durable save must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -89,21 +89,21 @@ class GlassesJournalCacheScreenRuntimeTest {
             scenario.recreate()
             loaded = CountDownLatch(1)
             GlassesHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
-            scenario.onActivity { activity -> clickButton(activity.findViewById(android.R.id.content), "Local cache") }
+            scenario.onActivity { activity -> clickButton(activity.findViewById(android.R.id.content), "Local storage") }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.any { it.contains("Current limit: ${decimalBytes(selected)}") })
+                assertTrue(texts.any { it.contains("your limit: ${decimalBytes(selected)}") })
             }
         }
     }
 
     private fun assertCompleteScreen(texts: List<String>) {
-        assertTrue(texts.any { it.contains("Local cache") })
-        assertTrue(texts.any { it.contains("Cache usage:") })
-        assertTrue(texts.any { it.contains("Current limit: 4 GB") })
+        assertTrue(texts.any { it.contains("space on this device") })
+        assertTrue(texts.any { it.contains("in use:") })
+        assertTrue(texts.any { it.contains("your limit: 4 GB") })
         JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { choice ->
-            assertTrue(texts.any { it.contains("Use ${decimalBytes(choice)}") })
+            assertTrue(texts.any { it.contains("use ${decimalBytes(choice)}") })
         }
     }
 

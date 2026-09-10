@@ -34,6 +34,15 @@ data class SourceStatus(
     val wish: SourceWish,
     val state: SourceState,
     val reason: ReasonCode,
+    /**
+     * Whether the owner has expressed a wish for this source.
+     *
+     * ⛔ Not derivable from [wish]. An unexpressed source reports `Off` because that is what it
+     * does — it is not actuated and its toggle is off — but `Off` also describes a source the owner
+     * deliberately turned off, and telling those two apart is the whole point. Defaults true so a
+     * fixture keeps its existing meaning.
+     */
+    val wishExpressed: Boolean = true,
 )
 
 data class SourcesReadModel(

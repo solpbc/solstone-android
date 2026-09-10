@@ -148,6 +148,7 @@ fun PhoneSourceTile(
                         onCheckedChange = { checked ->
                             onToggle(if (checked) SourceWish.On else SourceWish.Off)
                         },
+                        colors = solstoneSwitchColors(),
                     )
                 }
             }

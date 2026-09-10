@@ -40,8 +40,12 @@ fun renderPhoneObserverWidget(
     val audio = readModel?.sources?.singleOrNull { it.sourceId == "audio" }
     val audioWish = audio?.wish
     val observer = when (startOutcome) {
-        PhoneWidgetStartOutcome.None -> when (audioWish) {
-            SourceWish.Off -> ObserverStatus(SourceState.OFF, ReasonCode.NONE)
+        PhoneWidgetStartOutcome.None -> when {
+            // ⚠ Ordered before the wish check: an unexpressed source resolves its wish to `Off`, so
+            // keying on the wish alone would render it as an owner's choice to be off.
+            audio?.wishExpressed == false ->
+                ObserverStatus(SourceState.READY_TO_SET_UP, ReasonCode.NONE)
+            audioWish == SourceWish.Off -> ObserverStatus(SourceState.OFF, ReasonCode.NONE)
             else -> readModel?.observer ?: ObserverStatus(SourceState.OFF, ReasonCode.NONE)
         }
         is PhoneWidgetStartOutcome.Refused -> ObserverStatus(SourceState.OFF, startOutcome.reason)
@@ -54,7 +58,19 @@ fun renderPhoneObserverWidget(
         else -> observer
     }
     val audioChecked = observer.state == SourceState.ON && audioState == SourceState.ON
-    val needsAttention = !audioChecked
+    // 🔴 A FAULT, not merely "not running" — this was `!audioChecked`, which coloured the widget
+    // for attention whenever audio was anything but on. A source the owner never set up would have
+    // rendered `ready to set up` in attention colours; so would one they deliberately switched off,
+    // and so would one transitionally setting up. ✅ A refusal is still a fault even though it
+    // presents as `off`, which is why the reason is the second half of the test and not just the
+    // state word.
+    // ⚠ `readModel == null` first, and it is the same distinction the wish store draws between
+    // Unreadable and Absent: we could not read the sources, which is not the same as reading them
+    // and finding nothing wrong. ⛔ Rendering "fine" over an unknown is the confident wrongness the
+    // honest-state rules exist to prevent.
+    val needsAttention = readModel == null ||
+        presentation.state == SourceState.NEEDS_ATTENTION ||
+        presentation.reason != ReasonCode.NONE
     return PhoneObserverWidgetModel(
         audioChecked = audioChecked,
         audioWishOn = audioWishOn,

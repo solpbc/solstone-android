@@ -58,7 +58,7 @@ class PhoneAppLinksRuntimeTest {
     @Test
     fun coldPairAppLinkWithGarbageFragmentShowsInvalidWithoutCamera() {
         ActivityScenario.launch<ObserverActivity>(explicitView("https://go.solstone.app/p#garbage")).use { scenario ->
-            waitForText(scenario, "Invalid pair link")
+            waitForText(scenario, INVALID_PAIR_LINK)
             scenario.onActivity { activity ->
                 assertFalse(allViews(activity).any { it.javaClass.simpleName.contains("QrPreviewView") })
             }
@@ -68,7 +68,7 @@ class PhoneAppLinksRuntimeTest {
     @Test
     fun explicitlyDeliveredWrongPathShowsInvalidLink() {
         ActivityScenario.launch<ObserverActivity>(explicitView("https://go.solstone.app/not-p#garbage")).use { scenario ->
-            waitForText(scenario, "Invalid pair link")
+            waitForText(scenario, INVALID_PAIR_LINK)
         }
     }
 
@@ -85,7 +85,7 @@ class PhoneAppLinksRuntimeTest {
                 activity.startActivity(explicitView("https://go.solstone.app/p#garbage"))
             }
 
-            waitForText(scenario, "Invalid pair link")
+            waitForText(scenario, INVALID_PAIR_LINK)
             scenario.onActivity { activity ->
                 assertEquals(System.identityHashCode(original), System.identityHashCode(activity))
                 assertEquals(1, createdCount.get())
@@ -100,13 +100,13 @@ class PhoneAppLinksRuntimeTest {
     @Test
     fun recreateDoesNotConsumeSurvivingViewIntentAgain() {
         ActivityScenario.launch<ObserverActivity>(explicitView("https://go.solstone.app/p#garbage")).use { scenario ->
-            waitForText(scenario, "Invalid pair link")
+            waitForText(scenario, INVALID_PAIR_LINK)
 
             scenario.recreate()
 
             waitForText(scenario, "Permissions")
             scenario.onActivity { activity ->
-                assertFalse(texts(activity).contains("Invalid pair link"))
+                assertFalse(texts(activity).any { it.startsWith("that pairing link isn't one") })
             }
         }
     }
@@ -140,6 +140,17 @@ class PhoneAppLinksRuntimeTest {
             override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
             override fun onActivityDestroyed(activity: Activity) = Unit
         }
+
+    private companion object {
+        /**
+         * ⚠ The WHOLE message, because [waitForText] matches a rendered node exactly. A first-clause
+         * match would have gone green against any message that merely starts the same way, and this
+         * screen's whole point is that the second clause names the next step.
+         */
+        const val INVALID_PAIR_LINK =
+            "that pairing link isn't one the solstone app can read. show a new pairing code on " +
+                "your journal and try again."
+    }
 
     private fun waitForText(scenario: ActivityScenario<ObserverActivity>, expected: String) {
         waitUntil(expected) {

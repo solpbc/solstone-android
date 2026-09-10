@@ -18,6 +18,7 @@ class HarnessFactsAgreementTest {
         // This covers display inputs, not reducer-reachable state and reason pairs.
         val displayCoverage = mapOf(
             SourceState.OFF to setOf(ReasonCode.NONE),
+            SourceState.READY_TO_SET_UP to setOf(ReasonCode.NONE),
             SourceState.SETTING_UP to setOf(ReasonCode.NONE),
             SourceState.ON to setOf(ReasonCode.NONE),
             SourceState.PAUSED to setOf(ReasonCode.NONE),
@@ -32,6 +33,7 @@ class HarnessFactsAgreementTest {
     fun reducerHasWitnessForEveryShellState() {
         val facts = mapOf(
             SourceState.OFF to healthy().copy(desiredOn = false),
+            SourceState.READY_TO_SET_UP to healthy().copy(wishExpressed = false),
             SourceState.SETTING_UP to healthy().copy(engineRunning = false, engineStartIssued = false),
             SourceState.ON to healthy(),
             SourceState.PAUSED to healthy().copy(silenced = SilencedFact.SILENCED),

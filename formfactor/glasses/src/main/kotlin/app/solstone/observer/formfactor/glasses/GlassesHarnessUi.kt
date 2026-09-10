@@ -51,7 +51,7 @@ class GlassesHarnessUi(
             button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
-            button("Local cache") { showLocalCache() }
+            button("Local storage") { showLocalCache() }
         }
     }
 
@@ -146,13 +146,13 @@ class GlassesHarnessUi(
         asyncLoad.load(journalCacheState) { state ->
             content.removeAllViews()
             when (state) {
-                LoadState.Loading -> content.text("Loading local cache…")
+                LoadState.Loading -> content.text("checking what's on this device…")
                 is LoadState.Loaded -> {
                     content.renderJournalCache(state.value)
                     onJournalCacheLoadComplete()
                 }
                 is LoadState.Failed -> {
-                    content.text("Couldn't load local cache")
+                    content.text("couldn't check what's on this device.")
                     onJournalCacheLoadComplete()
                 }
             }
@@ -162,13 +162,13 @@ class GlassesHarnessUi(
     private fun LinearLayout.renderJournalCache(state: HarnessJournalCacheState) {
         text(journalCacheText(state))
         state.limitChoicesBytes.forEach { choice ->
-            val current = if (choice == state.configuredLimitBytes) " (current)" else ""
-            button("Use ${decimalBytes(choice)}$current") {
+            val current = if (choice == state.configuredLimitBytes) " (your limit now)" else ""
+            button("use ${decimalBytes(choice)}$current") {
                 asyncLoad.load({ saveJournalCacheLimit(choice) }) { loadState ->
                     when (loadState) {
                         LoadState.Loading -> {
                             removeAllViews()
-                            text("Saving local cache limit…")
+                            text("saving your limit…")
                         }
                         is LoadState.Loaded -> {
                             removeAllViews()
@@ -177,7 +177,7 @@ class GlassesHarnessUi(
                         }
                         is LoadState.Failed -> {
                             removeAllViews()
-                            text("Couldn't save local cache limit. Previous limit kept.")
+                            text("couldn't save that limit. your previous limit is still in place.")
                             onJournalCacheLoadComplete()
                         }
                     }
@@ -298,6 +298,12 @@ class GlassesHarnessUi(
     private fun LinearLayout.button(label: String, onClick: () -> Unit): Button =
         Button(context).also {
             it.text = label
+            // 🔴 The platform button style sets `textAllCaps`, so every label on these screens
+            // rendered as `USE 4 GB (YOUR LIMIT NOW)` — shouting, in an app whose entire register is
+            // lowercase. ⚠ Invisible in source and invisible to a string test: the strings were
+            // already lowercase and the widget uppercased them at draw time. Only looking at the
+            // screen finds this one.
+            it.isAllCaps = false
             it.setOnClickListener { onClick() }
             addView(it)
         }
