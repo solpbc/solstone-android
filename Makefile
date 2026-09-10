@@ -4,6 +4,7 @@ GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
 ANDROID_REMOTE_HOST ?=
 GATE_SOURCE_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null)
+export GATE_SOURCE_COMMIT
 # Dedicated remote build tree for `sync-android-host` (which rsyncs with --delete).
 # Kept separate from any working clone at ~/projects/solstone-android so the
 # destructive sync can never clobber a checkout in use on the build host.
@@ -68,7 +69,10 @@ require-android-remote-host:
 	@test -n "$(ANDROID_REMOTE_HOST)" || (echo "Set ANDROID_REMOTE_HOST=<host>" >&2; exit 2)
 
 require-gate-source-commit:
-	@test -n "$(GATE_SOURCE_COMMIT)" || (echo "Set GATE_SOURCE_COMMIT to a full commit SHA or run from a git checkout" >&2; exit 2)
+	@test -n "$$GATE_SOURCE_COMMIT" || (echo "Set GATE_SOURCE_COMMIT to a full commit SHA or run from a git checkout" >&2; exit 2)
+	@test "$$GATE_SOURCE_COMMIT" = "$$(git rev-parse HEAD)" || { echo "GATE_SOURCE_COMMIT must match the caller's HEAD" >&2; exit 2; }
+	@status="$$(git status --porcelain --untracked-files=normal)" || { echo "Could not inspect the caller's source tree" >&2; exit 2; }; \
+		test -z "$$status" || { echo "Refusing to attest a dirty source tree" >&2; printf '%s\n' "$$status" >&2; exit 2; }
 
 sync-android-host: require-android-remote-host
 	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)'
