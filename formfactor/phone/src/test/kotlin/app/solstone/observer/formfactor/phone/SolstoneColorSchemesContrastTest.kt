@@ -10,6 +10,35 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class SolstoneColorSchemesContrastTest {
+    /**
+     * Every surface-container role has to stay inside its own polarity.
+     *
+     * 🔴 `darkHigh.surfaceContainerHighest` was `surfaceCream` — a light cream at the top of a dark
+     * ladder. `onSurface` there is white, so any panel filled with that role would have rendered
+     * white text on cream **in the one mode a low-vision owner turns on deliberately**. It had no
+     * consumer in the shell, so nothing rendered it and nothing caught it; the first composable to
+     * reach for the role tripped straight over it.
+     *
+     * ⚠ The rule is `onSurface` legibility rather than a hue check, because that is what a fill role
+     * actually owes: whatever the palette does, text on this surface has to be readable.
+     */
+    @Test
+    fun everySurfaceContainerRoleCarriesOnSurfaceText() {
+        val ladder = ColorSchemeRoles.filter { it.startsWith("surfaceContainer") } +
+            listOf("surface", "surfaceBright", "surfaceDim", "surfaceVariant")
+        assertTrue(ladder.size >= 8, "the ladder shrank: $ladder")
+        for (scheme in allSolstoneSchemes()) {
+            for (role in ladder) {
+                val ratio = contrastRatio(scheme.onSurface, scheme.colorForRole(role))
+                assertTrue(ratio >= 4.5, "onSurface on $role is $ratio")
+            }
+        }
+        // ✅ Positive control: the value that was there fails this, so the rule is measuring.
+        assertTrue(
+            contrastRatio(SolstoneColors.inkOnDark, SolstoneColors.surfaceCream) < 4.5,
+        )
+    }
+
     @Test
     fun textBearingRolesMeetAa() {
         for (scheme in allSolstoneSchemes()) {

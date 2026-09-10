@@ -28,6 +28,7 @@ import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceWish
+import app.solstone.platform.fgs.shouldAskForNotifications
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.observer.scaffold.ObserverAppContainer
@@ -206,7 +207,14 @@ class PhoneShellActivity : ComponentActivity() {
         val missing = container.sources.requiredPermissions(sourceId).any {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing) requestSourcePermissions(sourceId)
+        if (missing) {
+            requestSourcePermissions(sourceId)
+            // ⛔ And nothing else here. Notifications wait for the result, so the owner sees one
+            // dialog at a time — stacking them is what piece one of this arc removed.
+            return
+        }
+        // Already granted, so no dialog is coming and this is the moment intake begins.
+        requestNotificationsOnce()
     }
 
     /**
@@ -217,9 +225,13 @@ class PhoneShellActivity : ComponentActivity() {
      * `notifications` row is the durable route back.
      */
     private fun requestNotificationsOnce() {
-        if (Build.VERSION.SDK_INT < 33) return
-        if (notificationsRequested) return
-        if (container.controller.refreshPermissions().notificationsGranted) return
+        val ask = shouldAskForNotifications(
+            sdkInt = Build.VERSION.SDK_INT,
+            anySourceWishedOn = container.sources.snapshot().sources.any { it.wish == SourceWish.On },
+            alreadyAsked = notificationsRequested,
+            alreadyGranted = container.controller.refreshPermissions().notificationsGranted,
+        )
+        if (!ask) return
         notificationsRequested = true
         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
     }
@@ -250,6 +262,10 @@ class PhoneShellActivity : ComponentActivity() {
             sourcesViewModel.refresh()
             statusViewModel.refresh()
         }
+        // ⚠ Its own moment, after the source's dialog has closed rather than beside it. Gated on a
+        // source actually being wished on, so a denial of the source permission does not lead
+        // straight into a second prompt about notifying the owner of nothing.
+        if (requestCode == PERMISSION_REQUEST) requestNotificationsOnce()
     }
 
     private class PhoneShellViewModelFactory(

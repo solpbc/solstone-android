@@ -13,6 +13,33 @@ import kotlin.test.assertTrue
 
 class FgsLogicTest {
     @Test
+    fun theNotificationPromptWaitsForTheOwnerToAskForIntake() {
+        // 🔴 The defect: on a fresh install this dialog was the owner's FIRST FRAME, before the app
+        // had drawn anything and before anything was being taken in.
+        assertFalse(
+            shouldAskForNotifications(
+                sdkInt = 34,
+                anySourceWishedOn = false,
+                alreadyAsked = false,
+                alreadyGranted = false,
+            ),
+        )
+        // ✅ And the moment it IS right: the owner has turned a source on.
+        assertTrue(
+            shouldAskForNotifications(
+                sdkInt = 34,
+                anySourceWishedOn = true,
+                alreadyAsked = false,
+                alreadyGranted = false,
+            ),
+        )
+        // Never twice, never when it is already granted, never below the runtime permission.
+        assertFalse(shouldAskForNotifications(34, anySourceWishedOn = true, alreadyAsked = true, alreadyGranted = false))
+        assertFalse(shouldAskForNotifications(34, anySourceWishedOn = true, alreadyAsked = false, alreadyGranted = true))
+        assertFalse(shouldAskForNotifications(32, anySourceWishedOn = true, alreadyAsked = false, alreadyGranted = false))
+    }
+
+    @Test
     fun readyToSetUpIsNotAFault() {
         // ⛔ `state != ON` answered true here. A source the owner has never asked for is not a
         // fault, and the notification this drives would have said so.

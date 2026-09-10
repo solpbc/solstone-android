@@ -174,6 +174,96 @@ class ExpressedWishStoreTest {
         assertEquals(ReasonCode.PERMISSION_REVOKED, audio.reason)
     }
 
+    /**
+     * 🔴 **A permission granted OUTSIDE the app, in system Settings.**
+     *
+     * § 5.1 and the founder's ruling both make an affirmative grant an expression, and this is the
+     * grant no in-app callback ever sees. The backfill used to run once, at construction, so this
+     * owner's source read `ready to set up` forever with the permission sitting granted — the state
+     * word saying *"you haven't asked for this"* to someone who just did.
+     *
+     * ⚠ It also fixes an instrumented failure with the same root cause and a different trigger: a
+     * test process whose permissions are granted by a rule that runs AFTER the application object
+     * is built. Same defect, and the device gate found it before an owner did.
+     */
+    @Test
+    fun aPermissionGrantedAfterConstructionIsExpressedAndActuatedOnTheNextRefresh() {
+        val store = InMemorySourceWishStore()
+        val fakes = listOf("audio", "location", "camera").associateWith { FakeSourceEngine(conditionValue = running()) }
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+            "camera" to CaptureForegroundType.CAMERA,
+        )
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = SourceRegistry(
+            f.controller,
+            fakes.map { (id, engine) ->
+                SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
+            },
+            MainPoster { it() },
+            store,
+        )
+        // The pipeline has handed each source its sink; nothing is wished on, so nothing started.
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        assertFalse(registry.isWishExpressed("camera"))
+        assertEquals(0, fakes.getValue("camera").startCalls)
+
+        // The owner goes to Settings and allows the camera. No in-app callback fires for this.
+        f.permissions.status = onlyCameraGranted()
+        f.controller.refreshPermissions()
+
+        assertTrue(registry.isWishExpressed("camera"), "an affirmative grant is an expression")
+        assertEquals(SourceWish.On, registry.snapshot().sources.single { it.sourceId == "camera" }.wish)
+        // ⛔ Marking it on without starting it is the halves-apart failure the whole rule exists to
+        // prevent: the label would say on and nothing would be taken in.
+        assertEquals(1, fakes.getValue("camera").startCalls, "expressed AND running")
+        assertEquals(mapOf("camera" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
+
+        // ⛔ And only that one. The two the owner did not touch are untouched.
+        assertFalse(registry.isWishExpressed("audio"))
+        assertFalse(registry.isWishExpressed("location"))
+        assertEquals(0, fakes.getValue("audio").startCalls)
+        assertEquals(0, fakes.getValue("location").startCalls)
+
+        // ✅ Idempotent: a second refresh over the same state writes nothing and starts nothing new.
+        f.controller.refreshPermissions()
+        assertEquals(1, fakes.getValue("camera").startCalls)
+        assertEquals(mapOf("camera" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
+    }
+
+    @Test
+    fun aRefreshNeverWritesOverAnExplicitOffOrAnUnreadableStore() {
+        val chose = InMemorySourceWishStore(mapOf("camera" to SourceWish.Off))
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = registryOn(f, chose)
+        f.permissions.status = onlyCameraGranted()
+        f.controller.refreshPermissions()
+        assertEquals(SourceWish.Off, (chose.read() as WishStoreState.Loaded).wishes["camera"], "a deliberate Off survives")
+        assertEquals(SourceWish.Off, registry.snapshot().sources.single { it.sourceId == "camera" }.wish)
+
+        val unreadable = UnreadableWishStore()
+        val g = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        g.desiredStore.setDesiredOn(true)
+        registryOn(g, unreadable)
+        g.permissions.status = onlyCameraGranted()
+        g.controller.refreshPermissions()
+        assertTrue(unreadable.writes.isEmpty(), "⛔ never write over a store we could not read: ${unreadable.writes}")
+    }
+
+    private fun registryOn(f: Fixture, store: SourceWishStore) = SourceRegistry(
+        f.controller,
+        listOf(
+            reg("audio", CaptureForegroundType.MICROPHONE),
+            reg("location", CaptureForegroundType.LOCATION),
+            reg("camera", CaptureForegroundType.CAMERA),
+        ),
+        MainPoster { it() },
+        store,
+    )
+
     private class UnreadableWishStore : SourceWishStore {
         val writes = mutableListOf<Map<String, SourceWish>>()
         override fun read(): WishStoreState = WishStoreState.Unreadable

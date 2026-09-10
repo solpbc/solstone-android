@@ -100,6 +100,9 @@ class HarnessController(
 
     fun refreshPermissions(): PermissionStatus {
         permissionStatus = permissionStatusReader.read()
+        // ⚠ Ordered after the field is set, so a listener that reads back through `sourcesReader`
+        // sees the new status rather than the one being replaced.
+        sourcesReader?.onPermissionStatus(permissionStatus)
         return permissionStatus
     }
 

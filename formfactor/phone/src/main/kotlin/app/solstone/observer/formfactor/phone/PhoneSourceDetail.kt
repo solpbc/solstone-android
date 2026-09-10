@@ -272,6 +272,7 @@ private fun SourceDetailTemplate(
                             onToggle(if (checked) SourceWish.On else SourceWish.Off)
                         },
                         modifier = Modifier.testTag(SOURCE_SWITCH_TEST_TAG),
+                        colors = solstoneSwitchColors(),
                     )
                 }
             }
@@ -366,6 +367,7 @@ private fun HomeTileControl(sourceId: String, homeTileStore: PhoneHomeTileStore)
                     homeTileStore.setHasTile(sourceId, checked)
                 },
                 modifier = Modifier.testTag(HOME_TILE_CONTROL_TEST_TAG),
+                colors = solstoneSwitchColors(),
             )
         }
     }

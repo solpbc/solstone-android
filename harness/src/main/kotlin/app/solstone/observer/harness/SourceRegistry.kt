@@ -40,6 +40,19 @@ interface SourcesReader {
      * the fail-safe direction, so a fake that has no opinion cannot accidentally over-request.
      */
     fun requiredPermissions(sourceId: String): List<String> = emptyList()
+
+    /**
+     * A fresh read of the runtime permission state.
+     *
+     * 🔴 **The migration backfill has to run HERE and not only at construction, and the reason is a
+     * real owner rather than a test.** A capture permission granted **outside the app, in system
+     * Settings**, is an affirmative grant — the founder's ruling makes that an expressed wish — but
+     * nothing reconstructs the registry when the owner comes back, so a construction-only backfill
+     * leaves that source reading `ready to set up` forever with the permission sitting granted.
+     *
+     * ⚠ Default no-op, so a fake that models only reads is unaffected.
+     */
+    fun onPermissionStatus(status: PermissionStatus) = Unit
 }
 
 class SourceRegistry(
@@ -155,22 +168,57 @@ class SourceRegistry(
      * exist, so it is idempotent, and if the permission read is not yet real it simply writes
      * nothing and a later launch retries. ⛔ It never writes over an entry the owner already has.
      */
+    /**
+     * ⛔ Self-fetches the permission status, so it is only safe from [init].
+     *
+     * Calling it from a permission-refresh hook would re-enter `refreshPermissions`, which is what
+     * calls the hook. [backfill] is the reentrant-safe form.
+     */
     private fun backfillAlreadyRunningSources() {
-        if (storeUnreadable) return
         val status = runCatching { controller.refreshPermissions() }.getOrNull() ?: return
-        synchronized(lock) {
+        backfill(status)
+    }
+
+    /**
+     * Mark every source with a live capture permission and no store entry as expressed-on.
+     *
+     * ⚠ **Idempotent and one-directional by construction:** it only ever ADDS an `On` for a source
+     * that has no entry at all, so an explicit `Off` the owner chose survives every run, and a
+     * second run over the same state writes nothing.
+     *
+     * Returns the ids it newly expressed, because a caller after construction has to actuate them —
+     * ⛔ marking a source on without starting it is the halves-apart failure this whole rule exists
+     * to prevent.
+     */
+    private fun backfill(status: PermissionStatus): List<BoundSource> {
+        // ⛔ Never write over a store we could not read: it tells us nothing about what the owner
+        // chose, so every id in it would look missing.
+        if (storeUnreadable) return emptyList()
+        return synchronized(lock) {
             val missing = bound.filter { it.sourceId !in expressed }
                 .filter { b ->
                     val type = b.registration.captureForegroundType ?: return@filter false
                     capturePermissionGranted(type, status)
                 }
-            if (missing.isEmpty()) return
+            if (missing.isEmpty()) return@synchronized emptyList()
             missing.forEach {
                 persisted[it.sourceId] = SourceWish.On
                 expressed.add(it.sourceId)
+                wishes[it.sourceId] = SourceWish.On
             }
             wishStore.saveAll(persisted.toMap())
+            missing
         }
+    }
+
+    override fun onPermissionStatus(status: PermissionStatus) {
+        val newlyExpressed = backfill(status)
+        if (newlyExpressed.isEmpty()) return
+        // ⚠ `actuate()` is a no-op until the pipeline hands this source a sink, so this cannot start
+        // capture before the foreground service is up. Once it is, `BoundSource.start(sink)` starts
+        // whatever is wished on. Both orders end in the same place.
+        newlyExpressed.forEach { it.actuate() }
+        notifyListeners()
     }
 
     /** Whether the owner has expressed a wish for this source. */

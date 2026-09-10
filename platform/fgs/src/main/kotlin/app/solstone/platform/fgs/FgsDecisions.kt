@@ -137,6 +137,34 @@ fun needsAttentionForState(state: SourceState): Boolean =
         -> true
     }
 
+/**
+ * Whether this is the moment to ask for the notification permission.
+ *
+ * 🔴 **On a fresh install the dialog was the owner's FIRST FRAME.** `onResume` posted a runnable
+ * that called `ensureObserving()` and then asked, so the prompt arrived before the app had drawn
+ * anything the owner could recognise — and, since a never-set-up source is not actuated, before
+ * anything was being taken in at all. It was asking to be allowed to post an ongoing notification
+ * about intake that had not started and that the owner had not requested.
+ *
+ * ✅ The gate is [anySourceWishedOn], because that is what *"the owner has asked for intake"*
+ * means now. ⛔ Not the observer's own state word: on a fresh install the observer reduces to
+ * `setting up` (desired-on with nothing started), so keying on it would fire the dialog anyway.
+ *
+ * ⚠ Denial is never re-asked and never blocks: capture runs, the system privacy indicator still
+ * shows, and what is lost is the shade surface. The `notifications` shelf row is the route back.
+ */
+fun shouldAskForNotifications(
+    sdkInt: Int,
+    anySourceWishedOn: Boolean,
+    alreadyAsked: Boolean,
+    alreadyGranted: Boolean,
+): Boolean {
+    if (sdkInt < 33) return false
+    if (alreadyAsked) return false
+    if (alreadyGranted) return false
+    return anySourceWishedOn
+}
+
 fun shouldOfferStartAction(isRunning: Boolean, hasEnabledSources: Boolean = true): Boolean =
     !isRunning && hasEnabledSources
 

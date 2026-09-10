@@ -143,7 +143,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
-                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("Previous limit kept") })
+                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("your previous limit is still in place.") })
             }
         }
     }
@@ -153,7 +153,7 @@ class PhoneJournalCacheScreenRuntimeTest {
         assertTrue(texts.any { it.contains("in use:") })
         assertTrue(texts.any { it.contains("your limit: 4 GB") })
         JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { choice ->
-            assertTrue(texts.any { it.contains("Use ${decimalBytes(choice)}") })
+            assertTrue(texts.any { it.contains("use ${decimalBytes(choice)}") })
         }
     }
 

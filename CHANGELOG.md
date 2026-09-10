@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- a source you haven't set up yet now says so. it reads `ready to set up`, takes nothing in, and doesn't count as something needing your attention — until you ask for it, the solstone app doesn't assume you did.
+
+### Changed
+- the solstone app now asks for one permission at a time, from the source you're setting up. the camera screen asks for the camera and nothing else, instead of four system prompts from one tap. allowing a source's permission is what turns that source on, so there's no second step to go find.
+- notifications now get their own moment, the first time intake starts, and are only asked for once. saying no costs you the notification and nothing else — intake keeps running, and you can turn notifications on later from settings.
+- pairing now tells you what happened and what to do next. every failure names a step you can take, in the same words the solstone app uses on your other devices.
+- the local storage screen now reads like the rest of the app: how much space is in use, how much your device has left, the limit you chose, and what the solstone app kept in place rather than remove — with the reason it kept it.
+- the solstone app now paints its own first frame, so opening it no longer flashes a white screen before the app appears.
+
+### Fixed
+- `setting up` no longer says it's connecting to your journal when no journal is paired yet. it says what's actually true and points you at pairing.
+- `intake was stopped by the system` no longer appears for intake that never started. on a fresh install, while you were still working through the permission prompts, the solstone app read the absence of a running service as one that had been killed.
+- `start intake again` no longer appears in the middle of setting up, for the same reason.
+- turning a source on now asks for its permission in the same tap. before, saying yes landed you on `needs attention: permissions needed` with no prompt in between — a fault message arriving as the direct result of asking for something.
+- backing out of `connect a journal` or `manage local storage` now returns you to the app instead of an internal diagnostics menu.
+- the home-screen audio widget no longer uses attention colours for a source that is simply off, or one you haven't set up yet. it does use them when the solstone app can't read its own state, which it previously reported as fine.
+- one screen still said `sol`, a name the app no longer uses.
+
 ## [2.0.0] - 2026-09-08
 
 ### Added
