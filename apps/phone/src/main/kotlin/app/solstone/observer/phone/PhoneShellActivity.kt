@@ -242,9 +242,9 @@ class PhoneShellActivity : ComponentActivity() {
         super.onResume()
         // ⚠ A capture permission the owner allowed in system Settings is an affirmative grant, and
         // no in-app callback fires for it. Returning here is the event, so this is where it is
-        // observed. ⛔ Not inside `refreshPermissions()`: that is a query a dozen internal paths
-        // call, on a single shared background thread.
-        container.sources.onPermissionStatus(container.controller.refreshPermissions())
+        // observed. ⛔ Not inside `refreshPermissions()` — that is a query a dozen internal paths
+        // call — and ⛔ not inline: it writes a file and can start an engine.
+        container.onOwnerResumed()
         statusViewModel.onHostResumed()
         captureOwnerToken = container.captureAuthority.acquire()
         mainHandler.post(startWhenReady)

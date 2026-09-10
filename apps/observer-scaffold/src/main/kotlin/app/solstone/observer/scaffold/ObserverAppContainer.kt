@@ -204,6 +204,26 @@ class ObserverAppContainer(
         database.close()
     }
 
+    /**
+     * The owner has come back to the app.
+     *
+     * 🔴 **Off the main thread, and that is not an optimisation.** Doing it inline in `onResume`
+     * meant every activity launch could express wishes, **write the wish-store file** and **start
+     * capture engines** synchronously on the main thread — real jank at every launch, and it
+     * destabilised the instrumented phone-shell suite so badly that three consecutive runs failed
+     * in three *different* places. A different failure set each run is contention, not a broken
+     * assertion.
+     *
+     * ⚠ The work itself is what the founder-ruled grant-is-an-expression rule owes an owner who
+     * allowed a capture permission in system Settings: no in-app callback fires for that, so
+     * returning here is the only place it can be observed.
+     */
+    fun onOwnerResumed() {
+        background.execute {
+            runCatching { sources.onPermissionStatus(controller.refreshPermissions()) }
+        }
+    }
+
     override fun rehydrateInBackground() {
         background.execute {
             runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }

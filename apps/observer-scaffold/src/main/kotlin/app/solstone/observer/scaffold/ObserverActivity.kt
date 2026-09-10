@@ -65,7 +65,7 @@ class ObserverActivity : Activity() {
         captureOwnerToken = container.captureAuthority.acquire()
         // ⚠ Same reason as the phone shell: a permission the owner allowed in system Settings has
         // no in-app callback, and returning here is the event.
-        container.sources.onPermissionStatus(container.controller.refreshPermissions())
+        container.onOwnerResumed()
         harnessUi.refreshPermissions()
     }
 
