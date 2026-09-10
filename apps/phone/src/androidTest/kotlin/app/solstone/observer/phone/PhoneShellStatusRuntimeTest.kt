@@ -154,12 +154,21 @@ class PhoneShellStatusRuntimeTest {
     fun statusActionIsAbsentWhileSupplierIsLatchBlocked() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
+        // ⚠ **Prepare the container BEFORE installing a supplier that blocks.**
+        // `ObserverAppContainer` runs everything on ONE `newSingleThreadExecutor`, and
+        // `recoveryCompleted` is set from a task on it. A blocking status read — this one holds the
+        // thread for up to 10s — starves whatever is queued behind it, so with the override
+        // installed first `waitForRecovery` inside `preparedContainer()` can time out on work that
+        // has nothing to do with what this test is asserting. ⛔ The override is process-wide and
+        // this suite shares one container, so the queue it lands in depends on which tests ran
+        // before: the failure is order-dependent and passes in isolation, which is the worst shape
+        // to debug from. Nothing about the assertion needs the supplier blocked during setup.
+        preparedContainer()
         PhoneStatusSupplier.override = {
             entered.countDown()
             check(release.await(10, TimeUnit.SECONDS)) { "status supplier was not released" }
             HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList())
         }
-        preparedContainer()
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             try {
