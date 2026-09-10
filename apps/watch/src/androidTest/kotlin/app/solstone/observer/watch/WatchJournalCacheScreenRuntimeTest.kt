@@ -65,7 +65,7 @@ class WatchJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Use ${decimalBytes(selected)}")
+                clickButton(activity.findViewById(android.R.id.content), "use ${decimalBytes(selected)}")
                 assertEquals("durable save must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -89,7 +89,7 @@ class WatchJournalCacheScreenRuntimeTest {
         assertTrue(texts.any { it.contains("in use:") })
         assertTrue(texts.any { it.contains("your limit: ${decimalBytes(DEFAULT_JOURNAL_CACHE_LIMIT_BYTES)}") })
         JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { choice ->
-            assertTrue(texts.any { it.contains("Use ${decimalBytes(choice)}") })
+            assertTrue(texts.any { it.contains("use ${decimalBytes(choice)}") })
         }
     }
 

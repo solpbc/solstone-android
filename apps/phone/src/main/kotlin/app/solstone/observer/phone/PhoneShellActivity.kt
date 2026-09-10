@@ -40,7 +40,7 @@ class PhoneShellActivity : ComponentActivity() {
     private lateinit var sourcesViewModel: SourcesViewModel
     private lateinit var statusViewModel: PhoneStatusViewModel
     private var captureOwnerToken: Long = -1L
-    private var notificationsRequested = false
+    private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val startWhenReady = object : Runnable {
         override fun run() {
@@ -222,17 +222,19 @@ class PhoneShellActivity : ComponentActivity() {
      *
      * ⚠ Denial does not break intake — capture runs and the system privacy indicator still shows;
      * what is lost is the shade surface. So this never blocks and never re-asks: the shelf's
-     * `notifications` row is the durable route back.
+     * `notifications` row is the durable route back. ⚠ *Never re-asks* is a claim about
+     * [NotificationPromptStore], not about this method — the flag it reads outlives the process,
+     * which is what makes the word true.
      */
     private fun requestNotificationsOnce() {
         val ask = shouldAskForNotifications(
             sdkInt = Build.VERSION.SDK_INT,
             anySourceWishedOn = container.sources.snapshot().sources.any { it.wish == SourceWish.On },
-            alreadyAsked = notificationsRequested,
+            alreadyAsked = notificationPrompt.wasAsked(),
             alreadyGranted = container.controller.refreshPermissions().notificationsGranted,
         )
         if (!ask) return
-        notificationsRequested = true
+        notificationPrompt.recordAsked()
         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
     }
 

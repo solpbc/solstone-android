@@ -69,7 +69,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Use ${decimalBytes(selected)}")
+                clickButton(activity.findViewById(android.R.id.content), "use ${decimalBytes(selected)}")
                 assertEquals("durable save must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -125,7 +125,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->
-                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("no safely removable uploaded data") })
+                assertTrue(collectTexts(activity.findViewById(android.R.id.content)).any { it.contains("nothing can be removed safely yet.") })
             }
 
             state = failureState(null, residuals = 1)
@@ -139,7 +139,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
                 assertTrue(texts.any { it.contains("still to remove: 1 — the solstone app will try again.") })
-                clickButton(activity.findViewById(android.R.id.content), "Use 1 GB")
+                clickButton(activity.findViewById(android.R.id.content), "use 1 GB")
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
             scenario.onActivity { activity ->

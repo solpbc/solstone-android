@@ -119,10 +119,16 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTileDotMark(
         // Crossing strokes, on the same footprint as every other mark. ⚠ Drawn as two strokes
         // rather than a glyph so it inherits `stroke`'s width and stays legible at 12dp, which is
         // what makes it distinguishable from the four filled/outlined marks above without hue.
+        //
+        // ⚠ **The arms stop half a stroke short of the footprint, because `StrokeCap.Round` adds
+        // that half back.** Drawn to the full radius the caps overhang the box by `width / 2` on
+        // each of four sides, so the plus rendered ~18% wider than every other mark and read as a
+        // heavier, button-like glyph beside the state word rather than as a status dot. Two
+        // independent reviews of the same frame called it an "add" affordance.
         TileDotMark.PLUS -> {
             val cx = size.width / 2f
             val cy = size.height / 2f
-            val r = diameter / 2f
+            val r = plusArmHalfLength(diameter, stroke.width)
             drawLine(
                 color = color,
                 start = Offset(cx - r, cy),
@@ -140,3 +146,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTileDotMark(
         }
     }
 }
+
+/**
+ * Half the length of one arm of [TileDotMark.PLUS], so the round cap lands exactly on the mark
+ * footprint rather than outside it.
+ *
+ * ⚠ Pulled out as a function purely so the invariant is testable: a `Canvas` draw cannot be
+ * inspected, and this is the arithmetic that was wrong.
+ */
+fun plusArmHalfLength(diameter: Float, strokeWidth: Float): Float =
+    (diameter / 2f - strokeWidth / 2f).coerceAtLeast(0f)

@@ -173,7 +173,9 @@ internal fun PhoneSourceDetail(
         }
         PaneNote(
             "taking a tile off home does not turn the source off. " +
-                "it just keeps home to what you actually look at.",
+                // ⚠ Was "it just keeps home to what you actually look at." — `keeps home to` is
+                // not idiomatic, and three independent reads of the same frame stumbled on it.
+                "it just keeps home to the ones you actually look at.",
         )
     }
 }

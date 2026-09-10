@@ -152,6 +152,10 @@ fun needsAttentionForState(state: SourceState): Boolean =
  *
  * ⚠ Denial is never re-asked and never blocks: capture runs, the system privacy indicator still
  * shows, and what is lost is the shade surface. The `notifications` shelf row is the route back.
+ * ⛔ **[alreadyAsked] has to come from something that outlives the process, and the caller owes
+ * that.** This function cannot tell an in-memory flag from a persisted one, and with an in-memory
+ * one *"never re-asked"* is only true until the app is killed — which is a sentence this comment
+ * carried while being false.
  */
 fun shouldAskForNotifications(
     sdkInt: Int,

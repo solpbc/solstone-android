@@ -79,7 +79,7 @@ class GlassesJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             GlassesHarnessRuntime.hooks?.onJournalCacheLoadComplete = { loaded.countDown() }
             scenario.onActivity { activity ->
-                clickButton(activity.findViewById(android.R.id.content), "Use ${decimalBytes(selected)}")
+                clickButton(activity.findViewById(android.R.id.content), "use ${decimalBytes(selected)}")
                 assertEquals("durable save must not finish inline on main", 1L, loaded.count)
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))
@@ -103,7 +103,7 @@ class GlassesJournalCacheScreenRuntimeTest {
         assertTrue(texts.any { it.contains("in use:") })
         assertTrue(texts.any { it.contains("your limit: 4 GB") })
         JOURNAL_CACHE_LIMIT_CHOICES_BYTES.forEach { choice ->
-            assertTrue(texts.any { it.contains("Use ${decimalBytes(choice)}") })
+            assertTrue(texts.any { it.contains("use ${decimalBytes(choice)}") })
         }
     }
 
