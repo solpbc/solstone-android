@@ -181,16 +181,21 @@ class PhoneSourceDetailTest {
         var grants = 0
         var connects = 0
         var managesStorage = 0
+        // 🔴 The source id, not just the count. A grant that carries no attribution cannot persist
+        // the wish of the source the owner acted from, which is the whole reason this control asks
+        // for one source's permission instead of the app's.
+        var grantedFor: String? = null
         render(
             loadState = loaded(source("audio", ReasonCode.PERMISSION_REVOKED)),
             onStartObserving = { starts += 1 },
-            onGrantPermissions = { grants += 1 },
+            onGrantPermissions = { grants += 1; grantedFor = it },
             onConnectJournal = { connects += 1 },
             onManageLocalStorage = { managesStorage += 1 },
         )
 
         composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsDisplayed().assertIsEnabled().performClick()
 
+        assertEquals("audio", grantedFor)
         assertEquals(1, grants)
         assertEquals(0, starts)
         assertEquals(0, connects)
@@ -282,7 +287,7 @@ class PhoneSourceDetailTest {
         sourceId: String = "audio",
         loadState: LoadState<SourcesReadModel>,
         onStartObserving: () -> Unit = {},
-        onGrantPermissions: () -> Unit = {},
+        onGrantPermissions: (String) -> Unit = {},
         onConnectJournal: () -> Unit = {},
         onManageLocalStorage: () -> Unit = {},
     ) {
@@ -329,7 +334,7 @@ private data class DetailInput(
     val sourceId: String,
     val loadState: LoadState<SourcesReadModel>,
     val onStartObserving: () -> Unit,
-    val onGrantPermissions: () -> Unit = {},
+    val onGrantPermissions: (String) -> Unit = {},
     val onConnectJournal: () -> Unit = {},
     val onManageLocalStorage: () -> Unit = {},
 )

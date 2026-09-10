@@ -112,13 +112,21 @@ class QrClassifiedFailureRuntimeTest {
                 var rendered = false
                 scenario.onActivity { activity ->
                     val texts = collectTexts(activity.findViewById(android.R.id.content))
-                    rendered = texts.contains("No network connection") || texts.any { it.contains("didn't answer") }
+                    rendered = texts.any { it.startsWith("this device isn't on a network") } ||
+                        texts.any { it.contains("couldn't reach your journal") }
                 }
                 rendered
             }
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.contains("No network connection") || texts.any { it.contains("didn't answer") })
+                assertTrue(
+                    texts.any { it.startsWith("this device isn't on a network") } ||
+                        texts.any { it.contains("couldn't reach your journal") },
+                )
+                // ⛔ Exact, on the success word. The retired capitalised `Paired` no longer exists,
+                // so asserting THAT would pass against a screen reading `paired`; and a substring
+                // match would trip over `not paired`.
+                assertFalse(texts.contains("paired"))
                 assertFalse(texts.contains("Paired"))
             }
         }

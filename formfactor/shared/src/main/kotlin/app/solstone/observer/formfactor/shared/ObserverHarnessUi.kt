@@ -77,7 +77,7 @@ class ObserverHarnessUi(
             button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
-            button("Local cache") { showLocalCache() }
+            button("Local storage") { showLocalCache() }
         }
     }
 
@@ -120,16 +120,19 @@ class ObserverHarnessUi(
 
     fun showPairLink(uri: String?) {
         setScreen {
-            val status = text("Pairing…")
+            val status = text("pairing…")
             backButton()
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
-                    LoadState.Loading -> status.text = "Pairing…"
+                    LoadState.Loading -> status.text = "pairing…"
                     is LoadState.Loaded -> when (val result = state.value) {
                         PairLinkDispatchResult.NoLink -> leave()
                         else -> status.text = requireNotNull(pairLinkDispatchText(result))
                     }
-                    is LoadState.Failed -> status.text = "Pairing failed"
+                    // ⚠ The third copy of `Pairing failed`, and the reason this line reads from
+                    // the renderer now: two independent tables of the same words is how the first
+                    // one outlived a product name.
+                    is LoadState.Failed -> status.text = PAIR_DISPATCH_FAILED
                 }
             }
         }
@@ -225,13 +228,13 @@ class ObserverHarnessUi(
         asyncLoad.load(journalCacheState) { state ->
             content.removeAllViews()
             when (state) {
-                LoadState.Loading -> content.text("Loading local cache…")
+                LoadState.Loading -> content.text("checking what's on this device…")
                 is LoadState.Loaded -> {
                     content.renderJournalCache(state.value)
                     onJournalCacheLoadComplete()
                 }
                 is LoadState.Failed -> {
-                    content.text("Couldn't load local cache")
+                    content.text("couldn't check what's on this device.")
                     onJournalCacheLoadComplete()
                 }
             }
@@ -241,13 +244,13 @@ class ObserverHarnessUi(
     private fun LinearLayout.renderJournalCache(state: HarnessJournalCacheState) {
         text(journalCacheText(state))
         state.limitChoicesBytes.forEach { choice ->
-            val current = if (choice == state.configuredLimitBytes) " (current)" else ""
-            button("Use ${decimalBytes(choice)}$current") {
+            val current = if (choice == state.configuredLimitBytes) " (your limit now)" else ""
+            button("use ${decimalBytes(choice)}$current") {
                 asyncLoad.load({ saveJournalCacheLimit(choice) }) { loadState ->
                     when (loadState) {
                         LoadState.Loading -> {
                             removeAllViews()
-                            text("Saving local cache limit…")
+                            text("saving your limit…")
                         }
                         is LoadState.Loaded -> {
                             removeAllViews()
@@ -256,7 +259,7 @@ class ObserverHarnessUi(
                         }
                         is LoadState.Failed -> {
                             removeAllViews()
-                            text("Couldn't save local cache limit. Previous limit kept.")
+                            text("couldn't save that limit. your previous limit is still in place.")
                             onJournalCacheLoadComplete()
                         }
                     }
