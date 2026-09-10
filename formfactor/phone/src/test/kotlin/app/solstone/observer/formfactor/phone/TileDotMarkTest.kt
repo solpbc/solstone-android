@@ -23,5 +23,6 @@ class TileDotMarkTest {
         assertEquals(TileDotMark.ARC, tileDotMark(SourceState.SETTING_UP))
         assertEquals(TileDotMark.SQUARE, tileDotMark(SourceState.PAUSED))
         assertEquals(TileDotMark.DIAMOND, tileDotMark(SourceState.NEEDS_ATTENTION))
+        assertEquals(TileDotMark.PLUS, tileDotMark(SourceState.READY_TO_SET_UP))
     }
 }

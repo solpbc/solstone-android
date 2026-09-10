@@ -84,7 +84,11 @@ internal class PhoneObserverWidgetHarnessFixture {
             ),
         ),
         main = MainPoster { task -> task() },
-        wishStore = InMemorySourceWishStore(),
+        // Expressed-on: these tests are about widget rendering for a source the owner turned on,
+        // not about first run. An empty store now means "expressed nothing" and is not actuated.
+        wishStore = InMemorySourceWishStore(
+            mapOf("audio" to SourceWish.On, "location" to SourceWish.On),
+        ),
     )
 
     fun snapshot(

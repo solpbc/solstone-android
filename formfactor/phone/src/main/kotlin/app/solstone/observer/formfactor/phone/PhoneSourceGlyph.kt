@@ -59,4 +59,7 @@ fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status
             // `needs attention` with no diagnosis still owes the owner a sentence.
             ?: "the reason it couldn't reach your journal isn't clear."
     SourceState.ON -> null
+    // § 5.1 gives this state the source's own setup line, and no Android source supplies one,
+    // so none renders. ⛔ Do not author one here.
+    SourceState.READY_TO_SET_UP -> null
 }

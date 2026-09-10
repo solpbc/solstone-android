@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -29,7 +30,9 @@ fun PhoneTileDot(
     val color = when (mark) {
         TileDotMark.DISC -> onGreen
         TileDotMark.DIAMOND -> error
-        TileDotMark.RING, TileDotMark.ARC, TileDotMark.SQUARE -> onSurface
+        // PLUS joins the calm group: a source that has not been set up is neither a fault (error)
+        // nor running (onGreen). Hue groups states; shape identifies them.
+        TileDotMark.RING, TileDotMark.ARC, TileDotMark.SQUARE, TileDotMark.PLUS -> onSurface
     }
     PhoneTileDot(mark = mark, color = color, modifier = modifier)
 }
@@ -112,6 +115,28 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTileDotMark(
                 close()
             }
             drawPath(path, color)
+        }
+        // Crossing strokes, on the same footprint as every other mark. ⚠ Drawn as two strokes
+        // rather than a glyph so it inherits `stroke`'s width and stays legible at 12dp, which is
+        // what makes it distinguishable from the four filled/outlined marks above without hue.
+        TileDotMark.PLUS -> {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val r = diameter / 2f
+            drawLine(
+                color = color,
+                start = Offset(cx - r, cy),
+                end = Offset(cx + r, cy),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = color,
+                start = Offset(cx, cy - r),
+                end = Offset(cx, cy + r),
+                strokeWidth = stroke.width,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }

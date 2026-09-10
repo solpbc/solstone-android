@@ -72,6 +72,7 @@ class PhoneDeckSourceCheckTest {
     @Test
     fun sourceStateCopyMapsEveryApprovedWord() {
         assertEquals("off", sourceStateCopy(SourceState.OFF))
+        assertEquals("ready to set up", sourceStateCopy(SourceState.READY_TO_SET_UP))
         assertEquals("setting up", sourceStateCopy(SourceState.SETTING_UP))
         assertEquals("on", sourceStateCopy(SourceState.ON))
         assertEquals("paused", sourceStateCopy(SourceState.PAUSED))

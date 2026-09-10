@@ -294,8 +294,14 @@ private fun SourceDetailTemplate(
     // defect that shaped this block. The row below stays.
     PaneSectionTitle("details")
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
-        PaneRowDivider()
+        // ⛔ Omitted when the owner has expressed nothing: there is no setting to state, and the
+        // resolved `Off` behind it is the app's resolution rather than their choice. ⚠ It would also
+        // restate `right now`, which already reads `ready to set up` — the exact duplication this
+        // block was rebuilt to remove.
+        if (status.wishExpressed) {
+            PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
+            PaneRowDivider()
+        }
         PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
     }
 }

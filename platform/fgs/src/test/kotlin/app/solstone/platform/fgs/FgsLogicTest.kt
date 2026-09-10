@@ -13,6 +13,22 @@ import kotlin.test.assertTrue
 
 class FgsLogicTest {
     @Test
+    fun readyToSetUpIsNotAFault() {
+        // ⛔ `state != ON` answered true here. A source the owner has never asked for is not a
+        // fault, and the notification this drives would have said so.
+        assertFalse(needsAttentionForState(SourceState.READY_TO_SET_UP))
+        assertFalse(needsAttentionForState(SourceState.ON))
+        // ✅ Positive control: every other word still is one, so this is an exclusion rather than a
+        // predicate that stopped answering.
+        listOf(
+            SourceState.OFF,
+            SourceState.SETTING_UP,
+            SourceState.PAUSED,
+            SourceState.NEEDS_ATTENTION,
+        ).forEach { assertTrue(needsAttentionForState(it), it.name) }
+    }
+
+    @Test
     fun heartbeatRequiresExistingRecentBeat() {
         assertFalse(
             HeartbeatMonitor.isFresh(

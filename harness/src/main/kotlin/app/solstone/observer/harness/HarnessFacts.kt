@@ -79,6 +79,7 @@ fun displayFor(state: SourceState, reason: ReasonCode): String =
 private fun SourceState.label(): String =
     when (this) {
         SourceState.OFF -> "off"
+        SourceState.READY_TO_SET_UP -> "ready to set up"
         SourceState.SETTING_UP -> "setting up"
         SourceState.ON -> "on"
         SourceState.PAUSED -> "paused"

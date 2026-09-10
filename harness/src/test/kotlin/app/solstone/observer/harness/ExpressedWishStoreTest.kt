@@ -3,7 +3,10 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
+import app.solstone.core.model.SourceState
+import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.capturePermissionGranted
@@ -107,25 +110,68 @@ class ExpressedWishStoreTest {
         assertTrue(store.writes.isEmpty(), "⛔ never write over a store we could not read: ${store.writes}")
     }
 
+    /**
+     * ⚠ The permission is **denied** here, and that is the whole fixture. An unexpressed source
+     * with a *granted* permission is indistinguishable from a pre-upgrade install that has been
+     * running for months, and the backfill claims it — correctly, and asserted two tests up. This
+     * one is the other half: nothing expressed, nothing granted, so nothing to claim.
+     */
     @Test
-    fun pieceTwoChangesNoStateWordAndNoActuation() {
-        val engine = FakeSourceEngine(conditionValue = running())
+    fun anUnexpressedSourceIsReadyToSetUpAndIsNotActuated() {
         val store = InMemorySourceWishStore()
-        val f = fixture(permissionStatus = grantedPermissions(), snapshot = snapshot())
+        val fakes = listOf("audio", "location", "camera").associateWith { FakeSourceEngine(conditionValue = running()) }
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+            "camera" to CaptureForegroundType.CAMERA,
+        )
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
         f.desiredStore.setDesiredOn(true)
         val registry = SourceRegistry(
             f.controller,
-            listOf(
-                SourceRegistration("audio", engine, { it.microphoneGranted }, CaptureForegroundType.MICROPHONE),
-            ),
+            fakes.map { (id, engine) ->
+                SourceRegistration(
+                    sourceId = id,
+                    engine = engine,
+                    requiredPermissionsGranted = { capturePermissionGranted(types.getValue(id), it) },
+                    captureForegroundType = types.getValue(id),
+                )
+            },
             MainPoster { it() },
             store,
         )
 
-        val row = registry.snapshot().sources.single()
-        assertEquals(SourceWish.On, row.wish, "a source with no entry still resolves on")
-        registry.engines.single().start(app.solstone.core.sources.EmissionSink { })
-        assertEquals(1, engine.startCalls, "and still actuates")
+        // ⚠ This asserted the opposite while the store change landed on its own — a source with no
+        // entry still resolved on and still actuated, which is what made that step
+        // behaviour-preserving. Reading meaning into absence is what inverts it.
+        registry.snapshot().sources.forEach { row ->
+            assertFalse(row.wishExpressed, row.sourceId)
+            assertEquals(SourceWish.Off, row.wish, row.sourceId)
+            // 🔴 Not NEEDS_ATTENTION, and the reducer order is what decides it: a missing
+            // permission on a source the owner never asked for is not a fault. Founder, 2026-09-10:
+            // "a source whose permission the owner declined stays ready to set up".
+            assertEquals(SourceState.READY_TO_SET_UP, row.state, row.sourceId)
+            assertEquals(ReasonCode.NONE, row.reason, row.sourceId)
+        }
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        // ⚠ `registry.engines` are the BOUND wrappers, not the fakes — asking a wrapper for
+        // `startCalls` would cast to null and assert 0 against nothing. Hold the fakes.
+        fakes.forEach { (id, fake) ->
+            assertEquals(0, fake.startCalls, "⛔ never a label over a source that is quietly on: $id")
+        }
+
+        // ✅ Positive control, in the test rather than beside it: the same instrument that just read
+        // three zeros has to read a one when the owner actually asks. Without this, a fixture that
+        // never wires the engines at all passes the block above.
+        registry.setWish("audio", SourceWish.On)
+        assertEquals(1, fakes.getValue("audio").startCalls, "an expressed wish must actuate")
+        assertEquals(0, fakes.getValue("camera").startCalls, "and only that one")
+        assertEquals(0, fakes.getValue("location").startCalls, "and only that one")
+        val audio = registry.snapshot().sources.single { it.sourceId == "audio" }
+        assertTrue(audio.wishExpressed)
+        // ⚠ Denied permission on a source the owner DID ask for is the fault it always was.
+        assertEquals(SourceState.NEEDS_ATTENTION, audio.state)
+        assertEquals(ReasonCode.PERMISSION_REVOKED, audio.reason)
     }
 
     private class UnreadableWishStore : SourceWishStore {

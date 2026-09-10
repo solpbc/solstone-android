@@ -33,7 +33,6 @@ import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
-import app.solstone.platform.fgs.needsAttentionForState
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.JournalCacheEvictionService
 import app.solstone.platform.persistence.room.JournalCacheLimitStore

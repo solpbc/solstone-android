@@ -50,6 +50,7 @@ class HarnessFactsDisplayTest {
     fun everyStateWordIsTheLockedLowercaseVocabulary() {
         val expected = mapOf(
             SourceState.OFF to "off",
+            SourceState.READY_TO_SET_UP to "ready to set up",
             SourceState.SETTING_UP to "setting up",
             SourceState.ON to "on",
             SourceState.PAUSED to "paused",

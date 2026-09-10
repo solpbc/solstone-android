@@ -117,7 +117,25 @@ fun widgetRefusalReasonForStartException(className: String): ReasonCode =
         else -> ReasonCode.FOREGROUND_START_NOT_ALLOWED
     }
 
-fun needsAttentionForState(state: SourceState): Boolean = state != SourceState.ON
+/**
+ * Whether a state is a fault the owner should be told about.
+ *
+ * ⚠ **`state != ON` is not the same predicate**, and the difference only became visible when
+ * `READY_TO_SET_UP` joined the vocabulary: a source the owner has never asked for is not on and is
+ * not broken. Today's only caller passes the observer-level state, which cannot be
+ * `READY_TO_SET_UP` — `wishExpressed` is per-source and defaults true — so this excludes it against
+ * a future caller rather than a current bug. ⛔ Do not re-collapse it to an inequality; the name of
+ * this function is about a state, so it owes a correct answer for every state.
+ */
+fun needsAttentionForState(state: SourceState): Boolean =
+    when (state) {
+        SourceState.ON, SourceState.READY_TO_SET_UP -> false
+        SourceState.OFF,
+        SourceState.SETTING_UP,
+        SourceState.PAUSED,
+        SourceState.NEEDS_ATTENTION,
+        -> true
+    }
 
 fun shouldOfferStartAction(isRunning: Boolean, hasEnabledSources: Boolean = true): Boolean =
     !isRunning && hasEnabledSources

@@ -383,9 +383,20 @@ internal class FakeSourceEngine(
     }
 }
 
+/**
+ * A registry whose sources the owner has **turned on**.
+ *
+ * ⚠ The wish store defaults to an explicit `On` per registration rather than empty, because an
+ * empty store now means *the owner has expressed nothing*, and such a source is `ready to set up`
+ * and deliberately not actuated. Almost every test here is about something else and means "a source
+ * that is on", so that is what this gives them. ✅ A test that is genuinely about first run passes
+ * its own empty store.
+ */
 internal fun sourceRegistry(
     f: Fixture = fixture(),
     registrations: List<SourceRegistration>,
     main: MainPoster = MainPoster { it() },
-    wishStore: SourceWishStore = InMemorySourceWishStore(),
+    wishStore: SourceWishStore = InMemorySourceWishStore(
+        registrations.associate { it.sourceId to SourceWish.On },
+    ),
 ): SourceRegistry = SourceRegistry(f.controller, registrations, main, wishStore)

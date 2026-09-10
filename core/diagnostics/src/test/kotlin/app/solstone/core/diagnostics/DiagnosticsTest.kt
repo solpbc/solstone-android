@@ -11,6 +11,69 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class DiagnosticsTest {
+    /**
+     * 🔴 **The branch ORDER, and it is the requirement rather than a detail.**
+     *
+     * Founder, 2026-09-10: *"a source whose permission the owner declined stays `ready to set up` —
+     * never a fault, because the owner has not asked for it."* Four fault branches below carry no
+     * `desiredOn` gate — `permissionGranted`, `pairing == REVOKED`, `identityPersistenceOk`,
+     * `storageOk` — so anything short of FIRST lets one of them claim a source nobody chose and
+     * then blame the owner for it.
+     *
+     * ⚠ This has to be asserted at [reduce], not through `SourceRegistry.status()`. That path hands
+     * an unexpressed source a hand-built neutral `SourceFacts` twin in which `permissionGranted` is
+     * `true`, so every fault input is laundered before the reducer sees it and the ordering
+     * requirement is **untestable from there**. Verified: swapping the first two branches left the
+     * entire unit suite green.
+     */
+    @Test
+    fun anUnexpressedWishOutranksEveryFaultBranch() {
+        val faults = mapOf(
+            "permission" to healthy().copy(permissionGranted = false),
+            "auth revoked" to healthy().copy(pairing = PairingFact.REVOKED),
+            "unpaired" to healthy().copy(pairing = PairingFact.UNPAIRED),
+            "persistence" to healthy().copy(identityPersistenceOk = false),
+            "storage" to healthy().copy(storageOk = false),
+            "service killed" to healthy().copy(fgsHeartbeatFresh = false),
+            "provider silent" to healthy().copy(providerEmitting = false),
+            "rebooted" to healthy().copy(engineRunning = false),
+            "type not held" to healthy().copy(foregroundTypeHeld = false),
+            "start refused" to healthy().copy(startRefused = true),
+            "condition" to healthy().copy(conditionNeedsAttention = true),
+        )
+        faults.forEach { (name, facts) ->
+            // ✅ Positive control first, in the same loop: each fault really does reduce to a fault
+            // when the wish IS expressed. Without this the block below would pass over a fixture
+            // that had stopped injecting anything.
+            assertEquals(
+                SourceState.NEEDS_ATTENTION,
+                reduce(facts).first,
+                "$name must still be a fault for a source the owner asked for",
+            )
+            assertEquals(
+                SourceState.READY_TO_SET_UP to ReasonCode.NONE,
+                reduce(facts.copy(wishExpressed = false)),
+                "$name claimed a source the owner never asked for",
+            )
+        }
+    }
+
+    @Test
+    fun anExpressedOffIsOffAndAnUnexpressedOneIsReadyToSetUp() {
+        // ⚠ The rule running the other way. An owner who turned a source off made a choice, and
+        // telling them they never made it is the same defect pointing the other direction.
+        assertEquals(
+            SourceState.OFF to ReasonCode.NONE,
+            reduce(healthy().copy(desiredOn = false)),
+        )
+        assertEquals(
+            SourceState.READY_TO_SET_UP to ReasonCode.NONE,
+            reduce(healthy().copy(desiredOn = false, wishExpressed = false)),
+        )
+        // And a healthy, expressed, desired-on source is untouched by any of this.
+        assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))
+    }
+
     @Test
     fun reduceMapsFailureFactsInPrecedenceOrder() {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(healthy().copy(permissionGranted = false)))

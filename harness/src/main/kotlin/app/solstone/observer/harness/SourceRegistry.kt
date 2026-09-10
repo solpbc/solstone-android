@@ -89,7 +89,11 @@ class SourceRegistry(
                 registrations.forEach { expressed.add(it.sourceId) }
             }
         }
-        registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.On }
+        // 🔴 `?: SourceWish.Off`, and the flip is the behaviour half of this rule. A source the owner
+        // has never asked for is NOT ACTUATED — "reads ready to set up" and "is not running" are one
+        // state, never a label over a source that is quietly on. [expressed] is what tells this
+        // resolved `Off` apart from an `Off` the owner chose.
+        registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.Off }
         bound = registrations.map(::BoundSource)
         engines = bound
         controller.sourcesReader = this
@@ -99,6 +103,8 @@ class SourceRegistry(
     override fun snapshot(): SourcesReadModel {
         val inputs = controller.globalFactInputs()
         val globalFacts = sourceFactsFor(inputs)
+        // ⚠ The observer row is an aggregate, not a source, so it has no wish of its own to express.
+        // Leaving the fact at its `true` default keeps it out of the new branch deliberately.
         val (state, reason) = reduce(globalFacts)
         return SourcesReadModel(
             observer = ObserverStatus(
@@ -246,18 +252,21 @@ class SourceRegistry(
         }
 
         fun status(globalFacts: SourceFacts, permissionStatus: PermissionStatus): SourceStatus {
-            val wish = synchronized(lock) { wishes.getValue(sourceId) }
+            val (wish, isExpressed) = synchronized(lock) {
+                wishes.getValue(sourceId) to (sourceId in expressed)
+            }
             val facts = if (wish == SourceWish.Off) {
                 offFacts()
             } else {
                 sourceFacts(globalFacts, permissionStatus)
-            }
+            }.copy(wishExpressed = isExpressed)
             val (state, reason) = reduce(facts)
             return SourceStatus(
                 sourceId = sourceId,
                 wish = wish,
                 state = state,
                 reason = reason,
+                wishExpressed = isExpressed,
             )
         }
 

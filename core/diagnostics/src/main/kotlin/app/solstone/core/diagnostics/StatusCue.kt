@@ -50,7 +50,14 @@ fun cueFor(prev: CueSnapshot?, current: CueSnapshot): StatusCue? {
 fun statusCueFor(current: CueSnapshot): StatusCue =
     when (current.state) {
         SourceState.ON -> StatusCue.OBSERVING
-        SourceState.OFF -> StatusCue.OBSERVER_PAUSED
+        // ⛔ NOT grouped with the attention arm below, and that grouping was the cheap edit the
+        // compiler nudges you toward: this cue is SPOKEN ALOUD on glasses, so announcing "needs
+        // attention" for a source the owner has simply never set up is a fault claim with nothing
+        // behind it. It is not running, which is what `OFF` already means for a cue — the spoken
+        // phrase table itself is a different medium and deliberately untouched here.
+        SourceState.OFF,
+        SourceState.READY_TO_SET_UP,
+        -> StatusCue.OBSERVER_PAUSED
         SourceState.NEEDS_ATTENTION,
         SourceState.SETTING_UP,
         SourceState.PAUSED,

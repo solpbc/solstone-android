@@ -16,6 +16,7 @@ fun sourceLabel(sourceId: String): String = phoneSourceLabels[sourceId] ?: sourc
 
 fun sourceStateCopy(state: SourceState): String = when (state) {
     SourceState.OFF -> "off"
+    SourceState.READY_TO_SET_UP -> "ready to set up"
     SourceState.SETTING_UP -> "setting up"
     SourceState.ON -> "on"
     SourceState.PAUSED -> "paused"
