@@ -224,6 +224,17 @@ class ObserverForegroundService : Service() {
         fun lastHeartbeatNanos(): Long? =
             lastBeatNanos.get().takeIf { it > 0L }
 
+        /**
+         * Whether intake has ever been started in this process — a start was requested, or a beat
+         * was recorded.
+         *
+         * ⚠ [isHeartbeatFresh] is false both for a service that beat and went silent and for one
+         * that was never asked to start, and only the first is a fault. Reading the two atomics
+         * for presence rather than age is what tells them apart.
+         */
+        fun isStartObserved(): Boolean =
+            lastBeatNanos.get() > 0L || lastStartRequestedNanos.get() > 0L
+
         fun isHeartbeatFresh(
             nowNanos: Long = System.nanoTime(),
             staleAfterNanos: Long = 15_000_000_000L,

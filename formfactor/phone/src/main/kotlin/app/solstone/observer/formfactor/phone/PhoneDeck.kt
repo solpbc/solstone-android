@@ -30,7 +30,6 @@ import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceStatus
@@ -65,7 +64,7 @@ fun PhoneDeck(
     val endInset = margin + contentPadding.calculateEndPadding(layoutDirection)
     val greetingInset = contentPadding.calculateTopPadding()
     val readModel = (loadState as? LoadState.Loaded)?.value
-    val paired = readModel?.observer?.reason != ReasonCode.UNPAIRED
+    val paired = readModel?.observer?.paired == true
     Column(
         modifier
             .fillMaxSize()

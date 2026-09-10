@@ -192,8 +192,13 @@ internal data class Fixture(
     val opportunisticSync: OpportunisticSync?,
 )
 
-internal class MutableHeartbeat(var fresh: Boolean = true) : HeartbeatFreshness {
+internal class MutableHeartbeat(
+    var fresh: Boolean = true,
+    var startEvidence: Boolean = true,
+) : HeartbeatFreshness {
     override fun isFresh(): Boolean = fresh
+
+    override fun hasStartEvidence(): Boolean = startEvidence
 }
 
 internal fun fixture(

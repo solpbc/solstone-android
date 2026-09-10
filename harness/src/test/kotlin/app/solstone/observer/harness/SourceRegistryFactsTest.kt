@@ -10,6 +10,7 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SourceRegistryFactsTest {
@@ -195,6 +196,64 @@ class SourceRegistryFactsTest {
 
         assertEquals(SourceState.NEEDS_ATTENTION, row.state)
         assertEquals(ReasonCode.REBOOTED, row.reason)
+    }
+
+    @Test
+    fun observerCarriesPairingAsAFactSoAHigherPriorityReasonCannotMaskIt() {
+        // 2.0.0 derived "paired" in the UI as `observer.reason != UNPAIRED`. `reason` is the single
+        // highest-priority reason, so a denied permission masked UNPAIRED and the `setting up`
+        // sub-line read "getting ready — connecting to your journal." under a `not paired` pill.
+        val f = fixture(
+            permissionStatus = grantedPermissions().copy(
+                microphoneGranted = false,
+                cameraGranted = false,
+                locationGranted = false,
+            ),
+            identityStore = FakeIdentityStore(null),
+            snapshot = snapshot(),
+        )
+        f.desiredStore.setDesiredOn(true)
+        val registry = sourceRegistry(f = f, registrations = emptyList())
+
+        val observer = registry.snapshot().observer
+
+        assertEquals(ReasonCode.PERMISSION_REVOKED, observer.reason)
+        assertFalse(observer.paired)
+    }
+
+    @Test
+    fun observerReportsPairedWhenTheIdentityIsPaired() {
+        val f = fixture(snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = sourceRegistry(f = f, registrations = emptyList())
+
+        assertTrue(registry.snapshot().observer.paired)
+    }
+
+    @Test
+    fun anIntakeThatWasNeverStartedIsSettingUpRatherThanStoppedByTheSystem() {
+        val f = fixture(
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = false,
+                providerEmitting = false,
+                storageOk = true,
+                silenced = SilencedFact.NOT_SILENCED,
+                engineStartIssued = false,
+            ),
+        )
+        f.desiredStore.setDesiredOn(true)
+        f.heartbeat.fresh = false
+        f.heartbeat.startEvidence = false
+        val registry = sourceRegistry(f = f, registrations = emptyList())
+
+        val observer = registry.snapshot().observer
+
+        assertEquals(SourceState.SETTING_UP, observer.state)
+        assertEquals(ReasonCode.NONE, observer.reason)
+
+        // Control: once a start has been observed, the same stale heartbeat is still a kill.
+        f.heartbeat.startEvidence = true
+        assertEquals(ReasonCode.SERVICE_KILLED, registry.snapshot().observer.reason)
     }
 
     private fun snapshot(storageOk: Boolean = true) =

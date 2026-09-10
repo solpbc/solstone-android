@@ -53,6 +53,8 @@ import kotlin.io.path.isDirectory
 
 class RealHeartbeatFreshness : HeartbeatFreshness {
     override fun isFresh(): Boolean = ObserverForegroundService.isHeartbeatFresh()
+
+    override fun hasStartEvidence(): Boolean = ObserverForegroundService.isStartObserved()
 }
 
 class RealPairProbe(

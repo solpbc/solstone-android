@@ -58,7 +58,11 @@ class SourceRegistry(
         val globalFacts = sourceFactsFor(inputs)
         val (state, reason) = reduce(globalFacts)
         return SourcesReadModel(
-            observer = ObserverStatus(state = state, reason = reason),
+            observer = ObserverStatus(
+                state = state,
+                reason = reason,
+                paired = globalFacts.pairing == PairingFact.PAIRED,
+            ),
             sources = bound.map { it.status(globalFacts, inputs.permissionStatus) },
         )
     }

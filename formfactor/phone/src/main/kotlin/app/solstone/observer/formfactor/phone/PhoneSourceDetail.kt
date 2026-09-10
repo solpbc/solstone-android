@@ -161,7 +161,7 @@ internal fun PhoneSourceDetail(
     onToggle: (SourceWish) -> Unit = {},
 ) {
     val readModel = (loadState as? LoadState.Loaded)?.value
-    val paired = readModel?.observer?.reason != ReasonCode.UNPAIRED
+    val paired = readModel?.observer?.paired == true
     PhonePaneScaffold(modifier) {
         readModel?.let { model ->
             model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->

@@ -250,6 +250,34 @@ class PhoneSourceDetailTest {
         composeRule.onNodeWithTag(HOME_TILE_CONTROL_TEST_TAG).assertIsDisplayed().assertIsOn()
     }
 
+    @Test
+    fun settingUpSubLineReadsUnpairedWhenAHigherPriorityReasonMasksUnpaired() {
+        // The unpaired sub-line was selected as `observer.reason != UNPAIRED`, so any
+        // higher-priority reason — here a stale heartbeat — made an unpaired device claim it was
+        // "connecting to your journal" while the status pill read `not paired`.
+        render(
+            loadState = loadedWith(
+                ObserverStatus(SourceState.NEEDS_ATTENTION, ReasonCode.SERVICE_KILLED, paired = false),
+                settingUp("audio"),
+            ),
+        )
+
+        composeRule.onNodeWithText("getting ready…").assertIsDisplayed()
+        composeRule.onNodeWithText("getting ready — connecting to your journal.").assertDoesNotExist()
+    }
+
+    @Test
+    fun settingUpSubLineNamesTheJournalOnceTheDeviceIsPaired() {
+        render(
+            loadState = loadedWith(
+                ObserverStatus(SourceState.SETTING_UP, ReasonCode.NONE, paired = true),
+                settingUp("audio"),
+            ),
+        )
+
+        composeRule.onNodeWithText("getting ready — connecting to your journal.").assertIsDisplayed()
+    }
+
     private fun render(
         sourceId: String = "audio",
         loadState: LoadState<SourcesReadModel>,
@@ -328,4 +356,15 @@ private fun loaded(vararg sources: SourceStatus) = LoadState.Loaded(
         observer = ObserverStatus(SourceState.NEEDS_ATTENTION, ReasonCode.NONE),
         sources = sources.toList(),
     ),
+)
+
+private fun loadedWith(observer: ObserverStatus, vararg sources: SourceStatus) = LoadState.Loaded(
+    SourcesReadModel(observer = observer, sources = sources.toList()),
+)
+
+private fun settingUp(sourceId: String) = SourceStatus(
+    sourceId = sourceId,
+    wish = SourceWish.On,
+    state = SourceState.SETTING_UP,
+    reason = ReasonCode.NONE,
 )

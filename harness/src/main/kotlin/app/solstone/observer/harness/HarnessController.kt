@@ -369,6 +369,7 @@ class HarnessController(
             engineRunning = snapshot.engineRunning,
             permissionStatus = permissionStatusReader.read().also { permissionStatus = it },
             fgsHeartbeatFresh = heartbeatFreshness.isFresh(),
+            fgsStartEvidence = heartbeatFreshness.hasStartEvidence(),
             providerEmitting = snapshot.providerEmitting,
             storageOk = snapshot.storageOk,
             identityPersistenceOk = identityPersistenceOk,

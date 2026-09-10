@@ -95,6 +95,48 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun aStaleHeartbeatWithNoStartEvidenceIsSettingUpRatherThanAKill() {
+        // Fresh install, owner still working through the runtime permission dialogs: intake had
+        // never been started, so there was no beat and no start request to read. The reducer took
+        // that absence for SERVICE_KILLED, and source detail told the owner "intake was stopped by
+        // the system" with a "start intake again" button, under a `setting up` verdict.
+        val neverStarted = healthy().copy(
+            fgsHeartbeatFresh = false,
+            fgsStartEvidence = false,
+            engineRunning = false,
+            engineStartIssued = false,
+        )
+
+        assertEquals(SourceState.SETTING_UP to ReasonCode.NONE, reduce(neverStarted))
+        // Unpaired is the honest reason in that window, and it is no longer masked.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED,
+            reduce(neverStarted.copy(pairing = PairingFact.UNPAIRED)),
+        )
+        // Control: the same stale heartbeat WITH start evidence is still a kill.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED,
+            reduce(neverStarted.copy(fgsStartEvidence = true)),
+        )
+    }
+
+    @Test
+    fun aProviderThatWasNeverStartedIsNotSilent() {
+        val neverStarted = healthy().copy(
+            providerEmitting = false,
+            engineRunning = false,
+            engineStartIssued = false,
+        )
+
+        assertEquals(SourceState.SETTING_UP to ReasonCode.NONE, reduce(neverStarted))
+        // Control: a provider that did start and then went quiet is still silent.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT,
+            reduce(neverStarted.copy(engineStartIssued = true, engineRunning = true)),
+        )
+    }
+
+    @Test
     fun reduceMapsOffAndHealthyOn() {
         assertEquals(SourceState.OFF to ReasonCode.NONE, reduce(healthy().copy(desiredOn = false)))
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))

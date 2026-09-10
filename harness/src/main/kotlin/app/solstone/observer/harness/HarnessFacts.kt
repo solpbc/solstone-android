@@ -28,6 +28,7 @@ data class HarnessFactInputs(
     val silenced: SilencedFact,
     val identityPersistenceOk: Boolean = true,
     val engineStartIssued: Boolean = true,
+    val fgsStartEvidence: Boolean = true,
     val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
         CaptureForegroundType.MICROPHONE,
         CaptureForegroundType.LOCATION,
@@ -64,6 +65,7 @@ internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts {
         ),
         silenced = inputs.silenced,
         engineStartIssued = inputs.engineStartIssued,
+        fgsStartEvidence = inputs.fgsStartEvidence,
     )
 }
 

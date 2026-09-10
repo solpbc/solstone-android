@@ -14,6 +14,19 @@ enum class SourceWish { Off, On }
 data class ObserverStatus(
     val state: SourceState,
     val reason: ReasonCode,
+    /**
+     * Whether this device is paired with a journal.
+     *
+     * ⛔ **Do not re-derive this from [reason].** [reason] is the single highest-priority reason
+     * the reducer chose, so anything above `UNPAIRED` in that order — a revoked permission, a
+     * missing held type, a refused start, a stale heartbeat — masks it, and
+     * `reason != ReasonCode.UNPAIRED` then reads as *paired* on a device that is not. That
+     * inference shipped in 2.0.0 and put "connecting to your journal" under a `not paired` pill.
+     *
+     * Defaults true only so fixtures keep their existing meaning; the read model always supplies
+     * the real fact.
+     */
+    val paired: Boolean = true,
 )
 
 data class SourceStatus(

@@ -58,8 +58,19 @@ class InMemoryDesiredObservingStore(initial: Boolean = false) : DesiredObserving
     }
 }
 
+/**
+ * What the foreground-service heartbeat instrument knows.
+ *
+ * ⚠ [isFresh] returning false has **two** causes and only one of them is a fault: a service that
+ * beat and then went silent, and a service that has never been asked to start at all. Diagnosing
+ * the second as `SERVICE_KILLED` tells the owner intake "was stopped by the system" when nothing
+ * ever started it. [hasStartEvidence] separates them; it defaults true so a fixture that only
+ * models freshness keeps its existing meaning.
+ */
 fun interface HeartbeatFreshness {
     fun isFresh(): Boolean
+
+    fun hasStartEvidence(): Boolean = true
 }
 
 fun interface PairProbe {
