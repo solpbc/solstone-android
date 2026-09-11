@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release
+.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release test-release
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -17,7 +17,10 @@ install:
 test:
 	$(GRADLE) test
 
-ci:
+test-release:
+	python3 -m unittest discover -s tools/release/tests -p 'test_*.py' -v
+
+ci: test-release
 		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :core:metadata:test :core:gate:test :testing:test :harness:test :formfactor:shared:testDebugUnitTest :formfactor:phone:assembleDebug :formfactor:phone:testDebugUnitTest :formfactor:phone:assembleDebugAndroidTest :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:pl-transport-conscrypt:testDebugUnitTest :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:metadata:assembleDebug :platform:metadata:testDebugUnitTest :platform:audio:assembleDebug :platform:audio:testDebugUnitTest :platform:location:assembleDebug :platform:location:testDebugUnitTest :platform:camera-legacy:assembleDebug :platform:camera-legacy:testDebugUnitTest :platform:camera2:assembleDebug :platform:camera2:testDebugUnitTest :platform:fgs:assembleDebug :platform:fgs:test :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:glasses:checkRealDebugMicrophoneManifest :apps:watch:checkRealDebugLauncherManifest :apps:phone:checkRealDebugLauncherManifest :apps:phone:checkPhoneLauncherCountManifest :apps:phone:checkRealDebugAppLinksManifest :apps:phone:checkRealReleaseAppLinksManifest :apps:phone:checkPhoneShellExportManifest :apps:phone:checkRealDebugOnBackInvokedCallbackManifest :apps:glasses:checkRealDebugLauncherManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:phone:assembleRealDebugAndroidTest :apps:phone:verifySolstoneGateBuildReceipts :apps:glasses:assembleMockDebug :apps:glasses:assembleMockDebugAndroidTest :apps:glasses:assembleRealDebug :apps:validation-rogbid:testDebugUnitTest :apps:validation-rogbid:assembleDebug
 
 # Slower device gate: GMD (pixel5api35) instrumented tests. Always host-GL — the
@@ -227,18 +230,22 @@ pull-phone-apk: sync-android-host
 	mkdir -p $(ARTIFACTS)
 	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk/real/release/phone-real-release.apk $(PHONE_RELEASE_APK_LOCAL)
 
-# Cut the GitHub release: tag v<VERSION> at HEAD, body = the CHANGELOG section,
-# attach the signed APK. Run from the caller (gh-authed); requires the version-bump
-# + changelog commit to be pushed first (the tag points at HEAD). Usage:
-#   make github-release VERSION=0.1.1   (after `make pull-phone-apk ANDROID_REMOTE_HOST=...`)
+# Cut the GitHub release for an explicit candidate commit. The tag is never
+# inferred from HEAD or from the remote default branch. An annotated tag is
+# pushed first, peeled from the remote, and proven to name CANDIDATE before
+# publication; GitHub is not allowed to invent the tag. Usage:
+#   make github-release VERSION=0.1.1 CANDIDATE=<full 40-hex sha>
+#   (after `make pull-phone-apk ANDROID_REMOTE_HOST=...`)
 github-release:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@test -n "$(CANDIDATE)" || { echo "Set CANDIDATE=<full 40-hex commit>; github-release never infers a candidate from HEAD or the remote default branch" >&2; exit 2; }
+	@$(MAKE) require-gate-source-commit GATE_SOURCE_COMMIT=$(CANDIDATE)
 	@test -f $(PHONE_RELEASE_APK_LOCAL) || { echo "No $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
 	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
 	mkdir -p $(ARTIFACTS)
 	tools/release/changelog-notes.sh $(VERSION) > $(ARTIFACTS)/notes-$(VERSION).md
-	gh release create v$(VERSION) \
-	  --repo solpbc/solstone-android \
-	  --title "solstone for Android v$(VERSION)" \
-	  --notes-file $(ARTIFACTS)/notes-$(VERSION).md \
-	  $(PHONE_RELEASE_APK_LOCAL)
+	tools/release/github-release.sh \
+	  --version $(VERSION) \
+	  --candidate $(CANDIDATE) \
+	  --apk $(PHONE_RELEASE_APK_LOCAL) \
+	  --notes $(ARTIFACTS)/notes-$(VERSION).md

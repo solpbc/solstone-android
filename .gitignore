@@ -17,6 +17,8 @@ local.properties
 captures/
 artifacts/
 *.log
+__pycache__/
+*.py[cod]
 *.keystore
 *.jks
 *.pem
