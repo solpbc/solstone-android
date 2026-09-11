@@ -220,7 +220,14 @@ class ObserverAppContainer(
      */
     fun onOwnerResumed() {
         background.execute {
+            val before = sources.snapshot().sources.count { it.wishExpressed }
             runCatching { sources.onPermissionStatus(controller.refreshPermissions()) }
+            // ⚠ A Settings grant that newly expresses a source is the owner asking for intake, so it
+            // owes the same `ensureObserving` that the in-app toggle does. ⛔ Only when something
+            // was newly expressed — a plain resume must not re-assert an intent the owner revoked
+            // with `stop intake`.
+            val after = sources.snapshot().sources.count { it.wishExpressed }
+            if (after > before) runCatching { controller.ensureObserving() }
         }
     }
 

@@ -12,6 +12,40 @@ import kotlin.test.assertEquals
 
 class DiagnosticsTest {
     /**
+     * 🔴 **A missing permission has two meanings and only one is a fault.**
+     *
+     * The owner taps `taking it in`, the wish persists, and the system opens its permission dialog.
+     * In that window the permission is genuinely not granted — so the screen behind the dialog read
+     * `needs attention: permissions needed`, a fault word arriving as the direct result of saying
+     * yes. Caught on the Play demonstration video, rendered *behind the dialog it was reacting to*.
+     *
+     * ⚠ The branch sits before the fault branch for the same reason `!wishExpressed` does: the
+     * facts underneath are all true, and the conclusion drawn from them is still wrong.
+     */
+    @Test
+    fun aPermissionRequestOnScreenReadsSettingUpRatherThanAFault() {
+        val asking = healthy().copy(permissionGranted = false, permissionRequestInFlight = true)
+        assertEquals(SourceState.SETTING_UP to ReasonCode.NONE, reduce(asking))
+
+        // ✅ Positive control: the same facts with the dialog closed are the fault they always were.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED,
+            reduce(asking.copy(permissionRequestInFlight = false)),
+        )
+        // ⛔ And it never rescues a source the owner never asked for — that one is still
+        // `ready to set up`, because the ordering above it is the stronger rule.
+        assertEquals(
+            SourceState.READY_TO_SET_UP to ReasonCode.NONE,
+            reduce(asking.copy(wishExpressed = false)),
+        )
+        // ⛔ Nor does it launder an unrelated fault that happens to coincide with the dialog.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL,
+            reduce(asking.copy(permissionGranted = true, storageOk = false)),
+        )
+    }
+
+    /**
      * 🔴 **The branch ORDER, and it is the requirement rather than a detail.**
      *
      * The rule: *a source whose permission the owner declined stays `ready to set up`* — never a

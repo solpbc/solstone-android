@@ -27,6 +27,7 @@ import app.solstone.observer.formfactor.phone.resolvePhoneCaptureWidthDp
 import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
 import app.solstone.platform.fgs.shouldAskForNotifications
 import app.solstone.observer.harness.SourcesReader
@@ -42,10 +43,24 @@ class PhoneShellActivity : ComponentActivity() {
     private var captureOwnerToken: Long = -1L
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
+    /**
+     * Re-establish intake on resume — ⛔ **without deciding, on the owner's behalf, that they want
+     * it.**
+     *
+     * 🔴 This called `ensureObserving()`, which sets `desiredOn = true`. So an owner who pressed
+     * **`stop intake`** in the notification had that choice thrown away the next time they opened
+     * the app: the shade said `off`, the screen said `setting up`, and nothing had asked them.
+     * Caught on video — the Play demonstration showed the stop control working and then the app
+     * undoing it eight seconds later, which is also the beat a reviewer is watching hardest.
+     *
+     * ✅ `reconcile` is the honest verb: it returns immediately when `desiredOn` is false, and
+     * otherwise brings the service back up for whatever the owner has already asked for. Turning a
+     * source on is what asks — see [onSourceWish].
+     */
     private val startWhenReady = object : Runnable {
         override fun run() {
             if (container.recoveryCompleted) {
-                container.controller.ensureObserving()
+                container.controller.reconcile(ObserverStartMode.VisibleStart)
                 requestNotificationsOnce()
             } else {
                 mainHandler.postDelayed(this, RECOVERY_POLL_INTERVAL_MS)
@@ -189,6 +204,9 @@ class PhoneShellActivity : ComponentActivity() {
     private fun requestSourcePermissions(sourceId: String) {
         val permissions = container.sources.requiredPermissions(sourceId)
         if (permissions.isEmpty()) return
+        // ⚠ Told BEFORE the dialog opens, so the screen behind it reads `setting up` rather than
+        // `needs attention: permissions needed` — the fault word as the direct result of saying yes.
+        container.sources.setPermissionRequestInFlight(sourceId)
         requestPermissions(permissions.toTypedArray(), PERMISSION_REQUEST)
     }
 
@@ -204,6 +222,10 @@ class PhoneShellActivity : ComponentActivity() {
     private fun onSourceWish(sourceId: String, wish: SourceWish) {
         sourcesViewModel.setWish(sourceId, wish)
         if (wish != SourceWish.On) return
+        // 🔴 Turning a source on IS asking for intake, and it is now the only thing that asks.
+        // ⛔ Without this, an owner who had pressed `stop intake` could turn a source on and watch
+        // it sit at `setting up` forever, because nothing would bring the service back.
+        container.controller.ensureObserving()
         val missing = container.sources.requiredPermissions(sourceId).any {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
@@ -264,6 +286,11 @@ class PhoneShellActivity : ComponentActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST) {
+            // ⛔ Cleared first: the refresh below recomputes every row, and clearing after it would
+            // leave one recomposition still reading `setting up` over a settled answer.
+            container.sources.setPermissionRequestInFlight(null)
+        }
         if (requestCode == PERMISSION_REQUEST || requestCode == NOTIFICATIONS_REQUEST) {
             container.controller.onPermissionsRequested()
             sourcesViewModel.refresh()

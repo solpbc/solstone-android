@@ -63,6 +63,16 @@ interface SourcesReader {
      * ⚠ Default no-op, so a fake that models only reads is unaffected.
      */
     fun onPermissionStatus(status: PermissionStatus) = Unit
+
+    /**
+     * A runtime permission request for [sourceId] is on screen, or has just closed.
+     *
+     * ⚠ Without it a source reads `needs attention: permissions needed` **while the dialog asking
+     * for that permission is up** — the fault word arriving as the direct result of saying yes.
+     * ⛔ One source at a time: the request is per-source now, so a second one replaces the first
+     * rather than accumulating.
+     */
+    fun setPermissionRequestInFlight(sourceId: String?) = Unit
 }
 
 class SourceRegistry(
@@ -89,6 +99,9 @@ class SourceRegistry(
 
     /** A store that exists and would not read. ⛔ Not the same as one that is absent. */
     private var storeUnreadable = false
+
+    /** The one source whose permission dialog is on screen, if any. */
+    @Volatile private var permissionRequestFor: String? = null
     private val bound: List<BoundSource>
     private val listeners = mutableListOf<SourcesChangeListener>()
 
@@ -238,6 +251,11 @@ class SourceRegistry(
         }
     }
 
+    override fun setPermissionRequestInFlight(sourceId: String?) {
+        permissionRequestFor = sourceId
+        notifyListeners()
+    }
+
     override fun onPermissionStatus(status: PermissionStatus) {
         val newlyExpressed = backfill(status)
         if (newlyExpressed.isEmpty()) return
@@ -334,7 +352,10 @@ class SourceRegistry(
                 offFacts()
             } else {
                 sourceFacts(globalFacts, permissionStatus)
-            }.copy(wishExpressed = isExpressed)
+            }.copy(
+                wishExpressed = isExpressed,
+                permissionRequestInFlight = permissionRequestFor == sourceId,
+            )
             val (state, reason) = reduce(facts)
             return SourceStatus(
                 sourceId = sourceId,

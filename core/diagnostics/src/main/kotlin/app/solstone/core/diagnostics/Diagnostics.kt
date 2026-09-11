@@ -47,6 +47,11 @@ data class SourceFacts(
   // having a value — a defaulted wish is not an expressed one. Defaults true so a caller that
   // models only the failure keeps its meaning.
   val wishExpressed: Boolean = true,
+  // ⚠ Whether a runtime permission request for THIS source is on screen right now. A missing
+  // permission has two meanings and only one is a fault: the owner declined it, or the system is
+  // asking them this instant. Defaults false so a caller that models only the settled state keeps
+  // its meaning.
+  val permissionRequestInFlight: Boolean = false,
 )
 
 // NONE is correct for off, on, paused, and setting up. Only a needs-attention row with NONE is a
@@ -60,6 +65,12 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         // `desiredOn` gate (`permissionGranted`, `pairing == REVOKED`, `identityPersistenceOk`,
         // `storageOk`), so anything short of first lets one of them claim a never-chosen source.
         !f.wishExpressed -> SourceState.READY_TO_SET_UP to ReasonCode.NONE
+        // 🔴 Before the fault branch, and for the same reason `!wishExpressed` is before it: the
+        // owner has just said yes and the system is asking them. Reporting `needs attention:
+        // permissions needed` in that window is a fault word arriving as the direct result of
+        // saying yes — caught on the Play demonstration video, rendered behind the dialog it was
+        // reacting to.
+        !f.permissionGranted && f.permissionRequestInFlight -> SourceState.SETTING_UP to ReasonCode.NONE
         !f.permissionGranted -> SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED
         f.desiredOn && !f.foregroundTypeHeld -> SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_TYPE_NOT_HELD
         f.desiredOn && f.startRefused -> SourceState.NEEDS_ATTENTION to ReasonCode.FOREGROUND_START_NOT_ALLOWED

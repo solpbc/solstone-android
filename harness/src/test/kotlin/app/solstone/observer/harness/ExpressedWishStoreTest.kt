@@ -310,6 +310,41 @@ class ExpressedWishStoreTest {
         store,
     )
 
+    @Test
+    fun aSourceWhosePermissionDialogIsOpenReadsSettingUp() {
+        val store = InMemorySourceWishStore()
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = registryOn(f, store)
+
+        registry.setWish("camera", SourceWish.On)
+        // Settled, no dialog: the fault it has always been.
+        assertEquals(
+            app.solstone.core.model.SourceState.NEEDS_ATTENTION,
+            registry.snapshot().sources.single { it.sourceId == "camera" }.state,
+        )
+
+        registry.setPermissionRequestInFlight("camera")
+        val asking = registry.snapshot().sources
+        assertEquals(
+            app.solstone.core.model.SourceState.SETTING_UP,
+            asking.single { it.sourceId == "camera" }.state,
+            "the dialog for this source is on screen",
+        )
+        // ⛔ Only that source. A request for one source must not launder another's real fault.
+        assertEquals(
+            app.solstone.core.model.SourceState.READY_TO_SET_UP,
+            asking.single { it.sourceId == "audio" }.state,
+        )
+
+        registry.setPermissionRequestInFlight(null)
+        assertEquals(
+            app.solstone.core.model.SourceState.NEEDS_ATTENTION,
+            registry.snapshot().sources.single { it.sourceId == "camera" }.state,
+            "the answer settled and it is a fault again",
+        )
+    }
+
     private class UnreadableWishStore : SourceWishStore {
         val writes = mutableListOf<Map<String, SourceWish>>()
         override fun read(): WishStoreState = WishStoreState.Unreadable
