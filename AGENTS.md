@@ -51,6 +51,20 @@ There are two maintained gates. **`make ci` is the fast gate.** It runs JVM unit
 
 **Run `make ci-device` manually before declaring an on-device change shipped**: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `dist-phone` does not run this gate. `make ci` does not run Android instrumented tests and cannot exercise host-JDK APIs against the Android runtime.
 
+### If you change an owner-facing screen, check the release gate's flow
+
+🔴 **`.maestro/phone-smoke.yaml` asserts specific on-screen text, and `make ci` cannot see it.** It
+runs only in `make hitl-phone`, which `dist-phone` depends on — so a renamed row leaves the release
+gate **red on `main`** and nothing discovers it until someone tries to ship. That happened: a help-row
+rename from `support site` to `get help` sat red until a release attempt.
+
+⚠ **Maestro anchors a bare string to an element's WHOLE text.** So a rename reads as a *missing
+control* rather than a renamed one, and a substring that is still on screen does not satisfy the
+assertion. Selectors are regex — escape `+` (`'Status \+ queue/sync'`, single-quoted in YAML).
+
+✅ Changed a label, a row, or a pane title an owner sees? `grep` it in `.maestro/phone-smoke.yaml`
+before you commit.
+
 ## Source Layout
 
 ```text
