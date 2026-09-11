@@ -345,6 +345,75 @@ class ExpressedWishStoreTest {
         )
     }
 
+    /**
+     * 🔴 **`paused`, not `setting up`, and the discriminator is the owner's stop rather than the
+     * observer being down.**
+     *
+     * Pressing `stop intake` leaves a wish-on source with no engine. That read `setting up` and the
+     * sub-line `getting ready…` — indefinitely, after the owner had deliberately stopped it. ⛔ And
+     * the first fix was `!controller.desiredOn`, which is the *same* conflation one level down: the
+     * window between launch and the pipeline coming up is genuinely `setting up`, and four
+     * committed tests said so by name.
+     */
+    @Test
+    fun anOwnerStopPausesAWishOnSourceAndTheTransientStartWindowDoesNot() {
+        val store = InMemorySourceWishStore(mapOf("camera" to SourceWish.On))
+        var stopped = false
+        val f = fixture(permissionStatus = grantedPermissions(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = SourceRegistry(
+            f.controller,
+            listOf(reg("camera", CaptureForegroundType.CAMERA)),
+            MainPoster { it() },
+            store,
+            ownerStopped = { stopped },
+        )
+
+        // A running source reads `on`.
+        assertEquals(
+            app.solstone.core.model.SourceState.ON,
+            registry.snapshot().sources.single().state,
+        )
+
+        stopped = true
+        assertEquals(
+            app.solstone.core.model.SourceState.PAUSED,
+            registry.snapshot().sources.single().state,
+            "the owner stopped it; nothing is getting ready",
+        )
+        // ⚠ And their setting is untouched — stopping intake is not turning the source off.
+        assertEquals(SourceWish.On, registry.snapshot().sources.single().wish)
+
+        stopped = false
+        assertEquals(
+            app.solstone.core.model.SourceState.ON,
+            registry.snapshot().sources.single().state,
+            "asking again is asking",
+        )
+
+        // ⛔ The reading the first attempt broke, and the reason the seam is an owner stop rather
+        // than `!controller.desiredOn`: a wish-on source whose engine has not come up yet, with no
+        // owner stop, is genuinely `setting up`. Four committed tests say so by name.
+        val notRunning = SourceRegistry(
+            f.controller,
+            listOf(
+                SourceRegistration(
+                    "camera",
+                    FakeSourceEngine(conditionValue = running().copy(running = false)),
+                    { capturePermissionGranted(CaptureForegroundType.CAMERA, it) },
+                    CaptureForegroundType.CAMERA,
+                ),
+            ),
+            MainPoster { it() },
+            InMemorySourceWishStore(mapOf("camera" to SourceWish.On)),
+            ownerStopped = { false },
+        )
+        assertEquals(
+            app.solstone.core.model.SourceState.SETTING_UP,
+            notRunning.snapshot().sources.single().state,
+        )
+    }
+
     private class UnreadableWishStore : SourceWishStore {
         val writes = mutableListOf<Map<String, SourceWish>>()
         override fun read(): WishStoreState = WishStoreState.Unreadable

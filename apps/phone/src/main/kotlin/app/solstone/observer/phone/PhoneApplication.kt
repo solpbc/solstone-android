@@ -17,6 +17,7 @@ import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourceToggleResult
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.observer.scaffold.ForegroundSourceActivation
+import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverRuntimeContainer
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -102,11 +103,21 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     }
 
     internal fun stopObserverFromNotification() {
+        // ⚠ Recorded BEFORE the stop, so a process death between the two cannot lose the owner's
+        // decision and leave resume free to restart intake.
+        OwnerStoppedStore(this).recordStopped()
         runtime.containerIfInitialized?.controller?.stop()
     }
 
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
         inactiveNotificationRequested = false
+        // ⚠ Installed here rather than passed in, because the container is shared with surfaces that
+        // have no stop control. Without it a stopped source reads `setting up / getting ready…`
+        // while nothing is getting ready.
+        (container as? ObserverAppContainer)?.let { app ->
+            val stopped = OwnerStoppedStore(this)
+            app.ownerStoppedProvider = { stopped.ownerStopped() }
+        }
         if (widgetStartOutcomes.read() is PhoneWidgetStartOutcome.Refused) {
             container.controller.recordStartRefusal()
         }

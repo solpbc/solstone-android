@@ -12,6 +12,41 @@ import kotlin.test.assertEquals
 
 class DiagnosticsTest {
     /**
+     * 🔴 **A source the owner paused is not "getting ready".**
+     *
+     * Pressing `stop intake` leaves a wish-on source with no engine: `desiredOn` true,
+     * `engineStartIssued` false, `engineRunning` false. That combination read **`setting up`** and
+     * the sub-line `getting ready…` — indefinitely, after the owner had deliberately stopped it.
+     * ⚠ It only became visible once resume stopped silently restarting intake; before that the
+     * state was briefly true on its way back up, which is how it hid.
+     */
+    @Test
+    fun aPausedSourceIsNotSettingUpAndIsNotAFault() {
+        val stopped = healthy().copy(paused = true, engineStartIssued = false, engineRunning = false)
+        assertEquals(SourceState.PAUSED to ReasonCode.NONE, reduce(stopped))
+
+        // ✅ Positive controls, so the reorder is an exclusion rather than a branch that ate its
+        // neighbours. Without `paused`, the same facts are each what they were.
+        assertEquals(
+            SourceState.SETTING_UP to ReasonCode.NONE,
+            reduce(stopped.copy(paused = false)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED,
+            reduce(stopped.copy(paused = false, engineStartIssued = true)),
+        )
+        // ⛔ And pausing never launders a real fault.
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED,
+            reduce(stopped.copy(permissionGranted = false)),
+        )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL,
+            reduce(stopped.copy(storageOk = false)),
+        )
+    }
+
+    /**
      * 🔴 **A missing permission has two meanings and only one is a fault.**
      *
      * The owner taps `taking it in`, the wish persists, and the system opens its permission dialog.

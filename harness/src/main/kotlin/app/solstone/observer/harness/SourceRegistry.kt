@@ -80,6 +80,13 @@ class SourceRegistry(
     registrations: List<SourceRegistration>,
     private val main: MainPoster,
     private val wishStore: SourceWishStore,
+    /**
+     * Whether the owner has explicitly stopped intake — ⛔ **not** whether it happens to be down.
+     *
+     * Defaults to never-stopped, so a surface without a stop control is unaffected and a fake that
+     * models only the sources keeps its meaning.
+     */
+    private val ownerStopped: () -> Boolean = { false },
 ) : SourcesReader {
     private val lock = Any()
     private val wishes = LinkedHashMap<String, SourceWish>()
@@ -410,7 +417,18 @@ class SourceRegistry(
                 silenced = condition?.silenced ?: SilencedFact.UNKNOWN,
                 engineStartIssued = started,
                 conditionNeedsAttention = condition?.let { it.needsAttention || !it.available } ?: true,
-                paused = condition?.paused == true,
+                // ⚠ The OWNER stopping intake pauses every source that is still wished on. Without
+                // this the source kept `desiredOn = true` with no engine and read
+                // `setting up / getting ready…` indefinitely — a state word that is false about
+                // what the app is doing, after the owner had deliberately stopped it.
+                //
+                // ⛔ **NOT `!controller.desiredOn`, which was the first attempt.** That is false
+                // during the transient window between launch and the pipeline coming up, where
+                // `setting up` is *honest* — and four committed tests said so by name, including
+                // `wishOnWhileNotRunningIsSettingUpAndObserverOff`. The discriminator is an
+                // explicit owner stop, which is a different fact from "not running yet". Same
+                // conflation as `Absent` vs `Unreadable`, one level down.
+                paused = condition?.paused == true || ownerStopped(),
                 foregroundTypeHeld = foregroundTypeHeld,
                 startRefused = controller.lastStartRefused,
             )

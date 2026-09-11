@@ -83,9 +83,14 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         f.desiredOn && f.engineStartIssued && !f.providerEmitting ->
             SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
         f.desiredOn && f.conditionNeedsAttention -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
+        // 🔴 **Above the two branches that read a stopped engine as a fault or as starting.** A
+        // source the owner has paused is not running BY DESIGN, so `needs attention: this device
+        // restarted` and `setting up / getting ready…` are both wrong about it — and the second one
+        // is the live case: pressing `stop intake` leaves a wish-on source with no engine, which
+        // read `getting ready…` forever while nothing was getting ready.
+        f.desiredOn && (f.silenced == SilencedFact.SILENCED || f.paused) -> SourceState.PAUSED to ReasonCode.NONE
         f.desiredOn && f.engineStartIssued && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
         f.desiredOn && !f.engineStartIssued && !f.engineRunning -> SourceState.SETTING_UP to ReasonCode.NONE
-        f.desiredOn && (f.silenced == SilencedFact.SILENCED || f.paused) -> SourceState.PAUSED to ReasonCode.NONE
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE
         else -> SourceState.ON to ReasonCode.NONE
     }

@@ -42,6 +42,7 @@ class PhoneShellActivity : ComponentActivity() {
     private lateinit var statusViewModel: PhoneStatusViewModel
     private var captureOwnerToken: Long = -1L
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
+    private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     /**
      * Re-establish intake on resume — ⛔ **without deciding, on the owner's behalf, that they want
@@ -60,7 +61,15 @@ class PhoneShellActivity : ComponentActivity() {
     private val startWhenReady = object : Runnable {
         override fun run() {
             if (container.recoveryCompleted) {
-                container.controller.reconcile(ObserverStartMode.VisibleStart)
+                // ⚠ `ensureObserving` unless the owner stopped it themselves. `reconcile` alone is
+                // not enough: on a fresh install whose permissions were already granted, the
+                // migration backfill expresses the sources and NOTHING would ever bring the service
+                // up — sources the owner sees as on, taking nothing in.
+                if (ownerStopped.ownerStopped()) {
+                    container.controller.reconcile(ObserverStartMode.VisibleStart)
+                } else {
+                    container.controller.ensureObserving()
+                }
                 requestNotificationsOnce()
             } else {
                 mainHandler.postDelayed(this, RECOVERY_POLL_INTERVAL_MS)
@@ -222,9 +231,10 @@ class PhoneShellActivity : ComponentActivity() {
     private fun onSourceWish(sourceId: String, wish: SourceWish) {
         sourcesViewModel.setWish(sourceId, wish)
         if (wish != SourceWish.On) return
-        // 🔴 Turning a source on IS asking for intake, and it is now the only thing that asks.
+        // 🔴 Turning a source on IS asking again, so it clears the stop and brings intake back.
         // ⛔ Without this, an owner who had pressed `stop intake` could turn a source on and watch
-        // it sit at `setting up` forever, because nothing would bring the service back.
+        // it sit there forever, because nothing would start the service.
+        ownerStopped.clear()
         container.controller.ensureObserving()
         val missing = container.sources.requiredPermissions(sourceId).any {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED

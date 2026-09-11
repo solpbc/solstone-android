@@ -99,6 +99,13 @@ class ObserverAppContainer(
     private var previousDiagnostics: HarnessDiagnostics? = null
     private var lastPostedSignature: String? = null
     @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
+
+    /**
+     * Set by an app that has a stop control, so its sources read `paused` rather than
+     * `setting up` after the owner stops intake. ⛔ Never a proxy for "the observer is off": the
+     * window between launch and the pipeline coming up is genuinely `setting up`.
+     */
+    @Volatile var ownerStoppedProvider: () -> Boolean = { false }
     private val destroyLock = Object()
     private val destroyWaitSeam = ServiceDestroyWaitSeam { timeoutMs ->
         synchronized(destroyLock) {
@@ -151,6 +158,10 @@ class ObserverAppContainer(
         registrations = captureSetup.registrations,
         main = { task -> mainHandler.post { task() } },
         wishStore = FileSourceWishStore(context.filesDir.resolve("source-wishes")),
+        // ⚠ Read through the property so the app can install it after construction — the container
+        // is shared with surfaces that have no stop control, and the phone's own store is the only
+        // thing that knows the difference between *never asked* and *asked to stop*.
+        ownerStopped = { ownerStoppedProvider() },
     )
     @Volatile override var recoveryCompleted: Boolean = false
         private set
@@ -227,6 +238,8 @@ class ObserverAppContainer(
             // was newly expressed — a plain resume must not re-assert an intent the owner revoked
             // with `stop intake`.
             val after = sources.snapshot().sources.count { it.wishExpressed }
+            // ⚠ A Settings grant that newly expressed a source is the owner asking, so it brings
+            // intake up even if they had stopped it — asking again is asking.
             if (after > before) runCatching { controller.ensureObserving() }
         }
     }
