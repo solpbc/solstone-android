@@ -62,6 +62,9 @@ rename from `support site` to `get help` sat red until a release attempt.
 control* rather than a renamed one, and a substring that is still on screen does not satisfy the
 assertion. Selectors are regex — escape `+` (`'Status \+ queue/sync'`, single-quoted in YAML).
 
+⚠ **`make ci-device` does not run it either** — the Maestro flow is not an instrumented test, so
+*both* maintained gates are blind to it.
+
 ✅ Changed a label, a row, or a pane title an owner sees? `grep` it in `.maestro/phone-smoke.yaml`
 before you commit.
 
