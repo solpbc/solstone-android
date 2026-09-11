@@ -11,10 +11,41 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 import kotlin.test.Test
+import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class PhoneSourceDetailRuleTest {
+    /**
+     * 🔴 **`paused` promised a way back and the screen offered none.**
+     *
+     * § 5.1's sub-line for `PAUSED` is *"you paused this. resume to start sending again."* — and
+     * the action table keys on the REASON, which for `PAUSED` is `NONE`. So an owner who pressed
+     * `stop intake` reached a screen telling them to resume with no control to do it with; the only
+     * route back was toggling the source off and on again. ⛔ A state word that names an action the
+     * screen does not offer is worse than no sub-line at all.
+     */
+    @Test
+    fun pausedOffersResumeAndNothingElseGainsAnAction() {
+        val paused = sourceDetailRule(SourceState.PAUSED, ReasonCode.NONE)
+        assertEquals("resume intake", paused.action?.label)
+        assertEquals(SourceDetailActionKind.RESUME_INTAKE, paused.action?.kind)
+        assertTrue(paused.retryHonest, "the control has to be enabled to be a way back")
+
+        // ⛔ A real reason still wins: pausing must not replace an action the owner needs.
+        val pausedWithFault = sourceDetailRule(SourceState.PAUSED, ReasonCode.PERMISSION_REVOKED)
+        assertEquals("grant permissions", pausedWithFault.action?.label)
+
+        // ✅ Positive control: no other state gains an action it did not have.
+        SourceState.entries.filter { it != SourceState.PAUSED }.forEach { state ->
+            assertEquals(
+                sourceDetailRule(ReasonCode.NONE).action,
+                sourceDetailRule(state, ReasonCode.NONE).action,
+                state.name,
+            )
+        }
+    }
+
     @Test
     fun sameSnapshotUsesEachSourceOwnReason() {
         val snapshot = SourcesReadModel(

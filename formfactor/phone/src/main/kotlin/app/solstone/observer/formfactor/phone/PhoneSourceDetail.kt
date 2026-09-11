@@ -39,6 +39,8 @@ enum class SourceDetailActionKind {
     GRANT_PERMISSIONS,
     CONNECT_JOURNAL,
     MANAGE_LOCAL_STORAGE,
+    /** The way back from `paused`, which § 5.1's sub-line promises and nothing offered. */
+    RESUME_INTAKE,
 }
 
 data class SourceDetailAction(
@@ -66,6 +68,24 @@ fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = SourceDetailRule(
     action = reasonAction(reason),
     retryHonest = reasonRetryIsHonest(reason),
 )
+
+/**
+ * The rule for a source, where the **state** can carry an action the reason cannot.
+ *
+ * 🔴 `PAUSED` has reason `NONE`, so the reason table offers nothing — and § 5.1's sub-line for it
+ * *promises* a way back: **"you paused this. resume to start sending again."** Until this existed,
+ * an owner who pressed `stop intake` reached a screen that said to resume and had no control to do
+ * it with; the only route back was toggling the source off and on again. ⛔ A state word that
+ * names an action the screen does not offer is worse than no sub-line at all.
+ */
+fun sourceDetailRule(state: SourceState, reason: ReasonCode): SourceDetailRule {
+    val base = sourceDetailRule(reason)
+    if (state != SourceState.PAUSED || base.action != null) return base
+    return base.copy(
+        action = SourceDetailAction("resume intake", SourceDetailActionKind.RESUME_INTAKE),
+        retryHonest = true,
+    )
+}
 
 private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason) {
     ReasonCode.PERMISSION_REVOKED ->
@@ -191,7 +211,7 @@ private fun SourceDetailTemplate(
     onManageLocalStorage: () -> Unit,
     onToggle: (SourceWish) -> Unit,
 ) {
-    val rule = sourceDetailRule(reason)
+    val rule = sourceDetailRule(status.state, reason)
     val subLine = sourceSubLine(status, paired)
     Spacer(Modifier.height(ShellMetrics.sectionGap))
     // The verdict: the state, said once, in the words the deck tile used.
@@ -327,6 +347,9 @@ private fun SourceDetailActionControl(
         SourceDetailActionKind.GRANT_PERMISSIONS -> { { onGrantPermissions(sourceId) } }
         SourceDetailActionKind.CONNECT_JOURNAL -> onConnectJournal
         SourceDetailActionKind.MANAGE_LOCAL_STORAGE -> onManageLocalStorage
+        // Same handler as `start intake again`: it is the owner asking for intake, which is what
+        // clears the stop and brings the service back.
+        SourceDetailActionKind.RESUME_INTAKE -> onStartObserving
     }
     Button(
         onClick = onClick,

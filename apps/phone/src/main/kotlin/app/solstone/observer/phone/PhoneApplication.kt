@@ -71,6 +71,10 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         }
         ObserverForegroundService.widgetStartHandler = object : ObserverWidgetStartHandler {
             override fun onForegroundServiceStarted(sourceId: String) {
+                // ⚠ Turning a source on from the home-screen widget is the owner asking, exactly
+                // like the in-app toggle — so it clears the stop, or resume would refuse to bring
+                // the service back and the widget would look broken.
+                OwnerStoppedStore(this@PhoneApplication).clear()
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
                     is ForegroundSourceActivation.Actuated -> if (activation.result == SourceToggleResult.Applied) {
                         widgetStartOutcomes.clear()

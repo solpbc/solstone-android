@@ -45,6 +45,13 @@ internal fun resetPersistence(context: Context) {
         .edit()
         .clear()
         .commit()
+    // 🔴 Both of these are PERSISTED owner decisions, so leaving them behind makes the whole suite
+    // order-dependent on whichever test touched them. Measured: one test's `stop intake` broadcast
+    // set `phone_owner_stopped`, and the next SEVEN tests failed with `Timed out waiting for … on`
+    // because resume then correctly refused to restart intake the owner had stopped.
+    listOf("phone_owner_stopped", "phone_notification_prompt").forEach { name ->
+        context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+    }
 }
 
 internal fun obtainObserverContainer(): ObserverAppContainer {

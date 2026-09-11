@@ -107,7 +107,12 @@ class PhoneShellActivity : ComponentActivity() {
                 defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
                 onRefreshStatus = statusViewModel::refresh,
                 onToggle = { id, wish -> onSourceWish(id, wish) },
-                onStartObserving = { container.controller.ensureObserving() },
+                onStartObserving = {
+                    // ⚠ Asking again is asking: this is `resume intake` and `start intake again`,
+                    // and both have to clear the owner's stop or the service will not come back.
+                    ownerStopped.clear()
+                    container.controller.ensureObserving()
+                },
                 onGrantPermissions = { sourceId -> requestSourcePermissions(sourceId) },
                 onConnectJournal = {
                     startActivity(
