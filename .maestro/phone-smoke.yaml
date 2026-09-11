@@ -116,7 +116,12 @@ appId: app.solstone.observer.phone
 - tapOn:
     point: "6%,7%"
 - tapOn: "help"
-- assertVisible: "support site"
+# ⚠ Maestro anchors a bare string to the element's WHOLE text, so `support site` no longer matched
+# once `support site` became `get help` / `support.solstone.app` — the substring inside
+# `review and send on the support site` does not satisfy it. Asserting all three row LABELS is both
+# what the screen shows and a stronger gate than the one clause it replaced.
+- assertVisible: "get help"
+- assertVisible: "report a problem"
 - assertVisible: "email support"
 - takeScreenshot: artifacts/hitl/help
 - pressKey: Back

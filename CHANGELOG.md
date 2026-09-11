@@ -22,9 +22,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setting up` no longer says it's connecting to your journal when no journal is paired yet. it says what's actually true and points you at pairing.
 - `intake was stopped by the system` no longer appears for intake that never started. on a fresh install, while you were still working through the permission prompts, the solstone app treated intake that had never started as intake the system had stopped.
 - `start intake again` no longer appears in the middle of setting up, for the same reason.
-- turning a source on now asks for its permission in the same tap, and the screen behind that prompt says `setting up` rather than `needs attention`. before, saying yes landed you on `needs attention: permissions needed` with no prompt in between.
+- flipping a source's switch now asks for that source's permission, in the same tap. before, the switch only recorded your preference: the screen went to `needs attention: permissions needed`, and granting was a separate button that then asked for everything at once.
 - `stop intake` in the notification now stops it. before, opening the app again started it back up without asking you.
-- a source you've stopped reads `paused` and offers `resume intake`. before it read `setting up`, and stayed there.
+- after you press `stop intake`, the sources that were on read `paused` and offer `resume intake`.
 - opening the solstone app no longer flashes a white screen first.
 - backing out of `connect a journal` or `manage local storage` now returns you to the app instead of an internal diagnostics menu. those two screens no longer draw their own back button; your phone's back gesture is what leaves them.
 - the home-screen audio widget no longer uses attention colors for a source that is simply off, or one you haven't set up yet.
