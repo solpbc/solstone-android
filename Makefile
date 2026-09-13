@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk github-release test-release
+.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -229,6 +229,49 @@ pull-phone-apk: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:assembleRealRelease'
 	mkdir -p $(ARTIFACTS)
 	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk/real/release/phone-real-release.apk $(PHONE_RELEASE_APK_LOCAL)
+
+# Stage the exact bytes an already-published GitHub release carries, verifying
+# the digest GitHub records for the asset. For an origin publish of a release
+# cut before the origin existed, and as the recovery path when an origin
+# publish failed after the mirror already went out — a rebuild is different
+# bytes and must never stand in for what testers are running. Usage:
+#   make pull-released-apk VERSION=2.1.0
+pull-released-apk:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
+	tools/release/pull-released-apk.sh $(VERSION) $(PHONE_RELEASE_APK_LOCAL)
+
+# Publish the signed APK to the release origin, updates.solstone.app. THIS is
+# the release publish; the GitHub release below is the mirror, and on a new cut
+# this target runs first. It never contacts GitHub, so a GitHub outage cannot
+# stop or delay it.
+#
+# Unlike github-release it does not require HEAD == CANDIDATE: it mints no ref,
+# and instead requires the remote tag vVERSION to already peel to CANDIDATE.
+# It does require a clean tree, ancestry on the remote release branch, an APK
+# whose versionName/versionCode match what the candidate commit declares, and
+# an APK signed by the pinned release key — then it reads every published
+# object back and re-hashes it before advancing latest. Usage:
+#   make publish-origin VERSION=2.1.0 CANDIDATE=<full 40-hex sha>
+#   (after `make pull-phone-apk ...` or `make pull-released-apk VERSION=...`)
+ORIGIN_LANE ?= release
+
+publish-origin:
+	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
+	@test -n "$(CANDIDATE)" || { echo "Set CANDIDATE=<full 40-hex commit>; publish-origin never infers a candidate from HEAD or the remote default branch" >&2; exit 2; }
+	@test -f $(PHONE_RELEASE_APK_LOCAL) || { echo "No $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' or 'make pull-released-apk VERSION=$(VERSION)' first" >&2; exit 2; }
+	tools/release/publish-origin.sh \
+	  --lane $(ORIGIN_LANE) \
+	  --version $(VERSION) \
+	  --candidate $(CANDIDATE) \
+	  --apk $(PHONE_RELEASE_APK_LOCAL)
+
+# Read release-binding facts (package, version, signer certificate, the MERGED
+# permission set) straight out of an APK, with no Android SDK. Usage:
+#   make apk-facts APK=artifacts/phone-real-release.apk
+apk-facts:
+	@test -n "$(APK)" || { echo "Set APK=<path to an apk>" >&2; exit 2; }
+	@python3 tools/release/apk_facts.py $(APK)
 
 # Cut the GitHub release for an explicit candidate commit. The tag is never
 # inferred from HEAD or from the remote default branch. An annotated tag is

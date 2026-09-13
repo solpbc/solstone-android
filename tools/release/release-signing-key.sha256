@@ -1,0 +1,6 @@
+# SHA-256 of the release signing certificate, as apksigner prints it
+# (`apksigner verify --print-certs` -> "Signer #1 certificate SHA-256 digest").
+# This is the Play upload key. The certificate digest is public by design:
+# every installed copy of the app can read it, and Android refuses an update
+# signed by any other key. The private keystore is held in operator custody.
+12dfe32f91f7182590092737917ed719337f8f9b1163245b3bdc3479a6be2660
