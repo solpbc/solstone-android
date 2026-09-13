@@ -27,4 +27,6 @@ __pycache__/
 /hostapd_*.conf
 /netsim.ini
 /android-*/
-
+# wrangler drops a local state dir here on any r2 call; an untracked one makes
+# publish-origin refuse for a dirty tree, which is the gate firing on its own tooling.
+.wrangler/

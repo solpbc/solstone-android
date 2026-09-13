@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- you get the app from solstone.app/download/android now, and the file itself comes from updates.solstone.app rather than GitHub. that page also shows how to check the file is ours before you install it. the same bytes stay attached to the GitHub release, under a different filename.
+
 ## [2.1.0] - 2026-09-10
 
 ### Added
