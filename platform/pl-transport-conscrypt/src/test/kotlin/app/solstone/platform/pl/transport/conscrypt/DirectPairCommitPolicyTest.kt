@@ -31,11 +31,15 @@ import kotlin.test.assertTrue
 class DirectPairCommitPolicyTest {
     @Test
     fun mixedV05RefusalCreatesNoMaterialSessionDuplexOrRequest() {
+        // A public IPv4 (192.0.2.42, TEST-NET-1) is a valid direct-pairing
+        // candidate now (no LAN-only allow-list; removed 2026-09-18, founder
+        // + CSO ruling, req_xhwmvxvn) — a multicast address is the one that
+        // still refuses the whole v05 payload.
         val counts = Counts()
         val link = pairLink(
             listOf(
                 byteArrayOf(10, 0, 0, 2),
-                byteArrayOf(192.toByte(), 0, 2, 42),
+                byteArrayOf(224.toByte(), 0, 0, 1),
             ),
         )
 
@@ -47,22 +51,25 @@ class DirectPairCommitPolicyTest {
             }
         }
 
-        assertEquals("pair link is not local/private IPv4", failure.message)
+        assertEquals("pair link candidate is outside the allowed IPv4 range", failure.message)
         assertEquals(Counts(), counts)
     }
 
     @Test
-    fun publicV04RefusalOpensNoSession() {
+    fun multicastV04RefusalOpensNoSession() {
+        // Public IPv4 is a valid direct-pairing candidate (no LAN-only
+        // allow-list; removed 2026-09-18, founder + CSO ruling,
+        // req_xhwmvxvn) — multicast is the one class that still refuses.
         val counts = Counts()
 
         val failure = assertFailsWith<IllegalArgumentException> {
-            invokePair(v04PairLink(byteArrayOf(8, 8, 8, 8)), counts) { _, _ ->
+            invokePair(v04PairLink(byteArrayOf(224.toByte(), 0, 0, 1)), counts) { _, _ ->
                 counts.sessionOpens++
                 error("must not open")
             }
         }
 
-        assertEquals("pair link is not local/private IPv4", failure.message)
+        assertEquals("pair link candidate is outside the allowed IPv4 range", failure.message)
         assertEquals(Counts(), counts)
     }
 

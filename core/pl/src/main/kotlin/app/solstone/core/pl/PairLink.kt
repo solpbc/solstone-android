@@ -132,7 +132,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
         val c = decoded[4].toInt() and 0xff
         val d = decoded[5].toInt() and 0xff
         if (!isDirectDialCandidate(a, b)) {
-            throw IllegalArgumentException("pair link is not local/private IPv4")
+            throw IllegalArgumentException("pair link candidate is outside the allowed IPv4 range")
         }
         val host = "$a.$b.$c.$d"
         val port = ((decoded[6].toInt() and 0xff) shl 8) or (decoded[7].toInt() and 0xff)
@@ -157,7 +157,7 @@ private fun parseDirectFromDecoded(decoded: ByteArray): DirectPairLink {
             val c = decoded[offset + 2].toInt() and 0xff
             val d = decoded[offset + 3].toInt() and 0xff
             if (!isDirectDialCandidate(a, b)) {
-                throw IllegalArgumentException("pair link is not local/private IPv4")
+                throw IllegalArgumentException("pair link candidate is outside the allowed IPv4 range")
             }
             candidates.add(DirectEndpoint("$a.$b.$c.$d", normPort))
         }
@@ -198,19 +198,12 @@ private fun parseRelayFromDecoded(decoded: ByteArray): RelayPairLink {
     return RelayPairLink(s, caFpSpki, relayOrigin)
 }
 
-fun isPrivateOrLinkLocal(a: Int, b: Int): Boolean =
-    a == 10 ||
-        (a == 172 && b >= 16 && b <= 31) ||
-        (a == 192 && b == 168) ||
-        (a == 169 && b == 254)
-
-private fun isCgnat(a: Int, b: Int): Boolean =
-    a == 100 && b in 64..127
-
-private fun isLoopback(a: Int): Boolean = a == 127
-
-private fun isDirectDialCandidate(a: Int, b: Int): Boolean =
-    isPrivateOrLinkLocal(a, b) || isCgnat(a, b) || isLoopback(a)
+// No private/LAN-only restriction: a direct pair link's trust anchor is the
+// embedded CA-fingerprint pin, checked at TLS handshake time, not the network
+// locality of the address it dials. Removed 2026-09-18 (founder + CSO
+// ruling, req_xhwmvxvn). The only addresses that are never valid dial targets
+// are the unspecified network (0.0.0.0/8) and multicast/reserved (224-255).
+private fun isDirectDialCandidate(a: Int, b: Int): Boolean = a != 0 && a < 224
 
 fun supportedDirectDialEndpoint(ip: String, port: Int): DirectEndpoint? {
     val parts = ip.split(".")

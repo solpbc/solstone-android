@@ -107,13 +107,16 @@ class PairLinkTest {
         assertFailsWith<IllegalArgumentException> { parseDirectPairLink(withBlob(blob(byteArrayOf(10, 1, 2, 3), 7657).also { it[1] = 0x02 })) }
         assertFailsWith<IllegalArgumentException> { parseDirectPairLink("https://go.solstone.app/p#${crockfordEncode(ByteArray(39))}") }
         assertFailsWith<IllegalArgumentException> { parseDirectPairLink("https://go.solstone.app/p#not-valid-*") }
-        assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(byteArrayOf(8, 8, 8, 8), 7657)) }
-        assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(byteArrayOf(172.toByte(), 32, 0, 1), 7657)) }
-        assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(byteArrayOf(192.toByte(), 169.toByte(), 0, 1), 7657)) }
     }
 
+    // No private/LAN-only restriction: a public IPv4 is as valid a direct
+    // pairing candidate as a private one — the trust anchor is the embedded
+    // CA-fingerprint pin, not network locality (removed 2026-09-18, founder
+    // + CSO ruling, req_xhwmvxvn). The only addresses that are never a valid
+    // dial target are the unspecified network (0.0.0.0/8) and
+    // multicast/reserved (224-255).
     @Test
-    fun admitsOnlyAllowListedIpv4RangesAtTheirBoundaries() {
+    fun admitsPrivateCgnatLoopbackAndPublicIpv4AtTheOldBoundaries() {
         val admitted = listOf(
             byteArrayOf(10, 0, 0, 0),
             byteArrayOf(10, 255.toByte(), 255.toByte(), 255.toByte()),
@@ -127,42 +130,29 @@ class PairLinkTest {
             byteArrayOf(100, 127, 255.toByte(), 255.toByte()),
             byteArrayOf(127, 0, 0, 0),
             byteArrayOf(127, 255.toByte(), 255.toByte(), 255.toByte()),
-        )
-        admitted.forEach { ip -> parseDirectPairLink(pairLink(ip, 0)) }
-
-        val adjacent = listOf(
+            // formerly-rejected boundary neighbors — public, now admitted
             byteArrayOf(9, 255.toByte(), 255.toByte(), 255.toByte()),
             byteArrayOf(11, 0, 0, 0),
             byteArrayOf(172.toByte(), 15, 255.toByte(), 255.toByte()),
             byteArrayOf(172.toByte(), 32, 0, 0),
             byteArrayOf(192.toByte(), 167.toByte(), 255.toByte(), 255.toByte()),
             byteArrayOf(192.toByte(), 169.toByte(), 0, 0),
-            byteArrayOf(169.toByte(), 253.toByte(), 255.toByte(), 255.toByte()),
-            byteArrayOf(169.toByte(), 255.toByte(), 0, 0),
             byteArrayOf(100, 63, 255.toByte(), 255.toByte()),
             byteArrayOf(100, 128.toByte(), 0, 0),
             byteArrayOf(126, 255.toByte(), 255.toByte(), 255.toByte()),
             byteArrayOf(128.toByte(), 0, 0, 0),
+            byteArrayOf(8, 8, 8, 8),
         )
-        adjacent.forEach { ip ->
+        admitted.forEach { ip -> parseDirectPairLink(pairLink(ip, 0)) }
+
+        val stillRejected = listOf(
+            byteArrayOf(0, 0, 0, 0),
+            byteArrayOf(0, 255.toByte(), 255.toByte(), 255.toByte()),
+            byteArrayOf(224.toByte(), 0, 0, 1),
+            byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte()),
+        )
+        stillRejected.forEach { ip ->
             assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(ip, 0)) }
-        }
-    }
-
-    @Test
-    fun acceptsCgnatBoundaryRanges() {
-        listOf(
-            byteArrayOf(100, 64, 0, 0),
-            byteArrayOf(100, 127.toByte(), 255.toByte(), 255.toByte()),
-        ).forEach { ip ->
-            parseDirectPairLink(pairLink(ip, 0))
-        }
-
-        assertFailsWith<IllegalArgumentException> {
-            parseDirectPairLink(pairLink(byteArrayOf(100, 63, 0, 1), 0))
-        }
-        assertFailsWith<IllegalArgumentException> {
-            parseDirectPairLink(pairLink(byteArrayOf(100, 128.toByte(), 0, 1), 0))
         }
     }
 
@@ -174,14 +164,14 @@ class PairLinkTest {
                     v05Blob(
                         listOf(
                             byteArrayOf(10, 0, 0, 40),
-                            byteArrayOf(8, 8, 8, 8),
+                            byteArrayOf(224.toByte(), 0, 0, 1),
                             byteArrayOf(192.toByte(), 168.toByte(), 1, 90),
                         ),
                     ),
                 ),
             )
         }
-        assertEquals("pair link is not local/private IPv4", failure.message)
+        assertEquals("pair link candidate is outside the allowed IPv4 range", failure.message)
     }
 
     @Test
@@ -227,7 +217,7 @@ class PairLinkTest {
             parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(192.toByte(), 0, 2, 10))).also { it[0] = 0x06 }))
         }
         assertFailsWith<IllegalArgumentException> {
-            parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(8, 8, 8, 8)))))
+            parseDirectPairLink(withBlob(v05Blob(listOf(byteArrayOf(224.toByte(), 0, 0, 1)))))
         }
     }
 
@@ -297,16 +287,27 @@ class PairLinkTest {
     }
 
     @Test
-    fun refusesRepresentativeNonAllowListedAddresses() {
+    fun refusesTheUnspecifiedNetworkAndMulticastReservedAddresses() {
+        // The only addresses that are never a valid dial target: the
+        // unspecified network (0.0.0.0/8) and multicast/reserved
+        // (224-255). Everything else — including public unicast ranges
+        // like TEST-NET-1 (192.0.2.0/24), benchmarking (198.18.0.0/15),
+        // and ordinary public IPv4 — is a valid direct-pairing candidate
+        // (no LAN-only allow-list; removed 2026-09-18, founder + CSO
+        // ruling, req_xhwmvxvn).
         listOf(
             byteArrayOf(0, 0, 0, 0),
             byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte()),
             byteArrayOf(224.toByte(), 0, 0, 1),
+        ).forEach { ip ->
+            assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(ip, 7657)) }
+        }
+        listOf(
             byteArrayOf(192.toByte(), 0, 2, 42),
             byteArrayOf(198.toByte(), 18, 0, 1),
             byteArrayOf(8, 8, 8, 8),
         ).forEach { ip ->
-            assertFailsWith<IllegalArgumentException> { parseDirectPairLink(pairLink(ip, 7657)) }
+            parseDirectPairLink(pairLink(ip, 7657))
         }
     }
 
