@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env require-firebase-dist-env dist-phone android-host-dist-phone dist-phone-frozen firebase-phone-frozen android-host-hitl-phone-frozen android-host-dist-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
+.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -105,18 +105,6 @@ validate-rogbid-qr:
 validate-rogbid-pl:
 	tools/rogbid/validate-rogbid-pl-link.sh $(ROGBID_SERIAL)
 
-# --- Firebase App Distribution (beta channel) ---
-# Build a signed release APK of the phone observer and push it to the
-# trusted-testers group on Firebase App Distribution (the Android analog of
-# TestFlight). The signed-APK path is browserless and needs no Play account.
-# Authenticates non-interactively via ADC (the App Distribution service-account
-# key), never an interactive login. The on-box environment supplies, via
-# `source ~/android-dev/env.sh`:
-#   ANDROID_UPLOAD_KEYSTORE, ANDROID_UPLOAD_KEYSTORE_PASS  (release signing)
-#   GOOGLE_APPLICATION_CREDENTIALS                          (App Distribution SA)
-#   FIREBASE_APP_ID                                         (Firebase Android App ID)
-# Release notes carry the short git SHA. The remote build tree (sync-android-host)
-# excludes .git, so the remote wrapper passes RELEASE_REV in from the caller's git.
 # Parked manual device command: retained watch + glasses source evidence. It is
 # neither routine maintenance nor a release gate; do not let it gate a phone release.
 ci-device-experimental:
@@ -132,15 +120,15 @@ ci-device-experimental:
 # shorter than the viewport so there was nothing to scroll. Every gate was green,
 # because nothing ever looked at the screen. This is the gate that looks.
 #
-# It runs the RELEASE APK — the exact artifact `dist-phone` ships — on the Galaxy A36
+# It runs the RELEASE APK — the exact artifact that ships — on the Galaxy A36
 # (API 36, matching the phone targetSdk 36 baseline). Gating the debug APK here would leave
 # release signing and minification unexercised by the only human-usability check we
 # have, which would hollow out the whole guarantee.
 #
-# `dist-phone` DEPENDS on this. There is deliberately no SKIP escape hatch: if the
-# device is unhealthy, the device gets fixed. The guarantee we are buying is that a
-# build a human cannot use physically cannot reach a tester, and an escape hatch is
-# exactly how that guarantee gets spent on a deadline.
+# There is deliberately no SKIP escape hatch: if the device is unhealthy, the
+# device gets fixed. The guarantee we are buying is that a build a human cannot
+# use physically cannot reach a tester, and an escape hatch is exactly how that
+# guarantee gets spent on a deadline.
 ANDROID_HITL_SERIAL ?= RZGL11XCS9D
 HITL_FLOW := .maestro/phone-smoke.yaml
 HITL_ARTIFACTS = $(ARTIFACTS)/hitl
@@ -170,7 +158,7 @@ hitl-phone:
 
 # Full versioned releases use this target after `pull-phone-apk` has frozen the
 # candidate bytes. It never invokes Gradle: the exact APK passed here is the one
-# installed on the A36 and later distributed to Firebase/origin/GitHub.
+# installed on the A36 and later distributed to origin/GitHub.
 hitl-phone-frozen:
 	@set -eu; \
 	test -n "$(FROZEN_PHONE_APK)" || { echo "Set FROZEN_PHONE_APK=<exact signed APK>" >&2; exit 2; }; \
@@ -191,58 +179,8 @@ hitl-phone-frozen:
 	test "$$after" = "$$before" || { echo "Frozen release APK changed during HITL" >&2; exit 1; }; \
 	echo "HITL FROZEN-APK GATE PASSED — $$after"
 
-RELEASE_REV ?= $(shell git rev-parse --short HEAD 2>/dev/null)
-RELEASE_NOTES ?=
-
-require-dist-env:
-	@test -n "$(ANDROID_UPLOAD_KEYSTORE)" || (echo "Set ANDROID_UPLOAD_KEYSTORE (release signing keystore path)" >&2; exit 2)
-	@test -n "$(GOOGLE_APPLICATION_CREDENTIALS)" || (echo "Set GOOGLE_APPLICATION_CREDENTIALS (App Distribution SA key)" >&2; exit 2)
-	@test -n "$(FIREBASE_APP_ID)" || (echo "Set FIREBASE_APP_ID (Firebase Android App ID)" >&2; exit 2)
-	@command -v firebase >/dev/null 2>&1 || (echo "firebase CLI not found on PATH" >&2; exit 2)
-
-require-firebase-dist-env:
-	@test -n "$(GOOGLE_APPLICATION_CREDENTIALS)" || (echo "Set GOOGLE_APPLICATION_CREDENTIALS (App Distribution SA key)" >&2; exit 2)
-	@test -n "$(FIREBASE_APP_ID)" || (echo "Set FIREBASE_APP_ID (Firebase Android App ID)" >&2; exit 2)
-	@command -v firebase >/dev/null 2>&1 || (echo "firebase CLI not found on PATH" >&2; exit 2)
-
-# NOTE: hitl-phone is a HARD prerequisite. A phone build that a human cannot use
-# must not be able to reach a tester. Do not add a bypass.
-dist-phone: require-dist-env hitl-phone
-	$(GRADLE) :apps:phone:assembleRealRelease
-	@apk=$$(ls -t apps/phone/build/outputs/apk/real/release/*.apk 2>/dev/null | head -1); \
-	test -n "$$apk" || { echo "No signed release APK found under apps/phone/build/outputs/apk/real/release/" >&2; exit 1; }; \
-	notes="$(RELEASE_NOTES)"; \
-	if [ -z "$$notes" ]; then \
-	  if [ -n "$(RELEASE_REV)" ]; then notes="solstone-android beta $(RELEASE_REV)"; else notes="solstone-android beta build"; fi; \
-	fi; \
-	echo "Distributing $$apk  (notes: $$notes)"; \
-	firebase appdistribution:distribute "$$apk" --app "$(FIREBASE_APP_ID)" --groups trusted-testers --release-notes "$$notes"
-
-android-host-dist-phone: sync-android-host
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make dist-phone RELEASE_REV=$(RELEASE_REV) RELEASE_NOTES="$(RELEASE_NOTES)"'
-
-# Exact-file Firebase primitive. Full releases run `hitl-phone-frozen` before
-# immutable publication, then call this after publication; `dist-phone-frozen`
-# keeps a one-shot exact-file gate+distribution target for non-published use.
-firebase-phone-frozen: require-firebase-dist-env
-	@set -eu; \
-	test -n "$(FROZEN_PHONE_APK)" || { echo "Set FROZEN_PHONE_APK=<exact signed APK>" >&2; exit 2; }; \
-	test -f "$(FROZEN_PHONE_APK)" || { echo "Frozen release APK not found: $(FROZEN_PHONE_APK)" >&2; exit 2; }; \
-	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); before=$${digest_line%% *}; \
-	notes="$(RELEASE_NOTES)"; \
-	if [ -z "$$notes" ]; then notes="solstone-android release $$before"; fi; \
-	echo "Distributing frozen APK $(FROZEN_PHONE_APK) ($$before)  (notes: $$notes)"; \
-	firebase appdistribution:distribute "$(FROZEN_PHONE_APK)" --app "$(FIREBASE_APP_ID)" --groups trusted-testers --release-notes "$$notes"; \
-	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); after=$${digest_line%% *}; \
-	test "$$after" = "$$before" || { echo "Frozen release APK changed during Firebase distribution" >&2; exit 1; }; \
-	echo "FIREBASE FROZEN-APK DISTRIBUTION PASSED — $$after"
-
-dist-phone-frozen: hitl-phone-frozen
-	$(MAKE) firebase-phone-frozen
-
-# Versioned release wrappers. HITL runs before phase-4 publication. Firebase
-# runs after it. Each wrapper independently copies and proves the same frozen
-# local artifact; neither target can reach Gradle.
+# Versioned release wrapper. Copies and proves the frozen local artifact before
+# HITL; cannot reach Gradle.
 android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
 	@test -f "$(PHONE_RELEASE_APK_LOCAL)" || { echo "No frozen $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
 	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)/artifacts/distribution'
@@ -253,17 +191,6 @@ android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
 	test "$$remote_sha" = "$$local_sha" || { echo "Frozen APK transfer digest mismatch: $$remote_sha != $$local_sha" >&2; exit 1; }; \
 	echo "Frozen APK transfer verified for HITL — $$local_sha"
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make hitl-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/phone-real-release.apk'
-
-android-host-dist-phone-frozen: require-android-remote-host sync-android-host
-	@test -f "$(PHONE_RELEASE_APK_LOCAL)" || { echo "No frozen $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
-	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)/artifacts/distribution'
-	scp "$(PHONE_RELEASE_APK_LOCAL)" $(ANDROID_REMOTE_HOST):$(FROZEN_REMOTE_APK)
-	@set -eu; \
-	digest_line=$$(sha256sum "$(PHONE_RELEASE_APK_LOCAL)"); local_sha=$${digest_line%% *}; \
-	remote_line=$$(ssh $(ANDROID_REMOTE_HOST) 'sha256sum $(FROZEN_REMOTE_APK)'); remote_sha=$${remote_line%% *}; \
-	test "$$remote_sha" = "$$local_sha" || { echo "Frozen APK transfer digest mismatch: $$remote_sha != $$local_sha" >&2; exit 1; }; \
-	echo "Frozen APK transfer verified for Firebase — $$local_sha"
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make firebase-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/phone-real-release.apk RELEASE_NOTES="$(RELEASE_NOTES)"'
 
 # --- Versioning + changelog + GitHub release (the release-notes spine) ---
 # Version lives in apps/phone/build.gradle.kts (versionName = semver, versionCode =
