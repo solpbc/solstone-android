@@ -166,6 +166,14 @@ class DiagnosticEventSinkTest {
                 ),
             ),
         )
+        assertEquals(
+            "kind=journal-browser class=admission outcome=rejected",
+            formatDiagEvent(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected")),
+        )
+        assertEquals(
+            "kind=journal-browser class=proxy outcome=ok",
+            formatDiagEvent(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "ok")),
+        )
 
         val exception = RuntimeException("https://go.solstone.app/p#ticket-token-cert-----BEGIN PRIVATE KEY-----")
         val formatted = formatDiagEvent(

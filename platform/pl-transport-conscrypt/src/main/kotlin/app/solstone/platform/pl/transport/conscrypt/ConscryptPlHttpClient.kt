@@ -19,6 +19,19 @@ class ConscryptPlHttpClient internal constructor(private val session: MuxSession
         return session.request(method, path, headers, body, maxResponseBytes)
     }
 
+    fun requestBrowser(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int = app.solstone.core.pl.MAX_BROWSER_RESPONSE_BYTES,
+    ): app.solstone.core.pl.browser.BrowserHttpResponse {
+        return session.requestBrowser(method, path, headers, body, maxResponseBytes)
+    }
+
+    val isPoisoned: Boolean
+        get() = session.isPoisoned
+
     override fun close() {
         session.close()
     }

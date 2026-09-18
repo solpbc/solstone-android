@@ -8,6 +8,9 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.SocketTimeoutException
 
+import app.solstone.core.pl.browser.BrowserHttpResponse
+import app.solstone.core.pl.browser.parseBrowserHttpResponse
+
 class MuxSession(
     private val duplex: ByteDuplex,
     private val observer: PlStreamObserver? = null,
@@ -17,13 +20,34 @@ class MuxSession(
     private val dialer = FrameDialer()
     private var poisoned = false
 
+    val isPoisoned: Boolean
+        get() = poisoned
+
     fun request(
         method: String,
         path: String,
         headers: Map<String, String>,
         body: ByteArray?,
         maxResponseBytes: Int = MAX_RESPONSE_BYTES,
-    ): HttpResponse {
+    ): HttpResponse = exchange(method, path, headers, body, maxResponseBytes, ::parseHttpResponse)
+
+    fun requestBrowser(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int = MAX_BROWSER_RESPONSE_BYTES,
+    ): BrowserHttpResponse =
+        exchange(method, path, headers, body, maxResponseBytes, ::parseBrowserHttpResponse)
+
+    private fun <T> exchange(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: ByteArray?,
+        maxResponseBytes: Int,
+        parser: (ByteArray) -> T,
+    ): T {
         if (poisoned) {
             throw IOException(SESSION_UNUSABLE)
         }
@@ -97,7 +121,7 @@ class MuxSession(
                     continue
                 }
                 if ((frame.flags and FLAG_CLOSE) != 0) {
-                    val parsed = parseHttpResponse(response.toByteArray())
+                    val parsed = parser(response.toByteArray())
                     successful = true
                     return parsed
                 }
@@ -164,6 +188,7 @@ class MuxSession(
 }
 
 const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+const val MAX_BROWSER_RESPONSE_BYTES = 16 * 1024 * 1024
 const val INITIAL_RECEIVE_WINDOW = 1024 * 1024
 const val MAX_DATA_CHUNK_BYTES = 64 * 1024
 const val SESSION_UNUSABLE = "PL session unusable"

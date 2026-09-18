@@ -10,5 +10,6 @@ kotlin {
 dependencies {
     api(project(":core:identity"))
     implementation(project(":core:crypto"))
+    implementation(project(":core:diagnostics"))
     testImplementation(kotlin("test"))
 }
