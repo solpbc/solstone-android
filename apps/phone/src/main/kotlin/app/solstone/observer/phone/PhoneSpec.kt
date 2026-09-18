@@ -5,8 +5,10 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import app.solstone.core.sources.PHONE_STREAM
+import app.solstone.observer.formfactor.phone.createPhonePairingMarkView
 import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
+import app.solstone.platform.work.syncStores
 
 val PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "camera")
 
@@ -32,5 +34,9 @@ val phoneSpec = FormFactorSpec(
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             )
         }
+    },
+    pairingAccessoryFactory = { context ->
+        val coordinator = syncStores(context).journalIdentityCoordinator
+        createPhonePairingMarkView(context, coordinator)
     },
 )

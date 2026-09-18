@@ -35,6 +35,7 @@ class ObserverHarnessUi(
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
     private val onJournalCacheLoadComplete: () -> Unit = {},
+    private val markAccessoryFactory: ((Context) -> View)? = null,
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
@@ -105,13 +106,33 @@ class ObserverHarnessUi(
             // than that the harness is ready. Adopted from the string iOS already ships for this
             // screen (`QRScannerView`), not authored here.
             val status = text("point your phone at the code")
+            val accessoryContainer = if (markAccessoryFactory != null) {
+                FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                }
+            } else null
             val preview = when (qrBackend) {
                 QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel) { message ->
                     status.text = message
+                    if (message == "paired") {
+                        accessoryContainer?.let { container ->
+                            container.removeAllViews()
+                            markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
+                        }
+                    }
                 }
                 QrBackend.Legacy -> LegacyQrPreviewView(context, controller, qrThreadLabel) { message ->
                     status.text = message
+                    if (message == "paired") {
+                        accessoryContainer?.let { container ->
+                            container.removeAllViews()
+                            markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
+                        }
+                    }
                 }
+            }
+            if (accessoryContainer != null) {
+                addView(accessoryContainer)
             }
             addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeightPx))
             backButton()
@@ -121,13 +142,29 @@ class ObserverHarnessUi(
     fun showPairLink(uri: String?) {
         setScreen {
             val status = text("pairing…")
+            val accessoryContainer = if (markAccessoryFactory != null) {
+                FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                }
+            } else null
+            if (accessoryContainer != null) {
+                addView(accessoryContainer)
+            }
             backButton()
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
                     LoadState.Loading -> status.text = "pairing…"
                     is LoadState.Loaded -> when (val result = state.value) {
                         PairLinkDispatchResult.NoLink -> leave()
-                        else -> status.text = requireNotNull(pairLinkDispatchText(result))
+                        else -> {
+                            status.text = requireNotNull(pairLinkDispatchText(result))
+                            if (result is PairLinkDispatchResult.Attempted && result.outcome.isSuccessfulPair()) {
+                                accessoryContainer?.let { container ->
+                                    container.removeAllViews()
+                                    markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
+                                }
+                            }
+                        }
                     }
                     // ⚠ The third copy of `Pairing failed`, and the reason this line reads from
                     // the renderer now: two independent tables of the same words is how the first

@@ -50,6 +50,8 @@ fun buildObserverFlavor(
         coordinator = stores.journalVersionCoordinator,
         mutator = stores.identityMutator,
         relayAccessCoordinator = stores.relayAccessCoordinator,
+        journalMarkStore = stores.journalMarkStore,
+        journalIdentityCoordinator = stores.journalIdentityCoordinator,
     )
     val relayPairProbe = RealRelayPairProbe(
         credentialStore = stores.credentialStore,
@@ -59,6 +61,8 @@ fun buildObserverFlavor(
         mutator = stores.identityMutator,
         relayAccessCoordinator = stores.relayAccessCoordinator,
         endpointStore = stores.endpointStore,
+        journalMarkStore = stores.journalMarkStore,
+        journalIdentityCoordinator = stores.journalIdentityCoordinator,
     )
     val plStatusProbe = RealPlStatusProbe(
         endpointStore = stores.endpointStore,

@@ -7,8 +7,10 @@ import android.content.Context
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
@@ -16,6 +18,7 @@ import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityMutator
 import app.solstone.platform.identity.file.FileIdentityStore
+import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
 import java.io.File
 
@@ -27,6 +30,8 @@ data class SyncStores(
     val journalVersionStore: JournalVersionStore,
     val journalVersionCoordinator: JournalVersionRefreshCoordinator,
     val relayAccessCoordinator: RelayAccessRefreshCoordinator,
+    val journalMarkStore: JournalMarkStore,
+    val journalIdentityCoordinator: JournalIdentityRefreshCoordinator,
 )
 
 private object SyncStoresHolder {
@@ -36,6 +41,8 @@ private object SyncStoresHolder {
     private var jvCoordinator: JournalVersionRefreshCoordinator? = null
     @Volatile
     private var raCoordinator: RelayAccessRefreshCoordinator? = null
+    @Volatile
+    private var jiCoordinator: JournalIdentityRefreshCoordinator? = null
 
     fun getMutator(identityStore: IdentityStore): IdentityMutator =
         mutator ?: synchronized(this) {
@@ -51,6 +58,11 @@ private object SyncStoresHolder {
         raCoordinator ?: synchronized(this) {
             raCoordinator ?: RelayAccessRefreshCoordinator(mutator).also { raCoordinator = it }
         }
+
+    fun getJiCoordinator(store: JournalMarkStore): JournalIdentityRefreshCoordinator =
+        jiCoordinator ?: synchronized(this) {
+            jiCoordinator ?: JournalIdentityRefreshCoordinator(store).also { jiCoordinator = it }
+        }
 }
 
 fun plStoreDir(context: Context): File = File(context.filesDir, "pl")
@@ -59,6 +71,7 @@ fun syncStores(context: Context): SyncStores {
     val dir = plStoreDir(context)
     val protector = AndroidKeyStoreProtector()
     val journalVersionStore = FileJournalVersionStore(File(dir, "journal_version.tsv"))
+    val journalMarkStore = FileJournalMarkStore(File(dir, "journal_mark.json"))
     val identityStore = FileIdentityStore(File(dir, "identity.tsv"), protector)
     val mutator = SyncStoresHolder.getMutator(identityStore)
     return SyncStores(
@@ -69,5 +82,7 @@ fun syncStores(context: Context): SyncStores {
         journalVersionStore = journalVersionStore,
         journalVersionCoordinator = SyncStoresHolder.getJvCoordinator(journalVersionStore),
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
+        journalMarkStore = journalMarkStore,
+        journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore),
     )
 }

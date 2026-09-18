@@ -3,6 +3,8 @@
 
 package app.solstone.observer.scaffold
 
+import android.content.Context
+import android.view.View
 import app.solstone.observer.formfactor.shared.QrBackend
 
 data class FormFactorSpec(
@@ -13,4 +15,5 @@ data class FormFactorSpec(
     val previewHeightPx: Int,
     val declaredCaptureForegroundTypes: Set<String>,
     val permissions: (sdkInt: Int) -> Array<String>,
+    val pairingAccessoryFactory: ((Context) -> View)? = null,
 )

@@ -18,6 +18,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
@@ -26,6 +27,7 @@ import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.LocalIPv4Interface
 import app.solstone.core.pl.MuxSession
@@ -101,6 +103,8 @@ fun pairAndProbe(
     coordinator: JournalVersionRefreshCoordinator? = null,
     mutator: IdentityMutator? = null,
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
+    journalMarkStore: JournalMarkStore? = null,
+    journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -113,6 +117,8 @@ fun pairAndProbe(
     coordinator = coordinator,
     mutator = mutator,
     relayAccessCoordinator = relayAccessCoordinator,
+    journalMarkStore = journalMarkStore,
+    journalIdentityCoordinator = journalIdentityCoordinator,
 )
 
 internal fun pairAndProbe(
@@ -129,6 +135,8 @@ internal fun pairAndProbe(
     coordinator: JournalVersionRefreshCoordinator? = null,
     mutator: IdentityMutator? = null,
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
+    journalMarkStore: JournalMarkStore? = null,
+    journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
 ): PairProbeResult {
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
@@ -215,6 +223,8 @@ internal fun pairAndProbe(
                     coordinator = coordinator,
                     mutator = mutator,
                     relayAccessCoordinator = relayAccessCoordinator,
+                    journalMarkStore = journalMarkStore,
+                    journalIdentityCoordinator = journalIdentityCoordinator,
                 )
             }
             DialDecision.TERMINAL -> {
@@ -254,6 +264,8 @@ internal fun persistOrReturnDirectPairResult(
     coordinator: JournalVersionRefreshCoordinator? = null,
     mutator: IdentityMutator? = null,
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
+    journalMarkStore: JournalMarkStore? = null,
+    journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
 ): PairProbeResult {
     val prior = if (mutator != null) mutator.current() else identityStore.load()
     if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
@@ -269,6 +281,9 @@ internal fun persistOrReturnDirectPairResult(
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
                 openAuthenticatedClient(targetEndpoint, retainedCredential)
             }
+            journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
+                openAuthenticatedClient(targetEndpoint, retainedCredential)
+            }
         }
         return PairProbeResult(
             handshakePinned = handshakePinned,
@@ -282,10 +297,12 @@ internal fun persistOrReturnDirectPairResult(
     val connectionMode = if (prior?.instanceId == home.instanceId) {
         coordinator?.onPairingChanged()
         relayAccessCoordinator?.onPairingChanged()
+        journalIdentityCoordinator?.onPairingChanged()
         DirectPairConnectionMode.RECONNECTING
     } else {
         coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
         relayAccessCoordinator?.onIdentityChanged()
+        journalIdentityCoordinator?.onIdentityChanged() ?: journalMarkStore?.clear()
         DirectPairConnectionMode.PAIRING
     }
     publishPairing(home, credential, credentialStore, identityStore, mutator)
@@ -296,6 +313,9 @@ internal fun persistOrReturnDirectPairResult(
             openAuthenticatedClient(endpoint, credential)
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
+            openAuthenticatedClient(endpoint, credential)
+        }
+        journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
             openAuthenticatedClient(endpoint, credential)
         }
     }

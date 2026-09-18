@@ -19,12 +19,14 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PairRelayAccess
 import app.solstone.core.pl.PairRequest
@@ -211,6 +213,8 @@ fun pairOverRelay(
     mutator: IdentityMutator? = null,
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
     endpointStore: EndpointStore? = null,
+    journalMarkStore: JournalMarkStore? = null,
+    journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
 ): RelayPairResult {
     val origin = parseProductionRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
         ?: throw IOException("relay origin invalid")
@@ -288,6 +292,9 @@ fun pairOverRelay(
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
                 openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred)
             }
+            journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
+                openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred)
+            }
         }
         return RelayPairResult(
             handshakePinned = true,
@@ -303,10 +310,12 @@ fun pairOverRelay(
     val connectionMode = if (prior?.instanceId == pairResponse.instanceId) {
         coordinator?.onPairingChanged()
         relayAccessCoordinator?.onPairingChanged()
+        journalIdentityCoordinator?.onPairingChanged()
         RelayPairConnectionMode.RECONNECTING
     } else {
         coordinator?.onIdentityChanged() ?: journalVersionStore?.clear()
         relayAccessCoordinator?.onIdentityChanged()
+        journalIdentityCoordinator?.onIdentityChanged() ?: journalMarkStore?.clear()
         RelayPairConnectionMode.PAIRING
     }
 
@@ -345,6 +354,9 @@ fun pairOverRelay(
             openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
+            openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
+        }
+        journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
             openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
         }
 
@@ -434,6 +446,9 @@ fun pairOverRelay(
                         openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
                     }
                     relayAccessCoordinator?.onUsableConnection(updatedHome.instanceId, updatedHome.caChainFingerprint, updatedHome.clientCertFingerprint) {
+                        openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
+                    }
+                    journalIdentityCoordinator?.onUsableConnection(updatedHome.instanceId) {
                         openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
                     }
                 }

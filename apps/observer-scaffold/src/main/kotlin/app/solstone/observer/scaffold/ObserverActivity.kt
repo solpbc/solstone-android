@@ -37,6 +37,7 @@ class ObserverActivity : Activity() {
             onEvidenceLoaded = { ObserverHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
             onSyncLoaded = { ObserverHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
             onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
+            markAccessoryFactory = spec.pairingAccessoryFactory,
         )
         // ⛔ Decide single-task mode BEFORE the first screen is built: the harness reads it when it
         // lays out a screen, and its menu lists operator instrumentation an owner must not reach by

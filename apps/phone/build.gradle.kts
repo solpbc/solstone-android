@@ -216,6 +216,8 @@ dependencies {
     implementation(project(":core:sources"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
+    implementation(project(":platform:identity-file"))
+    implementation(project(":platform:work"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")

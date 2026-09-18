@@ -32,6 +32,10 @@ import java.security.KeyPair
 import java.security.Signature
 import java.util.Base64
 import javax.security.auth.x500.X500Principal
+import app.solstone.core.identity.JournalMarkRecord
+import app.solstone.core.identity.JournalMarkStore
+import app.solstone.core.pl.JournalIdentityRefreshCoordinator
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -143,6 +147,130 @@ class RelayPairingTest {
         assertEquals("https://link.solstone.app", home.relayOrigin)
         val expectedToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
         assertEquals(expectedToken, home.deviceToken)
+    }
+
+    private class RecordingMarkCoordinator(
+        store: JournalMarkStore = object : JournalMarkStore {
+            override fun load(): JournalMarkRecord? = null
+            override fun save(record: JournalMarkRecord) {}
+            override fun clear() {}
+        },
+    ) : JournalIdentityRefreshCoordinator(store) {
+        val usableCalls = AtomicInteger(0)
+        var lastInstanceId: String? = null
+
+        override fun onUsableConnection(
+            instanceId: String,
+            pairingMatches: () -> Boolean,
+            openClient: () -> PlHttpClient,
+        ) {
+            usableCalls.incrementAndGet()
+            lastInstanceId = instanceId
+        }
+    }
+
+    @Test
+    fun relayPairingStatus200PairingSubmitsOneUsableConnection() {
+        val stores = Stores()
+        val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
+        val session = DynamicFakeSession(relayAccessJson = relayAccessJson)
+        val poster = FakePoster(session)
+        val markCoordinator = RecordingMarkCoordinator()
+
+        val result = pairOverRelay(
+            link(),
+            "phone",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+            journalIdentityCoordinator = markCoordinator,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
+        assertEquals(1, markCoordinator.usableCalls.get())
+        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
+    }
+
+    @Test
+    fun relayPairingStatus200ReconnectingSubmitsOneUsableConnection() {
+        val existing = pairedHome(state = IdentityState.UNPAIRED)
+        val stores = Stores(home = existing)
+        val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
+        val session = DynamicFakeSession(relayAccessJson = relayAccessJson)
+        val poster = FakePoster(session)
+        val markCoordinator = RecordingMarkCoordinator()
+
+        val result = pairOverRelay(
+            link(),
+            "phone",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+            journalIdentityCoordinator = markCoordinator,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(RelayPairConnectionMode.RECONNECTING, result.connectionMode)
+        assertEquals(1, markCoordinator.usableCalls.get())
+        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
+    }
+
+    @Test
+    fun relayPairingStatus200AlreadyConnectedSubmitsOneUsableConnection() {
+        val existing = pairedHome(state = IdentityState.PAIRED)
+        val stores = Stores(home = existing)
+        stores.credentialStore.save(ClientCredential("key", "cert", listOf("ca")))
+        val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
+        val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
+        val session = DynamicFakeSession(relayAccessJson = relayAccessJson)
+        val poster = FakePoster(session)
+        val markCoordinator = RecordingMarkCoordinator()
+
+        val result = pairOverRelay(
+            link(),
+            "phone",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+            journalIdentityCoordinator = markCoordinator,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(RelayPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
+        assertEquals(1, markCoordinator.usableCalls.get())
+        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
+    }
+
+    @Test
+    fun relayPairingFailedPairSubmitsZeroUsableConnection() {
+        val stores = Stores()
+        val session = DynamicFakeSession(customStatus = 500)
+        val poster = FakePoster(session)
+        val markCoordinator = RecordingMarkCoordinator()
+
+        assertFailsWith<IOException> {
+            pairOverRelay(
+                link(),
+                "phone",
+                poster,
+                FakeDialer(session),
+                stores.credentialStore,
+                stores.identityStore,
+                endpointStore = stores.endpointStore,
+                journalIdentityCoordinator = markCoordinator,
+            )
+        }
+
+        assertEquals(0, markCoordinator.usableCalls.get())
     }
 
     @Test
