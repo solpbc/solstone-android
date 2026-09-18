@@ -28,9 +28,14 @@ public final class PlLinkClientPairPolicyTest {
                 v04Link(new byte[] {10, 1, 2, 3}));
         assertEquals("10.1.2.3", admitted.getHost());
 
+        // 8.8.8.8 is a valid public candidate now (no LAN-only allow-list —
+        // removed 2026-09-18, founder + CSO ruling, req_xhwmvxvn); multicast
+        // is the class that still refuses.
         assertThrows(
                 IllegalArgumentException.class,
-                () -> PlLinkClient.parseCoreDirectPairLink(v04Link(new byte[] {8, 8, 8, 8})));
+                () ->
+                        PlLinkClient.parseCoreDirectPairLink(
+                                v04Link(new byte[] {(byte) 224, 0, 0, 1})));
     }
 
     @Test
@@ -46,10 +51,14 @@ public final class PlLinkClientPairPolicyTest {
                         new DirectEndpoint("10.0.0.2", 7657)),
                 admitted.getCandidates());
 
+        // 192.0.2.42 (TEST-NET-1) is a valid public candidate now (no
+        // LAN-only allow-list — removed 2026-09-18, founder + CSO ruling,
+        // req_xhwmvxvn); multicast is the class that still refuses the
+        // whole v05 payload.
         assertThrows(
                 IllegalArgumentException.class,
                 () -> PlLinkClient.parseCoreDirectPairLink(
-                        v05Link(new byte[] {10, 0, 0, 2}, new byte[] {(byte) 192, 0, 2, 42})));
+                        v05Link(new byte[] {10, 0, 0, 2}, new byte[] {(byte) 224, 0, 0, 1})));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> PlLinkClient.parseCoreDirectPairLink(
