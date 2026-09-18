@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-18
+
+### Added
+- pairing now shows your journal's mark when it succeeds, so you can check that your phone connected to the journal you meant.
+
 ### Changed
 - you get the app from solstone.app/download/android now, and the file itself comes from updates.solstone.app rather than GitHub. that page also shows how to check the file is ours before you install it. the same bytes stay attached to the GitHub release, under a different filename.
 
