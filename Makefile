@@ -361,8 +361,9 @@ github-release:
 	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
 	mkdir -p $(ARTIFACTS)
 	tools/release/changelog-notes.sh $(VERSION) > $(ARTIFACTS)/notes-$(VERSION).md
+	cp $(PHONE_RELEASE_APK_LOCAL) $(ARTIFACTS)/solstone-android-$(VERSION).apk
 	tools/release/github-release.sh \
 	  --version $(VERSION) \
 	  --candidate $(CANDIDATE) \
-	  --apk $(PHONE_RELEASE_APK_LOCAL) \
+	  --apk $(ARTIFACTS)/solstone-android-$(VERSION).apk \
 	  --notes $(ARTIFACTS)/notes-$(VERSION).md
