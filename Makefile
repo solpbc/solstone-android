@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env dist-phone android-host-dist-phone ci-device-experimental hitl-phone phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
+.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl require-dist-env require-firebase-dist-env dist-phone android-host-dist-phone dist-phone-frozen firebase-phone-frozen android-host-hitl-phone-frozen android-host-dist-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -144,6 +144,8 @@ ci-device-experimental:
 ANDROID_HITL_SERIAL ?= RZGL11XCS9D
 HITL_FLOW := .maestro/phone-smoke.yaml
 HITL_ARTIFACTS = $(ARTIFACTS)/hitl
+FROZEN_PHONE_APK ?=
+FROZEN_REMOTE_APK = $(ANDROID_REMOTE_PROJECT)/artifacts/distribution/phone-real-release.apk
 
 hitl-phone:
 	@command -v maestro >/dev/null 2>&1 || { echo "maestro not on PATH (expected ~/.maestro/bin/maestro)" >&2; exit 2; }
@@ -166,11 +168,39 @@ hitl-phone:
 	MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device $(ANDROID_HITL_SERIAL) test $(HITL_FLOW)
 	@echo "HITL GATE PASSED — every control on every harness screen was reachable on real hardware."
 
+# Full versioned releases use this target after `pull-phone-apk` has frozen the
+# candidate bytes. It never invokes Gradle: the exact APK passed here is the one
+# installed on the A36 and later distributed to Firebase/origin/GitHub.
+hitl-phone-frozen:
+	@set -eu; \
+	test -n "$(FROZEN_PHONE_APK)" || { echo "Set FROZEN_PHONE_APK=<exact signed APK>" >&2; exit 2; }; \
+	test -f "$(FROZEN_PHONE_APK)" || { echo "Frozen release APK not found: $(FROZEN_PHONE_APK)" >&2; exit 2; }; \
+	command -v maestro >/dev/null 2>&1 || { echo "maestro not on PATH (expected ~/.maestro/bin/maestro)" >&2; exit 2; }; \
+	adb -s "$(ANDROID_HITL_SERIAL)" get-state >/dev/null 2>&1 || { \
+	  echo "HITL GATE FAILED: device $(ANDROID_HITL_SERIAL) is not attached." >&2; \
+	  adb devices -l >&2; \
+	  exit 1; \
+	}; \
+	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); before=$${digest_line%% *}; \
+	echo "HITL: gating frozen APK $(FROZEN_PHONE_APK) ($$before) on $(ANDROID_HITL_SERIAL)"; \
+	adb -s "$(ANDROID_HITL_SERIAL)" uninstall app.solstone.observer.phone >/dev/null 2>&1 || true; \
+	adb -s "$(ANDROID_HITL_SERIAL)" install -r -g "$(FROZEN_PHONE_APK)"; \
+	mkdir -p "$(HITL_ARTIFACTS)"; \
+	MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device "$(ANDROID_HITL_SERIAL)" test "$(HITL_FLOW)"; \
+	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); after=$${digest_line%% *}; \
+	test "$$after" = "$$before" || { echo "Frozen release APK changed during HITL" >&2; exit 1; }; \
+	echo "HITL FROZEN-APK GATE PASSED — $$after"
+
 RELEASE_REV ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 RELEASE_NOTES ?=
 
 require-dist-env:
 	@test -n "$(ANDROID_UPLOAD_KEYSTORE)" || (echo "Set ANDROID_UPLOAD_KEYSTORE (release signing keystore path)" >&2; exit 2)
+	@test -n "$(GOOGLE_APPLICATION_CREDENTIALS)" || (echo "Set GOOGLE_APPLICATION_CREDENTIALS (App Distribution SA key)" >&2; exit 2)
+	@test -n "$(FIREBASE_APP_ID)" || (echo "Set FIREBASE_APP_ID (Firebase Android App ID)" >&2; exit 2)
+	@command -v firebase >/dev/null 2>&1 || (echo "firebase CLI not found on PATH" >&2; exit 2)
+
+require-firebase-dist-env:
 	@test -n "$(GOOGLE_APPLICATION_CREDENTIALS)" || (echo "Set GOOGLE_APPLICATION_CREDENTIALS (App Distribution SA key)" >&2; exit 2)
 	@test -n "$(FIREBASE_APP_ID)" || (echo "Set FIREBASE_APP_ID (Firebase Android App ID)" >&2; exit 2)
 	@command -v firebase >/dev/null 2>&1 || (echo "firebase CLI not found on PATH" >&2; exit 2)
@@ -190,6 +220,50 @@ dist-phone: require-dist-env hitl-phone
 
 android-host-dist-phone: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make dist-phone RELEASE_REV=$(RELEASE_REV) RELEASE_NOTES="$(RELEASE_NOTES)"'
+
+# Exact-file Firebase primitive. Full releases run `hitl-phone-frozen` before
+# immutable publication, then call this after publication; `dist-phone-frozen`
+# keeps a one-shot exact-file gate+distribution target for non-published use.
+firebase-phone-frozen: require-firebase-dist-env
+	@set -eu; \
+	test -n "$(FROZEN_PHONE_APK)" || { echo "Set FROZEN_PHONE_APK=<exact signed APK>" >&2; exit 2; }; \
+	test -f "$(FROZEN_PHONE_APK)" || { echo "Frozen release APK not found: $(FROZEN_PHONE_APK)" >&2; exit 2; }; \
+	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); before=$${digest_line%% *}; \
+	notes="$(RELEASE_NOTES)"; \
+	if [ -z "$$notes" ]; then notes="solstone-android release $$before"; fi; \
+	echo "Distributing frozen APK $(FROZEN_PHONE_APK) ($$before)  (notes: $$notes)"; \
+	firebase appdistribution:distribute "$(FROZEN_PHONE_APK)" --app "$(FIREBASE_APP_ID)" --groups trusted-testers --release-notes "$$notes"; \
+	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); after=$${digest_line%% *}; \
+	test "$$after" = "$$before" || { echo "Frozen release APK changed during Firebase distribution" >&2; exit 1; }; \
+	echo "FIREBASE FROZEN-APK DISTRIBUTION PASSED — $$after"
+
+dist-phone-frozen: hitl-phone-frozen
+	$(MAKE) firebase-phone-frozen
+
+# Versioned release wrappers. HITL runs before phase-4 publication. Firebase
+# runs after it. Each wrapper independently copies and proves the same frozen
+# local artifact; neither target can reach Gradle.
+android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
+	@test -f "$(PHONE_RELEASE_APK_LOCAL)" || { echo "No frozen $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)/artifacts/distribution'
+	scp "$(PHONE_RELEASE_APK_LOCAL)" $(ANDROID_REMOTE_HOST):$(FROZEN_REMOTE_APK)
+	@set -eu; \
+	digest_line=$$(sha256sum "$(PHONE_RELEASE_APK_LOCAL)"); local_sha=$${digest_line%% *}; \
+	remote_line=$$(ssh $(ANDROID_REMOTE_HOST) 'sha256sum $(FROZEN_REMOTE_APK)'); remote_sha=$${remote_line%% *}; \
+	test "$$remote_sha" = "$$local_sha" || { echo "Frozen APK transfer digest mismatch: $$remote_sha != $$local_sha" >&2; exit 1; }; \
+	echo "Frozen APK transfer verified for HITL — $$local_sha"
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make hitl-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/phone-real-release.apk'
+
+android-host-dist-phone-frozen: require-android-remote-host sync-android-host
+	@test -f "$(PHONE_RELEASE_APK_LOCAL)" || { echo "No frozen $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)/artifacts/distribution'
+	scp "$(PHONE_RELEASE_APK_LOCAL)" $(ANDROID_REMOTE_HOST):$(FROZEN_REMOTE_APK)
+	@set -eu; \
+	digest_line=$$(sha256sum "$(PHONE_RELEASE_APK_LOCAL)"); local_sha=$${digest_line%% *}; \
+	remote_line=$$(ssh $(ANDROID_REMOTE_HOST) 'sha256sum $(FROZEN_REMOTE_APK)'); remote_sha=$${remote_line%% *}; \
+	test "$$remote_sha" = "$$local_sha" || { echo "Frozen APK transfer digest mismatch: $$remote_sha != $$local_sha" >&2; exit 1; }; \
+	echo "Frozen APK transfer verified for Firebase — $$local_sha"
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make firebase-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/phone-real-release.apk RELEASE_NOTES="$(RELEASE_NOTES)"'
 
 # --- Versioning + changelog + GitHub release (the release-notes spine) ---
 # Version lives in apps/phone/build.gradle.kts (versionName = semver, versionCode =
