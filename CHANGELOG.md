@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-09-19
+
+### Changed
+- a pairing link can now point at any address you can reach your journal at, not only one on your local network. pairing over the internet works the same way as pairing at home: the link still carries your journal's fingerprint, and your phone still checks it before trusting anything.
+
+### Fixed
+- if the app quit on its own right after a successful pairing, while it showed your journal's mark, this resolves it.
+
 ## [2.1.1] - 2026-09-18
 
 ### Added
