@@ -54,6 +54,7 @@ dependencies {
     add("realImplementation", project(":platform:camera-legacy"))
     add("realImplementation", project(":platform:camera2"))
     add("mockImplementation", project(":testing"))
+    implementation("androidx.activity:activity:1.12.4")
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")

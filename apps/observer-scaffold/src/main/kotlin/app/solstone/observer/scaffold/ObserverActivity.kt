@@ -3,14 +3,18 @@
 
 package app.solstone.observer.scaffold
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.window.OnBackInvokedDispatcher
+import androidx.activity.ComponentActivity
 import app.solstone.observer.formfactor.shared.ObserverHarnessUi
 
-class ObserverActivity : Activity() {
+// ComponentActivity, not android.app.Activity: it installs the view-tree lifecycle and
+// saved-state owners on setContentView. The phone's pairing mark is a ComposeView, and a
+// ComposeView attached under a plain Activity throws "ViewTreeLifecycleOwner not found"
+// the moment a pair succeeds.
+class ObserverActivity : ComponentActivity() {
     private lateinit var container: ObserverAppContainer
     private lateinit var spec: FormFactorSpec
     private lateinit var harnessUi: ObserverHarnessUi
@@ -108,7 +112,7 @@ class ObserverActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
+        permissions: Array<String>,
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
