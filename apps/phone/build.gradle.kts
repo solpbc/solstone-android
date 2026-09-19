@@ -221,9 +221,11 @@ dependencies {
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")
+    implementation("androidx.compose.material3:material3:1.4.0")
+    implementation("androidx.compose.ui:ui:1.10.6")
     implementation("androidx.glance:glance-appwidget:1.1.1")
-    debugImplementation("androidx.compose.material3:material3:1.4.0")
-    debugImplementation("androidx.compose.ui:ui:1.10.6")
+
+    testImplementation(kotlin("test"))
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")

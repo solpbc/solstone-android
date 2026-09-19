@@ -149,9 +149,15 @@ private object SyncStoresHolder {
             raCoordinator ?: RelayAccessRefreshCoordinator(mutator).also { raCoordinator = it }
         }
 
-    fun getJiCoordinator(store: JournalMarkStore): JournalIdentityRefreshCoordinator =
+    fun getJiCoordinator(
+        store: JournalMarkStore,
+        publisher: PairingPublisher,
+    ): JournalIdentityRefreshCoordinator =
         jiCoordinator ?: synchronized(this) {
-            jiCoordinator ?: JournalIdentityRefreshCoordinator(store).also { jiCoordinator = it }
+            jiCoordinator ?: JournalIdentityRefreshCoordinator(
+                store = store,
+                publisher = publisher,
+            ).also { jiCoordinator = it }
         }
 }
 
@@ -175,6 +181,6 @@ fun syncStores(context: Context): SyncStores {
         journalVersionCoordinator = SyncStoresHolder.getJvCoordinator(journalVersionStore),
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
         journalMarkStore = journalMarkStore,
-        journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore),
+        journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, publisher),
     )
 }

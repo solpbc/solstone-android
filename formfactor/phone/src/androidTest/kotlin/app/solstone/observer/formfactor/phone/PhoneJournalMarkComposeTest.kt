@@ -133,8 +133,13 @@ class PhoneJournalMarkComposeTest {
             }
         }
         composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("mark unavailable")
-        assertNotEquals("mark unavailable", JournalMarkTokens.GENERIC_ACCESSIBLE_NAME)
+            .assertContentDescriptionEquals("your journal's mark, unavailable right now")
+        composeRule.onNodeWithText("mark", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("unavailable", useUnmergedTree = true).assertExists()
+        assertNotEquals(
+            "your journal's mark, unavailable right now",
+            JournalMarkTokens.GENERIC_ACCESSIBLE_NAME,
+        )
     }
 
     @Test

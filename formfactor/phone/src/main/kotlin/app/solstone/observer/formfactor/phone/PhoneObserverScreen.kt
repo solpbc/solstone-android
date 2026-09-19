@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.window.core.layout.WindowSizeClass
+import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
@@ -71,6 +72,10 @@ fun PhoneObserverScreen(
     onStartObserving: () -> Unit,
     onGrantPermissions: (String) -> Unit = {},
     onConnectJournal: () -> Unit = {},
+    onOpenJournal: () -> Unit = onConnectJournal,
+    journalPaired: Boolean = false,
+    journalMarkPresentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
+    journalSheetOpen: Boolean = false,
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -92,6 +97,10 @@ fun PhoneObserverScreen(
         onStartObserving = onStartObserving,
         onGrantPermissions = onGrantPermissions,
         onConnectJournal = onConnectJournal,
+        onOpenJournal = onOpenJournal,
+        journalPaired = journalPaired,
+        journalMarkPresentation = journalMarkPresentation,
+        journalSheetOpen = journalSheetOpen,
         onManageLocalStorage = onManageLocalStorage,
         modifier = modifier,
         initial = initial,
@@ -121,6 +130,10 @@ internal fun PhoneObserverScreen(
     onStartObserving: () -> Unit,
     onGrantPermissions: (String) -> Unit = {},
     onConnectJournal: () -> Unit = {},
+    onOpenJournal: () -> Unit = onConnectJournal,
+    journalPaired: Boolean = false,
+    journalMarkPresentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
+    journalSheetOpen: Boolean = false,
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -145,6 +158,7 @@ internal fun PhoneObserverScreen(
         SharedPreferencesPhoneHomeTileStore(applicationContext)
     }
     val openerFocusRequester = remember { FocusRequester() }
+    val journalFocusRequester = remember { FocusRequester() }
     val firstShelfRowFocusRequester = remember { FocusRequester() }
     val hour = remember { LocalTime.now().hour }
     val minWidthDp = windowAdaptiveInfo
@@ -161,6 +175,13 @@ internal fun PhoneObserverScreen(
     val statusOpen = paneStates.isOpen(PhonePane.STATUS)
     val shelfOpen = paneStates.isOpen(PhonePane.SHELF)
     val deckPaneOpen = statusOpen || shelfOpen
+    var previousJournalSheetOpen by remember { mutableStateOf(journalSheetOpen) }
+    LaunchedEffect(journalSheetOpen) {
+        if (previousJournalSheetOpen && !journalSheetOpen) {
+            journalFocusRequester.requestFocus()
+        }
+        previousJournalSheetOpen = journalSheetOpen
+    }
     val top = detailStack.toList().lastOrNull()
     val popDetail = {
         val remaining = detailStack.toList().dropLast(1)
@@ -232,7 +253,12 @@ internal fun PhoneObserverScreen(
             val marksOwnPane = top == PhoneRoute.YourJournal
             val showsDeck = top == null || renderSplit
             if (showsDeck && !marksOwnPane) {
-                PhoneJournalMarkPill(onClick = onConnectJournal)
+                PhoneJournalMarkPill(
+                    onClick = if (journalPaired) onOpenJournal else onConnectJournal,
+                    paired = journalPaired,
+                    presentation = journalMarkPresentation,
+                    modifier = Modifier.focusRequester(journalFocusRequester),
+                )
             }
         },
         navigationIcon = {

@@ -364,6 +364,15 @@ fun filterAndFormatResponseHeaders(
     }
 
     out.add("Referrer-Policy" to "no-referrer")
+    // The loopback authority is the browser's complete network boundary. This applies to every
+    // proxied response so redirected/late HTML documents cannot loosen the root document's policy.
+    out.add(
+        "Content-Security-Policy" to
+            "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; " +
+            "form-action 'self'; frame-src 'self'; img-src 'self' data:; media-src 'self'; " +
+            "object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+            "style-src 'self' 'unsafe-inline'; child-src 'none'; worker-src 'none'",
+    )
     if (statusCode == 204 || statusCode == 304) {
         // No Content-Length or Transfer-Encoding on 204/304
     } else if (statusCode == 205) {

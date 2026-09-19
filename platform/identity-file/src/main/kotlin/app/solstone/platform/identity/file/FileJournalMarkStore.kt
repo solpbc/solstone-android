@@ -5,6 +5,9 @@ package app.solstone.platform.identity.file
 
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.identity.atomicWriteOwnerOnly
 import app.solstone.core.pl.parseIdentityResponse
 import app.solstone.core.pl.parseJson
@@ -39,6 +42,7 @@ class FileJournalMarkStore(private val file: File) : JournalMarkStore {
         }
         val root = mapOf(
             "instance_id" to record.instanceId,
+            "client_cert_fingerprint" to record.pairing?.clientCertFingerprint,
             "committed" to (record.mark != null),
             "mark" to markMap,
         )
@@ -46,20 +50,35 @@ class FileJournalMarkStore(private val file: File) : JournalMarkStore {
         atomicWriteOwnerOnly(file, json.toByteArray(Charsets.UTF_8))
     }
 
-    override fun load(): JournalMarkRecord? {
-        if (!file.exists()) return null
-        return runCatching {
+    override fun inspect(): StoreInspectResult<JournalMarkRecord> {
+        if (!file.exists()) return StoreInspectResult.Missing
+        return try {
             val text = file.readText(Charsets.UTF_8)
-            val root = parseJson(text) as? Map<*, *> ?: return null
-            val instanceId = root["instance_id"] as? String ?: return null
-            val committed = root["committed"] as? Boolean ?: return null
+            val root = parseJson(text) as? Map<*, *>
+                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark root")
+            val instanceId = root["instance_id"] as? String
+                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark instance")
+            val committed = root["committed"] as? Boolean
+                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark committed")
+            val fingerprint = root["client_cert_fingerprint"] as? String
+            val pairing = fingerprint?.let { PairingGeneration(instanceId, it) }
             if (!committed) {
-                return JournalMarkRecord(instanceId = instanceId, mark = null)
+                return StoreInspectResult.Ready(
+                    JournalMarkRecord(instanceId = instanceId, mark = null, pairing = pairing),
+                )
             }
-            val parsed = parseIdentityResponse(text) ?: return null
-            JournalMarkRecord(instanceId = instanceId, mark = parsed.mark)
-        }.getOrNull()
+            val parsed = parseIdentityResponse(text)
+                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark payload")
+            val mark = parsed.mark
+                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark missing")
+            StoreInspectResult.Ready(JournalMarkRecord(instanceId, mark, pairing))
+        } catch (t: Throwable) {
+            StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, t.javaClass.simpleName)
+        }
     }
+
+    override fun load(): JournalMarkRecord? =
+        (inspect() as? StoreInspectResult.Ready)?.value
 
     override fun clear() {
         file.delete()

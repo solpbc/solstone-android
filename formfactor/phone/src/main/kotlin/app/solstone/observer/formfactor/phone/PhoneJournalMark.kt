@@ -70,9 +70,13 @@ object JournalMarkTokens {
     val middotInk = SolstoneColors.markMiddotInk               // #6E6453
     val cardFill = SolstoneColors.markCardFill                 // warm-bright #FFFDF9
     val cardBorder = SolstoneColors.markCardBorder             // warm hairline
+    val unavailableBorder = SolstoneColors.markUnavailableBorder
+    val unavailableFill = SolstoneColors.markUnavailableFill
+    val unavailableGlyph = SolstoneColors.markUnavailableGlyph
     val cardRadius = 12.dp
     const val GENERIC_ACCESSIBLE_NAME = "your journal, not set up yet"
-    const val UNAVAILABLE_ACCESSIBLE_NAME = "mark unavailable"
+    const val LOADING_ACCESSIBLE_NAME = "your journal, mark loading"
+    const val UNAVAILABLE_ACCESSIBLE_NAME = "your journal's mark, unavailable right now"
 }
 
 fun parseHexColor(hex: String, defaultColor: Color): Color {
@@ -178,53 +182,73 @@ private fun JournalMarkChip(
     border: Color,
     rotationDegrees: Float,
     isGeneric: Boolean = false,
+    isUnavailable: Boolean = false,
     glyphMarkup: String? = null,
 ) {
-    Canvas(
+    Box(
         Modifier
             .size(side)
             .rotate(rotationDegrees),
+        contentAlignment = Alignment.Center,
     ) {
-        val s = size.minDimension
-        val strokeWidth = s * JournalMarkTokens.BORDER_RATIO
-        val radius = CornerRadius(s * JournalMarkTokens.RADIUS_RATIO)
-        val inset = strokeWidth / 2f
-        val boxSize = Size(s - strokeWidth, s - strokeWidth)
-        val topLeft = Offset(inset, inset)
-        val tintAlpha = if (isGeneric) JournalMarkTokens.GENERIC_TINT_ALPHA else JournalMarkTokens.IDENTIFIED_TINT_ALPHA
-        drawRoundRect(
-            color = border.copy(alpha = tintAlpha),
-            topLeft = topLeft,
-            size = boxSize,
-            cornerRadius = radius,
-        )
-        if (isGeneric) {
+        Canvas(Modifier.size(side)) {
+            val s = size.minDimension
+            val strokeWidth = s * JournalMarkTokens.BORDER_RATIO
+            val radius = CornerRadius(s * JournalMarkTokens.RADIUS_RATIO)
+            val inset = strokeWidth / 2f
+            val boxSize = Size(s - strokeWidth, s - strokeWidth)
+            val topLeft = Offset(inset, inset)
             drawRoundRect(
-                color = border,
+                color = if (isUnavailable) {
+                    JournalMarkTokens.unavailableFill
+                } else {
+                    border.copy(
+                        alpha = if (isGeneric) {
+                            JournalMarkTokens.GENERIC_TINT_ALPHA
+                        } else {
+                            JournalMarkTokens.IDENTIFIED_TINT_ALPHA
+                        },
+                    )
+                },
                 topLeft = topLeft,
                 size = boxSize,
                 cornerRadius = radius,
-                style = Stroke(
-                    width = strokeWidth,
-                    pathEffect = PathEffect.dashPathEffect(
-                        floatArrayOf(
-                            s * JournalMarkTokens.DASH_ON_RATIO,
-                            s * JournalMarkTokens.DASH_OFF_RATIO,
+            )
+            if (isGeneric) {
+                drawRoundRect(
+                    color = border,
+                    topLeft = topLeft,
+                    size = boxSize,
+                    cornerRadius = radius,
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = PathEffect.dashPathEffect(
+                            floatArrayOf(
+                                s * JournalMarkTokens.DASH_ON_RATIO,
+                                s * JournalMarkTokens.DASH_OFF_RATIO,
+                            ),
                         ),
                     ),
-                ),
-            )
-        } else {
-            drawRoundRect(
-                color = border,
-                topLeft = topLeft,
-                size = boxSize,
-                cornerRadius = radius,
-                style = Stroke(width = strokeWidth),
-            )
-            if (glyphMarkup != null) {
-                drawSvgMarkup(glyphMarkup, border, s)
+                )
+            } else {
+                drawRoundRect(
+                    color = border,
+                    topLeft = topLeft,
+                    size = boxSize,
+                    cornerRadius = radius,
+                    style = Stroke(width = strokeWidth),
+                )
+                if (glyphMarkup != null) {
+                    drawSvgMarkup(glyphMarkup, border, s)
+                }
             }
+        }
+        if (isUnavailable) {
+            Text(
+                text = "?",
+                color = JournalMarkTokens.unavailableGlyph,
+                fontSize = (side.value * 0.58f).sp,
+            )
         }
     }
 }
@@ -239,19 +263,20 @@ private fun JournalMarkChip(
 fun JournalMarkChips(
     side: Dp,
     mark: JournalMark? = null,
+    unavailable: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val diamondBox = side * 1.4143f
     val icon1 = mark?.icon1
     val icon2 = mark?.icon2
 
-    val color1 = if (icon1 != null) parseHexColor(icon1.colorHex, JournalMarkTokens.chipOneBorder) else JournalMarkTokens.chipOneBorder
-    val color2 = if (icon2 != null) parseHexColor(icon2.colorHex, JournalMarkTokens.chipTwoBorder) else JournalMarkTokens.chipTwoBorder
+    val color1 = if (unavailable) JournalMarkTokens.unavailableBorder else if (icon1 != null) parseHexColor(icon1.colorHex, JournalMarkTokens.chipOneBorder) else JournalMarkTokens.chipOneBorder
+    val color2 = if (unavailable) JournalMarkTokens.unavailableBorder else if (icon2 != null) parseHexColor(icon2.colorHex, JournalMarkTokens.chipTwoBorder) else JournalMarkTokens.chipTwoBorder
 
-    val rot1 = (icon1?.rot ?: 0).toFloat()
-    val rot2 = (icon2?.rot ?: 45).toFloat()
+    val rot1 = if (unavailable) 0f else (icon1?.rot ?: 0).toFloat()
+    val rot2 = if (unavailable) 0f else (icon2?.rot ?: 45).toFloat()
 
-    val isGeneric = mark == null
+    val isGeneric = mark == null && !unavailable
 
     Row(
         modifier = modifier.clearAndSetSemantics { },
@@ -265,6 +290,7 @@ fun JournalMarkChips(
                     border = color1,
                     rotationDegrees = rot1,
                     isGeneric = isGeneric,
+                    isUnavailable = unavailable,
                     glyphMarkup = icon1?.svg,
                 )
             }
@@ -274,6 +300,7 @@ fun JournalMarkChips(
                 border = color1,
                 rotationDegrees = rot1,
                 isGeneric = isGeneric,
+                isUnavailable = unavailable,
                 glyphMarkup = icon1?.svg,
             )
         }
@@ -287,6 +314,7 @@ fun JournalMarkChips(
                     border = color2,
                     rotationDegrees = rot2,
                     isGeneric = isGeneric,
+                    isUnavailable = unavailable,
                     glyphMarkup = icon2?.svg,
                 )
             }
@@ -296,6 +324,7 @@ fun JournalMarkChips(
                 border = color2,
                 rotationDegrees = rot2,
                 isGeneric = isGeneric,
+                isUnavailable = unavailable,
                 glyphMarkup = icon2?.svg,
             )
         }
@@ -338,12 +367,18 @@ fun JournalMarkCard(
     val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
     val isUnavailable = presentation is JournalMarkPresentation.Unavailable
 
-    val word1 = mark?.words?.getOrNull(0) ?: "your"
-    val word2 = mark?.words?.getOrNull(1) ?: "journal"
+    val word1 = mark?.words?.getOrNull(0) ?: if (isUnavailable) "mark" else "your"
+    val word2 = mark?.words?.getOrNull(1) ?: if (isUnavailable) "unavailable" else "journal"
 
     val accessibleName = when {
-        mark != null -> "${mark.icon1.colorName}, ${mark.icon2.colorName}, ${mark.words[0]}, ${mark.words[1]}"
+        mark != null -> listOf(
+            mark.icon1.colorName,
+            mark.icon2.colorName,
+            mark.words.getOrNull(0),
+            mark.words.getOrNull(1),
+        ).filterNotNull().joinToString(", ")
         isUnavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
+        presentation is JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
         else -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
     }
 
@@ -361,7 +396,7 @@ fun JournalMarkCard(
             .testTag("journalMarkCard"),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        JournalMarkChips(side = 48.dp, mark = mark)
+        JournalMarkChips(side = 48.dp, mark = mark, unavailable = isUnavailable)
         Spacer(Modifier.height(12.dp))
         JournalMarkWords(first = word1, second = word2, fontSize = 18.sp)
     }

@@ -135,6 +135,11 @@ object SolstoneColors {
     /** `journal-mark.md` section 3 -- `mark.card.border`, the warm hairline. */
     val markCardBorder = Color(0xFFE7D8C6)
 
+    /** `journal-mark.md` section 4.4 -- unavailable mark neutral treatment. */
+    val markUnavailableBorder = Color(0xFFECE3D0)
+    val markUnavailableFill = surfaceCreamBright
+    val markUnavailableGlyph = markMiddotInk
+
     val palette: Set<Color>
         get() = setOf(
             solOrange,

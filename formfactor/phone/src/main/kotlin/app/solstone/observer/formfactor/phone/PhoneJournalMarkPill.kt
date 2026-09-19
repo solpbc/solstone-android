@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.solstone.core.identity.JournalMarkPresentation
 
 /**
  * The journal pill's contents: the mark's chips beside its words, on a floating
@@ -42,7 +43,29 @@ import androidx.compose.ui.unit.sp
 fun PhoneJournalMarkPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    paired: Boolean = false,
+    presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
 ) {
+    val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
+    val isUnavailable = presentation is JournalMarkPresentation.Unavailable
+    val visibleWords = if (paired) {
+        mark?.words?.takeIf { it.size >= 2 }?.take(2)?.joinToString(" ")
+            ?: if (isUnavailable) "mark unavailable" else "your journal"
+    } else {
+        "connect a journal"
+    }
+    val accessibleName = when {
+        !paired -> "connect a journal"
+        mark != null -> listOf(
+            mark.icon1.colorName,
+            mark.icon2.colorName,
+            mark.words.getOrNull(0),
+            mark.words.getOrNull(1),
+        ).filterNotNull().joinToString(", ")
+        isUnavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
+        presentation is JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
+        else -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
+    }
     Row(
         modifier = modifier
             .heightIn(min = 44.dp)
@@ -51,17 +74,15 @@ fun PhoneJournalMarkPill(
             .padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                // § 4.3: never the words alone — "your journal" with no qualifier
-                // asserts an identity that does not exist yet.
-                contentDescription = JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
+                contentDescription = accessibleName
             }
             .testTag("journalMarkPill"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        JournalMarkChips(side = 22.dp)
+        JournalMarkChips(side = 22.dp, mark = mark, unavailable = isUnavailable)
         Spacer(Modifier.width(9.dp))
         Text(
-            text = "connect a journal",
+            text = visibleWords,
             fontFamily = ComfortaaBold,
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp,

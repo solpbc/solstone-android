@@ -75,12 +75,44 @@ private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): 
                 "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
                     "make sure it's running, then try again."
             PairRoute.DIRECT ->
-                "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
-                    "make sure it's running and on the same wi-fi, then try again. some networks " +
-                    "block devices from connecting directly. you can also switch your journal to " +
-                    "private network to pair from anywhere."
+                if (outcome.endpointHost.isPublicIpv4Address()) {
+                    "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
+                        "make sure it's running, then try again."
+                } else {
+                    "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
+                        "make sure it's running and on the same wi-fi, then try again. some networks " +
+                        "block devices from connecting directly. you can also switch your journal to " +
+                        "private network to pair from anywhere."
+                }
         }
     }
+
+/** Classifies dotted IPv4 without DNS so rendering cannot trigger network I/O. */
+private fun String.isPublicIpv4Address(): Boolean {
+    val octets = split('.')
+    if (octets.size != 4) return false
+    val bytes = octets.map { part ->
+        if (part.isEmpty() || (part.length > 1 && part.startsWith('0'))) return false
+        part.toIntOrNull()?.takeIf { it in 0..255 } ?: return false
+    }
+    val first = bytes[0]
+    val second = bytes[1]
+    return when {
+        first == 0 || first == 10 || first == 127 -> false
+        first == 100 && second in 64..127 -> false
+        first == 169 && second == 254 -> false
+        first == 172 && second in 16..31 -> false
+        first == 192 && second == 0 -> false
+        first == 192 && second == 2 -> false
+        first == 192 && second == 88 && bytes[2] == 99 -> false
+        first == 192 && second == 168 -> false
+        first == 198 && second in 18..19 -> false
+        first == 198 && second == 51 && bytes[2] == 100 -> false
+        first == 203 && second == 0 && bytes[2] == 113 -> false
+        first >= 224 -> false
+        else -> true
+    }
+}
 
 fun PairAttemptOutcome.isSuccessfulPair(): Boolean =
     this is PairAttemptOutcome.Linked &&

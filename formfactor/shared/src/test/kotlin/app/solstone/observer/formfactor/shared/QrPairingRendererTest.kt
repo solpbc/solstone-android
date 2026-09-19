@@ -55,6 +55,7 @@ class QrPairingRendererTest {
             pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)),
             pairStatusText(networkFailure(ConnectivityFailure.NAME_RESOLUTION)),
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER)),
+            pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = "8.8.8.8")),
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
             PAIR_DISPATCH_FAILED,
         ).map { requireNotNull(it) }
@@ -146,6 +147,40 @@ class QrPairingRendererTest {
         )
     }
 
+    @Test
+    fun directHostAdviceOnlyAssumesLocalNetworkForLocalShapedTargets() {
+        val short = "couldn't reach your journal at %s:7657. make sure it's running, then try again."
+        val localAdvice = "make sure it's running and on the same wi-fi"
+
+        listOf("8.8.8.8", "1.1.1.1", "203.1.2.3").forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertEquals(short.format(host), rendered, host)
+            assertFalse(rendered.contains(localAdvice), host)
+        }
+
+        listOf(
+            "journal.example",
+            "10.0.0.1",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.1.2",
+            "172.16.0.1",
+            "192.168.1.2",
+            "192.0.2.1",
+            "198.51.100.1",
+            "203.0.113.1",
+            "224.0.0.1",
+            "001.2.3.4",
+        ).forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertTrue(rendered.contains(localAdvice), host)
+        }
+    }
+
     /**
      * ⚠ This test asserted the OPPOSITE: that 410 and every other status render different words.
      * They mean the same thing to an owner — the code is no longer good — and both need the same
@@ -163,7 +198,8 @@ class QrPairingRendererTest {
         failure: ConnectivityFailure,
         route: PairRoute = PairRoute.DIRECT,
         port: Int = 7657,
-    ): PairAttemptOutcome = PairAttemptOutcome.NetworkUnavailable(failure, "journal.example", port, route)
+        host: String = "journal.example",
+    ): PairAttemptOutcome = PairAttemptOutcome.NetworkUnavailable(failure, host, port, route)
 
     private fun result(pairStatus: Int, statusStatus: Int): HarnessPairProbeResult =
         HarnessPairProbeResult(

@@ -20,9 +20,11 @@ data class JournalMark(
 data class JournalMarkRecord(
     val instanceId: String,
     val mark: JournalMark?,
+    val pairing: PairingGeneration? = null,
 )
 
 sealed class JournalMarkPresentation {
+    data object Loading : JournalMarkPresentation()
     data object Generic : JournalMarkPresentation()
     data object Unavailable : JournalMarkPresentation()
     data class Identified(val mark: JournalMark) : JournalMarkPresentation()
@@ -30,8 +32,8 @@ sealed class JournalMarkPresentation {
 
 interface JournalMarkStore {
     fun load(): JournalMarkRecord?
+    fun inspect(): StoreInspectResult<JournalMarkRecord> =
+        load()?.let { StoreInspectResult.Ready(it) } ?: StoreInspectResult.Missing
     fun save(record: JournalMarkRecord)
     fun clear()
 }
-
-

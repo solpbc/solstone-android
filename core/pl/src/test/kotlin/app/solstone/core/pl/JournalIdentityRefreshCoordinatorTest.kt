@@ -223,7 +223,7 @@ class JournalIdentityRefreshCoordinatorTest {
 
         // Identity changes while GET in flight
         coordinator.onIdentityChanged()
-        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
         assertNull(store.load())
 
         // Release stale response
@@ -232,7 +232,7 @@ class JournalIdentityRefreshCoordinatorTest {
 
         // Stale GET must not save mark or change presentation
         assertNull(store.load())
-        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
 
         coordinator.close()
         executor.shutdown()
@@ -254,8 +254,38 @@ class JournalIdentityRefreshCoordinatorTest {
 
         coordinator.onIdentityChanged()
         assertNull(store.load())
-        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
 
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun blockingListenerCannotStarveOrBlockOtherListeners() {
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(FakeMarkStore(), executor)
+        val blockingEntered = CountDownLatch(1)
+        val releaseBlocking = CountDownLatch(1)
+        val blockingCalls = AtomicInteger(0)
+        val removeBlocking = coordinator.addListener {
+            blockingCalls.incrementAndGet()
+            blockingEntered.countDown()
+            releaseBlocking.await(5, TimeUnit.SECONDS)
+        }
+        assertTrue(blockingEntered.await(5, TimeUnit.SECONDS))
+
+        val independentDeliveries = CountDownLatch(2)
+        val removeIndependent = coordinator.addListener { independentDeliveries.countDown() }
+        coordinator.onIdentityChanged()
+        assertTrue(independentDeliveries.await(5, TimeUnit.SECONDS))
+
+        removeBlocking()
+        coordinator.onIdentityChanged()
+        releaseBlocking.countDown()
+        Thread.sleep(100)
+        assertEquals(1, blockingCalls.get())
+
+        removeIndependent()
         coordinator.close()
         executor.shutdown()
     }

@@ -13,6 +13,12 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
@@ -29,17 +35,24 @@ import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
+import app.solstone.core.identity.JournalMarkPresentation
+import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.platform.fgs.shouldAskForNotifications
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverHarnessRuntime
+import app.solstone.platform.work.JournalBrowserUpstreamAdapter
+import app.solstone.platform.work.SyncStores
+import app.solstone.platform.work.syncStores
 
 class PhoneShellActivity : ComponentActivity() {
     private lateinit var container: ObserverAppContainer
     private lateinit var sourcesViewModel: SourcesViewModel
     private lateinit var statusViewModel: PhoneStatusViewModel
+    private lateinit var stores: SyncStores
     private var captureOwnerToken: Long = -1L
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
@@ -85,6 +98,7 @@ class PhoneShellActivity : ComponentActivity() {
             ObserverHarnessRuntime.runtime = it
         }
         container = runtime.container()
+        stores = syncStores(applicationContext)
         val capture = captureSurfaceFromIntent()
         val factory = PhoneShellViewModelFactory(
             sources = container.sources,
@@ -100,6 +114,42 @@ class PhoneShellActivity : ComponentActivity() {
         setContent {
             val statusState = statusViewModel.statusState
             val snapshot = (statusState as? LoadState.Loaded)?.value
+            var pairingSnapshot by remember { mutableStateOf(stores.publisher.currentSnapshot()) }
+            var markPresentation by remember {
+                mutableStateOf(stores.journalIdentityCoordinator.currentPresentation())
+            }
+            var markGeneration by remember {
+                mutableStateOf(stores.journalIdentityCoordinator.currentPresentationGeneration())
+            }
+            var journalOpen by remember { mutableStateOf(false) }
+            DisposableEffect(stores) {
+                val pairingSubscription = stores.publisher.subscribe { next ->
+                    mainHandler.post { pairingSnapshot = next }
+                }
+                val removeMarkListener = stores.journalIdentityCoordinator.addGenerationListener { generation, next ->
+                    mainHandler.post {
+                        val current = (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)
+                            ?.pairing
+                        if (generation == null || generation == current) {
+                            markGeneration = generation
+                            markPresentation = next
+                        }
+                    }
+                }
+                onDispose {
+                    pairingSubscription.cancel()
+                    removeMarkListener()
+                }
+            }
+            LaunchedEffect(pairingSnapshot.sequenceNumber) {
+                if (pairingSnapshot !is PairingGraphSnapshot.Committed) journalOpen = false
+            }
+            val currentPairing = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
+            val currentMarkPresentation = if (currentPairing != null && markGeneration != currentPairing) {
+                JournalMarkPresentation.Loading
+            } else {
+                markPresentation
+            }
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
@@ -115,11 +165,12 @@ class PhoneShellActivity : ComponentActivity() {
                 },
                 onGrantPermissions = { sourceId -> requestSourcePermissions(sourceId) },
                 onConnectJournal = {
-                    startActivity(
-                        Intent(this, ObserverActivity::class.java)
-                            .putExtra(ObserverActivity.EXTRA_SCAN_PAIR_QR, true),
-                    )
+                    openPairingScanner()
                 },
+                onOpenJournal = { journalOpen = true },
+                journalPaired = pairingSnapshot is PairingGraphSnapshot.Committed,
+                journalMarkPresentation = currentMarkPresentation,
+                journalSheetOpen = journalOpen,
                 onManageLocalStorage = {
                     startActivity(
                         Intent(this, ObserverActivity::class.java)
@@ -132,7 +183,31 @@ class PhoneShellActivity : ComponentActivity() {
                 version = appVersion,
                 captureWidthDp = capture.windowWidthDp,
             )
+            if (journalOpen && pairingSnapshot is PairingGraphSnapshot.Committed) {
+                JournalSheet(
+                    presentation = currentMarkPresentation,
+                    sessionFactory = {
+                        JournalBrowserSession(
+                            publisher = stores.publisher,
+                            upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher),
+                            diag = {},
+                        )
+                    },
+                    onClose = { journalOpen = false },
+                    onPairingRepair = {
+                        journalOpen = false
+                        openPairingScanner()
+                    },
+                )
+            }
         }
+    }
+
+    private fun openPairingScanner() {
+        startActivity(
+            Intent(this, ObserverActivity::class.java)
+                .putExtra(ObserverActivity.EXTRA_SCAN_PAIR_QR, true),
+        )
     }
 
     /**
