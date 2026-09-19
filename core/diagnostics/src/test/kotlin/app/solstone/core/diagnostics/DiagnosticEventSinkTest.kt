@@ -220,6 +220,28 @@ class DiagnosticEventSinkTest {
         assertEquals("ts=1 kind=test id=previous\n", sink.readAll())
     }
 
+    @Test
+    fun typedReadDistinguishesCompletePartialAndUnreadable() {
+        val completeDir = Files.createTempDirectory("diag-complete")
+        val complete = DiagnosticEventSink(completeDir, capBytes = 4_096, nowProvider = { 1L })
+        complete.append("kind=test id=complete")
+        assertTrue(complete.readResult() is DiagnosticLogRead.Complete)
+
+        val partialDir = Files.createTempDirectory("diag-partial")
+        val partial = DiagnosticEventSink(partialDir, capBytes = 4_096, nowProvider = { 2L })
+        partial.append("kind=test id=partial")
+        Files.createDirectory(partialDir.resolve("diag.log.1"))
+        val partialRead = partial.readResult()
+        assertTrue(partialRead is DiagnosticLogRead.Partial)
+        assertTrue((partialRead as DiagnosticLogRead.Partial).content.contains("id=partial"))
+
+        val unreadableDir = Files.createTempDirectory("diag-unreadable")
+        Files.createDirectory(unreadableDir.resolve("diag.log"))
+        Files.createDirectory(unreadableDir.resolve("diag.log.1"))
+        val unreadable = DiagnosticEventSink(unreadableDir, capBytes = 4_096, nowProvider = { 3L })
+        assertEquals(DiagnosticLogRead.Unreadable, unreadable.readResult())
+    }
+
     private fun countingClock(start: Long = 1): () -> Long {
         var current = start
         return { current++ }

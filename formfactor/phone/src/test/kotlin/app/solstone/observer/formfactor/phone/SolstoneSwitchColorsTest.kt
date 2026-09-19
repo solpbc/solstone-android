@@ -94,7 +94,7 @@ class SolstoneSwitchColorsTest {
         val switchFiles = root.walkTopDown().filter { it.extension == "kt" }
             .filter { callSite.containsMatchIn(it.readText()) }
             .toList()
-        assertEquals(2, switchFiles.size, "switch call sites moved: ${switchFiles.map { it.name }}")
+        assertEquals(3, switchFiles.size, "switch call sites moved: ${switchFiles.map { it.name }}")
         switchFiles.forEach { file ->
             val text = file.readText()
             val switches = callSite.findAll(text).count()

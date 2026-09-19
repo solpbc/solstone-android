@@ -19,6 +19,7 @@ object ObserverNotification {
     const val CHANNEL_NAME = "intake"
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
+    const val TEST_NOTIFICATION_ID = 103
     const val TEXT_ON = "on"
     const val TEXT_OFF = "off"
     const val TEXT_SETTING_UP = "setting up"
@@ -84,6 +85,31 @@ object ObserverNotification {
     fun notificationsPermitted(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    fun notificationsEnabled(context: Context): Boolean {
+        if (!notificationsPermitted(context)) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        if (Build.VERSION.SDK_INT >= 24 && !manager.areNotificationsEnabled()) return false
+        return Build.VERSION.SDK_INT < 26 ||
+            manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    fun postTest(context: Context): Boolean {
+        ensureChannel(context)
+        if (!notificationsEnabled(context)) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return runCatching {
+            manager.notify(
+                TEST_NOTIFICATION_ID,
+                builder(context)
+                    .setContentTitle("notifications")
+                    .setContentText("a short heads-up, never the content")
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .setAutoCancel(true)
+                    .build(),
+            )
+        }.isSuccess
+    }
 
     fun dispatchDecoration(hook: (() -> Unit)?) {
         hook?.invoke()

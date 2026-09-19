@@ -44,13 +44,22 @@ class DiagnosticEventSink(
         append(formatDiagEvent(event))
     }
 
-    fun readAll(): String =
-        synchronized(lock) {
-            buildString {
-                append(readIfPresent(previous))
-                append(readIfPresent(active))
-            }
+    fun readAll(): String = when (val result = readResult()) {
+        is DiagnosticLogRead.Complete -> result.content
+        is DiagnosticLogRead.Partial -> result.content
+        DiagnosticLogRead.Unreadable -> ""
+    }
+
+    fun readResult(): DiagnosticLogRead = synchronized(lock) {
+        val reads = listOf(readFile(previous), readFile(active))
+        val content = reads.filterIsInstance<LogFileRead.Ready>().joinToString("") { it.content }
+        val failed = reads.any { it is LogFileRead.Failed }
+        when {
+            !failed -> DiagnosticLogRead.Complete(content)
+            content.isNotEmpty() -> DiagnosticLogRead.Partial(content)
+            else -> DiagnosticLogRead.Unreadable
         }
+    }
 
     private fun record(line: String): ByteArray = truncateToCap("ts=${nowProvider()} $line".encodeToByteArray())
 
@@ -73,17 +82,33 @@ class DiagnosticEventSink(
         return bytes.copyOf(maxLineBytes)
     }
 
-    private fun readIfPresent(path: Path): String =
+    private fun readFile(path: Path): LogFileRead =
         try {
-            if (Files.isRegularFile(path)) Files.readString(path) else ""
+            when {
+                !Files.exists(path) -> LogFileRead.Missing
+                !Files.isRegularFile(path) -> LogFileRead.Failed
+                else -> LogFileRead.Ready(Files.readString(path))
+            }
         } catch (_: Exception) {
-            ""
+            LogFileRead.Failed
         }
+
+    private sealed interface LogFileRead {
+        data object Missing : LogFileRead
+        data class Ready(val content: String) : LogFileRead
+        data object Failed : LogFileRead
+    }
 
     private companion object {
         const val ACTIVE_NAME = "diag.log"
         const val PREVIOUS_NAME = "diag.log.1"
     }
+}
+
+sealed interface DiagnosticLogRead {
+    data class Complete(val content: String) : DiagnosticLogRead
+    data class Partial(val content: String) : DiagnosticLogRead
+    data object Unreadable : DiagnosticLogRead
 }
 
 sealed interface DiagEvent {

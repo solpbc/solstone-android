@@ -64,6 +64,8 @@ fun PhoneStatusPane(
     onOpenSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     onConnectJournal: () -> Unit = {},
+    journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
+    onOpenTechnicalDetails: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
@@ -108,6 +110,8 @@ fun PhoneStatusPane(
                         model = model,
                         waiting = waiting,
                         onOpenSource = onOpenSource,
+                        journalFacts = journalFacts,
+                        onOpenTechnicalDetails = onOpenTechnicalDetails,
                     )
                 } else {
                     PaneLead("not paired")
@@ -130,8 +134,19 @@ internal fun PhonePairedStatusContent(
     model: PhoneStatusModel,
     waiting: List<SourceStatus>,
     onOpenSource: (String) -> Unit,
+    journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
+    onOpenTechnicalDetails: () -> Unit = {},
 ) {
     PhonePairedStatusSummary(model)
+    Spacer(Modifier.height(ShellMetrics.sectionSpacing))
+    PaneFactRow(label = "journal version", value = journalFacts.version)
+    PaneFactRow(label = "where it lives", value = journalFacts.location)
+    TextButton(
+        onClick = onOpenTechnicalDetails,
+        modifier = Modifier.testTag("statusTechnicalDetails"),
+    ) {
+        Text("technical details")
+    }
     PhoneStatusWaitingRows(waiting, onOpenSource)
 }
 

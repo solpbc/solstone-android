@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,6 +52,8 @@ fun PhoneDeck(
     onToggle: (String, SourceWish) -> Unit,
     onOpenImport: () -> Unit,
     onOpenAddMore: () -> Unit,
+    showWelcome: Boolean = false,
+    onConnectJournal: () -> Unit = {},
     hour: Int,
     modifier: Modifier = Modifier,
     isOnHome: (String) -> Boolean = { true },
@@ -114,6 +119,8 @@ fun PhoneDeck(
                 onToggle = onToggle,
                 onOpenImport = onOpenImport,
                 onOpenAddMore = onOpenAddMore,
+                showWelcome = showWelcome,
+                onConnectJournal = onConnectJournal,
             )
             when (loadState) {
                 is LoadState.Failed -> {
@@ -147,6 +154,8 @@ internal fun PhoneSourceGrid(
     onOpenImport: () -> Unit,
     onOpenAddMore: () -> Unit,
     paired: Boolean = false,
+    showWelcome: Boolean = false,
+    onConnectJournal: () -> Unit = {},
 ) {
     LazyVerticalGrid(
         // ⚠ Fixed, never `GridCells.Adaptive`. An adaptive grid lets each row pick its
@@ -163,6 +172,11 @@ internal fun PhoneSourceGrid(
         horizontalArrangement = Arrangement.spacedBy(ShellMetrics.gutter),
         verticalArrangement = Arrangement.spacedBy(ShellMetrics.gutter),
     ) {
+        if (showWelcome) {
+            item(key = "welcome", span = { GridItemSpan(maxLineSpan) }) {
+                PhoneWelcomeCard(onConnectJournal)
+            }
+        }
         item(key = "importTile") {
             PhoneNonSourceTile(
                 label = "import",
@@ -212,6 +226,40 @@ internal fun PhoneSourceGrid(
                 onToggle = { wish -> onToggle(status.sourceId, wish) },
                 paired = paired,
             )
+        }
+    }
+}
+
+@Composable
+private fun PhoneWelcomeCard(onConnectJournal: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shellSurface(shellSurface, shellHairline, ShellMetrics.cardShape)
+            .padding(ShellMetrics.surfacePadding)
+            .testTag("welcomeCard"),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "solstone",
+            style = MaterialTheme.typography.headlineSmall,
+            fontFamily = ComfortaaBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text("welcome to solstone.", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "the solstone app takes in what you share with it, and all of it goes into your journal.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "your journal is always private, only yours.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(
+            onClick = onConnectJournal,
+            modifier = Modifier.fillMaxWidth().testTag("welcomeConnectJournal"),
+        ) {
+            Text("connect a journal")
         }
     }
 }

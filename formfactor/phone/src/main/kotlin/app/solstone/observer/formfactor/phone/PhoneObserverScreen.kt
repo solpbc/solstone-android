@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
@@ -46,6 +47,7 @@ import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 import java.time.LocalTime
+import android.view.HapticFeedbackConstants
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -76,6 +78,22 @@ fun PhoneObserverScreen(
     journalPaired: Boolean = false,
     journalMarkPresentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     journalSheetOpen: Boolean = false,
+    journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
+    storageUsed: String = "—",
+    hapticsEnabled: Boolean = true,
+    notificationsEnabled: Boolean = false,
+    eventLog: String = "",
+    problemReports: List<String> = emptyList(),
+    journalMutationFailed: Boolean = false,
+    notificationTestFailed: Boolean = false,
+    showWelcome: Boolean = false,
+    onHapticsChanged: (Boolean) -> Unit = {},
+    onCheckConnection: () -> Unit = {},
+    onForgetJournal: () -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {},
+    onSendTestNotification: () -> Unit = {},
+    onReportProblem: () -> Unit = {},
+    onSaveProblemReport: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -101,6 +119,22 @@ fun PhoneObserverScreen(
         journalPaired = journalPaired,
         journalMarkPresentation = journalMarkPresentation,
         journalSheetOpen = journalSheetOpen,
+        journalFacts = journalFacts,
+        storageUsed = storageUsed,
+        hapticsEnabled = hapticsEnabled,
+        notificationsEnabled = notificationsEnabled,
+        eventLog = eventLog,
+        problemReports = problemReports,
+        journalMutationFailed = journalMutationFailed,
+        notificationTestFailed = notificationTestFailed,
+        showWelcome = showWelcome,
+        onHapticsChanged = onHapticsChanged,
+        onCheckConnection = onCheckConnection,
+        onForgetJournal = onForgetJournal,
+        onOpenNotificationSettings = onOpenNotificationSettings,
+        onSendTestNotification = onSendTestNotification,
+        onReportProblem = onReportProblem,
+        onSaveProblemReport = onSaveProblemReport,
         onManageLocalStorage = onManageLocalStorage,
         modifier = modifier,
         initial = initial,
@@ -134,6 +168,22 @@ internal fun PhoneObserverScreen(
     journalPaired: Boolean = false,
     journalMarkPresentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     journalSheetOpen: Boolean = false,
+    journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
+    storageUsed: String = "—",
+    hapticsEnabled: Boolean = true,
+    notificationsEnabled: Boolean = false,
+    eventLog: String = "",
+    problemReports: List<String> = emptyList(),
+    journalMutationFailed: Boolean = false,
+    notificationTestFailed: Boolean = false,
+    showWelcome: Boolean = false,
+    onHapticsChanged: (Boolean) -> Unit = {},
+    onCheckConnection: () -> Unit = {},
+    onForgetJournal: () -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {},
+    onSendTestNotification: () -> Unit = {},
+    onReportProblem: () -> Unit = {},
+    onSaveProblemReport: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -154,6 +204,11 @@ internal fun PhoneObserverScreen(
     val latestPaneStates by rememberUpdatedState(paneStates)
     val scope = rememberCoroutineScope()
     val applicationContext = LocalContext.current.applicationContext
+    val view = LocalView.current
+    fun withHaptic(action: () -> Unit): () -> Unit = {
+        if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        action()
+    }
     val homeTileStore = remember(applicationContext) {
         SharedPreferencesPhoneHomeTileStore(applicationContext)
     }
@@ -222,6 +277,7 @@ internal fun PhoneObserverScreen(
                     PhoneStatusPill(
                         model = model,
                         onClick = {
+                            if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                             paneStates = if (statusOpen) {
                                 paneStates.close(PhonePane.STATUS)
                             } else {
@@ -239,6 +295,11 @@ internal fun PhoneObserverScreen(
                                 detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                             },
                             onConnectJournal = onConnectJournal,
+                            journalFacts = journalFacts,
+                            onOpenTechnicalDetails = {
+                                paneStates = paneStates.close(PhonePane.STATUS)
+                                detailStack = detailStack.showInDetail(PhoneRoute.TechnicalDetails)
+                            },
                         )
                     }
                 }
@@ -302,9 +363,10 @@ internal fun PhoneObserverScreen(
         drawerState = drawerState,
         shelfOpen = shelfOpen,
         drawerContent = {
-            PhoneShelfContent(
+                PhoneShelfContent(
                 shelfOpen = shelfOpen,
-                onNavigate = { route ->
+                    onNavigate = { route ->
+                    if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                     scope.launch {
                         drawerState.close()
                         detailStack = detailStack.showInDetail(route)
@@ -324,15 +386,21 @@ internal fun PhoneObserverScreen(
                     widthClass = deckWidthClass,
                     paneOpen = deckPaneOpen,
                     onOpenSource = { id ->
+                        if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
-                    onToggle = onToggle,
-                    onOpenImport = {
+                    onToggle = { id, wish ->
+                        if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        onToggle(id, wish)
+                    },
+                    onOpenImport = withHaptic {
                         detailStack = detailStack.showInDetail(PhoneRoute.Import)
                     },
-                    onOpenAddMore = {
+                    onOpenAddMore = withHaptic {
                         detailStack = detailStack.showInDetail(PhoneRoute.AddMore)
                     },
+                    showWelcome = showWelcome,
+                    onConnectJournal = withHaptic(onConnectJournal),
                     hour = hour,
                     isOnHome = homeTileStore::hasTile,
                     modifier = deckModifier,
@@ -366,6 +434,32 @@ internal fun PhoneObserverScreen(
                                 onGrantPermissions = onGrantPermissions,
                                 onConnectJournal = onConnectJournal,
                                 onManageLocalStorage = onManageLocalStorage,
+                                journalPaired = journalPaired,
+                                journalFacts = journalFacts,
+                                journalMarkPresentation = journalMarkPresentation,
+                                storageUsed = storageUsed,
+                                hapticsEnabled = hapticsEnabled,
+                                notificationsEnabled = notificationsEnabled,
+                                eventLog = eventLog,
+                                problemReports = problemReports,
+                                journalMutationFailed = journalMutationFailed,
+                                notificationTestFailed = notificationTestFailed,
+                                onHapticsChanged = onHapticsChanged,
+                                onCheckConnection = onCheckConnection,
+                                onForgetJournal = onForgetJournal,
+                                onOpenNotificationSettings = onOpenNotificationSettings,
+                                onSendTestNotification = onSendTestNotification,
+                                onReportProblem = onReportProblem,
+                                onSaveProblemReport = onSaveProblemReport,
+                                onOpenTechnicalDetails = {
+                                    detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
+                                },
+                                onOpenEventLog = {
+                                    detailStack = detailStack.pushInDetail(PhoneRoute.EventLog)
+                                },
+                                onOpenProblemReports = {
+                                    detailStack = detailStack.pushInDetail(PhoneRoute.ProblemReports)
+                                },
                                 onOpenLicences = {
                                     detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
                                 },
@@ -410,6 +504,32 @@ internal fun PhoneObserverScreen(
                     onGrantPermissions = onGrantPermissions,
                     onConnectJournal = onConnectJournal,
                     onManageLocalStorage = onManageLocalStorage,
+                    journalPaired = journalPaired,
+                    journalFacts = journalFacts,
+                    journalMarkPresentation = journalMarkPresentation,
+                    storageUsed = storageUsed,
+                    hapticsEnabled = hapticsEnabled,
+                    notificationsEnabled = notificationsEnabled,
+                    eventLog = eventLog,
+                    problemReports = problemReports,
+                    journalMutationFailed = journalMutationFailed,
+                    notificationTestFailed = notificationTestFailed,
+                    onHapticsChanged = onHapticsChanged,
+                    onCheckConnection = onCheckConnection,
+                    onForgetJournal = onForgetJournal,
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                    onSendTestNotification = onSendTestNotification,
+                    onReportProblem = onReportProblem,
+                    onSaveProblemReport = onSaveProblemReport,
+                    onOpenTechnicalDetails = {
+                        detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
+                    },
+                    onOpenEventLog = {
+                        detailStack = detailStack.pushInDetail(PhoneRoute.EventLog)
+                    },
+                    onOpenProblemReports = {
+                        detailStack = detailStack.pushInDetail(PhoneRoute.ProblemReports)
+                    },
                     onOpenLicences = {
                         detailStack = detailStack.pushInDetail(PhoneRoute.Licences)
                     },

@@ -22,6 +22,16 @@ data class PhoneStatusModel(
     val journalVersion: JournalVersionReading? = null,
 )
 
+data class PhoneJournalFacts(
+    val version: String = "unknown",
+    val location: String = "—",
+    val connection: String = "—",
+    val fingerprint: String = "—",
+    val intake: String = "—",
+    val reconnects: String = "—",
+    val errors: String = "—",
+)
+
 fun journalVersionDisplayText(reading: JournalVersionReading?): String = when (reading?.freshness) {
     null, JournalVersionFreshness.NEVER_OBSERVED -> "unknown"
     JournalVersionFreshness.LAST_KNOWN -> "${reading.version} (last known)"

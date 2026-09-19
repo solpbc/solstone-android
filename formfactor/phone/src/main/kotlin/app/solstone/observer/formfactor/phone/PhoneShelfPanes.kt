@@ -14,6 +14,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,26 +30,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.solstone.core.identity.JournalMarkPresentation
 
-/**
- * `settings › your journal` (§ 4).
- *
- * The contract lists the mark, the fingerprint, where it lives, connection, check
- * connection, pair a new journal and forget this journal. Unpaired — the only state
- * this app can reach today, since no Android surface fetches the journal's render-spec
- * — there is no identity, no address and nothing to forget. ✅ So the pane shows the
- * one thing that is true and the one action that works: the generic mark in its card
- * (`journal-mark.md` § 3 + § 4.3), and `connect a journal`.
- *
- * ⚠ § 7 item 5 says the pane behind the shelf's journal row "shows the full card". iOS
- * shipped that in build 70; this is Android's. The identified states below it are owed
- * once the render-spec is on the wire.
- */
 @Composable
 fun PhoneYourJournalPane(
+    paired: Boolean = false,
+    facts: PhoneJournalFacts = PhoneJournalFacts(),
+    presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     onConnectJournal: () -> Unit,
+    onCheckConnection: () -> Unit = {},
+    onForgetJournal: () -> Unit = {},
+    mutationFailed: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    var confirmingForget by remember { mutableStateOf(false) }
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.YourJournal) },
     ) {
@@ -50,19 +52,46 @@ fun PhoneYourJournalPane(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            JournalMarkCard()
+            JournalMarkCard(presentation)
         }
         PaneSectionTitle("connection")
         PaneCard {
-            PaneFactRow(label = "status", value = "not paired")
-            PaneRowDivider()
-            PaneNavRow(
-                label = "connect a journal",
-                subLine = "scan the pair code your journal shows",
-                onClick = onConnectJournal,
-                modifier = Modifier.testTag("yourJournalConnect"),
-            )
+            if (paired) {
+                PaneFactRow(label = "fingerprint", value = facts.fingerprint)
+                PaneRowDivider()
+                PaneFactRow(label = "where it lives", value = facts.location)
+                PaneRowDivider()
+                PaneFactRow(label = "connection", value = facts.connection)
+                PaneRowDivider()
+                PaneNavRow(
+                    label = "check connection",
+                    onClick = onCheckConnection,
+                    modifier = Modifier.testTag("yourJournalCheckConnection"),
+                )
+                PaneRowDivider()
+                PaneNavRow(
+                    label = "pair a new journal",
+                    onClick = onConnectJournal,
+                    modifier = Modifier.testTag("yourJournalPairNew"),
+                )
+                PaneRowDivider()
+                PaneNavRow(
+                    label = "forget this journal",
+                    onClick = { confirmingForget = true },
+                    modifier = Modifier.testTag("yourJournalForget"),
+                )
+            } else {
+                PaneFactRow(label = "status", value = "not paired")
+                PaneRowDivider()
+                PaneNavRow(
+                    label = "connect a journal",
+                    subLine = "scan the pair code your journal shows",
+                    onClick = onConnectJournal,
+                    modifier = Modifier.testTag("yourJournalConnect"),
+                )
+            }
         }
+        if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
         // The subject register: the solstone app takes in what you share with it, and
         // the verb carries its object. `what this phone takes in` made the hardware the
         // perceiving subject and dropped the object -- never-list rule 1.
@@ -71,24 +100,41 @@ fun PhoneYourJournalPane(
                 "until one is connected, everything stays on this device.",
         )
     }
+    if (confirmingForget) {
+        AlertDialog(
+            onDismissRequest = { confirmingForget = false },
+            title = { Text("forget this journal?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingForget = false
+                    onForgetJournal()
+                }) { Text("forget") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingForget = false }) { Text("cancel") }
+            },
+        )
+    }
 }
 
-/**
- * `settings › this device` (§ 4).
- *
- * The contract lists device name, storage used, haptics, show technical details, event
- * log, problem reports and unpair. Of those, the device's own identity and the
- * installed version are the facts this shell can answer without inventing a reading;
- * the rest are behaviour this app has not built a surface for, and a row that looks
- * like a control but does nothing is what § 2.4 forbids. They are listed as owed in
- * this pass's outcome rather than mocked here.
- */
+/** `settings › this device` (§ 4), backed by device and app state. */
 @Composable
 fun PhoneThisDevicePane(
     version: String,
+    storageUsed: String,
+    hapticsEnabled: Boolean,
+    onHapticsChanged: (Boolean) -> Unit,
+    onManageLocalStorage: () -> Unit,
+    onOpenTechnicalDetails: () -> Unit,
+    onOpenEventLog: () -> Unit,
+    onOpenProblemReports: () -> Unit,
+    paired: Boolean,
+    onUnpair: () -> Unit,
+    mutationFailed: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var confirmingUnpair by remember { mutableStateOf(false) }
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.ThisDevice) },
     ) {
@@ -103,49 +149,175 @@ fun PhoneThisDevicePane(
             PaneRowDivider()
             PaneFactRow(label = "solstone", value = version.ifBlank { "—" })
         }
-        PaneSectionTitle("permissions")
+        if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
+        PaneSectionTitle("storage")
         PaneCard {
+            PaneFactRow(label = "in use", value = storageUsed)
+            PaneRowDivider()
+            PaneNavRow(
+                label = "manage local storage",
+                onClick = onManageLocalStorage,
+                modifier = Modifier.testTag("thisDeviceStorage"),
+            )
+        }
+        PaneSectionTitle("settings")
+        PaneCard {
+            PaneSwitchRow(
+                label = "haptics",
+                checked = hapticsEnabled,
+                onCheckedChange = onHapticsChanged,
+                modifier = Modifier.testTag("thisDeviceHaptics"),
+            )
+            PaneRowDivider()
             PaneNavRow(
                 label = "app permissions",
                 subLine = "microphone, location and camera, in android settings",
                 onClick = { context.openAppSettings() },
                 modifier = Modifier.testTag("thisDevicePermissions"),
             )
+            PaneRowDivider()
+            PaneNavRow(label = "technical details", onClick = onOpenTechnicalDetails)
+            PaneRowDivider()
+            PaneNavRow(label = "event log", onClick = onOpenEventLog)
+            PaneRowDivider()
+            PaneNavRow(label = "problem reports", onClick = onOpenProblemReports)
+            if (paired) {
+                PaneRowDivider()
+                PaneNavRow(label = "unpair", onClick = { confirmingUnpair = true })
+            }
         }
-        PaneNote(
-            "each source asks for what it needs the first time you turn it on. " +
-                "you can change any of them in android settings, any time.",
+    }
+    if (confirmingUnpair) {
+        AlertDialog(
+            onDismissRequest = { confirmingUnpair = false },
+            title = { Text("forget this journal?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingUnpair = false
+                    onUnpair()
+                }) { Text("unpair") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingUnpair = false }) { Text("cancel") }
+            },
         )
     }
 }
 
-/**
- * `settings › notifications` (§ 4).
- *
- * The locked copy is § 5's, verbatim from the brand register. The permission is a
- * real system surface, so `open notification settings` performs exactly what it names.
- * ⛔ No `send test notification` row: this app has no test-notification path, and a row
- * that names one would be the § 2.4 violation.
- */
 @Composable
-fun PhoneNotificationsPane(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
+fun PhoneTechnicalDetailsPane(
+    facts: PhoneJournalFacts,
+    onCheckConnection: () -> Unit,
+    onOpenEventLog: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.TechnicalDetails) }) {
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
+        PaneCard {
+            PaneFactRow(label = "connection", value = facts.connection)
+            PaneRowDivider()
+            PaneFactRow(label = "intake", value = facts.intake)
+            PaneRowDivider()
+            PaneFactRow(label = "reconnects", value = facts.reconnects)
+            PaneRowDivider()
+            PaneFactRow(label = "errors", value = facts.errors)
+            PaneRowDivider()
+            PaneFactRow(label = "fingerprint", value = facts.fingerprint)
+            PaneRowDivider()
+            PaneNavRow(label = "check connection", onClick = onCheckConnection)
+            PaneRowDivider()
+            PaneNavRow(label = "event log", onClick = onOpenEventLog)
+        }
+    }
+}
+
+@Composable
+fun PhoneProblemReportsPane(
+    reports: List<String>,
+    onSaveReport: () -> Unit,
+    onReportProblem: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.ProblemReports) }) {
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
+        PaneCard {
+            PaneNavRow(
+                label = "save a problem report",
+                onClick = onSaveReport,
+                modifier = Modifier.testTag("problemReportsSave"),
+            )
+            PaneRowDivider()
+            PaneNavRow(
+                label = "report a problem",
+                subLine = "review and send on the support site",
+                onClick = onReportProblem,
+                modifier = Modifier.testTag("problemReportsSend"),
+            )
+        }
+        if (reports.isNotEmpty()) {
+            PaneSectionTitle("saved on this device")
+            PaneCard {
+                reports.forEachIndexed { index, savedAt ->
+                    if (index > 0) PaneRowDivider()
+                    PaneFactRow(label = "saved", value = savedAt)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
+    PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.EventLog) }) {
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
+        SelectionContainer {
+            Text(
+                text = eventLog.ifBlank { "—" },
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = shellSecondaryInk,
+            )
+        }
+    }
+}
+
+/** `settings › notifications` (§ 4), including live permission/channel state. */
+@Composable
+fun PhoneNotificationsPane(
+    enabled: Boolean,
+    testFailed: Boolean = false,
+    onOpenSettings: () -> Unit,
+    onSendTest: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Notifications) },
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
+            PaneFactRow(label = "notifications", value = if (enabled) "on" else "off")
+            PaneRowDivider()
             PaneNavRow(
                 label = "open notification settings",
                 subLine = "android decides whether the solstone app can notify you",
-                onClick = { context.openNotificationSettings() },
+                onClick = onOpenSettings,
                 modifier = Modifier.testTag("notificationsOpenSettings"),
             )
+            if (enabled) {
+                PaneRowDivider()
+                PaneNavRow(
+                    label = "send test notification",
+                    onClick = onSendTest,
+                    modifier = Modifier.testTag("notificationsSendTest"),
+                )
+            }
         }
         // Two locked strings from section 5, verbatim and kept SEPARATE. They are listed
         // there as two lines; joining them with a dash would be authoring a third.
         PaneNote("when there's something worth a look")
         PaneNote("a short heads-up, never the content")
+        if (testFailed) {
+            PaneNote("couldn't send a test notification. check notification settings, then try again.")
+        }
     }
 }
 

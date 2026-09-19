@@ -5,7 +5,7 @@ package app.solstone.observer.formfactor.phone
 
 import java.net.URLEncoder
 
-internal fun supportReportUrl(
+fun supportReportUrl(
     version: String,
     build: String,
     osVersion: String?,
@@ -25,7 +25,7 @@ internal fun supportReportUrl(
     }
 }
 
-internal fun supportState(status: PhoneDefaultDetailStatus): String = when (status) {
+fun supportState(status: PhoneDefaultDetailStatus): String = when (status) {
     PhoneDefaultDetailStatus.Loading -> "loading"
     PhoneDefaultDetailStatus.Failed -> "status unavailable"
     PhoneDefaultDetailStatus.Unpaired -> "not paired"

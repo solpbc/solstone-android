@@ -61,6 +61,21 @@ sealed interface PhoneRoute : PhoneSurface {
         override val headingKey: String get() = "heading.this_device"
     }
 
+    data object TechnicalDetails : PhoneRoute {
+        override val paneTitle: String get() = "surface_technical_details"
+        override val headingKey: String get() = "heading.technical_details"
+    }
+
+    data object EventLog : PhoneRoute {
+        override val paneTitle: String get() = "surface_event_log"
+        override val headingKey: String get() = "heading.event_log"
+    }
+
+    data object ProblemReports : PhoneRoute {
+        override val paneTitle: String get() = "surface_problem_reports"
+        override val headingKey: String get() = "heading.problem_reports"
+    }
+
     data object Notifications : PhoneRoute {
         override val paneTitle: String get() = "surface_notifications"
         override val headingKey: String get() = "heading.notifications"
@@ -84,6 +99,9 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.AddMore -> "add-more"
     PhoneRoute.YourJournal -> "your-journal"
     PhoneRoute.ThisDevice -> "this-device"
+    PhoneRoute.TechnicalDetails -> "technical-details"
+    PhoneRoute.EventLog -> "event-log"
+    PhoneRoute.ProblemReports -> "problem-reports"
     PhoneRoute.Notifications -> "notifications"
     PhoneRoute.Help -> "help"
 }
@@ -104,6 +122,9 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
         "add-more" -> PhoneRoute.AddMore
         "your-journal" -> PhoneRoute.YourJournal
         "this-device" -> PhoneRoute.ThisDevice
+        "technical-details" -> PhoneRoute.TechnicalDetails
+        "event-log" -> PhoneRoute.EventLog
+        "problem-reports" -> PhoneRoute.ProblemReports
         "notifications" -> PhoneRoute.Notifications
         "help" -> PhoneRoute.Help
         else -> null

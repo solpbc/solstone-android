@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,14 +33,21 @@ import app.solstone.observer.formfactor.phone.decodePhoneRoute
 import app.solstone.observer.formfactor.phone.phoneDefaultDetailStatusOf
 import app.solstone.observer.formfactor.phone.resolvePhoneCaptureWidthDp
 import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
+import app.solstone.observer.formfactor.phone.supportReportUrl
+import app.solstone.observer.formfactor.phone.supportState
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
+import app.solstone.observer.harness.FileSourceWishStore
+import app.solstone.observer.harness.decimalBytes
+import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.platform.fgs.shouldAskForNotifications
+import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.observer.scaffold.ObserverAppContainer
@@ -57,6 +66,7 @@ class PhoneShellActivity : ComponentActivity() {
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var notificationsEnabled by mutableStateOf(false)
     /**
      * Re-establish intake on resume — ⛔ **without deciding, on the owner's behalf, that they want
      * it.**
@@ -122,6 +132,18 @@ class PhoneShellActivity : ComponentActivity() {
                 mutableStateOf(stores.journalIdentityCoordinator.currentPresentationGeneration())
             }
             var journalOpen by remember { mutableStateOf(false) }
+            val wishStore = remember { FileSourceWishStore(filesDir.resolve("source-wishes")) }
+            var wishStoreState by remember { mutableStateOf(wishStore.read()) }
+            val hapticsStore = remember { getSharedPreferences("phone-shell", MODE_PRIVATE) }
+            val problemReportStore = remember {
+                PhoneProblemReportStore(filesDir.resolve("problem-reports"))
+            }
+            var problemReports by remember { mutableStateOf(problemReportStore.list()) }
+            var journalMutationFailed by remember { mutableStateOf(false) }
+            var notificationTestFailed by remember { mutableStateOf(false) }
+            var hapticsEnabled by remember {
+                mutableStateOf(hapticsStore.getBoolean("haptics-enabled", true))
+            }
             DisposableEffect(stores) {
                 val pairingSubscription = stores.publisher.subscribe { next ->
                     mainHandler.post { pairingSnapshot = next }
@@ -150,13 +172,30 @@ class PhoneShellActivity : ComponentActivity() {
             } else {
                 markPresentation
             }
+            val journalFacts = phoneJournalFacts(
+                pairing = pairingSnapshot,
+                status = snapshot?.status,
+                intakeRunning = container.controller.desiredOn,
+            )
+            val storageUsed = container.journalCacheState().latestPass?.measuredUsageBytes
+                ?.let(::decimalBytes)
+                ?: "—"
+            val eventLog = when (val log = PhoneDiagLog.installedSink()?.readResult()) {
+                is DiagnosticLogRead.Complete -> log.content
+                is DiagnosticLogRead.Partial -> "some events couldn't be read.\n${log.content}"
+                DiagnosticLogRead.Unreadable -> "the event log couldn't be read."
+                null -> "—"
+            }
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
                 waiting = snapshot?.waiting.orEmpty(),
                 defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
                 onRefreshStatus = statusViewModel::refresh,
-                onToggle = { id, wish -> onSourceWish(id, wish) },
+                onToggle = { id, wish ->
+                    onSourceWish(id, wish)
+                    wishStoreState = wishStore.read()
+                },
                 onStartObserving = {
                     // ⚠ Asking again is asking: this is `resume intake` and `start intake again`,
                     // and both have to clear the owner's stop or the service will not come back.
@@ -171,6 +210,76 @@ class PhoneShellActivity : ComponentActivity() {
                 journalPaired = pairingSnapshot is PairingGraphSnapshot.Committed,
                 journalMarkPresentation = currentMarkPresentation,
                 journalSheetOpen = journalOpen,
+                journalFacts = journalFacts,
+                storageUsed = storageUsed,
+                hapticsEnabled = hapticsEnabled,
+                notificationsEnabled = notificationsEnabled,
+                eventLog = eventLog,
+                problemReports = problemReports.map { it.savedAt },
+                journalMutationFailed = journalMutationFailed,
+                notificationTestFailed = notificationTestFailed,
+                showWelcome = shouldShowWelcome(
+                    wishes = wishStoreState,
+                    pairing = pairingSnapshot,
+                ),
+                onHapticsChanged = { enabled ->
+                    hapticsEnabled = enabled
+                    hapticsStore.edit().putBoolean("haptics-enabled", enabled).apply()
+                },
+                onCheckConnection = statusViewModel::refresh,
+                onForgetJournal = {
+                    journalMutationFailed = false
+                    if (stores.publisher.forget() is GraphMutationResult.Cleared) {
+                        stores.journalVersionCoordinator.onIdentityChanged()
+                        stores.relayAccessCoordinator.onIdentityChanged()
+                        stores.journalIdentityCoordinator.onIdentityChanged()
+                        statusViewModel.refresh()
+                    } else {
+                        journalMutationFailed = true
+                    }
+                },
+                onOpenNotificationSettings = {
+                    startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+                    )
+                },
+                onSendTestNotification = {
+                    notificationTestFailed = !ObserverNotification.postTest(this)
+                    notificationsEnabled = ObserverNotification.notificationsEnabled(this)
+                },
+                onReportProblem = {
+                    val build = runCatching {
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toString()
+                        else @Suppress("DEPRECATION") info.versionCode.toString()
+                    }.getOrDefault("unknown")
+                    startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse(
+                                supportReportUrl(
+                                    version = appVersion,
+                                    build = build,
+                                    osVersion = Build.VERSION.RELEASE,
+                                    state = supportState(phoneDefaultDetailStatusOf(statusState)),
+                                ),
+                            ),
+                        ),
+                    )
+                },
+                onSaveProblemReport = {
+                    val body = buildString {
+                        appendLine("saved_at=${java.time.Instant.now()}")
+                        appendLine("app_version=$appVersion")
+                        appendLine("android=${Build.VERSION.RELEASE}")
+                        appendLine("state=${supportState(phoneDefaultDetailStatusOf(statusState))}")
+                        appendLine()
+                        append(eventLog)
+                    }
+                    runCatching { problemReportStore.save(body) }
+                        .onSuccess { problemReports = it }
+                },
                 onManageLocalStorage = {
                     startActivity(
                         Intent(this, ObserverActivity::class.java)
@@ -358,6 +467,8 @@ class PhoneShellActivity : ComponentActivity() {
         // call — and ⛔ not inline: it writes a file and can start an engine.
         container.onOwnerResumed()
         statusViewModel.onHostResumed()
+        ObserverNotification.ensureChannel(this)
+        notificationsEnabled = ObserverNotification.notificationsEnabled(this)
         captureOwnerToken = container.captureAuthority.acquire()
         mainHandler.post(startWhenReady)
     }
