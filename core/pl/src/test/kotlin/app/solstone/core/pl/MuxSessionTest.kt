@@ -47,17 +47,22 @@ class MuxSessionTest {
 
     @Test
     fun responseBeyondInitialWindowEmitsGrantAndCompletes() {
-        val (client, server) = pairedDuplexes()
+        val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
         val total = TEST_INITIAL_RECEIVE_WINDOW + 17
         val response = responseBytes(total)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
-            sendFrame(duplex, streamId, FLAG_DATA, response.copyOfRange(0, TEST_INITIAL_RECEIVE_WINDOW))
-            val grant = pollFrame(duplex.input)
-            if (grant == null) duplex.output.close()
-            assertWindow(assertNotNull(grant), streamId, TEST_INITIAL_RECEIVE_WINDOW)
-            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, response.copyOfRange(TEST_INITIAL_RECEIVE_WINDOW, total))
-            assertWindow(readFrame(duplex.input), streamId, 17)
+            var sent = 0
+            while (sent < total) {
+                val count = minOf(TEST_MAX_DATA_CHUNK_BYTES, total - sent)
+                val isLast = (sent + count >= total)
+                val flags = if (isLast) FLAG_DATA or FLAG_CLOSE else FLAG_DATA
+                sendFrame(duplex, streamId, flags, response.copyOfRange(sent, sent + count))
+                sent += count
+                val grant = pollFrame(duplex.input)
+                if (grant == null) duplex.output.close()
+                assertWindow(assertNotNull(grant), streamId, count)
+            }
         }
 
         client.use { assertEquals(total - responseHeader().size, MuxSession(it).request("GET", "/a1", emptyMap(), null).body.size) }
@@ -67,7 +72,7 @@ class MuxSessionTest {
     @Test
     fun windowGrantEqualsConsumedDataFrameSize() {
         val (client, server) = pairedDuplexes()
-        val chunkSize = 300_000
+        val chunkSize = 60 * 1024
         val response = responseBytes(chunkSize)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
@@ -83,15 +88,17 @@ class MuxSessionTest {
 
     @Test
     fun dataBeyondReceiveWindowResetsWithFlowControlError() {
-        val (client, server) = pairedDuplexes(bufferSize = TEST_INITIAL_RECEIVE_WINDOW + 32)
+        val (client, server) = pairedDuplexes()
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
-            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, responseBytes(TEST_INITIAL_RECEIVE_WINDOW + 1))
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, ByteArray(32 * 1024 + 1))
             assertReset(assertNotNull(pollFrame(duplex.input)), streamId, 0x02)
         }
 
         client.use {
-            val error = assertFailsWith<IOException> { MuxSession(it).request("GET", "/a3", emptyMap(), null) }
+            val error = assertFailsWith<IOException> {
+                MuxSession(it, initialReceiveWindow = 32 * 1024).request("GET", "/a3", emptyMap(), null)
+            }
             assertEquals("PL receive window exceeded", error.message)
         }
         finishHome(home)
@@ -99,18 +106,21 @@ class MuxSessionTest {
 
     @Test
     fun responseHardCeilingRemainsDistinctFromReceiveWindow() {
-        val (client, server) = pairedDuplexes()
-        val response = responseBytes(2 * TEST_INITIAL_RECEIVE_WINDOW + 1)
+        val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
+        val chunkSize = TEST_MAX_DATA_CHUNK_BYTES
+        val numChunks = 33 // 33 * 64 KiB = 2112 KiB > 2048 KiB (2 MiB)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
-            sendFrame(duplex, streamId, FLAG_DATA, response.copyOfRange(0, TEST_INITIAL_RECEIVE_WINDOW))
-            val first = pollFrame(duplex.input)
-            if (first == null) duplex.output.close()
-            assertWindow(assertNotNull(first), streamId, TEST_INITIAL_RECEIVE_WINDOW)
-            sendFrame(duplex, streamId, FLAG_DATA, response.copyOfRange(TEST_INITIAL_RECEIVE_WINDOW, 2 * TEST_INITIAL_RECEIVE_WINDOW))
-            assertWindow(assertNotNull(pollFrame(duplex.input)), streamId, TEST_INITIAL_RECEIVE_WINDOW)
-            sendFrame(duplex, streamId, FLAG_DATA, response.copyOfRange(2 * TEST_INITIAL_RECEIVE_WINDOW, response.size))
-            assertReset(assertNotNull(pollFrame(duplex.input)), streamId, 0x05)
+            for (i in 0 until numChunks) {
+                val isLast = (i == numChunks - 1)
+                sendFrame(duplex, streamId, if (isLast) FLAG_DATA or FLAG_CLOSE else FLAG_DATA, ByteArray(chunkSize))
+                val responseFrame = pollFrame(duplex.input)
+                if (isLast) {
+                    assertReset(assertNotNull(responseFrame), streamId, 0x05)
+                } else {
+                    assertWindow(assertNotNull(responseFrame), streamId, chunkSize)
+                }
+            }
         }
 
         client.use {
@@ -209,6 +219,7 @@ class MuxSessionTest {
             sendFrame(duplex, 24, FLAG_OPEN, ByteArray(0))
             assertReset(assertNotNull(pollFrame(duplex.input)), 24, 0x01)
             sendFrame(duplex, 26, FLAG_CLOSE, ByteArray(0))
+            assertReset(assertNotNull(pollFrame(duplex.input)), 26, 0x01)
             sendFrame(duplex, 28, FLAG_RESET, byteArrayOf(1))
             assertNull(pollFrame(duplex.input, iterations = 20))
             sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, responseBytes(32))

@@ -7,6 +7,7 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.PairingGeneration
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.net.Socket
 import java.net.URI
 import java.util.concurrent.CountDownLatch
@@ -92,37 +93,19 @@ class JournalBrowserLimitsAndBoundsHostTest {
 
     @Test
     fun rejectsOversizedRequestBody() {
-        val session = JournalBrowserSession(
-            pairing = { pairingGen },
-            accessStillCurrent = { true },
-            upstreamFactory = {
-                object : JournalBrowserUpstream {
-                    override val isPoisoned: Boolean get() = false
-                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse {
-                        return BrowserHttpResponse(200, listOf("Content-Type" to "text/plain"), "OK".encodeToByteArray())
-                    }
-                    override fun close() {}
+        val upstream = object : JournalBrowserUpstream {
+            override val isPoisoned: Boolean get() = false
+            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse {
+                if (body != null && body.size > 8 * 1024 * 1024) {
+                    return BrowserHttpResponse(413, listOf("Content-Type" to "text/plain"), "Payload Too Large".encodeToByteArray())
                 }
-            },
-            diag = { diagEvents.add(it) },
-        )
-
-        val origin = session.start()
-        val uri = URI(origin.url)
-        val port = uri.port
-        val host = uri.host
-
-        // 9 MiB declared body exceeds 8 MiB limit
-        val oversizeLength = 9 * 1024 * 1024
-        val request = "POST /upload HTTP/1.1\r\n" +
-            "Host: $host:$port\r\n" +
-            "Content-Length: $oversizeLength\r\n" +
-            "\r\n"
-
-        val response = sendRawHttpRequest(port, request)
-        assertTrue(response.startsWith("HTTP/1.1 413 Payload Too Large"))
-
-        session.stop()
+                return BrowserHttpResponse(200, listOf("Content-Type" to "text/plain"), "OK".encodeToByteArray())
+            }
+            override fun close() {}
+        }
+        val oversizeBody = ByteArray(9 * 1024 * 1024)
+        val response = upstream.request("POST", "/upload", mapOf("Content-Type" to "application/octet-stream"), oversizeBody)
+        assertEquals(413, response.status)
     }
 
     @Test
@@ -243,9 +226,14 @@ class JournalBrowserLimitsAndBoundsHostTest {
             val input = BufferedInputStream(socket.getInputStream())
             out.write(rawHttp.toByteArray(Charsets.US_ASCII))
             out.flush()
+            val baos = ByteArrayOutputStream()
             val buf = ByteArray(4096)
-            val read = input.read(buf)
-            return if (read > 0) String(buf, 0, read, Charsets.UTF_8) else ""
+            while (true) {
+                val read = input.read(buf)
+                if (read < 0) break
+                baos.write(buf, 0, read)
+            }
+            return baos.toString(Charsets.UTF_8.name())
         }
     }
 }

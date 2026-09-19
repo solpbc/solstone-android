@@ -64,6 +64,14 @@ fun encodeWindowCredit(n: Int): ByteArray = byteArrayOf(
     (n and 0xff).toByte(),
 )
 
+fun decodeWindowCredit(buf: ByteArray): Int {
+    if (buf.size < 4) return 0
+    return ((buf[0].toInt() and 0xff) shl 24) or
+        ((buf[1].toInt() and 0xff) shl 16) or
+        ((buf[2].toInt() and 0xff) shl 8) or
+        (buf[3].toInt() and 0xff)
+}
+
 fun decodeFrame(buf: ByteArray, offset: Int = 0): DecodedFrame {
     if (offset < 0 || buf.size - offset < 8) {
         throw IllegalArgumentException("socket closed while reading frame")
@@ -92,12 +100,19 @@ fun controlPong(frame: Frame): Frame? =
         null
     }
 
-class FrameDialer {
-    var nextStreamId = 1
+class FrameDialer(initialStreamId: Int = 1) {
+    var nextStreamId = initialStreamId
         private set
 
     fun allocate(): Int {
         val id = nextStreamId
+        if (id <= 0) {
+            throw IllegalStateException("Stream ID allocation exhausted")
+        }
+        if (id == Int.MAX_VALUE) {
+            nextStreamId = -1
+            return id
+        }
         nextStreamId += 2
         return id
     }

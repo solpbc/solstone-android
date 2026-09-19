@@ -4,6 +4,9 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.pl.ByteDuplex
+import app.solstone.core.pl.LedgerCategory
+import app.solstone.core.pl.LiveRoot
+import app.solstone.core.pl.MemoryLedger
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -36,7 +39,15 @@ class OkHttpWebSocketDuplex internal constructor(
     socket: BinaryWebSocket,
     private val capacityBytes: Int = DEFAULT_BUFFER_BYTES,
     private val waitingTimeoutMillis: Long = 0L,
-) : ByteDuplex {
+) : ByteDuplex, LiveRoot {
+    override val category: LedgerCategory = LedgerCategory.WS_QUEUED_CURRENT
+    override val capacity: Long
+        get() = synchronized(lock) { bufferedBytes.toLong() + (current?.size?.toLong() ?: 0L) }
+    override fun retainedBytes(): Long = capacity
+
+    init {
+        MemoryLedger.registerRoot(this)
+    }
     private val lock = Object()
     private val queue = ArrayDeque<ByteArray>()
     private var bufferedBytes = 0
@@ -110,6 +121,7 @@ class OkHttpWebSocketDuplex internal constructor(
         }
 
     override fun close() {
+        MemoryLedger.unregisterRoot(this)
         val toClose: BinaryWebSocket?
         synchronized(lock) {
             if (closed) {
@@ -236,7 +248,17 @@ class OkHttpWebSocketDuplex internal constructor(
                         opened.countDown()
                     }
 
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        duplex.fail(IOException("WebSocket text frames not permitted in binary transport"))
+                        webSocket.close(1002, "protocol error")
+                    }
+
                     override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                        if (bytes.size > MAX_WS_CHUNK_BYTES) {
+                            duplex.fail(IOException("WebSocket binary frame exceeds 64 KiB maximum"))
+                            webSocket.close(1009, "message too big")
+                            return
+                        }
                         duplex.receive(bytes)
                     }
 

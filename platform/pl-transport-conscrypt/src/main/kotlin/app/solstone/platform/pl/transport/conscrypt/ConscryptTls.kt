@@ -27,15 +27,23 @@ fun installConscrypt() {
     if (conscryptInstalled) {
         return
     }
-    if (Security.getProvider("Conscrypt") == null) {
-        Security.insertProviderAt(Conscrypt.newProvider(), 1)
+    try {
+        if (Security.getProvider("Conscrypt") == null) {
+            Security.insertProviderAt(Conscrypt.newProvider(), 1)
+        }
+    } catch (_: Throwable) {
+        // Native Conscrypt library absent on host JVM; fallback to standard JDK TLS provider
     }
     conscryptInstalled = true
 }
 
 private fun newTlsContext(): SSLContext {
     installConscrypt()
-    return SSLContext.getInstance("TLS", "Conscrypt")
+    return try {
+        SSLContext.getInstance("TLS", "Conscrypt")
+    } catch (_: Throwable) {
+        SSLContext.getInstance("TLS")
+    }
 }
 
 fun certlessFactory(): SSLSocketFactory {
@@ -77,7 +85,7 @@ private fun configureClientEngine(engine: SSLEngine) {
 
 private fun trustManagersFor(credential: ClientCredential): Array<TrustManager> {
     val keys = KeyStore.getInstance(KeyStore.getDefaultType())
-    keys.load(null)
+    keys.load(null, null)
     credential.caChainPem.forEachIndexed { index, pem ->
         keys.setCertificateEntry("ca-$index", certificateFromPem(pem))
     }

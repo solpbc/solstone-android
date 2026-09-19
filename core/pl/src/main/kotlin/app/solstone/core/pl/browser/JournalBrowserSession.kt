@@ -38,6 +38,73 @@ interface JournalBrowserUpstream : Closeable {
         headers: Map<String, String>,
         body: ByteArray?,
     ): BrowserHttpResponse
+
+    fun requestStreaming(
+        method: String,
+        path: String,
+        headers: List<Pair<String, String>>,
+        bodySource: BrowserRequestBodySource?,
+        responseSink: BrowserResponseSink,
+    ) {
+        val bodyBytes = bodySource?.let { src ->
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val read = src.readChunk(buf, 0, buf.size)
+                if (read < 0) break
+                if (read > 0) out.write(buf, 0, read)
+            }
+            out.toByteArray()
+        }
+        val headerMap = mutableMapOf<String, String>()
+        for ((k, v) in headers) {
+            headerMap[k] = v
+        }
+        val response = request(method, path, headerMap, bodyBytes)
+        val resHeaders = response.headers.toMutableList()
+        if (resHeaders.none { it.first.equals("content-length", ignoreCase = true) } &&
+            resHeaders.none { it.first.equals("transfer-encoding", ignoreCase = true) }) {
+            resHeaders.add("Content-Length" to response.body.size.toString())
+        }
+        val reason = reasonText(response.status)
+        responseSink.onStatusAndHeaders(response.status, reason, resHeaders)
+        if (response.body.isNotEmpty()) {
+            responseSink.onBodyChunk(response.body, 0, response.body.size)
+        }
+        responseSink.onComplete()
+    }
+}
+
+fun reasonText(status: Int, rawReason: String? = null): String {
+    if (!rawReason.isNullOrBlank()) return rawReason
+    return when (status) {
+        100 -> "Continue"
+        101 -> "Switching Protocols"
+        103 -> "Early Hints"
+        200 -> "OK"
+        201 -> "Created"
+        204 -> "No Content"
+        205 -> "Reset Content"
+        206 -> "Partial Content"
+        301 -> "Moved Permanently"
+        302 -> "Found"
+        304 -> "Not Modified"
+        307 -> "Temporary Redirect"
+        308 -> "Permanent Redirect"
+        400 -> "Bad Request"
+        401 -> "Unauthorized"
+        403 -> "Forbidden"
+        404 -> "Not Found"
+        405 -> "Method Not Allowed"
+        408 -> "Request Timeout"
+        417 -> "Expectation Failed"
+        431 -> "Request Header Fields Too Large"
+        500 -> "Internal Server Error"
+        502 -> "Bad Gateway"
+        503 -> "Service Unavailable"
+        504 -> "Gateway Timeout"
+        else -> "Response"
+    }
 }
 
 fun interface JournalBrowserUpstreamFactory {
@@ -74,164 +141,133 @@ class JournalBrowserSession(
     fun start(bindPort: Int = 0): JournalBrowserOrigin = lock.withLock {
         val currentGen = pairing() ?: throw IllegalStateException("Cannot start browser session when unpaired")
         if (!accessStillCurrent()) {
-            throw IllegalStateException("Access not current")
+            throw IllegalStateException("Cannot start browser session when access is not current")
         }
 
-        if (running && activeOrigin != null && pairingSnapshot == currentGen) {
+        if (running && activeOrigin != null) {
             return activeOrigin!!
-        }
-
-        if (running) {
-            stopInternal(emitStopped = false)
         }
 
         val tokenBytes = ByteArray(16)
         secureRandom.nextBytes(tokenBytes)
         val token = tokenBytes.joinToString("") { "%02x".format(it) }
 
-        val socket = ServerSocket(bindPort, 50, InetAddress.getByName("127.0.0.1"))
-        serverSocket = socket
+        val ss = ServerSocket(bindPort, 50, InetAddress.getByName("127.0.0.1"))
+        serverSocket = ss
         activeToken = token
         pairingSnapshot = currentGen
-        val origin = JournalBrowserOrigin("http://$token.localhost:${socket.localPort}/")
+        val origin = JournalBrowserOrigin("http://$token.localhost:${ss.localPort}/")
         activeOrigin = origin
         running = true
 
-        if (workerExecutor.isShutdown) {
-            workerExecutor = Executors.newCachedThreadPool()
-        }
-
-        val thread = Thread({
-            acceptLoop(socket, token, currentGen)
-        }, "journal-browser-accept")
-        acceptThread = thread
-        thread.isDaemon = true
-        thread.start()
-
         diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "bound"))
+
+        acceptThread = Thread({
+            acceptLoop(ss, token, currentGen, origin.url)
+        }, "JournalBrowserSession-accept")
+        acceptThread?.isDaemon = true
+        acceptThread?.start()
+
         return origin
     }
 
     fun stop() = lock.withLock {
-        stopInternal(emitStopped = true)
-        workerExecutor.shutdown()
-    }
-
-    private fun stopInternal(emitStopped: Boolean) {
-        if (!running && serverSocket == null) return
+        if (!running) return
         running = false
+        diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "stopped"))
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {}
+        serverSocket = null
         activeToken = null
         activeOrigin = null
         pairingSnapshot = null
 
-        val sock = serverSocket
-        serverSocket = null
-        try {
-            sock?.close()
-        } catch (_: Exception) {}
-
-        val t = acceptThread
+        acceptThread?.interrupt()
         acceptThread = null
-        if (t != null && Thread.currentThread() != t) {
-            try {
-                t.join(1000)
-            } catch (_: Exception) {}
-        }
 
-        pool.closeAll()
+        workerExecutor.shutdownNow()
+        workerExecutor = Executors.newCachedThreadPool()
 
-        if (emitStopped) {
-            diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "stopped"))
-        }
+        pool.close()
     }
 
     private fun triggerTerminal(eventClass: String, outcome: String) {
-        diag(DiagEvent.JournalBrowser(eventClass = eventClass, outcome = outcome))
         lock.withLock {
-            if (!running && serverSocket == null) return
-            running = false
-            activeToken = null
-            activeOrigin = null
-            pairingSnapshot = null
-
-            val sock = serverSocket
-            serverSocket = null
-            try {
-                sock?.close()
-            } catch (_: Exception) {}
-
-            pool.closeAll()
+            if (!running) return
+            diag(DiagEvent.JournalBrowser(eventClass = eventClass, outcome = outcome))
+            stop()
         }
     }
 
-    private fun acceptLoop(socket: ServerSocket, expectedToken: String, expectedGen: PairingGeneration) {
-        while (running && !socket.isClosed) {
-            val client = try {
-                socket.accept()
-            } catch (_: SocketException) {
-                break
-            } catch (_: IOException) {
-                if (!running) break
-                continue
-            }
-
-            if (!running) {
-                try { client.close() } catch (_: Exception) {}
-                break
-            }
-
-            val currentCount = inFlightConnections.incrementAndGet()
-            if (currentCount > MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS) {
-                inFlightConnections.decrementAndGet()
-                diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
-                sendDirectError(client, 503, "Service Unavailable")
-                continue
-            }
-
+    private fun acceptLoop(
+        ss: ServerSocket,
+        expectedToken: String,
+        expectedGen: PairingGeneration,
+        localOrigin: String,
+    ) {
+        while (running) {
             try {
-                workerExecutor.execute {
+                val client = ss.accept()
+                val currentInFlight = inFlightConnections.incrementAndGet()
+
+                // MAX_FIFO_WAITERS = 8, MAX_ACTIVE_CLIENTS = 4 -> max 12 in-flight
+                if (currentInFlight > MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS) {
+                    inFlightConnections.decrementAndGet()
+                    diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
                     try {
-                        processClient(client, expectedToken, expectedGen)
+                        val out = BufferedOutputStream(client.getOutputStream())
+                        sendErrorAndClose(client, out, 503, "Service Unavailable")
+                    } catch (_: Exception) {
+                        try { client.close() } catch (_: Exception) {}
+                    }
+                    continue
+                }
+
+                workerExecutor.submit {
+                    try {
+                        processClient(client, expectedToken, expectedGen, localOrigin)
+                    } catch (_: Exception) {
                     } finally {
                         inFlightConnections.decrementAndGet()
                     }
                 }
+            } catch (_: SocketException) {
+                break
             } catch (_: Exception) {
-                inFlightConnections.decrementAndGet()
-                try { client.close() } catch (_: Exception) {}
+                if (!running) break
             }
         }
     }
 
-    private fun processClient(client: Socket, expectedToken: String, expectedGen: PairingGeneration) {
-        client.soTimeout = HEADER_READ_TIMEOUT_MS
+    private fun processClient(
+        client: Socket,
+        expectedToken: String,
+        expectedGen: PairingGeneration,
+        localOrigin: String,
+    ) {
         val inputStream = BufferedInputStream(client.getInputStream())
         val outputStream = BufferedOutputStream(client.getOutputStream())
 
-        val localOrigin = activeOrigin?.url
-        if (!running || localOrigin == null) {
-            sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-            return
-        }
-
-        val requestHeaderBytes = ByteArrayOutputStream()
-        var headerEnd = -1
         val buf = ByteArray(1024)
+        val headerStream = ByteArrayOutputStream()
+        var headerEnd = -1
 
         try {
-            while (headerEnd < 0) {
-                if (requestHeaderBytes.size() > MAX_REQUEST_HEADERS_BYTES) {
-                    diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "rejected"))
-                    sendErrorAndClose(client, outputStream, 431, "Request Header Fields Too Large")
-                    return
-                }
+            client.soTimeout = IDLE_READ_TIMEOUT_MS
+            while (headerEnd == -1) {
                 val read = inputStream.read(buf)
                 if (read < 0) {
                     try { client.close() } catch (_: Exception) {}
                     return
                 }
-                requestHeaderBytes.write(buf, 0, read)
-                headerEnd = findHeaderEnd(requestHeaderBytes.toByteArray())
+                headerStream.write(buf, 0, read)
+                headerEnd = findHeaderEnd(headerStream.toByteArray())
+                if (headerEnd == -1 && headerStream.size() > MAX_REQUEST_HEADERS_BYTES) {
+                    diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "rejected"))
+                    sendErrorAndClose(client, outputStream, 431, "Request Header Fields Too Large")
+                    return
+                }
             }
         } catch (_: SocketTimeoutException) {
             sendErrorAndClose(client, outputStream, 408, "Request Timeout")
@@ -241,80 +277,86 @@ class JournalBrowserSession(
             return
         }
 
-        val allHeaderBytes = requestHeaderBytes.toByteArray()
-        val headerText = allHeaderBytes.copyOfRange(0, headerEnd).toString(Charsets.UTF_8)
-        val lines = headerText.split(Regex("\r?\n"))
+        val allHeaderBytes = headerStream.toByteArray()
+        val headerText = String(allHeaderBytes, 0, headerEnd, Charsets.US_ASCII)
+        val lines = headerText.split("\r\n")
         if (lines.isEmpty() || lines[0].isBlank()) {
             sendErrorAndClose(client, outputStream, 400, "Bad Request")
             return
         }
 
-        val requestLine = lines[0].trim()
-        if (requestLine.length > MAX_REQUEST_LINE_BYTES) {
+        val requestLine = lines[0]
+        val reqLineBytes = requestLine.toByteArray(Charsets.US_ASCII)
+        if (reqLineBytes.size > MAX_REQUEST_LINE_BYTES) {
             diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "rejected"))
             sendErrorAndClose(client, outputStream, 414, "URI Too Long")
             return
         }
 
-        val requestLineParts = requestLine.split(" ", limit = 3)
-        if (requestLineParts.size < 2) {
+        val requestParts = requestLine.split(" ")
+        if (requestParts.size != 3) {
             sendErrorAndClose(client, outputStream, 400, "Bad Request")
             return
         }
 
-        val method = requestLineParts[0].uppercase(Locale.US)
-        val rawTarget = requestLineParts[1]
+        val method = requestParts[0].uppercase(Locale.ROOT)
+        val rawPath = requestParts[1]
+        val httpVersion = requestParts[2]
 
-        val headers = mutableListOf<Pair<String, String>>()
-        for (i in 1 until lines.size) {
-            val line = lines[i]
-            if (line.isBlank()) continue
-            val colon = line.indexOf(':')
-            if (colon < 0) {
-                sendErrorAndClose(client, outputStream, 400, "Bad Request")
-                return
-            }
-            headers.add(line.substring(0, colon).trim() to line.substring(colon + 1).trim())
-        }
-
-        if (headers.size > MAX_HEADER_COUNT) {
+        if (lines.size - 1 > MAX_REQUEST_HEADERS_COUNT) {
             diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "rejected"))
             sendErrorAndClose(client, outputStream, 431, "Request Header Fields Too Large")
             return
         }
 
-        if (method !in ALLOWED_METHODS) {
-            val allowHeader = "Allow: ${ALLOWED_METHODS.joinToString(", ")}\r\n"
-            sendResponseWithCustomHeaders(outputStream, 405, "Method Not Allowed", allowHeader, ByteArray(0))
-            try { client.close() } catch (_: Exception) {}
+        val headers = mutableListOf<Pair<String, String>>()
+        for (i in 1 until lines.size) {
+            val line = lines[i]
+            if (line.isEmpty()) continue
+            val colonIndex = line.indexOf(':')
+            if (colonIndex == -1) {
+                sendErrorAndClose(client, outputStream, 400, "Bad Request")
+                return
+            }
+            val key = line.substring(0, colonIndex).trim()
+            val value = line.substring(colonIndex + 1).trim()
+            headers.add(key to value)
+        }
+
+        if (method in DISALLOWED_METHODS) {
+            diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
+            val allowed = "GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS"
+            val headersWithAllow = listOf("Allow: $allowed", "Referrer-Policy: no-referrer")
+            sendResponseHeadersAndClose(client, outputStream, 405, "Method Not Allowed", headersWithAllow)
             return
         }
 
-        val boundPort = serverSocket?.localPort ?: -1
-
-        // Validate request-target URI if absolute
-        val targetPath: String
-        if (rawTarget.startsWith("http://", ignoreCase = true) || rawTarget.startsWith("https://", ignoreCase = true)) {
-            val targetUri = try {
-                URI(rawTarget)
-            } catch (_: Exception) {
-                sendErrorAndClose(client, outputStream, 400, "Bad Request")
-                return
-            }
-            val targetHost = targetUri.host?.lowercase(Locale.US)
-            val targetPort = targetUri.port
-            val expectedHost = "$expectedToken.localhost"
-            if (targetHost != expectedHost || (targetPort != -1 && targetPort != boundPort)) {
-                sendErrorAndClose(client, outputStream, 400, "Bad Request")
-                return
-            }
-            targetPath = targetUri.rawPath.ifEmpty { "/" } + (targetUri.rawQuery?.let { "?$it" } ?: "")
-        } else {
-            targetPath = rawTarget
+        if (method !in ALLOWED_METHODS) {
+            diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
+            sendErrorAndClose(client, outputStream, 400, "Bad Request")
+            return
         }
 
-        // Admission check on Host header
+        val targetPath: String
+        try {
+            val uri = URI(rawPath)
+            if (uri.isAbsolute) {
+                if (!isValidHostAdmission(uri.host, expectedToken, serverSocket?.localPort ?: 0)) {
+                    diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
+                    sendErrorAndClose(client, outputStream, 400, "Bad Request")
+                    return
+                }
+                targetPath = uri.rawPath.ifEmpty { "/" } + if (uri.rawQuery != null) "?${uri.rawQuery}" else ""
+            } else {
+                targetPath = rawPath
+            }
+        } catch (_: Exception) {
+            sendErrorAndClose(client, outputStream, 400, "Bad Request")
+            return
+        }
+
         val hostHeader = headers.firstOrNull { it.first.equals("host", ignoreCase = true) }?.second
+        val boundPort = serverSocket?.localPort ?: 0
         val validAdmission = isValidHostAdmission(hostHeader, expectedToken, boundPort)
 
         if (!validAdmission) {
@@ -342,51 +384,6 @@ class JournalBrowserSession(
                 return
             }
 
-            // Request body processing
-            val contentLengthHeader = headers.firstOrNull { it.first.equals("content-length", ignoreCase = true) }?.second
-            val contentLength = contentLengthHeader?.toIntOrNull() ?: 0
-            if (contentLength > MAX_REQUEST_BODY_BYTES) {
-                diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "rejected"))
-                sendErrorAndClose(client, outputStream, 413, "Payload Too Large")
-                return
-            }
-
-            val alreadyReadBodyBytes = allHeaderBytes.size - headerEnd
-            var bodyBytes: ByteArray? = null
-
-            if (contentLength > 0) {
-                if (!acquireRequestBodyBudget(contentLength)) {
-                    diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
-                    sendErrorAndClose(client, outputStream, 503, "Service Unavailable")
-                    return
-                }
-                acquiredRequestBudget = contentLength
-
-                try {
-                    client.soTimeout = IDLE_READ_TIMEOUT_MS
-                    val bodyStream = ByteArrayOutputStream()
-                    if (alreadyReadBodyBytes > 0) {
-                        bodyStream.write(allHeaderBytes, headerEnd, minOf(alreadyReadBodyBytes, contentLength))
-                    }
-                    while (bodyStream.size() < contentLength) {
-                        val toRead = minOf(1024, contentLength - bodyStream.size())
-                        val read = inputStream.read(buf, 0, toRead)
-                        if (read < 0) {
-                            sendErrorAndClose(client, outputStream, 400, "Bad Request")
-                            return
-                        }
-                        bodyStream.write(buf, 0, read)
-                    }
-                    bodyBytes = bodyStream.toByteArray()
-                } catch (_: SocketTimeoutException) {
-                    sendErrorAndClose(client, outputStream, 408, "Request Timeout")
-                    return
-                } catch (_: IOException) {
-                    try { client.close() } catch (_: Exception) {}
-                    return
-                }
-            }
-
             // Acquire response memory reservation (16 MiB slot from 32 MiB budget)
             acquiredResponseBudget = responseBudgetSemaphore.tryAcquire(REQUEST_DEADLINE_MS.toLong(), TimeUnit.MILLISECONDS)
             if (!acquiredResponseBudget) {
@@ -395,17 +392,128 @@ class JournalBrowserSession(
                 return
             }
 
-            val filteredHeaders = filterRequestHeaders(headers)
+            // Expect: 100-continue handling after all 4 admission gates (FIFO, active-client, body budget, response slot)
+            val expectHeaders = headers.filter { it.first.equals("expect", ignoreCase = true) }
+            var browserSinkAcceptedBytes = false
+
+            if (expectHeaders.isNotEmpty()) {
+                if (expectHeaders.size > 1 || expectHeaders.any { it.second.contains(",") } ||
+                    !expectHeaders[0].second.trim().equals("100-continue", ignoreCase = true)
+                ) {
+                    sendErrorAndClose(client, outputStream, 417, "Expectation Failed")
+                    return
+                }
+                // Emit exactly one bridge 100 Continue
+                outputStream.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                outputStream.flush()
+                browserSinkAcceptedBytes = true
+            }
+
+            // Request body source streaming
+            val contentLengthHeader = headers.firstOrNull { it.first.equals("content-length", ignoreCase = true) }?.second
+            val transferEncodingHeader = headers.firstOrNull { it.first.equals("transfer-encoding", ignoreCase = true) }?.second
+            val contentLength = contentLengthHeader?.toLongOrNull() ?: 0L
+            val isChunked = transferEncodingHeader?.contains("chunked", ignoreCase = true) == true
+            val hasBody = (contentLength > 0L) || isChunked
+
+            val bodySource: BrowserRequestBodySource? = if (hasBody) {
+                var alreadyReadRemaining = allHeaderBytes.size - headerEnd
+                var alreadyReadOffset = headerEnd
+                var bodyBytesReadSoFar = 0L
+                BrowserRequestBodySource { target, offset, length ->
+                    if (!isChunked && contentLength > 0L && bodyBytesReadSoFar >= contentLength) {
+                        return@BrowserRequestBodySource -1
+                    }
+                    if (alreadyReadRemaining > 0) {
+                        val toCopy = minOf(length, alreadyReadRemaining)
+                        System.arraycopy(allHeaderBytes, alreadyReadOffset, target, offset, toCopy)
+                        alreadyReadOffset += toCopy
+                        alreadyReadRemaining -= toCopy
+                        bodyBytesReadSoFar += toCopy
+                        toCopy
+                    } else {
+                        val maxToRead = if (!isChunked && contentLength > 0L) {
+                            minOf(length.toLong(), contentLength - bodyBytesReadSoFar).toInt()
+                        } else {
+                            length
+                        }
+                        if (maxToRead <= 0) {
+                            -1
+                        } else {
+                            val read = inputStream.read(target, offset, maxToRead)
+                            if (read > 0) {
+                                bodyBytesReadSoFar += read
+                            }
+                            read
+                        }
+                    }
+                }
+            } else {
+                null
+            }
+
+            val filteredHeaders = filterRequestHeadersOrdered(headers).filterNot { 
+                it.first.equals("expect", ignoreCase = true)
+            }
+
             val isIdempotent = method in IDEMPOTENT_METHODS
-            var response: BrowserHttpResponse? = null
             var isAmbiguousFailure = false
             var isTimeoutFailure = false
             var isIdentityFailure = false
+            var completedSuccessfully = false
+
+            val responseSink = object : BrowserResponseSink {
+                override fun onStatusAndHeaders(status: Int, reason: String, resHeaders: List<Pair<String, String>>) {
+                    val finalGen = pairing()
+                    if (finalGen == null || finalGen != expectedGen || !accessStillCurrent()) {
+                        triggerTerminal(eventClass = "pairing", outcome = "invalidated")
+                        throw JournalBrowserIdentityException()
+                    }
+                    val formatted = filterAndFormatResponseHeaders(
+                        upstreamHeaders = resHeaders,
+                        responseBodySize = null,
+                        localOriginUrl = localOrigin,
+                        statusCode = status,
+                    ) ?: throw IOException("Redirect rebase rejected")
+
+                    val sb = StringBuilder()
+                    val reasonStr = reasonText(status, reason)
+                    sb.append("HTTP/1.1 $status $reasonStr\r\n")
+                    for ((k, v) in formatted) {
+                        sb.append("$k: $v\r\n")
+                    }
+                    sb.append("\r\n")
+                    outputStream.write(sb.toString().toByteArray(Charsets.US_ASCII))
+                    outputStream.flush()
+                    browserSinkAcceptedBytes = true
+                }
+
+                override fun onBodyChunk(chunk: ByteArray, offset: Int, length: Int) {
+                    if (method != "HEAD" && length > 0) {
+                        outputStream.write(chunk, offset, length)
+                        outputStream.flush()
+                        browserSinkAcceptedBytes = true
+                    }
+                }
+
+                override fun onComplete() {
+                    outputStream.flush()
+                    completedSuccessfully = true
+                }
+
+                override fun onError(cause: Throwable) {
+                    if (cause is JournalBrowserIdentityException) {
+                        isIdentityFailure = true
+                    } else if (cause is SocketTimeoutException) {
+                        isTimeoutFailure = true
+                    }
+                }
+            }
 
             var upstream: JournalBrowserUpstream? = null
             try {
                 upstream = pool.acquire()
-                response = upstream.request(method, targetPath, filteredHeaders, bodyBytes)
+                upstream.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
                 pool.release(upstream)
                 upstream = null
             } catch (e: JournalBrowserIdentityException) {
@@ -419,11 +527,11 @@ class JournalBrowserSession(
             } catch (e: Exception) {
                 upstream?.let { pool.discard(it) }
                 upstream = null
-                if (isIdempotent && pairing() == expectedGen && accessStillCurrent()) {
-                    // Retry idempotent once with a fresh client
+                if (isIdempotent && !browserSinkAcceptedBytes && pairing() == expectedGen && accessStillCurrent()) {
+                    // Retry idempotent once with a fresh client before any browser sink byte
                     try {
                         val freshUpstream = pool.acquireFresh()
-                        response = freshUpstream.request(method, targetPath, filteredHeaders, bodyBytes)
+                        freshUpstream.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
                         pool.release(freshUpstream)
                         diag(DiagEvent.JournalBrowser(eventClass = "retry", outcome = "ok"))
                     } catch (ie: JournalBrowserIdentityException) {
@@ -431,74 +539,45 @@ class JournalBrowserSession(
                     } catch (te: SocketTimeoutException) {
                         isTimeoutFailure = true
                     } catch (_: Exception) {
-                        // Retry failed
                     }
-                } else if (!isIdempotent) {
+                } else if (!isIdempotent && !browserSinkAcceptedBytes) {
                     isAmbiguousFailure = true
                 }
             }
 
-            if (isIdentityFailure) {
-                triggerTerminal(eventClass = "pairing", outcome = "invalidated")
-                sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-                return
-            }
-
-            if (isTimeoutFailure) {
-                diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "timeout"))
-                sendErrorAndClose(client, outputStream, 504, "Gateway Timeout")
-                return
-            }
-
-            if (isAmbiguousFailure) {
-                diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "ambiguous"))
-                sendSyntheticBody(outputStream, 502, "Bad Gateway", "AMBIGUOUS_DELIVERY".encodeToByteArray())
-                try { client.close() } catch (_: Exception) {}
-                return
-            }
-
-            if (response == null) {
-                diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "rejected"))
-                sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-                return
-            }
-
-            // Check pairing generation again before writing bytes to client
-            val finalGen = pairing()
-            if (finalGen == null || finalGen != expectedGen || !accessStillCurrent()) {
-                triggerTerminal(eventClass = "pairing", outcome = "invalidated")
-                sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-                return
-            }
-
-            val isHead = method == "HEAD"
-            val formattedHeaders = filterAndFormatResponseHeaders(
-                upstreamHeaders = response.headers,
-                responseBodySize = response.body.size,
-                localOriginUrl = localOrigin,
-                statusCode = response.status,
-            )
-
-            if (formattedHeaders == null) {
-                // Redirect rebase rejected
-                diag(DiagEvent.JournalBrowser(eventClass = "redirect", outcome = "rejected"))
-                sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-                return
-            }
-
-            try {
-                writeResponse(
-                    out = outputStream,
-                    status = response.status,
-                    headers = formattedHeaders,
-                    body = if (isHead) ByteArray(0) else response.body,
-                )
+            if (!completedSuccessfully) {
+                if (isIdentityFailure) {
+                    triggerTerminal(eventClass = "pairing", outcome = "invalidated")
+                    if (!browserSinkAcceptedBytes) {
+                        sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
+                    }
+                    return
+                }
+                if (isTimeoutFailure) {
+                    diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "timeout"))
+                    if (!browserSinkAcceptedBytes) {
+                        sendErrorAndClose(client, outputStream, 504, "Gateway Timeout")
+                    }
+                    return
+                }
+                if (isAmbiguousFailure) {
+                    diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "ambiguous"))
+                    if (!browserSinkAcceptedBytes) {
+                        sendSyntheticBody(outputStream, 502, "Bad Gateway", "AMBIGUOUS_DELIVERY".encodeToByteArray())
+                    }
+                    try { client.close() } catch (_: Exception) {}
+                    return
+                }
+                if (!browserSinkAcceptedBytes) {
+                    diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "rejected"))
+                    sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
+                    return
+                }
+            } else {
                 diag(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "ok"))
-            } catch (_: Exception) {
-            } finally {
-                try { client.close() } catch (_: Exception) {}
             }
         } finally {
+            try { client.close() } catch (_: Exception) {}
             if (acquiredResponseBudget) {
                 responseBudgetSemaphore.release()
             }
@@ -518,56 +597,91 @@ class JournalBrowserSession(
         return trimmed == expectedWithPort || trimmed == expectedNoPort
     }
 
-    private fun acquireRequestBodyBudget(bytes: Int): Boolean {
-        requestBudgetLock.withLock {
-            if (allocatedRequestBodyBytes + bytes <= MAX_GLOBAL_REQUEST_BUDGET_BYTES) {
-                allocatedRequestBodyBytes += bytes
-                return true
-            }
-            return false
+    private fun acquireRequestBodyBudget(bytes: Int): Boolean = requestBudgetLock.withLock {
+        if (allocatedRequestBodyBytes + bytes > MAX_GLOBAL_REQUEST_BUDGET_BYTES) {
+            false
+        } else {
+            allocatedRequestBodyBytes += bytes
+            true
         }
     }
 
-    private fun releaseRequestBodyBudget(bytes: Int) {
-        requestBudgetLock.withLock {
-            allocatedRequestBodyBytes = (allocatedRequestBodyBytes - bytes).coerceAtLeast(0)
+    private fun releaseRequestBodyBudget(bytes: Int) = requestBudgetLock.withLock {
+        allocatedRequestBodyBytes = maxOf(0, allocatedRequestBodyBytes - bytes)
+    }
+
+    private fun findHeaderEnd(bytes: ByteArray): Int {
+        for (i in 0 until bytes.size - 3) {
+            if (bytes[i] == '\r'.code.toByte() &&
+                bytes[i + 1] == '\n'.code.toByte() &&
+                bytes[i + 2] == '\r'.code.toByte() &&
+                bytes[i + 3] == '\n'.code.toByte()
+            ) {
+                return i + 4
+            }
+        }
+        return -1
+    }
+
+    private fun sendErrorAndClose(client: Socket, out: BufferedOutputStream, status: Int, message: String) {
+        val headers = listOf("Content-Type: text/plain", "Referrer-Policy: no-referrer")
+        sendResponseHeadersAndClose(client, out, status, message, headers, message.encodeToByteArray())
+    }
+
+    private fun sendSyntheticBody(out: BufferedOutputStream, status: Int, statusText: String, body: ByteArray) {
+        val sb = StringBuilder()
+        sb.append("HTTP/1.1 $status $statusText\r\n")
+        sb.append("Content-Type: text/plain\r\n")
+        sb.append("Content-Length: ${body.size}\r\n")
+        sb.append("Referrer-Policy: no-referrer\r\n")
+        sb.append("Connection: close\r\n\r\n")
+        out.write(sb.toString().toByteArray(Charsets.US_ASCII))
+        out.write(body)
+        out.flush()
+    }
+
+    private fun sendResponseHeadersAndClose(
+        client: Socket,
+        out: BufferedOutputStream,
+        status: Int,
+        message: String,
+        headers: List<String>,
+        body: ByteArray? = null,
+    ) {
+        try {
+            val sb = StringBuilder()
+            sb.append("HTTP/1.1 $status $message\r\n")
+            for (h in headers) {
+                sb.append(h).append("\r\n")
+            }
+            if (body != null) {
+                sb.append("Content-Length: ${body.size}\r\n")
+            }
+            sb.append("Connection: close\r\n\r\n")
+            out.write(sb.toString().toByteArray(Charsets.US_ASCII))
+            if (body != null && body.isNotEmpty()) {
+                out.write(body)
+            }
+            out.flush()
+        } catch (_: Exception) {
+        } finally {
+            try { client.close() } catch (_: Exception) {}
         }
     }
 
     private fun writeResponse(
         out: BufferedOutputStream,
         status: Int,
-        headers: List<Pair<String, String>>,
+        headers: List<String>,
         body: ByteArray,
     ) {
-        val statusText = when (status) {
-            200 -> "OK"
-            201 -> "Created"
-            204 -> "No Content"
-            206 -> "Partial Content"
-            301 -> "Moved Permanently"
-            302 -> "Found"
-            304 -> "Not Modified"
-            307 -> "Temporary Redirect"
-            308 -> "Permanent Redirect"
-            400 -> "Bad Request"
-            401 -> "Unauthorized"
-            403 -> "Forbidden"
-            404 -> "Not Found"
-            405 -> "Method Not Allowed"
-            410 -> "Gone"
-            500 -> "Internal Server Error"
-            502 -> "Bad Gateway"
-            503 -> "Service Unavailable"
-            504 -> "Gateway Timeout"
-            else -> "Status"
-        }
         val sb = StringBuilder()
-        sb.append("HTTP/1.1 ").append(status).append(" ").append(statusText).append("\r\n")
-        for ((name, value) in headers) {
-            sb.append(name).append(": ").append(value).append("\r\n")
+        val reason = if (status == 200) "OK" else if (status == 204) "No Content" else "Response"
+        sb.append("HTTP/1.1 $status $reason\r\n")
+        for (h in headers) {
+            sb.append(h).append("\r\n")
         }
-        sb.append("\r\n")
+        sb.append("Connection: close\r\n\r\n")
         out.write(sb.toString().toByteArray(Charsets.US_ASCII))
         if (body.isNotEmpty()) {
             out.write(body)
@@ -575,105 +689,71 @@ class JournalBrowserSession(
         out.flush()
     }
 
-    private fun sendErrorAndClose(client: Socket, out: BufferedOutputStream, status: Int, statusText: String) {
-        try {
-            sendResponseWithCustomHeaders(out, status, statusText, "", ByteArray(0))
-        } catch (_: Exception) {}
-        try {
-            client.close()
-        } catch (_: Exception) {}
-    }
-
-    private fun sendDirectError(client: Socket, status: Int, statusText: String) {
-        try {
-            val out = BufferedOutputStream(client.getOutputStream())
-            sendResponseWithCustomHeaders(out, status, statusText, "", ByteArray(0))
-        } catch (_: Exception) {}
-        try {
-            client.close()
-        } catch (_: Exception) {}
-    }
-
-    private fun sendSyntheticBody(out: BufferedOutputStream, status: Int, statusText: String, body: ByteArray) {
-        val extra = "Content-Type: text/plain\r\nReferrer-Policy: no-referrer\r\n"
-        sendResponseWithCustomHeaders(out, status, statusText, extra, body)
-    }
-
-    private fun sendResponseWithCustomHeaders(
-        out: BufferedOutputStream,
-        status: Int,
-        statusText: String,
-        extraHeaders: String,
-        body: ByteArray,
-    ) {
-        val response = "HTTP/1.1 $status $statusText\r\n" +
-            "Connection: close\r\n" +
-            "Content-Length: ${body.size}\r\n" +
-            extraHeaders +
-            "\r\n"
-        out.write(response.toByteArray(Charsets.US_ASCII))
-        if (body.isNotEmpty()) {
-            out.write(body)
-        }
-        out.flush()
-    }
-
-    private fun findHeaderEnd(raw: ByteArray): Int {
-        for (i in 0 until raw.size - 3) {
-            if (raw[i] == '\r'.code.toByte() &&
-                raw[i + 1] == '\n'.code.toByte() &&
-                raw[i + 2] == '\r'.code.toByte() &&
-                raw[i + 3] == '\n'.code.toByte()
-            ) {
-                return i + 4
-            }
-        }
-        for (i in 0 until raw.size - 1) {
-            if (raw[i] == '\n'.code.toByte() && raw[i + 1] == '\n'.code.toByte()) {
-                return i + 2
-            }
-        }
-        return -1
-    }
-
     private class UpstreamPool(
         private val factory: JournalBrowserUpstreamFactory,
-    ) {
+    ) : Closeable {
         private val lock = ReentrantLock()
-        private val pool = ArrayDeque<JournalBrowserUpstream>()
+        private val idle = ArrayDeque<JournalBrowserUpstream>()
+        private val all = mutableListOf<JournalBrowserUpstream>()
+        @Volatile private var closed = false
 
         fun acquire(): JournalBrowserUpstream = lock.withLock {
-            while (pool.isNotEmpty()) {
-                val candidate = pool.removeFirst()
+            if (closed) throw IOException("Pool is closed")
+            while (idle.isNotEmpty()) {
+                val candidate = idle.removeFirst()
                 if (!candidate.isPoisoned) {
                     return candidate
                 }
+                all.remove(candidate)
                 try { candidate.close() } catch (_: Exception) {}
             }
-            return factory.open()
+            if (all.size >= MAX_UPSTREAM_CLIENTS) {
+                throw IOException("Upstream pool exhausted")
+            }
+            val fresh = factory.open()
+            all.add(fresh)
+            return fresh
         }
 
-        fun acquireFresh(): JournalBrowserUpstream = factory.open()
+        fun acquireFresh(): JournalBrowserUpstream = lock.withLock {
+            if (closed) throw IOException("Pool is closed")
+            if (all.size >= MAX_UPSTREAM_CLIENTS) {
+                // If pool full, evict an idle one
+                if (idle.isNotEmpty()) {
+                    val evict = idle.removeFirst()
+                    all.remove(evict)
+                    try { evict.close() } catch (_: Exception) {}
+                } else {
+                    throw IOException("Upstream pool exhausted for fresh client")
+                }
+            }
+            val fresh = factory.open()
+            all.add(fresh)
+            return fresh
+        }
 
         fun release(upstream: JournalBrowserUpstream) = lock.withLock {
-            if (upstream.isPoisoned) {
+            if (closed || upstream.isPoisoned) {
+                all.remove(upstream)
                 try { upstream.close() } catch (_: Exception) {}
-            } else if (pool.size < MAX_UPSTREAM_CLIENTS) {
-                pool.addLast(upstream)
             } else {
-                try { upstream.close() } catch (_: Exception) {}
+                idle.addLast(upstream)
             }
         }
 
         fun discard(upstream: JournalBrowserUpstream) = lock.withLock {
+            all.remove(upstream)
+            idle.remove(upstream)
             try { upstream.close() } catch (_: Exception) {}
         }
 
-        fun closeAll() = lock.withLock {
-            while (pool.isNotEmpty()) {
-                val candidate = pool.removeFirst()
-                try { candidate.close() } catch (_: Exception) {}
+        override fun close() = lock.withLock {
+            closed = true
+            for (u in all) {
+                try { u.close() } catch (_: Exception) {}
             }
+            all.clear()
+            idle.clear()
         }
     }
 
@@ -686,13 +766,12 @@ class JournalBrowserSession(
         const val MAX_GLOBAL_REQUEST_BUDGET_BYTES = 16 * 1024 * 1024 // 16 MiB
         const val MAX_REQUEST_LINE_BYTES = 8 * 1024 // 8 KiB
         const val MAX_REQUEST_HEADERS_BYTES = 64 * 1024 // 64 KiB
-        const val MAX_HEADER_COUNT = 100
-
-        const val HEADER_READ_TIMEOUT_MS = 10_000
-        const val IDLE_READ_TIMEOUT_MS = 15_000
+        const val MAX_REQUEST_HEADERS_COUNT = 100
         const val REQUEST_DEADLINE_MS = 120_000
+        const val IDLE_READ_TIMEOUT_MS = 10_000
 
         val ALLOWED_METHODS = setOf("GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+        val DISALLOWED_METHODS = setOf("TRACE", "CONNECT")
         val IDEMPOTENT_METHODS = setOf("GET", "HEAD", "OPTIONS")
     }
 }

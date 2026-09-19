@@ -9,15 +9,34 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 
 import app.solstone.core.pl.browser.BrowserHttpResponse
+import app.solstone.core.pl.browser.BrowserRequestBodySource
+import app.solstone.core.pl.browser.BrowserResponseSink
+import app.solstone.core.pl.browser.ProgressiveBrowserResponseParser
+import app.solstone.core.pl.browser.formatStreamingHttpRequest
 import app.solstone.core.pl.browser.parseBrowserHttpResponse
+
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.withLock
 
 class MuxSession(
     private val duplex: ByteDuplex,
     private val observer: PlStreamObserver? = null,
-) : Closeable {
+    private val initialReceiveWindow: Int = INITIAL_RECEIVE_WINDOW,
+    initialStreamId: Int = 1,
+) : Closeable, LiveRoot {
+    override val category: LedgerCategory = LedgerCategory.MUX_HEADER_PAYLOAD
+    override val capacity: Long = (MAX_DATA_CHUNK_BYTES * 2).toLong()
+
+    init {
+        MemoryLedger.registerRoot(this)
+    }
+
     private val input = duplex.input
     private val output = duplex.output
-    private val dialer = FrameDialer()
+    private val dialer = FrameDialer(initialStreamId)
     private var poisoned = false
 
     val isPoisoned: Boolean
@@ -39,6 +58,171 @@ class MuxSession(
         maxResponseBytes: Int = MAX_BROWSER_RESPONSE_BYTES,
     ): BrowserHttpResponse =
         exchange(method, path, headers, body, maxResponseBytes, ::parseBrowserHttpResponse)
+
+    fun requestStreaming(
+        method: String,
+        path: String,
+        headers: List<Pair<String, String>>,
+        bodySource: BrowserRequestBodySource?,
+        responseSink: BrowserResponseSink,
+    ) {
+        if (poisoned) {
+            val ex = IOException(SESSION_UNUSABLE)
+            responseSink.onError(ex)
+            throw ex
+        }
+        val streamId = dialer.allocate()
+        notifyObserver { it.onStreamOpened(streamId) }
+        var successful = false
+        val progressiveParser = ProgressiveBrowserResponseParser(responseSink, isHeadRequest = method.equals("HEAD", ignoreCase = true))
+
+        val sendCreditLock = ReentrantLock()
+        val sendCreditCond = sendCreditLock.newCondition()
+        var sendWindow = initialReceiveWindow.toLong()
+        val senderDone = AtomicBoolean(false)
+        val senderError = AtomicReference<Throwable?>(null)
+
+        try {
+            val reqHeaderBytes = formatStreamingHttpRequest(
+                method = method,
+                path = path,
+                headers = headers,
+                hasBody = bodySource != null,
+            )
+            writeFrame(streamId, FLAG_OPEN or FLAG_DATA, reqHeaderBytes)
+
+            val senderThread = Thread({
+                try {
+                    if (bodySource != null) {
+                        val chunkBuf = ByteArray(MAX_DATA_CHUNK_BYTES)
+                        while (!poisoned) {
+                            val read = bodySource.readChunk(chunkBuf, 0, chunkBuf.size)
+                            if (read < 0) break
+                            if (read > 0) {
+                                sendCreditLock.withLock {
+                                    while (!poisoned && sendWindow < read) {
+                                        sendCreditCond.await(1000, TimeUnit.MILLISECONDS)
+                                    }
+                                    sendWindow -= read
+                                }
+                                writeFrame(streamId, FLAG_DATA, chunkBuf.copyOf(read))
+                            }
+                        }
+                    }
+                    writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+                } catch (t: Throwable) {
+                    senderError.set(t)
+                } finally {
+                    sendCreditLock.withLock {
+                        senderDone.set(true)
+                        sendCreditCond.signalAll()
+                    }
+                }
+            }, "MuxSender-$streamId")
+            senderThread.isDaemon = true
+            senderThread.start()
+
+            var receiveWindow = initialReceiveWindow
+            var cumulativeBytes = 0L
+            var isPreOpen = true
+
+            while (true) {
+                val frame = readFrame()
+                val classification = MuxClassifier.classify(
+                    streamId = frame.streamId,
+                    flags = frame.flags,
+                    payloadLength = frame.payload.size,
+                    activeStreamId = streamId,
+                    nextStreamId = dialer.nextStreamId,
+                    isPreOpen = isPreOpen,
+                )
+                when (classification) {
+                    MuxClassification.SESSION_TERMINAL_RESERVED,
+                    MuxClassification.SESSION_TERMINAL_OVERSIZED,
+                    MuxClassification.SESSION_TERMINAL_MALFORMED_CONTROL,
+                    MuxClassification.SESSION_TERMINAL_NEGATIVE_ID,
+                    MuxClassification.SESSION_TERMINAL_MALFORMED_SHAPE,
+                    MuxClassification.SESSION_TERMINAL_ZERO_MASK_NONZERO_PAYLOAD,
+                    MuxClassification.SESSION_TERMINAL_FUTURE_LOCAL -> {
+                        markPoisoned()
+                        sendCreditLock.withLock { sendCreditCond.signalAll() }
+                        val ex = IOException("PL protocol error")
+                        responseSink.onError(ex)
+                        throw ex
+                    }
+                    MuxClassification.CONTROL_PING -> {
+                        writeFrame(0, FLAG_PONG, frame.payload)
+                        continue
+                    }
+                    MuxClassification.CONTROL_PONG,
+                    MuxClassification.PAST_LOCAL_DROP,
+                    MuxClassification.FOREIGN_EVEN_IGNORE -> {
+                        continue
+                    }
+                    MuxClassification.FOREIGN_EVEN_RESET -> {
+                        writeFrame(frame.streamId, FLAG_RESET, byteArrayOf(0x01))
+                        continue
+                    }
+                    MuxClassification.ACTIVE_INVALID_FLAGS -> {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
+                        sendCreditLock.withLock { sendCreditCond.signalAll() }
+                        val ex = IOException("PL protocol error: invalid flags")
+                        responseSink.onError(ex)
+                        throw ex
+                    }
+                    MuxClassification.ACTIVE_RESET -> {
+                        sendCreditLock.withLock { sendCreditCond.signalAll() }
+                        val ex = IOException("PL stream reset: " + resetReason(frame.payload))
+                        responseSink.onError(ex)
+                        throw ex
+                    }
+                    MuxClassification.ACTIVE_WINDOW -> {
+                        val credit = decodeWindowCredit(frame.payload)
+                        sendCreditLock.withLock {
+                            sendWindow += credit
+                            sendCreditCond.signalAll()
+                        }
+                        continue
+                    }
+                    MuxClassification.ACTIVE_DATA -> {
+                        isPreOpen = false
+                        val size = frame.payload.size
+                        if (size > 0) {
+                            if (size > receiveWindow) {
+                                writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
+                                val ex = IOException("PL receive window exceeded")
+                                responseSink.onError(ex)
+                                throw ex
+                            }
+                            receiveWindow -= size
+                            cumulativeBytes += size
+                            notifyObserver { it.onResponseDataConsumed(streamId, size, cumulativeBytes.toInt()) }
+                            progressiveParser.feed(frame.payload, 0, size)
+                            writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
+                            receiveWindow += size
+                        }
+                        if ((frame.flags and FLAG_CLOSE) != 0) {
+                            successful = true
+                            progressiveParser.onMuxClose(successful = true)
+                            return
+                        }
+                    }
+                    MuxClassification.ACTIVE_CLOSE -> {
+                        isPreOpen = false
+                        successful = true
+                        progressiveParser.onMuxClose(successful = true)
+                        return
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            responseSink.onError(e)
+            throw e
+        } finally {
+            sendCreditLock.withLock { sendCreditCond.signalAll() }
+            notifyObserver { it.onStreamTerminated(streamId, successful) }
+        }
+    }
 
     private fun <T> exchange(
         method: String,
@@ -66,64 +250,90 @@ class MuxSession(
             writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
             val response = ByteArrayOutputStream()
             // Per-stream flow-control credit is replenished as each DATA frame is consumed.
-            var receiveWindow = INITIAL_RECEIVE_WINDOW
+            var receiveWindow = initialReceiveWindow
             while (true) {
                 val frame = readFrame()
-                if ((frame.flags and FLAG_RESERVED) != 0) {
-                    markPoisoned()
-                    throw IOException("PL protocol error: reserved flag")
-                }
-                if (frame.streamId == 0) {
-                    val pong = controlPong(frame)
-                    if (pong != null) {
-                        writeFrame(pong.streamId, pong.flags, pong.payload)
+                val classification = MuxClassifier.classify(
+                    streamId = frame.streamId,
+                    flags = frame.flags,
+                    payloadLength = frame.payload.size,
+                    activeStreamId = streamId,
+                    nextStreamId = dialer.nextStreamId,
+                )
+                when (classification) {
+                    MuxClassification.SESSION_TERMINAL_RESERVED -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: reserved flag")
+                    }
+                    MuxClassification.SESSION_TERMINAL_OVERSIZED -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: advertised payload too large")
+                    }
+                    MuxClassification.SESSION_TERMINAL_MALFORMED_CONTROL -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: malformed control frame")
+                    }
+                    MuxClassification.SESSION_TERMINAL_NEGATIVE_ID -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: negative stream ID")
+                    }
+                    MuxClassification.SESSION_TERMINAL_MALFORMED_SHAPE,
+                    MuxClassification.SESSION_TERMINAL_ZERO_MASK_NONZERO_PAYLOAD,
+                    MuxClassification.SESSION_TERMINAL_FUTURE_LOCAL -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error")
+                    }
+                    MuxClassification.CONTROL_PING -> {
+                        writeFrame(0, FLAG_PONG, frame.payload)
                         continue
                     }
-                    if (frame.flags == FLAG_PONG) {
+                    MuxClassification.CONTROL_PONG,
+                    MuxClassification.PAST_LOCAL_DROP,
+                    MuxClassification.FOREIGN_EVEN_IGNORE -> {
                         continue
                     }
-                    markPoisoned()
-                    throw IOException("PL protocol error: malformed control frame")
-                }
-                if (frame.streamId != streamId) {
-                    if ((frame.flags and (FLAG_OPEN or FLAG_DATA or FLAG_WINDOW)) != 0) {
+                    MuxClassification.FOREIGN_EVEN_RESET -> {
                         writeFrame(frame.streamId, FLAG_RESET, byteArrayOf(0x01))
+                        continue
                     }
-                    continue
-                }
-                if (frame.flags !in VALID_RECEIVE_FLAGS) {
-                    writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
-                    throw IOException("PL protocol error: invalid flags")
-                }
-                if ((frame.flags and FLAG_DATA) != 0) {
-                    val size = frame.payload.size
-                    if (size > 0) {
-                        if (size > receiveWindow) {
-                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
-                            throw IOException("PL receive window exceeded")
-                        }
-                        // This hard total-response ceiling is distinct from replenished flow credit.
-                        if (response.size() + size > maxResponseBytes) {
-                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
-                            throw IOException("PL response too large")
-                        }
-                        receiveWindow -= size
-                        response.write(frame.payload)
-                        notifyObserver { it.onResponseDataConsumed(streamId, size, response.size()) }
-                        writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                        receiveWindow += size
+                    MuxClassification.ACTIVE_INVALID_FLAGS -> {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
+                        throw IOException("PL protocol error: invalid flags")
                     }
-                }
-                if ((frame.flags and FLAG_RESET) != 0) {
-                    throw IOException("PL stream reset: " + resetReason(frame.payload))
-                }
-                if ((frame.flags and FLAG_WINDOW) != 0) {
-                    continue
-                }
-                if ((frame.flags and FLAG_CLOSE) != 0) {
-                    val parsed = parser(response.toByteArray())
-                    successful = true
-                    return parsed
+                    MuxClassification.ACTIVE_RESET -> {
+                        throw IOException("PL stream reset: " + resetReason(frame.payload))
+                    }
+                    MuxClassification.ACTIVE_WINDOW -> {
+                        continue
+                    }
+                    MuxClassification.ACTIVE_DATA -> {
+                        val size = frame.payload.size
+                        if (size > 0) {
+                            if (size > receiveWindow) {
+                                writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
+                                throw IOException("PL receive window exceeded")
+                            }
+                            if (response.size() + size > maxResponseBytes) {
+                                writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                                throw IOException("PL response too large")
+                            }
+                            receiveWindow -= size
+                            response.write(frame.payload)
+                            notifyObserver { it.onResponseDataConsumed(streamId, size, response.size()) }
+                            writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
+                            receiveWindow += size
+                        }
+                        if ((frame.flags and FLAG_CLOSE) != 0) {
+                            val parsed = parser(response.toByteArray())
+                            successful = true
+                            return parsed
+                        }
+                    }
+                    MuxClassification.ACTIVE_CLOSE -> {
+                        val parsed = parser(response.toByteArray())
+                        successful = true
+                        return parsed
+                    }
                 }
             }
         } finally {
@@ -141,18 +351,43 @@ class MuxSession(
     }
 
     private fun writeFrame(streamId: Int, flags: Int, payload: ByteArray) {
-        output.write(encodeFrame(streamId, flags, payload))
-        output.flush()
+        if (poisoned) return
+        val frame = encodeFrame(streamId, flags, payload)
+        try {
+            output.write(frame)
+            output.flush()
+        } catch (e: IOException) {
+            if ((flags and FLAG_RESET) == 0 && (flags and FLAG_WINDOW) == 0) throw e
+        }
     }
 
     private fun readFrame(): Frame {
         try {
             val header = readExactly(8)
+            val streamId = ((header[0].toInt() and 0xff) shl 24) or
+                ((header[1].toInt() and 0xff) shl 16) or
+                ((header[2].toInt() and 0xff) shl 8) or
+                (header[3].toInt() and 0xff)
+            val flags = header[4].toInt() and 0xff
             val length = ((header[5].toInt() and 0xff) shl 16) or
                 ((header[6].toInt() and 0xff) shl 8) or
                 (header[7].toInt() and 0xff)
+
+            if ((flags and FLAG_RESERVED) != 0) {
+                markPoisoned()
+                throw IOException("PL protocol error: reserved flag")
+            }
+            if (length > MAX_DATA_CHUNK_BYTES) {
+                markPoisoned()
+                throw IOException("PL protocol error: advertised payload too large")
+            }
+            if (streamId < 0) {
+                markPoisoned()
+                throw IOException("PL protocol error: negative stream ID")
+            }
+
             val payload = readExactly(length)
-            return decodeFrame(header + payload, 0).frame
+            return Frame(streamId, flags, payload)
         } catch (e: SocketTimeoutException) {
             markPoisoned()
             throw IOException("timed out waiting for PL frame", e)
@@ -176,6 +411,7 @@ class MuxSession(
     }
 
     override fun close() {
+        MemoryLedger.unregisterRoot(this)
         duplex.close()
     }
 

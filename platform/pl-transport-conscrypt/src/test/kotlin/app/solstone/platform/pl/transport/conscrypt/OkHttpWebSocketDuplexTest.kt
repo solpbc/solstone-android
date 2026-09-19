@@ -13,6 +13,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
 
@@ -163,6 +166,77 @@ class OkHttpWebSocketDuplexTest {
         assertEquals(2, readResult.get())
         assertContentEquals(byteArrayOf(4, 5), bytes.get())
         assertEquals(null, failure.get())
+    }
+
+    @Test
+    fun peerTextMessageRejectedBeforeMuxParse() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket())
+        var closedCode = 0
+        var closedReason: String? = null
+
+        val listener = object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                duplex.fail(IOException("WebSocket text frames not permitted in binary transport"))
+                webSocket.close(1002, "protocol error")
+            }
+        }
+
+        val fakeWs = object : WebSocket {
+            override fun queueSize(): Long = 0L
+            override fun request(): okhttp3.Request = okhttp3.Request.Builder().url("https://example.com").build()
+            override fun send(text: String): Boolean = false
+            override fun send(bytes: ByteString): Boolean = false
+            override fun close(code: Int, reason: String?): Boolean {
+                closedCode = code
+                closedReason = reason
+                return true
+            }
+            override fun cancel() {}
+        }
+
+        listener.onMessage(fakeWs, "invalid text message")
+
+        assertEquals(1002, closedCode)
+        assertEquals("protocol error", closedReason)
+        assertFailsWith<IOException> { duplex.input.read() }
+    }
+
+    @Test
+    fun oversizeBinaryFrameRejectedBeforeDuplexReceive() {
+        val duplex = OkHttpWebSocketDuplex(FakeWebSocket())
+        var closedCode = 0
+        var closedReason: String? = null
+
+        val listener = object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                if (bytes.size > OkHttpWebSocketDuplex.MAX_WS_CHUNK_BYTES) {
+                    duplex.fail(IOException("WebSocket binary frame exceeds 64 KiB maximum"))
+                    webSocket.close(1009, "message too big")
+                    return
+                }
+                duplex.receive(bytes)
+            }
+        }
+
+        val fakeWs = object : WebSocket {
+            override fun queueSize(): Long = 0L
+            override fun request(): okhttp3.Request = okhttp3.Request.Builder().url("https://example.com").build()
+            override fun send(text: String): Boolean = false
+            override fun send(bytes: ByteString): Boolean = false
+            override fun close(code: Int, reason: String?): Boolean {
+                closedCode = code
+                closedReason = reason
+                return true
+            }
+            override fun cancel() {}
+        }
+
+        val oversized = ByteArray(OkHttpWebSocketDuplex.MAX_WS_CHUNK_BYTES + 1).toByteString()
+        listener.onMessage(fakeWs, oversized)
+
+        assertEquals(1009, closedCode)
+        assertEquals("message too big", closedReason)
+        assertFailsWith<IOException> { duplex.input.read() }
     }
 
     private class FakeWebSocket : BinaryWebSocket {

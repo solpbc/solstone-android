@@ -7,6 +7,7 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.PairingGeneration
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.Socket
 import java.net.URI
@@ -217,9 +218,14 @@ class JournalBrowserRetryReplayHostTest {
             val input = BufferedInputStream(socket.getInputStream())
             out.write(rawHttp.toByteArray(Charsets.US_ASCII))
             out.flush()
+            val baos = ByteArrayOutputStream()
             val buf = ByteArray(4096)
-            val read = input.read(buf)
-            return if (read > 0) String(buf, 0, read, Charsets.UTF_8) else ""
+            while (true) {
+                val read = input.read(buf)
+                if (read < 0) break
+                baos.write(buf, 0, read)
+            }
+            return baos.toString(Charsets.UTF_8.name())
         }
     }
 

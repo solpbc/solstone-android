@@ -71,6 +71,16 @@ class JournalBrowserUpstreamAdapter(
             body: ByteArray?,
         ): BrowserHttpResponse = client.requestBrowser(method, path, headers, body)
 
+        override fun requestStreaming(
+            method: String,
+            path: String,
+            headers: List<Pair<String, String>>,
+            bodySource: app.solstone.core.pl.browser.BrowserRequestBodySource?,
+            responseSink: app.solstone.core.pl.browser.BrowserResponseSink,
+        ) {
+            client.requestStreaming(method, path, headers, bodySource, responseSink)
+        }
+
         override fun close() = client.close()
     }
 }

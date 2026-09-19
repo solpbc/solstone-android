@@ -273,6 +273,28 @@ fun filterRequestHeaders(rawHeaders: List<Pair<String, String>>): Map<String, St
     return result
 }
 
+fun filterRequestHeadersOrdered(rawHeaders: List<Pair<String, String>>): List<Pair<String, String>> {
+    val result = mutableListOf<Pair<String, String>>()
+    val cookies = mutableListOf<String>()
+    for ((name, value) in rawHeaders) {
+        val lower = name.lowercase(Locale.US)
+        if (lower in HOP_BY_HOP_HEADERS) continue
+        if (lower == "cookie") {
+            if (value.isNotBlank()) {
+                cookies.add(value.trim())
+            }
+            continue
+        }
+        if (lower in REQUEST_ALLOWED_HEADERS) {
+            result.add(lower to value)
+        }
+    }
+    if (cookies.isNotEmpty()) {
+        result.add("cookie" to cookies.joinToString("; "))
+    }
+    return result
+}
+
 fun stripCookieDomain(cookieHeaderValue: String): String {
     val parts = cookieHeaderValue.split(';')
     val remaining = mutableListOf<String>()
@@ -289,18 +311,22 @@ fun stripCookieDomain(cookieHeaderValue: String): String {
 
 fun filterAndFormatResponseHeaders(
     upstreamHeaders: List<Pair<String, String>>,
-    responseBodySize: Int,
+    responseBodySize: Int? = null,
     localOriginUrl: String,
     statusCode: Int,
 ): List<Pair<String, String>>? {
     val out = mutableListOf<Pair<String, String>>()
     var hasLocation = false
     var locationRebased: String? = null
+    var upstreamContentLength: String? = null
+    var isChunked = false
 
     for ((name, value) in upstreamHeaders) {
         val lower = name.lowercase(Locale.US)
-        if (lower in HOP_BY_HOP_HEADERS) continue
-        if (lower !in RESPONSE_ALLOWED_HEADERS) continue
+        if (lower == "content-length") upstreamContentLength = value
+        if (lower == "transfer-encoding" && value.contains("chunked", ignoreCase = true)) isChunked = true
+        if (lower in HOP_BY_HOP_HEADERS && lower != "transfer-encoding" && lower != "content-length") continue
+        if (lower !in RESPONSE_ALLOWED_HEADERS && lower != "transfer-encoding" && lower != "content-length") continue
 
         when (lower) {
             "set-cookie" -> {
@@ -328,6 +354,7 @@ fun filterAndFormatResponseHeaders(
             "vary" -> out.add("Vary" to value)
             "www-authenticate" -> out.add("WWW-Authenticate" to value)
             "date" -> out.add("Date" to value)
+            "digest" -> out.add("Digest" to value)
         }
     }
 
@@ -337,7 +364,17 @@ fun filterAndFormatResponseHeaders(
     }
 
     out.add("Referrer-Policy" to "no-referrer")
-    out.add("Content-Length" to responseBodySize.toString())
+    if (statusCode == 204 || statusCode == 304) {
+        // No Content-Length or Transfer-Encoding on 204/304
+    } else if (statusCode == 205) {
+        out.add("Content-Length" to "0")
+    } else if (responseBodySize != null) {
+        out.add("Content-Length" to responseBodySize.toString())
+    } else if (upstreamContentLength != null) {
+        out.add("Content-Length" to upstreamContentLength)
+    } else if (isChunked) {
+        out.add("Transfer-Encoding" to "chunked")
+    }
     return out
 }
 
