@@ -200,9 +200,9 @@ private fun parseRelayFromDecoded(decoded: ByteArray): RelayPairLink {
 
 // No private/LAN-only restriction: a direct pair link's trust anchor is the
 // embedded CA-fingerprint pin, checked at TLS handshake time, not the network
-// locality of the address it dials. Removed 2026-09-18 (founder + CSO
-// ruling, req_xhwmvxvn). The only addresses that are never valid dial targets
-// are the unspecified network (0.0.0.0/8) and multicast/reserved (224-255).
+// locality of the address it dials (restriction removed 2026-09-18). The only
+// addresses that are never valid dial targets are the unspecified network
+// (0.0.0.0/8) and multicast/reserved (224.0.0.0/3).
 private fun isDirectDialCandidate(a: Int, b: Int): Boolean = a != 0 && a < 224
 
 fun supportedDirectDialEndpoint(ip: String, port: Int): DirectEndpoint? {

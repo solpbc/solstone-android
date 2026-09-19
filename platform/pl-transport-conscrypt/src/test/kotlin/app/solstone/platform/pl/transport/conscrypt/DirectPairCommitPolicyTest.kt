@@ -32,9 +32,9 @@ class DirectPairCommitPolicyTest {
     @Test
     fun mixedV05RefusalCreatesNoMaterialSessionDuplexOrRequest() {
         // A public IPv4 (192.0.2.42, TEST-NET-1) is a valid direct-pairing
-        // candidate now (no LAN-only allow-list; removed 2026-09-18, founder
-        // + CSO ruling, req_xhwmvxvn) — a multicast address is the one that
-        // still refuses the whole v05 payload.
+        // candidate now (no LAN-only allow-list; restriction removed
+        // 2026-09-18) — a multicast address is the one that still refuses the
+        // whole v05 payload.
         val counts = Counts()
         val link = pairLink(
             listOf(
@@ -58,8 +58,8 @@ class DirectPairCommitPolicyTest {
     @Test
     fun multicastV04RefusalOpensNoSession() {
         // Public IPv4 is a valid direct-pairing candidate (no LAN-only
-        // allow-list; removed 2026-09-18, founder + CSO ruling,
-        // req_xhwmvxvn) — multicast is the one class that still refuses.
+        // allow-list; restriction removed 2026-09-18) — multicast is the one
+        // class that still refuses.
         val counts = Counts()
 
         val failure = assertFailsWith<IllegalArgumentException> {

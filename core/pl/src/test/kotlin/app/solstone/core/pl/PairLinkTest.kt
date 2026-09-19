@@ -111,10 +111,9 @@ class PairLinkTest {
 
     // No private/LAN-only restriction: a public IPv4 is as valid a direct
     // pairing candidate as a private one — the trust anchor is the embedded
-    // CA-fingerprint pin, not network locality (removed 2026-09-18, founder
-    // + CSO ruling, req_xhwmvxvn). The only addresses that are never a valid
-    // dial target are the unspecified network (0.0.0.0/8) and
-    // multicast/reserved (224-255).
+    // CA-fingerprint pin, not network locality (restriction removed
+    // 2026-09-18). The only addresses that are never a valid dial target are
+    // the unspecified network (0.0.0.0/8) and multicast/reserved (224.0.0.0/3).
     @Test
     fun admitsPrivateCgnatLoopbackAndPublicIpv4AtTheOldBoundaries() {
         val admitted = listOf(
@@ -293,8 +292,7 @@ class PairLinkTest {
         // (224-255). Everything else — including public unicast ranges
         // like TEST-NET-1 (192.0.2.0/24), benchmarking (198.18.0.0/15),
         // and ordinary public IPv4 — is a valid direct-pairing candidate
-        // (no LAN-only allow-list; removed 2026-09-18, founder + CSO
-        // ruling, req_xhwmvxvn).
+        // (no LAN-only allow-list; restriction removed 2026-09-18).
         listOf(
             byteArrayOf(0, 0, 0, 0),
             byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte()),
