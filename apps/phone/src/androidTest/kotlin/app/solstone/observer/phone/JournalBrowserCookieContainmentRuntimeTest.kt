@@ -49,12 +49,16 @@ class JournalBrowserCookieContainmentRuntimeTest {
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
 
-        // Set cookie with Domain=localhost on origin 1
+        // A host-only cookie is what the proxy hands the WebView after stripping Domain.
+        cookieManager.setCookie(origin1.url, "contained=1; Path=/")
+        // Chromium refuses a Domain=localhost cookie on a <token>.localhost origin: `localhost`
+        // is a single-label (TLD-like) domain, and domain cookies cannot be scoped to a TLD.
         cookieManager.setCookie(origin1.url, "leak=1; Domain=localhost; Path=/")
         cookieManager.flush()
 
         val cookie1 = cookieManager.getCookie(origin1.url) ?: ""
-        assertTrue("Cookie should be present on origin1", cookie1.contains("leak=1"))
+        assertTrue("Host-only cookie should be present on origin1: $cookie1", cookie1.contains("contained=1"))
+        assertFalse("Domain=localhost cookie must not be stored on origin1: $cookie1", cookie1.contains("leak=1"))
 
         session.stop()
 
@@ -62,7 +66,8 @@ class JournalBrowserCookieContainmentRuntimeTest {
         assertTrue("New session origin must differ from previous", origin1.url != origin2.url)
 
         val cookie2 = cookieManager.getCookie(origin2.url) ?: ""
-        assertFalse("Cookie with Domain=localhost from origin1 must not leak to origin2", cookie2.contains("leak=1"))
+        assertFalse("Host-only cookie from origin1 must not be visible on origin2: $cookie2", cookie2.contains("contained=1"))
+        assertFalse("Domain=localhost cookie must not be visible on origin2: $cookie2", cookie2.contains("leak=1"))
 
         // Also fetch from fake upstream and verify proxied response strips Domain
         val uri2 = URI(origin2.url)
