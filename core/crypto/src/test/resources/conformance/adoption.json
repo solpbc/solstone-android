@@ -3,22 +3,22 @@
   "adoption_schema_version": 1,
   "consumer_identifier": "solpbc/solstone-android",
   "authority_repository": "https://github.com/solpbc/spl",
-  "authority_commit": "d550bc4b7bc01a38a85cee48c6fe373971c5c7f7",
-  "bundle_semver": "7.0.0",
+  "authority_commit": "42bdb218001899f55f5bf767ee740540868d63e9",
+  "bundle_semver": "8.0.0",
   "authority_manifest_path": "proto/definition/bundle/manifest.json",
-  "authority_manifest_sha256": "23c5b63cff5ebe653af35f59df0f2e2d5a9565ccc2434e7d408f80ecbc53adb5",
+  "authority_manifest_sha256": "8e2dc3f9f0eed57bc0f813654f5ff6dac1f5dbbb254c1dd05ee67bf5707202a9",
   "bundle_files": [
     {
       "path": "definition.json",
-      "sha256": "ef77f81ef7f74d2225935885d682457b8b9c9af9e61f67477ac6e4dfc93363ad"
+      "sha256": "0507791c12f71b595cab3b49b0e47848137c2c5f8ee9340d9e3b5205a28218df"
     },
     {
       "path": "definition.schema.json",
-      "sha256": "e52b0fa33e732de6a48336571e541c6fb4d6551de047c3b4e037323e0fe5f69a"
+      "sha256": "2050eb864994751ba19f0ab6f5a2ab5ffbf2ce4483c0ed531a667a1e9a574f55"
     },
     {
       "path": "vectors.json",
-      "sha256": "edebc1cfde34cf379e4dc16fcf43eda9254da7141bdce4f7a9d85991f9b6d270"
+      "sha256": "9a7833f0e0206b03981a14459e0a1b90070dc562e4cd1bf162cb541ce3d0a8de"
     },
     {
       "path": "vectors.schema.json",

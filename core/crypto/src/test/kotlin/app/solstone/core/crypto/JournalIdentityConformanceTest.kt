@@ -97,7 +97,7 @@ class JournalIdentityConformanceTest {
     private fun loadVerifiedCorpus(): VerifiedCorpus {
         verifiedBundle()
         val vectors = resourceJson("conformance/bundle/vectors.json").requiredList("vectors").map { it.requiredMap() }
-        assertEquals(78, vectors.size, "total conformance vector count")
+        assertEquals(84, vectors.size, "total conformance vector count")
         assertOperationHistogramIsPinned(vectors)
         val deriveJidVectors = vectors.filter { it.requiredString("operation") == "derive_jid" }
         assertDeriveJidSelectionIsPinned(deriveJidVectors)
@@ -127,7 +127,7 @@ class JournalIdentityConformanceTest {
     // Only derive_jid is bound by this consumer today; the full histogram prevents silent corpus drift.
     private fun assertOperationHistogramIsPinned(vectors: List<Map<String, Any?>>) {
         assertEquals(
-            mapOf("parse_pair_link" to 67, "derive_jid" to 9, "derive_relay_key" to 1, "decode_crockford" to 1),
+            mapOf("parse_pair_link" to 73, "derive_jid" to 9, "derive_relay_key" to 1, "decode_crockford" to 1),
             vectors.groupingBy { it.requiredString("operation") }.eachCount(),
             "conformance operation histogram",
         )
@@ -202,10 +202,10 @@ class JournalIdentityConformanceTest {
 
     private companion object {
         const val AUTHORITY_REPOSITORY = "https://github.com/solpbc/spl"
-        const val AUTHORITY_COMMIT = "d550bc4b7bc01a38a85cee48c6fe373971c5c7f7"
+        const val AUTHORITY_COMMIT = "42bdb218001899f55f5bf767ee740540868d63e9"
         const val AUTHORITY_MANIFEST_PATH = "proto/definition/bundle/manifest.json"
-        const val AUTHORITY_MANIFEST_SHA256 = "23c5b63cff5ebe653af35f59df0f2e2d5a9565ccc2434e7d408f80ecbc53adb5"
-        const val BUNDLE_SEMVER = "7.0.0"
+        const val AUTHORITY_MANIFEST_SHA256 = "8e2dc3f9f0eed57bc0f813654f5ff6dac1f5dbbb254c1dd05ee67bf5707202a9"
+        const val BUNDLE_SEMVER = "8.0.0"
         const val BUNDLE_SCHEMA_IDENTITY = "spl.pair-link-definition-bundle.schema.v1"
         const val ADOPTION_SCHEMA_VERSION = 1L
         const val CONSUMER_IDENTIFIER = "solpbc/solstone-android"
