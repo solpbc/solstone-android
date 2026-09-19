@@ -3,22 +3,26 @@
 
 package app.solstone.platform.identity.file
 
+import app.solstone.core.identity.AtomicFileWriter
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
-import app.solstone.core.identity.atomicWriteOwnerOnly
+import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.identity.StoreInspectResult
 import java.io.File
 
 class FileClientCredentialStore(
     private val file: File,
     private val protector: SecretProtector,
     private val log: (String) -> Unit = { java.util.logging.Logger.getLogger("FileClientCredentialStore").warning(it) },
+    private val fileWriter: AtomicFileWriter = AtomicFileWriter.Default,
 ) : ClientCredentialStore {
+
     override fun save(credential: ClientCredential) {
         val blob = credential.privateKeyPem +
             credential.clientCertPem +
             credential.caChainPem.joinToString("")
         val wrapped = protector.protect(blob.toByteArray())
-        atomicWriteOwnerOnly(file, WRAP_MARKER + wrapped)
+        fileWriter.write(file, WRAP_MARKER + wrapped)
     }
 
     override fun load(): ClientCredential? {
@@ -39,10 +43,39 @@ class FileClientCredentialStore(
         }
     }
 
+    override fun inspect(): StoreInspectResult<ClientCredential> {
+        if (!file.exists()) {
+            return StoreInspectResult.Missing
+        }
+        val bytes = file.readBytes()
+        return if (bytes.startsWithMarker()) {
+            try {
+                val wrapped = bytes.copyOfRange(WRAP_MARKER.size, bytes.size)
+                val parsed = parse(protector.unprotect(wrapped).decodeToString())
+                if (parsed != null) {
+                    StoreInspectResult.Ready(parsed)
+                } else {
+                    StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "credential parse failed")
+                }
+            } catch (e: Exception) {
+                log("credential unwrap failed")
+                StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "credential unwrap failed")
+            }
+        } else {
+            val parsed = parse(bytes.decodeToString())
+            if (parsed != null) {
+                StoreInspectResult.Ready(parsed)
+            } else {
+                StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "credential parse failed")
+            }
+        }
+    }
+
     override fun clear() {
         file.delete()
     }
 }
+
 
 private fun parse(text: String): ClientCredential? {
     val blocks = PEM_BLOCK_REGEX.findAll(text).map { match ->

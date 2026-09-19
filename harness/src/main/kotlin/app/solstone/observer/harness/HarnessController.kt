@@ -63,6 +63,7 @@ class HarnessController(
     private val isUsableNetworkPresent: () -> Boolean,
     private val opportunisticSync: OpportunisticSync? = null,
     private val identityMutator: IdentityMutator? = null,
+    private val publisher: app.solstone.core.identity.PairingPublisher? = null,
     private val diag: (String) -> Unit = {},
     private val declaredCaptureForegroundTypes: Set<CaptureForegroundType> = setOf(
         CaptureForegroundType.MICROPHONE,
@@ -70,6 +71,7 @@ class HarnessController(
         CaptureForegroundType.CAMERA,
     ),
 ) {
+
     var desiredOn: Boolean
         get() = desiredObservingStore.isDesiredOn()
         private set(value) {
@@ -347,7 +349,21 @@ class HarnessController(
     fun syncState(): HarnessSyncState = evidenceReader.syncState()
 
     fun pairingFact(): PairingFact {
+        if (publisher != null) {
+            return when (val snap = publisher.currentSnapshot()) {
+                is app.solstone.core.identity.PairingGraphSnapshot.Absent -> PairingFact.UNPAIRED
+                is app.solstone.core.identity.PairingGraphSnapshot.Uncertain -> PairingFact.UNPAIRED
+                is app.solstone.core.identity.PairingGraphSnapshot.Committed -> {
+                    when (snap.home.state) {
+                        IdentityState.REVOKED -> PairingFact.REVOKED
+                        IdentityState.PAIRED -> PairingFact.PAIRED
+                        else -> PairingFact.UNPAIRED
+                    }
+                }
+            }
+        }
         val identity = identityStore.load()
+
         return pairingFactOf(
             credentialPresent = credentialStore.load() != null,
             endpointPresent = endpointStore.load() != null,
@@ -355,6 +371,7 @@ class HarnessController(
             identityState = identity?.state,
         )
     }
+
 
     fun exportSegment(segment: HarnessEvidenceSegment): HarnessExportResult = bundleExport.export(segment)
 

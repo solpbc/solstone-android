@@ -9,12 +9,15 @@ import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.AccessSnapshot
 import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 
 sealed interface SyncTransport {
+
     data class Direct(val endpoint: DirectEndpoint) : SyncTransport
     data class Relay(val relayOrigin: String, val instanceId: String, val deviceToken: String) : SyncTransport
 }
@@ -57,12 +60,46 @@ fun relayFallbackTransport(
 }
 
 fun recoverSyncCredentials(
+    publisher: PairingPublisher,
+): SyncCredentials {
+
+    val directLease = publisher.acquireDirectLease()
+    if (directLease != null) {
+        return SyncCredentials.Ready(
+            transport = SyncTransport.Direct(app.solstone.core.pl.DirectEndpoint(directLease.endpoint.host, directLease.endpoint.port)),
+            credential = directLease.credential,
+            identity = directLease.snapshot.home,
+        )
+    }
+    val relayLease = publisher.acquireRelayLease()
+    if (relayLease != null) {
+        return SyncCredentials.Ready(
+            transport = SyncTransport.Relay(relayLease.relayOrigin, relayLease.instanceId, relayLease.deviceToken),
+            credential = relayLease.credential,
+            identity = relayLease.snapshot.home,
+        )
+    }
+    return when (val snap = publisher.currentSnapshot()) {
+        is PairingGraphSnapshot.Absent -> SyncCredentials.NeedsRepair("identity not paired")
+        is PairingGraphSnapshot.Uncertain -> SyncCredentials.NeedsRepair("pairing uncertain")
+        is PairingGraphSnapshot.Committed -> {
+            if (snap.home.state != IdentityState.PAIRED) {
+                SyncCredentials.NeedsRepair("identity not paired")
+            } else {
+                SyncCredentials.NeedsRepair("missing endpoint and relay credentials")
+            }
+        }
+    }
+}
+
+fun recoverSyncCredentials(
     endpointStore: EndpointStore,
     credentialStore: ClientCredentialStore,
     identityStore: IdentityStore,
     relayLiveEligible: Boolean = true,
     mutator: IdentityMutator? = null,
 ): SyncCredentials {
+
     val credential = credentialStore.load() ?: return SyncCredentials.NeedsRepair("missing credential")
     val identity = (if (mutator != null) mutator.current() else identityStore.load())
         ?: return SyncCredentials.NeedsRepair("missing identity")

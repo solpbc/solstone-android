@@ -40,6 +40,7 @@ import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe as conscryptPairAndProbe
 import app.solstone.platform.pl.transport.conscrypt.pairOverRelay as conscryptPairOverRelay
+import app.solstone.core.identity.PairingPublisher
 import app.solstone.platform.work.OpenerFailureKind
 import app.solstone.platform.work.SyncTransport
 import app.solstone.platform.work.classifyOpenerFailure
@@ -60,6 +61,7 @@ class RealHeartbeatFreshness : HeartbeatFreshness {
 }
 
 class RealPairProbe(
+
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
     private val endpointStore: EndpointStore,
@@ -69,6 +71,7 @@ class RealPairProbe(
     private val relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
     private val journalMarkStore: JournalMarkStore? = null,
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    private val publisher: PairingPublisher? = null,
 ) : PairProbe {
     override fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairAndProbe(
@@ -83,6 +86,7 @@ class RealPairProbe(
             relayAccessCoordinator = relayAccessCoordinator,
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
+            publisher = publisher,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -113,6 +117,7 @@ class RealRelayPairProbe(
     private val endpointStore: EndpointStore? = null,
     private val journalMarkStore: JournalMarkStore? = null,
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    private val publisher: PairingPublisher? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
@@ -129,6 +134,7 @@ class RealRelayPairProbe(
             endpointStore = endpointStore,
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
+            publisher = publisher,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -146,6 +152,7 @@ class RealRelayPairProbe(
         )
     }
 }
+
 
 class RealPlStatusProbe(
     private val endpointStore: EndpointStore,

@@ -484,6 +484,11 @@ class DirectPairCommitPolicyTest {
         },
         sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     ) {
+        val publisher = FakePairingPublisher(
+            identityStore = identityStore,
+            credentialStore = credentialStore,
+            endpointStore = endpointStore,
+        )
         pairAndProbe(
             pairLink = pairLink,
             deviceLabel = "test device",
@@ -497,6 +502,7 @@ class DirectPairCommitPolicyTest {
                 DirectPairMaterial(PRIVATE_KEY_MARKER, materialPublicKey, CSR_MARKER.toByteArray())
             },
             statusProbe = statusProbe,
+            publisher = publisher,
         )
     }
 
@@ -608,31 +614,43 @@ class DirectPairCommitPolicyTest {
 
     private class ThrowingStores(stage: CommittedFailureStage) {
         val credentialStore = object : ClientCredentialStore {
+            private var value: ClientCredential? = null
             override fun save(credential: ClientCredential) {
                 if (stage == CommittedFailureStage.CREDENTIAL) {
                     throw IllegalStateException(stage.message)
                 }
+                value = credential
             }
-            override fun load(): ClientCredential? = null
-            override fun clear() = Unit
+            override fun load(): ClientCredential? = value
+            override fun clear() {
+                value = null
+            }
         }
         val identityStore = object : IdentityStore {
+            private var value: PairedHome? = null
             override fun save(home: PairedHome) {
                 if (stage == CommittedFailureStage.IDENTITY) {
                     throw IllegalStateException(stage.message)
                 }
+                value = home
             }
-            override fun load(): PairedHome? = null
-            override fun clear() = Unit
+            override fun load(): PairedHome? = value
+            override fun clear() {
+                value = null
+            }
         }
         val endpointStore = object : EndpointStore {
+            private var value: DirectEndpoint? = null
             override fun save(endpoint: DirectEndpoint) {
                 if (stage == CommittedFailureStage.ENDPOINT) {
                     throw IllegalStateException(stage.message)
                 }
+                value = endpoint
             }
-            override fun load(): DirectEndpoint? = null
-            override fun clear() = Unit
+            override fun load(): DirectEndpoint? = value
+            override fun clear() {
+                value = null
+            }
         }
     }
 

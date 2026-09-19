@@ -17,11 +17,11 @@ import app.solstone.platform.pl.transport.conscrypt.ConscryptPlHttpClient
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 
+import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingLease
+
 class JournalBrowserUpstreamAdapter(
-    private val endpointStore: EndpointStore,
-    private val credentialStore: ClientCredentialStore,
-    private val identityStore: IdentityStore,
-    private val mutator: IdentityMutator,
+    private val publisher: PairingPublisher,
     private val directClientOpener: (DirectEndpoint, ClientCredential) -> JournalBrowserUpstream = { ep, cred ->
         ConscryptJournalBrowserUpstream(openAuthenticatedClient(ep, cred))
     },
@@ -30,33 +30,118 @@ class JournalBrowserUpstreamAdapter(
     },
 ) : JournalBrowserUpstreamFactory {
 
-    override fun open(): JournalBrowserUpstream {
-        val ready = when (val res = recoverSyncCredentials(endpointStore, credentialStore, identityStore, relayLiveEligible = true, mutator = mutator)) {
-            is SyncCredentials.Ready -> res
-            is SyncCredentials.NeedsRepair -> throw JournalBrowserIdentityException()
-        }
+    constructor(
+        endpointStore: EndpointStore,
+        credentialStore: ClientCredentialStore,
+        identityStore: IdentityStore,
+        mutator: IdentityMutator,
+        directClientOpener: (DirectEndpoint, ClientCredential) -> JournalBrowserUpstream = { ep, cred ->
+            ConscryptJournalBrowserUpstream(openAuthenticatedClient(ep, cred))
+        },
+        relayClientOpener: (String, String, String, ClientCredential) -> JournalBrowserUpstream = { origin, instId, tok, cred ->
+            ConscryptJournalBrowserUpstream(openRelaySyncClient(origin, instId, tok, cred))
+        },
+    ) : this(
+        publisher = object : PairingPublisher {
+            override fun currentSnapshot(): app.solstone.core.identity.PairingGraphSnapshot {
+                val ident = mutator.current() ?: return app.solstone.core.identity.PairingGraphSnapshot.Absent(0)
+                val hasEp = endpointStore.load() != null
+                return app.solstone.core.identity.PairingGraphSnapshot.Committed(
+                    sequenceNumber = 1,
+                    revisions = app.solstone.core.identity.GraphRevisions(1, 1, 1),
+                    home = ident,
+                    hasDirectEndpoint = hasEp,
+                    directAssociated = hasEp,
+                    relayLiveEligible = mutator.isRelayLiveEligible(),
+                )
+            }
+            override fun subscribe(observer: (app.solstone.core.identity.PairingGraphSnapshot) -> Unit) = app.solstone.core.identity.SubscriptionHandle {}
+            override fun <T> withMutationBoundary(block: () -> T) = block()
 
-        return try {
-            when (val transport = ready.transport) {
-                is SyncTransport.Direct -> directClientOpener(transport.endpoint, ready.credential)
-                is SyncTransport.Relay -> relayClientOpener(transport.relayOrigin, transport.instanceId, transport.deviceToken, ready.credential)
+            override fun acquireDirectLease(): PairingLease.Direct? {
+                val cred = credentialStore.load() ?: return null
+                val ident = mutator.current() ?: return null
+                val ep = endpointStore.load() ?: return null
+                val snap = app.solstone.core.identity.PairingGraphSnapshot.Committed(
+                    sequenceNumber = 1,
+                    revisions = app.solstone.core.identity.GraphRevisions(1, 1, 1),
+                    home = ident,
+                    hasDirectEndpoint = true,
+                    directAssociated = true,
+                    relayLiveEligible = mutator.isRelayLiveEligible(),
+                )
+                return PairingLease.Direct(snap, cred, ep)
             }
-        } catch (t: Throwable) {
-            if (isTrustRefusal(t) || classifyOpenerFailure(t) == OpenerFailureKind.TRUST_REFUSAL) {
-                throw JournalBrowserIdentityException()
+            override fun acquireRelayLease(): PairingLease.Relay? {
+                val cred = credentialStore.load() ?: return null
+                val ident = mutator.current() ?: return null
+                val origin = ident.relayOrigin ?: return null
+                val token = ident.deviceToken ?: return null
+                if (!mutator.isRelayLiveEligible()) return null
+                val snap = app.solstone.core.identity.PairingGraphSnapshot.Committed(
+                    sequenceNumber = 1,
+                    revisions = app.solstone.core.identity.GraphRevisions(1, 1, 1),
+                    home = ident,
+                    hasDirectEndpoint = false,
+                    directAssociated = false,
+                    relayLiveEligible = true,
+                )
+                return PairingLease.Relay(snap, cred, origin, ident.instanceId, token)
             }
-            throw t
+            override fun validateLease(lease: PairingLease): Boolean = true
+            override fun installOrReplace(home: app.solstone.core.model.PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun updateRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration, relayOrigin: String, deviceToken: String, expiresAt: String?) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun revokeRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun forget() = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun associateDirectIfProven(expectedPairing: app.solstone.core.identity.PairingGeneration, endpoint: app.solstone.core.model.DirectEndpoint, proof: () -> Boolean) = false
+        },
+        directClientOpener = directClientOpener,
+        relayClientOpener = relayClientOpener,
+    )
+
+    override fun open(): JournalBrowserUpstream {
+        val directLease = publisher.acquireDirectLease()
+        if (directLease != null) {
+            if (!publisher.validateLease(directLease)) throw JournalBrowserIdentityException()
+            return try {
+                val opened = directClientOpener(app.solstone.core.pl.DirectEndpoint(directLease.endpoint.host, directLease.endpoint.port), directLease.credential)
+                if (!publisher.validateLease(directLease)) {
+                    runCatching { opened.close() }
+                    throw JournalBrowserIdentityException()
+                }
+                opened
+            } catch (t: Throwable) {
+                if (isTrustRefusal(t) || classifyOpenerFailure(t) == OpenerFailureKind.TRUST_REFUSAL) {
+                    throw JournalBrowserIdentityException()
+                }
+                throw t
+            }
         }
+        val relayLease = publisher.acquireRelayLease()
+        if (relayLease != null) {
+            if (!publisher.validateLease(relayLease)) throw JournalBrowserIdentityException()
+            return try {
+                val opened = relayClientOpener(relayLease.relayOrigin, relayLease.instanceId, relayLease.deviceToken, relayLease.credential)
+                if (!publisher.validateLease(relayLease)) {
+                    runCatching { opened.close() }
+                    throw JournalBrowserIdentityException()
+                }
+                opened
+            } catch (t: Throwable) {
+                if (isTrustRefusal(t) || classifyOpenerFailure(t) == OpenerFailureKind.TRUST_REFUSAL) {
+                    throw JournalBrowserIdentityException()
+                }
+                throw t
+            }
+        }
+        throw JournalBrowserIdentityException()
     }
 
     fun isAccessStillCurrent(): Boolean {
-        val ready = when (val res = recoverSyncCredentials(endpointStore, credentialStore, identityStore, relayLiveEligible = true, mutator = mutator)) {
-            is SyncCredentials.Ready -> res
-            is SyncCredentials.NeedsRepair -> return false
-        }
-        val access = mutator.accessSnapshot() ?: return false
-        return transportAccessStillCurrent(ready.transport, ready.identity, access, mutator)
+        val snap = publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed ?: return false
+        return snap.isDirectEligible || snap.isRelayEligible
     }
+
 
     private class ConscryptJournalBrowserUpstream(
         private val client: ConscryptPlHttpClient,

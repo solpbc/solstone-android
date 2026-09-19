@@ -20,7 +20,9 @@ import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
+import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.model.IdentityState
+
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DirectDialObserver
@@ -105,6 +107,7 @@ fun pairAndProbe(
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    publisher: PairingPublisher? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -119,6 +122,7 @@ fun pairAndProbe(
     relayAccessCoordinator = relayAccessCoordinator,
     journalMarkStore = journalMarkStore,
     journalIdentityCoordinator = journalIdentityCoordinator,
+    publisher = publisher,
 )
 
 internal fun pairAndProbe(
@@ -137,7 +141,9 @@ internal fun pairAndProbe(
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    publisher: PairingPublisher? = null,
 ): PairProbeResult {
+
     val link = parseDirectPairLink(pairLink)
     val ordered = orderCandidatesBySubnet(link.candidates, localInterfaces)
     val material = materialFactory(deviceLabel)
@@ -225,7 +231,9 @@ internal fun pairAndProbe(
                     relayAccessCoordinator = relayAccessCoordinator,
                     journalMarkStore = journalMarkStore,
                     journalIdentityCoordinator = journalIdentityCoordinator,
+                    publisher = publisher,
                 )
+
             }
             DialDecision.TERMINAL -> {
                 throw DirectPairCodeExpiredException(endpoint.host, endpoint.port)
@@ -266,11 +274,29 @@ internal fun persistOrReturnDirectPairResult(
     relayAccessCoordinator: RelayAccessRefreshCoordinator? = null,
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    publisher: app.solstone.core.identity.PairingPublisher? = null,
 ): PairProbeResult {
-    val prior = if (mutator != null) mutator.current() else identityStore.load()
-    if (prior?.instanceId == home.instanceId && prior.state == IdentityState.PAIRED) {
+    val activePublisher = requireNotNull(publisher) { "PairingPublisher is required" }
+    val prior = (activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.home
+        ?: (if (mutator != null) mutator.current() else identityStore.load())
+    val isSameCert = prior?.instanceId == home.instanceId &&
+        prior.clientCertFingerprint == home.clientCertFingerprint &&
+        prior.state == IdentityState.PAIRED
+
+    if (isSameCert) {
         if (home.deviceToken != null && home.relayOrigin != null) {
-            publishRelayBootstrap(prior, requireNotNull(home.relayOrigin), requireNotNull(home.deviceToken), home.expiresAt, identityStore, mutator)
+            val res = activePublisher.updateRelayAccess(
+                expectedPairing = app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint),
+                relayOrigin = requireNotNull(home.relayOrigin),
+                deviceToken = requireNotNull(home.deviceToken),
+                expiresAt = home.expiresAt,
+            )
+            if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
+                if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
+                    throw res.cause as? Exception ?: IOException("pairing graph update failed", res.cause)
+                }
+                throw IOException("pairing graph update failed")
+            }
         }
         val targetEndpoint = endpointStore.load() ?: endpoint
         val retainedCredential = credentialStore.load()
@@ -305,10 +331,30 @@ internal fun persistOrReturnDirectPairResult(
         journalIdentityCoordinator?.onIdentityChanged() ?: journalMarkStore?.clear()
         DirectPairConnectionMode.PAIRING
     }
-    publishPairing(home, credential, credentialStore, identityStore, mutator)
-    endpointStore.save(endpoint)
+
+    val res = activePublisher.installOrReplace(
+        home = home,
+        credential = credential,
+        directEndpoint = endpoint,
+        isDirectAssociated = false,
+    )
+    if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
+        if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
+            throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)
+        }
+        throw IOException("pairing graph install failed")
+    }
+
     val statusHttp = statusProbe(endpoint, credential)
-    if (statusHttp.status == 200) {
+    val isAssociated = statusHttp.status == 200
+
+    if (isAssociated) {
+        val associated = activePublisher.associateDirectIfProven(
+            expectedPairing = app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint),
+            endpoint = endpoint,
+            proof = { true },
+        )
+        if (!associated) throw IOException("direct route association failed")
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
             openAuthenticatedClient(endpoint, credential)
         }
@@ -328,6 +374,8 @@ internal fun persistOrReturnDirectPairResult(
         connectionMode = connectionMode,
     )
 }
+
+
 
 /**
  * Open an authenticated mTLS PL session to [endpoint] using a previously persisted
@@ -455,66 +503,3 @@ private fun configureSocket(socket: SSLSocket) {
 
 private const val CONNECT_TIMEOUT_MS = 5000
 private const val PAIR_TLS_CA_PIN_MISMATCH = "pair TLS peer chain did not match QR CA pin"
-
-internal fun publishPairing(
-    home: PairedHome,
-    credential: ClientCredential,
-    credentialStore: ClientCredentialStore,
-    identityStore: IdentityStore,
-    mutator: IdentityMutator?,
-) {
-    if (mutator != null) {
-        mutator.withMutationBoundary { publishPairingLocked(home, credential, credentialStore, identityStore, mutator) }
-    } else {
-        synchronized(identityStore) { publishPairingLocked(home, credential, credentialStore, identityStore, null) }
-    }
-}
-
-private fun publishPairingLocked(
-    home: PairedHome,
-    credential: ClientCredential,
-    credentialStore: ClientCredentialStore,
-    identityStore: IdentityStore,
-    mutator: IdentityMutator?,
-) {
-    val oldHome = identityStore.load()
-    val oldCredential = credentialStore.load()
-    try {
-        credentialStore.save(credential)
-        if (mutator != null) {
-            if (!mutator.installNewPairing(home)) throw IOException(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED.name)
-        } else {
-            identityStore.save(home)
-        }
-    } catch (failure: Exception) {
-        // Restore only when publication did not replace the prior identity. A
-        // post-rename failure may have published the complete new identity.
-        if (identityStore.load() == oldHome && credentialStore.load() == credential) {
-            if (oldCredential == null) credentialStore.clear() else credentialStore.save(oldCredential)
-        }
-        throw failure
-    }
-}
-
-internal fun publishRelayBootstrap(
-    prior: PairedHome,
-    origin: String,
-    token: String,
-    expiry: String?,
-    identityStore: IdentityStore,
-    mutator: IdentityMutator?,
-) {
-    if (mutator != null) {
-        val snapshot = mutator.accessSnapshot() ?: throw IOException("missing identity")
-        if (snapshot.home != prior) throw IOException("missing identity")
-        val result = mutator.mutateIfCurrent(snapshot) {
-            it.copy(relayOrigin = origin, deviceToken = token, expiresAt = expiry)
-        }
-        if (result !is app.solstone.core.identity.AccessMutationResult.Applied) {
-            throw IOException(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED.name)
-        }
-    } else {
-        if (identityStore.load() != prior) throw IOException("missing identity")
-        identityStore.save(prior.copy(relayOrigin = origin, deviceToken = token, expiresAt = expiry))
-    }
-}

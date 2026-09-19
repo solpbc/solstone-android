@@ -19,14 +19,19 @@ import java.net.URI
 import java.security.SecureRandom
 import java.util.ArrayDeque
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-data class JournalBrowserOrigin(val url: String)
+data class JournalBrowserOrigin(val url: String) {
+    override fun toString(): String = "JournalBrowserOrigin(REDACTED)"
+}
+
 
 class JournalBrowserIdentityException : IOException()
 
@@ -112,20 +117,58 @@ fun interface JournalBrowserUpstreamFactory {
 }
 
 class JournalBrowserSession(
-    private val pairing: () -> PairingGeneration?,
-    private val accessStillCurrent: () -> Boolean,
+    private val publisher: app.solstone.core.identity.PairingPublisher? = null,
+    private val pairing: () -> PairingGeneration? = { (publisher?.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.pairing },
+    private val accessStillCurrent: () -> Boolean = { publisher == null || publisher.currentSnapshot() is app.solstone.core.identity.PairingGraphSnapshot.Committed },
     private val upstreamFactory: JournalBrowserUpstreamFactory,
     private val diag: (DiagEvent) -> Unit,
 ) {
+    constructor(
+        publisher: app.solstone.core.identity.PairingPublisher,
+        upstreamFactory: JournalBrowserUpstreamFactory,
+        diag: (DiagEvent) -> Unit,
+    ) : this(
+        publisher = publisher,
+        pairing = { (publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.pairing },
+        accessStillCurrent = { publisher.currentSnapshot() is app.solstone.core.identity.PairingGraphSnapshot.Committed },
+        upstreamFactory = upstreamFactory,
+        diag = diag,
+    )
+
     private val lock = ReentrantLock()
     private val secureRandom = SecureRandom()
-    private val pool = UpstreamPool(upstreamFactory)
+    private var pool: UpstreamPool? = null
+
+    private val epochCounter = AtomicLong(0)
+    private val lifecycleListeners = CopyOnWriteArrayList<JournalBrowserLifecycleListener>()
+    @Volatile private var currentLifecycle: JournalBrowserLifecycle = JournalBrowserLifecycle.Terminal(
+        epoch = BrowserEpoch(0),
+        reason = BrowserTerminalReason(BrowserTerminalClass.EXPLICIT_STOP),
+    )
+    val lifecycle: JournalBrowserLifecycle get() = currentLifecycle
+
+    fun addLifecycleListener(listener: JournalBrowserLifecycleListener) {
+        lifecycleListeners.add(listener)
+        runCatching { listener.onStateChanged(currentLifecycle) }
+    }
+
+    fun removeLifecycleListener(listener: JournalBrowserLifecycleListener) {
+        lifecycleListeners.remove(listener)
+    }
+
+    private fun setLifecycle(newState: JournalBrowserLifecycle) {
+        currentLifecycle = newState
+        for (l in lifecycleListeners) {
+            runCatching { l.onStateChanged(newState) }
+        }
+    }
 
     @Volatile private var running = false
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile private var activeToken: String? = null
     @Volatile private var activeOrigin: JournalBrowserOrigin? = null
     @Volatile private var pairingSnapshot: PairingGeneration? = null
+    @Volatile private var publisherSub: app.solstone.core.identity.SubscriptionHandle? = null
 
     private var acceptThread: Thread? = null
     private var workerExecutor = Executors.newCachedThreadPool()
@@ -139,31 +182,96 @@ class JournalBrowserSession(
     private val inFlightConnections = AtomicInteger(0)
 
     fun start(bindPort: Int = 0): JournalBrowserOrigin = lock.withLock {
-        val currentGen = pairing() ?: throw IllegalStateException("Cannot start browser session when unpaired")
-        if (!accessStillCurrent()) {
-            throw IllegalStateException("Cannot start browser session when access is not current")
-        }
-
         if (running && activeOrigin != null) {
             return activeOrigin!!
         }
+
+        val snap = publisher?.currentSnapshot()
+        if (snap != null) {
+            when (snap) {
+                is app.solstone.core.identity.PairingGraphSnapshot.Absent -> {
+                    val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+                    setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.UNPAIRED_FORGOTTEN)))
+                    throw IllegalStateException("Cannot start browser session when unpaired")
+                }
+                is app.solstone.core.identity.PairingGraphSnapshot.Uncertain -> {
+                    val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+                    setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.PAIRING_UNCERTAIN)))
+                    throw IllegalStateException("Cannot start browser session when pairing is uncertain")
+                }
+                is app.solstone.core.identity.PairingGraphSnapshot.Committed -> {
+                    if (!snap.isDirectEligible && !snap.isRelayEligible) {
+                        val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+                        setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.IDENTITY_AUTH_REFUSAL)))
+                        throw IllegalStateException("Cannot start browser session without eligible route")
+                    }
+                }
+            }
+        }
+
+        val currentGen = pairing() ?: run {
+            val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+            setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.UNPAIRED_FORGOTTEN)))
+            throw IllegalStateException("Cannot start browser session when unpaired")
+        }
+        if (!accessStillCurrent()) {
+            val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+            setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.IDENTITY_AUTH_REFUSAL)))
+            throw IllegalStateException("Cannot start browser session when access is not current")
+        }
+
+        val epoch = BrowserEpoch(epochCounter.incrementAndGet())
+        setLifecycle(JournalBrowserLifecycle.Starting(epoch))
 
         val tokenBytes = ByteArray(16)
         secureRandom.nextBytes(tokenBytes)
         val token = tokenBytes.joinToString("") { "%02x".format(it) }
 
-        val ss = ServerSocket(bindPort, 50, InetAddress.getByName("127.0.0.1"))
+        val ss = try {
+            ServerSocket(bindPort, 50, InetAddress.getByName("127.0.0.1"))
+        } catch (e: Exception) {
+            setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.BIND_FAILURE)))
+            throw e
+        }
+
         serverSocket = ss
+        pool = UpstreamPool(upstreamFactory).also { newPool ->
+            newPool.setCarrierFailureListener {
+                triggerTerminalForEpoch(epoch, BrowserTerminalReason(BrowserTerminalClass.SESSION_CARRIER_LOSS))
+            }
+        }
         activeToken = token
         pairingSnapshot = currentGen
         val origin = JournalBrowserOrigin("http://$token.localhost:${ss.localPort}/")
         activeOrigin = origin
         running = true
+        setLifecycle(JournalBrowserLifecycle.Live(epoch))
 
         diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "bound"))
 
+        publisherSub = publisher?.subscribe { newSnap ->
+            lock.withLock {
+                if (!running || currentLifecycle.epoch != epoch) return@subscribe
+                when (newSnap) {
+                    is app.solstone.core.identity.PairingGraphSnapshot.Absent -> {
+                        triggerTerminal(BrowserTerminalReason(BrowserTerminalClass.UNPAIRED_FORGOTTEN))
+                    }
+                    is app.solstone.core.identity.PairingGraphSnapshot.Uncertain -> {
+                        triggerTerminal(BrowserTerminalReason(BrowserTerminalClass.PAIRING_UNCERTAIN))
+                    }
+                    is app.solstone.core.identity.PairingGraphSnapshot.Committed -> {
+                        if (newSnap.pairing != currentGen) {
+                            triggerTerminal(BrowserTerminalReason(BrowserTerminalClass.PAIRING_REPLACED))
+                        } else if (!newSnap.isDirectEligible && !newSnap.isRelayEligible) {
+                            triggerTerminal(BrowserTerminalReason(BrowserTerminalClass.IDENTITY_AUTH_REFUSAL))
+                        }
+                    }
+                }
+            }
+        }
+
         acceptThread = Thread({
-            acceptLoop(ss, token, currentGen, origin.url)
+            acceptLoop(ss, token, currentGen, origin.url, epoch)
         }, "JournalBrowserSession-accept")
         acceptThread?.isDaemon = true
         acceptThread?.start()
@@ -173,7 +281,15 @@ class JournalBrowserSession(
 
     fun stop() = lock.withLock {
         if (!running) return
+        val ep = currentLifecycle.epoch
+        setLifecycle(JournalBrowserLifecycle.Terminal(ep, BrowserTerminalReason(BrowserTerminalClass.EXPLICIT_STOP)))
+        stopInternal()
+    }
+
+    private fun stopInternal() {
         running = false
+        publisherSub?.cancel()
+        publisherSub = null
         diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "stopped"))
         try {
             serverSocket?.close()
@@ -189,22 +305,48 @@ class JournalBrowserSession(
         workerExecutor.shutdownNow()
         workerExecutor = Executors.newCachedThreadPool()
 
-        pool.close()
+        pool?.close()
+        pool = null
     }
 
-    private fun triggerTerminal(eventClass: String, outcome: String) {
+    fun triggerTerminal(reason: BrowserTerminalReason) {
         lock.withLock {
             if (!running) return
-            diag(DiagEvent.JournalBrowser(eventClass = eventClass, outcome = outcome))
-            stop()
+            val ep = currentLifecycle.epoch
+            setLifecycle(JournalBrowserLifecycle.Terminal(ep, reason))
+            stopInternal()
         }
     }
+
+    private fun triggerTerminalForEpoch(epoch: BrowserEpoch, reason: BrowserTerminalReason) {
+        lock.withLock {
+            if (!running || currentLifecycle.epoch != epoch) return
+            setLifecycle(JournalBrowserLifecycle.Terminal(epoch, reason))
+            stopInternal()
+        }
+    }
+
+    private fun triggerTerminalForEpoch(epoch: BrowserEpoch, eventClass: String, outcome: String) {
+        diag(DiagEvent.JournalBrowser(eventClass = eventClass, outcome = outcome))
+        val terminalClass = when (eventClass) {
+            "pairing" -> BrowserTerminalClass.PAIRING_REPLACED
+            "auth" -> BrowserTerminalClass.IDENTITY_AUTH_REFUSAL
+            "trust" -> BrowserTerminalClass.TRUST_REFUSAL
+            "carrier" -> BrowserTerminalClass.SESSION_CARRIER_LOSS
+            else -> BrowserTerminalClass.TERMINAL_UPSTREAM_PROTOCOL
+        }
+        triggerTerminalForEpoch(epoch, BrowserTerminalReason(terminalClass))
+    }
+
+
+
 
     private fun acceptLoop(
         ss: ServerSocket,
         expectedToken: String,
         expectedGen: PairingGeneration,
         localOrigin: String,
+        expectedEpoch: BrowserEpoch,
     ) {
         while (running) {
             try {
@@ -226,7 +368,7 @@ class JournalBrowserSession(
 
                 workerExecutor.submit {
                     try {
-                        processClient(client, expectedToken, expectedGen, localOrigin)
+                        processClient(client, expectedToken, expectedGen, localOrigin, expectedEpoch)
                     } catch (_: Exception) {
                     } finally {
                         inFlightConnections.decrementAndGet()
@@ -245,6 +387,7 @@ class JournalBrowserSession(
         expectedToken: String,
         expectedGen: PairingGeneration,
         localOrigin: String,
+        expectedEpoch: BrowserEpoch,
     ) {
         val inputStream = BufferedInputStream(client.getInputStream())
         val outputStream = BufferedOutputStream(client.getOutputStream())
@@ -379,7 +522,7 @@ class JournalBrowserSession(
             // Verify pairing generation and access snapshot before upstream work
             val curGen = pairing()
             if (curGen == null || curGen != expectedGen || !accessStillCurrent()) {
-                triggerTerminal(eventClass = "pairing", outcome = "invalidated")
+                triggerTerminalForEpoch(expectedEpoch, eventClass = "pairing", outcome = "invalidated")
                 sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
                 return
             }
@@ -466,7 +609,7 @@ class JournalBrowserSession(
                 override fun onStatusAndHeaders(status: Int, reason: String, resHeaders: List<Pair<String, String>>) {
                     val finalGen = pairing()
                     if (finalGen == null || finalGen != expectedGen || !accessStillCurrent()) {
-                        triggerTerminal(eventClass = "pairing", outcome = "invalidated")
+                        triggerTerminalForEpoch(expectedEpoch, eventClass = "pairing", outcome = "invalidated")
                         throw JournalBrowserIdentityException()
                     }
                     val formatted = filterAndFormatResponseHeaders(
@@ -511,28 +654,33 @@ class JournalBrowserSession(
             }
 
             var upstream: JournalBrowserUpstream? = null
+            val requestPool = pool
+            if (requestPool == null || currentLifecycle.epoch != expectedEpoch) {
+                sendErrorAndClose(client, outputStream, 503, "Service Unavailable")
+                return
+            }
             try {
-                upstream = pool.acquire()
+                upstream = requestPool.acquire()
                 upstream.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
-                pool.release(upstream)
+                requestPool.release(upstream)
                 upstream = null
             } catch (e: JournalBrowserIdentityException) {
                 isIdentityFailure = true
-                upstream?.let { pool.discard(it) }
+                upstream?.let { requestPool.discard(it) }
                 upstream = null
             } catch (e: SocketTimeoutException) {
                 isTimeoutFailure = true
-                upstream?.let { pool.discard(it) }
+                upstream?.let { requestPool.discard(it) }
                 upstream = null
             } catch (e: Exception) {
-                upstream?.let { pool.discard(it) }
+                upstream?.let { requestPool.discard(it) }
                 upstream = null
                 if (isIdempotent && !browserSinkAcceptedBytes && pairing() == expectedGen && accessStillCurrent()) {
                     // Retry idempotent once with a fresh client before any browser sink byte
                     try {
-                        val freshUpstream = pool.acquireFresh()
+                        val freshUpstream = requestPool.acquireFresh()
                         freshUpstream.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
-                        pool.release(freshUpstream)
+                        requestPool.release(freshUpstream)
                         diag(DiagEvent.JournalBrowser(eventClass = "retry", outcome = "ok"))
                     } catch (ie: JournalBrowserIdentityException) {
                         isIdentityFailure = true
@@ -547,7 +695,7 @@ class JournalBrowserSession(
 
             if (!completedSuccessfully) {
                 if (isIdentityFailure) {
-                    triggerTerminal(eventClass = "pairing", outcome = "invalidated")
+                    triggerTerminalForEpoch(expectedEpoch, eventClass = "pairing", outcome = "invalidated")
                     if (!browserSinkAcceptedBytes) {
                         sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
                     }
@@ -696,8 +844,18 @@ class JournalBrowserSession(
         private val idle = ArrayDeque<JournalBrowserUpstream>()
         private val all = mutableListOf<JournalBrowserUpstream>()
         @Volatile private var closed = false
+        private var carrierFailureListener: (() -> Unit)? = null
+
+        fun setCarrierFailureListener(listener: () -> Unit) {
+            this.carrierFailureListener = listener
+        }
+
+        fun notifyCarrierFailure() {
+            carrierFailureListener?.invoke()
+        }
 
         fun acquire(): JournalBrowserUpstream = lock.withLock {
+
             if (closed) throw IOException("Pool is closed")
             while (idle.isNotEmpty()) {
                 val candidate = idle.removeFirst()

@@ -52,6 +52,8 @@ import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.security.KeyPair
+
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
@@ -215,16 +217,21 @@ fun pairOverRelay(
     endpointStore: EndpointStore? = null,
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+    publisher: app.solstone.core.identity.PairingPublisher? = null,
+    keyPairFactory: () -> KeyPair = { generateP256KeyPair() },
 ): RelayPairResult {
+
+
     val origin = parseProductionRelayOrigin(link.relayOrigin ?: DEFAULT_RELAY_ORIGIN)
         ?: throw IOException("relay origin invalid")
     val relayOrigin = origin.httpsBase
     val relayHost = origin.host
     val rk = deriveRk(link.s)
 
-    val keyPair = generateP256KeyPair()
+    val keyPair = keyPairFactory()
     val privateKeyPem = pem("PRIVATE KEY", keyPair.private.encoded)
     val csr = buildCsrPem(deviceLabel, keyPair)
+
     val pairBody = PairRequest(csr, deviceLabel).toJson().toByteArray(Charsets.UTF_8)
     val pairResponse: PairResponse
     val pairStatus: Int
@@ -276,13 +283,37 @@ fun pairOverRelay(
         decoded
     }
 
-    val prior = if (mutator != null) mutator.current() else identityStore.load()
-    if (prior?.instanceId == pairResponse.instanceId && prior.state == IdentityState.PAIRED) {
+    val clientDer = certificateFromPem(pairResponse.clientCert).encoded
+    val clientCertFingerprint = "sha256:" + sha256Hex(clientDer)
+    val caDer = pemToDer(pairResponse.caChain.first(), "CERTIFICATE")
+    val caChainFingerprint = "sha256:" + sha256Hex(caDer)
+    val credential = ClientCredential(privateKeyPem, pairResponse.clientCert, pairResponse.caChain)
+
+    val activePublisher = requireNotNull(publisher) { "PairingPublisher is required" }
+    val prior = (activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.home
+        ?: (if (mutator != null) mutator.current() else identityStore.load())
+    val isSameCert = prior?.instanceId == pairResponse.instanceId &&
+        prior.clientCertFingerprint == clientCertFingerprint &&
+        prior.state == IdentityState.PAIRED
+
+    if (isSameCert) {
         if (relayAccessDecoded != null) {
-            publishRelayBootstrap(prior, relayAccessDecoded.relayOrigin, relayAccessDecoded.deviceToken, relayAccessDecoded.expiresAt, identityStore, mutator)
+            val res = activePublisher.updateRelayAccess(
+                expectedPairing = app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint),
+                relayOrigin = relayAccessDecoded.relayOrigin,
+                deviceToken = relayAccessDecoded.deviceToken,
+                expiresAt = relayAccessDecoded.expiresAt,
+            )
+            if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
+                if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
+                    throw res.cause as? Exception ?: IOException("pairing graph update failed", res.cause)
+                }
+                throw IOException("pairing graph update failed")
+            }
         }
         val cred = credentialStore.load()
-        val currentHome = if (mutator != null) mutator.current() else identityStore.load()
+        val currentHome = (activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.home
+            ?: (if (mutator != null) mutator.current() else identityStore.load())
         val curOrigin = currentHome?.relayOrigin
         val curToken = currentHome?.deviceToken
         if (cred != null && curToken != null && curOrigin != null) {
@@ -319,20 +350,10 @@ fun pairOverRelay(
         RelayPairConnectionMode.PAIRING
     }
 
-    val clientDer = certificateFromPem(pairResponse.clientCert).encoded
-    val caDer = pemToDer(pairResponse.caChain.first(), "CERTIFICATE")
-    val credential = ClientCredential(privateKeyPem, pairResponse.clientCert, pairResponse.caChain)
-    fun saveLocalEndpoints() {
-        val firstAdmitted = pairResponse.localEndpoints.firstNotNullOfOrNull { ep ->
-            val ip = ep["ip"] as? String ?: return@firstNotNullOfOrNull null
-            val port = (ep["port"] as? Number)?.toInt() ?: 0
-            supportedDirectDialEndpoint(ip, port)
-        }
-        if (firstAdmitted != null) {
-            endpointStore?.save(firstAdmitted)
-        } else {
-            endpointStore?.clear()
-        }
+    val firstAdmitted = pairResponse.localEndpoints.firstNotNullOfOrNull { ep ->
+        val ip = ep["ip"] as? String ?: return@firstNotNullOfOrNull null
+        val port = (ep["port"] as? Number)?.toInt() ?: 0
+        supportedDirectDialEndpoint(ip, port)
     }
 
     if (relayAccessDecoded != null) {
@@ -340,15 +361,20 @@ fun pairOverRelay(
             instanceId = pairResponse.instanceId,
             homeLabel = pairResponse.homeLabel,
             relayOrigin = relayAccessDecoded.relayOrigin,
-            caChainFingerprint = "sha256:" + sha256Hex(caDer),
-            clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
+            caChainFingerprint = caChainFingerprint,
+            clientCertFingerprint = clientCertFingerprint,
             observerHandle = null,
             deviceToken = relayAccessDecoded.deviceToken,
             expiresAt = relayAccessDecoded.expiresAt,
             state = IdentityState.PAIRED,
         )
-        publishPairing(home, credential, credentialStore, identityStore, mutator)
-        saveLocalEndpoints()
+        val res = activePublisher.installOrReplace(home, credential, firstAdmitted, isDirectAssociated = false)
+        if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
+            if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
+                throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)
+            }
+            throw IOException("pairing graph install failed")
+        }
 
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
             openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
@@ -376,15 +402,20 @@ fun pairOverRelay(
         instanceId = pairResponse.instanceId,
         homeLabel = pairResponse.homeLabel,
         relayOrigin = null,
-        caChainFingerprint = "sha256:" + sha256Hex(caDer),
-        clientCertFingerprint = "sha256:" + sha256Hex(clientDer),
+        caChainFingerprint = caChainFingerprint,
+        clientCertFingerprint = clientCertFingerprint,
         observerHandle = null,
         deviceToken = null,
         expiresAt = null,
         state = IdentityState.PAIRED,
     )
-    publishPairing(homeInitial, credential, credentialStore, identityStore, mutator)
-    saveLocalEndpoints()
+    val res = activePublisher.installOrReplace(homeInitial, credential, firstAdmitted, isDirectAssociated = false)
+    if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
+        if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
+            throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)
+        }
+        throw IOException("pairing graph install failed")
+    }
 
     val enrollAccess = mutator?.accessSnapshot()
     var enrollStatus: Int? = null
@@ -431,15 +462,14 @@ fun pairOverRelay(
                         deviceToken = deviceToken,
                         expiresAt = expiresAt,
                     )
-                    if (mutator != null) {
-                        val expected = enrollAccess ?: return RelayPairResult(true, pairStatus, enrollStatus, pairResponse.homeLabel, relayOrigin, relayHost, connectionMode)
-                        val result = mutator.mutateIfCurrent(expected) { p ->
-                            p.copy(relayOrigin = updatedHome.relayOrigin, deviceToken = updatedHome.deviceToken, expiresAt = updatedHome.expiresAt)
-                        }
-                        if (result !is app.solstone.core.identity.AccessMutationResult.Applied) throw IOException("relay control request failed")
-                    } else {
-                        if (identityStore.load() != homeInitial) throw IOException("relay control request failed")
-                        identityStore.save(updatedHome)
+                    val accessResult = activePublisher.updateRelayAccess(
+                        expectedPairing = app.solstone.core.identity.PairingGeneration(homeInitial.instanceId, homeInitial.clientCertFingerprint),
+                        relayOrigin = origin.httpsBase,
+                        deviceToken = deviceToken,
+                        expiresAt = expiresAt,
+                    )
+                    if (accessResult !is app.solstone.core.identity.GraphMutationResult.Applied) {
+                        throw IOException("pairing graph update failed")
                     }
 
                     coordinator?.onUsableConnection(updatedHome.instanceId, updatedHome.caChainFingerprint, updatedHome.clientCertFingerprint) {
@@ -457,6 +487,7 @@ fun pairOverRelay(
     } catch (_: Exception) {
         // Transitional enroll failed: stores keep new pairing with null relay token
     }
+
 
     return RelayPairResult(
         handshakePinned = true,
@@ -562,4 +593,3 @@ private fun pinInnerPeerBeforeSend(
 
 internal val JSON_HEADERS = mapOf("content-type" to "application/json")
 internal const val DEFAULT_RELAY_ORIGIN = "https://link.solstone.app"
-

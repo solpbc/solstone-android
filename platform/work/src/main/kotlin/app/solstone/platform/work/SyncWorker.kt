@@ -74,14 +74,8 @@ class SyncWorker(
                 try {
                     val stores = syncStores(applicationContext)
                     when (
-                        val credentials = stores.identityMutator.withMutationBoundary {
-                            recoverSyncCredentials(
-                                endpointStore = stores.endpointStore,
-                                credentialStore = stores.credentialStore,
-                                identityStore = stores.identityStore,
-                                relayLiveEligible = stores.identityMutator.isRelayLiveEligible(),
-                                mutator = stores.identityMutator,
-                            )
+                        val credentials = stores.publisher.withMutationBoundary {
+                            recoverSyncCredentials(stores.publisher)
                         }
                     ) {
                         is SyncCredentials.NeedsRepair -> {
@@ -90,6 +84,7 @@ class SyncWorker(
                         }
                         is SyncCredentials.Ready -> sync(stores, credentials)
                     }
+
                 } finally {
                     SyncDrainGate.release()
                 }

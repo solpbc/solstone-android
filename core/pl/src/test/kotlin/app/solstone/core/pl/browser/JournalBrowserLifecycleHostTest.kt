@@ -197,6 +197,53 @@ class JournalBrowserLifecycleHostTest {
         assertTrue(!standaloneUpstream.isClosed)
     }
 
+    @Test
+    fun sessionLifecycleTransitionsMonotonicallyAcrossRestarts() {
+        val states = mutableListOf<JournalBrowserLifecycle>()
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = { FakeBrowserUpstream() },
+            diag = { diagEvents.add(it) },
+        )
+        session.addLifecycleListener { states.add(it) }
+
+        // Initial state
+        assertTrue(states.last() is JournalBrowserLifecycle.Terminal)
+        assertEquals(0L, states.last().epoch.id)
+
+        // First start
+        session.start()
+        assertTrue(session.lifecycle is JournalBrowserLifecycle.Live)
+        assertEquals(1L, session.lifecycle.epoch.id)
+
+        // Carrier failure triggers terminal
+        session.triggerTerminal(BrowserTerminalReason(BrowserTerminalClass.SESSION_CARRIER_LOSS))
+        assertTrue(session.lifecycle is JournalBrowserLifecycle.Terminal)
+        val termState = session.lifecycle as JournalBrowserLifecycle.Terminal
+        assertEquals(1L, termState.epoch.id)
+        assertEquals(BrowserTerminalClass.SESSION_CARRIER_LOSS, termState.reason.classification)
+
+        // Second start allocates new epoch 2
+        val restartedOrigin = session.start()
+        assertTrue(session.lifecycle is JournalBrowserLifecycle.Live)
+        assertEquals(2L, session.lifecycle.epoch.id)
+
+        val restartedUri = URI(restartedOrigin.url)
+        Socket("127.0.0.1", restartedUri.port).use { socket ->
+            val out = BufferedOutputStream(socket.getOutputStream())
+            out.write("GET / HTTP/1.1\r\nHost: ${restartedUri.host}:${restartedUri.port}\r\n\r\n".toByteArray(Charsets.US_ASCII))
+            out.flush()
+            val response = socket.getInputStream().bufferedReader().readLine()
+            assertTrue(response?.startsWith("HTTP/1.1 200") == true)
+        }
+
+        session.stop()
+        assertTrue(session.lifecycle is JournalBrowserLifecycle.Terminal)
+        assertEquals(2L, session.lifecycle.epoch.id)
+        assertEquals(BrowserTerminalClass.EXPLICIT_STOP, (session.lifecycle as JournalBrowserLifecycle.Terminal).reason.classification)
+    }
+
     private class FakeBrowserUpstream(private val onClose: () -> Unit = {}) : JournalBrowserUpstream {
         var isClosed = false
         override val isPoisoned: Boolean get() = isClosed

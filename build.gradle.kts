@@ -1397,6 +1397,90 @@ tasks.register("navigationLibraryGuardSelfTest") {
     }
 }
 
+tasks.register("checkPairingPublisherArchitectureGuard") {
+    group = "verification"
+    description = "Fails if production call sites perform direct mutations on identity, credential, or endpoint stores instead of using PairingPublisher."
+
+    doLast {
+        val violations = mutableListOf<String>()
+        rootProject.projectDir.walkTopDown()
+            .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+            .forEach { file ->
+                val rel = file.relativeTo(rootProject.projectDir).path
+                violations += pairingPublisherArchitectureViolations(file.readText(), rel)
+            }
+        if (violations.isNotEmpty()) {
+            throw GradleException("PairingPublisher architecture guard failed:\n${violations.joinToString("\n")}")
+        }
+    }
+}
+
+tasks.register("pairingPublisherGuardSelfTest") {
+    group = "verification"
+    description = "Exercises PairingPublisher architecture guard predicates against synthetic safe and unsafe inputs."
+
+    doLast {
+        val safeCode = """
+            val snapshot = publisher.currentSnapshot()
+            publisher.installOrReplace(home, credential, endpoint)
+            publisher.updateRelayAccess(gen, origin, token, expiresAt)
+            publisher.forget()
+        """.trimIndent()
+        check(pairingPublisherArchitectureViolations(safeCode, "apps/phone/src/main/kotlin/app/solstone/observer/phone/Foo.kt").isEmpty())
+
+        val unsafeIdentity = "identityStore.save(home)"
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "apps/phone/src/main/kotlin/app/solstone/observer/phone/Foo.kt").isNotEmpty())
+
+        val unsafeCredClear = "credentialStore.clear()"
+        check(pairingPublisherArchitectureViolations(unsafeCredClear, "platform/work/src/main/kotlin/app/solstone/platform/work/Bar.kt").isNotEmpty())
+
+        val unsafeEndpoint = "endpointStore.save(endpoint)"
+        check(pairingPublisherArchitectureViolations(unsafeEndpoint, "harness/src/main/kotlin/app/solstone/observer/harness/Baz.kt").isNotEmpty())
+
+        // pl-transport-conscrypt pair paths must be covered
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "platform/pl-transport-conscrypt/src/main/kotlin/app/solstone/platform/pl/transport/conscrypt/PlPairing.kt").isNotEmpty())
+        check(pairingPublisherArchitectureViolations(unsafeEndpoint, "platform/pl-transport-conscrypt/src/main/kotlin/app/solstone/platform/pl/transport/conscrypt/RelayPairing.kt").isNotEmpty())
+
+        // FilePairingGraph and File*Store are exempt
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FilePairingGraph.kt").isEmpty())
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FileIdentityStore.kt").isEmpty())
+
+        // Tests and mocks are exempt
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "apps/phone/src/test/kotlin/app/solstone/observer/phone/Test.kt").isEmpty())
+        check(pairingPublisherArchitectureViolations(unsafeIdentity, "apps/observer-scaffold/src/mock/kotlin/app/solstone/observer/scaffold/Mock.kt").isEmpty())
+    }
+}
+
+fun pairingPublisherArchitectureViolations(content: String, relativePath: String): List<String> {
+    val normalized = relativePath.replace('\\', '/')
+    if (normalized.startsWith("platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FilePairingGraph") ||
+        normalized.startsWith("platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FileIdentityStore") ||
+        normalized.startsWith("platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FileClientCredentialStore") ||
+        normalized.startsWith("platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FileEndpointStore") ||
+        normalized.startsWith("platform/identity-file/src/main/kotlin/app/solstone/platform/identity/file/FileIdentityMutator") ||
+        normalized.startsWith("apps/validation-rogbid/") ||
+        normalized.contains("/src/test/") ||
+        normalized.contains("/src/androidTest/") ||
+        normalized.contains("/src/androidTestReal/") ||
+        normalized.contains("/src/mock/") ||
+        normalized.startsWith("testing/")
+    ) {
+        return emptyList()
+    }
+
+    val violations = mutableListOf<String>()
+    val lines = content.lines()
+    val storeMutationRegex = Regex("""\b(identityStore|credentialStore|endpointStore)\s*\.\s*(save|clear)\b""")
+    lines.forEachIndexed { index, line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith("//") || trimmed.startsWith("*")) return@forEachIndexed
+        if (storeMutationRegex.containsMatchIn(line)) {
+            violations += "$relativePath:${index + 1}: direct store mutation forbidden outside FilePairingGraph authority: $trimmed"
+        }
+    }
+    return violations
+}
+
 tasks.named("check") {
     dependsOn(
         "checkPrivacyDeps",
@@ -1418,8 +1502,11 @@ tasks.named("check") {
         "phoneBackHandlerDoctrineGuardSelfTest",
         "checkNoNavigationLibrary",
         "navigationLibraryGuardSelfTest",
+        "checkPairingPublisherArchitectureGuard",
+        "pairingPublisherGuardSelfTest",
     )
 }
+
 
 fun Project.registerMicrophoneManifestCheck(
     requireLocation: Boolean = true,

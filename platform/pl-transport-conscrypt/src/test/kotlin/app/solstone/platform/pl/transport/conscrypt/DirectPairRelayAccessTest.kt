@@ -403,4 +403,51 @@ class DirectPairRelayAccessTest {
             return AccessMutationResult.Applied(next, accessGen)
         }
     }
+
+    private fun pairAndProbe(
+        pairLink: String,
+        deviceLabel: String,
+        credentialStore: ClientCredentialStore,
+        identityStore: IdentityStore,
+        endpointStore: EndpointStore,
+        sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
+        localInterfaces: List<app.solstone.core.pl.LocalIPv4Interface> = emptyList(),
+        materialFactory: (String) -> DirectPairMaterial = { DirectPairMaterial("KEY", leafPublicKey(), "CSR".toByteArray()) },
+        statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = { _, _ -> HttpResponse(200, emptyMap(), ByteArray(0)) },
+        journalVersionStore: app.solstone.core.identity.JournalVersionStore? = null,
+        coordinator: app.solstone.core.pl.JournalVersionRefreshCoordinator? = null,
+        mutator: IdentityMutator? = null,
+        relayAccessCoordinator: app.solstone.core.pl.RelayAccessRefreshCoordinator? = null,
+        journalMarkStore: app.solstone.core.identity.JournalMarkStore? = null,
+        journalIdentityCoordinator: app.solstone.core.pl.JournalIdentityRefreshCoordinator? = null,
+        publisher: app.solstone.core.identity.PairingPublisher? = null,
+    ): PairProbeResult {
+        val pub = publisher ?: FakePairingPublisher(
+            identityStore = identityStore,
+            credentialStore = credentialStore,
+            endpointStore = endpointStore,
+            failPublication = (mutator as? FakeMutator)?.let {
+                val field = it.javaClass.getDeclaredField("failPublication").apply { isAccessible = true }
+                field.getBoolean(it)
+            } ?: false,
+        )
+        return app.solstone.platform.pl.transport.conscrypt.pairAndProbe(
+            pairLink = pairLink,
+            deviceLabel = deviceLabel,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            endpointStore = endpointStore,
+            sessionOpener = sessionOpener,
+            localInterfaces = localInterfaces,
+            materialFactory = materialFactory,
+            statusProbe = statusProbe,
+            journalVersionStore = journalVersionStore,
+            coordinator = coordinator,
+            mutator = mutator,
+            relayAccessCoordinator = relayAccessCoordinator,
+            journalMarkStore = journalMarkStore,
+            journalIdentityCoordinator = journalIdentityCoordinator,
+            publisher = pub,
+        )
+    }
 }

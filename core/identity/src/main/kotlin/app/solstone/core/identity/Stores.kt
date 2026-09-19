@@ -15,10 +15,13 @@ interface ClientCredentialStore {
     fun save(credential: ClientCredential)
     fun load(): ClientCredential?
     fun clear()
+    fun inspect(): StoreInspectResult<ClientCredential> =
+        load()?.let { StoreInspectResult.Ready(it) } ?: StoreInspectResult.Missing
 }
-
 interface IdentityStore {
     fun save(home: PairedHome)
     fun load(): PairedHome?
     fun clear()
+    fun inspect(): StoreInspectResult<PairedHome> =
+        load()?.let { StoreInspectResult.Ready(it) } ?: StoreInspectResult.Missing
 }

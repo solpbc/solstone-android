@@ -52,6 +52,7 @@ fun buildObserverFlavor(
         relayAccessCoordinator = stores.relayAccessCoordinator,
         journalMarkStore = stores.journalMarkStore,
         journalIdentityCoordinator = stores.journalIdentityCoordinator,
+        publisher = stores.publisher,
     )
     val relayPairProbe = RealRelayPairProbe(
         credentialStore = stores.credentialStore,
@@ -63,6 +64,7 @@ fun buildObserverFlavor(
         endpointStore = stores.endpointStore,
         journalMarkStore = stores.journalMarkStore,
         journalIdentityCoordinator = stores.journalIdentityCoordinator,
+        publisher = stores.publisher,
     )
     val plStatusProbe = RealPlStatusProbe(
         endpointStore = stores.endpointStore,
@@ -100,6 +102,7 @@ fun buildObserverFlavor(
         isUsableNetworkPresent = networkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,
         identityMutator = stores.identityMutator,
+        publisher = stores.publisher,
         declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
     )
     val backlogStatus = RealBacklogStatusReader(

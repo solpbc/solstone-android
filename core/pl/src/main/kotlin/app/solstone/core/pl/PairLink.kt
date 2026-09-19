@@ -10,8 +10,8 @@ import java.net.URL
 const val DEFAULT_DIRECT_PORT = 7657
 val RECOGNIZED_PAIR_HOSTS = setOf("go.solstone.app")
 const val PAIR_LINK_PATH = "/p"
+class DirectEndpoint(host: String, port: Int) : app.solstone.core.model.DirectEndpoint(host, port)
 
-data class DirectEndpoint(val host: String, val port: Int)
 
 sealed interface PairLink
 

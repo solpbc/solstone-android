@@ -23,6 +23,7 @@ android {
 
 dependencies {
     api(project(":core:identity"))
+    implementation(project(":core:crypto"))
     implementation(project(":core:model"))
     implementation(project(":core:pl"))
 

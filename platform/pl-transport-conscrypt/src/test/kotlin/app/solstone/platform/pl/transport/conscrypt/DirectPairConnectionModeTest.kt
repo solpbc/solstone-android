@@ -125,19 +125,11 @@ class DirectPairConnectionModeTest {
             assertFailsWith<IllegalStateException> { persistWithFailure(stores, stage) }
 
             when (stage) {
-                FailureStage.CREDENTIAL -> {
+                FailureStage.CREDENTIAL,
+                FailureStage.IDENTITY,
+                FailureStage.ENDPOINT -> {
                     assertEquals(null, stores.credentialStore.load())
                     assertEquals(null, stores.identityStore.load())
-                    assertEquals(null, stores.endpointStore.load())
-                }
-                FailureStage.IDENTITY -> {
-                    assertEquals(null, stores.credentialStore.load()?.privateKeyPem)
-                    assertEquals(null, stores.identityStore.load())
-                    assertEquals(null, stores.endpointStore.load())
-                }
-                FailureStage.ENDPOINT -> {
-                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
-                    assertEquals("new", stores.identityStore.load()?.instanceId)
                     assertEquals(null, stores.endpointStore.load())
                 }
                 FailureStage.PROBE -> assertAllNew(stores)
@@ -160,19 +152,11 @@ class DirectPairConnectionModeTest {
             assertFailsWith<IllegalStateException> { persistWithFailure(stores, stage) }
 
             when (stage) {
-                FailureStage.CREDENTIAL -> {
-                    assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
-                    assertEquals(oldHome, stores.identityStore.load())
-                    assertEquals(oldEndpoint, stores.endpointStore.load())
-                }
-                FailureStage.IDENTITY -> {
-                    assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
-                    assertEquals(oldHome, stores.identityStore.load())
-                    assertEquals(oldEndpoint, stores.endpointStore.load())
-                }
+                FailureStage.CREDENTIAL,
+                FailureStage.IDENTITY,
                 FailureStage.ENDPOINT -> {
-                    assertEquals("new", stores.credentialStore.load()?.privateKeyPem)
-                    assertEquals("new", stores.identityStore.load()?.instanceId)
+                    assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
+                    assertEquals(oldHome, stores.identityStore.load())
                     assertEquals(oldEndpoint, stores.endpointStore.load())
                 }
                 FailureStage.PROBE -> assertAllNew(stores)
@@ -310,4 +294,47 @@ class DirectPairConnectionModeTest {
             expiresAt = null,
             state = state,
         )
+
+    private fun persistOrReturnDirectPairResult(
+        home: PairedHome,
+        credential: ClientCredential,
+        endpoint: DirectEndpoint,
+        handshakePinned: Boolean,
+        pairStatus: Int,
+        credentialStore: ClientCredentialStore,
+        identityStore: IdentityStore,
+        endpointStore: EndpointStore,
+        statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse,
+        journalVersionStore: app.solstone.core.identity.JournalVersionStore? = null,
+        coordinator: app.solstone.core.pl.JournalVersionRefreshCoordinator? = null,
+        mutator: app.solstone.core.identity.IdentityMutator? = null,
+        relayAccessCoordinator: app.solstone.core.pl.RelayAccessRefreshCoordinator? = null,
+        journalMarkStore: app.solstone.core.identity.JournalMarkStore? = null,
+        journalIdentityCoordinator: app.solstone.core.pl.JournalIdentityRefreshCoordinator? = null,
+        publisher: app.solstone.core.identity.PairingPublisher? = null,
+    ): PairProbeResult {
+        val pub = publisher ?: FakePairingPublisher(
+            identityStore = identityStore,
+            credentialStore = credentialStore,
+            endpointStore = endpointStore,
+        )
+        return app.solstone.platform.pl.transport.conscrypt.persistOrReturnDirectPairResult(
+            home = home,
+            credential = credential,
+            endpoint = endpoint,
+            handshakePinned = handshakePinned,
+            pairStatus = pairStatus,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            endpointStore = endpointStore,
+            statusProbe = statusProbe,
+            journalVersionStore = journalVersionStore,
+            coordinator = coordinator,
+            mutator = mutator,
+            relayAccessCoordinator = relayAccessCoordinator,
+            journalMarkStore = journalMarkStore,
+            journalIdentityCoordinator = journalIdentityCoordinator,
+            publisher = pub,
+        )
+    }
 }

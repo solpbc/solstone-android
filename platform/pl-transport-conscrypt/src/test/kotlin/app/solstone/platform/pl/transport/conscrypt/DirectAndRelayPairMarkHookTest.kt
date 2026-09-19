@@ -105,6 +105,41 @@ class DirectAndRelayPairMarkHookTest {
         caChainPem = listOf("ca-$instanceId"),
     )
 
+    private fun persistOrReturnDirectPairResult(
+        home: PairedHome,
+        credential: ClientCredential,
+        endpoint: DirectEndpoint,
+        handshakePinned: Boolean,
+        pairStatus: Int,
+        credentialStore: ClientCredentialStore,
+        identityStore: IdentityStore,
+        endpointStore: EndpointStore,
+        statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse,
+        journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
+        journalMarkStore: JournalMarkStore? = null,
+        publisher: app.solstone.core.identity.PairingPublisher? = null,
+    ): PairProbeResult {
+        val pub = publisher ?: FakePairingPublisher(
+            identityStore = identityStore,
+            credentialStore = credentialStore,
+            endpointStore = endpointStore,
+        )
+        return app.solstone.platform.pl.transport.conscrypt.persistOrReturnDirectPairResult(
+            home = home,
+            credential = credential,
+            endpoint = endpoint,
+            handshakePinned = handshakePinned,
+            pairStatus = pairStatus,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            endpointStore = endpointStore,
+            statusProbe = statusProbe,
+            journalIdentityCoordinator = journalIdentityCoordinator,
+            journalMarkStore = journalMarkStore,
+            publisher = pub,
+        )
+    }
+
     @Test
     fun directPairingStatus200NewHomeSubmitsOneUsableConnection() {
         val markStore = RecordingMarkStore()

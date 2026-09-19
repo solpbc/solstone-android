@@ -5,16 +5,19 @@ package app.solstone.platform.identity.file
 
 import app.solstone.core.identity.AtomicFileWriter
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import java.io.File
 
+
 class FileIdentityStore(
     private val file: File,
     private val protector: SecretProtector,
-    private val fileWriter: AtomicFileWriter = AtomicFileWriter.Default,
     private val log: (String) -> Unit = { java.util.logging.Logger.getLogger("FileIdentityStore").warning(it) },
+    private val fileWriter: AtomicFileWriter = AtomicFileWriter.Default,
 ) : IdentityStore {
+
     override fun save(home: PairedHome) {
         val lines = buildList {
             add("instanceId\t${home.instanceId}")
@@ -49,10 +52,39 @@ class FileIdentityStore(
         }
     }
 
+    override fun inspect(): StoreInspectResult<PairedHome> {
+        if (!file.exists()) {
+            return StoreInspectResult.Missing
+        }
+        val bytes = file.readBytes()
+        return if (bytes.startsWithMarker()) {
+            try {
+                val wrapped = bytes.copyOfRange(WRAP_MARKER.size, bytes.size)
+                val parsed = parse(protector.unprotect(wrapped).decodeToString())
+                if (parsed != null) {
+                    StoreInspectResult.Ready(parsed)
+                } else {
+                    StoreInspectResult.Unreadable(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED, "identity blob parse failed")
+                }
+            } catch (e: Exception) {
+                log("identity blob malformed")
+                StoreInspectResult.Unreadable(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED, "identity blob unprotect failed")
+            }
+        } else {
+            val parsed = parse(bytes.decodeToString())
+            if (parsed != null) {
+                StoreInspectResult.Ready(parsed)
+            } else {
+                StoreInspectResult.Unreadable(app.solstone.core.identity.PersistenceIssue.PERSISTENCE_FAILED, "identity blob parse failed")
+            }
+        }
+    }
+
     override fun clear() {
         file.delete()
     }
 }
+
 
 private fun parse(text: String): PairedHome? {
     val values = text.lineSequence()

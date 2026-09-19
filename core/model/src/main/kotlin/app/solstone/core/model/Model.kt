@@ -15,5 +15,17 @@ data class GapEvent(val kind: String, val atEpochMs: Long, val detail: String?)
 data class WireKeys(val day: String, val segment: String, val startEpochMs: Long, val endEpochMs: Long, val zoneId: String, val utcOffsetSeconds: Int)
 data class BundleFile(val sourceId: String, val name: String, val sha256: String, val byteSize: Long, val mediaType: String, val captureStartEpochMs: Long, val captureEndEpochMs: Long)
 data class BundleManifest(val key: SegmentKey, val files: List<BundleFile>, val gaps: List<GapEvent>)
+open class DirectEndpoint(open val host: String, open val port: Int) {
+    operator fun component1(): String = host
+    operator fun component2(): Int = port
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is DirectEndpoint) return false
+        return host == other.host && port == other.port
+    }
+    override fun hashCode(): Int = 31 * host.hashCode() + port
+    override fun toString(): String = "DirectEndpoint(host=$host, port=$port)"
+}
 enum class IdentityState { UNPAIRED, PAIRED, REVOKED }
+
 data class PairedHome(val instanceId: String, val homeLabel: String, val relayOrigin: String?, val caChainFingerprint: String, val clientCertFingerprint: String, val observerHandle: String?, val deviceToken: String?, val expiresAt: String?, val state: IdentityState)
