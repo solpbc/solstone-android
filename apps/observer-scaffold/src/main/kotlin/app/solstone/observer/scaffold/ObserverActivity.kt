@@ -3,7 +3,9 @@
 
 package app.solstone.observer.scaffold
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.window.OnBackInvokedDispatcher
@@ -19,9 +21,13 @@ class ObserverActivity : ComponentActivity() {
     private lateinit var spec: FormFactorSpec
     private lateinit var harnessUi: ObserverHarnessUi
     private var captureOwnerToken: Long = -1L
+    private var cameraAsk = CameraAsk.NotAsked
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        cameraAsk = savedInstanceState?.getString(STATE_CAMERA_ASK)
+            ?.let { saved -> CameraAsk.entries.firstOrNull { it.name == saved } }
+            ?: CameraAsk.NotAsked
         val app = application as ObserverApplication
         spec = app.spec
         val runtime = ObserverHarnessRuntime.runtime ?: app.runtime.also {
@@ -72,6 +78,13 @@ class ObserverActivity : ComponentActivity() {
         // no in-app callback, and returning here is the event.
         container.onOwnerResumed()
         harnessUi.refreshPermissions()
+        // The owner took the camera-off screen's route through system Settings and came back.
+        if (harnessUi.showsCameraOff && hasCamera()) harnessUi.showScanPairQr()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_CAMERA_ASK, cameraAsk.name)
     }
 
     override fun onStop() {
@@ -92,6 +105,9 @@ class ObserverActivity : ComponentActivity() {
         if (isOwnerTask(intent, firstLaunch = true)) {
             harnessUi.dismissTo(::finish)
         }
+        // A new tap from the shell is a new entry and may ask again, but never over a prompt that
+        // is still up.
+        if (cameraAsk != CameraAsk.Awaiting) cameraAsk = CameraAsk.NotAsked
         if (!routeDirectIntent(intent) && spec.handlesPairLinks) {
             routePairLinkIntent(intent)
         }
@@ -120,6 +136,32 @@ class ObserverActivity : ComponentActivity() {
             container.controller.onPermissionsRequested()
             harnessUi.refreshPermissions()
         }
+        if (requestCode == CAMERA_FOR_SCAN_REQUEST) {
+            // ⚠ Read the grant itself, not `grantResults`: an interrupted request answers with an
+            // empty array, and that has to land somewhere too.
+            cameraAsk = CameraAsk.Answered
+            container.controller.onPermissionsRequested()
+            enterScan()
+        }
+    }
+
+    private fun hasCamera(): Boolean =
+        checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+    private fun enterScan() {
+        when (scanEntry(hasCamera(), cameraAsk)) {
+            ScanEntry.Scan -> harnessUi.showScanPairQr()
+            ScanEntry.AskForCamera -> {
+                cameraAsk = CameraAsk.Awaiting
+                // ⛔ Before the ask: allowing the camera to scan a code must not read as the owner
+                // turning the camera source on.
+                container.onScannerNeedsCamera()
+                requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_FOR_SCAN_REQUEST)
+            }
+            ScanEntry.AwaitAnswer -> Unit
+            // Same guard on the way to system Settings, where the grant has no callback at all.
+            ScanEntry.CameraOff -> harnessUi.showCameraOff(beforeSettings = container::onScannerNeedsCamera)
+        }
     }
 
     private fun routePairLinkIntent(intent: Intent) {
@@ -130,7 +172,7 @@ class ObserverActivity : ComponentActivity() {
 
     private fun routeDirectIntent(intent: Intent): Boolean = when {
         intent.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false) -> {
-            harnessUi.showScanPairQr()
+            enterScan()
             true
         }
         intent.getBooleanExtra(EXTRA_SHOW_LOCAL_CACHE, false) -> {
@@ -144,5 +186,7 @@ class ObserverActivity : ComponentActivity() {
         const val EXTRA_SCAN_PAIR_QR = "app.solstone.observer.scaffold.EXTRA_SCAN_PAIR_QR"
         const val EXTRA_SHOW_LOCAL_CACHE = "app.solstone.observer.scaffold.EXTRA_SHOW_LOCAL_CACHE"
         private const val PERMISSION_REQUEST = 10
+        private const val CAMERA_FOR_SCAN_REQUEST = 11
+        private const val STATE_CAMERA_ASK = "app.solstone.observer.scaffold.STATE_CAMERA_ASK"
     }
 }

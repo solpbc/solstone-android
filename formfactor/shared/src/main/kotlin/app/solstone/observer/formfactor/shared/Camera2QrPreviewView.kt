@@ -17,6 +17,7 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
@@ -65,7 +66,7 @@ class Camera2QrPreviewView(
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
         closed = false
         if (!controller.beginScanSession()) {
-            status("Camera busy")
+            status(CAMERA_IN_USE_BY_THIS_APP)
             return
         }
         scanSessionHeld = true
@@ -73,7 +74,7 @@ class Camera2QrPreviewView(
             val manager = context.getSystemService(CameraManager::class.java)
             val cameraId = manager?.let { chooseCameraId(it) }
             if (manager == null || cameraId == null) {
-                report("Camera error: unavailable")
+                reportCameraFailure("unavailable")
                 releaseCamera()
                 return
             }
@@ -101,13 +102,13 @@ class Camera2QrPreviewView(
 
                     override fun onDisconnected(disconnected: CameraDevice) {
                         disconnected.close()
-                        report("Camera error: disconnected")
+                        reportCameraFailure("disconnected")
                         releaseCamera()
                     }
 
                     override fun onError(errorDevice: CameraDevice, error: Int) {
                         errorDevice.close()
-                        report("Camera error: $error")
+                        reportCameraFailure("device error $error")
                         releaseCamera()
                     }
                 },
@@ -115,7 +116,7 @@ class Camera2QrPreviewView(
             )
             report("Scanning")
         } catch (e: Exception) {
-            report("Camera error: ${e.message ?: "unknown"}")
+            reportCameraFailure(e.toString())
             releaseCamera()
         }
     }
@@ -174,20 +175,20 @@ class Camera2QrPreviewView(
                                 .build()
                             configured.setRepeatingRequest(request, null, cameraHandler)
                         } catch (e: Exception) {
-                            report("Camera error: ${e.message ?: "unknown"}")
+                            reportCameraFailure(e.toString())
                             releaseCamera()
                         }
                     }
 
                     override fun onConfigureFailed(failedSession: CameraCaptureSession) {
-                        report("Camera error: session configure failed")
+                        reportCameraFailure("session configure failed")
                         releaseCamera()
                     }
                 },
                 cameraHandler,
             )
         } catch (e: Exception) {
-            report("Camera error: ${e.message ?: "unknown"}")
+            reportCameraFailure(e.toString())
             releaseCamera()
         }
     }
@@ -309,11 +310,17 @@ class Camera2QrPreviewView(
             ?.minByOrNull { size -> size.width.toLong() * size.height.toLong() }
     }
 
+    private fun reportCameraFailure(detail: String) {
+        Log.w(TAG, "scanner camera failed: $detail")
+        report(CAMERA_COULD_NOT_START)
+    }
+
     private fun report(message: String) {
         post { if (!closed || message != "Scanning") status(message) }
     }
 
     private companion object {
         const val MAX_IMAGES = 2
+        const val TAG = "SolstoneQrScan"
     }
 }

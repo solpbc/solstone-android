@@ -10,6 +10,7 @@ import android.hardware.Camera
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.Surface
@@ -58,7 +59,7 @@ class LegacyQrPreviewView(
     override fun surfaceCreated(holder: SurfaceHolder) {
         closed = false
         if (!controller.beginScanSession()) {
-            status("Camera busy")
+            status(CAMERA_IN_USE_BY_THIS_APP)
             return
         }
         scanSessionHeld = true
@@ -84,7 +85,7 @@ class LegacyQrPreviewView(
                 opened.startPreview()
                 report("Scanning")
             } catch (e: Exception) {
-                report("Camera error: ${e.message ?: "unknown"}")
+                reportCameraFailure(e.toString())
                 releaseCamera()
             }
         }
@@ -203,7 +204,16 @@ class LegacyQrPreviewView(
         }
     }
 
+    private fun reportCameraFailure(detail: String) {
+        Log.w(TAG, "scanner camera failed: $detail")
+        report(CAMERA_COULD_NOT_START)
+    }
+
     private fun report(message: String) {
         post { if (!closed || message != "Scanning") status(message) }
+    }
+
+    private companion object {
+        const val TAG = "SolstoneQrScan"
     }
 }

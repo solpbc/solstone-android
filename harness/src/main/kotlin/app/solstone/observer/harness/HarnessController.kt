@@ -206,7 +206,19 @@ class HarnessController(
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
-        val hasTypeNotHeld = sourcesReader?.snapshot()?.sources?.any {
+        val sources = sourcesReader?.snapshot()?.sources
+        // 🔴 **A granted capture permission is not a reason to bring intake up; a source the owner
+        // wants on is.** Start readiness is computed from permissions alone, so with a permission
+        // held and every source off this started the foreground service, under that permission's
+        // capture type, with nothing to take in. That is how allowing the camera to scan a pairing
+        // code put a camera-typed service and its notification up behind an owner who had turned
+        // nothing on. ⚠ A reader with no sources at all is a surface without per-source wishes, and
+        // keeps the old behaviour.
+        if (sources != null && sources.isNotEmpty() && sources.none { it.wish == SourceWish.On }) {
+            emitDiag("reconcile mode=$mode result=idle reason=no-source-on")
+            return
+        }
+        val hasTypeNotHeld = sources?.any {
             it.wish == SourceWish.On && it.reason == ReasonCode.FOREGROUND_TYPE_NOT_HELD
         } == true
         if (diagnostics().state == SourceState.ON && !hasTypeNotHeld) return

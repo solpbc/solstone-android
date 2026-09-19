@@ -258,6 +258,37 @@ class SourceRegistry(
         }
     }
 
+    /**
+     * Record `Off` for [sourceId] when the owner has expressed nothing for it; otherwise leave it.
+     *
+     * 🔴 **For a capture permission that is about to be granted for something that is not this
+     * source.** The pairing scanner needs the camera to read one code. [backfill] reads a live
+     * capture permission with no entry as the owner having asked for the source, so without this,
+     * allowing the camera to scan a code turned timed photos on and started intake — consent to one
+     * thing taken as consent to another.
+     *
+     * ✅ [backfill] never writes over an entry, so an explicit `Off` written *before* the grant is
+     * sufficient by construction; ⛔ nothing here weakens the backfill, which still owes `On` to an
+     * owner who granted the permission with no entry.
+     *
+     * ⚠ One atomic step rather than [isWishExpressed] then [setWish]: `setWish` overwrites, and a
+     * check made outside the lock could replace an `On` the owner chose in between. Nothing is
+     * actuated, because an unexpressed source resolves `Off` and was never started.
+     *
+     * Returns whether it wrote. Always false for an unknown source, an expressed one, and a store
+     * that would not read (where every source already counts as expressed).
+     */
+    fun expressOffIfUnexpressed(sourceId: String): Boolean {
+        val wrote = synchronized(lock) {
+            if (sourceId !in wishes || sourceId in expressed) return false
+            wishes[sourceId] = SourceWish.Off
+            persistWish(sourceId, SourceWish.Off)
+            true
+        }
+        notifyListeners()
+        return wrote
+    }
+
     override fun setPermissionRequestInFlight(sourceId: String?) {
         permissionRequestFor = sourceId
         notifyListeners()

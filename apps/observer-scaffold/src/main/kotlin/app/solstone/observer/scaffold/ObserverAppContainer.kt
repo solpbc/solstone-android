@@ -32,6 +32,7 @@ import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.JournalCacheEvictionService
@@ -241,6 +242,28 @@ class ObserverAppContainer(
             // ⚠ A Settings grant that newly expressed a source is the owner asking, so it brings
             // intake up even if they had stopped it — asking again is asking.
             if (after > before) runCatching { controller.ensureObserving() }
+        }
+    }
+
+    /**
+     * The pairing scanner is about to ask for the camera, or to send the owner to system Settings
+     * for it.
+     *
+     * 🔴 **Call this BEFORE the ask, not after the answer.** [onOwnerResumed] reads a granted
+     * capture permission with no stored wish as the owner asking for that source, and the very next
+     * resume after the grant is the one that would see it. Allowing the camera to scan one pairing
+     * code is not asking for timed photos, so every camera source the owner has not chosen either
+     * way is recorded `Off` first; the owner can still turn it on from its own control.
+     *
+     * ✅ Ordered by the executor rather than by luck: it is single-threaded and FIFO, this is queued
+     * before the request is issued, and any resume that can observe the grant is queued after it.
+     */
+    fun onScannerNeedsCamera() {
+        val cameraSourceIds = captureSetup.registrations
+            .filter { it.captureForegroundType == CaptureForegroundType.CAMERA }
+            .map { it.sourceId }
+        background.execute {
+            cameraSourceIds.forEach { id -> runCatching { sources.expressOffIfUnexpressed(id) } }
         }
     }
 

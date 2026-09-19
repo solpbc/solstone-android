@@ -4,6 +4,9 @@
 package app.solstone.observer.formfactor.shared
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -57,6 +60,10 @@ class ObserverHarnessUi(
     private var permissionRows: TextView? = null
     private var plStatusRows: TextView? = null
     private var plStatusOutstanding: Boolean = false
+
+    /** Whether the camera-off screen is what the owner is looking at right now. */
+    var showsCameraOff: Boolean = false
+        private set
 
     fun view(): View {
         // ⛔ Not unconditional: in single-task mode the caller routes to the one screen the owner
@@ -137,6 +144,30 @@ class ObserverHarnessUi(
             addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeightPx))
             backButton()
         }
+    }
+
+    /**
+     * The scanner's stand-in when the owner has declined the camera.
+     *
+     * ⚠ A grant made in system Settings has no in-app callback; the activity watches for the owner
+     * coming back while [showsCameraOff] is set and moves on to the scanner. [beforeSettings] runs
+     * first so the caller can record that this grant is for scanning, not for a camera source.
+     */
+    fun showCameraOff(beforeSettings: () -> Unit = {}) {
+        setScreen {
+            text(CAMERA_OFF_FOR_SCAN)
+            button(OPEN_ANDROID_SETTINGS) {
+                beforeSettings()
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null),
+                    ),
+                )
+            }
+            backButton()
+        }
+        showsCameraOff = true
     }
 
     fun showPairLink(uri: String?) {
@@ -389,6 +420,7 @@ class ObserverHarnessUi(
         inSubmenu = !isMenu
         permissionRows = null
         plStatusRows = null
+        showsCameraOff = false
         container.removeAllViews()
         container.addView(scroll(build))
     }

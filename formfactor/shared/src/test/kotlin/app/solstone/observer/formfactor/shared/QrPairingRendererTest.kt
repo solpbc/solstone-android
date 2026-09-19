@@ -58,6 +58,9 @@ class QrPairingRendererTest {
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = "8.8.8.8")),
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
             PAIR_DISPATCH_FAILED,
+            CAMERA_COULD_NOT_START,
+            CAMERA_IN_USE_BY_THIS_APP,
+            CAMERA_OFF_FOR_SCAN,
         ).map { requireNotNull(it) }
 
         messages.forEach { message ->
@@ -65,7 +68,8 @@ class QrPairingRendererTest {
             assertTrue(message.trimEnd().endsWith('.'), "a fragment, not a sentence: $message")
             // ⛔ Naming the failure and stopping is the shape this file was converged out of.
             assertTrue(
-                listOf("try again", "check the address", "give it a moment").any { message.contains(it) },
+                listOf("try again", "check the address", "give it a moment", "turn it on")
+                    .any { message.contains(it) },
                 "no next step: $message",
             )
             assertFalse(message.contains("Pairing"), "retired register: $message")
@@ -80,6 +84,31 @@ class QrPairingRendererTest {
             listOf("try again", "check the address", "give it a moment")
                 .any { "Pairing failed".contains(it) },
         )
+    }
+
+    /**
+     * 🔴 What the owner used to read here was the platform's exception: a permission-check function
+     * name, a process id and a uid. The scanner now has exactly one sentence for a camera that did
+     * not start, one for a camera this app is itself holding, and one for a camera the owner has
+     * turned off.
+     */
+    @Test
+    fun theScannersCameraCopyIsFixedAndCarriesNoPlatformText() {
+        assertEquals(
+            "the camera couldn't start. try again, and if another app is using the camera, " +
+                "close it first.",
+            CAMERA_COULD_NOT_START,
+        )
+        assertEquals(
+            "the solstone app is using the camera right now. try again in a moment.",
+            CAMERA_IN_USE_BY_THIS_APP,
+        )
+        assertEquals(
+            "the camera is off for the solstone app, so it can't scan a pairing code. turn it on " +
+                "in android settings, or open your journal's pairing link on this phone instead.",
+            CAMERA_OFF_FOR_SCAN,
+        )
+        assertEquals("open android settings", OPEN_ANDROID_SETTINGS)
     }
 
     /**

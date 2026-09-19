@@ -28,6 +28,26 @@ private const val PAIR_CODE_EXPIRED =
     "the pairing window closed. show a new pairing code on your journal, then try again."
 
 /**
+ * The scanner's camera did not start, whatever the platform said about why.
+ *
+ * ⛔ **The platform's reason goes to the log, never to the owner.** It used to be appended here, and
+ * what the owner read was a permission-check function name, a process id and a uid.
+ */
+const val CAMERA_COULD_NOT_START =
+    "the camera couldn't start. try again, and if another app is using the camera, close it first."
+
+/** This app's own camera lock refused the scanner: a capture of ours is holding the camera. */
+const val CAMERA_IN_USE_BY_THIS_APP =
+    "the solstone app is using the camera right now. try again in a moment."
+
+/** The owner declined the camera, so the scanner cannot open; the link route still can. */
+const val CAMERA_OFF_FOR_SCAN =
+    "the camera is off for the solstone app, so it can't scan a pairing code. turn it on in " +
+        "android settings, or open your journal's pairing link on this phone instead."
+
+const val OPEN_ANDROID_SETTINGS = "open android settings"
+
+/**
  * ⚠ Fallback for a switchboard that could not even run, so nothing was learned about why.
  * Deliberately the same words as [PAIR_GENERIC]: a caller with no information owes the owner the
  * same next step, and inventing a distinct message would imply a distinction we cannot support.

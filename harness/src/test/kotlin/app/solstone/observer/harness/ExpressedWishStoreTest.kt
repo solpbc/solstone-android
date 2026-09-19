@@ -299,6 +299,129 @@ class ExpressedWishStoreTest {
         assertTrue(unreadable.writes.isEmpty(), "⛔ never write over a store we could not read: ${unreadable.writes}")
     }
 
+    /**
+     * 🔴 **Consent to one thing is not consent to another.** The pairing scanner needs the camera to
+     * read one code, and the grant it asks for is the same permission the camera source captures
+     * with. The refresh two tests up reads that grant as the owner asking for the source — so
+     * allowing the camera to scan a code turned timed photos on and started intake.
+     *
+     * The scanner path records `Off` for an unexpressed camera source *before* it asks. ⛔ Nothing
+     * about the backfill changes; the control below is the same grant without that call.
+     */
+    @Test
+    fun aCameraGrantMadeForThePairingScannerDoesNotTurnTheCameraSourceOn() {
+        val store = InMemorySourceWishStore()
+        val fakes = threeRunningFakes()
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = registryOver(f, fakes, store)
+        registry.engines.forEach { it.start(EmissionSink { }) }
+
+        // The scanner is about to ask for the camera.
+        assertTrue(registry.expressOffIfUnexpressed("camera"), "nothing was expressed, so it writes")
+        // The owner allows it, and the next resume observes the grant.
+        f.permissions.status = onlyCameraGranted()
+        registry.onPermissionStatus(f.controller.refreshPermissions())
+
+        val camera = registry.snapshot().sources.single { it.sourceId == "camera" }
+        assertEquals(SourceWish.Off, camera.wish, "scanning a code is not asking for photos")
+        assertEquals(SourceState.OFF, camera.state)
+        assertEquals(0, fakes.getValue("camera").startCalls, "⛔ nothing may be actuated")
+        assertEquals(mapOf("camera" to SourceWish.Off), (store.read() as WishStoreState.Loaded).wishes)
+        // ⛔ And the two sources the scanner has nothing to do with are untouched.
+        assertFalse(registry.isWishExpressed("audio"))
+        assertFalse(registry.isWishExpressed("location"))
+
+        // A later process start runs the construction-time backfill over the same grant.
+        val restartedFakes = threeRunningFakes()
+        val restarted = registryOver(f, restartedFakes, store)
+        restarted.engines.forEach { it.start(EmissionSink { }) }
+        assertEquals(SourceWish.Off, restarted.snapshot().sources.single { it.sourceId == "camera" }.wish)
+        assertEquals(0, restartedFakes.getValue("camera").startCalls)
+
+        // ✅ The owner's own control still works afterwards: asking is asking.
+        restarted.setWish("camera", SourceWish.On)
+        assertEquals(1, restartedFakes.getValue("camera").startCalls)
+        assertEquals(mapOf("camera" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
+    }
+
+    /**
+     * 🔴 The other half of the same consent: with the camera source held `Off`, the grant must not
+     * bring the foreground service up either. Start readiness looks only at permissions, so a held
+     * camera permission used to start a camera-typed service with nothing to take in.
+     */
+    @Test
+    fun aCapturePermissionWithNoSourceOnDoesNotBringIntakeUp() {
+        val store = InMemorySourceWishStore()
+        val fakes = threeRunningFakes()
+        val f = fixture(permissionStatus = allDenied(), snapshot = notRunning())
+        val registry = registryOver(f, fakes, store)
+        registry.expressOffIfUnexpressed("camera")
+        f.permissions.status = onlyCameraGranted()
+        registry.onPermissionStatus(f.controller.refreshPermissions())
+
+        // What the shell does on every resume the owner has not stopped.
+        f.controller.ensureObserving()
+        assertEquals(0, f.lifecycle.starts, "⛔ nothing is on, so nothing is brought up")
+
+        // ✅ Positive control: the same call starts intake once the owner turns the source on.
+        registry.setWish("camera", SourceWish.On)
+        f.controller.ensureObserving()
+        assertEquals(1, f.lifecycle.starts, "asking is asking")
+    }
+
+    /** ✅ Control for the test above: the same grant, without the scanner path, still backfills On. */
+    @Test
+    fun theSameCameraGrantWithoutTheScannerPathStillBackfillsOn() {
+        val store = InMemorySourceWishStore()
+        val fakes = threeRunningFakes()
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = registryOver(f, fakes, store)
+        registry.engines.forEach { it.start(EmissionSink { }) }
+
+        f.permissions.status = onlyCameraGranted()
+        registry.onPermissionStatus(f.controller.refreshPermissions())
+
+        assertEquals(SourceWish.On, registry.snapshot().sources.single { it.sourceId == "camera" }.wish)
+        assertEquals(1, fakes.getValue("camera").startCalls, "existing behaviour preserved")
+        assertEquals(mapOf("camera" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
+    }
+
+    @Test
+    fun theScannerPathNeverWritesOverAWishTheOwnerExpressedOrAStoreItCouldNotRead() {
+        val chose = InMemorySourceWishStore(mapOf("camera" to SourceWish.On))
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        val registry = registryOn(f, chose)
+        assertFalse(registry.expressOffIfUnexpressed("camera"), "an expressed On is the owner's")
+        assertEquals(SourceWish.On, (chose.read() as WishStoreState.Loaded).wishes["camera"])
+        assertFalse(registry.expressOffIfUnexpressed("no-such-source"))
+
+        val unreadable = UnreadableWishStore()
+        val unreadableRegistry = registryOn(fixture(permissionStatus = allDenied(), snapshot = snapshot()), unreadable)
+        assertFalse(unreadableRegistry.expressOffIfUnexpressed("camera"))
+        assertTrue(unreadable.writes.isEmpty(), "⛔ never write over a store we could not read: ${unreadable.writes}")
+    }
+
+    private fun threeRunningFakes(): Map<String, FakeSourceEngine> =
+        listOf("audio", "location", "camera").associateWith { FakeSourceEngine(conditionValue = running()) }
+
+    private fun registryOver(f: Fixture, fakes: Map<String, FakeSourceEngine>, store: SourceWishStore): SourceRegistry {
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+            "camera" to CaptureForegroundType.CAMERA,
+        )
+        return SourceRegistry(
+            f.controller,
+            fakes.map { (id, engine) ->
+                SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
+            },
+            MainPoster { it() },
+            store,
+        )
+    }
+
     private fun registryOn(f: Fixture, store: SourceWishStore) = SourceRegistry(
         f.controller,
         listOf(
@@ -463,6 +586,8 @@ class ExpressedWishStoreTest {
         silenced = SilencedFact.NOT_SILENCED,
         engineStartIssued = true,
     )
+
+    private fun notRunning() = snapshot().copy(engineRunning = false, engineStartIssued = false)
 
     private fun running() = SourceCondition(
         desiredOn = true,
