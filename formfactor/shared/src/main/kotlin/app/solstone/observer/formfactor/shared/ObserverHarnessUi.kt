@@ -113,33 +113,14 @@ class ObserverHarnessUi(
             // than that the harness is ready. Adopted from the string iOS already ships for this
             // screen (`QRScannerView`), not authored here.
             val status = text("point your phone at the code")
-            val accessoryContainer = if (markAccessoryFactory != null) {
-                FrameLayout(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                }
-            } else null
-            val preview = when (qrBackend) {
-                QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel) { message ->
-                    status.text = message
-                    if (message == "paired") {
-                        accessoryContainer?.let { container ->
-                            container.removeAllViews()
-                            markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
-                        }
-                    }
-                }
-                QrBackend.Legacy -> LegacyQrPreviewView(context, controller, qrThreadLabel) { message ->
-                    status.text = message
-                    if (message == "paired") {
-                        accessoryContainer?.let { container ->
-                            container.removeAllViews()
-                            markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
-                        }
-                    }
-                }
+            val paired = column()
+            val onStatus = { message: String ->
+                status.text = message
+                if (message == "paired") paired.showPaired()
             }
-            if (accessoryContainer != null) {
-                addView(accessoryContainer)
+            val preview = when (qrBackend) {
+                QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel, onStatus)
+                QrBackend.Legacy -> LegacyQrPreviewView(context, controller, qrThreadLabel, onStatus)
             }
             addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeightPx))
             backButton()
@@ -173,14 +154,7 @@ class ObserverHarnessUi(
     fun showPairLink(uri: String?) {
         setScreen {
             val status = text("pairing…")
-            val accessoryContainer = if (markAccessoryFactory != null) {
-                FrameLayout(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                }
-            } else null
-            if (accessoryContainer != null) {
-                addView(accessoryContainer)
-            }
+            val paired = column()
             backButton()
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
@@ -190,10 +164,7 @@ class ObserverHarnessUi(
                         else -> {
                             status.text = requireNotNull(pairLinkDispatchText(result))
                             if (result is PairLinkDispatchResult.Attempted && result.outcome.isSuccessfulPair()) {
-                                accessoryContainer?.let { container ->
-                                    container.removeAllViews()
-                                    markAccessoryFactory?.invoke(context)?.let { container.addView(it) }
-                                }
+                                paired.showPaired()
                             }
                         }
                     }
@@ -416,6 +387,20 @@ class ObserverHarnessUi(
         dismiss?.invoke() ?: showMenu()
     }
 
+    /**
+     * Fill a pairing screen's success slot: the journal mark, then the one way on.
+     *
+     * 🔴 **`done` exists because single-task mode draws no `Back`.** A successful pair used to end
+     * on the word `paired` and the mark with no control anywhere on screen, so the only way on was
+     * a system gesture the screen never mentioned. It leaves exactly as back does: to the shell
+     * when this harness was opened for one task, to the menu otherwise.
+     */
+    private fun LinearLayout.showPaired() {
+        removeAllViews()
+        markAccessoryFactory?.invoke(context)?.let { addView(it) }
+        button("done") { leave() }
+    }
+
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
         inSubmenu = !isMenu
         permissionRows = null
@@ -428,6 +413,13 @@ class ObserverHarnessUi(
     private fun scroll(build: LinearLayout.() -> Unit): ScrollView {
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            // ⚠ Only when the owner is the reader. These screens were laid out as instrumentation,
+            // with text hard against the display edge; the shell that pushes an owner task here
+            // keeps a margin, and its screens should not lose it on the way in.
+            if (dismiss != null) {
+                val margin = (OWNER_TASK_MARGIN_DP * resources.displayMetrics.density).toInt()
+                setPadding(margin, margin, margin, margin)
+            }
             build()
         }
         return ScrollView(context).apply {
@@ -466,5 +458,10 @@ class ObserverHarnessUi(
         // surface the shell pushed.
         if (dismiss != null) return
         button("Back") { leave() }
+    }
+
+    private companion object {
+        /** The phone shell's content margin; this module cannot see that constant. */
+        const val OWNER_TASK_MARGIN_DP = 16
     }
 }
