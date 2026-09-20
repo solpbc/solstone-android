@@ -30,7 +30,10 @@ internal fun phoneJournalFacts(
         // to the person taking it.
         location = when {
             committed == null -> "—"
-            committed.isDirectEligible && committed.isRelayEligible -> "—"
+            // ⚠ Both routes live is the case the app knows MOST about, and it was the one case
+            // the row went blank on — a dash reads as "we could not determine this".
+            committed.isDirectEligible && committed.isRelayEligible ->
+                "straight to your journal, or through the relay sol pbc runs"
             committed.isDirectEligible -> "straight to your journal"
             committed.isRelayEligible -> "through the relay sol pbc runs"
             else -> "—"

@@ -38,7 +38,8 @@ const val CAMERA_COULD_NOT_START =
 
 /** This app's own camera lock refused the scanner: a capture of ours is holding the camera. */
 const val CAMERA_IN_USE_BY_THIS_APP =
-    "the solstone app is using the camera right now. try again in a moment."
+    "the camera source is using the camera. turn it off to scan, or open your journal's pairing " +
+        "link on this phone instead."
 
 /** The owner declined the camera, so the scanner cannot open; the link route still can. */
 const val CAMERA_OFF_FOR_SCAN =
@@ -80,7 +81,11 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
             } else {
                 PAIR_GENERIC
             }
-        PairAttemptOutcome.Retry -> "scanning"
+        // ⛔ Not a scanner-state word. `Retry` means another pair attempt already holds the lock,
+        // and this text goes to the same sink that renders the scanner's own status line — so
+        // the owner read `scanning` while the app was pairing. The sibling dispatch path has
+        // said the true thing all along.
+        PairAttemptOutcome.Retry -> "already pairing. give it a moment."
         is PairAttemptOutcome.NetworkUnavailable -> networkFailureText(outcome)
         // ⚠ 410 and every other status collapsed into one message. Both mean the code is no longer
         // good and both need the same next step, so splitting them told the owner there was a
@@ -92,9 +97,9 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
     when (outcome.failure) {
         ConnectivityFailure.DEVICE_OFFLINE ->
-            "this device isn't on a network. pairing needs to reach your journal directly, so " +
-                "join the same wi-fi as your journal and try again. everything the solstone app " +
-                "has taken in is on this device and syncs once you reconnect."
+            "this device isn't on a network. join the same wi-fi as your journal and try " +
+                "again. what the solstone app has taken in is on this device, and goes to your " +
+                "journal once this phone is paired."
         ConnectivityFailure.NAME_RESOLUTION ->
             "couldn't find your journal at ${outcome.endpointHost}. check the address, then try " +
                 "again with a new pairing code."

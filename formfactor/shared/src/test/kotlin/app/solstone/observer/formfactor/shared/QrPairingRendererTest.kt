@@ -100,7 +100,8 @@ class QrPairingRendererTest {
             CAMERA_COULD_NOT_START,
         )
         assertEquals(
-            "the solstone app is using the camera right now. try again in a moment.",
+            "the camera source is using the camera. turn it off to scan, or open your journal's " +
+                "pairing link on this phone instead.",
             CAMERA_IN_USE_BY_THIS_APP,
         )
         assertEquals(
@@ -150,11 +151,15 @@ class QrPairingRendererTest {
             assertFalse(outcome.isSuccessfulPair())
             assertFalse(pairStatusText(outcome).contains("paired"))
         }
-        assertEquals("scanning", pairStatusText(PairAttemptOutcome.Retry))
+        // ⛔ Never a scanner-state word: this renders on the same sink as the scanner's own
+        // status line, so `scanning` told the owner the app was scanning while it paired.
+        assertEquals("already pairing. give it a moment.", pairStatusText(PairAttemptOutcome.Retry))
         assertEquals(
-            "this device isn't on a network. pairing needs to reach your journal directly, so " +
-                "join the same wi-fi as your journal and try again. everything the solstone app " +
-                "has taken in is on this device and syncs once you reconnect.",
+            // ⚠ This renders on a PAIRING failure, so the device is not paired: rejoining a
+            // network cannot sync anything, and the old wording promised it would.
+            "this device isn't on a network. join the same wi-fi as your journal and try " +
+                "again. what the solstone app has taken in is on this device, and goes to your " +
+                "journal once this phone is paired.",
             pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)),
         )
         assertEquals(

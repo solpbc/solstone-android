@@ -19,7 +19,8 @@ class PhoneOwnerFactsTest {
     fun fingerprintUsesJournalTrustAnchorAndAmbiguousPathStaysUnknown() {
         val facts = phoneJournalFacts(committed(direct = true, relay = true), status = null, intakeRunning = true)
         assertEquals("journal-ca", facts.fingerprint)
-        assertEquals("—", facts.location)
+        // ⚠ Both routes live is not an unknown: it is the case the app knows most about.
+        assertEquals("straight to your journal, or through the relay sol pbc runs", facts.location)
         assertEquals("—", facts.connection)
         // The same two words the ongoing notification uses; `running` beside the shade's `on`
         // gave one state word two vocabularies.

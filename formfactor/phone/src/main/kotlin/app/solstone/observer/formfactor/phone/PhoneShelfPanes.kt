@@ -89,7 +89,7 @@ fun PhoneYourJournalPane(
                 PaneRowDivider()
                 PaneNavRow(
                     label = "connect a journal",
-                    subLine = "scan the pair code your journal shows",
+                    subLine = "scan the pairing code your journal shows",
                     onClick = onConnectJournal,
                     modifier = Modifier.testTag("yourJournalConnect"),
                 )
@@ -295,19 +295,27 @@ const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
 
 // Unpairing asks the journal to drop this device too, and the journal is not always reachable
 // when it is asked. Saying nothing would leave the owner believing both halves happened.
+// ⚠ Names the journal's own control and where it is, because this sentence's whole job is the
+// next step: `unpair` sits inside a device's `details` disclosure under network.
 internal const val JOURNAL_KEPT_ITS_RECORD =
-    "unpaired on this device. your journal still lists it. open your journal and remove it there."
+    "your journal still lists this device. open your journal, find it under network, and " +
+        "unpair it there."
 
+// ⚠ Three states, not two. `forget()` clears the identity, credential and endpoint and nothing
+// else: anything already taken in but not yet delivered stays on the device and can never reach
+// any journal, because the credential it would have used is gone. A confirm that partitions the
+// world into "more" and "already reached" leaves that population in neither, and it is the one
+// outcome the owner cannot undo.
 internal const val FORGET_JOURNAL_BODY =
-    "nothing more from this device goes into your journal. " +
-        "what already reached it stays there."
+    "nothing more from this device goes into your journal. what already reached it stays " +
+        "there, and anything still waiting to go never will."
 
 // ⛔ Deliberately does NOT enumerate the events. Four review rounds each found a different
 // writer missing from the list — the widget's own switch, a sync that threw before its emit
 // point — because an enumeration is a completeness claim and this log's writers are not a
 // closed set. What the owner needs here is that an empty log is normal and what it is for.
 internal const val EVENT_LOG_EMPTY =
-    "nothing yet. this fills as the app runs, and a problem report carries whatever is here."
+    "nothing yet. this fills as the app runs, and saving a problem report puts it in one."
 
 @Composable
 fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
