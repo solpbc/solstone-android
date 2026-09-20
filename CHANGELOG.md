@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-09-20
+
+### Added
+- forgetting a journal or unpairing this device now asks your journal to drop this device before the pairing goes away on the phone, and tells you if your journal kept its record. before, the journal kept it either way and you had to remove the device there yourself.
+- `check connection` now shows what it found: `checking…`, then `reached your journal` or `couldn't reach your journal`. it ran the same probe before and showed you nothing.
+
+### Changed
+- the row that says how the app reaches your journal now says `straight to your journal` or `through the relay sol pbc runs`, and names both when both are open. it used to say `direct`, `relay`, or a dash. it is also called `how it connects` now instead of `where it lives`, on the home screen and in `settings › your journal`.
+- the confirm for forgetting a journal or unpairing this device now covers what the solstone app has taken in on this device and hasn't gone into your journal yet.
+
+### Fixed
+- `intake: running` showed on a fresh install over a screen where every source said `ready to set up`. it now reads `on` only when intake is actually running.
+- the journal you open inside the app now keeps up to date. a card saying the connection was lost sat over the journal's home, and its live sections never updated.
+- the journal's own tabs inside the app sat under the system navigation bar and couldn't be tapped. tapping search hit the system bar instead.
+- the event log held nothing you did. what you do in the app reaches it now, and the empty state says what the log is for instead of showing a dash.
+
 ## [2.1.2] - 2026-09-19
 
 ### Added
