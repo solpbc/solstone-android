@@ -393,8 +393,13 @@ fun phoneShellInsetDoctrineViolations(source: String): List<String> {
     if (count("content(contentPadding)") != 1) {
         violations += "content(contentPadding) count=${count("content(contentPadding)")}"
     }
-    if (count("paddingValues.calculateBottomPadding()") != 1) {
-        violations += "derived padding does not read the host bottom inset"
+    // ⛔ Delegated, never frozen: the Scaffold's value is computed from the MEASURED top bar, so
+    // a rebuilt PaddingValues captures a top-bar height that does not exist yet.
+    if (count("base.calculateBottomPadding() + band") != 1) {
+        violations += "the pill band is not added to a delegated host padding"
+    }
+    if (count("PaddingValues(\n") != 0) {
+        violations += "host padding rebuilt rather than delegated"
     }
     // ⛔ The pill band cannot be silently dropped from that derivation.
     if (count("ShellMetrics.journalPillSlot") != 1) {
@@ -1084,23 +1089,34 @@ tasks.register("phoneShellInsetDoctrineGuardSelfTest") {
                     .union(WindowInsets.safeGestures)
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             ) { paddingValues ->
-                val contentPadding = PaddingValues(
-                    bottom = paddingValues.calculateBottomPadding() + ShellMetrics.journalPillSlot,
-                )
+                val contentPadding = JournalPillBandPadding(paddingValues, ShellMetrics.journalPillSlot)
                 Box(Modifier.fillMaxSize()) { content(contentPadding) }
+            }
+            private class JournalPillBandPadding(base: PaddingValues, band: Dp) : PaddingValues {
+                override fun calculateBottomPadding(): Dp = base.calculateBottomPadding() + band
             }
         """.trimIndent()
         check(phoneShellInsetDoctrineViolations(good).isEmpty())
-        // ⚠ Mutation proof for the two clauses added when the shell began reserving the pill band:
-        // a gate never observed to fail is a hypothesis, not a gate.
+        // ⚠ Mutation proof for the three clauses added when the shell began reserving the pill
+        // band: a gate never observed to fail is a hypothesis, not a gate.
         check(
             phoneShellInsetDoctrineViolations(
-                good.replace("+ ShellMetrics.journalPillSlot", ""),
+                good.replace(" + band", ""),
             ).isNotEmpty(),
         )
         check(
             phoneShellInsetDoctrineViolations(
                 good.replace("content(contentPadding)", "content(paddingValues)"),
+            ).isNotEmpty(),
+        )
+        // 🔴 The exact regression the instrumented gate caught: rebuilding the host padding
+        // freezes a top-bar height that has not been measured yet.
+        check(
+            phoneShellInsetDoctrineViolations(
+                good.replace(
+                    "JournalPillBandPadding(paddingValues, ShellMetrics.journalPillSlot)",
+                    "PaddingValues(\n    top = paddingValues.calculateTopPadding(),\n)",
+                ),
             ).isNotEmpty(),
         )
         val pre1d = """

@@ -163,8 +163,15 @@ class PhoneDeckNonSourceTileTest {
         composeRule.onNodeWithTag(FACTS_TEST_TAG).assertDoesNotExist()
     }
 
+    /**
+     * ⚠ Sources come FIRST on the deck, so a source announces at index 0 and the two
+     * destination tiles follow it. `mobile-shell.md` § 2.1 reads "one tile per source the owner
+     * has, PLUS `import` and `add more`", and the shipped iOS deck is in that order; Android had
+     * been leading with the two destinations. The count an item announces still covers all three,
+     * because the collection a screen reader walks is the whole grid.
+     */
     @Test
-    fun sourceCollectionInfoIncludesLeadingTiles() {
+    fun sourceCollectionInfoCountsEveryTileAndSourcesComeFirst() {
         setScreen(loadState = loaded(audioOn()))
 
         composeRule.onNodeWithTag("sourceGrid", useUnmergedTree = true).assertIsDisplayed()
@@ -179,7 +186,7 @@ class PhoneDeckNonSourceTileTest {
         val itemInfo = source.config.getOrNull(SemanticsProperties.CollectionItemInfo)
         assertNotNull(itemInfo)
         val announced = requireNotNull(itemInfo)
-        assertEquals("source row index", 2, announced.rowIndex)
+        assertEquals("source row index", 0, announced.rowIndex)
         assertEquals("source row span", childCount, announced.rowSpan)
         assertEquals("source column index", 0, announced.columnIndex)
         assertEquals("source column span", 1, announced.columnSpan)

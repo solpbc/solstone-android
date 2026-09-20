@@ -3,9 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -99,13 +99,9 @@ fun PhoneShell(
             ) { paddingValues ->
                 // The pill floats over the content slot, so the Scaffold's own padding does not
                 // account for it. Reserve its band here, once, rather than in each surface.
-                val layoutDirection = LocalLayoutDirection.current
-                val contentPadding = PaddingValues(
-                    start = paddingValues.calculateStartPadding(layoutDirection),
-                    top = paddingValues.calculateTopPadding(),
-                    end = paddingValues.calculateEndPadding(layoutDirection),
-                    bottom = paddingValues.calculateBottomPadding() + ShellMetrics.journalPillSlot,
-                )
+                val contentPadding = remember(paddingValues) {
+                    JournalPillBandPadding(paddingValues, ShellMetrics.journalPillSlot)
+                }
                 Box(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxSize()) {
                         shellAttachment()
@@ -122,6 +118,31 @@ fun PhoneShell(
             }
         }
     }
+}
+
+/**
+ * The Scaffold's own padding with the floating journal pill's band added to the bottom.
+ *
+ * 🔴 A wrapper, ⛔ never a rebuilt [PaddingValues]. The Scaffold's value is computed from the
+ * MEASURED top bar, so reading `calculateTopPadding()` during composition and freezing the result
+ * captures it before the bar has been measured: the deck then started 64dp from the top instead
+ * of 113dp and the first tile sat under the app bar. Only the instrumented gate could see it —
+ * a JVM test has no layout pass to be early for. Delegating keeps every read at its original
+ * call time.
+ */
+private class JournalPillBandPadding(
+    private val base: PaddingValues,
+    private val band: Dp,
+) : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+        base.calculateLeftPadding(layoutDirection)
+
+    override fun calculateTopPadding(): Dp = base.calculateTopPadding()
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+        base.calculateRightPadding(layoutDirection)
+
+    override fun calculateBottomPadding(): Dp = base.calculateBottomPadding() + band
 }
 
 @Composable

@@ -2,14 +2,17 @@
 # Say, at the end of every fast gate, whether the slow device gate is owed for this change.
 #
 # 🔴 WHY THIS EXISTS, measured rather than assumed. The device gate was a written rule in two
-# places and nothing executed it, so four of the six feature commits before 2.1.2 reached `main`
-# red on it. Three of those four DID match the rule's own path list; the path list was never the
-# problem. The problem was that the rule had no reader on the path most changes take: a direct
-# edit runs `make ci` and nothing else, and only a hopper lode's ship stage ever evaluated a
-# green-required device AC.
+# places and nothing executed it. Four commits reached `main` carrying a red device gate, and all
+# four were found only when a release finally ran it. Three of the four already MATCHED the rule's
+# own path list, so the list was never the problem: two of the four came through a lode whose
+# ship stage did not evaluate the device AC at all (one says so in its own commit message), and
+# two were direct edits, where no ship stage exists to evaluate anything.
+#
+# ⛔ Do not restate that as a ratio. An earlier phrasing here counted it against "the six most
+# recent feature commits" and that population does not reconstruct from the log.
 #
 # ⛔ So this is deliberately not a fourth copy of the rule. It is the fast gate naming the slow
-# gate's debt, in the one output a session running a direct edit always reads.
+# gate's debt, in the one output every session running the fast gate already reads.
 #
 # ⛔ And it never fails the build. `make ci` is also hopper's ship-stage gate; turning a twenty
 # minute emulator run into a hard precondition for every product edit would get routed around,

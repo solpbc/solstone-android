@@ -268,7 +268,7 @@ class PhoneSourceDetailTest {
         )
 
         composeRule.onNodeWithText("getting ready…").assertIsDisplayed()
-        composeRule.onNodeWithText("getting ready — connecting to your journal.").assertDoesNotExist()
+        composeRule.onNodeWithText("getting ready. connecting to your journal.").assertDoesNotExist()
     }
 
     @Test
@@ -280,7 +280,7 @@ class PhoneSourceDetailTest {
             ),
         )
 
-        composeRule.onNodeWithText("getting ready — connecting to your journal.").assertIsDisplayed()
+        composeRule.onNodeWithText("getting ready. connecting to your journal.").assertIsDisplayed()
     }
 
     private fun render(
