@@ -4,9 +4,9 @@
 # 🔴 WHY THIS EXISTS, measured rather than assumed. The device gate was a written rule in two
 # places and nothing executed it. Four commits reached `main` carrying a red device gate, and all
 # four were found only when a release finally ran it. Three of the four already MATCHED the rule's
-# own path list, so the list was never the problem: two of the four came through a lode whose
-# ship stage did not evaluate the device AC at all (one says so in its own commit message), and
-# two were direct edits, where no ship stage exists to evaluate anything.
+# own path list, so the list was never the problem: two of the four came through the automated
+# build pipeline, whose ship stage did not evaluate the device gate at all (one says so in its
+# own commit message), and two were hand-landed, where no ship stage exists to evaluate anything.
 #
 # ⛔ Do not restate that as a ratio. An earlier phrasing here counted it against "the six most
 # recent feature commits" and that population does not reconstruct from the log.
@@ -14,9 +14,9 @@
 # ⛔ So this is deliberately not a fourth copy of the rule. It is the fast gate naming the slow
 # gate's debt, in the one output every session running the fast gate already reads.
 #
-# ⛔ And it never fails the build. `make ci` is also hopper's ship-stage gate; turning a twenty
-# minute emulator run into a hard precondition for every product edit would get routed around,
-# which is how the rule got ignored the first time.
+# ⛔ And it never fails the build. `make ci` is also the automated pipeline's ship-stage gate;
+# turning a twenty minute emulator run into a hard precondition for every product edit would get
+# routed around, which is how the rule got ignored the first time.
 set -u
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
