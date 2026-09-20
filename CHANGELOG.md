@@ -8,11 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.1.2] - 2026-09-19
 
+### Added
+- once you're paired, tap your journal's mark at the bottom of the home screen and your journal opens inside the app, through the same paired connection the app already uses.
+- a welcome card on the home screen of a fresh install, with one button to connect a journal.
+- settings now has: your journal's details with check connection, pair a new journal and forget this journal; this device's storage, haptics and permissions; notifications; an event log and problem reports. settings › your journal no longer says `not paired` when you are paired.
+
 ### Changed
-- a pairing link can now point at any address you can reach your journal at, not only one on your local network. pairing over the internet works the same way as pairing at home: the link still carries your journal's fingerprint, and your phone still checks it before trusting anything.
+- a pairing link can now point at any address you can reach your journal at, not only one on your local network. pairing over the internet works the same way as pairing at home: the link still carries your journal's fingerprint, and your phone still checks it before trusting anything. if pairing can't reach your journal at a public ip address, the message no longer suggests it's a wi-fi problem.
+- the status at the top of the home screen now also shows your journal's version and how the app reaches it, with technical details one tap further.
 
 ### Fixed
 - if the app quit on its own right after a successful pairing, while it showed your journal's mark, this resolves it.
+- if you tapped `connect a journal` before the app had ever asked for your camera, you got an error instead of the question. the app now asks for the camera first, and if you say no it tells you how to pair without it. allowing the camera there doesn't turn the camera source on.
+- after a pairing link finished pairing, the screen had no way forward. it now has a `done` button.
 
 ## [2.1.1] - 2026-09-18
 
