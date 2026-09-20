@@ -37,9 +37,12 @@ const val CAMERA_COULD_NOT_START =
     "the camera couldn't start. try again, and if another app is using the camera, close it first."
 
 /** This app's own camera lock refused the scanner: a capture of ours is holding the camera. */
+// ⚠ The still engine acquires this lock per capture and releases it in a `finally`, so the
+// condition clears on its own within one still. ⛔ Do not steer the owner into turning off a
+// source they want on as if it were the only way through.
 const val CAMERA_IN_USE_BY_THIS_APP =
-    "the camera source is using the camera. turn it off to scan, or open your journal's pairing " +
-        "link on this phone instead."
+    "the solstone app is using the camera right now. try again, or turn the camera source off " +
+        "to scan."
 
 /** The owner declined the camera, so the scanner cannot open; the link route still can. */
 const val CAMERA_OFF_FOR_SCAN =
@@ -81,11 +84,12 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
             } else {
                 PAIR_GENERIC
             }
-        // ⛔ Not a scanner-state word. `Retry` means another pair attempt already holds the lock,
-        // and this text goes to the same sink that renders the scanner's own status line — so
-        // the owner read `scanning` while the app was pairing. The sibling dispatch path has
-        // said the true thing all along.
-        PairAttemptOutcome.Retry -> "already pairing. give it a moment."
+        // ⛔ Not a scanner-state word, and ⛔ not `already pairing` either. `withPairLock` returns
+        // null on TWO conditions — the camera lock and the sync drain gate — and on the scanner
+        // path the camera leg is already held by the scan session, so a draining sync is the only
+        // producer there. Naming either cause is wrong about half the time; the honest word is
+        // the one that covers both.
+        PairAttemptOutcome.Retry -> "the app is busy. give it a moment."
         is PairAttemptOutcome.NetworkUnavailable -> networkFailureText(outcome)
         // ⚠ 410 and every other status collapsed into one message. Both mean the code is no longer
         // good and both need the same next step, so splitting them told the owner there was a
@@ -97,9 +101,9 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
     when (outcome.failure) {
         ConnectivityFailure.DEVICE_OFFLINE ->
-            "this device isn't on a network. join the same wi-fi as your journal and try " +
-                "again. what the solstone app has taken in is on this device, and goes to your " +
-                "journal once this phone is paired."
+            "this device isn't on a network. get back on a network and try again. what the " +
+                "solstone app has taken in is on this device, and goes to your journal as soon " +
+                "as it can reach it."
         ConnectivityFailure.NAME_RESOLUTION ->
             "couldn't find your journal at ${outcome.endpointHost}. check the address, then try " +
                 "again with a new pairing code."

@@ -295,27 +295,30 @@ const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
 
 // Unpairing asks the journal to drop this device too, and the journal is not always reachable
 // when it is asked. Saying nothing would leave the owner believing both halves happened.
-// ⚠ Names the journal's own control and where it is, because this sentence's whole job is the
-// next step: `unpair` sits inside a device's `details` disclosure under network.
+// ⚠ Names the PLACE, ⛔ not the control. The journal renders one removal control per row and
+// which one depends on delivery history: a device that never delivered gets `forget this device`
+// and a device that has gets `unpair`. Naming either is wrong for half the owners who see this.
 internal const val JOURNAL_KEPT_ITS_RECORD =
     "your journal still lists this device. open your journal, find it under network, and " +
-        "unpair it there."
+        "remove it there."
 
-// ⚠ Three states, not two. `forget()` clears the identity, credential and endpoint and nothing
-// else: anything already taken in but not yet delivered stays on the device and can never reach
-// any journal, because the credential it would have used is gone. A confirm that partitions the
-// world into "more" and "already reached" leaves that population in neither, and it is the one
-// outcome the owner cannot undo.
+// ⚠ Three states, not two, and the third is not the one it first looks like. `forget()` clears
+// the identity, credential and endpoint and nothing else — ⛔ **it does not clear the spool or the
+// segment table**, and `segmentsForDrain` selects on `stream` + `state` alone (`home_instance_id`
+// is written null by both writers and read nowhere). So anything already taken in and not yet
+// delivered survives, and drains to whichever journal this phone pairs to next. A confirm that
+// partitions the world into "more" and "already reached" leaves that population in neither.
 internal const val FORGET_JOURNAL_BODY =
     "nothing more from this device goes into your journal. what already reached it stays " +
-        "there, and anything still waiting to go never will."
+        "there, and anything still waiting won't unless you pair again."
 
 // ⛔ Deliberately does NOT enumerate the events. Four review rounds each found a different
 // writer missing from the list — the widget's own switch, a sync that threw before its emit
 // point — because an enumeration is a completeness claim and this log's writers are not a
 // closed set. What the owner needs here is that an empty log is normal and what it is for.
 internal const val EVENT_LOG_EMPTY =
-    "nothing yet. this fills as the app runs, and saving a problem report puts it in one."
+    "nothing yet. this fills as the app runs, and saving a problem report puts a copy of it in " +
+        "that report."
 
 @Composable
 fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
