@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
+.PHONY: install test ci ci-device device-gate-report format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -22,6 +22,15 @@ test-release:
 
 ci: test-release
 		$(GRADLE) check :core:model:test :core:sources:test :core:segment:test :core:spool:test :core:queue:test :core:diagnostics:test :core:crypto:test :core:pl:test :core:identity:test :core:observer:test :core:metadata:test :core:gate:test :testing:test :harness:test :formfactor:shared:testDebugUnitTest :formfactor:phone:assembleDebug :formfactor:phone:testDebugUnitTest :formfactor:phone:assembleDebugAndroidTest :platform:camera-still:test :platform:work:test :platform:persistence-room:assembleDebug :platform:pl-transport-conscrypt:assembleDebug :platform:pl-transport-conscrypt:testDebugUnitTest :platform:identity-file:assembleDebug :platform:work:assembleDebug :platform:metadata:assembleDebug :platform:metadata:testDebugUnitTest :platform:audio:assembleDebug :platform:audio:testDebugUnitTest :platform:location:assembleDebug :platform:location:testDebugUnitTest :platform:camera-legacy:assembleDebug :platform:camera-legacy:testDebugUnitTest :platform:camera2:assembleDebug :platform:camera2:testDebugUnitTest :platform:fgs:assembleDebug :platform:fgs:test :platform:power:assembleDebug :apps:watch:checkRealDebugMicrophoneManifest :apps:phone:checkRealDebugMicrophoneManifest :apps:glasses:checkRealDebugMicrophoneManifest :apps:watch:checkRealDebugLauncherManifest :apps:phone:checkRealDebugLauncherManifest :apps:phone:checkPhoneLauncherCountManifest :apps:phone:checkRealDebugAppLinksManifest :apps:phone:checkRealReleaseAppLinksManifest :apps:phone:checkPhoneShellExportManifest :apps:phone:checkRealDebugOnBackInvokedCallbackManifest :apps:glasses:checkRealDebugLauncherManifest :apps:watch:assembleMockDebug :apps:watch:assembleMockDebugAndroidTest :apps:watch:assembleRealDebug :apps:phone:assembleMockDebug :apps:phone:assembleMockDebugAndroidTest :apps:phone:assembleRealDebug :apps:phone:assembleRealDebugAndroidTest :apps:phone:verifySolstoneGateBuildReceipts :apps:glasses:assembleMockDebug :apps:glasses:assembleMockDebugAndroidTest :apps:glasses:assembleRealDebug :apps:validation-rogbid:testDebugUnitTest :apps:validation-rogbid:assembleDebug
+	# ⚠ Last line of the fast gate, where a session reading its output will see it.
+	-@sh tools/gate/device-gate-owed.sh
+
+# Whether the slow device gate is owed for this change, reported at the end of the fast one.
+# ⛔ Never fails: see the header of the script for why a hard precondition here gets routed
+# around. `-` keeps a missing script or a detached checkout from reddening an unrelated gate.
+.PHONY: device-gate-report
+device-gate-report:
+	-@sh tools/gate/device-gate-owed.sh
 
 # Slower device gate: GMD (pixel5api35) instrumented tests. Always host-GL — the
 # default GMD GPU path segfaults on the headless build box. Kept separate from `ci`
@@ -42,6 +51,9 @@ ci-device:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.phone.RealFlavorOpportunisticSyncRuntimeTest \
 	  :apps:phone:pixel5api35RealDebugAndroidTest
+	# ⚠ Last, so it can only exist after both invocations above returned green. A receipt
+	# written up front would tell the next `make ci` the gate passed when it had only started.
+	@mkdir -p artifacts/ci-device && git rev-parse HEAD > artifacts/ci-device/$$(git rev-parse HEAD) 2>/dev/null || true
 
 format:
 	@echo "No formatter is configured yet."
@@ -131,6 +143,10 @@ ci-device-experimental:
 # guarantee gets spent on a deadline.
 ANDROID_HITL_SERIAL ?= RZGL11XCS9D
 HITL_FLOW := .maestro/phone-smoke.yaml
+# 🔴 The second leg, installed with NOTHING granted. `HITL_FLOW` runs after `install -g`, so it
+# has never seen the app a new owner sees — which is how A1 (the main call to action opening a
+# blank screen with a raw camera exception on it) shipped twice with every gate green.
+HITL_FRESH_FLOW := .maestro/phone-fresh-install.yaml
 HITL_ARTIFACTS = $(ARTIFACTS)/hitl
 FROZEN_PHONE_APK ?=
 FROZEN_REMOTE_APK = $(ANDROID_REMOTE_PROJECT)/artifacts/distribution/phone-real-release.apk
@@ -174,10 +190,22 @@ hitl-phone-frozen:
 	adb -s "$(ANDROID_HITL_SERIAL)" uninstall app.solstone.observer.phone >/dev/null 2>&1 || true; \
 	adb -s "$(ANDROID_HITL_SERIAL)" install -r -g "$(FROZEN_PHONE_APK)"; \
 	mkdir -p "$(HITL_ARTIFACTS)"; \
-	MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device "$(ANDROID_HITL_SERIAL)" test "$(HITL_FLOW)"; \
+	if ! MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device "$(ANDROID_HITL_SERIAL)" test "$(HITL_FLOW)"; then \
+	  if [ "$$(sh tools/gate/hitl-foreign-dialog.sh "$(ANDROID_HITL_SERIAL)")" != none ]; then \
+	    echo "" >&2; \
+	    echo "HITL INCONCLUSIVE — a dialog that is not ours was on screen." >&2; \
+	    echo "⛔ This is NOT a verdict on the build. Clear the dialog and re-run the gate." >&2; \
+	    exit 2; \
+	  fi; \
+	  echo "HITL GATE FAILED on $(HITL_FLOW)" >&2; exit 1; \
+	fi; \
+	echo "HITL: un-granted leg — reinstalling $(FROZEN_PHONE_APK) with nothing granted"; \
+	adb -s "$(ANDROID_HITL_SERIAL)" uninstall app.solstone.observer.phone >/dev/null 2>&1 || true; \
+	adb -s "$(ANDROID_HITL_SERIAL)" install "$(FROZEN_PHONE_APK)"; \
+	MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 maestro --device "$(ANDROID_HITL_SERIAL)" test "$(HITL_FRESH_FLOW)"; \
 	digest_line=$$(sha256sum "$(FROZEN_PHONE_APK)"); after=$${digest_line%% *}; \
 	test "$$after" = "$$before" || { echo "Frozen release APK changed during HITL" >&2; exit 1; }; \
-	echo "HITL FROZEN-APK GATE PASSED — $$after"
+	echo "HITL FROZEN-APK GATE PASSED, BOTH LEGS — $$after"
 
 # Versioned release wrapper. Copies and proves the frozen local artifact before
 # HITL; cannot reach Gradle.

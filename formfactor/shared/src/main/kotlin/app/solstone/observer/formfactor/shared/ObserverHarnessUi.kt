@@ -77,10 +77,20 @@ class ObserverHarnessUi(
         dismiss = action
     }
 
+    /**
+     * The gated way in to the scanner, installed by the host activity.
+     *
+     * 🔴 The menu button called [showScanPairQr] directly, which builds a camera preview — so on
+     * this one entry the camera opened before anything asked for it, the same shape as the
+     * owner-facing defect the shell's own entry was fixed for. ⛔ Leave this null only where there
+     * is no activity to ask.
+     */
+    var scanEntry: (() -> Unit)? = null
+
     fun showMenu() {
         setScreen(isMenu = true) {
             button("Permissions") { showPermissions() }
-            button("Scan pair QR") { showScanPairQr() }
+            button("Scan pair QR") { (scanEntry ?: ::showScanPairQr)() }
             button("PL status probe") { showPlStatusProbe() }
             button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }

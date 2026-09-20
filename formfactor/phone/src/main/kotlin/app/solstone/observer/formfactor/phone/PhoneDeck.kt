@@ -39,7 +39,7 @@ import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
-private const val LEADING_NON_SOURCE_TILE_COUNT = 2
+private const val NON_SOURCE_TILE_COUNT = 2
 
 @Composable
 fun PhoneDeck(
@@ -177,6 +177,20 @@ internal fun PhoneSourceGrid(
                 PhoneWelcomeCard(onConnectJournal)
             }
         }
+        // 🔴 Sources first, destinations after. § 2.1 reads "one tile per source the owner has,
+        // PLUS `import` and `add more`", and the shipped iOS deck puts them in that order, so
+        // opening home on Android led with two destinations and pushed the owner's own sources
+        // below them.
+        itemsIndexed(sources, key = { _, item -> item.sourceId }) { index, status ->
+            PhoneSourceTile(
+                status = status,
+                index = index,
+                count = sources.size + NON_SOURCE_TILE_COUNT,
+                onOpen = { onOpenSource(status.sourceId) },
+                onToggle = { wish -> onToggle(status.sourceId, wish) },
+                paired = paired,
+            )
+        }
         item(key = "importTile") {
             PhoneNonSourceTile(
                 label = "import",
@@ -187,8 +201,8 @@ internal fun PhoneSourceGrid(
                 // carried the retired string since.
                 subLine = "photos and files",
                 glyph = R.drawable.phone_import,
-                index = 0,
-                count = sources.size + LEADING_NON_SOURCE_TILE_COUNT,
+                index = sources.size,
+                count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "importTile",
                 onOpen = onOpenImport,
             )
@@ -211,20 +225,10 @@ internal fun PhoneSourceGrid(
                 // categorizes. The non-parallelism is the rule working.
                 subLine = "sources",
                 glyph = R.drawable.phone_add_more,
-                index = 1,
-                count = sources.size + LEADING_NON_SOURCE_TILE_COUNT,
+                index = sources.size + 1,
+                count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "addMoreTile",
                 onOpen = onOpenAddMore,
-            )
-        }
-        itemsIndexed(sources, key = { _, item -> item.sourceId }) { index, status ->
-            PhoneSourceTile(
-                status = status,
-                index = index + LEADING_NON_SOURCE_TILE_COUNT,
-                count = sources.size + LEADING_NON_SOURCE_TILE_COUNT,
-                onOpen = { onOpenSource(status.sourceId) },
-                onToggle = { wish -> onToggle(status.sourceId, wish) },
-                paired = paired,
             )
         }
     }

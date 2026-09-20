@@ -60,6 +60,13 @@ class MuxSessionTest {
                 sendFrame(duplex, streamId, flags, response.copyOfRange(sent, sent + count))
                 sent += count
                 val grant = pollFrame(duplex.input)
+                if (isLast) {
+                    // Framing § late frames on unknown ids: credit returned for the frame that
+                    // closes the stream can only ever arrive after the id is forgotten, and a
+                    // WINDOW on a forgotten id is a desync the peer must answer with a RESET.
+                    assertNull(grant, "no credit is owed for the frame that closes the stream")
+                    continue
+                }
                 if (grant == null) duplex.output.close()
                 assertWindow(assertNotNull(grant), streamId, count)
             }
@@ -76,10 +83,13 @@ class MuxSessionTest {
         val response = responseBytes(chunkSize)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
-            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, response)
+            // Not closing here: a DATA frame that leaves the stream open is exactly the frame
+            // credit exists for, and the one this test is about.
+            sendFrame(duplex, streamId, FLAG_DATA, response)
             val grant = pollFrame(duplex.input)
             if (grant == null) duplex.output.close()
             assertWindow(assertNotNull(grant), streamId, chunkSize)
+            sendFrame(duplex, streamId, FLAG_CLOSE, ByteArray(0))
         }
 
         client.use { MuxSession(it).request("GET", "/a2", emptyMap(), null) }
@@ -144,7 +154,6 @@ class MuxSessionTest {
             assertEquals(FLAG_CLOSE, frames.last().flags)
             assertContentEquals(httpRequestBytes("POST", "/b1", emptyMap(), body), dataFrames.flatMap { it.payload.asIterable() }.toByteArray())
             sendFrame(duplex, dataFrames.first().streamId, FLAG_DATA or FLAG_CLOSE, responseBytes(32))
-            assertNotNull(pollFrame(duplex.input))
         }
 
         client.use { MuxSession(it).request("POST", "/b1", emptyMap(), body) }
@@ -197,8 +206,11 @@ class MuxSessionTest {
             sendFrame(duplex, firstId, FLAG_DATA or FLAG_RESET, byteArrayOf(9))
             assertReset(assertNotNull(pollFrame(duplex.input)), firstId, 0x01)
             val secondId = readRequest(duplex)
-            sendFrame(duplex, secondId, FLAG_DATA or FLAG_CLOSE, responseBytes(32))
+            // Credit first, on a frame that leaves the stream open; the close comes after, and
+            // draws no credit of its own.
+            sendFrame(duplex, secondId, FLAG_DATA, responseBytes(32))
             assertWindow(readFrame(duplex.input), secondId, 32)
+            sendFrame(duplex, secondId, FLAG_CLOSE, ByteArray(0))
         }
         val session = MuxSession(client)
         assertEquals("PL protocol error: invalid flags", assertFailsWith<IOException> { session.request("GET", "/d2", emptyMap(), null) }.message)

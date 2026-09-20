@@ -41,6 +41,7 @@ fun PhoneYourJournalPane(
     onCheckConnection: () -> Unit = {},
     onForgetJournal: () -> Unit = {},
     mutationFailed: Boolean = false,
+    journalKeptItsRecord: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var confirmingForget by remember { mutableStateOf(false) }
@@ -54,17 +55,20 @@ fun PhoneYourJournalPane(
         ) {
             JournalMarkCard(presentation)
         }
-        PaneSectionTitle("connection")
+        // ⛔ No `connection` section title here: the card below already carries a `connection`
+        // row, and a heading repeating its own row's label reads as two different things.
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             if (paired) {
                 PaneFactRow(label = "fingerprint", value = facts.fingerprint)
                 PaneRowDivider()
-                PaneFactRow(label = "where it lives", value = facts.location)
+                PaneFactRow(label = "how it connects", value = facts.location)
                 PaneRowDivider()
                 PaneFactRow(label = "connection", value = facts.connection)
                 PaneRowDivider()
                 PaneNavRow(
                     label = "check connection",
+                    subLine = facts.check,
                     onClick = onCheckConnection,
                     modifier = Modifier.testTag("yourJournalCheckConnection"),
                 )
@@ -91,19 +95,30 @@ fun PhoneYourJournalPane(
                 )
             }
         }
+        // ⚠ `mutationFailed` reaches this pane only when the owner pressed THIS pane's control.
+        // Driving both panes off one flag named the other pane's action for something the owner
+        // never pressed.
         if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
+        if (journalKeptItsRecord) PaneNote(JOURNAL_KEPT_ITS_RECORD)
         // The subject register: the solstone app takes in what you share with it, and
         // the verb carries its object. `what this phone takes in` made the hardware the
         // perceiving subject and dropped the object -- never-list rule 1.
         PaneNote(
-            "your journal holds what you share with the solstone app on this device. " +
-                "until one is connected, everything stays on this device.",
+            if (paired) {
+                "your journal holds what you share with the solstone app on this device."
+            } else {
+                // ⛔ Not the paired sentence plus a caveat. Nothing from this phone is in a
+                // journal yet, so a present-tense `your journal holds…` is false on the one
+                // screen where the owner is deciding whether to pair.
+                "until a journal is connected, everything stays on this device."
+            },
         )
     }
     if (confirmingForget) {
         AlertDialog(
             onDismissRequest = { confirmingForget = false },
             title = { Text("forget this journal?") },
+            text = { Text(FORGET_JOURNAL_BODY) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingForget = false
@@ -131,6 +146,7 @@ fun PhoneThisDevicePane(
     paired: Boolean,
     onUnpair: () -> Unit,
     mutationFailed: Boolean = false,
+    journalKeptItsRecord: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -149,7 +165,10 @@ fun PhoneThisDevicePane(
             PaneRowDivider()
             PaneFactRow(label = "solstone", value = version.ifBlank { "—" })
         }
-        if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
+        // The row, the dialog and the button in this pane all say `unpair`; the failure note
+        // is the same action and says it too.
+        if (mutationFailed) PaneNote("couldn't unpair this device. try again.")
+        if (journalKeptItsRecord) PaneNote(JOURNAL_KEPT_ITS_RECORD)
         PaneSectionTitle("storage")
         PaneCard {
             PaneFactRow(label = "in use", value = storageUsed)
@@ -190,7 +209,10 @@ fun PhoneThisDevicePane(
     if (confirmingUnpair) {
         AlertDialog(
             onDismissRequest = { confirmingUnpair = false },
-            title = { Text("forget this journal?") },
+            // The row says `unpair`, so the question and the button say `unpair` too. Titling it
+            // `forget this journal?` over an `unpair` button gave one action three words.
+            title = { Text("unpair this device?") },
+            text = { Text(FORGET_JOURNAL_BODY) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingUnpair = false
@@ -218,13 +240,12 @@ fun PhoneTechnicalDetailsPane(
             PaneRowDivider()
             PaneFactRow(label = "intake", value = facts.intake)
             PaneRowDivider()
-            PaneFactRow(label = "reconnects", value = facts.reconnects)
-            PaneRowDivider()
-            PaneFactRow(label = "errors", value = facts.errors)
-            PaneRowDivider()
+            // ⛔ No `reconnects` / `errors` rows. Nothing ever wrote them, so they read `—`
+            // forever, which is a measurement claim with no measurement behind it. The event log
+            // below carries the same ground with real events in it.
             PaneFactRow(label = "fingerprint", value = facts.fingerprint)
             PaneRowDivider()
-            PaneNavRow(label = "check connection", onClick = onCheckConnection)
+            PaneNavRow(label = "check connection", subLine = facts.check, onClick = onCheckConnection)
             PaneRowDivider()
             PaneNavRow(label = "event log", onClick = onOpenEventLog)
         }
@@ -266,13 +287,35 @@ fun PhoneProblemReportsPane(
     }
 }
 
+// `check connection` ran a real probe and said nothing about it: no spinner, no result, no
+// timestamp. These are what it says now.
+const val CHECK_CONNECTION_RUNNING = "checking…"
+const val CHECK_CONNECTION_REACHED = "reached your journal"
+const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
+
+// Unpairing asks the journal to drop this device too, and the journal is not always reachable
+// when it is asked. Saying nothing would leave the owner believing both halves happened.
+internal const val JOURNAL_KEPT_ITS_RECORD =
+    "unpaired on this device. your journal still lists it. open your journal and remove it there."
+
+internal const val FORGET_JOURNAL_BODY =
+    "nothing more from this device goes into your journal. " +
+        "what already reached it stays there."
+
+// ⛔ Deliberately does NOT enumerate the events. Four review rounds each found a different
+// writer missing from the list — the widget's own switch, a sync that threw before its emit
+// point — because an enumeration is a completeness claim and this log's writers are not a
+// closed set. What the owner needs here is that an empty log is normal and what it is for.
+internal const val EVENT_LOG_EMPTY =
+    "nothing yet. this fills as the app runs, and a problem report carries whatever is here."
+
 @Composable
 fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.EventLog) }) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         SelectionContainer {
             Text(
-                text = eventLog.ifBlank { "—" },
+                text = eventLog.ifBlank { EVENT_LOG_EMPTY },
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                 color = shellSecondaryInk,
             )
@@ -404,12 +447,6 @@ private fun Context.openAppSettings() {
             Uri.fromParts("package", packageName, null),
         ),
     )
-}
-
-private fun Context.openNotificationSettings() {
-    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-    startActivitySafely(intent)
 }
 
 /**

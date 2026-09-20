@@ -138,7 +138,7 @@ class PhoneJournalCacheScreenRuntimeTest {
             loaded = CountDownLatch(1)
             scenario.onActivity { activity ->
                 val texts = collectTexts(activity.findViewById(android.R.id.content))
-                assertTrue(texts.any { it.contains("still to remove: 1 — the solstone app will try again.") })
+                assertTrue(texts.any { it.contains("still to remove: 1. the solstone app will try again.") })
                 clickButton(activity.findViewById(android.R.id.content), "use 1 GB")
             }
             assertTrue(loaded.await(10, TimeUnit.SECONDS))

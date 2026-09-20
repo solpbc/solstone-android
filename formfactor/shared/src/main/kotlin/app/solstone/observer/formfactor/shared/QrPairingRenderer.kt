@@ -48,6 +48,14 @@ const val CAMERA_OFF_FOR_SCAN =
 const val OPEN_ANDROID_SETTINGS = "open android settings"
 
 /**
+ * The scanner's own running state, under the instruction to point the phone at the code.
+ *
+ * ⚠ Was `Scanning`, capitalised, which is the only capitalised word on that screen and reads as
+ * a machine reporting a mode rather than the app saying what it is doing.
+ */
+const val SCANNER_LOOKING = "looking for a code"
+
+/**
  * ⚠ Fallback for a switchboard that could not even run, so nothing was learned about why.
  * Deliberately the same words as [PAIR_GENERIC]: a caller with no information owes the owner the
  * same next step, and inventing a distinct message would imply a distinction we cannot support.

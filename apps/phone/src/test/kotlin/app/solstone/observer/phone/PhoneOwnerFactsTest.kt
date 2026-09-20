@@ -21,9 +21,20 @@ class PhoneOwnerFactsTest {
         assertEquals("journal-ca", facts.fingerprint)
         assertEquals("—", facts.location)
         assertEquals("—", facts.connection)
-        assertEquals("running", facts.intake)
-        assertEquals("direct", phoneJournalFacts(committed(true, false), null, false).location)
-        assertEquals("relay", phoneJournalFacts(committed(false, true), null, false).location)
+        // The same two words the ongoing notification uses; `running` beside the shade's `on`
+        // gave one state word two vocabularies.
+        assertEquals("on", facts.intake)
+        // `how it connects` is read by an owner, so it names the route rather than the transport.
+        assertEquals(
+            "straight to your journal",
+            phoneJournalFacts(committed(true, false), null, false).location,
+        )
+        assertEquals(
+            "through the relay sol pbc runs",
+            phoneJournalFacts(committed(false, true), null, false).location,
+        )
+        // `intake` follows the live service, never the owner's standing wish.
+        assertEquals("off", phoneJournalFacts(committed(true, false), null, intakeRunning = false).intake)
     }
 
     @Test

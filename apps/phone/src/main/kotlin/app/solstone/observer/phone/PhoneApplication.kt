@@ -25,6 +25,7 @@ import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHa
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
 import app.solstone.platform.fgs.shouldOfferStartAction
+import app.solstone.platform.work.SyncWorker
 
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneIntakeNotificationModel
@@ -48,6 +49,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     override fun onCreate() {
         PhoneDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { PhoneDiagLog.appendRaw(it) }
+        SyncWorker.syncDiag = { PhoneDiagLog.appendRaw(it) }
         super.onCreate()
         widgetStartOutcomes = PhoneWidgetStartOutcomeStore(applicationContext)
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
@@ -73,7 +75,10 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
             override fun onForegroundServiceStarted(sourceId: String) {
                 // ⚠ Turning a source on from the home-screen widget is the owner asking, exactly
                 // like the in-app toggle — so it clears the stop, or resume would refuse to bring
-                // the service back and the widget would look broken.
+                // the service back and the widget would look broken. ⛔ And it is the same event
+                // for the event log: a toggle that only the shell records leaves the widget's own
+                // switches invisible to an owner reading back what happened.
+                PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=on from=widget")
                 OwnerStoppedStore(this@PhoneApplication).clear()
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
                     is ForegroundSourceActivation.Actuated -> if (activation.result == SourceToggleResult.Applied) {
@@ -102,6 +107,7 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     internal fun intakeModel(): PhoneIntakeNotificationModel = cachedIntakeModel
 
     internal fun turnAudioOffFromWidget() {
+        PhoneDiagLog.appendRaw("kind=source id=$PHONE_WIDGET_AUDIO_SOURCE_ID wish=off from=widget")
         runtime.containerIfInitialized?.sources?.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
         refreshWidgetAndUpdate()
     }

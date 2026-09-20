@@ -187,6 +187,7 @@ class MuxSession(
                     MuxClassification.ACTIVE_DATA -> {
                         isPreOpen = false
                         val size = frame.payload.size
+                        val closesStream = (frame.flags and FLAG_CLOSE) != 0
                         if (size > 0) {
                             if (size > receiveWindow) {
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
@@ -198,10 +199,17 @@ class MuxSession(
                             cumulativeBytes += size
                             notifyObserver { it.onResponseDataConsumed(streamId, size, cumulativeBytes.toInt()) }
                             progressiveParser.feed(frame.payload, 0, size)
-                            writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                            receiveWindow += size
+                            // ⛔ No credit back on the frame that ends the stream. Framing § late
+                            // frames on unknown ids: a WINDOW for a forgotten id asserts the sender
+                            // believes the stream is live, so the peer must answer it with a RESET
+                            // and count a protocol error. Every request that ended on a payload-
+                            // carrying CLOSE was drawing one.
+                            if (!closesStream) {
+                                writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
+                                receiveWindow += size
+                            }
                         }
-                        if ((frame.flags and FLAG_CLOSE) != 0) {
+                        if (closesStream) {
                             successful = true
                             progressiveParser.onMuxClose(successful = true)
                             return
@@ -308,6 +316,7 @@ class MuxSession(
                     }
                     MuxClassification.ACTIVE_DATA -> {
                         val size = frame.payload.size
+                        val closesStream = (frame.flags and FLAG_CLOSE) != 0
                         if (size > 0) {
                             if (size > receiveWindow) {
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
@@ -320,10 +329,13 @@ class MuxSession(
                             receiveWindow -= size
                             response.write(frame.payload)
                             notifyObserver { it.onResponseDataConsumed(streamId, size, response.size()) }
-                            writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                            receiveWindow += size
+                            // See the streaming path above: no credit back on the closing frame.
+                            if (!closesStream) {
+                                writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
+                                receiveWindow += size
+                            }
                         }
-                        if ((frame.flags and FLAG_CLOSE) != 0) {
+                        if (closesStream) {
                             val parsed = parser(response.toByteArray())
                             successful = true
                             return parsed

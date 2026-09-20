@@ -67,31 +67,47 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
-            if (!SyncDrainGate.tryAcquire()) {
-                Log.i(TAG, "identity boundary already in use; deferring")
-                Result.retry()
-            } else {
-                try {
-                    val stores = syncStores(applicationContext)
-                    when (
-                        val credentials = stores.publisher.withMutationBoundary {
-                            recoverSyncCredentials(stores.publisher)
-                        }
-                    ) {
-                        is SyncCredentials.NeedsRepair -> {
-                            Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
-                            Result.failure()
-                        }
-                        is SyncCredentials.Ready -> sync(stores, credentials)
-                    }
-
-                } finally {
-                    SyncDrainGate.release()
-                }
-            }
+            // 🔴 One emit point, at the outermost return. The sync body has eight paths that
+            // return before its own outcome mapping — a busy drain gate, credentials needing
+            // repair, two relay-token verdicts and four catch arms — so logging deeper left the
+            // event log silent on exactly the runs an owner opens it to understand.
+            //
+            // ⚠ The verdict travels as this module's own `SyncOutcome`, never as a WorkManager
+            // `Result`: its subclasses are `@RestrictedApi` and lint refuses to read one back.
+            // ⛔ `runCatching`, not a bare call: `runSync` has a `finally` and no catch, so a
+            // throw out of the store open or the credential recovery would escape past the emit
+            // below — leaving the log silent on exactly the broken-store run it exists for.
+            val outcome = runCatching { runSync() }
+                .onFailure { Log.e(TAG, "sync threw before its own outcome", it) }
+                .getOrDefault(SyncOutcome.FAILURE)
+            runCatching { syncDiag?.invoke("kind=sync outcome=${outcome.name.lowercase()}") }
+            outcome.toWorkResult()
         }
 
-    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): Result {
+    private fun runSync(): SyncOutcome {
+        if (!SyncDrainGate.tryAcquire()) {
+            Log.i(TAG, "identity boundary already in use; deferring")
+            return SyncOutcome.RETRY
+        }
+        return try {
+            val stores = syncStores(applicationContext)
+            when (
+                val credentials = stores.publisher.withMutationBoundary {
+                    recoverSyncCredentials(stores.publisher)
+                }
+            ) {
+                is SyncCredentials.NeedsRepair -> {
+                    Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
+                    SyncOutcome.FAILURE
+                }
+                is SyncCredentials.Ready -> sync(stores, credentials)
+            }
+        } finally {
+            SyncDrainGate.release()
+        }
+    }
+
+    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): SyncOutcome {
         val db = openSolstonePersistenceDatabase(applicationContext)
         val poster = defaultHttpsPoster()
         try {
@@ -149,8 +165,8 @@ class SyncWorker(
                             dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
                             log = { message, throwable -> Log.w(TAG, message, throwable) },
                         )
-                        RelayTokenResult.ReconnectNeeded -> return Result.failure()
-                        RelayTokenResult.Obsolete -> return Result.retry()
+                        RelayTokenResult.ReconnectNeeded -> return SyncOutcome.FAILURE
+                        RelayTokenResult.Obsolete -> return SyncOutcome.RETRY
                     }
                 }
             }
@@ -181,19 +197,19 @@ class SyncWorker(
                 }
             }
 
-            return outcome.toWorkResult()
+            return outcome
         } catch (e: RelayDialWaitingException) {
             Log.i(TAG, "home offline, waiting; will retry", e)
-            return Result.retry()
+            return SyncOutcome.RETRY
         } catch (e: RelayWebSocketClosedException) {
             Log.w(TAG, "relay ws closed; retry", e)
-            return Result.retry()
+            return SyncOutcome.RETRY
         } catch (e: IOException) {
             Log.w(TAG, "sync io; retry", e)
-            return Result.retry()
+            return SyncOutcome.RETRY
         } catch (e: Exception) {
             Log.e(TAG, "sync failed", e)
-            return Result.failure()
+            return SyncOutcome.FAILURE
         } finally {
             db.close()
         }
@@ -222,6 +238,19 @@ class SyncWorker(
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .ifBlank { "android" }
+
+    companion object {
+        /**
+         * Where a sync outcome goes so the owner can see one.
+         *
+         * The app process installs this; this module owns no diagnostics sink of its own, and a
+         * worker with no app process behind it simply writes nowhere. Same shape as the
+         * foreground service's lifecycle hook, for the same reason.
+         */
+        @Volatile
+        @JvmStatic
+        var syncDiag: ((String) -> Unit)? = null
+    }
 }
 
 // Resamples device descriptions from platform facts at trigger time.

@@ -99,7 +99,7 @@ class JournalCacheTextTest {
             assertFalse(text.contains("nothing to do"), reason.name)
         }
         val residual = journalCacheText(state(pass = pass(residuals = 2)))
-        assertTrue(residual.contains("still to remove: 2 — the solstone app will try again."))
+        assertTrue(residual.contains("still to remove: 2. the solstone app will try again."))
         assertFalse(residual.contains("freed up"))
         assertFalse(residual.contains("nothing to do"))
     }

@@ -102,7 +102,10 @@ object ObserverNotification {
             manager.notify(
                 TEST_NOTIFICATION_ID,
                 builder(context)
-                    .setContentTitle("notifications")
+                    // ⚠ Not `notifications`. A title is what the notification IS, and in the
+                    // shade this one sat under a bare `notifications` that named the settings
+                    // row the owner had just pressed rather than the thing that arrived.
+                    .setContentTitle("test notification")
                     .setContentText("a short heads-up, never the content")
                     .setSmallIcon(android.R.drawable.stat_notify_sync)
                     .setAutoCancel(true)

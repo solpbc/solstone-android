@@ -64,12 +64,12 @@ fun journalCacheText(state: HarnessJournalCacheState): String = buildList {
         // read failed showed `in use: 0.0 MB` and `there still isn't enough room` on the same
         // screen. The `needs attention: couldn't measure…` line above already says the true thing.
         if (pass.pressureRemains && !pass.measurementFailed()) {
-            add("there still isn't enough room — either this is over your limit, or the device is low on space.")
+            add("there still isn't enough room. either this is over your limit, or the device is low on space.")
         }
         if (pass.durablyMarkedCount > 0) add("ready to remove: ${pass.durablyMarkedCount}")
         if (pass.reclaimedBytes > 0) add("freed up: ${decimalBytes(pass.reclaimedBytes)}")
         if (pass.retryableResidualCount > 0) {
-            add("still to remove: ${pass.retryableResidualCount} — the solstone app will try again.")
+            add("still to remove: ${pass.retryableResidualCount}. the solstone app will try again.")
         }
         if (pass.refusedPathCount > 0) {
             add("kept in place because removing them wouldn't be safe: ${pass.refusedPathCount}")

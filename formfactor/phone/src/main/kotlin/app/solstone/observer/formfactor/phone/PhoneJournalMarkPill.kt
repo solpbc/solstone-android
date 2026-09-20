@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.solstone.core.identity.JournalMarkPresentation
@@ -48,11 +49,16 @@ fun PhoneJournalMarkPill(
 ) {
     val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
     val isUnavailable = presentation is JournalMarkPresentation.Unavailable
-    val visibleWords = if (paired) {
-        mark?.words?.takeIf { it.size >= 2 }?.take(2)?.joinToString(" ")
-            ?: if (isUnavailable) "mark unavailable" else "your journal"
-    } else {
-        "connect a journal"
+    // 🔴 The two words are joined by a middot, here as everywhere else: § 2.2 makes the join
+    // part of how the mark is named, and § 4.3 / § 4.4 put `your`/`journal` and
+    // `mark`/`unavailable` in the same two-word slot. This pill had been joining them with a
+    // plain space, so the home screen named the journal differently from the pairing screen,
+    // the sheet's own header and the page an owner compares it against.
+    val wordPair: Pair<String, String>? = when {
+        !paired -> null
+        mark != null && mark.words.size >= 2 -> mark.words[0] to mark.words[1]
+        isUnavailable -> "mark" to "unavailable"
+        else -> "your" to "journal"
     }
     val accessibleName = when {
         !paired -> "connect a journal"
@@ -81,12 +87,24 @@ fun PhoneJournalMarkPill(
     ) {
         JournalMarkChips(side = 22.dp, mark = mark, unavailable = isUnavailable)
         Spacer(Modifier.width(9.dp))
-        Text(
-            text = visibleWords,
+        val wordStyle = TextStyle(
             fontFamily = ComfortaaBold,
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp,
-            color = MaterialTheme.colorScheme.onSurface,
         )
+        if (wordPair == null) {
+            Text(
+                text = "connect a journal",
+                style = wordStyle,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        } else {
+            // Two roles, never one whole-line colour (§ 2.2): the words are the claim, the
+            // middot is its quiet join. The pill sits on the shell surface rather than the
+            // mark card, so both inks come from the theme.
+            Text(text = wordPair.first, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = " · ", style = wordStyle, color = shellSecondaryInk)
+            Text(text = wordPair.second, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
+        }
     }
 }

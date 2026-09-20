@@ -464,6 +464,117 @@ class JournalBrowserStreamingHostTest {
         session.stop()
     }
 
+    /**
+     * The journal's live channel reaches the browser as valid chunked framing, one event at a time.
+     *
+     * A response the journal sends with no Content-Length arrives here de-chunked and is announced
+     * to the browser as `Transfer-Encoding: chunked`, so it has to leave framed. Written raw it is
+     * a malformed response and the browser drops the connection on the first body line, which is
+     * what an owner saw as a permanent *connection lost* card over the journal's home.
+     */
+    @Test
+    fun chunkedResponseReachesTheBrowserAsChunkedFramingEventByEvent() {
+        val firstEventDelivered = CountDownLatch(1)
+        val upstream = object : JournalBrowserUpstream {
+            override val isPoisoned: Boolean get() = false
+            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                error("Not used")
+
+            override fun requestStreaming(
+                method: String,
+                path: String,
+                headers: List<Pair<String, String>>,
+                bodySource: BrowserRequestBodySource?,
+                responseSink: BrowserResponseSink,
+            ) {
+                responseSink.onStatusAndHeaders(
+                    200,
+                    "OK",
+                    listOf(
+                        "Content-Type" to "text/event-stream",
+                        "Cache-Control" to "no-cache",
+                        "Transfer-Encoding" to "chunked",
+                    ),
+                )
+                val first = "event: continuity\ndata: {\"state\":\"connected\"}\n\n"
+                responseSink.onBodyChunk(first.toByteArray(Charsets.UTF_8), 0, first.toByteArray(Charsets.UTF_8).size)
+                // The browser must be able to read that event before the response ends: a live
+                // channel that only arrives at completion is not a live channel.
+                assertTrue(firstEventDelivered.await(5, TimeUnit.SECONDS), "first event never reached the client")
+                val second = "data: {\"tract\":\"link\"}\n\n"
+                responseSink.onBodyChunk(second.toByteArray(Charsets.UTF_8), 0, second.toByteArray(Charsets.UTF_8).size)
+                responseSink.onComplete()
+            }
+
+            override fun close() {}
+        }
+
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = { upstream },
+            diag = { diagEvents.add(it) },
+        )
+
+        val origin = session.start()
+        val uri = URI(origin.url)
+        Socket("127.0.0.1", uri.port).use { sock ->
+            val out = sock.getOutputStream()
+            out.write(
+                ("GET /sse/events HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n")
+                    .toByteArray(Charsets.US_ASCII),
+            )
+            out.flush()
+
+            val input = BufferedInputStream(sock.getInputStream())
+            val statusLine = readLine(input)
+            assertEquals("HTTP/1.1 200 OK", statusLine)
+            val responseHeaders = mutableListOf<String>()
+            while (true) {
+                val line = readLine(input)
+                if (line.isEmpty()) break
+                responseHeaders.add(line)
+            }
+            assertTrue(
+                responseHeaders.any { it.equals("Transfer-Encoding: chunked", ignoreCase = true) },
+                "expected chunked framing to be announced, got: $responseHeaders",
+            )
+
+            // Read exactly one chunk; its size line must parse as hex, which is the whole defect.
+            val firstSizeLine = readLine(input)
+            val firstSize = firstSizeLine.substringBefore(';').trim().toIntOrNull(16)
+            assertTrue(firstSize != null && firstSize > 0, "not a chunk size line: '$firstSizeLine'")
+            val firstBody = ByteArray(firstSize!!)
+            var filled = 0
+            while (filled < firstSize) {
+                val read = input.read(firstBody, filled, firstSize - filled)
+                if (read < 0) break
+                filled += read
+            }
+            assertEquals(firstSize, filled)
+            assertEquals("event: continuity\ndata: {\"state\":\"connected\"}\n\n", String(firstBody, Charsets.UTF_8))
+            assertEquals("", readLine(input))
+            firstEventDelivered.countDown()
+
+            val secondSizeLine = readLine(input)
+            val secondSize = secondSizeLine.substringBefore(';').trim().toIntOrNull(16)
+            assertTrue(secondSize != null && secondSize > 0, "not a chunk size line: '$secondSizeLine'")
+            val secondBody = ByteArray(secondSize!!)
+            filled = 0
+            while (filled < secondSize) {
+                val read = input.read(secondBody, filled, secondSize - filled)
+                if (read < 0) break
+                filled += read
+            }
+            assertEquals("data: {\"tract\":\"link\"}\n\n", String(secondBody, Charsets.UTF_8))
+            assertEquals("", readLine(input))
+            assertEquals("0", readLine(input))
+            assertEquals("", readLine(input))
+        }
+
+        session.stop()
+    }
+
     private fun readFullResponse(input: java.io.InputStream): String {
         val out = ByteArrayOutputStream()
         val buf = ByteArray(1024)

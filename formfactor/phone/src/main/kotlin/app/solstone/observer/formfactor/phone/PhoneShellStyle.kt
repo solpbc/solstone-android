@@ -103,6 +103,16 @@ object ShellMetrics {
     /** The hairline weight. Thin enough to be an edge, not a frame. */
     val hairline = 1.dp
 
+    /**
+     * The band the floating journal pill occupies at the bottom of the shell.
+     *
+     * 🔴 The pill is drawn OVER the content slot, so nothing in the content ever knew it was
+     * there: on home it covered the bottom row's status line, and in a settings pane the last
+     * row sat half under it with no sign there was more. The shell reserves it now, so every
+     * surface ends above the pill rather than behind it.
+     */
+    val journalPillSlot = 56.dp
+
     /** Inset for a pane's scrolling content, so nothing sits against the app bar. */
     val paneContentPadding = PaddingValues(
         start = PHONE_CONTENT_MARGIN_DP.dp,

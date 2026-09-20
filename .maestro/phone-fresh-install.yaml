@@ -1,0 +1,66 @@
+# The un-granted leg of the real-hardware gate.
+#
+# 🔴 WHY THIS EXISTS. `phone-smoke.yaml` runs after an `install -r -g`, which grants every runtime
+# permission before the app ever starts. That is the right shape for a reachability gate — it
+# walks the whole shell without a dialog interrupting — but it means the gate has NEVER seen the
+# app a new owner sees. A1 is what that cost: the app's main call to action opened a blank screen
+# carrying a raw platform exception (`validateClientPermissionsLocked … cannot open camera "0"
+# without camera permission`) because the scanner opened the camera before asking for it. That
+# shipped in 2.1.0 and 2.1.1 with every gate green, twice, because no gate ever installed without
+# `-g`.
+#
+# ⛔ So this leg installs with NOTHING granted, and the permission prompts are part of the flow it
+# drives rather than something removed before it starts. It is deliberately short: it covers the
+# first minute of a new install, which is the window `-g` erases.
+#
+# ⚠ The system dialog's exact wording is the OEM's, so every assertion on it is a loose regex.
+# What is asserted precisely is OUR side: that a system prompt arrived at all before any camera
+# was opened, and that declining lands on our own copy rather than on a platform exception.
+appId: app.solstone.observer.phone
+---
+# `clearState` here, unlike the granted leg: this flow is about first-run, and it must start
+# from one whether or not the installer left anything behind.
+- clearState
+- launchApp
+
+# The welcome card an owner meets. Nothing has been asked for yet.
+- assertVisible:
+    text: "connect a journal"
+    timeout: 20000
+
+# 🔴 The A1 path. Tapping the app's main call to action must reach the system camera prompt —
+# not a camera.
+- tapOn:
+    text: "connect a journal"
+
+- assertVisible:
+    text: ".*(take pictures|Camera|camera).*"
+    timeout: 15000
+
+# ⛔ And the platform's refusal must never reach the owner as platform words. Declining lands on
+# our own sentence and our own way out.
+- runFlow:
+    when:
+      visible:
+        text: ".*(Don.t allow|DENY|Deny).*"
+    commands:
+      - tapOn:
+          text: ".*(Don.t allow|DENY|Deny).*"
+      - assertVisible:
+          text: "open android settings"
+          timeout: 15000
+      - assertNotVisible:
+          text: ".*validateClientPermissions.*"
+      - assertNotVisible:
+          text: ".*Camera error.*"
+
+# Back out to the shell and prove the deck is still the deck: a declined permission is not a
+# broken app, and no source may have been turned on by the asking.
+- back
+- assertVisible:
+    text: "connect a journal"
+    timeout: 15000
+- assertVisible:
+    text: "camera"
+- assertVisible:
+    text: "off"

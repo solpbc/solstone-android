@@ -604,6 +604,16 @@ class JournalBrowserSession(
             var isTimeoutFailure = false
             var isIdentityFailure = false
             var completedSuccessfully = false
+            // 🔴 The parser hands this sink DE-CHUNKED body bytes. When the response we announce to
+            // the browser is `Transfer-Encoding: chunked` — which is every response the journal
+            // sends without a Content-Length, and so every long-lived one — those bytes have to be
+            // re-framed as chunks on the way out. Writing them raw under a chunked announcement is
+            // a malformed response: the browser reads the first body line as a chunk-size line,
+            // fails to parse it as hex and drops the connection immediately. That is what killed
+            // the journal's own live channel (`EventSource('/sse/events')`) inside the app, which
+            // an owner saw as a permanent *connection lost* card over the journal's home.
+            var emitChunkedFraming = false
+            var pendingTrailers: List<Pair<String, String>> = emptyList()
 
             val responseSink = object : BrowserResponseSink {
                 override fun onStatusAndHeaders(status: Int, reason: String, resHeaders: List<Pair<String, String>>) {
@@ -619,6 +629,11 @@ class JournalBrowserSession(
                         statusCode = status,
                     ) ?: throw IOException("Redirect rebase rejected")
 
+                    emitChunkedFraming = method != "HEAD" && formatted.any {
+                        it.first.equals("transfer-encoding", ignoreCase = true) &&
+                            it.second.contains("chunked", ignoreCase = true)
+                    }
+
                     val sb = StringBuilder()
                     val reasonStr = reasonText(status, reason)
                     sb.append("HTTP/1.1 $status $reasonStr\r\n")
@@ -633,13 +648,34 @@ class JournalBrowserSession(
 
                 override fun onBodyChunk(chunk: ByteArray, offset: Int, length: Int) {
                     if (method != "HEAD" && length > 0) {
+                        if (emitChunkedFraming) {
+                            outputStream.write(
+                                "${length.toString(16)}\r\n".toByteArray(Charsets.US_ASCII),
+                            )
+                        }
                         outputStream.write(chunk, offset, length)
+                        if (emitChunkedFraming) {
+                            outputStream.write(CRLF)
+                        }
                         outputStream.flush()
                         browserSinkAcceptedBytes = true
                     }
                 }
 
+                override fun onTrailers(trailers: List<Pair<String, String>>) {
+                    pendingTrailers = trailers
+                }
+
                 override fun onComplete() {
+                    if (emitChunkedFraming) {
+                        val end = StringBuilder("0\r\n")
+                        for ((k, v) in pendingTrailers) {
+                            end.append("$k: $v\r\n")
+                        }
+                        end.append("\r\n")
+                        outputStream.write(end.toString().toByteArray(Charsets.US_ASCII))
+                        emitChunkedFraming = false
+                    }
                     outputStream.flush()
                     completedSuccessfully = true
                 }
@@ -927,6 +963,7 @@ class JournalBrowserSession(
         const val MAX_REQUEST_HEADERS_COUNT = 100
         const val REQUEST_DEADLINE_MS = 120_000
         const val IDLE_READ_TIMEOUT_MS = 10_000
+        private val CRLF = "\r\n".toByteArray(Charsets.US_ASCII)
 
         val ALLOWED_METHODS = setOf("GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         val DISALLOWED_METHODS = setOf("TRACE", "CONNECT")

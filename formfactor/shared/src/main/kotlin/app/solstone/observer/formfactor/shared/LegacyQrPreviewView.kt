@@ -83,7 +83,7 @@ class LegacyQrPreviewView(
                 opened.parameters = params
                 opened.setPreviewCallback(this)
                 opened.startPreview()
-                report("Scanning")
+                report(SCANNER_LOOKING)
             } catch (e: Exception) {
                 reportCameraFailure(e.toString())
                 releaseCamera()
@@ -210,7 +210,7 @@ class LegacyQrPreviewView(
     }
 
     private fun report(message: String) {
-        post { if (!closed || message != "Scanning") status(message) }
+        post { if (!closed || message != SCANNER_LOOKING) status(message) }
     }
 
     private companion object {

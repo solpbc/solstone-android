@@ -114,7 +114,7 @@ class Camera2QrPreviewView(
                 },
                 cameraHandler,
             )
-            report("Scanning")
+            report(SCANNER_LOOKING)
         } catch (e: Exception) {
             reportCameraFailure(e.toString())
             releaseCamera()
@@ -316,7 +316,7 @@ class Camera2QrPreviewView(
     }
 
     private fun report(message: String) {
-        post { if (!closed || message != "Scanning") status(message) }
+        post { if (!closed || message != SCANNER_LOOKING) status(message) }
     }
 
     private companion object {

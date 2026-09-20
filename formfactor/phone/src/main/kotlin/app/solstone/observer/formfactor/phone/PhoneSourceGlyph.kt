@@ -52,7 +52,7 @@ fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status
         if (paired) "not sending to your journal. turn it on any time." else "turn it on any time."
     SourceState.PAUSED -> "you paused this. resume to start sending again."
     SourceState.SETTING_UP ->
-        if (paired) "getting ready — connecting to your journal." else "getting ready…"
+        if (paired) "getting ready. connecting to your journal." else "getting ready…"
     SourceState.NEEDS_ATTENTION ->
         sourceDetailRule(status.reason).diagnosis
             // § 5.1's locked honest-unknown line. A source that reaches

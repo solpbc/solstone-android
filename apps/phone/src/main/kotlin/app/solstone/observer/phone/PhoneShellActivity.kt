@@ -45,6 +45,18 @@ import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.platform.fgs.ObserverForegroundService
+import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_REACHED
+import app.solstone.observer.formfactor.phone.PhoneTheme
+import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_RUNNING
+import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_UNREACHED
+import app.solstone.platform.work.JournalRevokeOutcome
+import app.solstone.platform.work.revokeThisDeviceOnJournal
+import app.solstone.observer.harness.HarnessPlStatus
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.platform.fgs.shouldAskForNotifications
 import app.solstone.platform.fgs.ObserverNotification
@@ -67,6 +79,14 @@ class PhoneShellActivity : ComponentActivity() {
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private var notificationsEnabled by mutableStateOf(false)
+    /**
+     * What the last `check connection` found, cleared when the shell leaves the foreground.
+     *
+     * ⚠ The result answers "what happened when I just tapped this," so it does not outlive the
+     * session that tapped it. Left standing it can sit under a `connection` row that has since
+     * gone the other way, which is worse than showing nothing.
+     */
+    private var connectionCheck by mutableStateOf<String?>(null)
     /**
      * Re-establish intake on resume — ⛔ **without deciding, on the owner's behalf, that they want
      * it.**
@@ -139,14 +159,51 @@ class PhoneShellActivity : ComponentActivity() {
                 PhoneProblemReportStore(filesDir.resolve("problem-reports"))
             }
             var problemReports by remember { mutableStateOf(problemReportStore.list()) }
+            val shellScope = rememberCoroutineScope()
             var journalMutationFailed by remember { mutableStateOf(false) }
+            var journalMutationFromThisDevice by remember { mutableStateOf(false) }
+            var journalKeptItsRecord by remember { mutableStateOf(false) }
+            // One routine, two entry points. The pane that was pressed is what decides which
+            // pane's failure note the owner is shown.
+            val unpairFrom: (Boolean) -> Unit = { fromThisDevice ->
+                journalMutationFailed = false
+                journalMutationFromThisDevice = fromThisDevice
+                journalKeptItsRecord = false
+                PhoneDiagLog.appendRaw("kind=unpair")
+                shellScope.launch {
+                    // 🔴 The journal half runs FIRST and on its own thread: it authenticates with
+                    // the very credential `forget()` is about to delete. It never blocks the local
+                    // half — an owner who has lost their journal still unpairs, and is told the
+                    // journal kept its record rather than refused.
+                    val revoke = withContext(Dispatchers.IO) {
+                        revokeThisDeviceOnJournal(stores.publisher)
+                    }
+                    PhoneDiagLog.appendRaw("kind=unpair revoke=${revoke.name.lowercase()}")
+                    journalKeptItsRecord = revoke == JournalRevokeOutcome.UNREACHED
+                    if (stores.publisher.forget() is GraphMutationResult.Cleared) {
+                        stores.journalVersionCoordinator.onIdentityChanged()
+                        stores.relayAccessCoordinator.onIdentityChanged()
+                        stores.journalIdentityCoordinator.onIdentityChanged()
+                        statusViewModel.refresh()
+                    } else {
+                        journalMutationFailed = true
+                        journalKeptItsRecord = false
+                    }
+                }
+            }
             var notificationTestFailed by remember { mutableStateOf(false) }
             var hapticsEnabled by remember {
                 mutableStateOf(hapticsStore.getBoolean("haptics-enabled", true))
             }
             DisposableEffect(stores) {
                 val pairingSubscription = stores.publisher.subscribe { next ->
-                    mainHandler.post { pairingSnapshot = next }
+                    mainHandler.post {
+                        val before = pairingSnapshot
+                        pairingSnapshot = next
+                        if (pairingDiagKey(before) != pairingDiagKey(next)) {
+                            PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(next)}")
+                        }
+                    }
                 }
                 val removeMarkListener = stores.journalIdentityCoordinator.addGenerationListener { generation, next ->
                     mainHandler.post {
@@ -175,7 +232,8 @@ class PhoneShellActivity : ComponentActivity() {
             val journalFacts = phoneJournalFacts(
                 pairing = pairingSnapshot,
                 status = snapshot?.status,
-                intakeRunning = container.controller.desiredOn,
+                intakeRunning = ObserverForegroundService.heldCaptureForegroundTypes != null,
+                check = connectionCheck,
             )
             val storageUsed = container.journalCacheState().latestPass?.measuredUsageBytes
                 ?.let(::decimalBytes)
@@ -184,7 +242,7 @@ class PhoneShellActivity : ComponentActivity() {
                 is DiagnosticLogRead.Complete -> log.content
                 is DiagnosticLogRead.Partial -> "some events couldn't be read.\n${log.content}"
                 DiagnosticLogRead.Unreadable -> "the event log couldn't be read."
-                null -> "—"
+                null -> "the event log couldn't be read."
             }
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
@@ -217,6 +275,8 @@ class PhoneShellActivity : ComponentActivity() {
                 eventLog = eventLog,
                 problemReports = problemReports.map { it.savedAt },
                 journalMutationFailed = journalMutationFailed,
+                journalMutationFromThisDevice = journalMutationFromThisDevice,
+                journalKeptItsRecord = journalKeptItsRecord,
                 notificationTestFailed = notificationTestFailed,
                 showWelcome = shouldShowWelcome(
                     wishes = wishStoreState,
@@ -226,18 +286,27 @@ class PhoneShellActivity : ComponentActivity() {
                     hapticsEnabled = enabled
                     hapticsStore.edit().putBoolean("haptics-enabled", enabled).apply()
                 },
-                onCheckConnection = statusViewModel::refresh,
-                onForgetJournal = {
-                    journalMutationFailed = false
-                    if (stores.publisher.forget() is GraphMutationResult.Cleared) {
-                        stores.journalVersionCoordinator.onIdentityChanged()
-                        stores.relayAccessCoordinator.onIdentityChanged()
-                        stores.journalIdentityCoordinator.onIdentityChanged()
+                onCheckConnection = {
+                    // ⚠ The probe was already real; what was missing was any sign it had run.
+                    // Tapping produced no spinner, no result and no timestamp, so the control
+                    // read as dead.
+                    PhoneDiagLog.appendRaw("kind=check-connection")
+                    connectionCheck = CHECK_CONNECTION_RUNNING
+                    shellScope.launch {
+                        val reachable = withContext(Dispatchers.IO) {
+                            runCatching { container.controller.probePlStatus() }
+                                .getOrNull() is HarnessPlStatus.Reachable
+                        }
+                        PhoneDiagLog.appendRaw(
+                            "kind=check-connection result=${if (reachable) "reached" else "unreached"}",
+                        )
+                        connectionCheck =
+                            if (reachable) CHECK_CONNECTION_REACHED else CHECK_CONNECTION_UNREACHED
                         statusViewModel.refresh()
-                    } else {
-                        journalMutationFailed = true
                     }
                 },
+                onForgetJournal = { unpairFrom(false) },
+                onUnpairThisDevice = { unpairFrom(true) },
                 onOpenNotificationSettings = {
                     startActivity(
                         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -293,13 +362,18 @@ class PhoneShellActivity : ComponentActivity() {
                 captureWidthDp = capture.windowWidthDp,
             )
             if (journalOpen && pairingSnapshot is PairingGraphSnapshot.Committed) {
+                // 🔴 The theme is applied INSIDE `PhoneShell`, and this sheet is a sibling of it
+                // rather than a child — so it had been drawing on Material's stock scheme: a
+                // lavender header, a purple `close`, a purple `try again`. The journal is the
+                // app's content half and cannot be the one surface in a different palette.
+                PhoneTheme {
                 JournalSheet(
                     presentation = currentMarkPresentation,
                     sessionFactory = {
                         JournalBrowserSession(
                             publisher = stores.publisher,
                             upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher),
-                            diag = {},
+                            diag = { PhoneDiagLog.emit(it) },
                         )
                     },
                     onClose = { journalOpen = false },
@@ -308,9 +382,33 @@ class PhoneShellActivity : ComponentActivity() {
                         openPairingScanner()
                     },
                 )
+                }
             }
         }
     }
+
+    /** The event-log word for a pairing snapshot. */
+    private fun pairingDiagState(snapshot: PairingGraphSnapshot): String =
+        when (snapshot) {
+            is PairingGraphSnapshot.Committed -> "paired"
+            else -> "none"
+        }
+
+    /**
+     * What has to change before a pairing is worth a line in the event log.
+     *
+     * ⛔ Not the state word. The publisher republishes on every revision bump, so a log keyed on
+     * `paired` / `none` would be noise — but pairing a *second* journal over the first swaps the
+     * home in place with no intermediate absent state, so keying on the word alone wrote nothing
+     * at all for the one flow the same pane offers (`pair a new journal`). The generation is what
+     * actually moves: it is the journal's instance plus this device's own certificate.
+     */
+    private fun pairingDiagKey(snapshot: PairingGraphSnapshot): String =
+        when (snapshot) {
+            is PairingGraphSnapshot.Committed ->
+                "paired:${snapshot.pairing.instanceId}:${snapshot.pairing.clientCertFingerprint}"
+            else -> "none"
+        }
 
     private fun openPairingScanner() {
         startActivity(
@@ -418,6 +516,7 @@ class PhoneShellActivity : ComponentActivity() {
      * prompt are one owner action.
      */
     private fun onSourceWish(sourceId: String, wish: SourceWish) {
+        PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=${wish.name.lowercase()}")
         sourcesViewModel.setWish(sourceId, wish)
         if (wish != SourceWish.On) return
         // 🔴 Turning a source on IS asking again, so it clears the stop and brings intake back.
@@ -475,6 +574,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return
         container.captureAuthority.release(captureOwnerToken)

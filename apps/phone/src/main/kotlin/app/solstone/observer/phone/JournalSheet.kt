@@ -26,8 +26,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -102,12 +104,18 @@ internal fun JournalSheet(
             )
             TextButton(onClick = onClose) { Text("close") }
         }
-        key(retryGeneration) {
-            JournalBrowserPane(
-                sessionFactory = sessionFactory,
-                onRetry = { retryGeneration += 1 },
-                onPairingRepair = onPairingRepair,
-            )
+        // The sheet asks for no window insets so its surface can paint under the
+        // navigation bar, which means the journal itself has to stop above it. Without
+        // this the journal's own bottom tab bar lands under Android's navigation bar and
+        // cannot be tapped at all — a tap on `search` reaches the system bar instead.
+        Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+            key(retryGeneration) {
+                JournalBrowserPane(
+                    sessionFactory = sessionFactory,
+                    onRetry = { retryGeneration += 1 },
+                    onPairingRepair = onPairingRepair,
+                )
+            }
         }
     }
 }
@@ -281,10 +289,10 @@ internal fun createJournalWebView(
                         if (insetPolicy.applyNativeSystemInsets) maxOf(system.right, cutout.right) else 0,
                         if (insetPolicy.applyNativeImeInsets) ime.right else 0,
                     ),
-                    maxOf(
-                        if (insetPolicy.applyNativeSystemInsets) maxOf(system.bottom, cutout.bottom) else 0,
-                        if (insetPolicy.applyNativeImeInsets) ime.bottom else 0,
-                    ),
+                    // No bottom system inset here on any WebView build: the sheet already
+                    // holds the journal above the navigation bar, and adding it twice
+                    // leaves a dead band of sheet colour under the tab bar.
+                    if (insetPolicy.applyNativeImeInsets) ime.bottom else 0,
                 )
             } else {
                 @Suppress("DEPRECATION")
@@ -292,7 +300,7 @@ internal fun createJournalWebView(
                     if (insetPolicy.applyNativeSystemInsets) insets.systemWindowInsetLeft else 0,
                     if (insetPolicy.applyNativeSystemInsets) insets.systemWindowInsetTop else 0,
                     if (insetPolicy.applyNativeSystemInsets) insets.systemWindowInsetRight else 0,
-                    if (insetPolicy.applyNativeSystemInsets) insets.systemWindowInsetBottom else 0,
+                    0,
                 )
             }
             insets

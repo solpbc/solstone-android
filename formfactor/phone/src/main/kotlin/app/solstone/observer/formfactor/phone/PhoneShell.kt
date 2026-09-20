@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -94,10 +97,19 @@ fun PhoneShell(
                     )
                 }
             ) { paddingValues ->
+                // The pill floats over the content slot, so the Scaffold's own padding does not
+                // account for it. Reserve its band here, once, rather than in each surface.
+                val layoutDirection = LocalLayoutDirection.current
+                val contentPadding = PaddingValues(
+                    start = paddingValues.calculateStartPadding(layoutDirection),
+                    top = paddingValues.calculateTopPadding(),
+                    end = paddingValues.calculateEndPadding(layoutDirection),
+                    bottom = paddingValues.calculateBottomPadding() + ShellMetrics.journalPillSlot,
+                )
                 Box(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxSize()) {
                         shellAttachment()
-                        Box(Modifier.weight(1f)) { content(paddingValues) }
+                        Box(Modifier.weight(1f)) { content(contentPadding) }
                     }
                     PhoneJournalPill(
                         modifier = Modifier

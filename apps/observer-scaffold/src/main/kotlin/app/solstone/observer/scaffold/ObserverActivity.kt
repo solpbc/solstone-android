@@ -55,6 +55,9 @@ class ObserverActivity : ComponentActivity() {
         if (isOwnerTask(intent, firstLaunch = savedInstanceState == null)) {
             harnessUi.dismissTo(::finish)
         }
+        // The harness menu's own `Scan pair QR` entry takes the same camera gate the shell's
+        // does. Without this it called straight into the preview and opened the camera first.
+        harnessUi.scanEntry = ::enterScan
         setContentView(harnessUi.view())
         if (!routeDirectIntent(intent) && spec.handlesPairLinks && savedInstanceState == null) {
             routePairLinkIntent(intent)

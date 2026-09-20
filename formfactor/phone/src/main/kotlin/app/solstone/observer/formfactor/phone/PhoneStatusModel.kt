@@ -28,8 +28,8 @@ data class PhoneJournalFacts(
     val connection: String = "—",
     val fingerprint: String = "—",
     val intake: String = "—",
-    val reconnects: String = "—",
-    val errors: String = "—",
+    /** What the last `check connection` found, or null before one has been asked for. */
+    val check: String? = null,
 )
 
 fun journalVersionDisplayText(reading: JournalVersionReading?): String = when (reading?.freshness) {
