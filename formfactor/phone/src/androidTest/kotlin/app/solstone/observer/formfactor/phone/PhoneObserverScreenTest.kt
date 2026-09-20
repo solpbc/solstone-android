@@ -834,6 +834,87 @@ class PhoneObserverScreenTest {
         composeRule.onNodeWithTag(tag).assertIsFocused()
     }
 
+    @Test
+    fun unpairedPillClickShowsYourJournalPaneLocally() {
+        var connectCalls = 0
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false),
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+                onConnectJournal = { connectCalls += 1 },
+            )
+        }
+        composeRule.onNodeWithTag("journalMarkPill").performClick()
+        assertEquals(0, connectCalls)
+        composeRule.onNodeWithTag("yourJournalConnect").assertIsDisplayed().performClick()
+        assertEquals(1, connectCalls)
+    }
+
+    @Test
+    fun welcomeCardConnectJournalIncrementsCount() {
+        var connectCalls = 0
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false),
+                showWelcome = true,
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+                onConnectJournal = { connectCalls += 1 },
+            )
+        }
+        composeRule.onNodeWithTag("welcomeConnectJournal").assertIsDisplayed().performClick()
+        assertEquals(1, connectCalls)
+    }
+
+    @Test
+    fun howYourPhoneConnectsRowLabelPresentInStatusPaneAndAbsentInTechnicalDetails() {
+        val facts = PhoneJournalFacts(
+            location = "straight to your journal",
+            connection = "connected",
+            fingerprint = "ca-1",
+        )
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                journalFacts = facts,
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+            )
+        }
+        composeRule.onNodeWithTag("statusPill").performClick()
+        composeRule.onNodeWithText("how your phone connects").assertIsDisplayed()
+        composeRule.onNodeWithText("how it connects").assertDoesNotExist()
+
+        composeRule.onNodeWithTag("statusTechnicalDetails").performClick()
+        composeRule.onNodeWithText("how your phone connects").assertDoesNotExist()
+    }
+
+    @Test
+    fun howYourPhoneConnectsRowLabelPresentInYourJournalPane() {
+        val facts = PhoneJournalFacts(
+            location = "straight to your journal",
+            connection = "connected",
+            fingerprint = "ca-1",
+        )
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(audioOn()),
+                status = connected(),
+                journalPaired = true,
+                journalFacts = facts,
+                initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.YourJournal),
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+            )
+        }
+        composeRule.onNodeWithText("how your phone connects").assertIsDisplayed()
+        composeRule.onNodeWithText("how it connects").assertDoesNotExist()
+    }
+
     private fun paneTitleMatcher(title: String) = SemanticsMatcher("pane $title") { node ->
         node.config.getOrNull(SemanticsProperties.PaneTitle) == title
     }

@@ -62,7 +62,7 @@ fun PhoneYourJournalPane(
             if (paired) {
                 PaneFactRow(label = "fingerprint", value = facts.fingerprint)
                 PaneRowDivider()
-                PaneFactRow(label = "how it connects", value = facts.location)
+                PaneFactRow(label = "how your phone connects", value = facts.location)
                 PaneRowDivider()
                 PaneFactRow(label = "connection", value = facts.connection)
                 PaneRowDivider()

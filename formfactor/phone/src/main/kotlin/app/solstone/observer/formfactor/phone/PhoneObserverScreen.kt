@@ -324,7 +324,13 @@ internal fun PhoneObserverScreen(
             val showsDeck = top == null || renderSplit
             if (showsDeck && !marksOwnPane) {
                 PhoneJournalMarkPill(
-                    onClick = if (journalPaired) onOpenJournal else onConnectJournal,
+                    onClick = {
+                        if (journalPaired) {
+                            onOpenJournal()
+                        } else {
+                            detailStack = detailStack.showInDetail(PhoneRoute.YourJournal)
+                        }
+                    },
                     paired = journalPaired,
                     presentation = journalMarkPresentation,
                     modifier = Modifier.focusRequester(journalFocusRequester),

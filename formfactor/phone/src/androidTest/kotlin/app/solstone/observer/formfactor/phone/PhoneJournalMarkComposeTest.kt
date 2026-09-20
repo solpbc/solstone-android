@@ -272,6 +272,24 @@ class PhoneJournalMarkComposeTest {
         composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
     }
 
+    @Test
+    fun unpairedPillRendersGenericMarkAndAccessibleName() {
+        composeRule.setContent {
+            PhoneTheme {
+                PhoneJournalMarkPill(
+                    onClick = {},
+                    paired = false,
+                    presentation = JournalMarkPresentation.Generic,
+                )
+            }
+        }
+        composeRule.onNodeWithTag("journalMarkPill")
+            .assertContentDescriptionEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME)
+        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("connect a journal", useUnmergedTree = true).assertDoesNotExist()
+    }
+
     private fun assertImagesDiffer(image1: ImageBitmap, image2: ImageBitmap) {
         val bmp1 = image1.asAndroidBitmap()
         val bmp2 = image2.asAndroidBitmap()

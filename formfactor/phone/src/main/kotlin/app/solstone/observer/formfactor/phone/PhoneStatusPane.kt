@@ -140,7 +140,7 @@ internal fun PhonePairedStatusContent(
     PhonePairedStatusSummary(model)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneFactRow(label = "journal version", value = journalFacts.version)
-    PaneFactRow(label = "how it connects", value = journalFacts.location)
+    PaneFactRow(label = "how your phone connects", value = journalFacts.location)
     TextButton(
         onClick = onOpenTechnicalDetails,
         modifier = Modifier.testTag("statusTechnicalDetails"),

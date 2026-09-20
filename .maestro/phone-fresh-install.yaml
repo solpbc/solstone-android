@@ -39,7 +39,7 @@ appId: app.solstone.observer.phone
       text: "connect a journal"
     timeout: 20000
 
-# 🔴 The A1 path. Tapping the app's main call to action must reach the system camera prompt —
+# 🔴 The A1 path. Tapping the welcome card's main call to action (welcomeConnectJournal, not the journal mark pill) must reach the system camera prompt —
 # not a camera.
 - tapOn:
     text: "connect a journal"

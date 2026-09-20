@@ -25,7 +25,7 @@ appId: app.solstone.observer.phone
 # not for.
 - launchApp
 
-# --- The deck. Both destinations, the journal pill, the status pill. ---
+# --- The deck. Both destinations, the generic journal pill, the status pill. ---
 # The deck's sources load asynchronously, so the first assertion waits rather than racing the
 # first frame.
 - extendedWaitUntil:
@@ -34,9 +34,17 @@ appId: app.solstone.observer.phone
 - assertVisible: "add more"
 - assertVisible: "photos and files"
 - assertVisible: "sources"
-- assertVisible: "connect a journal"
+# The unpaired journal mark pill now renders as the generic mark ("your journal, not set up yet")
+# rather than "connect a journal", matching the mark card.
+- assertVisible: "your journal, not set up yet"
 - assertVisible: "not paired"
 - takeScreenshot: artifacts/hitl/home
+
+# --- The generic journal pill opens the journal pane when tapped unpaired. ---
+- tapOn: "your journal, not set up yet"
+- assertVisible: "connect a journal"
+- pressKey: Back
+- assertVisible: "import"
 
 # --- The status pane opens from its pill and can be dismissed. ---
 # The pane is a popup anchored under the pill; it had been rendering off the top of the screen,
@@ -94,6 +102,7 @@ appId: app.solstone.observer.phone
 - assertVisible: "privacy"
 - takeScreenshot: artifacts/hitl/shelf
 
+# The journal-pane pairing row (yourJournalConnect), distinct from the generic home pill earlier.
 - tapOn: "your journal"
 - assertVisible: "connect a journal"
 - takeScreenshot: artifacts/hitl/your-journal

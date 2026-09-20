@@ -35,10 +35,10 @@ import app.solstone.core.identity.JournalMarkPresentation
  * 5 scopes the pill explicitly ("the home pill carries the chip pair *and* the words"),
  * and the approved mock renders it exactly this way at chip side 22.
  *
- * Unpaired, the words are `connect a journal` — § 3's locked no-journal action, which
- * is what the approved mock puts here. ⛔ Not `open in journal` or any other action
- * label once a journal *is* paired: that slot is the journal's identity, and rendering
- * an action there is the defect the iOS pass fixed.
+ * Unpaired, the pill uses the generic mark (`your` · `journal`, `your journal, not set up yet`)
+ * matching the mark card. ⛔ Not `open in journal` or any other action label once a journal *is*
+ * paired: that slot is the journal's identity, and rendering an action there is the defect the iOS
+ * pass fixed.
  */
 @Composable
 fun PhoneJournalMarkPill(
@@ -54,14 +54,12 @@ fun PhoneJournalMarkPill(
     // `mark`/`unavailable` in the same two-word slot. This pill had been joining them with a
     // plain space, so the home screen named the journal differently from the pairing screen,
     // the sheet's own header and the page an owner compares it against.
-    val wordPair: Pair<String, String>? = when {
-        !paired -> null
+    val wordPair: Pair<String, String> = when {
         mark != null && mark.words.size >= 2 -> mark.words[0] to mark.words[1]
         isUnavailable -> "mark" to "unavailable"
         else -> "your" to "journal"
     }
     val accessibleName = when {
-        !paired -> "connect a journal"
         mark != null -> listOf(
             mark.icon1.colorName,
             mark.icon2.colorName,
@@ -92,19 +90,11 @@ fun PhoneJournalMarkPill(
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp,
         )
-        if (wordPair == null) {
-            Text(
-                text = "connect a journal",
-                style = wordStyle,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        } else {
-            // Two roles, never one whole-line colour (§ 2.2): the words are the claim, the
-            // middot is its quiet join. The pill sits on the shell surface rather than the
-            // mark card, so both inks come from the theme.
-            Text(text = wordPair.first, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
-            Text(text = " · ", style = wordStyle, color = shellSecondaryInk)
-            Text(text = wordPair.second, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
-        }
+        // Two roles, never one whole-line colour (§ 2.2): the words are the claim, the
+        // middot is its quiet join. The pill sits on the shell surface rather than the
+        // mark card, so both inks come from the theme.
+        Text(text = wordPair.first, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
+        Text(text = " · ", style = wordStyle, color = shellSecondaryInk)
+        Text(text = wordPair.second, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
     }
 }

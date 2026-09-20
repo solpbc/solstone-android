@@ -4,10 +4,23 @@
 package app.solstone.observer.phone
 
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.pl.parseProductionRelayOrigin
 import app.solstone.observer.formfactor.phone.PhoneJournalFacts
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
 import app.solstone.observer.formfactor.phone.journalVersionDisplayText
 import app.solstone.observer.harness.WishStoreState
+
+private val DEFAULT_RELAY_HTTPS_BASE: String? =
+    parseProductionRelayOrigin("https://link.solstone.app")?.httpsBase
+
+private fun relayAttributionPhrase(relayOrigin: String?): String {
+    val parsed = relayOrigin?.let(::parseProductionRelayOrigin)
+    return if (parsed != null && parsed.httpsBase == DEFAULT_RELAY_HTTPS_BASE) {
+        "the relay sol pbc runs"
+    } else {
+        "a relay"
+    }
+}
 
 /**
  * The facts `settings > your journal` and `technical details` show.
@@ -33,9 +46,9 @@ internal fun phoneJournalFacts(
             // ⚠ Both routes live is the case the app knows MOST about, and it was the one case
             // the row went blank on — a dash reads as "we could not determine this".
             committed.isDirectEligible && committed.isRelayEligible ->
-                "straight to your journal, or through the relay sol pbc runs"
+                "straight to your journal, or through ${relayAttributionPhrase(committed.home.relayOrigin)}"
             committed.isDirectEligible -> "straight to your journal"
-            committed.isRelayEligible -> "through the relay sol pbc runs"
+            committed.isRelayEligible -> "through ${relayAttributionPhrase(committed.home.relayOrigin)}"
             else -> "—"
         },
         connection = when {
