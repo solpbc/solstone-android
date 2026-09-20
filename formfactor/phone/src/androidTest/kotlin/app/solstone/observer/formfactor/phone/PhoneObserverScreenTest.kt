@@ -24,6 +24,8 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -466,7 +468,9 @@ class PhoneObserverScreenTest {
             }
         }
         routes.forEachIndexed { index, (route, heading) ->
-            composeRule.onNodeWithText(heading).assertIsDisplayed()
+            // The notifications pane also has a fact row labelled "notifications"; this asserts
+            // the route's heading specifically.
+            composeRule.onNode(hasText(heading) and isHeading()).assertIsDisplayed()
             composeRule.onNode(paneTitleMatcher(spokenPaneTitle(route))).assertIsDisplayed()
             if (index != routes.lastIndex) {
                 composeRule.runOnIdle { routeIndex += 1 }

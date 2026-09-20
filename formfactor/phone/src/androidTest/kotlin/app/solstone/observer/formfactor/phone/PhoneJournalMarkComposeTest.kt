@@ -194,7 +194,7 @@ class PhoneJournalMarkComposeTest {
     }
 
     @Test
-    fun pairingSuccessMarkShowsGenericWhileGetPendingThenSwapsToIdentified() {
+    fun pairingSuccessMarkShowsLoadingWhileGetPendingThenSwapsToIdentified() {
         val store = InMemoryMarkStore()
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalIdentityRefreshCoordinator(store, executor)
@@ -226,9 +226,9 @@ class PhoneJournalMarkComposeTest {
             }
         }
 
-        // Initially generic
+        // A fresh pairing has no stored mark yet, so the card reads as loading
         composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, not set up yet")
+            .assertContentDescriptionEquals("your journal, mark loading")
 
         // Trigger usable connection
         coordinator.onUsableConnection(
@@ -238,9 +238,9 @@ class PhoneJournalMarkComposeTest {
         )
 
         assertTrue(inRequest.await(5, TimeUnit.SECONDS))
-        // While GET in flight, card remains generic
+        // While GET in flight, card still reads as loading
         composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, not set up yet")
+            .assertContentDescriptionEquals("your journal, mark loading")
 
         // Release GET response
         releaseRequest.countDown()
