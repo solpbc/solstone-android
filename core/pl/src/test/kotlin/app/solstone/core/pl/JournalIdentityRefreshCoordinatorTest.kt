@@ -3,11 +3,21 @@
 
 package app.solstone.core.pl
 
+import app.solstone.core.identity.ClientCredential
+import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.GraphRevisions
 import app.solstone.core.identity.JournalMark
 import app.solstone.core.identity.JournalMarkIcon
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PairingLease
+import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.SubscriptionHandle
+import app.solstone.core.model.IdentityState
+import app.solstone.core.model.PairedHome
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -37,6 +47,72 @@ class JournalIdentityRefreshCoordinatorTest {
             savedRecord = null
         }
     }
+
+    // The pairing authority reduced to the one fact these tests vary: is a pairing committed.
+    private class FakePairingPublisher(var home: PairedHome?) : PairingPublisher {
+        private var seq = 0L
+
+        override fun currentSnapshot(): PairingGraphSnapshot {
+            seq += 1
+            val committed = home ?: return PairingGraphSnapshot.Absent(seq)
+            return PairingGraphSnapshot.Committed(
+                sequenceNumber = seq,
+                revisions = GraphRevisions(1L, 1L, 1L),
+                home = committed,
+                hasDirectEndpoint = false,
+                directAssociated = false,
+                relayLiveEligible = false,
+            )
+        }
+
+        override fun subscribe(observer: (PairingGraphSnapshot) -> Unit): SubscriptionHandle =
+            SubscriptionHandle {}
+
+        override fun <T> withMutationBoundary(block: () -> T): T = block()
+        override fun acquireDirectLease(): PairingLease.Direct? = null
+        override fun acquireRelayLease(): PairingLease.Relay? = null
+        override fun validateLease(lease: PairingLease): Boolean = true
+
+        override fun installOrReplace(
+            home: PairedHome,
+            credential: ClientCredential,
+            directEndpoint: app.solstone.core.model.DirectEndpoint?,
+            isDirectAssociated: Boolean,
+        ): GraphMutationResult = GraphMutationResult.Conflict("unused")
+
+        override fun updateRelayAccess(
+            expectedPairing: PairingGeneration,
+            relayOrigin: String,
+            deviceToken: String,
+            expiresAt: String?,
+        ): GraphMutationResult = GraphMutationResult.Conflict("unused")
+
+        override fun revokeRelayAccess(expectedPairing: PairingGeneration): GraphMutationResult =
+            GraphMutationResult.Conflict("unused")
+
+        override fun forget(): GraphMutationResult {
+            home = null
+            return GraphMutationResult.Cleared(PairingGraphSnapshot.Absent(++seq))
+        }
+
+        override fun associateDirectIfProven(
+            expectedPairing: PairingGeneration,
+            endpoint: app.solstone.core.model.DirectEndpoint,
+            proof: () -> Boolean,
+        ): Boolean = false
+    }
+
+    private fun pairedHome() = PairedHome(
+        instanceId = "inst-1",
+        homeLabel = "Home",
+        relayOrigin = null,
+        caChainFingerprint = "sha256:ca1",
+        clientCertFingerprint = "sha256:cert1",
+        observerHandle = null,
+        deviceToken = null,
+        expiresAt = null,
+        state = IdentityState.PAIRED,
+    )
 
     private class RoutingFakeClient(
         private val handler: (method: String, path: String) -> HttpResponse,
@@ -199,7 +275,7 @@ class JournalIdentityRefreshCoordinatorTest {
     }
 
     @Test
-    fun identityChangeWhileDelayedGetInFlightStaysGenericAndIgnoresStaleResult() {
+    fun identityChangeWhileDelayedGetInFlightStaysLoadingAndIgnoresStaleResult() {
         val store = FakeMarkStore()
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalIdentityRefreshCoordinator(store, executor)
@@ -239,7 +315,7 @@ class JournalIdentityRefreshCoordinatorTest {
     }
 
     @Test
-    fun onIdentityChangedClearsStoreImmediatelyAndSetsGeneric() {
+    fun onIdentityChangedClearsStoreImmediatelyAndSetsLoading() {
         val store = FakeMarkStore()
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalIdentityRefreshCoordinator(store, executor)
@@ -255,6 +331,60 @@ class JournalIdentityRefreshCoordinatorTest {
         coordinator.onIdentityChanged()
         assertNull(store.load())
         assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun neverPairedOwnerKeepsTheGenericMark() {
+        // Nothing is loading for an owner with no journal: the card must read as the generic
+        // "your journal, not set up yet", never as a mark that is loading.
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(),
+            executor = executor,
+            publisher = FakePairingPublisher(home = null),
+        )
+
+        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertNull(coordinator.currentPresentationGeneration())
+
+        coordinator.onPairingChanged()
+        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun pairedOwnerWithAnEmptyStoreIsLoading() {
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(),
+            executor = executor,
+            publisher = FakePairingPublisher(home = pairedHome()),
+        )
+
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun forgettingTheJournalReturnsToGenericNotLoading() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+
+        publisher.forget()
+        coordinator.onIdentityChanged()
+
+        assertNull(store.load())
+        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
 
         coordinator.close()
         executor.shutdown()

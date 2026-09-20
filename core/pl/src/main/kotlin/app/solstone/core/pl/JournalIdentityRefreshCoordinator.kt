@@ -71,17 +71,24 @@ open class JournalIdentityRefreshCoordinator(
     private var currentPresentationGeneration: PairingGeneration? =
         (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
 
-    private fun initialPresentation(): JournalMarkPresentation = when (val inspected = store.inspect()) {
-        StoreInspectResult.Missing -> JournalMarkPresentation.Loading
-        is StoreInspectResult.Unreadable -> JournalMarkPresentation.Unavailable
-        is StoreInspectResult.Ready -> {
-            val record = inspected.value
-            val current = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (publisher != null && (record.pairing == null || record.pairing != current)) {
-                JournalMarkPresentation.Loading
-            } else {
-                record.mark?.let(JournalMarkPresentation::Identified)
-                    ?: JournalMarkPresentation.Generic
+    // Loading means a load is pending. With a pairing authority and no committed pairing there is
+    // no journal to load a mark from, so an owner who has never paired, or who has forgotten their
+    // journal, keeps the generic mark instead of one that reads as loading forever. Without an
+    // authority the caller owns that fact, and an empty store still reads as a pending load.
+    private fun initialPresentation(): JournalMarkPresentation {
+        val current = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+        if (publisher != null && current == null) return JournalMarkPresentation.Generic
+        return when (val inspected = store.inspect()) {
+            StoreInspectResult.Missing -> JournalMarkPresentation.Loading
+            is StoreInspectResult.Unreadable -> JournalMarkPresentation.Unavailable
+            is StoreInspectResult.Ready -> {
+                val record = inspected.value
+                if (publisher != null && (record.pairing == null || record.pairing != current)) {
+                    JournalMarkPresentation.Loading
+                } else {
+                    record.mark?.let(JournalMarkPresentation::Identified)
+                        ?: JournalMarkPresentation.Generic
+                }
             }
         }
     }
@@ -133,7 +140,7 @@ open class JournalIdentityRefreshCoordinator(
     open fun onIdentityChanged() {
         job.bumpGeneration()
         store.clear()
-        updatePresentation(JournalMarkPresentation.Loading)
+        updatePresentation(initialPresentation())
     }
 
     open fun onPairingChanged() {
