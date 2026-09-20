@@ -6,6 +6,8 @@ package app.solstone.core.diagnostics
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import java.io.BufferedOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -87,11 +89,22 @@ class DiagnosticEventSink(
             when {
                 !Files.exists(path) -> LogFileRead.Missing
                 !Files.isRegularFile(path) -> LogFileRead.Failed
-                else -> LogFileRead.Ready(Files.readString(path))
+                else -> LogFileRead.Ready(decodeStrictUtf8(Files.readAllBytes(path)))
             }
         } catch (_: Exception) {
             LogFileRead.Failed
         }
+
+    // Not Files.readString: some Android runtimes this app supports do not have it, and calling it
+    // there is a NoSuchMethodError, which the catch above does not cover. Decoding strictly keeps
+    // its contract: malformed bytes make the file unreadable instead of becoming replacement
+    // characters in a log someone will read.
+    private fun decodeStrictUtf8(bytes: ByteArray): String =
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
 
     private sealed interface LogFileRead {
         data object Missing : LogFileRead

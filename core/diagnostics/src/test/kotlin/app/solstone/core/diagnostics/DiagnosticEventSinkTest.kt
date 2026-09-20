@@ -242,6 +242,30 @@ class DiagnosticEventSinkTest {
         assertEquals(DiagnosticLogRead.Unreadable, unreadable.readResult())
     }
 
+    @Test
+    fun readsValidUtf8ExactlyAndTreatsMalformedBytesAsUnreadable() {
+        val validDir = Files.createTempDirectory("diag-utf8-valid")
+        val text = "ts=1 kind=test note=caf\u00e9 \u2600 \ud83c\udf19\n"
+        Files.write(validDir.resolve("diag.log"), text.toByteArray(Charsets.UTF_8))
+        val valid = DiagnosticEventSink(validDir, capBytes = 4_096, nowProvider = { 1L })
+        assertEquals(DiagnosticLogRead.Complete(text), valid.readResult())
+
+        // 0xC3 opens a two-byte sequence and 0x28 cannot continue it.
+        val malformed = "ts=2 kind=test note=".toByteArray(Charsets.UTF_8) + byteArrayOf(0xC3.toByte(), 0x28) +
+            "\n".toByteArray(Charsets.UTF_8)
+
+        val malformedDir = Files.createTempDirectory("diag-utf8-malformed")
+        Files.write(malformedDir.resolve("diag.log"), malformed)
+        val unreadable = DiagnosticEventSink(malformedDir, capBytes = 4_096, nowProvider = { 2L })
+        assertEquals(DiagnosticLogRead.Unreadable, unreadable.readResult())
+
+        val partialDir = Files.createTempDirectory("diag-utf8-partial")
+        Files.write(partialDir.resolve("diag.log.1"), text.toByteArray(Charsets.UTF_8))
+        Files.write(partialDir.resolve("diag.log"), malformed)
+        val partial = DiagnosticEventSink(partialDir, capBytes = 4_096, nowProvider = { 3L })
+        assertEquals(DiagnosticLogRead.Partial(text), partial.readResult())
+    }
+
     private fun countingClock(start: Long = 1): () -> Long {
         var current = start
         return { current++ }
