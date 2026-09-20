@@ -55,6 +55,9 @@ ci-device:
 	  :apps:phone:pixel5api35RealDebugAndroidTest
 	# ⚠ Last, so it can only exist after both invocations above returned green. A receipt
 	# written up front would tell the next `make ci` the gate passed when it had only started.
+	# This write needs a git tree. The build host's synced tree has none (the sync excludes
+	# .git), so there it does nothing; `android-host-ci-device` records the receipt in the
+	# checkout that ran it, once the host's gate has returned green.
 	@mkdir -p artifacts/ci-device && git rev-parse HEAD > artifacts/ci-device/$$(git rev-parse HEAD) 2>/dev/null || true
 
 format:
@@ -100,6 +103,7 @@ android-host-ci: require-gate-source-commit sync-android-host
 
 android-host-ci-device: require-gate-source-commit sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && GATE_SOURCE_COMMIT=$(GATE_SOURCE_COMMIT) make ci-device'
+	@mkdir -p artifacts/ci-device && printf '%s\n' "$(GATE_SOURCE_COMMIT)" > "artifacts/ci-device/$(GATE_SOURCE_COMMIT)"
 
 android-host-assemble-validation-rogbid: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make assemble-validation-rogbid'
