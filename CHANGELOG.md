@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-09-20
+
 ### Changed
 - connection details now say how your phone connects to your journal, and name a relay as run by sol pbc only when it is.
 
