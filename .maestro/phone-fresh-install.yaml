@@ -21,11 +21,22 @@ appId: app.solstone.observer.phone
 # `clearState` here, unlike the granted leg: this flow is about first-run, and it must start
 # from one whether or not the installer left anything behind.
 - clearState
-- launchApp
+# 🔴 `permissions: all: deny` is LOAD-BEARING, not belt-and-braces. Maestro's `launchApp`
+# GRANTS runtime permissions by default, which is the same blindness as the granted leg's
+# `install -r -g` and would silently defeat this entire flow: the app would already hold
+# CAMERA, the scanner would open with no prompt, and the A1 assertion below would fail
+# against a product that is behaving correctly. Measured 2026-09-20 on the A36: with the
+# default, the device reported CAMERA granted=true after every run and the flow landed on
+# the scanner; driven by hand from a genuinely un-granted install, the same tap raises
+# "Allow solstone to take pictures and record video?" with CAMERA still granted=false.
+- launchApp:
+    permissions:
+      all: deny
 
 # The welcome card an owner meets. Nothing has been asked for yet.
-- assertVisible:
-    text: "connect a journal"
+- extendedWaitUntil:
+    visible:
+      text: "connect a journal"
     timeout: 20000
 
 # 🔴 The A1 path. Tapping the app's main call to action must reach the system camera prompt —
@@ -33,8 +44,9 @@ appId: app.solstone.observer.phone
 - tapOn:
     text: "connect a journal"
 
-- assertVisible:
-    text: ".*(take pictures|Camera|camera).*"
+- extendedWaitUntil:
+    visible:
+      text: ".*(take pictures|Camera|camera).*"
     timeout: 15000
 
 # ⛔ And the platform's refusal must never reach the owner as platform words. Declining lands on
@@ -46,8 +58,9 @@ appId: app.solstone.observer.phone
     commands:
       - tapOn:
           text: ".*(Don.t allow|DENY|Deny).*"
-      - assertVisible:
-          text: "open android settings"
+      - extendedWaitUntil:
+          visible:
+            text: "open android settings"
           timeout: 15000
       - assertNotVisible:
           text: ".*validateClientPermissions.*"
@@ -57,10 +70,23 @@ appId: app.solstone.observer.phone
 # Back out to the shell and prove the deck is still the deck: a declined permission is not a
 # broken app, and no source may have been turned on by the asking.
 - back
-- assertVisible:
-    text: "connect a journal"
+- extendedWaitUntil:
+    visible:
+      text: "connect a journal"
     timeout: 15000
 - assertVisible:
     text: "camera"
-- assertVisible:
-    text: "off"
+
+# ⛔ The camera source's on/off state is NOT assertable through this instrument, and a bare
+# `assertVisible: "off"` here can never pass. The deck's source cards are merged Compose
+# semantics nodes: the card exposes `content-desc="camera"` with `text=""`, and the on/off
+# word rides `stateDescription`, which `uiautomator dump` does not emit at all — the same
+# blindness that produced two false accessibility rows in the 2026-09-19 device catalog.
+# Measured 2026-09-20 on the A36: the card visibly reads "off / turn it on any time." while
+# the only node in the hierarchy is `content-desc="camera"`.
+#
+# ✅ What still proves "no source was turned on by the asking" is the screenshot below,
+# retained per run in artifacts/hitl/. ⛔ Do not re-add a text assertion on the state word;
+# it will fail against a correct product, which is what it did on this flow's first ever
+# execution.
+- takeScreenshot: artifacts/hitl/fresh-install-deck-after-decline
