@@ -88,6 +88,11 @@ class PhoneOwnerFactsTest {
             "through a relay",
             phoneJournalFacts(committed(direct = false, relayOrigin = "https://link solstone app"), null, false).location,
         )
+        // Literal empty stored origin is present-but-unparseable, distinct from null
+        assertEquals(
+            "through a relay",
+            phoneJournalFacts(committed(direct = false, relayOrigin = ""), null, false).location,
+        )
         // Both routes with non-default relay
         assertEquals(
             "straight to your journal, or through a relay",
