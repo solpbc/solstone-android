@@ -199,6 +199,25 @@ class ObserverHarnessUi(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply { gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL },
             )
+            // ⛔ The operator path still owes a drawn `Back`, and this screen nearly shipped without
+            // one. `ObserverHarnessChromeInvariantTest` walks the operator menu, enters every screen
+            // and clicks `Back` to get out — so dropping it here does not merely look untidy, it
+            // strands the operator on a full-screen camera with only the system gesture. The owner
+            // task keeps no drawn back (the platform bible gives Android's back to the gesture),
+            // which is the same `dismiss` seam [backButton] already draws.
+            if (dismiss == null) {
+                addView(
+                    Button(context).apply {
+                        text = "Back"
+                        isAllCaps = false
+                        setOnClickListener { leave() }
+                    },
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.START },
+                )
+            }
         }
     }
 

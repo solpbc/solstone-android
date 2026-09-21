@@ -13,10 +13,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - the screens for connecting a journal and managing local storage now use the app's own buttons and text instead of android's defaults.
 
 ### Fixed
+- the camera now shuts off as soon as pairing finishes. it was left running behind the screen where you confirm your journal, so on phones that show a camera indicator yours stayed lit. nothing it saw went to your journal.
 - when a journal is on a public IPv6 address, a pairing failure no longer tells you to check your wi-fi.
 - an IPv6 address no longer runs straight into its port number, so you can tell where the address ends.
 - the status card on the phone now spans the full width between the screen's margins, so the greeting behind it no longer shows beside its edge.
 - an off switch draws a lighter outline than it did, so it sits back from the things around it.
+- the pairing scanner now fills the screen, with what to do written across the bottom, instead of showing a small window part way down the screen.
 - scanning a pairing code no longer replaces a journal this phone is already connected to. the app tells you to unpair first, or to get the current journal reachable.
 
 ## [2.1.4] - 2026-09-20
