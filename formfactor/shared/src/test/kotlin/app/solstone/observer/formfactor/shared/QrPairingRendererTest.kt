@@ -190,7 +190,14 @@ class QrPairingRendererTest {
         val short = "couldn't reach your journal at %s:7657. make sure it's running, then try again."
         val localAdvice = "make sure it's running and on the same wi-fi"
 
-        listOf("8.8.8.8", "1.1.1.1", "203.1.2.3").forEach { host ->
+        listOf(
+            "8.8.8.8",
+            "1.1.1.1",
+            "203.1.2.3",
+            "192.0.2.1",
+            "198.51.100.1",
+            "203.0.113.1",
+        ).forEach { host ->
             val rendered = pairStatusText(
                 networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
             )
@@ -206,9 +213,6 @@ class QrPairingRendererTest {
             "169.254.1.2",
             "172.16.0.1",
             "192.168.1.2",
-            "192.0.2.1",
-            "198.51.100.1",
-            "203.0.113.1",
             "224.0.0.1",
             "001.2.3.4",
         ).forEach { host ->
@@ -220,21 +224,20 @@ class QrPairingRendererTest {
     }
 
     /**
-     * The same rule, for IPv6 literals — the case the v4-only predicate sent down the wi-fi branch.
-     *
-     * ⚠ A journal on a public IPv6 address was told to "make sure it's running and on the same
-     * wi-fi" and offered "switch your journal to private network to pair from anywhere", when the
-     * address it was already reached at reaches from anywhere.
-     *
-     * 🔴 `2001:db8::/32` is in the LOCAL list on purpose: it is IPv6's documentation range, and the
-     * v4 half above already puts `192.0.2.1`, `198.51.100.1` and `203.0.113.1` there. A predicate
-     * that called one public and the other private would disagree with itself.
+     * The same rule, for IPv6 literals — documentation ranges (v4 TEST-NET and v6 2001:db8) are public;
+     * mapped `::ffff:203.0.113.1` is public because the v4 half is; mapped RFC1918 stays local.
      */
     @Test
     fun directHostAdviceTreatsPublicIpv6LikePublicIpv4() {
         val localAdvice = "make sure it's running and on the same wi-fi"
 
-        listOf("2606:4700::1111", "2a00:1450:4001:80e::200e", "2001:4860:4860::8888").forEach { host ->
+        listOf(
+            "2606:4700::1111",
+            "2a00:1450:4001:80e::200e",
+            "2001:4860:4860::8888",
+            "2001:db8::1",
+            "::ffff:203.0.113.1",
+        ).forEach { host ->
             val rendered = pairStatusText(
                 networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
             )
@@ -254,10 +257,114 @@ class QrPairingRendererTest {
             "fd00::1",
             "fc00::abcd",
             "ff02::1",
-            "2001:db8::1",
             "::ffff:192.168.1.10",
             "not:an:address",
         ).forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertTrue(rendered.contains(localAdvice), host)
+        }
+    }
+
+    /**
+     * Parity with solstone-swift `PairFailureReasonTests` (where `198.51.100.10` reads public).
+     *
+     * Sweeps all 57,088 well-formed (first, second) pairs for first in 1..223 and second in 0..255.
+     * Retained divergences: `0.x` and `224+` stay outside this sweep as non-public; they cannot reach
+     * this renderer because PairLink `isDirectDialCandidate` requires `a != 0 && a < 224`.
+     */
+    @Test
+    fun exhaustiveSweepOfFirstTwoOctetsMatchesIndependentCidrMaskReference() {
+        val short = "couldn't reach your journal at %s:7657. make sure it's running, then try again."
+        val localAdvice = "make sure it's running and on the same wi-fi"
+        var count = 0
+        for (first in 1..223) {
+            for (second in 0..255) {
+                count++
+                val host = "$first.$second.1.1"
+                val rendered = pairStatusText(
+                    networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+                )
+                val isPublic = isPublicByCidrMask(first, second, 1, 1)
+                if (isPublic) {
+                    assertEquals(short.format(host), rendered, host)
+                    assertFalse(rendered.contains(localAdvice), host)
+                } else {
+                    assertTrue(rendered.contains(localAdvice), host)
+                }
+            }
+        }
+        assertEquals(57088, count)
+    }
+
+    @Test
+    fun boundaryTableVerifiesAllFamilyEdgesNeighborsAndFormerExclusions() {
+        val short = "couldn't reach your journal at %s:7657. make sure it's running, then try again."
+        val localAdvice = "make sure it's running and on the same wi-fi"
+
+        val publicHosts = listOf(
+            // Parser edges
+            "1.0.0.0",
+            "223.255.255.255",
+            // 10.0.0.0/8 neighbors
+            "9.255.255.255",
+            "11.0.0.0",
+            // 100.64.0.0/10 neighbors
+            "100.63.255.255",
+            "100.128.0.0",
+            // 127.0.0.0/8 neighbors
+            "126.255.255.255",
+            "128.0.0.0",
+            // 169.254.0.0/16 neighbors
+            "169.253.255.255",
+            "169.255.0.0",
+            // 172.16.0.0/12 neighbors
+            "172.15.255.255",
+            "172.32.0.0",
+            // 192.168.0.0/16 neighbors
+            "192.167.255.255",
+            "192.169.0.0",
+            // Former exclusions now public
+            "192.0.0.1",
+            "192.2.0.1",
+            "192.88.99.1",
+            "198.18.0.1",
+            "8.8.8.8",
+            "192.0.2.1",
+            "198.51.100.1",
+            "203.0.113.1",
+        )
+
+        publicHosts.forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertEquals(short.format(host), rendered, host)
+            assertFalse(rendered.contains(localAdvice), host)
+        }
+
+        val localHosts = listOf(
+            // Family edges (RFC 1918, CGNAT, loopback, link-local)
+            "10.0.0.0",
+            "10.255.255.255",
+            "100.64.0.0",
+            "100.127.255.255",
+            "127.0.0.0",
+            "127.255.255.255",
+            "169.254.0.0",
+            "169.254.255.255",
+            "172.16.0.0",
+            "172.31.255.255",
+            "192.168.0.0",
+            "192.168.255.255",
+            // Retained divergences & parse reject
+            "0.0.0.0",
+            "224.0.0.1",
+            "001.2.3.4",
+        )
+
+        localHosts.forEach { host ->
             val rendered = pairStatusText(
                 networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
             )
@@ -315,4 +422,32 @@ class QrPairingRendererTest {
             endpointPort = 7657,
             connectionMode = PairConnectionMode.PAIRING,
         )
+
+    private data class Cidr(val prefix: Long, val mask: Long)
+
+    private fun cidr(a: Int, b: Int, c: Int, d: Int, prefixLen: Int): Cidr {
+        val ip = ((a.toLong() and 0xFF) shl 24) or
+            ((b.toLong() and 0xFF) shl 16) or
+            ((c.toLong() and 0xFF) shl 8) or
+            (d.toLong() and 0xFF)
+        val mask = if (prefixLen == 0) 0L else (-1L shl (32 - prefixLen)) and 0xFFFFFFFFL
+        return Cidr(prefix = ip and mask, mask = mask)
+    }
+
+    private val nonPublicFamilies = listOf(
+        cidr(10, 0, 0, 0, 8),
+        cidr(172, 16, 0, 0, 12),
+        cidr(192, 168, 0, 0, 16),
+        cidr(100, 64, 0, 0, 10),
+        cidr(127, 0, 0, 0, 8),
+        cidr(169, 254, 0, 0, 16),
+    )
+
+    private fun isPublicByCidrMask(first: Int, second: Int, third: Int, fourth: Int): Boolean {
+        val ip = ((first.toLong() and 0xFF) shl 24) or
+            ((second.toLong() and 0xFF) shl 16) or
+            ((third.toLong() and 0xFF) shl 8) or
+            (fourth.toLong() and 0xFF)
+        return nonPublicFamilies.none { (ip and it.mask) == it.prefix }
+    }
 }
