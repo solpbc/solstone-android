@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- the pairing scanner now shows four corner marks in the middle of the screen, so you can see where to point the camera.
+
 ## [2.1.5] - 2026-09-21
 
 ### Changed
