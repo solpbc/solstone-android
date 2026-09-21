@@ -272,7 +272,7 @@ class ObserverHarnessUi(
      */
     fun showPairLink(uri: String?) {
         setScreen {
-            val title = text("connecting your journal").apply {
+            val title = text("connecting to your journal").apply {
                 setTypeface(Typeface.defaultFromStyle(Typeface.BOLD))
             }
             val status = text("pairing…")
@@ -288,7 +288,7 @@ class ObserverHarnessUi(
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
                     LoadState.Loading -> {
-                        title.text = "connecting your journal"
+                        title.text = "connecting to your journal"
                         status.text = "pairing…"
                     }
                     is LoadState.Loaded -> when (val result = state.value) {
