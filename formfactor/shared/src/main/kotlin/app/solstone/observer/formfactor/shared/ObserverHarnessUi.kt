@@ -132,22 +132,73 @@ class ObserverHarnessUi(
         rows.text = permissionRowsText(controller.refreshPermissions())
     }
 
+    /**
+     * The scanner is a VIEWFINDER, so the preview is the screen and the status line sits on it.
+     *
+     * 🔴 **It used to be a letterboxed box.** `previewHeightPx` is a fixed pixel height (480 on the
+     * phone — about a fifth of a 2340px display), inset another 16dp on every side by the
+     * owner-task margin, with the status stacked above it as a separate row and two thirds of the
+     * screen left empty cream. On the app's main call to action.
+     *
+     * ✅ iOS already ships the answer (`QRScannerView`): a full-bleed preview with the caption
+     * overlaid near the bottom, and Android already ships that caption's exact words.
+     *
+     * ⚠ **This is the one screen that cannot use [setScreen].** That path wraps every screen in
+     * `ScrollView(LinearLayout VERTICAL)`, which can neither fill nor stack — a viewfinder needs a
+     * z-stack and has nothing to scroll. ⛔ Do not "fix" this by giving the preview a large fixed
+     * height inside the scrolling column; that is the defect with a bigger number.
+     *
+     * ⚠ `previewHeightPx` is still the constructor contract for the watch and for tests; it is
+     * only the phone's owner-facing scanner that stops treating it as a height.
+     */
     fun showScanPairQr() {
-        setScreen {
-            // Owner-reachable via the shell's `connect a journal`, so it says what to do rather
-            // than that the harness is ready. Adopted from the string iOS already ships for this
-            // screen (`QRScannerView`), not authored here.
-            val status = text("point your phone at the code")
+        setFullBleedScreen {
+            // ⛔ Black ground, not the shell's cream. The preview aspect-FITS a 4:3 sensor into a
+            // ~19.5:9 screen, so it letterboxes — and a letterbox over cream reads as a broken
+            // layout, while a letterbox over black reads as a viewfinder, which is what every
+            // camera surface on the platform does. It is also what makes the white caption legible:
+            // the caption sits on a live scene and cannot rely on contrast with a known ground.
+            setBackgroundColor(android.graphics.Color.BLACK)
+            val onStatusHolder = arrayOfNulls<TextView>(1)
             val onStatus = { message: String ->
-                status.text = message
+                onStatusHolder[0]?.text = message
                 if (message == "paired") showPaired()
             }
             val preview = when (qrBackend) {
                 QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel, onStatus)
                 QrBackend.Legacy -> LegacyQrPreviewView(context, controller, qrThreadLabel, onStatus)
             }
-            addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, previewHeightPx))
-            backButton()
+            addView(
+                preview,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            // Owner-reachable via the shell's `connect a journal`, so it says what to do rather
+            // than that the harness is ready. Adopted from the string iOS already ships for this
+            // screen (`QRScannerView`), not authored here.
+            val status = TextView(context).apply {
+                text = "point your phone at the code"
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 16f
+                // ⛔ The caption sits on a live camera, so it cannot rely on contrast with a known
+                // ground. The shadow is what keeps it readable over a bright scene.
+                setShadowLayer(6f, 0f, 1f, android.graphics.Color.BLACK)
+                // Centred, like iOS's. A caption over a viewfinder belongs under what the owner is
+                // aiming; left-aligned it reads as a label on a page.
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                val pad = (24 * resources.displayMetrics.density).toInt()
+                setPadding(pad, pad, pad, pad)
+            }
+            onStatusHolder[0] = status
+            addView(
+                status,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL },
+            )
         }
     }
 
@@ -440,6 +491,26 @@ class ObserverHarnessUi(
             val offerExit: () -> Unit = { button("done") { leave() }; Unit }
             markAccessoryFactory?.invoke(context, offerExit)?.let { addView(it) } ?: offerExit()
         }
+    }
+
+    /**
+     * A screen that fills the container and stacks, for the viewfinder. Same lifecycle bookkeeping
+     * as [setScreen] — ⛔ including `container.removeAllViews()`, which is what detaches a preview
+     * and releases the camera when the next screen replaces this one.
+     */
+    private fun setFullBleedScreen(build: FrameLayout.() -> Unit) {
+        inSubmenu = true
+        permissionRows = null
+        plStatusRows = null
+        showsCameraOff = false
+        container.removeAllViews()
+        container.addView(
+            FrameLayout(context).apply { build() },
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
     }
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
