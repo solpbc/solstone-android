@@ -236,3 +236,35 @@ fun PairAttemptOutcome.isSuccessfulPair(): Boolean =
     this is PairAttemptOutcome.Linked &&
         result.pairStatus in 200..299 &&
         result.statusStatus in 200..299
+
+/**
+ * Whether tapping the SAME link again is an honestly plausible fix, per the
+ * needs-attention-recovery rule that a retry is only offered where it can plausibly work.
+ *
+ * ⛔ Only ever called on a non-successful result — [showPairLink]'s success branch routes to
+ * [ObserverHarnessUi.showPaired] before this is consulted, so [PairAttemptOutcome.Linked] here
+ * is always the non-2xx case ([pairStatusText]'s `PAIR_GENERIC` branch).
+ */
+fun PairLinkDispatchResult.isRetryableSameLink(): Boolean = when (this) {
+    PairLinkDispatchResult.NoLink -> false
+    // Malformed once, malformed again — the same bytes decode the same way every time.
+    PairLinkDispatchResult.InvalidLink -> false
+    // Transient: the prior attempt was still in flight, not that this link cannot work.
+    PairLinkDispatchResult.Busy -> true
+    is PairLinkDispatchResult.Attempted -> when (this.outcome) {
+        // Non-2xx `Linked` renders PAIR_GENERIC, whose own words send the owner back to the
+        // journal for a fresh code — this link cannot become a different code by retrying.
+        is PairAttemptOutcome.Linked -> false
+        // The fix is to unpair first, on a different screen; retrying this link does that to
+        // nobody.
+        PairAttemptOutcome.ExistingPairingActive -> false
+        // The existing pairing's reachability is what failed to check, not this link.
+        PairAttemptOutcome.ExistingPairingUnreachable -> true
+        PairAttemptOutcome.Retry -> true
+        is PairAttemptOutcome.NetworkUnavailable -> true
+        // The window is closed; the same link is the same expired code.
+        is PairAttemptOutcome.WindowClosed -> false
+        // PAIR_GENERIC's words point at a new code, same reasoning as the Linked branch above.
+        is PairAttemptOutcome.OtherFailure -> false
+    }
+}

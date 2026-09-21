@@ -404,6 +404,40 @@ class QrPairingRendererTest {
         }
     }
 
+    @Test
+    fun retryIsOnlyOfferedWhereItCanPlausiblyWork() {
+        assertFalse(PairLinkDispatchResult.NoLink.isRetryableSameLink())
+        assertFalse(PairLinkDispatchResult.InvalidLink.isRetryableSameLink())
+        assertTrue(PairLinkDispatchResult.Busy.isRetryableSameLink())
+        assertFalse(
+            PairLinkDispatchResult.Attempted(
+                PairAttemptOutcome.Linked(result(pairStatus = 503, statusStatus = 204)),
+            ).isRetryableSameLink(),
+        )
+        assertFalse(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingActive).isRetryableSameLink(),
+        )
+        assertTrue(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingUnreachable).isRetryableSameLink(),
+        )
+        assertTrue(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.Retry).isRetryableSameLink(),
+        )
+        assertTrue(
+            PairLinkDispatchResult.Attempted(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER),
+            ).isRetryableSameLink(),
+        )
+        assertFalse(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.WindowClosed(410)).isRetryableSameLink(),
+        )
+        assertFalse(
+            PairLinkDispatchResult.Attempted(
+                PairAttemptOutcome.OtherFailure("IOException", null),
+            ).isRetryableSameLink(),
+        )
+    }
+
     private fun networkFailure(
         failure: ConnectivityFailure,
         route: PairRoute = PairRoute.DIRECT,

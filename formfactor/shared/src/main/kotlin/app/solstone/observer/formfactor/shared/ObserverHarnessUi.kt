@@ -5,6 +5,7 @@ package app.solstone.observer.formfactor.shared
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.provider.Settings
 import android.view.View
@@ -13,6 +14,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Space
 import android.widget.TextView
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
@@ -254,26 +256,56 @@ class ObserverHarnessUi(
         showsCameraOff = true
     }
 
+    /**
+     * The screen a link-driven pair (an App Link tap, or this same activity launched via an
+     * explicit component with the same intent shape) lands on before a paired-only surface
+     * exists to show anything richer.
+     *
+     * 🔴 **Used to be a bare status line with no title and no way off it but the system Back
+     * gesture** — the four-beat needs-attention pattern's verdict and fix were both missing.
+     * [title] is the one constant heading for every outcome this dispatch can produce, so it
+     * never has to guess a verdict word that fits both "still connected elsewhere" and
+     * "couldn't reach your journal." The message already names the diagnosed condition
+     * ([pairLinkDispatchText]); the one thing this adds is a button — `try again`, re-driving
+     * the same link, where [isRetryableSameLink] says that can honestly work, or `done`, off
+     * the screen, where it can't.
+     */
     fun showPairLink(uri: String?) {
         setScreen {
+            val title = text("connecting your journal").apply {
+                setTypeface(Typeface.defaultFromStyle(Typeface.BOLD))
+            }
             val status = text("pairing…")
             backButton()
+            fun renderTerminal(message: String, retryable: Boolean) {
+                status.text = message
+                if (retryable) {
+                    button("try again") { showPairLink(uri) }
+                } else {
+                    button("done") { leave() }
+                }
+            }
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
-                    LoadState.Loading -> status.text = "pairing…"
+                    LoadState.Loading -> {
+                        title.text = "connecting your journal"
+                        status.text = "pairing…"
+                    }
                     is LoadState.Loaded -> when (val result = state.value) {
                         PairLinkDispatchResult.NoLink -> leave()
                         else -> {
-                            status.text = requireNotNull(pairLinkDispatchText(result))
+                            val message = requireNotNull(pairLinkDispatchText(result))
                             if (result is PairLinkDispatchResult.Attempted && result.outcome.isSuccessfulPair()) {
                                 showPaired()
+                            } else {
+                                renderTerminal(message, result.isRetryableSameLink())
                             }
                         }
                     }
                     // ⚠ The third copy of `Pairing failed`, and the reason this line reads from
                     // the renderer now: two independent tables of the same words is how the first
                     // one outlived a product name.
-                    is LoadState.Failed -> status.text = PAIR_DISPATCH_FAILED
+                    is LoadState.Failed -> renderTerminal(PAIR_DISPATCH_FAILED, retryable = true)
                 }
             }
         }
@@ -516,7 +548,20 @@ class ObserverHarnessUi(
      */
     private fun showPaired() {
         setScreen {
-            val offerExit: () -> Unit = { button("done") { leave() }; Unit }
+            val offerExit: () -> Unit = {
+                // The mark accessory ends on a Compose Text (confirmed/mismatched line); `done`
+                // is a View sibling this harness adds after it. Without a deliberate gap the two
+                // sit back to back, because neither side owns the other's bottom edge.
+                addView(
+                    Space(context),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        (DONE_GAP_DP * resources.displayMetrics.density).toInt(),
+                    ),
+                )
+                button("done") { leave() }
+                Unit
+            }
             markAccessoryFactory?.invoke(context, offerExit)?.let { addView(it) } ?: offerExit()
         }
     }
@@ -606,5 +651,8 @@ class ObserverHarnessUi(
     private companion object {
         /** The phone shell's content margin; this module cannot see that constant. */
         const val OWNER_TASK_MARGIN_DP = 16
+
+        /** Between the mark accessory's last line and the `done` button that follows it. */
+        const val DONE_GAP_DP = 24
     }
 }

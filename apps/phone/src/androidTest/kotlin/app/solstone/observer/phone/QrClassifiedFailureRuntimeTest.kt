@@ -128,6 +128,7 @@ class QrClassifiedFailureRuntimeTest {
                 // match would trip over `not paired`.
                 assertFalse(texts.contains("paired"))
                 assertFalse(texts.contains("Paired"))
+                assertTrue(texts.contains("try again"))
             }
         }
     }

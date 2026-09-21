@@ -12,13 +12,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +51,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -435,42 +440,88 @@ fun PairingSuccessMark(
     var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
     var mismatchResult by remember { mutableStateOf<PairingMismatchResult?>(null) }
     val scope = rememberCoroutineScope()
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+    val bodyColor = MaterialTheme.colorScheme.onBackground
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.fillMaxWidth(),
+    ) {
         JournalMarkCard(presentation = presentation)
         Spacer(Modifier.height(20.dp))
         when (confirmation) {
             PairingConfirmation.Waiting -> {
-                Text("does this match your journal?")
+                Text(
+                    text = "does this match your journal?",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = bodyColor,
+                    textAlign = TextAlign.Center,
+                )
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = {
-                    confirmation = PairingConfirmation.Confirmed
-                    onConfirmed()
-                }) { Text("yes, this is my journal") }
-                Button(onClick = {
-                    confirmation = PairingConfirmation.Removing
-                    scope.launch {
-                        mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
-                        confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
-                            PairingConfirmation.Failed
-                        } else {
-                            onConfirmed()
-                            PairingConfirmation.Mismatched
+                Text(
+                    text = "your journal shows this same mark in its network app. it should " +
+                        "match, exactly.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = shellSecondaryInk,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = {
+                        confirmation = PairingConfirmation.Confirmed
+                        onConfirmed()
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("yes, this is my journal") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        confirmation = PairingConfirmation.Removing
+                        scope.launch {
+                            mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
+                            confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
+                                PairingConfirmation.Failed
+                            } else {
+                                onConfirmed()
+                                PairingConfirmation.Mismatched
+                            }
                         }
-                    }
-                }) { Text("that doesn't match") }
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("that doesn't match") }
             }
-            PairingConfirmation.Removing -> Text("disconnecting this phone…")
-            PairingConfirmation.Confirmed -> Text("this phone is connected to your journal.")
+            PairingConfirmation.Removing -> Text(
+                "disconnecting this phone…",
+                style = MaterialTheme.typography.bodyLarge,
+                color = bodyColor,
+                textAlign = TextAlign.Center,
+            )
+            PairingConfirmation.Confirmed -> Text(
+                "this phone is connected to your journal.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = bodyColor,
+                textAlign = TextAlign.Center,
+            )
             PairingConfirmation.Mismatched -> Text(
                 if (mismatchResult == PairingMismatchResult.JournalUnreached) {
                     "this phone is no longer connected. your journal may still have this phone listed."
                 } else {
                     "this phone is no longer connected to that journal."
                 },
+                style = MaterialTheme.typography.bodyLarge,
+                color = bodyColor,
+                textAlign = TextAlign.Center,
             )
             PairingConfirmation.Failed -> {
-                Text("couldn't disconnect this phone. try again.")
-                Button(onClick = { confirmation = PairingConfirmation.Waiting }) { Text("try again") }
+                Text(
+                    "couldn't disconnect this phone. try again.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = bodyColor,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { confirmation = PairingConfirmation.Waiting },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("try again") }
             }
         }
     }
@@ -488,11 +539,13 @@ fun createPhonePairingMarkView(
 ): View {
     return ComposeView(context).apply {
         setContent {
-            PairingSuccessMark(
-                coordinator = coordinator,
-                onConfirmed = onConfirmed,
-                onMismatch = onMismatch,
-            )
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    onConfirmed = onConfirmed,
+                    onMismatch = onMismatch,
+                )
+            }
         }
     }
 }

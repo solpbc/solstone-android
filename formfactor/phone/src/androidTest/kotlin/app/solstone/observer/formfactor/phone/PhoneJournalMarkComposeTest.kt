@@ -288,6 +288,10 @@ class PhoneJournalMarkComposeTest {
         }
 
         composeRule.onNodeWithText("does this match your journal?").assertExists()
+        composeRule.onNodeWithText(
+            "your journal shows this same mark in its network app. it should match, exactly.",
+            useUnmergedTree = true,
+        ).assertExists()
         composeRule.onNodeWithText("that doesn't match").performClick()
         composeRule.waitForIdle()
 
