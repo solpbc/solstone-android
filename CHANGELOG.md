@@ -9,7 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - opening your journal shows its mark as a title line rather than a full card, leaving more room for the journal itself.
 - your journal's fingerprint now appears only under technical details, instead of being listed twice.
-- your journal no longer repeats how the phone connects, and now shows the journal's label.
+- settings › your journal no longer repeats how the phone connects, and now shows your journal's label.
 - pairing now asks you to confirm that your journal's mark matches before it calls the connection done. if it doesn't match, the phone tries to remove the connection and tells you if the journal may still have this phone listed.
 - the screens for connecting a journal and managing local storage now use the app's own buttons and text instead of android's defaults.
 
