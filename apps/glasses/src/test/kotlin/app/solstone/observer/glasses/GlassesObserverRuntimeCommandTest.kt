@@ -44,7 +44,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -60,7 +59,7 @@ class GlassesObserverRuntimeCommandTest {
         )
         val runtime = GlassesObserverRuntime(container)
 
-        assertEquals(CommandSucceeded, runtime.pairLink(validPairLink()))
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.InvalidPairLinkOrCameraBusy), runtime.pairLink(validPairLink()))
         assertEquals(CommandBlocked(RuntimeCommandBlockReason.RuntimeUnavailable), runtime.observeStart())
         assertEquals(CommandSucceeded, runtime.syncNow())
         assertEquals(CommandSucceeded, runtime.speakStatus())
@@ -108,13 +107,16 @@ class GlassesObserverRuntimeCommandTest {
     }
 
     @Test
-    fun debugPairLinkCommandRoutesThroughPairingWithoutActivity() {
+    fun debugPairLinkCommandDoesNotReplaceWorkingPairingWithoutActivity() {
         val container = FakeRuntimeContainer(controller = controller())
         val runtime = GlassesObserverRuntime(container)
 
-        assertEquals(CommandSucceeded, routeDebugRuntimeCommand(runtime, validPairLink(), action = null))
+        assertEquals(
+            CommandBlocked(RuntimeCommandBlockReason.InvalidPairLinkOrCameraBusy),
+            routeDebugRuntimeCommand(runtime, validPairLink(), action = null),
+        )
 
-        assertNotNull(container.controller.lastPairProbe)
+        assertEquals(null, container.controller.lastPairProbe)
     }
 
     @Test
@@ -219,13 +221,13 @@ class GlassesObserverRuntimeCommandTest {
     }
 
     @Test
-    fun successfulPairLinkTriggersOpportunisticFlushWhenPendingExists() {
+    fun workingPairingDoesNotFlushOrReplaceWhenPairLinkArrives() {
         val container = FakeRuntimeContainer(controller = controller(pendingCount = 2, opportunisticSyncEnabled = true))
         val runtime = GlassesObserverRuntime(container)
 
-        assertEquals(CommandSucceeded, runtime.pairLink(validPairLink()))
+        assertEquals(CommandBlocked(RuntimeCommandBlockReason.InvalidPairLinkOrCameraBusy), runtime.pairLink(validPairLink()))
 
-        assertEquals(1, container.sync.enqueueNowCalls)
+        assertEquals(0, container.sync.enqueueNowCalls)
     }
 
     @Test

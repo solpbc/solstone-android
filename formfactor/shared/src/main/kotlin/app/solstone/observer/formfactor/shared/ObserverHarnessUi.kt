@@ -38,7 +38,7 @@ class ObserverHarnessUi(
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
     private val onJournalCacheLoadComplete: () -> Unit = {},
-    private val markAccessoryFactory: ((Context) -> View)? = null,
+    private val markAccessoryFactory: ((context: Context, onConfirmed: () -> Unit) -> View)? = null,
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
@@ -407,8 +407,8 @@ class ObserverHarnessUi(
      */
     private fun LinearLayout.showPaired() {
         removeAllViews()
-        markAccessoryFactory?.invoke(context)?.let { addView(it) }
-        button("done") { leave() }
+        val offerExit: () -> Unit = { button("done") { leave() }; Unit }
+        markAccessoryFactory?.invoke(context, offerExit)?.let { addView(it) } ?: offerExit()
     }
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {

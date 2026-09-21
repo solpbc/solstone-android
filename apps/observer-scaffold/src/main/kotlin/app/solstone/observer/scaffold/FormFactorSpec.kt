@@ -15,5 +15,6 @@ data class FormFactorSpec(
     val previewHeightPx: Int,
     val declaredCaptureForegroundTypes: Set<String>,
     val permissions: (sdkInt: Int) -> Array<String>,
-    val pairingAccessoryFactory: ((Context) -> View)? = null,
+    /** The accessory must call [onConfirmed] before the pairing screen offers its exit. */
+    val pairingAccessoryFactory: ((context: Context, onConfirmed: () -> Unit) -> View)? = null,
 )

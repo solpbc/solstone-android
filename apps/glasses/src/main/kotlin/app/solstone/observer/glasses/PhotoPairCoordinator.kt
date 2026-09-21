@@ -149,6 +149,8 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
             is PairAttemptOutcome.OtherFailure -> {
                 seams.log("relay-pair outcome=OtherFailure type=${outcome.exceptionType} status=${outcome.statusCode}")
             }
+            PairAttemptOutcome.ExistingPairingActive -> seams.log("relay-pair outcome=ExistingPairingActive")
+            PairAttemptOutcome.ExistingPairingUnreachable -> seams.log("relay-pair outcome=ExistingPairingUnreachable")
             PairAttemptOutcome.Retry -> seams.log("relay-pair outcome=Retry")
         }
     }

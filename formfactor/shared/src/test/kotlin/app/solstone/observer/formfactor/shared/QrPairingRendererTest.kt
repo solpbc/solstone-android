@@ -50,6 +50,8 @@ class QrPairingRendererTest {
             pairLinkDispatchText(PairLinkDispatchResult.InvalidLink),
             pairLinkDispatchText(PairLinkDispatchResult.Busy),
             pairStatusText(PairAttemptOutcome.OtherFailure("IOException", null)),
+            pairStatusText(PairAttemptOutcome.ExistingPairingActive),
+            pairStatusText(PairAttemptOutcome.ExistingPairingUnreachable),
             pairStatusText(PairAttemptOutcome.WindowClosed(410)),
             pairStatusText(PairAttemptOutcome.WindowClosed(401)),
             pairStatusText(networkFailure(ConnectivityFailure.DEVICE_OFFLINE)),
@@ -145,6 +147,8 @@ class QrPairingRendererTest {
             networkFailure(ConnectivityFailure.DEVICE_OFFLINE),
             PairAttemptOutcome.WindowClosed(401),
             PairAttemptOutcome.OtherFailure("IOException", null),
+            PairAttemptOutcome.ExistingPairingActive,
+            PairAttemptOutcome.ExistingPairingUnreachable,
         )
 
         outcomes.forEach { outcome ->
@@ -212,6 +216,71 @@ class QrPairingRendererTest {
                 networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
             )
             assertTrue(rendered.contains(localAdvice), host)
+        }
+    }
+
+    /**
+     * The same rule, for IPv6 literals — the case the v4-only predicate sent down the wi-fi branch.
+     *
+     * ⚠ A journal on a public IPv6 address was told to "make sure it's running and on the same
+     * wi-fi" and offered "switch your journal to private network to pair from anywhere", when the
+     * address it was already reached at reaches from anywhere.
+     *
+     * 🔴 `2001:db8::/32` is in the LOCAL list on purpose: it is IPv6's documentation range, and the
+     * v4 half above already puts `192.0.2.1`, `198.51.100.1` and `203.0.113.1` there. A predicate
+     * that called one public and the other private would disagree with itself.
+     */
+    @Test
+    fun directHostAdviceTreatsPublicIpv6LikePublicIpv4() {
+        val localAdvice = "make sure it's running and on the same wi-fi"
+
+        listOf("2606:4700::1111", "2a00:1450:4001:80e::200e", "2001:4860:4860::8888").forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertEquals(
+                "couldn't reach your journal at [$host]:7657. make sure it's running, then try again.",
+                rendered,
+                host,
+            )
+            assertFalse(rendered.contains(localAdvice), host)
+        }
+
+        listOf(
+            "::1",
+            "::",
+            "fe80::1",
+            "fe80::1%wlan0",
+            "fd00::1",
+            "fc00::abcd",
+            "ff02::1",
+            "2001:db8::1",
+            "::ffff:192.168.1.10",
+            "not:an:address",
+        ).forEach { host ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertTrue(rendered.contains(localAdvice), host)
+        }
+    }
+
+    /**
+     * ⛔ The port has to stay readable. A bare IPv6 literal rendered `at 2001:db8::1:7657.`, where
+     * nothing separates the address from the port — so the owner cannot read either one.
+     */
+    @Test
+    fun anIpv6LiteralIsBracketedSoItsPortIsReadable() {
+        listOf(
+            "2606:4700::1111" to "[2606:4700::1111]:7657",
+            "2001:db8::1" to "[2001:db8::1]:7657",
+            "192.168.1.2" to "192.168.1.2:7657",
+            "journal.example" to "journal.example:7657",
+        ).forEach { (host, expected) ->
+            val rendered = pairStatusText(
+                networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = host),
+            )
+            assertTrue(rendered.contains("at $expected."), "$host -> $rendered")
         }
     }
 

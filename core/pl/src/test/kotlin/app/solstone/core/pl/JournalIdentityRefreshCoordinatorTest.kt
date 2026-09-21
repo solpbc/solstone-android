@@ -147,8 +147,10 @@ class JournalIdentityRefreshCoordinatorTest {
         val executor = Executors.newCachedThreadPool()
         val coordinator = JournalIdentityRefreshCoordinator(store, executor)
 
-        val presentations = mutableListOf<JournalMarkPresentation>()
-        coordinator.addListener { presentations.add(it) }
+        val identified = CountDownLatch(1)
+        coordinator.addListener {
+            if (it is JournalMarkPresentation.Identified) identified.countDown()
+        }
 
         val client = RoutingFakeClient { method, path ->
             assertEquals("GET", method)
@@ -169,6 +171,9 @@ class JournalIdentityRefreshCoordinatorTest {
         assertEquals("piano", mark.icon1.name)
         assertEquals("liquefy", mark.words[0])
 
+        // `save()` is deliberately before `updatePresentation()`. Waiting on the store proves the
+        // persistence half only; wait for the presentation notification before observing it.
+        assertTrue(identified.await(5, TimeUnit.SECONDS))
         assertIs<JournalMarkPresentation.Identified>(coordinator.currentPresentation())
 
         coordinator.close()

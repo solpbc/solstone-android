@@ -14,6 +14,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.identity.JournalMark
@@ -270,6 +271,31 @@ class PhoneJournalMarkComposeTest {
             .assertContentDescriptionEquals("your journal, not set up yet")
         composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun pairingMarkRequiresAnExplicitConfirmationAndDisconnectsOnMismatch() {
+        var confirmed = 0
+        var mismatched = 0
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = null,
+                    onConfirmed = { confirmed += 1 },
+                    onMismatch = { mismatched += 1; PairingMismatchResult.JournalUnreached },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("does this match your journal?").assertExists()
+        composeRule.onNodeWithText("that doesn't match").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(1, mismatched)
+        assertEquals(1, confirmed)
+        composeRule.onNodeWithText(
+            "this phone is no longer connected. your journal may still have this phone listed.",
+        ).assertExists()
     }
 
     @Test

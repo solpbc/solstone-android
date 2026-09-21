@@ -15,6 +15,11 @@ import java.net.UnknownHostException
 
 sealed interface PairAttemptOutcome {
     data class Linked(val result: HarnessPairProbeResult) : PairAttemptOutcome
+    /** A working pairing exists, so replacing it would be an unasked-for destructive action. */
+    data object ExistingPairingActive : PairAttemptOutcome
+
+    /** The existing pairing cannot be checked, so it must not be replaced on a guess. */
+    data object ExistingPairingUnreachable : PairAttemptOutcome
     data object Retry : PairAttemptOutcome
     data class NetworkUnavailable(
         val failure: ConnectivityFailure,

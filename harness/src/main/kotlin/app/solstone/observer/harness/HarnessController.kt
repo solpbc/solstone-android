@@ -281,9 +281,13 @@ class HarnessController(
         if (!looksLikePairLink(rawText)) return null
         val link = parsePairLink(rawText)
         val result = withPairLock {
-            when (link) {
-                is DirectPairLink -> runPairProbe(rawText)
-                is RelayPairLink -> runRelayPairProbe(link)
+            if (replacementPreflight() != null) {
+                null
+            } else {
+                when (link) {
+                    is DirectPairLink -> runPairProbe(rawText)
+                    is RelayPairLink -> runRelayPairProbe(link)
+                }
             }
         }
         if (result != null && result.pairStatus in 200..299 && result.statusStatus in 200..299) {
@@ -296,7 +300,7 @@ class HarnessController(
         if (!looksLikePairLink(rawText)) return PairAttemptOutcome.Retry
         val link = parsePairLink(rawText)
         val outcome = withPairLock {
-            when (link) {
+            replacementPreflight() ?: when (link) {
                 is RelayPairLink -> try {
                     PairAttemptOutcome.Linked(runRelayPairProbe(link))
                 } catch (e: Throwable) {
@@ -320,6 +324,21 @@ class HarnessController(
             opportunisticSync?.onPairingSuccess()
         }
         return outcome
+    }
+
+    /**
+     * A revoked pairing is deliberately not treated as current: pairing a fresh link is its repair.
+     * A current pairing, however, must prove it is dead before this device changes credentials.
+     */
+    private fun replacementPreflight(): PairAttemptOutcome? {
+        if (pairingFact() != PairingFact.PAIRED) return null
+        return when (probePlStatus()) {
+            is HarnessPlStatus.Reachable -> PairAttemptOutcome.ExistingPairingActive
+            is HarnessPlStatus.PairedButUnreachable -> PairAttemptOutcome.ExistingPairingUnreachable
+            // The persisted pairing fact and the probe disagree: the current journal record is
+            // gone, so this is the same repair path as a journal-side revocation.
+            HarnessPlStatus.NotPaired -> null
+        }
     }
 
     fun dispatchPairLink(rawText: String?): PairLinkDispatchResult {

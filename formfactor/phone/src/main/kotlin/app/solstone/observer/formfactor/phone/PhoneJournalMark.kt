@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import app.solstone.core.identity.JournalMark
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Journal mark design tokens.
@@ -405,6 +410,8 @@ fun JournalMarkCard(
 @Composable
 fun PairingSuccessMark(
     coordinator: JournalIdentityRefreshCoordinator?,
+    onConfirmed: () -> Unit = {},
+    onMismatch: () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
     modifier: Modifier = Modifier,
 ) {
     var presentation by remember {
@@ -425,16 +432,67 @@ fun PairingSuccessMark(
             onDispose { }
         }
     }
-    JournalMarkCard(presentation = presentation, modifier = modifier)
+    var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
+    var mismatchResult by remember { mutableStateOf<PairingMismatchResult?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        JournalMarkCard(presentation = presentation)
+        Spacer(Modifier.height(20.dp))
+        when (confirmation) {
+            PairingConfirmation.Waiting -> {
+                Text("does this match your journal?")
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    confirmation = PairingConfirmation.Confirmed
+                    onConfirmed()
+                }) { Text("yes, this is my journal") }
+                Button(onClick = {
+                    confirmation = PairingConfirmation.Removing
+                    scope.launch {
+                        mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
+                        confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
+                            PairingConfirmation.Failed
+                        } else {
+                            onConfirmed()
+                            PairingConfirmation.Mismatched
+                        }
+                    }
+                }) { Text("that doesn't match") }
+            }
+            PairingConfirmation.Removing -> Text("disconnecting this phone…")
+            PairingConfirmation.Confirmed -> Text("this phone is connected to your journal.")
+            PairingConfirmation.Mismatched -> Text(
+                if (mismatchResult == PairingMismatchResult.JournalUnreached) {
+                    "this phone is no longer connected. your journal may still have this phone listed."
+                } else {
+                    "this phone is no longer connected to that journal."
+                },
+            )
+            PairingConfirmation.Failed -> {
+                Text("couldn't disconnect this phone. try again.")
+                Button(onClick = { confirmation = PairingConfirmation.Waiting }) { Text("try again") }
+            }
+        }
+    }
 }
+
+enum class PairingMismatchResult { Disconnected, JournalUnreached, LocalFailure }
+
+private enum class PairingConfirmation { Waiting, Confirmed, Removing, Mismatched, Failed }
 
 fun createPhonePairingMarkView(
     context: Context,
     coordinator: JournalIdentityRefreshCoordinator?,
+    onConfirmed: () -> Unit,
+    onMismatch: () -> PairingMismatchResult,
 ): View {
     return ComposeView(context).apply {
         setContent {
-            PairingSuccessMark(coordinator = coordinator)
+            PairingSuccessMark(
+                coordinator = coordinator,
+                onConfirmed = onConfirmed,
+                onMismatch = onMismatch,
+            )
         }
     }
 }

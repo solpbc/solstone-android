@@ -84,6 +84,10 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
             } else {
                 PAIR_GENERIC
             }
+        PairAttemptOutcome.ExistingPairingActive ->
+            "this phone is already connected to a working journal. unpair this phone, then try again to connect a different journal."
+        PairAttemptOutcome.ExistingPairingUnreachable ->
+            "couldn't check the journal this phone is already connected to, so nothing changed. make sure your journal is reachable, then try again."
         // ⛔ Not a scanner-state word, and ⛔ not `already pairing` either. `withPairLock` returns
         // null on TWO conditions — the camera lock and the sync drain gate — and on the scanner
         // path the camera leg is already held by the scan session, so a draining sync is the only
@@ -109,20 +113,98 @@ private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): 
                 "again with a new pairing code."
         ConnectivityFailure.HOST_DID_NOT_ANSWER -> when (outcome.route) {
             PairRoute.RELAY ->
-                "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
+                "couldn't reach your journal at ${authority(outcome)}. " +
                     "make sure it's running, then try again."
             PairRoute.DIRECT ->
-                if (outcome.endpointHost.isPublicIpv4Address()) {
-                    "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
+                if (outcome.endpointHost.isPublicAddress()) {
+                    "couldn't reach your journal at ${authority(outcome)}. " +
                         "make sure it's running, then try again."
                 } else {
-                    "couldn't reach your journal at ${outcome.endpointHost}:${outcome.endpointPort}. " +
+                    "couldn't reach your journal at ${authority(outcome)}. " +
                         "make sure it's running and on the same wi-fi, then try again. some networks " +
                         "block devices from connecting directly. you can also switch your journal to " +
                         "private network to pair from anywhere."
                 }
         }
     }
+
+/**
+ * `host:port`, with an IPv6 literal bracketed so the port is readable.
+ *
+ * 🔴 A bare IPv6 literal rendered `at 2001:db8::1:7657.` — the port ran straight on from the
+ * address with nothing to separate them, so the owner could not tell where the address ended.
+ * RFC 3986 § 3.2.2 gives the bracketed form for exactly this. ⛔ Not a new sentence: the
+ * template is unchanged and already gated, only the authority inside it is now unambiguous.
+ */
+private fun authority(outcome: PairAttemptOutcome.NetworkUnavailable): String {
+    val host = outcome.endpointHost
+    val bracketed = if (host.count { it == ':' } >= 2 && !host.startsWith("[")) "[$host]" else host
+    return "$bracketed:${outcome.endpointPort}"
+}
+
+/**
+ * Is this endpoint reachable from anywhere, rather than only from the journal's own network?
+ *
+ * ⚠ The wi-fi advice below is only true for a target that has to be on the same network. It was
+ * gated on dotted IPv4 alone, so a journal on a **public IPv6** address was told to check its
+ * wi-fi and to "switch to private network to pair from anywhere" — advice that is false when the
+ * address already reaches from anywhere.
+ *
+ * ⛔ A hostname is deliberately NOT public here: it may resolve anywhere, and VPX ruled on
+ * 2026-09-19 (`req_x5mwxqv2`) that hostnames keep the wi-fi message. This only adds the literal
+ * case, where the address itself settles the question with no lookup.
+ */
+private fun String.isPublicAddress(): Boolean =
+    if (count { it == ':' } >= 2) isPublicIpv6Address() else isPublicIpv4Address()
+
+/**
+ * Classifies an IPv6 literal without DNS, mirroring the v4 rules below role for role.
+ *
+ * ⚠ **The documentation range `2001:db8::/32` is excluded, exactly as the v4 rules exclude
+ * `192.0.2.0/24`, `198.51.100.0/24` and `203.0.113.0/24`.** It looks globally routable and is not;
+ * treating it as public here while the v4 half treats its own doc ranges as private would make the
+ * two predicates disagree about the same kind of address.
+ */
+private fun String.isPublicIpv6Address(): Boolean {
+    val bare = removePrefix("[").removeSuffix("]").substringBefore('%')
+    // ⛔ An IPv4-mapped or IPv4-compatible form is an IPv4 question; defer rather than guess.
+    val tail = bare.substringAfterLast(':')
+    if (tail.contains('.')) return tail.isPublicIpv4Address()
+    val groups = expandIpv6(bare) ?: return false
+    val first = groups[0]
+    return when {
+        groups.all { it == 0 } -> false                       // ::            unspecified
+        groups.take(7).all { it == 0 } && groups[7] == 1 -> false  // ::1       loopback
+        first and 0xFF00 == 0xFF00 -> false                   // ff00::/8      multicast
+        first and 0xFFC0 == 0xFE80 -> false                   // fe80::/10     link-local
+        first and 0xFE00 == 0xFC00 -> false                   // fc00::/7      unique-local
+        first == 0x2001 && groups[1] == 0x0DB8 -> false        // 2001:db8::/32 documentation
+        first == 0x0100 && groups[1] == 0 -> false             // 100::/64      discard-only
+        else -> true
+    }
+}
+
+/** Expands an IPv6 literal to its eight groups, or null if it is not one. */
+private fun expandIpv6(text: String): List<Int>? {
+    if (text.isEmpty() || text.count { it == ':' } > 8) return null
+    val halves = text.split("::")
+    if (halves.size > 2) return null
+    fun parse(part: String): List<Int>? {
+        if (part.isEmpty()) return emptyList()
+        return part.split(':').map { g ->
+            if (g.isEmpty() || g.length > 4) return null
+            g.toIntOrNull(16) ?: return null
+        }
+    }
+    val head = parse(halves[0]) ?: return null
+    return if (halves.size == 1) {
+        head.takeIf { it.size == 8 }
+    } else {
+        val tail = parse(halves[1]) ?: return null
+        if (head.size + tail.size > 7) return null
+        head + List(8 - head.size - tail.size) { 0 } + tail
+    }
+}
 
 /** Classifies dotted IPv4 without DNS so rendering cannot trigger network I/O. */
 private fun String.isPublicIpv4Address(): Boolean {

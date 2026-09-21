@@ -6,8 +6,12 @@ package app.solstone.observer.phone
 import android.Manifest
 import app.solstone.core.sources.PHONE_STREAM
 import app.solstone.observer.formfactor.phone.createPhonePairingMarkView
+import app.solstone.observer.formfactor.phone.PairingMismatchResult
 import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
+import app.solstone.core.identity.GraphMutationResult
+import app.solstone.platform.work.JournalRevokeOutcome
+import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.platform.work.syncStores
 
 val PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "camera")
@@ -35,8 +39,27 @@ val phoneSpec = FormFactorSpec(
             )
         }
     },
-    pairingAccessoryFactory = { context ->
-        val coordinator = syncStores(context).journalIdentityCoordinator
-        createPhonePairingMarkView(context, coordinator)
+    pairingAccessoryFactory = { context, onConfirmed ->
+        val stores = syncStores(context)
+        createPhonePairingMarkView(
+            context = context,
+            coordinator = stores.journalIdentityCoordinator,
+            onConfirmed = onConfirmed,
+            onMismatch = {
+                val revoke = revokeThisDeviceOnJournal(stores.publisher)
+                if (stores.publisher.forget() is GraphMutationResult.Cleared) {
+                    stores.journalVersionCoordinator.onIdentityChanged()
+                    stores.relayAccessCoordinator.onIdentityChanged()
+                    stores.journalIdentityCoordinator.onIdentityChanged()
+                    if (revoke == JournalRevokeOutcome.UNREACHED) {
+                        PairingMismatchResult.JournalUnreached
+                    } else {
+                        PairingMismatchResult.Disconnected
+                    }
+                } else {
+                    PairingMismatchResult.LocalFailure
+                }
+            },
+        )
     },
 )

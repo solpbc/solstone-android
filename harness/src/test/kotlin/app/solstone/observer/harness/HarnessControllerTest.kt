@@ -77,6 +77,55 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun currentWorkingPairingRefusesReplacementWithoutRunningEitherPairProbe() {
+        var directCalls = 0
+        var relayCalls = 0
+        val f = fixture(
+            pairProbe = PairProbe { _, _ -> directCalls += 1; error("must not replace") },
+            relayPairProbe = RelayPairProbe { _, _ -> relayCalls += 1; error("must not replace") },
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+        )
+
+        assertEquals(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingActive),
+            f.controller.dispatchPairLink(validPairLink()),
+        )
+        assertEquals(0, directCalls)
+        assertEquals(0, relayCalls)
+    }
+
+    @Test
+    fun currentPairingThatCannotBeCheckedRefusesReplacementWithoutRunningPairProbe() {
+        var calls = 0
+        val f = fixture(
+            pairProbe = PairProbe { _, _ -> calls += 1; error("must not replace") },
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.PairedButUnreachable("offline") },
+        )
+
+        assertEquals(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingUnreachable),
+            f.controller.dispatchPairLink(validPairLink()),
+        )
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun revokedPairingReplacesWithFreshLink() {
+        var calls = 0
+        val f = fixture(
+            identityStore = FakeIdentityStore(pairedHome(state = IdentityState.REVOKED)),
+            pairProbe = PairProbe { _, _ ->
+                calls += 1
+                HarnessPairProbeResult(true, 200, 200, "", "home", "10.0.0.2", 7657)
+            },
+            plStatusProbe = PlStatusProbe { error("revoked pairing must not block repair") },
+        )
+
+        assertTrue(f.controller.dispatchPairLink(validPairLink()) is PairLinkDispatchResult.Attempted)
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun startRefusedUntilRequiredPermissionsAreGranted() {
         val allDenied = fixture(
             permissionStatus = grantedPermissions().copy(
