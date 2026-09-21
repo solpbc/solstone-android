@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- the pairing scanner now shows four corner marks in the middle of the screen, so you can see where to point the camera.
+
+## [2.1.5] - 2026-09-21
+
+### Changed
 - opening your journal shows its mark as a title line rather than a full card, leaving more room for the journal itself.
 - your journal's fingerprint now appears only under technical details, instead of being listed twice.
 - settings › your journal no longer repeats how the phone connects, and now shows your journal's label.

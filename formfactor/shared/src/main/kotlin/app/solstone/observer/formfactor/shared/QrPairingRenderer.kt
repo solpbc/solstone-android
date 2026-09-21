@@ -154,23 +154,22 @@ private fun authority(outcome: PairAttemptOutcome.NetworkUnavailable): String {
  * 2026-09-19 (`req_vb6rta4j`) that hostnames keep the wi-fi message. This only adds the literal
  * case, where the address itself settles the question with no lookup.
  *
- * ⚠ **The v4 documentation ranges below are NOT covered by that ruling.** Its classification rule
- * calls an address public when it is "a parseable IPv4 outside RFC 1918, 100.64.0.0/10, loopback
- * and link-local" — which puts 203.0.113.1 on the *public* side, and iOS ships exactly that. The
- * exclusions here predate this function and were never ruled; the v6 half mirrors them only so one
- * predicate does not disagree with itself. ⛔ Do not read this as settling the question, and do not
- * change iOS to match it without a ruling.
+ * ⚠ Documentation-range IPv4 (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`) is public on
+ * purpose so a tester has a safe address that takes the public-branch copy. The v4 non-public set
+ * is exactly six families: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`,
+ * `127.0.0.0/8`, and `169.254.0.0/16`. Two retained divergences: `first == 0` and `first >= 224`
+ * stay non-public here; they cannot reach this renderer from a pair link because
+ * `PairLink.isDirectDialCandidate` is `a != 0 && a < 224` and the pair-link address type is `0x01` only.
  */
 private fun String.isPublicAddress(): Boolean =
     if (count { it == ':' } >= 2) isPublicIpv6Address() else isPublicIpv4Address()
 
 /**
- * Classifies an IPv6 literal without DNS, mirroring the v4 rules below role for role.
+ * Classifies an IPv6 literal without DNS; documentation-range `2001:db8::/32` is public, matching v4.
  *
- * ⚠ **The documentation range `2001:db8::/32` is excluded, exactly as the v4 rules exclude
- * `192.0.2.0/24`, `198.51.100.0/24` and `203.0.113.0/24`.** It looks globally routable and is not;
- * treating it as public here while the v4 half treats its own doc ranges as private would make the
- * two predicates disagree about the same kind of address.
+ * ⚠ `2001:db8::/32` is public, matching the v4 documentation ranges. The v6 branch is
+ * defense-in-depth: no pair link carries an IPv6 literal (`parseDirectFromDecoded` requires type
+ * `0x01`).
  */
 private fun String.isPublicIpv6Address(): Boolean {
     val bare = removePrefix("[").removeSuffix("]").substringBefore('%')
@@ -185,7 +184,6 @@ private fun String.isPublicIpv6Address(): Boolean {
         first and 0xFF00 == 0xFF00 -> false                   // ff00::/8      multicast
         first and 0xFFC0 == 0xFE80 -> false                   // fe80::/10     link-local
         first and 0xFE00 == 0xFC00 -> false                   // fc00::/7      unique-local
-        first == 0x2001 && groups[1] == 0x0DB8 -> false        // 2001:db8::/32 documentation
         first == 0x0100 && groups[1] == 0 -> false             // 100::/64      discard-only
         else -> true
     }
@@ -228,13 +226,7 @@ private fun String.isPublicIpv4Address(): Boolean {
         first == 100 && second in 64..127 -> false
         first == 169 && second == 254 -> false
         first == 172 && second in 16..31 -> false
-        first == 192 && second == 0 -> false
-        first == 192 && second == 2 -> false
-        first == 192 && second == 88 && bytes[2] == 99 -> false
         first == 192 && second == 168 -> false
-        first == 198 && second in 18..19 -> false
-        first == 198 && second == 51 && bytes[2] == 100 -> false
-        first == 203 && second == 0 && bytes[2] == 113 -> false
         first >= 224 -> false
         else -> true
     }

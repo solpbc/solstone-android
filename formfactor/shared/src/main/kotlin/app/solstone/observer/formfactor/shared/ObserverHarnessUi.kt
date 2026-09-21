@@ -175,6 +175,15 @@ class ObserverHarnessUi(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 ),
             )
+            // ⛔ A MATCH_PARENT reticle added after Back would be the hit at Back's centre and strand
+            // the operator. Insertion order is a hit-test constraint.
+            addView(
+                ScanPairReticleView(context),
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
             // Owner-reachable via the shell's `connect a journal`, so it says what to do rather
             // than that the harness is ready. Adopted from the string iOS already ships for this
             // screen (`QRScannerView`), not authored here.
