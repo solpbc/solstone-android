@@ -151,8 +151,15 @@ private fun authority(outcome: PairAttemptOutcome.NetworkUnavailable): String {
  * address already reaches from anywhere.
  *
  * ⛔ A hostname is deliberately NOT public here: it may resolve anywhere, and VPX ruled on
- * 2026-09-19 (`req_x5mwxqv2`) that hostnames keep the wi-fi message. This only adds the literal
+ * 2026-09-19 (`req_vb6rta4j`) that hostnames keep the wi-fi message. This only adds the literal
  * case, where the address itself settles the question with no lookup.
+ *
+ * ⚠ **The v4 documentation ranges below are NOT covered by that ruling.** Its classification rule
+ * calls an address public when it is "a parseable IPv4 outside RFC 1918, 100.64.0.0/10, loopback
+ * and link-local" — which puts 203.0.113.1 on the *public* side, and iOS ships exactly that. The
+ * exclusions here predate this function and were never ruled; the v6 half mirrors them only so one
+ * predicate does not disagree with itself. ⛔ Do not read this as settling the question, and do not
+ * change iOS to match it without a ruling.
  */
 private fun String.isPublicAddress(): Boolean =
     if (count { it == ':' } >= 2) isPublicIpv6Address() else isPublicIpv4Address()
