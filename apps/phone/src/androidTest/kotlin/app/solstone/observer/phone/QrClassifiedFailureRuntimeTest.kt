@@ -142,6 +142,60 @@ class QrClassifiedFailureRuntimeTest {
         return texts
     }
 
+    /**
+     * 🔴 **A screen change must DETACH the camera preview, because detaching is what releases the
+     * camera.** `Camera2QrPreviewView` closes the device from `onSurfaceTextureDestroyed`, which
+     * fires only when the `TextureView` leaves the hierarchy.
+     *
+     * ⚠ **The defect this guards was invisible.** `showPaired()` used to clear a nested column
+     * while the preview sat beside that column as its sibling, so a successful pair left the owner
+     * on a confirmation screen with a live camera behind it and the system camera indicator lit.
+     * ⛔ It looked correct in a screenshot and would have passed any assertion about what is
+     * *visible* — the observable has to be the view being gone, not the view being hidden.
+     *
+     * ⚠ **Scope, stated honestly:** this pins that `setScreen` detaches the preview, which is the
+     * property `showPaired()` now relies on by going through it. It does not drive a successful
+     * pair end to end — no fixture mints one — so a future change that routes the paired state
+     * around `setScreen` again would not be caught here. The 🔴 on `showPaired()` is the other half.
+     */
+    @Test
+    fun leavingTheScannerScreenDetachesThePreviewSoTheCameraCanBeReleased() {
+        ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
+                val ui = ObserverHarnessUi(
+                    context = activity,
+                    controller = failingController(),
+                    permissionRequester = {},
+                    asyncLoad = waitForObserverContainer().asyncLoad,
+                    previewHeightPx = 1,
+                    qrBackend = QrBackend.Camera2,
+                    qrThreadLabel = "phone-test",
+                    journalCacheState = { cacheState },
+                    saveJournalCacheLimit = { cacheState },
+                )
+                activity.setContentView(ui.view())
+                ui.showScanPairQr()
+                assertTrue(
+                    "the scanner screen should hold a camera preview",
+                    hasPreview(activity.findViewById(android.R.id.content)),
+                )
+                // Any screen replacement; `showPaired()` takes this same path now.
+                ui.showCameraOff()
+                assertFalse(
+                    "the preview survived a screen change, so the camera is never released",
+                    hasPreview(activity.findViewById(android.R.id.content)),
+                )
+            }
+        }
+    }
+
+    private fun hasPreview(view: View): Boolean = when {
+        view is Camera2QrPreviewView -> true
+        view is ViewGroup -> (0 until view.childCount).any { hasPreview(view.getChildAt(it)) }
+        else -> false
+    }
+
     private fun failingController(): HarnessController =
         HarnessController(
             permissionStatusReader = PermissionStatusReader {

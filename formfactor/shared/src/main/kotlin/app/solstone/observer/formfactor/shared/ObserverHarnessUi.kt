@@ -138,10 +138,9 @@ class ObserverHarnessUi(
             // than that the harness is ready. Adopted from the string iOS already ships for this
             // screen (`QRScannerView`), not authored here.
             val status = text("point your phone at the code")
-            val paired = column()
             val onStatus = { message: String ->
                 status.text = message
-                if (message == "paired") paired.showPaired()
+                if (message == "paired") showPaired()
             }
             val preview = when (qrBackend) {
                 QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel, onStatus)
@@ -179,7 +178,6 @@ class ObserverHarnessUi(
     fun showPairLink(uri: String?) {
         setScreen {
             val status = text("pairing…")
-            val paired = column()
             backButton()
             asyncLoad.load({ controller.dispatchPairLink(uri) }) { state ->
                 when (state) {
@@ -189,7 +187,7 @@ class ObserverHarnessUi(
                         else -> {
                             status.text = requireNotNull(pairLinkDispatchText(result))
                             if (result is PairLinkDispatchResult.Attempted && result.outcome.isSuccessfulPair()) {
-                                paired.showPaired()
+                                showPaired()
                             }
                         }
                     }
@@ -420,10 +418,28 @@ class ObserverHarnessUi(
      * a system gesture the screen never mentioned. It leaves exactly as back does: to the shell
      * when this harness was opened for one task, to the menu otherwise.
      */
-    private fun LinearLayout.showPaired() {
-        removeAllViews()
-        val offerExit: () -> Unit = { button("done") { leave() }; Unit }
-        markAccessoryFactory?.invoke(context, offerExit)?.let { addView(it) } ?: offerExit()
+    /**
+     * The paired state REPLACES the screen. ⛔ It must not merely clear a column inside it.
+     *
+     * 🔴 **This used to `removeAllViews()` on a nested column while the camera preview sat beside
+     * that column as its sibling, so the preview was never detached — and
+     * `Camera2QrPreviewView` releases the camera from `onSurfaceTextureDestroyed`, which only
+     * fires on detach.** The owner therefore finished pairing and sat on a confirmation screen
+     * with a live camera behind it and the system's camera-in-use indicator still lit.
+     *
+     * ⚠ **The observable is the camera being RELEASED, not the preview being invisible.** Covering
+     * or hiding the preview would look identical to an owner reading this code and identical in a
+     * screenshot, and would leave the privacy indicator burning. Replacing the screen is what
+     * detaches the `TextureView`, and the detach is what closes the device.
+     *
+     * ✅ Safe from `onStatus`: `Camera2QrPreviewView` delivers status through `post {}`, so this
+     * runs on the main thread.
+     */
+    private fun showPaired() {
+        setScreen {
+            val offerExit: () -> Unit = { button("done") { leave() }; Unit }
+            markAccessoryFactory?.invoke(context, offerExit)?.let { addView(it) } ?: offerExit()
+        }
     }
 
     private fun setScreen(isMenu: Boolean = false, build: LinearLayout.() -> Unit) {
@@ -458,6 +474,7 @@ class ObserverHarnessUi(
             if (dismiss != null) ownerTextStyle?.invoke(it)
             addView(it)
         }
+
 
     private fun LinearLayout.column(): LinearLayout =
         LinearLayout(context).also {
