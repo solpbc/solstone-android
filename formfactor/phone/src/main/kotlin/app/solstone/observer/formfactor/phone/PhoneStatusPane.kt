@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -70,6 +70,18 @@ fun PhoneStatusPane(
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
     val marginPx = with(density) { ShellMetrics.screenMargin.roundToPx() }
+    // 🔴 The pane spans the content width rather than taking a fixed 340dp maximum.
+    //
+    // At 340dp, trailing-aligned on a 411dp phone, the pane stopped 39dp short of the leading
+    // margin — and home's greeting (`PhoneGreetingSlot`, a start-aligned `fillMaxWidth` heading)
+    // sits directly behind it. So one glyph of `good evening` stayed visible past the pane's left
+    // edge: not a card floating over content, which is what the shadow says, but a `g` orphaned
+    // beside it, which reads as a clipping defect. ⛔ The fix is not a scrim — § 3.3's
+    // `scrim: none needed` stands, and a status-bar protection here would stack with the app
+    // bar's own. Nothing behind the pane can peek once the pane reaches both margins.
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val paneWidth = (windowWidth - ShellMetrics.screenMargin * 2)
+        .coerceIn(ShellMetrics.statusPaneMinWidth, ShellMetrics.statusPaneMaxWidth)
     Popup(
         popupPositionProvider = remember(gapPx, marginPx) {
             AnchoredBelowPositionProvider(gapPx = gapPx, screenMarginPx = marginPx)
@@ -83,7 +95,7 @@ fun PhoneStatusPane(
     ) {
         Surface(
             modifier = modifier
-                .widthIn(min = 240.dp, max = 340.dp)
+                .width(paneWidth)
                 .testTag("statusPane")
                 .semantics { paneTitle = spokenPaneTitle(PhonePane.STATUS) },
             shape = ShellMetrics.cardShape,

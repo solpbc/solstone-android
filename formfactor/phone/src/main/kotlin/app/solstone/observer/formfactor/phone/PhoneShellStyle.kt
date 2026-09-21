@@ -48,6 +48,17 @@ object ShellMetrics {
     /** The gutter every surface uses against the screen edge. */
     val screenMargin = PHONE_CONTENT_MARGIN_DP.dp
 
+    /**
+     * The status pane's width bounds.
+     *
+     * ⚠ The pane **spans the content width** — screen margin to screen margin — rather than
+     * sitting at a fixed maximum, because anything narrower leaves home's greeting visible past
+     * its leading edge and the orphaned glyph reads as a clipping defect rather than as layering.
+     * The maximum only stops a wide window from stretching one popup across it.
+     */
+    val statusPaneMinWidth = 240.dp
+    val statusPaneMaxWidth = 400.dp
+
     /** Between two tiles, and between two cards. */
     val gutter = 12.dp
 

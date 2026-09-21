@@ -37,10 +37,14 @@ class SolstoneSwitchColorsTest {
         assertTrue(checked.isNotEmpty(), "no scheme has a distinct accent, so this asserts nothing")
 
         checked.forEach { scheme ->
-            // What `solstoneSwitchColors()` uses for the off state.
+            // 🔴 READ FROM PRODUCTION, not re-stated from the scheme. This block used to assert on
+            // `scheme.onSurface` under a comment calling it "what `solstoneSwitchColors()` uses" —
+            // a mirror maintained by hand, so any change to the real values shipped green and
+            // unmeasured. `solstoneSwitchColorValues` is the same data the composable draws with.
+            val values = solstoneSwitchColorValues(scheme)
             mapOf(
-                "onSurface (off thumb + border)" to scheme.onSurface,
-                "surfaceContainerHighest (off track)" to scheme.surfaceContainerHighest,
+                "off thumb" to values.uncheckedThumb,
+                "off track" to values.uncheckedTrack,
             ).forEach { (what, color) ->
                 val ratio = contrastRatio(color, scheme.primary)
                 assertTrue(
@@ -48,6 +52,35 @@ class SolstoneSwitchColorsTest {
                     "$what is $ratio from the on-state track, so off reads as on",
                 )
             }
+        }
+    }
+
+    /**
+     * ⛔ **The off border is deliberately NOT under the rule above, and this test is the reason.**
+     *
+     * The border only owes visibility against its own track. It cannot make off read as on, because
+     * the ON state draws `checkedBorderColor = primary` on a `primary` track — the border is
+     * invisible whenever the switch is on, so it is not a channel that distinguishes the states.
+     * What it *was* doing at full `onSurface` was making the off switch the heaviest control on the
+     * screen. It carries alpha now, and this measures the composite an eye actually sees.
+     */
+    @Test
+    fun theOffBorderStaysVisibleOnItsOwnTrackWhileCarryingLessInk() {
+        allSolstoneSchemes().forEach { scheme ->
+            val values = solstoneSwitchColorValues(scheme)
+            val composited = values.compositedUncheckedBorder()
+            val ratio = contrastRatio(composited, values.uncheckedTrack)
+            assertTrue(
+                ratio >= 3.0,
+                "off border composites to $ratio against its own track — not a visible boundary",
+            )
+            // ✅ Non-vacuity in the other direction: if the alpha were ever raised back to opaque
+            // this test would still pass, so assert the ink actually came down.
+            val opaque = contrastRatio(values.uncheckedThumb, values.uncheckedTrack)
+            assertTrue(
+                ratio < opaque,
+                "off border carries the same ink as the thumb — the alpha is not doing anything",
+            )
         }
     }
 
@@ -67,7 +100,7 @@ class SolstoneSwitchColorsTest {
     fun bothStatesKeepTheirThumbVisibleAgainstTheirOwnTrack() {
         allSolstoneSchemes().forEach { scheme ->
             assertTrue(
-                contrastRatio(scheme.onSurface, scheme.surfaceContainerHighest) >= 3.0,
+                contrastRatio(solstoneSwitchColorValues(scheme).uncheckedThumb, scheme.surfaceContainerHighest) >= 3.0,
                 "off thumb invisible on its own track",
             )
             assertTrue(

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -42,10 +43,11 @@ import app.solstone.core.identity.JournalMarkPresentation
  */
 @Composable
 fun PhoneJournalMarkPill(
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     paired: Boolean = false,
     presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
+    isHeading: Boolean = false,
 ) {
     val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
     val isUnavailable = presentation is JournalMarkPresentation.Unavailable
@@ -70,14 +72,20 @@ fun PhoneJournalMarkPill(
         presentation is JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
         else -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
     }
+    // ⚠ `onClick` is nullable because the journal sheet's title is this same unit and must not be
+    // a control: it names the surface the owner is already inside. ⛔ When it is inert it takes the
+    // `heading` role instead of `Button`, and keeps ONE merged node carrying the mark's spoken form
+    // (§ 2.3) — dropping the role entirely would leave TalkBack reading loose chip nodes, which is
+    // the failure iOS's `.accessibilityElement(children: .ignore)` collapse exists to prevent.
     Row(
         modifier = modifier
             .heightIn(min = 44.dp)
             .shellSurface(shellSurface, shellHairline, RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
             .semantics(mergeDescendants = true) {
-                role = Role.Button
+                if (onClick != null) role = Role.Button
+                if (isHeading) heading()
                 contentDescription = accessibleName
             }
             .testTag("journalMarkPill"),

@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- opening your journal shows its mark as a title line rather than a full card, leaving more room for the journal itself.
+- your journal's fingerprint now appears only under technical details, instead of being listed twice.
+- pairing now asks you to confirm that your journal's mark matches before it calls the connection done. if it doesn't match, the phone disconnects itself from that journal.
+
+### Fixed
+- when a journal is on a public IPv6 address, a pairing failure no longer tells you to check your wi-fi. that address reaches from anywhere, so the advice was never true for it.
+- an IPv6 address no longer runs straight into its port number, so you can tell where the address ends.
+- the status card now spans the full width between the screen's margins, so the greeting behind it no longer shows beside its edge.
+- an off switch draws a lighter outline than it did, so it sits back from the things around it.
+- scanning a pairing code no longer replaces a journal this phone is already connected to. the app tells you to unpair first, or to get the current journal reachable.
+
 ## [2.1.4] - 2026-09-20
 
 ### Changed

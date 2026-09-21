@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,7 +59,7 @@ import app.solstone.core.pl.browser.BrowserTerminalClass
 import app.solstone.core.pl.browser.JournalBrowserLifecycle
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserSession
-import app.solstone.observer.formfactor.phone.JournalMarkCard
+import app.solstone.observer.formfactor.phone.PhoneJournalMarkPill
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
@@ -98,10 +99,25 @@ internal fun JournalSheet(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            JournalMarkCard(
+            // 🔴 The sheet's title is the PILL, not the mark card. `journal-mark.md` § 7 item 5:
+            // *"the home pill carries the chip pair and the words, and when the journal opens that
+            // pill becomes the sheet's title."* A full card here spent roughly a seventh of the
+            // screen on chrome and left `close` floating beside a block far taller than it.
+            //
+            // ⚠ The same sentence ends *"one screen never shows the mark twice"* — satisfied here
+            // because the home pill is drawn `Alignment.BottomCenter` (`PhoneShell`) and this sheet
+            // insets only 72dp from the top, so the pill is behind the sheet's own surface. ⛔ If
+            // the pill ever moves into the top bar, this header has to change with it.
+            PhoneJournalMarkPill(
+                onClick = null,
+                paired = true,
                 presentation = presentation,
-                modifier = Modifier.weight(1f),
+                isHeading = true,
             )
+            // ⚠ The pill wraps its own content and the spacer takes the slack. ⛔ Not a weight on
+            // the pill: `weight(1f, fill = false)` caps it at its share of the row, which squeezes
+            // a long two-word mark rather than letting `close` move over.
+            Spacer(Modifier.weight(1f))
             TextButton(onClick = onClose) { Text("close") }
         }
         // The sheet asks for no window insets so its surface can paint under the

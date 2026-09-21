@@ -60,8 +60,12 @@ fun PhoneYourJournalPane(
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             if (paired) {
-                PaneFactRow(label = "fingerprint", value = facts.fingerprint)
-                PaneRowDivider()
+                // ⛔ No `fingerprint` row here. `mobile-shell-android.md` § 3.3.1 already ruled it
+                // out of the glance — *"minus fingerprint (a verification detail — see technical
+                // details below)"* — and `PhoneTechnicalDetailsPane` carries it. Rendering it in
+                // both places made the same 64-hex digest a glance fact on one surface and a
+                // diagnostic on the other. iOS reaches the same answer with its own
+                // `DisclosureGroup("technical details")`.
                 PaneFactRow(label = "how your phone connects", value = facts.location)
                 PaneRowDivider()
                 PaneFactRow(label = "connection", value = facts.connection)
