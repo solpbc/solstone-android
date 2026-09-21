@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - the pairing scanner now shows four corner marks in the middle of the screen, so you can see where to point the camera.
+- the screen that asks you to confirm your journal's mark now uses the app's own colors and type, with a line explaining where to compare it, and clearer yes and no buttons.
+
+### Fixed
+- a pairing link that can't reach your journal now tells you so with a way to try again, instead of leaving you on a screen with no way forward.
 
 ## [2.1.5] - 2026-09-21
 
