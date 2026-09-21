@@ -6,6 +6,8 @@ package app.solstone.observer.phone
 import android.Manifest
 import app.solstone.core.sources.PHONE_STREAM
 import app.solstone.observer.formfactor.phone.createPhonePairingMarkView
+import app.solstone.observer.formfactor.phone.phoneOwnerButtonStyle
+import app.solstone.observer.formfactor.phone.phoneOwnerTextStyle
 import app.solstone.observer.formfactor.phone.PairingMismatchResult
 import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
@@ -22,6 +24,8 @@ val phoneSpec = FormFactorSpec(
     handlesPairLinks = true,
     qrBackend = QrBackend.Camera2,
     previewHeightPx = 480,
+    ownerButtonStyle = ::phoneOwnerButtonStyle,
+    ownerTextStyle = ::phoneOwnerTextStyle,
     declaredCaptureForegroundTypes = PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {

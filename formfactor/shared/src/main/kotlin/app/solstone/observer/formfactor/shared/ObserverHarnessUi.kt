@@ -39,6 +39,21 @@ class ObserverHarnessUi(
     private val onSyncLoaded: () -> Unit = {},
     private val onJournalCacheLoadComplete: () -> Unit = {},
     private val markAccessoryFactory: ((context: Context, onConfirmed: () -> Unit) -> View)? = null,
+    /**
+     * How an OWNER-facing control and an owner-facing line of text are dressed.
+     *
+     * ⚠ Supplied by the form factor, because brand lives in `formfactor/phone` and this module sits
+     * below it. ⛔ Applied only in owner-task mode: the operator menu is instrumentation and keeps
+     * the platform's own look, which is the same seam `dismiss` already draws for the screen margin
+     * and the drawn back button.
+     *
+     * 🔴 These MUTATE the widget rather than replacing it. `connect a journal` is the app's main
+     * call to action, and it was rendering as a grey square-cornered `android.widget.Button` with
+     * system-font body text beside the shell's branded surfaces. ⛔ Do not swap the widget class:
+     * the runtime tests match on `view is Button`.
+     */
+    private val ownerButtonStyle: ((Button) -> Unit)? = null,
+    private val ownerTextStyle: ((TextView) -> Unit)? = null,
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var inSubmenu = false
@@ -440,6 +455,7 @@ class ObserverHarnessUi(
     private fun LinearLayout.text(value: String): TextView =
         TextView(context).also {
             it.text = value
+            if (dismiss != null) ownerTextStyle?.invoke(it)
             addView(it)
         }
 
@@ -452,6 +468,7 @@ class ObserverHarnessUi(
     private fun LinearLayout.button(label: String, onClick: () -> Unit): Button =
         Button(context).also {
             it.text = label
+            if (dismiss != null) ownerButtonStyle?.invoke(it)
             // 🔴 The platform button style sets `textAllCaps`, so every label on these screens
             // rendered as `USE 4 GB (YOUR LIMIT NOW)` — shouting, in an app whose entire register is
             // lowercase. ⚠ Invisible in source and invisible to a string test: the strings were
