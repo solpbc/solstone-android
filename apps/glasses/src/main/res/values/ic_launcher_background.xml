@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- unified sol app icon background — the only icon cream (#FAF3E4). locked 2026-06-25. -->
+<!-- unified sol app icon background — the only icon cream (#FCF3E4). -->
 <resources>
-    <color name="ic_launcher_background">#FAF3E4</color>
+    <color name="ic_launcher_background">#FCF3E4</color>
 </resources>

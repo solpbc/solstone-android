@@ -12,8 +12,8 @@
 -->
 <resources>
     <!-- surface.cream — must track `SolstoneColors.surfaceCream`, which is what the composed
-         shell actually draws. NOT `ic_launcher_background` (#FAF3E4): that is the locked icon
-         cream and a different value. Change one, change the other. -->
+         shell actually draws. `shell_surface_cream` and `ic_launcher_background` both carry
+         the tile cream #FCF3E4; the app token followed the mark palette under G5. -->
     <color name="shell_surface_cream">#FCF3E4</color>
 
     <style name="PhoneShellTheme" parent="@style/ObserverTheme">
