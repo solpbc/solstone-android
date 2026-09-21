@@ -38,7 +38,6 @@ fun PhoneYourJournalPane(
     facts: PhoneJournalFacts = PhoneJournalFacts(),
     presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     onConnectJournal: () -> Unit,
-    onCheckConnection: () -> Unit = {},
     onForgetJournal: () -> Unit = {},
     mutationFailed: Boolean = false,
     journalKeptItsRecord: Boolean = false,
@@ -55,8 +54,6 @@ fun PhoneYourJournalPane(
         ) {
             JournalMarkCard(presentation)
         }
-        // ⛔ No `connection` section title here: the card below already carries a `connection`
-        // row, and a heading repeating its own row's label reads as two different things.
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             if (paired) {
@@ -66,16 +63,10 @@ fun PhoneYourJournalPane(
                 // both places made the same 64-hex digest a glance fact on one surface and a
                 // diagnostic on the other. iOS reaches the same answer with its own
                 // `DisclosureGroup("technical details")`.
-                PaneFactRow(label = "how your phone connects", value = facts.location)
-                PaneRowDivider()
-                PaneFactRow(label = "connection", value = facts.connection)
-                PaneRowDivider()
-                PaneNavRow(
-                    label = "check connection",
-                    subLine = facts.check,
-                    onClick = onCheckConnection,
-                    modifier = Modifier.testTag("yourJournalCheckConnection"),
-                )
+                // ⛔ No connection / check-connection rows here. Status already shows
+                // `how your phone connects`; technical details already show `connection`
+                // and `check connection`. 260920-vpx-connection-facts-and-instruments-live-on-status-not-the-shelf.md
+                PaneFactRow(label = "label", value = facts.label)
                 PaneRowDivider()
                 PaneNavRow(
                     label = "pair a new journal",

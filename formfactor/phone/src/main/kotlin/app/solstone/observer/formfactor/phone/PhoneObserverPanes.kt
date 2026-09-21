@@ -197,7 +197,6 @@ private fun PhoneDetailContent(
             facts = journalFacts,
             presentation = journalMarkPresentation,
             onConnectJournal = onConnectJournal,
-            onCheckConnection = onCheckConnection,
             onForgetJournal = onForgetJournal,
             mutationFailed = journalMutationFailed && !journalMutationFromThisDevice,
             journalKeptItsRecord = journalKeptItsRecord,

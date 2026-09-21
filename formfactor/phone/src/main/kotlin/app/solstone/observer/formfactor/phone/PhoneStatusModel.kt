@@ -24,6 +24,7 @@ data class PhoneStatusModel(
 
 data class PhoneJournalFacts(
     val version: String = "unknown",
+    val label: String = "—",
     val location: String = "—",
     val connection: String = "—",
     val fingerprint: String = "—",

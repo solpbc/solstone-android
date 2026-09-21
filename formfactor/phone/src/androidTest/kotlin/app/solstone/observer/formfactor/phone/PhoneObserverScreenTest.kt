@@ -894,8 +894,9 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun howYourPhoneConnectsRowLabelPresentInYourJournalPane() {
+    fun connectionFactsAbsentOnYourJournalPaneAndLabelValueShown() {
         val facts = PhoneJournalFacts(
+            label = "studio",
             location = "straight to your journal",
             connection = "connected",
             fingerprint = "ca-1",
@@ -911,7 +912,10 @@ class PhoneObserverScreenTest {
                 onStartObserving = {},
             )
         }
-        composeRule.onNodeWithText("how your phone connects").assertIsDisplayed()
+        composeRule.onNodeWithText("studio").assertIsDisplayed()
+        composeRule.onNodeWithText("how your phone connects").assertDoesNotExist()
+        composeRule.onNodeWithText("connection").assertDoesNotExist()
+        composeRule.onNodeWithText("check connection").assertDoesNotExist()
         composeRule.onNodeWithText("how it connects").assertDoesNotExist()
     }
 

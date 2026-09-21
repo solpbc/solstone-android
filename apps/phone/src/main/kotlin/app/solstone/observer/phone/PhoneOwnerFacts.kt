@@ -23,7 +23,7 @@ private fun relayAttributionPhrase(relayOrigin: String?): String {
 }
 
 /**
- * The facts `settings > your journal` and `technical details` show.
+ * The facts `settings > your journal` and `technical details` show, including the journal's identity `label`.
  *
  * ⚠ [intakeRunning] is whether intake is actually running — the foreground service live and
  * holding capture types — never the owner's standing wish. `desiredOn` is true from the first
@@ -39,6 +39,7 @@ internal fun phoneJournalFacts(
     val committed = pairing as? PairingGraphSnapshot.Committed
     return PhoneJournalFacts(
         version = journalVersionDisplayText(status?.journalVersion),
+        label = committed?.home?.homeLabel ?: "—",
         // `direct` and `relay` are how the transport is named in code, not how a route is named
         // to the person taking it.
         location = when {

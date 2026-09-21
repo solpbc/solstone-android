@@ -22,6 +22,7 @@ class PhoneOwnerFactsTest {
             status = null,
             intakeRunning = true,
         )
+        assertEquals("journal", facts.label)
         assertEquals("journal-ca", facts.fingerprint)
         // ⚠ Both routes live is not an unknown: it is the case the app knows most about.
         assertEquals("straight to your journal, or through the relay sol pbc runs", facts.location)
@@ -99,10 +100,12 @@ class PhoneOwnerFactsTest {
             phoneJournalFacts(committed(direct = true, relayOrigin = "https://relay.example"), null, false).location,
         )
         // Neither eligible / uncommitted
+        val uncommitted = phoneJournalFacts(PairingGraphSnapshot.Absent(1), null, false)
         assertEquals(
             "—",
-            phoneJournalFacts(PairingGraphSnapshot.Absent(1), null, false).location,
+            uncommitted.location,
         )
+        assertEquals("—", uncommitted.label)
     }
 
     @Test
