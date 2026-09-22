@@ -220,12 +220,8 @@ def _length_prefixed(buf: bytes):
         at += length
 
 
-def signer_cert_sha256(path: str) -> list:
-    """SHA-256 of every signer's leading certificate, v3 preferred over v2.
-
-    apksigner prints exactly this digest as "certificate SHA-256 digest", so a
-    pin captured from apksigner is directly comparable.
-    """
+def signer_certificates(path: str) -> list:
+    """Every signer's leading certificate, as DER bytes, v3 preferred over v2."""
     with open(path, "rb") as handle:
         data = handle.read()
 
@@ -259,23 +255,44 @@ def signer_cert_sha256(path: str) -> list:
         value = pairs.get(scheme_id)
         if value is None:
             continue
-        digests = []
+        found = []
         for signers in _length_prefixed(value):
             for signer in _length_prefixed(signers):
                 signed_data = next(_length_prefixed(signer), None)
                 if signed_data is None:
                     continue
-                parts = list(_length_prefixed(signed_data))
-                if len(parts) < 2:
+                # ⛔ Never walk signed data to its end. v2 signed data is three
+                # length-prefixed sequences, but v3 puts two RAW u32s (minSdk,
+                # maxSdk) between the certificates and the attributes — a full
+                # walk reads minSdk as a length and overruns the message. Only
+                # the first two elements are ever needed, and both schemes agree
+                # on them: digests, then certificates. Reading them lazily stops
+                # before the raw fields exist. A v3-signed APK is not exotic:
+                # bundletool signs the universal APK v2+v3 while AGP's
+                # assembleRealRelease signs v2 only, so the bundle rail hits this
+                # and the direct APK rail never did.
+                elements = _length_prefixed(signed_data)
+                if next(elements, None) is None:
                     continue
-                certificates = parts[1]
+                certificates = next(elements, None)
+                if certificates is None:
+                    continue
                 certificate = next(_length_prefixed(certificates), None)
                 if certificate is None:
                     continue
-                digests.append(hashlib.sha256(certificate).hexdigest())
-        if digests:
-            return digests
+                found.append(certificate)
+        if found:
+            return found
     raise SigningBlockError("no v2 or v3 signature scheme block found")
+
+
+def signer_cert_sha256(path: str) -> list:
+    """SHA-256 of every signer's leading certificate, v3 preferred over v2.
+
+    apksigner prints exactly this digest as "certificate SHA-256 digest", so a
+    pin captured from apksigner is directly comparable.
+    """
+    return [hashlib.sha256(certificate).hexdigest() for certificate in signer_certificates(path)]
 
 
 # --- entry point ---------------------------------------------------------

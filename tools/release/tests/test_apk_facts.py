@@ -66,6 +66,25 @@ class ApkFactsTest(unittest.TestCase):
             },
         )
 
+    def test_a_v3_signed_apk_reads_the_same_signer(self):
+        """The bundle rail's universal APK is signed v2+v3; this one is v2 only.
+
+        v3 signed data puts two RAW u32s (minSdk, maxSdk) after the
+        certificates, so a reader that walks the whole message reads a version
+        number as a length and overruns. It fails closed rather than lying, but
+        it fails — and every artifact bundletool signs is v3, so the bundle rail
+        could not read a signer at all until this was fixed.
+        """
+        block = (apk_fixture.FIXTURES / "v2.1.5-universal-apk-signing-block.bin").read_bytes()
+        manifest = (apk_fixture.FIXTURES / "v2.1.5-universal-AndroidManifest.xml").read_bytes()
+        universal = apk_fixture.make_apk(
+            self.root / "universal.apk", manifest=manifest, block=block
+        )
+        facts = apk_facts.apk_facts(str(universal))
+        self.assertEqual(facts["signer_cert_sha256"], [apk_fixture.SIGNER_CERT_SHA256])
+        self.assertEqual(facts["version_name"], "2.1.5")
+        self.assertEqual(facts["version_code"], 14)
+
     def test_unsigned_apk_is_refused(self):
         unsigned = apk_fixture.make_apk(self.root / "unsigned.apk", signing_block=False)
         with self.assertRaises(apk_facts.SigningBlockError):

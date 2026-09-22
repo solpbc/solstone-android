@@ -46,12 +46,16 @@ PERMISSIONS = [
 ]
 
 
-def make_apk(path, *, manifest=None, signing_block=True, extra=None):
+def make_apk(path, *, manifest=None, signing_block=True, block=None, extra=None):
     """Write a zip with the captured manifest and, optionally, the signing block.
 
     The block sits between the local file entries and the central directory,
     exactly where a real APK carries it, and the EOCD's central-directory
     offset is rewritten so the reader's EOCD walk lands on the block.
+
+    `block` swaps in different captured block bytes — the bundle rail's
+    universal APK is signed v2+v3 where this one is v2 only, and the readers
+    have to hold for both.
     """
     path = pathlib.Path(path)
     manifest_bytes = MANIFEST.read_bytes() if manifest is None else manifest
@@ -73,7 +77,7 @@ def make_apk(path, *, manifest=None, signing_block=True, extra=None):
         raise AssertionError("test zip has no EOCD")
     central_directory_offset = struct.unpack_from("<I", data, eocd + 16)[0]
 
-    block = SIGNING_BLOCK.read_bytes()
+    block = SIGNING_BLOCK.read_bytes() if block is None else block
     spliced = bytearray()
     spliced += data[:central_directory_offset]
     spliced += block

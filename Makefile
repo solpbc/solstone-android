@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device device-gate-report format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts
+.PHONY: install test ci ci-device device-gate-report format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts pull-phone-aab verify-bundle-binding aab-facts android-host-hitl-phone-bundle
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -155,7 +155,13 @@ HITL_FLOW := .maestro/phone-smoke.yaml
 HITL_FRESH_FLOW := .maestro/phone-fresh-install.yaml
 HITL_ARTIFACTS = $(ARTIFACTS)/hitl
 FROZEN_PHONE_APK ?=
-FROZEN_REMOTE_APK = $(ANDROID_REMOTE_PROJECT)/artifacts/distribution/phone-real-release.apk
+# The exact local artifact the real-hardware gate installs. It defaults to the
+# direct channel's signed APK and the direct channel never changes. The bundle
+# rail overrides it with the universal APK derived from the .aab that gets
+# uploaded, so one gate serves both channels and neither can gate bytes it did
+# not freeze. See "the bundle rail" below.
+HITL_FROZEN_APK_LOCAL ?= $(PHONE_RELEASE_APK_LOCAL)
+FROZEN_REMOTE_APK = $(ANDROID_REMOTE_PROJECT)/artifacts/distribution/$(notdir $(HITL_FROZEN_APK_LOCAL))
 
 hitl-phone:
 	@command -v maestro >/dev/null 2>&1 || { echo "maestro not on PATH (expected ~/.maestro/bin/maestro)" >&2; exit 2; }
@@ -216,15 +222,15 @@ hitl-phone-frozen:
 # Versioned release wrapper. Copies and proves the frozen local artifact before
 # HITL; cannot reach Gradle.
 android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
-	@test -f "$(PHONE_RELEASE_APK_LOCAL)" || { echo "No frozen $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@test -f "$(HITL_FROZEN_APK_LOCAL)" || { echo "No frozen $(HITL_FROZEN_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' (direct channel) or 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' (bundle rail) first" >&2; exit 2; }
 	ssh $(ANDROID_REMOTE_HOST) 'mkdir -p $(ANDROID_REMOTE_PROJECT)/artifacts/distribution'
-	scp "$(PHONE_RELEASE_APK_LOCAL)" $(ANDROID_REMOTE_HOST):$(FROZEN_REMOTE_APK)
+	scp "$(HITL_FROZEN_APK_LOCAL)" $(ANDROID_REMOTE_HOST):$(FROZEN_REMOTE_APK)
 	@set -eu; \
-	digest_line=$$(sha256sum "$(PHONE_RELEASE_APK_LOCAL)"); local_sha=$${digest_line%% *}; \
+	digest_line=$$(sha256sum "$(HITL_FROZEN_APK_LOCAL)"); local_sha=$${digest_line%% *}; \
 	remote_line=$$(ssh $(ANDROID_REMOTE_HOST) 'sha256sum $(FROZEN_REMOTE_APK)'); remote_sha=$${remote_line%% *}; \
 	test "$$remote_sha" = "$$local_sha" || { echo "Frozen APK transfer digest mismatch: $$remote_sha != $$local_sha" >&2; exit 1; }; \
 	echo "Frozen APK transfer verified for HITL — $$local_sha"
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make hitl-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/phone-real-release.apk'
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && make hitl-phone-frozen FROZEN_PHONE_APK=artifacts/distribution/$(notdir $(HITL_FROZEN_APK_LOCAL))'
 
 # --- Versioning + changelog + GitHub release (the release-notes spine) ---
 # Version lives in apps/phone/build.gradle.kts (versionName = semver, versionCode =
@@ -307,6 +313,55 @@ publish-origin:
 apk-facts:
 	@test -n "$(APK)" || { echo "Set APK=<path to an apk>" >&2; exit 2; }
 	@python3 tools/release/apk_facts.py $(APK)
+
+# --- the bundle rail (Play) -------------------------------------------------
+#
+# Play takes an Android App Bundle and nobody can install one, so the bundle
+# rail freezes TWO artifacts from one build: the .aab that gets uploaded, and
+# the universal APK bundletool derives from it, which is the only installable
+# form of those exact bytes. The real-hardware gate runs against the derived
+# APK, and `verify-bundle-binding.py` proves it is that bundle rather than a
+# second assemble — the same frozen-bytes rule the direct channel has, where
+# `hitl-phone` rebuilds and `hitl-phone-frozen` does not.
+#
+# ⛔ The direct signed-APK channel is untouched: updates.solstone.app and
+# solstone.app/beta keep shipping `pull-phone-apk` bytes. The universal APK is a
+# GATE artifact and is never published anywhere.
+PHONE_RELEASE_AAB_LOCAL := $(ARTIFACTS)/phone-real-release.aab
+PHONE_UNIVERSAL_APK_LOCAL := $(ARTIFACTS)/phone-real-release-universal.apk
+
+# Build the signed bundle and its universal APK on the build host in ONE Gradle
+# invocation, pull both back, and prove the binding before either is usable.
+pull-phone-aab: sync-android-host
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:bundleRealRelease :apps:phone:packageRealReleaseUniversalApk'
+	mkdir -p $(ARTIFACTS)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/bundle/realRelease/phone-real-release.aab $(PHONE_RELEASE_AAB_LOCAL)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk_from_bundle/realRelease/phone-real-release-universal.apk $(PHONE_UNIVERSAL_APK_LOCAL)
+	@$(MAKE) verify-bundle-binding
+
+# Prove the frozen universal APK is the frozen bundle: every dex, native
+# library, asset, packaged java resource and baseline-profile entry
+# byte-identical, the manifest facts equal, the signer the pinned release key,
+# and that same certificate carried in the bundle's own JAR signature.
+verify-bundle-binding:
+	@test -f $(PHONE_RELEASE_AAB_LOCAL) || { echo "No $(PHONE_RELEASE_AAB_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@test -f $(PHONE_UNIVERSAL_APK_LOCAL) || { echo "No $(PHONE_UNIVERSAL_APK_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	python3 tools/release/verify-bundle-binding.py \
+	  --aab $(PHONE_RELEASE_AAB_LOCAL) \
+	  --apk $(PHONE_UNIVERSAL_APK_LOCAL)
+
+# Read release-binding facts out of a bundle, with no Android SDK. The AAB twin
+# of apk-facts; an AAB keeps its manifest as protobuf, not binary AXML. Usage:
+#   make aab-facts AAB=artifacts/phone-real-release.aab
+aab-facts:
+	@test -n "$(AAB)" || { echo "Set AAB=<path to an aab>" >&2; exit 2; }
+	@python3 tools/release/aab_facts.py $(AAB)
+
+# The real-hardware gate for the bundle rail. Re-proves the binding, then runs
+# the identical frozen HITL gate the direct channel runs, against the universal
+# APK. Usage: make android-host-hitl-phone-bundle ANDROID_REMOTE_HOST=<host>
+android-host-hitl-phone-bundle: verify-bundle-binding
+	@$(MAKE) android-host-hitl-phone-frozen HITL_FROZEN_APK_LOCAL=$(PHONE_UNIVERSAL_APK_LOCAL)
 
 # Cut the GitHub release for an explicit candidate commit. The tag is never
 # inferred from HEAD or from the remote default branch. An annotated tag is
