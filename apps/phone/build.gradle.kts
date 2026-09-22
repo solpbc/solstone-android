@@ -131,6 +131,9 @@ android {
     }
 
     testOptions {
+        // Same runner setting as formfactor:phone. This module's Espresso
+        // tests need the activity window to hold focus.
+        animationsDisabled = true
         managedDevices {
             localDevices {
                 create("pixel5api35") {
