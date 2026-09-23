@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-09-23
+
+### Changed
+- a relay pairing link whose address text is malformed is now refused when you paste or scan it.
+
 ## [2.1.6] - 2026-09-22
 
 ### Changed
