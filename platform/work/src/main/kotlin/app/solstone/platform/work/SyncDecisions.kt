@@ -7,8 +7,11 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
+import app.solstone.core.observer.IngestDescriptors
+import app.solstone.core.observer.IngestFileDescriptor
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
+import app.solstone.core.pl.parseJson
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.MAIN_STREAM
@@ -28,9 +31,11 @@ fun isRetryDue(
     attemptCount: Int,
     lastAttemptAt: Long?,
     lastStatusCode: Int?,
+    lastError: String? = null,
     now: Long,
-): Boolean =
-    when (state) {
+): Boolean {
+    if (lastError == "removed_in_journal") return false
+    return when (state) {
         QueueState.SEALED,
         QueueState.UPLOADING -> true
         QueueState.FAILED -> {
@@ -39,6 +44,7 @@ fun isRetryDue(
         }
         else -> false
     }
+}
 
 fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
     val exponent = (attemptCount - 1).coerceAtLeast(0)
@@ -52,7 +58,7 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
 fun selectDrainSegments(segments: List<SegmentRow>, now: Long): List<SegmentRow> =
     segments.filter {
         it.stream == MAIN_STREAM &&
-            isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, now)
+            isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now)
     }
 
 fun reconstructManifest(
@@ -88,24 +94,109 @@ fun decideReachability(
     }
 
 sealed interface SegmentSyncResult {
-    data class Uploaded(val serverKey: String?) : SegmentSyncResult
-    data class Retry(val status: Int?) : SegmentSyncResult
-    data class HardFail(val status: Int) : SegmentSyncResult
+    data object Uploaded : SegmentSyncResult
+    data class Retry(val status: Int?, val error: String = "retry") : SegmentSyncResult
+    data class HardFail(val status: Int, val error: String = "hard failure") : SegmentSyncResult
     data class AuthHalt(val status: Int) : SegmentSyncResult
+    data class JournalRemoved(val status: Int) : SegmentSyncResult
 }
 
-fun resolveIngestOutcome(outcome: IngestOutcome): SegmentSyncResult =
-    when (outcome) {
-        is IngestOutcome.Accepted -> SegmentSyncResult.Uploaded(outcome.serverSegment)
-        is IngestOutcome.Collision -> SegmentSyncResult.Uploaded(outcome.serverSegment)
-        is IngestOutcome.Duplicate -> SegmentSyncResult.Uploaded(outcome.existingSegment)
-        is IngestOutcome.Failed -> SegmentSyncResult.HardFail(200)
-        is IngestOutcome.UnknownStatus,
-        is IngestOutcome.MalformedResponse -> SegmentSyncResult.Retry(null)
-        is IngestOutcome.Rejected -> outcome.status.toSegmentSyncResult()
+fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): String? =
+    when (descriptors) {
+        is IngestDescriptors.Absent -> "custody_missing"
+        is IngestDescriptors.NotAList -> "custody_mismatch"
+        is IngestDescriptors.Listed -> {
+            if (descriptors.items.any { it.disposition == "received_not_written" }) {
+                "custody_not_written"
+            } else if (
+                descriptors.items.isEmpty() ||
+                descriptors.items.any { it.submitted == null } ||
+                descriptors.items.map { it.submitted }.distinct().size != descriptors.items.size ||
+                files.map { it.name }.distinct().size != files.size ||
+                descriptors.items.map { it.submitted }.toSet() != files.map { it.name }.toSet()
+            ) {
+                "custody_mismatch"
+            } else {
+                val fileByName = files.associateBy { it.name }
+                val hasMismatch = descriptors.items.any { descriptor ->
+                    val file = fileByName.getValue(descriptor.submitted!!)
+                    descriptor.size != file.byteSize ||
+                        descriptor.sha256 != file.sha256 ||
+                        (descriptor.disposition != "written" && descriptor.disposition != "already_held")
+                }
+                if (hasMismatch) "custody_mismatch" else null
+            }
+        }
     }
 
-fun resolveIoError(): SegmentSyncResult = SegmentSyncResult.Retry(null)
+fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome>): SegmentSyncResult {
+    val sourceGroups = manifest.files.groupBy(BundleFile::sourceId).values.toList()
+    val results = mutableListOf<SegmentSyncResult>()
+    for (i in sourceGroups.indices) {
+        if (i < outcomes.size) {
+            val single = resolveSingleOutcome(sourceGroups[i], outcomes[i])
+            results += single
+            if (single is SegmentSyncResult.AuthHalt) {
+                break
+            }
+        } else {
+            results += SegmentSyncResult.Retry(null, "retry")
+        }
+    }
+    val failures = results.filter { it !is SegmentSyncResult.Uploaded }
+    if (failures.isEmpty()) {
+        return SegmentSyncResult.Uploaded
+    }
+    return failures.minBy { it.severityRank() }
+}
+
+private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome): SegmentSyncResult =
+    when (outcome) {
+        is IngestOutcome.Accepted -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
+        is IngestOutcome.Collision -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
+        is IngestOutcome.Duplicate -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
+        is IngestOutcome.Failed -> SegmentSyncResult.HardFail(200, "hard failure")
+        is IngestOutcome.UnknownStatus,
+        is IngestOutcome.MalformedResponse -> SegmentSyncResult.Retry(null, "retry")
+        is IngestOutcome.Rejected -> resolveRejected(outcome.status, outcome.body)
+    }
+
+private fun String.toCustodyResult(): SegmentSyncResult =
+    when (this) {
+        "custody_mismatch" -> SegmentSyncResult.Retry(429, "custody_mismatch")
+        "custody_missing" -> SegmentSyncResult.Retry(408, "custody_missing")
+        "custody_not_written" -> SegmentSyncResult.HardFail(422, "custody_not_written")
+        else -> SegmentSyncResult.Retry(null, this)
+    }
+
+private fun resolveRejected(status: Int, body: String): SegmentSyncResult {
+    if (status == 500) {
+        try {
+            val root = parseJson(body) as? Map<*, *>
+            if (root?.get("reason_code") == "segment_removed") {
+                return SegmentSyncResult.JournalRemoved(500)
+            }
+        } catch (_: Exception) {
+            // non-JSON
+        }
+    }
+    return when (classify(status, ioError = false)) {
+        RetryDecision.STOP_AUTH -> SegmentSyncResult.AuthHalt(status)
+        RetryDecision.RETRY -> SegmentSyncResult.Retry(status, "retry")
+        RetryDecision.HARD_FAIL -> SegmentSyncResult.HardFail(status, "hard failure")
+    }
+}
+
+private fun SegmentSyncResult.severityRank(): Int =
+    when (this) {
+        is SegmentSyncResult.AuthHalt -> 0
+        is SegmentSyncResult.HardFail -> 1
+        is SegmentSyncResult.Retry -> 2
+        is SegmentSyncResult.JournalRemoved -> 3
+        SegmentSyncResult.Uploaded -> 4
+    }
+
+fun resolveIoError(): SegmentSyncResult = SegmentSyncResult.Retry(null, "retry")
 
 fun haltsDrain(result: SegmentSyncResult): Boolean = result is SegmentSyncResult.AuthHalt
 
@@ -144,11 +235,4 @@ private fun SegmentRow.drainAction(verdict: ReconcileVerdict): DrainAction =
         DrainAction.Skip(id)
     } else {
         DrainAction.Upload(id)
-    }
-
-private fun Int.toSegmentSyncResult(): SegmentSyncResult =
-    when (classify(this, ioError = false)) {
-        RetryDecision.STOP_AUTH -> SegmentSyncResult.AuthHalt(this)
-        RetryDecision.RETRY -> SegmentSyncResult.Retry(this)
-        RetryDecision.HARD_FAIL -> SegmentSyncResult.HardFail(this)
     }

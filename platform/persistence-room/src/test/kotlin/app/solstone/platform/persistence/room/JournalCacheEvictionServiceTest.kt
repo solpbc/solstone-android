@@ -148,6 +148,58 @@ class JournalCacheEvictionServiceTest {
         assertFailsWith<IllegalStateException> { service.runPass(1) }
     }
 
+    @Test
+    fun underPressureEvictsUploadedSiblingWhileLeavingRemovedInJournalFailedRowIntact() {
+        val root = Files.createTempDirectory("journal-cache-service")
+        val spool = root.resolve("spool")
+        val failedRow = row("failed-removed", 1).copy(
+            state = QueueState.FAILED,
+            lastError = "removed_in_journal",
+            lastStatusCode = 500,
+        )
+        val uploadedRow = row("uploaded-sibling", 2)
+        writeSegment(spool, failedRow)
+        writeSegment(spool, uploadedRow)
+        val dao = FakeSegmentDao(mutableListOf(failedRow, uploadedRow))
+        val service = service(spool, dao, root, SpoolFreeSpaceProvider { 0L })
+
+        val result = service.runPass(9_000)
+
+        assertEquals(listOf(uploadedRow.id), result.durablyMarkedIds)
+        assertEquals(listOf(uploadedRow.id), result.reclaimedSpace.removals.map { it.segmentId })
+        assertEquals(QueueState.EVICTED, dao.segmentById(uploadedRow.id)?.state)
+        assertFalse(Files.exists(spool.resolve(uploadedRow.day).resolve(uploadedRow.stream).resolve(uploadedRow.dirSegment)))
+
+        assertEquals(QueueState.FAILED, dao.segmentById(failedRow.id)?.state)
+        assertTrue(Files.exists(spool.resolve(failedRow.day).resolve(failedRow.stream).resolve(failedRow.dirSegment)))
+    }
+
+    @Test
+    fun underPressureEvictsUploadedSiblingWhileLeaving409HardFailureRowIntact() {
+        val root = Files.createTempDirectory("journal-cache-service")
+        val spool = root.resolve("spool")
+        val failedRow = row("failed-409", 1).copy(
+            state = QueueState.FAILED,
+            lastError = "hard failure",
+            lastStatusCode = 409,
+        )
+        val uploadedRow = row("uploaded-sibling", 2)
+        writeSegment(spool, failedRow)
+        writeSegment(spool, uploadedRow)
+        val dao = FakeSegmentDao(mutableListOf(failedRow, uploadedRow))
+        val service = service(spool, dao, root, SpoolFreeSpaceProvider { 0L })
+
+        val result = service.runPass(9_000)
+
+        assertEquals(listOf(uploadedRow.id), result.durablyMarkedIds)
+        assertEquals(listOf(uploadedRow.id), result.reclaimedSpace.removals.map { it.segmentId })
+        assertEquals(QueueState.EVICTED, dao.segmentById(uploadedRow.id)?.state)
+        assertFalse(Files.exists(spool.resolve(uploadedRow.day).resolve(uploadedRow.stream).resolve(uploadedRow.dirSegment)))
+
+        assertEquals(QueueState.FAILED, dao.segmentById(failedRow.id)?.state)
+        assertTrue(Files.exists(spool.resolve(failedRow.day).resolve(failedRow.stream).resolve(failedRow.dirSegment)))
+    }
+
     private fun service(spool: java.nio.file.Path, dao: SegmentDao, root: java.nio.file.Path, free: SpoolFreeSpaceProvider) =
         JournalCacheEvictionService(spool, dao, JournalCacheLimitStore(root.resolve("limit").toFile()), NioSpoolUsageMeasurer(), free, NioSpoolDirectoryRemover())
 
@@ -177,9 +229,8 @@ class JournalCacheEvictionServiceTest {
         override fun duplicateBySha256(sha256: String) = files.filter { it.sha256 == sha256 }
         override fun filesBySegmentId(segmentId: String) = files.filter { it.segmentId == segmentId }
         override fun recordAttempt(id: String, attempts: Int, at: Long) = 0
-        override fun recordUploaded(id: String, serverKey: String?) = 0
+        override fun recordUploaded(id: String) = 0
         override fun recordFailure(id: String, code: Int?, error: String?) = 0
-        override fun recordDedupeChecked(id: String, at: Long) = 0
         override fun upsertSyncState(row: SyncStateRow) = Unit
         override fun syncState(): SyncStateRow? = null
         override fun pendingCount(stream: String) = 0

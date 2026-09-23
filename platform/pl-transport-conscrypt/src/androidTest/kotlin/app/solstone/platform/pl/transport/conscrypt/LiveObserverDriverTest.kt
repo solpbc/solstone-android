@@ -186,7 +186,7 @@ class LiveObserverDriverTest {
                     fileBytes = { payload },
                     host = arg("hostname", "android-validation"),
                     platform = arg("platform", "android"),
-                )
+                ).single()
             }
             result("t3.requestedDay=$day")
             result("t3.requestedSegment=$segmentKey")

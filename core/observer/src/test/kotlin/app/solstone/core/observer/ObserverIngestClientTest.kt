@@ -28,14 +28,16 @@ class ObserverIngestClientTest {
         )
         val bytes = mapOf("audio.wav" to byteArrayOf(1, 2, 3))
 
-        val outcome = client.ingest(
+        val outcomes = client.ingest(
             manifest = manifest,
             fileBytes = { bytes.getValue(it.name) },
             host = "watch-one",
             platform = "rogbid",
         )
 
-        assertIs<IngestOutcome.Accepted>(outcome)
+        assertEquals(1, outcomes.size)
+        val outcome = assertIs<IngestOutcome.Accepted>(outcomes.single())
+        assertEquals(IngestDescriptors.Absent, outcome.descriptors)
         assertEquals("POST", http.lastRequest.method)
         assertEquals("/app/devices/ingest", http.lastRequest.path)
         assertEquals("3", http.lastRequest.headers[PROTOCOL_VERSION_HEADER])
@@ -67,9 +69,10 @@ class ObserverIngestClientTest {
             "photo.jpg" to byteArrayOf(4, 5, 6),
         )
 
-        val outcome = client.ingest(twoFileManifest(), { bytes.getValue(it.name) })
+        val outcomes = client.ingest(twoFileManifest(), { bytes.getValue(it.name) })
 
-        assertIs<IngestOutcome.Accepted>(outcome)
+        assertEquals(2, outcomes.size)
+        assertTrue(outcomes.all { it is IngestOutcome.Accepted })
         assertEquals(2, http.requests.size)
         val envelopes = http.requests.map { request ->
             val boundary = requireNotNull(request.headers["Content-Type"])
@@ -84,6 +87,68 @@ class ObserverIngestClientTest {
                 (envelope["files"] as List<*>).map { (it as Map<*, *>)["submitted"] }
             }.toSet(),
         )
+    }
+
+    @Test
+    fun nonSuccessOnFirstSourceContinuesToNextSourceUnlessAuthRejected() {
+        val http = RecordingPlHttpClient(HttpResponse(500, emptyMap(), "server error".toByteArray()))
+        val client = ObserverIngestClient(http) { "fixed-boundary" }
+        val manifest = twoFileManifest()
+        val fileBytes: (BundleFile) -> ByteArray = { it.name.toByteArray() }
+
+        val outcomes = client.ingest(manifest, fileBytes)
+        assertEquals(2, outcomes.size)
+        assertEquals(2, http.requests.size)
+        assertTrue(outcomes.all { it is IngestOutcome.Rejected && it.status == 500 })
+
+        http.requests.clear()
+        http.response = HttpResponse(401, emptyMap(), "unauthorized".toByteArray())
+        val authOutcomes = client.ingest(manifest, fileBytes)
+        assertEquals(1, authOutcomes.size)
+        assertEquals(1, http.requests.size)
+        assertEquals(401, assertIs<IngestOutcome.Rejected>(authOutcomes.single()).status)
+    }
+
+    @Test
+    fun fileDescriptorsParsingCoversAbsentNotAListAndListed() {
+        val http = RecordingPlHttpClient(okResponse("server-segment"))
+        val client = ObserverIngestClient(http) { "fixed-boundary" }
+        val manifest = BundleManifest(
+            SegmentKey("20260616", "093000_60"),
+            listOf(BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", 1, 2)),
+            emptyList(),
+        )
+        val fileBytes: (BundleFile) -> ByteArray = { byteArrayOf(1, 2, 3) }
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":null}""".toByteArray())
+        assertEquals(IngestDescriptors.Absent, (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors)
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":"not_a_list"}""".toByteArray())
+        assertEquals(IngestDescriptors.NotAList, (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors)
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":{}}""".toByteArray())
+        assertEquals(IngestDescriptors.NotAList, (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors)
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":[{"submitted":"a.bin","written":"a.bin","size":10,"sha256":"sha","disposition":"written"}]}""".toByteArray())
+        val listed = (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors as IngestDescriptors.Listed
+        assertEquals(1, listed.items.size)
+        assertEquals(IngestFileDescriptor("a.bin", "a.bin", 10L, "sha", "written"), listed.items.first())
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":["not_an_object"]}""".toByteArray())
+        val nonObjListed = (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors as IngestDescriptors.Listed
+        assertEquals(IngestFileDescriptor(null, null, null, null, null), nonObjListed.items.first())
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":[{"submitted":"a.bin","size":1.0}]}""".toByteArray())
+        val floatIntListed = (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors as IngestDescriptors.Listed
+        assertEquals(1L, floatIntListed.items.first().size)
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":[{"submitted":"a.bin","size":1.5}]}""".toByteArray())
+        val fractionListed = (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors as IngestDescriptors.Listed
+        assertNull(fractionListed.items.first().size)
+
+        http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":[{"submitted":"a.bin","size":"10"}]}""".toByteArray())
+        val stringSizeListed = (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors as IngestDescriptors.Listed
+        assertNull(stringSizeListed.items.first().size)
     }
 
     @Test
@@ -145,28 +210,51 @@ class ObserverIngestClientTest {
         val manifest = twoFileManifest()
         val fileBytes: (BundleFile) -> ByteArray = { it.name.toByteArray() }
 
-        assertEquals(IngestOutcome.Accepted("server-segment"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.Accepted("server-segment", IngestDescriptors.Absent), IngestOutcome.Accepted("server-segment", IngestDescriptors.Absent)),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"collision","segment":"adjusted-segment"}""".toByteArray())
-        assertEquals(IngestOutcome.Collision("adjusted-segment"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.Collision("adjusted-segment", IngestDescriptors.Absent), IngestOutcome.Collision("adjusted-segment", IngestDescriptors.Absent)),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"duplicate","existing_segment":"existing-segment"}""".toByteArray())
-        assertEquals(IngestOutcome.Duplicate("existing-segment"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.Duplicate("existing-segment", IngestDescriptors.Absent), IngestOutcome.Duplicate("existing-segment", IngestDescriptors.Absent)),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"failed"}""".toByteArray())
-        assertEquals(IngestOutcome.Failed(null), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.Failed(null), IngestOutcome.Failed(null)),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"future"}""".toByteArray())
-        assertEquals(IngestOutcome.UnknownStatus("future"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.UnknownStatus("future"), IngestOutcome.UnknownStatus("future")),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), "not json".toByteArray())
-        assertEquals(IngestOutcome.MalformedResponse("invalid_json"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.MalformedResponse("invalid_json"), IngestOutcome.MalformedResponse("invalid_json")),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"ok"}""".toByteArray())
-        assertEquals(IngestOutcome.MalformedResponse("missing_segment"), client.ingest(manifest, fileBytes))
+        assertEquals(
+            listOf(IngestOutcome.MalformedResponse("missing_segment"), IngestOutcome.MalformedResponse("missing_segment")),
+            client.ingest(manifest, fileBytes),
+        )
 
         http.response = HttpResponse(401, emptyMap(), "unauthorized".toByteArray())
-        val rejected = assertIs<IngestOutcome.Rejected>(client.ingest(manifest, fileBytes))
+        val rejectedList = client.ingest(manifest, fileBytes)
+        assertEquals(1, rejectedList.size)
+        val rejected = assertIs<IngestOutcome.Rejected>(rejectedList.single())
         assertEquals(401, rejected.status)
         assertEquals("unauthorized", rejected.body)
     }

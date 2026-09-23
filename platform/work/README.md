@@ -86,13 +86,17 @@ fun decideReachability(
 ): ReachabilityVerdict
 
 sealed interface SegmentSyncResult {
-    data class Uploaded(val serverKey: String?) : SegmentSyncResult
-    data class Retry(val status: Int?) : SegmentSyncResult
-    data class HardFail(val status: Int) : SegmentSyncResult
+    data object Uploaded : SegmentSyncResult
+    data class Retry(val status: Int?, val reason: String? = null) : SegmentSyncResult
+    data class HardFail(val status: Int, val reason: String? = null) : SegmentSyncResult
     data class AuthHalt(val status: Int) : SegmentSyncResult
+    data object JournalRemoved : SegmentSyncResult
 }
 
-fun resolveIngestOutcome(outcome: IngestOutcome): SegmentSyncResult
+fun resolveIngestOutcomes(
+    manifest: BundleManifest,
+    outcomes: List<IngestOutcome>,
+): SegmentSyncResult
 
 fun resolveIoError(): SegmentSyncResult
 
@@ -115,10 +119,11 @@ fun nextSyncState(
 - `selectDrainSegments` keeps only `QueueState.SEALED` and `MAIN_STREAM`; import `MAIN_STREAM` from `core:sources`, do not hardcode it. Location stream rows are excluded.
 - `reconstructManifest` maps one `SegmentRow` plus its `SegmentFileRow`s to `BundleManifest(SegmentKey(segment.day, segment.segment), files, gaps = emptyList())`.
 - `decideReachability`: not paired -> `SKIP`; paired and unreachable -> `RESCHEDULE`; paired and reachable -> `DRAIN`.
-- `resolveIngestOutcome`:
-  - Accepted, Collision, Duplicate -> `Uploaded(serverKey)`
-  - Rejected -> classify by status: 401/403 -> `AuthHalt`, retryable 5xx -> `Retry`, other 4xx -> `HardFail`
-  - Collision and Duplicate never reach retry classification.
+- `resolveIngestOutcomes`:
+  - Verifies file descriptors returned in `Accepted`, `Collision`, and `Duplicate` against manifest files (must be listed, matching submitted filename, size, sha256, and disposition `written`). If descriptors are absent/not-a-list/empty -> `Retry(408, "custody_missing")`; if mismatched sha/size/name -> `Retry(429, "custody_mismatch")`; if disposition is not written -> `HardFail(422, "custody_not_written")`.
+  - Maps `Rejected`: 401/403 -> `AuthHalt(status)`, 500 with `segment_removed` -> `JournalRemoved`, 409 and other 4xx except 401/403/408/425/429 -> `HardFail(status, reason)`, 5xx and 408/425/429 -> `Retry(status, reason)`.
+  - Multi-source outcomes are resolved by severity rank (`AuthHalt` > `HardFail` > `Retry` > `JournalRemoved`), keeping the first minimum rank in POST order.
+  - Returns `Uploaded` only when all source outcomes verify successfully.
 - `resolveIoError` returns `Retry(null)`.
 - `haltsDrain` returns true only for `AuthHalt`.
 - `nextSyncState` returns singleton `SyncStateRow(id = 0, pendingCount, lastSuccessAt, lastFailureAt)`.

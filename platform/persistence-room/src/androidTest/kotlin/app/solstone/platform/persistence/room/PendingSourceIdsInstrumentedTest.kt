@@ -47,6 +47,16 @@ class PendingSourceIdsInstrumentedTest {
         assertEquals(setOf("audio", "location", "camera"), dao.pendingSourceIds(MAIN_STREAM).toSet())
     }
 
+    @Test
+    fun pendingCountAndSourceIdsExcludeRemovedInJournalFailedRows() {
+        insert("pending-normal-failed", MAIN_STREAM, QueueState.FAILED, listOf("audio"))
+        insert("pending-removed-failed", MAIN_STREAM, QueueState.FAILED, listOf("camera"))
+        dao.recordFailure("pending-removed-failed", 500, "removed_in_journal")
+
+        assertEquals(1, dao.pendingCount(MAIN_STREAM))
+        assertEquals(listOf("audio"), dao.pendingSourceIds(MAIN_STREAM))
+    }
+
     private fun insert(id: String, stream: String, state: QueueState, sourceIds: List<String>) {
         val segment = SegmentRow(
             id = id,

@@ -36,10 +36,9 @@ interface DrainStore {
     fun syncState(): SyncStateRow?
     fun segmentsForDrain(): List<SegmentRow>
     fun filesBySegmentId(id: String): List<SegmentFileRow>
-    fun recordDedupeChecked(id: String, at: Long): Int
     fun advanceState(id: String, event: QueueEvent): QueueState
     fun recordAttempt(id: String, attempts: Int, at: Long): Int
-    fun recordUploaded(id: String, serverKey: String?): Int
+    fun recordUploaded(id: String): Int
     fun recordFailure(id: String, code: Int?, error: String?): Int
     fun pendingCount(stream: String): Int
     fun upsertSyncState(row: SyncStateRow)
@@ -49,10 +48,9 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun syncState(): SyncStateRow? = dao.syncState()
     override fun segmentsForDrain(): List<SegmentRow> = dao.segmentsForDrain(MAIN_STREAM)
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = dao.filesBySegmentId(id)
-    override fun recordDedupeChecked(id: String, at: Long): Int = dao.recordDedupeChecked(id, at)
     override fun advanceState(id: String, event: QueueEvent): QueueState = dao.advanceState(id, event)
     override fun recordAttempt(id: String, attempts: Int, at: Long): Int = dao.recordAttempt(id, attempts, at)
-    override fun recordUploaded(id: String, serverKey: String?): Int = dao.recordUploaded(id, serverKey)
+    override fun recordUploaded(id: String): Int = dao.recordUploaded(id)
     override fun recordFailure(id: String, code: Int?, error: String?): Int = dao.recordFailure(id, code, error)
     override fun pendingCount(stream: String): Int = dao.pendingCount(stream)
     override fun upsertSyncState(row: SyncStateRow) = dao.upsertSyncState(row)
@@ -61,7 +59,7 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
 fun drainSegments(
     store: DrainStore,
     reconcile: (List<BundleManifest>, String) -> List<ReconcileVerdict>,
-    ingest: (BundleManifest, (BundleFile) -> ByteArray) -> IngestOutcome,
+    ingest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome>,
     readPayload: (SegmentRow, BundleFile) -> ByteArray,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
@@ -99,7 +97,6 @@ fun drainSegments(
             continue
         }
         val actions = planDayDrain(verdicts, daySegments).associateBy(::drainActionId)
-        daySegments.forEach { store.recordDedupeChecked(it.id, now()) }
 
         for (segment in daySegments) {
             val manifest = manifests.getValue(segment)
@@ -115,7 +112,8 @@ fun drainSegments(
                 }
                 is DrainAction.Upload -> {
                     val result = try {
-                        resolveIngestOutcome(
+                        resolveIngestOutcomes(
+                            manifest,
                             ingest(manifest) { file -> readPayload(segment, file) },
                         )
                     } catch (e: RelayWebSocketClosedException) {
@@ -144,21 +142,21 @@ fun drainSegments(
                     when (result) {
                         is SegmentSyncResult.Uploaded -> {
                             store.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
-                            store.recordUploaded(segment.id, result.serverKey)
+                            store.recordUploaded(segment.id)
                         }
                         is SegmentSyncResult.Retry -> {
                             store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, "retry")
+                            store.recordFailure(segment.id, result.status, result.error)
                             failedThisRun = true
                             lastFailureAt = now()
-                            lastErrorReason = "retry" + (result.status?.let { " ($it)" } ?: "")
+                            lastErrorReason = result.error + (result.status?.let { " ($it)" } ?: "")
                         }
                         is SegmentSyncResult.HardFail -> {
                             store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, "hard failure")
+                            store.recordFailure(segment.id, result.status, result.error)
                             failedThisRun = true
                             lastFailureAt = now()
-                            lastErrorReason = "hard failure (${result.status})"
+                            lastErrorReason = "${result.error} (${result.status})"
                         }
                         is SegmentSyncResult.AuthHalt -> {
                             store.advanceState(segment.id, QueueEvent.MARK_FAILED)
@@ -167,6 +165,13 @@ fun drainSegments(
                             halted = haltsDrain(result)
                             lastFailureAt = now()
                             lastErrorReason = "auth halted (${result.status})"
+                        }
+                        is SegmentSyncResult.JournalRemoved -> {
+                            store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                            store.recordFailure(segment.id, result.status, "removed_in_journal")
+                            log("segment removed ${segment.id}", null)
+                            lastFailureAt = now()
+                            lastErrorReason = "removed in journal (${result.status})"
                         }
                     }
                 }

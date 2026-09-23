@@ -20,9 +20,9 @@ class ObserverIngestClient(
         fileBytes: (BundleFile) -> ByteArray,
         host: String? = null,
         platform: String? = null,
-    ): IngestOutcome {
+    ): List<IngestOutcome> {
         require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
-        var terminal: IngestOutcome? = null
+        val outcomes = mutableListOf<IngestOutcome>()
         for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
             val sourceManifest = BundleManifest(manifest.key, files, manifest.gaps)
             val boundary = boundaryProvider()
@@ -36,15 +36,12 @@ class ObserverIngestClient(
                 ),
                 body = body,
             ).toIngestOutcome()
-            if (outcome !is IngestOutcome.Accepted &&
-                outcome !is IngestOutcome.Collision &&
-                outcome !is IngestOutcome.Duplicate
-            ) {
-                return outcome
+            outcomes += outcome
+            if (outcome is IngestOutcome.Rejected && (outcome.status == 401 || outcome.status == 403)) {
+                return outcomes
             }
-            terminal = outcome
         }
-        return checkNotNull(terminal)
+        return outcomes
     }
 
     private fun buildMultipartBody(
@@ -133,10 +130,24 @@ class ObserverIngestClient(
     }
 }
 
+data class IngestFileDescriptor(
+    val submitted: String?,
+    val written: String?,
+    val size: Long?,
+    val sha256: String?,
+    val disposition: String?,
+)
+
+sealed interface IngestDescriptors {
+    data object Absent : IngestDescriptors
+    data object NotAList : IngestDescriptors
+    data class Listed(val items: List<IngestFileDescriptor>) : IngestDescriptors
+}
+
 sealed interface IngestOutcome {
-    data class Accepted(val serverSegment: String) : IngestOutcome
-    data class Collision(val serverSegment: String) : IngestOutcome
-    data class Duplicate(val existingSegment: String?) : IngestOutcome
+    data class Accepted(val serverSegment: String, val descriptors: IngestDescriptors) : IngestOutcome
+    data class Collision(val serverSegment: String, val descriptors: IngestDescriptors) : IngestOutcome
+    data class Duplicate(val existingSegment: String?, val descriptors: IngestDescriptors) : IngestOutcome
     data class Failed(val detail: String?) : IngestOutcome
     data class UnknownStatus(val status: String) : IngestOutcome
     data class MalformedResponse(val reason: String) : IngestOutcome
@@ -156,20 +167,73 @@ private fun HttpResponse.toIngestOutcome(): IngestOutcome {
         ?: return IngestOutcome.MalformedResponse("missing_status")
     if (responseStatus.isBlank()) return IngestOutcome.MalformedResponse("invalid_status")
     return when (responseStatus) {
-        "ok" -> requiredNonBlankString(root, "segment")
-            ?.let(IngestOutcome::Accepted)
-            ?: IngestOutcome.MalformedResponse("missing_segment")
-        "collision" -> requiredNonBlankString(root, "segment")
-            ?.let(IngestOutcome::Collision)
-            ?: IngestOutcome.MalformedResponse("missing_segment")
-        "duplicate" -> when (val existingSegment = root["existing_segment"]) {
-            null -> IngestOutcome.Duplicate(null)
-            is String -> IngestOutcome.Duplicate(existingSegment)
-            else -> IngestOutcome.MalformedResponse("invalid_existing_segment")
+        "ok" -> {
+            val serverSegment = requiredNonBlankString(root, "segment")
+                ?: return IngestOutcome.MalformedResponse("missing_segment")
+            val descriptors = parseDescriptors(root)
+            IngestOutcome.Accepted(serverSegment, descriptors)
+        }
+        "collision" -> {
+            val serverSegment = requiredNonBlankString(root, "segment")
+                ?: return IngestOutcome.MalformedResponse("missing_segment")
+            val descriptors = parseDescriptors(root)
+            IngestOutcome.Collision(serverSegment, descriptors)
+        }
+        "duplicate" -> {
+            val descriptors = parseDescriptors(root)
+            when (val existingSegment = root["existing_segment"]) {
+                null -> IngestOutcome.Duplicate(null, descriptors)
+                is String -> IngestOutcome.Duplicate(existingSegment, descriptors)
+                else -> IngestOutcome.MalformedResponse("invalid_existing_segment")
+            }
         }
         "failed" -> IngestOutcome.Failed(root["detail"] as? String)
         else -> IngestOutcome.UnknownStatus(responseStatus)
     }
+}
+
+private fun parseDescriptors(root: Map<*, *>): IngestDescriptors {
+    if (!root.containsKey("file_descriptors")) return IngestDescriptors.Absent
+    val raw = root["file_descriptors"] ?: return IngestDescriptors.Absent
+    val list = raw as? List<*> ?: return IngestDescriptors.NotAList
+    val items = list.map { item ->
+        val map = item as? Map<*, *>
+        if (map == null) {
+            IngestFileDescriptor(null, null, null, null, null)
+        } else {
+            val sizeVal = map["size"]
+            val sizeLong = when (sizeVal) {
+                is java.math.BigDecimal -> try {
+                    if (sizeVal.stripTrailingZeros().scale() <= 0) {
+                        sizeVal.longValueExact()
+                    } else {
+                        null
+                    }
+                } catch (_: ArithmeticException) {
+                    null
+                }
+                is Number -> try {
+                    val bd = java.math.BigDecimal(sizeVal.toString())
+                    if (bd.stripTrailingZeros().scale() <= 0) {
+                        bd.longValueExact()
+                    } else {
+                        null
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+                else -> null
+            }
+            IngestFileDescriptor(
+                submitted = map["submitted"] as? String,
+                written = map["written"] as? String,
+                size = sizeLong,
+                sha256 = map["sha256"] as? String,
+                disposition = map["disposition"] as? String,
+            )
+        }
+    }
+    return IngestDescriptors.Listed(items)
 }
 
 private fun requiredNonBlankString(root: Map<*, *>, key: String): String? =

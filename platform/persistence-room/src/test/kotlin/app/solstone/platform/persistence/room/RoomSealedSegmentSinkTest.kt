@@ -255,11 +255,9 @@ class RoomSealedSegmentSinkTest {
 
         override fun recordAttempt(id: String, attempts: Int, at: Long): Int = 0
 
-        override fun recordUploaded(id: String, serverKey: String?): Int = 0
+        override fun recordUploaded(id: String): Int = 0
 
         override fun recordFailure(id: String, code: Int?, error: String?): Int = 0
-
-        override fun recordDedupeChecked(id: String, at: Long): Int = 0
 
         override fun upsertSyncState(row: SyncStateRow) = Unit
 

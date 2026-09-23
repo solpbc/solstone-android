@@ -55,14 +55,11 @@ abstract class SegmentDao {
     @Query("UPDATE segment SET attempt_count = :attempts, last_attempt_at = :at WHERE id = :id")
     abstract fun recordAttempt(id: String, attempts: Int, at: Long): Int
 
-    @Query("UPDATE segment SET server_key = :serverKey, last_error = NULL WHERE id = :id")
-    abstract fun recordUploaded(id: String, serverKey: String?): Int
+    @Query("UPDATE segment SET last_error = NULL WHERE id = :id")
+    abstract fun recordUploaded(id: String): Int
 
     @Query("UPDATE segment SET last_status_code = :code, last_error = :error WHERE id = :id")
     abstract fun recordFailure(id: String, code: Int?, error: String?): Int
-
-    @Query("UPDATE segment SET dedupe_checked_at = :at WHERE id = :id")
-    abstract fun recordDedupeChecked(id: String, at: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract fun upsertSyncState(row: SyncStateRow)
@@ -70,13 +67,13 @@ abstract class SegmentDao {
     @Query("SELECT * FROM sync_state WHERE id = 0")
     abstract fun syncState(): SyncStateRow?
 
-    @Query("SELECT COUNT(*) FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED')")
+    @Query("SELECT COUNT(*) FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED') AND (last_error IS NULL OR last_error != 'removed_in_journal')")
     abstract fun pendingCount(stream: String): Int
 
     @Query(
         "SELECT DISTINCT f.source_id FROM segment_file f " +
             "JOIN segment s ON s.id = f.segment_id " +
-            "WHERE s.stream = :stream AND s.state IN ('SEALED','UPLOADING','FAILED')",
+            "WHERE s.stream = :stream AND s.state IN ('SEALED','UPLOADING','FAILED') AND (s.last_error IS NULL OR s.last_error != 'removed_in_journal')",
     )
     abstract fun pendingSourceIds(stream: String): List<String>
 

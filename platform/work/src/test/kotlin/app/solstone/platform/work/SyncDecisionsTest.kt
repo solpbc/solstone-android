@@ -4,8 +4,11 @@
 package app.solstone.platform.work
 
 import app.solstone.core.model.BundleFile
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
+import app.solstone.core.observer.IngestDescriptors
+import app.solstone.core.observer.IngestFileDescriptor
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.RetryDecision
@@ -57,6 +60,8 @@ class SyncDecisionsTest {
         assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 2 * HOUR_MS, lastStatusCode = 422, now = now))
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - HOUR_MS, lastStatusCode = 422, now = now))
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 10, lastAttemptAt = 0, lastStatusCode = 401, now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = 500, lastError = "removed_in_journal", now = now))
+        assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "removed_in_journal", now = now))
         assertFalse(isRetryDue(QueueState.UPLOADED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
     }
 
@@ -102,40 +107,188 @@ class SyncDecisionsTest {
     }
 
     @Test
+    fun receiptErrorAndResolveIngestOutcomesCoverAllCases() {
+        val file1 = BundleFile("mic", "audio.wav", "sha-a", 10, "audio/wav", 1, 2)
+        val file2 = BundleFile("mic", "notes.txt", "sha-b", 20, "text/plain", 1, 2)
+        val manifest = BundleManifest(SegmentKey("20260616", "093000_60"), listOf(file1), emptyList())
+
+        fun outcome(descriptors: IngestDescriptors): List<IngestOutcome> =
+            listOf(IngestOutcome.Accepted("srv", descriptors))
+
+        // sha mismatch
+        val shaMismatch = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-wrong", "written"))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, shaMismatch))
+
+        // size mismatch
+        val sizeMismatch = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 11, "sha-a", "written"))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, sizeMismatch))
+
+        // received_not_written
+        val notWritten = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "received_not_written"))))
+        assertEquals(SegmentSyncResult.HardFail(422, "custody_not_written"), resolveIngestOutcomes(manifest, notWritten))
+
+        // received_not_written precedence over mismatch in same POST
+        val twoFileManifest = BundleManifest(SegmentKey("20260616", "093000_60"), listOf(file1, file2), emptyList())
+        val notWrittenAndMismatch = listOf(
+            IngestOutcome.Accepted(
+                "srv",
+                IngestDescriptors.Listed(
+                    listOf(
+                        IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "received_not_written"),
+                        IngestFileDescriptor("notes.txt", "notes.txt", 999, "sha-wrong", "unknown_disp"),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(SegmentSyncResult.HardFail(422, "custody_not_written"), resolveIngestOutcomes(twoFileManifest, notWrittenAndMismatch))
+
+        // received_not_written precedence over extra submitted name in same POST
+        val notWrittenAndExtraName = listOf(
+            IngestOutcome.Accepted(
+                "srv",
+                IngestDescriptors.Listed(
+                    listOf(
+                        IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "received_not_written"),
+                        IngestFileDescriptor("extra.bin", "extra.bin", 5, "sha", "written"),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(SegmentSyncResult.HardFail(422, "custody_not_written"), resolveIngestOutcomes(manifest, notWrittenAndExtraName))
+
+        // missing descriptor
+        val missingDesc = listOf(
+            IngestOutcome.Accepted(
+                "srv",
+                IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"))),
+            ),
+        )
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(twoFileManifest, missingDesc))
+
+        // extra descriptor
+        val extraDesc = outcome(
+            IngestDescriptors.Listed(
+                listOf(
+                    IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"),
+                    IngestFileDescriptor("extra.bin", "extra.bin", 5, "sha", "written"),
+                ),
+            ),
+        )
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, extraDesc))
+
+        // duplicate submitted
+        val dupSubmitted = outcome(
+            IngestDescriptors.Listed(
+                listOf(
+                    IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"),
+                    IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"),
+                ),
+            ),
+        )
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, dupSubmitted))
+
+        // missing disposition
+        val missingDisp = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", null))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, missingDisp))
+
+        // unknown disposition
+        val unknownDisp = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "quarantined"))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, unknownDisp))
+
+        // file_descriptors absent
+        assertEquals(SegmentSyncResult.Retry(408, "custody_missing"), resolveIngestOutcomes(manifest, outcome(IngestDescriptors.Absent)))
+
+        // file_descriptors: []
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, outcome(IngestDescriptors.Listed(emptyList()))))
+
+        // file_descriptors a JSON object / not a list
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, outcome(IngestDescriptors.NotAList)))
+
+        // written != submitted while submitted, size, sha256 match -> Uploaded
+        val writtenDiff = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "renamed.wav", 10, "sha-a", "written"))))
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(manifest, writtenDiff))
+
+        // disposition == already_held -> Uploaded
+        val alreadyHeld = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "already_held"))))
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(manifest, alreadyHeld))
+
+        // uppercase sha256 -> custody_mismatch
+        val upperSha = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "SHA-A", "written"))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, upperSha))
+
+        // descriptor matches only on written -> custody_mismatch
+        val matchOnlyWritten = outcome(IngestDescriptors.Listed(listOf(IngestFileDescriptor("other.wav", "audio.wav", 10, "sha-a", "written"))))
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(manifest, matchOnlyWritten))
+
+        // Duplicate(null) with matching descriptor -> Uploaded
+        val dupNullMatching = listOf(IngestOutcome.Duplicate(null, IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written")))))
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(manifest, dupNullMatching))
+
+        // Duplicate(null) with absent descriptors -> custody_missing
+        val dupNullAbsent = listOf(IngestOutcome.Duplicate(null, IngestDescriptors.Absent))
+        assertEquals(SegmentSyncResult.Retry(408, "custody_missing"), resolveIngestOutcomes(manifest, dupNullAbsent))
+
+        // Same-rank first wins: mismatch then missing -> mismatch / 429
+        val multiSourceManifest = BundleManifest(
+            SegmentKey("20260616", "093000_60"),
+            listOf(
+                BundleFile("mic", "audio.wav", "sha-a", 10, "audio/wav", 1, 2),
+                BundleFile("cam", "photo.jpg", "sha-p", 20, "image/jpeg", 1, 2),
+            ),
+            emptyList(),
+        )
+        val mismatchThenMissing = listOf(
+            IngestOutcome.Accepted("srv", IngestDescriptors.NotAList),
+            IngestOutcome.Accepted("srv", IngestDescriptors.Absent),
+        )
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(multiSourceManifest, mismatchThenMissing))
+
+        // Cross-rank: mismatch then received_not_written -> custody_not_written / 422
+        val mismatchThenNotWritten = listOf(
+            IngestOutcome.Accepted("srv", IngestDescriptors.NotAList),
+            IngestOutcome.Accepted("srv", IngestDescriptors.Listed(listOf(IngestFileDescriptor("photo.jpg", "photo.jpg", 20, "sha-p", "received_not_written")))),
+        )
+        assertEquals(SegmentSyncResult.HardFail(422, "custody_not_written"), resolveIngestOutcomes(multiSourceManifest, mismatchThenNotWritten))
+    }
+
+    @Test
     fun ingestOutcomesMapToSyncResults() {
-        assertEquals(SegmentSyncResult.Uploaded("seg1"), resolveIngestOutcome(IngestOutcome.Accepted("seg1")))
-        assertEquals(SegmentSyncResult.Uploaded("seg2"), resolveIngestOutcome(IngestOutcome.Collision("seg2")))
-        assertEquals(SegmentSyncResult.Uploaded("seg3"), resolveIngestOutcome(IngestOutcome.Duplicate("seg3")))
-        assertEquals(SegmentSyncResult.Uploaded(null), resolveIngestOutcome(IngestOutcome.Duplicate(null)))
-        assertEquals(SegmentSyncResult.HardFail(200), resolveIngestOutcome(IngestOutcome.Failed(null)))
-        assertEquals(SegmentSyncResult.Retry(null), resolveIngestOutcome(IngestOutcome.UnknownStatus("future")))
-        assertEquals(SegmentSyncResult.Retry(null), resolveIngestOutcome(IngestOutcome.MalformedResponse("invalid_json")))
-        assertEquals(SegmentSyncResult.AuthHalt(401), resolveIngestOutcome(IngestOutcome.Rejected(401, "")))
-        assertEquals(SegmentSyncResult.AuthHalt(403), resolveIngestOutcome(IngestOutcome.Rejected(403, "")))
-        assertEquals(SegmentSyncResult.Retry(500), resolveIngestOutcome(IngestOutcome.Rejected(500, "")))
-        assertEquals(SegmentSyncResult.HardFail(404), resolveIngestOutcome(IngestOutcome.Rejected(404, "")))
-        assertEquals(SegmentSyncResult.HardFail(400), resolveIngestOutcome(IngestOutcome.Rejected(400, "")))
-        assertEquals(SegmentSyncResult.Retry(null), resolveIoError())
+        val manifest = BundleManifest(
+            SegmentKey("20260617", "120000_10"),
+            listOf(BundleFile("mic", "audio.wav", "sha", 1, "audio/wav", 1, 2)),
+            emptyList(),
+        )
+        assertEquals(SegmentSyncResult.HardFail(200, "hard failure"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Failed(null))))
+        assertEquals(SegmentSyncResult.Retry(null, "retry"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.UnknownStatus("future"))))
+        assertEquals(SegmentSyncResult.Retry(null, "retry"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.MalformedResponse("invalid_json"))))
+        assertEquals(SegmentSyncResult.AuthHalt(401), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(401, ""))))
+        assertEquals(SegmentSyncResult.AuthHalt(403), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(403, ""))))
+        assertEquals(SegmentSyncResult.Retry(500, "retry"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(500, ""))))
+        assertEquals(SegmentSyncResult.HardFail(404, "hard failure"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(404, ""))))
+        assertEquals(SegmentSyncResult.HardFail(400, "hard failure"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(400, ""))))
+        assertEquals(SegmentSyncResult.Retry(null, "retry"), resolveIoError())
     }
 
     @Test
     fun haltsDrainOnlyForAuthHalt() {
         assertTrue(haltsDrain(SegmentSyncResult.AuthHalt(401)))
-        assertFalse(haltsDrain(SegmentSyncResult.Uploaded("seg")))
+        assertFalse(haltsDrain(SegmentSyncResult.Uploaded))
         assertFalse(haltsDrain(SegmentSyncResult.Retry(500)))
         assertFalse(haltsDrain(SegmentSyncResult.HardFail(400)))
+        assertFalse(haltsDrain(SegmentSyncResult.JournalRemoved(500)))
     }
 
     @Test
     fun nonAuthFailuresDoNotHaltLaterSegments() {
         val results = listOf(
-            SegmentSyncResult.Uploaded("a"),
+            SegmentSyncResult.Uploaded,
             SegmentSyncResult.Retry(500),
             SegmentSyncResult.HardFail(400),
-            SegmentSyncResult.Uploaded("b"),
+            SegmentSyncResult.JournalRemoved(500),
+            SegmentSyncResult.Uploaded,
         )
 
-        assertEquals(listOf(false, false, false, false), results.map(::haltsDrain))
+        assertEquals(listOf(false, false, false, false, false), results.map(::haltsDrain))
     }
 
     @Test

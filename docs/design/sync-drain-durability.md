@@ -15,17 +15,16 @@ Define `DrainStore` with exactly this surface:
 - `syncState(): SyncStateRow?`
 - `segmentsForDrain(): List<SegmentRow>`
 - `filesBySegmentId(id: String): List<SegmentFileRow>`
-- `recordDedupeChecked(id: String, at: Long): Int`
 - `advanceState(id: String, event: QueueEvent): QueueState`
 - `recordAttempt(id: String, attempts: Int, at: Long): Int`
-- `recordUploaded(id: String, serverKey: String?): Int`
+- `recordUploaded(id: String): Int`
 - `recordFailure(id: String, code: Int?, error: String?): Int`
 - `pendingCount(stream: String): Int`
 - `upsertSyncState(row: SyncStateRow)`
 
 Add `RoomDrainStore(private val dao: SegmentDao) : DrainStore` in the same file. It is a thin adapter. `segmentsForDrain()` calls the new DAO query with `MAIN_STREAM`. `pendingCount(stream)` delegates to DAO; worker/drain will pass `MAIN_STREAM`.
 
-Move drain into `fun drainSegments(store: DrainStore, reconcile: (List<BundleManifest>, String) -> List<ReconcileVerdict>, ingest: (BundleManifest, (BundleFile) -> ByteArray) -> IngestOutcome, readPayload: (SegmentRow, BundleFile) -> ByteArray, now: () -> Long, log: (String, Throwable?) -> Unit): DrainReport`.
+Move drain into `fun drainSegments(store: DrainStore, reconcile: (List<BundleManifest>, String) -> List<ReconcileVerdict>, ingest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome>, readPayload: (SegmentRow, BundleFile) -> ByteArray, now: () -> Long, log: (String, Throwable?) -> Unit): DrainReport`.
 
 Validation:
 

@@ -87,7 +87,7 @@ class RoomQueueStoreInstrumentedTest {
         store.advance("u", QueueEvent.SEAL)
         store.advance("u", QueueEvent.START_UPLOAD)
         store.advance("u", QueueEvent.MARK_UPLOADED)
-        dao.recordUploaded("u", "srv-1")
+        dao.recordUploaded("u")
         dao.recordAttempt("u", 3, 999)
 
         dao.insertSegmentWithFiles(
@@ -97,8 +97,8 @@ class RoomQueueStoreInstrumentedTest {
 
         val row = dao.segmentById("u")!!
         assertEquals(QueueState.UPLOADED, row.state)
-        assertEquals("srv-1", row.serverKey)
         assertEquals(3, row.attemptCount)
+        assertNull(row.lastError)
         assertTrue("stale file rows must be cleared", dao.duplicateBySha256("sha-old").isEmpty())
         assertEquals(1, dao.duplicateBySha256("sha-new").size)
     }

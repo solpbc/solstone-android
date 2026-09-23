@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- a recording could be removed from your phone without a check that all of it had landed in your journal intact. for recordings that go into your journal from this version on, the app removes one from your phone only after every file has landed in your journal exactly as your phone saved it.
+
 ## [2.1.7] - 2026-09-23
 
 ### Changed

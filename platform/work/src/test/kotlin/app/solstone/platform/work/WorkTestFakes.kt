@@ -52,11 +52,6 @@ internal class FakeDrainStore(
 
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = files[id].orEmpty()
 
-    override fun recordDedupeChecked(id: String, at: Long): Int {
-        rows[id] = rows.getValue(id).copy(dedupeCheckedAt = at)
-        return 1
-    }
-
     override fun advanceState(id: String, event: QueueEvent): QueueState {
         if (id in failAdvanceFor) {
             throw IllegalStateException("forced claim failure")
@@ -73,8 +68,8 @@ internal class FakeDrainStore(
         return 1
     }
 
-    override fun recordUploaded(id: String, serverKey: String?): Int {
-        rows[id] = rows.getValue(id).copy(serverKey = serverKey, lastError = null)
+    override fun recordUploaded(id: String): Int {
+        rows[id] = rows.getValue(id).copy(lastError = null)
         return 1
     }
 
@@ -86,7 +81,8 @@ internal class FakeDrainStore(
     override fun pendingCount(stream: String): Int =
         rows.values.count {
             it.stream == stream &&
-                (it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED)
+                (it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED) &&
+                it.lastError != "removed_in_journal"
         }
 
     override fun upsertSyncState(row: SyncStateRow) {
@@ -101,6 +97,7 @@ internal fun segment(
     attemptCount: Int = 0,
     lastAttemptAt: Long? = null,
     lastStatusCode: Int? = null,
+    lastError: String? = null,
 ): SegmentRow =
     SegmentRow(
         id = id,
@@ -116,6 +113,7 @@ internal fun segment(
         attemptCount = attemptCount,
         lastStatusCode = lastStatusCode,
         lastAttemptAt = lastAttemptAt,
+        lastError = lastError,
     )
 
 internal fun file(segmentId: String): SegmentFileRow =

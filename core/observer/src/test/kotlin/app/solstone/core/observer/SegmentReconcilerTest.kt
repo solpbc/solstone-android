@@ -33,10 +33,8 @@ class SegmentReconcilerTest {
                         ServerFile("audio.wav", 3, SHA_A, "present", null),
                         ServerFile("photo.jpg", 3, SHA_B, "present", null),
                     ),
-                    true,
-                    null,
                 ),
-                ServerSegment("094000_60", listOf(ServerFile("audio.wav", 3, SHA_A, "present", null)), false, null),
+                ServerSegment("094000_60", listOf(ServerFile("audio.wav", 3, SHA_A, "present", null))),
             ),
             segments,
         )
@@ -257,19 +255,31 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun fetchRejectsMissingOrNonBooleanObserved() {
+    fun fetchParsesMissingOrNonBooleanObserved() {
         listOf(
             """{"key":"seg","files":[]}""",
             """{"key":"seg","observed":"true","files":[]}""",
             """{"key":"seg","observed":1,"files":[]}""",
             """{"key":"seg","observed":null,"files":[]}""",
         ).forEach { item ->
-            val error = assertFailsWith<ReconcileUnavailableException> {
-                SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
-            }
-            assertEquals(200, error.status)
-            assertIs<IllegalArgumentException>(error.cause)
+            val parsed = SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
+            assertEquals(1, parsed.size)
+            assertEquals("seg", parsed.first().key)
         }
+    }
+
+    @Test
+    fun diffReconcilesWithoutObservedKey() {
+        val matchingListing = response("""{"key":"093000_60","files":[${fileJson("audio.wav", SHA_A)}]}""")
+        val manifests = listOf(manifest("093000_60", "audio.wav" to SHA_A))
+        val matchingVerdict = SegmentReconciler(RecordingPlHttpClient(matchingListing)).diff(manifests, "20260616")
+        assertEquals(1, matchingVerdict.size)
+        assertEquals(false, matchingVerdict.first().needsUpload)
+
+        val mismatchListing = response("""{"key":"093000_60","files":[${fileJson("audio.wav", SHA_B)}]}""")
+        val mismatchVerdict = SegmentReconciler(RecordingPlHttpClient(mismatchListing)).diff(manifests, "20260616")
+        assertEquals(1, mismatchVerdict.size)
+        assertEquals(true, mismatchVerdict.first().needsUpload)
     }
 
     @Test

@@ -39,7 +39,7 @@ class SyncWithTransportTest {
             assertV3(trace.client.requests[2])
             assertNoLegacyHeaders(trace.client.requests)
             assertEquals(QueueState.UPLOADED, trace.store.row("a").state)
-            assertEquals("srv-a", trace.store.row("a").serverKey)
+            assertEquals(null, trace.store.row("a").lastError)
             assertTrue(trace.client.closed)
         }
     }
@@ -203,6 +203,10 @@ class SyncWithTransportTest {
         )
 
         fun ingestAccepted(): HttpResponse =
-            HttpResponse(200, emptyMap(), """{"status":"ok","segment":"srv-a"}""".toByteArray())
+            HttpResponse(
+                200,
+                emptyMap(),
+                """{"status":"ok","segment":"srv-a","file_descriptors":[{"submitted":"a.bin","written":"a.bin","size":1,"sha256":"sha-a","disposition":"written"}]}""".toByteArray(),
+            )
     }
 }

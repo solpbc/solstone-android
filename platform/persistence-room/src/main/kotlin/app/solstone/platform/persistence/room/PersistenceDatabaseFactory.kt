@@ -26,10 +26,50 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS segment_new (
+                id TEXT NOT NULL,
+                day TEXT NOT NULL,
+                stream TEXT NOT NULL,
+                segment TEXT NOT NULL,
+                dir_segment TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL,
+                byte_size INTEGER NOT NULL,
+                sealed_at INTEGER NOT NULL,
+                home_instance_id TEXT,
+                observer_handle TEXT,
+                attempt_count INTEGER NOT NULL,
+                last_status_code INTEGER,
+                last_attempt_at INTEGER,
+                last_error TEXT,
+                PRIMARY KEY(id)
+            )
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO segment_new (
+                id, day, stream, segment, dir_segment, state, byte_size, sealed_at,
+                home_instance_id, observer_handle, attempt_count, last_status_code, last_attempt_at, last_error
+            )
+            SELECT
+                id, day, stream, segment, dir_segment, state, byte_size, sealed_at,
+                home_instance_id, observer_handle, attempt_count, last_status_code, last_attempt_at, last_error
+            FROM segment
+            """.trimIndent(),
+        )
+        db.execSQL("DROP TABLE segment")
+        db.execSQL("ALTER TABLE segment_new RENAME TO segment")
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
         .build()
