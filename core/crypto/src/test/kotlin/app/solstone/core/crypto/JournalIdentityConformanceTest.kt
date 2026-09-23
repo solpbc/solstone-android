@@ -321,10 +321,10 @@ class JournalIdentityConformanceTest {
 
     private companion object {
         const val AUTHORITY_REPOSITORY = "https://github.com/solpbc/spl"
-        const val AUTHORITY_COMMIT = "42bdb218001899f55f5bf767ee740540868d63e9"
+        const val AUTHORITY_COMMIT = "bc0eec0ac4230df023abb0d88bee812358b3fe60"
         const val AUTHORITY_MANIFEST_PATH = "proto/definition/bundle/manifest.json"
-        const val AUTHORITY_MANIFEST_SHA256 = "8e2dc3f9f0eed57bc0f813654f5ff6dac1f5dbbb254c1dd05ee67bf5707202a9"
-        const val BUNDLE_SEMVER = "8.0.0"
+        const val AUTHORITY_MANIFEST_SHA256 = "5dc0c160ed9781964de2c6debe0b6e93f6b9d72e040a2b614356d1355b26dc64"
+        const val BUNDLE_SEMVER = "8.0.1"
         const val BUNDLE_SCHEMA_IDENTITY = "spl.pair-link-definition-bundle.schema.v1"
         const val ADOPTION_SCHEMA_VERSION = 1L
         const val CONSUMER_IDENTIFIER = "solpbc/solstone-android"
