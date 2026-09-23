@@ -9,5 +9,6 @@ kotlin {
 
 dependencies {
     implementation("org.bouncycastle:bcprov-jdk15to18:1.85.1")
+    testImplementation(project(":core:pl"))
     testImplementation(kotlin("test"))
 }

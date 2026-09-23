@@ -6,6 +6,9 @@ package app.solstone.core.pl
 import app.solstone.core.crypto.hex
 import java.io.ByteArrayOutputStream
 import java.net.URL
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 
 const val DEFAULT_DIRECT_PORT = 7657
 val RECOGNIZED_PAIR_HOSTS = setOf("go.solstone.app")
@@ -68,9 +71,11 @@ class RelayPairLink(
         return result
     }
 
-    // S is a pairing secret. Keep this stable for diagnostics/tests, but do not log pair links.
-    override fun toString(): String =
-        "RelayPairLink(s=${s.contentToString()}, caFpSpki=${caFpSpki.contentToString()}, relayOrigin=$relayOrigin)"
+    // S is a pairing secret; redact it, the CA pin, and untrusted origin text from diagnostics.
+    override fun toString(): String {
+        val originKind = if (relayOrigin == null) "well-known" else "custom"
+        return "RelayPairLink(s=<redacted>, caFpSpki=<redacted>, relayOrigin=<$originKind>)"
+    }
 }
 
 enum class DialDecision { SUCCEED, ADVANCE, TERMINAL }
@@ -193,7 +198,16 @@ private fun parseRelayFromDecoded(decoded: ByteArray): RelayPairLink {
         if (decoded.size != 27 + selector) {
             throw IllegalArgumentException("unsupported relay pair link payload")
         }
-        decoded.copyOfRange(27, 27 + selector).toString(Charsets.UTF_8)
+        val originBytes = decoded.copyOfRange(27, 27 + selector)
+        try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(originBytes))
+                .toString()
+        } catch (error: CharacterCodingException) {
+            throw IllegalArgumentException("invalid relay origin", error)
+        }
     }
     return RelayPairLink(s, caFpSpki, relayOrigin)
 }

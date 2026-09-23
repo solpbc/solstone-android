@@ -3,9 +3,14 @@
 
 package app.solstone.core.crypto
 
+import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.RelayPairLink
+import app.solstone.core.pl.decodeCrockford32
+import app.solstone.core.pl.parsePairLink
 import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -30,6 +35,16 @@ class JournalIdentityConformanceTest {
         assertEquals(AUTHORITY_MANIFEST_SHA256, adoption.requiredString("authority_manifest_sha256"))
         assertEquals(bundle.manifest.requiredString("bundle_semver"), adoption.requiredString("bundle_semver"))
         assertEquals(bundle.files.map { it.path to it.digest }, adoption.files("bundle_files").map { it.path to it.digest })
+        val conformance = adoption.requiredMap("conformance")
+        assertEquals(
+            "core/crypto/src/test/kotlin/app/solstone/core/crypto/JournalIdentityConformanceTest.kt",
+            conformance.requiredString("test"),
+        )
+        assertEquals(
+            listOf("parse_pair_link", "derive_jid", "decode_crockford", "derive_relay_key"),
+            conformance.requiredList("bound_operations").map { it as? String ?: error("expected operation string") },
+        )
+        assertTrue(conformance.requiredList("not_implemented").isEmpty())
     }
 
     @Test
@@ -62,6 +77,37 @@ class JournalIdentityConformanceTest {
         assertTrue(
             failures.isEmpty(),
             "${failures.size} of ${corpus.deriveJidVectors.size} derive_jid vectors failed: ${failures.joinToString(", ")}",
+        )
+    }
+
+    @Test
+    fun parsePairLinkVectorsMatchClientParser() {
+        val vectors = loadVerifiedCorpus().vectors.filter { it.requiredString("operation") == "parse_pair_link" }
+        assertEquals(73, vectors.size, "parse_pair_link vector count")
+        val failures = vectors.mapNotNull(::pairLinkVectorFailure)
+        assertTrue(
+            failures.isEmpty(),
+            "${failures.size} of ${vectors.size} parse_pair_link vectors failed: ${failures.joinToString(", ")}",
+        )
+    }
+
+    @Test
+    fun decodeCrockfordVectorMatchesClientDecoder() {
+        val vector = loadVerifiedCorpus().vectors.single { it.requiredString("operation") == "decode_crockford" }
+        assertEquals("pair.v04.canonical.decode", vector.requiredString("id"))
+        assertContentEquals(
+            hexBytes(vector.requiredString("expected_hex")),
+            decodeCrockford32(vector.requiredString("input")),
+        )
+    }
+
+    @Test
+    fun deriveRelayKeyVectorMatchesClientImplementation() {
+        val vector = loadVerifiedCorpus().vectors.single { it.requiredString("operation") == "derive_relay_key" }
+        assertEquals("relay.rk.published", vector.requiredString("id"))
+        assertContentEquals(
+            hexBytes(vector.requiredString("expected_hex")),
+            deriveRk(hexBytes(vector.requiredString("secret_hex"))),
         )
     }
 
@@ -101,7 +147,77 @@ class JournalIdentityConformanceTest {
         assertOperationHistogramIsPinned(vectors)
         val deriveJidVectors = vectors.filter { it.requiredString("operation") == "derive_jid" }
         assertDeriveJidSelectionIsPinned(deriveJidVectors)
-        return VerifiedCorpus(deriveJidVectors)
+        return VerifiedCorpus(vectors)
+    }
+
+    private fun pairLinkVectorFailure(vector: Map<String, Any?>): String? {
+        val id = vector.requiredString("id")
+        val expected = vector.requiredMap("expected")
+        val input = vector.requiredMap("input")
+        val link = when (input.requiredString("encoding")) {
+            "link" -> input.requiredString("value")
+            "blob_hex" -> pairLinkFromBlob(hexBytes(input.requiredString("value")))
+            else -> return "$id has an unrecognized input encoding"
+        }
+        val parsed = try {
+            parsePairLink(link)
+        } catch (error: IllegalArgumentException) {
+            return if (expected.requiredString("result") == "error") {
+                null
+            } else {
+                "$id expected " + expected.requiredString("result") + ", got " + error::class.simpleName + ": " + error.message
+            }
+        }
+        if (expected.requiredString("result") == "error") {
+            return "$id expected refusal, got " + parsed::class.simpleName
+        }
+        return when (expected.requiredString("result")) {
+            "direct" -> {
+                val direct = parsed as? DirectPairLink ?: return "$id expected direct, got " + parsed::class.simpleName
+                val expectedCandidates = expected.requiredList("candidates").map { value ->
+                    val candidate = value.requiredMap()
+                    candidate.requiredString("host") + ":" + candidate.requiredLong("port")
+                }
+                val actualCandidates = direct.candidates.map { it.host + ":" + it.port }
+                when {
+                    actualCandidates != expectedCandidates -> "$id candidates expected $expectedCandidates, got $actualCandidates"
+                    direct.nonce != expected.requiredString("nonce_hex") -> "$id nonce mismatch"
+                    hex(direct.caFingerprintPrefix) != expected.requiredString("ca_fp_hex") -> "$id CA fingerprint mismatch"
+                    else -> null
+                }
+            }
+            "relay" -> {
+                val relay = parsed as? RelayPairLink ?: return "$id expected relay, got " + parsed::class.simpleName
+                val actualOrigin = relay.relayOrigin ?: WELL_KNOWN_RELAY_ORIGIN
+                when {
+                    hex(relay.s) != expected.requiredString("secret_hex") -> "$id secret mismatch"
+                    hex(relay.caFpSpki) != expected.requiredString("ca_fp_spki_hex") -> "$id CA SPKI fingerprint mismatch"
+                    actualOrigin != expected.requiredString("relay_origin") -> "$id relay origin expected " + expected.requiredString("relay_origin") + ", got $actualOrigin"
+                    else -> null
+                }
+            }
+            else -> "$id has an unrecognized expected result"
+        }
+    }
+
+    private fun pairLinkFromBlob(bytes: ByteArray): String {
+        val alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+        val encoded = StringBuilder()
+        var buffer = 0
+        var bitCount = 0
+        for (byte in bytes) {
+            buffer = (buffer shl 8) or (byte.toInt() and 0xff)
+            bitCount += 8
+            while (bitCount >= 5) {
+                bitCount -= 5
+                encoded.append(alphabet[(buffer shr bitCount) and 0x1f])
+                buffer = buffer and ((1 shl bitCount) - 1)
+            }
+        }
+        if (bitCount > 0) {
+            encoded.append(alphabet[(buffer shl (5 - bitCount)) and 0x1f])
+        }
+        return "https://go.solstone.app/p#" + encoded
     }
 
     private fun assertDeriveJidSelectionIsPinned(deriveJidVectors: List<Map<String, Any?>>) {
@@ -124,7 +240,7 @@ class JournalIdentityConformanceTest {
         assertTrue(failures.isEmpty(), failures.joinToString("; "))
     }
 
-    // Only derive_jid is bound by this consumer today; the full histogram prevents silent corpus drift.
+    // The pinned histogram makes changed or newly added bundle operations fail closed.
     private fun assertOperationHistogramIsPinned(vectors: List<Map<String, Any?>>) {
         assertEquals(
             mapOf("parse_pair_link" to 73, "derive_jid" to 9, "derive_relay_key" to 1, "decode_crockford" to 1),
@@ -169,7 +285,10 @@ class JournalIdentityConformanceTest {
 
     private data class VerifiedBundle(val manifest: Map<String, Any?>, val files: List<FileDigest>)
 
-    private data class VerifiedCorpus(val deriveJidVectors: List<Map<String, Any?>>) {
+    private data class VerifiedCorpus(val vectors: List<Map<String, Any?>>) {
+        val deriveJidVectors: List<Map<String, Any?>>
+            get() = vectors.filter { it["operation"] == "derive_jid" }
+
         fun vector(id: String): Map<String, Any?> = deriveJidVectors.single { it["id"] == id }
     }
 
@@ -209,5 +328,6 @@ class JournalIdentityConformanceTest {
         const val BUNDLE_SCHEMA_IDENTITY = "spl.pair-link-definition-bundle.schema.v1"
         const val ADOPTION_SCHEMA_VERSION = 1L
         const val CONSUMER_IDENTIFIER = "solpbc/solstone-android"
+        const val WELL_KNOWN_RELAY_ORIGIN = "https://link.solstone.app"
     }
 }

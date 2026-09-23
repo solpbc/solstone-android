@@ -24,5 +24,10 @@
       "path": "vectors.schema.json",
       "sha256": "4ca9793cb383c5b393f232b63d83814c12e20c33e047ae6053800dd80e78a364"
     }
-  ]
+  ],
+  "conformance": {
+    "test": "core/crypto/src/test/kotlin/app/solstone/core/crypto/JournalIdentityConformanceTest.kt",
+    "bound_operations": ["parse_pair_link", "derive_jid", "decode_crockford", "derive_relay_key"],
+    "not_implemented": []
+  }
 }
