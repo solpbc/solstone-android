@@ -9,6 +9,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -107,6 +109,9 @@ class PhoneObserverNotificationRuntimeTest {
         // timeout here rather than anywhere near the cause. ⛔ Not a longer timeout: that hides the
         // queue instead of draining it.
         assertTrue(container.awaitBackgroundIdle())
+        // The service notification is posted on the main looper. The barrier
+        // above drains the container's executor and does not drain that queue.
+        assertTrue(awaitMainLooper())
         waitUntil("service notification removed") { serviceNotification() == null }
 
         assertFalse(container.controller.desiredOn)
@@ -267,6 +272,13 @@ class PhoneObserverNotificationRuntimeTest {
             method.isAccessible = true
             method.invoke(pendingIntent) as? Intent
         }.getOrNull()
+    }
+
+    private fun awaitMainLooper(): Boolean {
+        val done = java.util.concurrent.CountDownLatch(1)
+        val queued = Handler(Looper.getMainLooper()).post { done.countDown() }
+        if (!queued) return false
+        return done.await(10_000L, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     private fun serviceNotification(): android.service.notification.StatusBarNotification? {

@@ -23,6 +23,10 @@ android {
     }
 
     testOptions {
+        // The device gate leaves animation scales at the emulator default.
+        // A full-suite run then loses window focus and Espresso fails tests
+        // that pass alone.
+        animationsDisabled = true
         targetSdk = 35
         managedDevices {
             localDevices {

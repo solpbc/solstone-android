@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -246,9 +247,14 @@ class PhoneJournalMarkComposeTest {
         // Release GET response
         releaseRequest.countDown()
 
-        // Card reactively swaps to identified
-        composeRule.waitUntil(5000) {
-            coordinator.currentPresentation() is JournalMarkPresentation.Identified
+        // currentPresentation() flips on the identity job before ListenerDelivery
+        // runs the UI update on its own thread and posts it to the composition.
+        // Waiting on the field returns while the card still reads as loading.
+        // Same five-second budget, on the words the assertion checks.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("liquefy", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
         composeRule.waitForIdle()
 
