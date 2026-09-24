@@ -3,6 +3,7 @@
 
 package app.solstone.core.pl
 
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -157,6 +158,57 @@ class MuxSessionTest {
         }
 
         client.use { MuxSession(it).request("POST", "/b1", emptyMap(), body) }
+        finishHome(home)
+    }
+
+    @Test
+    fun requestBeyondInitialSendWindowWaitsForGrant() {
+        val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
+        val body = ByteArray(2 * TEST_INITIAL_RECEIVE_WINDOW) { (it % 251).toByte() }
+        val request = httpRequestBytes("POST", "/b2", emptyMap(), body)
+        val home = startHome(server) { duplex ->
+            val received = ByteArrayOutputStream()
+            var streamId = 0
+            while (received.size() < TEST_INITIAL_RECEIVE_WINDOW) {
+                val frame = readFrame(duplex.input)
+                assertEquals(0, frame.flags and FLAG_CLOSE)
+                streamId = frame.streamId
+                received.write(frame.payload)
+            }
+            // A journal resets a sender that goes past its credit, so the client holds here
+            // until credit comes back.
+            assertEquals(TEST_INITIAL_RECEIVE_WINDOW, received.size())
+            assertNull(pollFrame(duplex.input, iterations = 40), "no DATA beyond the send window")
+            sendFrame(duplex, streamId, FLAG_WINDOW, encodeWindowCredit(request.size - TEST_INITIAL_RECEIVE_WINDOW))
+            do {
+                val frame = readFrame(duplex.input)
+                received.write(frame.payload)
+            } while ((frame.flags and FLAG_CLOSE) == 0)
+            assertContentEquals(request, received.toByteArray())
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, responseBytes(32))
+        }
+
+        client.use { assertEquals(200, MuxSession(it).request("POST", "/b2", emptyMap(), body).status) }
+        finishHome(home)
+    }
+
+    @Test
+    fun answerBeforeTheWholeRequestCancelsTheRest() {
+        val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
+        val body = ByteArray(2 * TEST_INITIAL_RECEIVE_WINDOW)
+        val home = startHome(server) { duplex ->
+            var received = 0
+            var streamId = 0
+            while (received < TEST_INITIAL_RECEIVE_WINDOW) {
+                val frame = readFrame(duplex.input)
+                streamId = frame.streamId
+                received += frame.payload.size
+            }
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, "HTTP/1.1 413 Payload Too Large\r\n\r\n".toByteArray(Charsets.US_ASCII))
+            assertReset(assertNotNull(pollFrame(duplex.input)), streamId, 0x05)
+        }
+
+        client.use { assertEquals(413, MuxSession(it).request("POST", "/b3", emptyMap(), body).status) }
         finishHome(home)
     }
 

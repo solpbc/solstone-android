@@ -249,17 +249,27 @@ class MuxSession(
         try {
             val request = httpRequestBytes(method, path, headers, body)
             var offset = 0
-            while (offset < request.size) {
-                val count = minOf(MAX_DATA_CHUNK_BYTES, request.size - offset)
-                val flags = if (offset == 0) FLAG_OPEN or FLAG_DATA else FLAG_DATA
-                writeFrame(streamId, flags, request.copyOfRange(offset, offset + count))
-                offset += count
-            }
-            writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+            var requestClosed = false
+            // Framing § flow control: the request draws on per-stream send credit, and only the
+            // peer's WINDOW grants replenish it. Sending past it draws a FLOW_CONTROL_ERROR reset,
+            // which is what stalled every ingest POST over 1 MiB once the journal drained slower
+            // than the wire. So the request goes out as credit allows, between frame reads.
+            var sendCredit = INITIAL_SEND_WINDOW.toLong()
             val response = ByteArrayOutputStream()
             // Per-stream flow-control credit is replenished as each DATA frame is consumed.
             var receiveWindow = initialReceiveWindow
             while (true) {
+                while (offset < request.size && sendCredit > 0) {
+                    val count = minOf(MAX_DATA_CHUNK_BYTES.toLong(), (request.size - offset).toLong(), sendCredit).toInt()
+                    val flags = if (offset == 0) FLAG_OPEN or FLAG_DATA else FLAG_DATA
+                    writeFrame(streamId, flags, request.copyOfRange(offset, offset + count))
+                    offset += count
+                    sendCredit -= count
+                }
+                if (offset == request.size && !requestClosed) {
+                    writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+                    requestClosed = true
+                }
                 val frame = readFrame()
                 val classification = MuxClassifier.classify(
                     streamId = frame.streamId,
@@ -312,6 +322,11 @@ class MuxSession(
                         throw IOException("PL stream reset: " + resetReason(frame.payload))
                     }
                     MuxClassification.ACTIVE_WINDOW -> {
+                        sendCredit += decodeWindowCredit(frame.payload).toLong() and 0xffffffffL
+                        if (sendCredit > Int.MAX_VALUE) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
+                            throw IOException("PL send window overflow")
+                        }
                         continue
                     }
                     MuxClassification.ACTIVE_DATA -> {
@@ -336,12 +351,16 @@ class MuxSession(
                             }
                         }
                         if (closesStream) {
+                            // An answer before the whole request went out (an early 413, say):
+                            // the rest of the body is abandoned rather than left half-open.
+                            if (!requestClosed) writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
                             val parsed = parser(response.toByteArray())
                             successful = true
                             return parsed
                         }
                     }
                     MuxClassification.ACTIVE_CLOSE -> {
+                        if (!requestClosed) writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
                         val parsed = parser(response.toByteArray())
                         successful = true
                         return parsed
@@ -438,6 +457,7 @@ class MuxSession(
 const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const val MAX_BROWSER_RESPONSE_BYTES = 16 * 1024 * 1024
 const val INITIAL_RECEIVE_WINDOW = 1024 * 1024
+const val INITIAL_SEND_WINDOW = 1024 * 1024
 const val MAX_DATA_CHUNK_BYTES = 64 * 1024
 const val SESSION_UNUSABLE = "PL session unusable"
 const val SOCKET_TIMEOUT_MS = 30000
