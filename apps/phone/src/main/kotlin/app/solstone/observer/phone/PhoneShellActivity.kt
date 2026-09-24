@@ -225,6 +225,9 @@ class PhoneShellActivity : ComponentActivity() {
             }
             LaunchedEffect(pairingSnapshot.sequenceNumber) {
                 if (pairingSnapshot !is PairingGraphSnapshot.Committed) journalOpen = false
+                // The note is about the journal this device just left. Once another pairing commits,
+                // "your journal" names the new one, and the note would read as being about it.
+                if (pairingSnapshot is PairingGraphSnapshot.Committed) journalKeptItsRecord = false
             }
             val currentPairing = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
             val currentMarkPresentation = if (currentPairing != null && markGeneration != currentPairing) {

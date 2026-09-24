@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - rarely, your phone could lose its pairing and need to be paired with your journal again. it stays paired now.
 - the syncing count on your phone could stay up, because larger things waiting to go into your journal kept retrying and didn't catch up. they land in your journal now.
 - with the app open, the syncing count could stay at an old number until you left and came back. it now changes as things land in your journal.
+- after you forgot a journal the app couldn't reach and paired another, it could keep showing `your journal still lists this device`. that note now goes away once the new journal is paired.
 
 ## [2.1.8] - 2026-09-24
 
