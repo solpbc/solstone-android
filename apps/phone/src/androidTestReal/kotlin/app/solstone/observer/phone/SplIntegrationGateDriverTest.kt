@@ -194,7 +194,7 @@ class SplIntegrationGateDriverTest {
                 require(captured.state == QueueState.SEALED) { "captured_segment_not_sealed" }
 
                 require(container.controller.syncNow() == SyncNowResult.Enqueued) { "normal_sync_not_enqueued" }
-                awaitNormalSync(context, captured.id)
+                val stateAfterSync = awaitNormalSync(context, captured.id)
 
                 val roundTripTelemetry = GateTelemetry()
                 val response = requestSegments(stores, captured.day, audio.sourceId, roundTripTelemetry)
@@ -248,7 +248,7 @@ class SplIntegrationGateDriverTest {
                         "round_trip" to linkedMapOf(
                             "sync_enqueued" to true,
                             "sync_work_state" to WorkInfo.State.SUCCEEDED.name,
-                            "queue_state_after_sync" to QueueState.UPLOADED.name,
+                            "queue_state_after_sync" to stateAfterSync.name,
                             "actual_bytes" to audio.byteSize,
                             "actual_sha256" to audio.sha256,
                             "segment_fetch_http_status" to response.status,
@@ -711,7 +711,10 @@ class SplIntegrationGateDriverTest {
         }
     }
 
-    private fun awaitNormalSync(context: Context, segmentId: String) {
+    // A confirmed segment is UPLOADED for an instant and then EVICTED once its local copy is
+    // removed in the same drain; either state proves the journal confirmed it.
+    private fun awaitNormalSync(context: Context, segmentId: String): QueueState {
+        var observed: QueueState? = null
         val workManager = WorkManager.getInstance(context)
         waitUntil("normal sync completion", NORMAL_SYNC_TIMEOUT_MS) {
             val terminal = workManager.getWorkInfosForUniqueWork(SyncScheduler.NOW_WORK_NAME)
@@ -723,11 +726,18 @@ class SplIntegrationGateDriverTest {
             }
             val database = openSolstonePersistenceDatabase(context)
             try {
-                database.segmentDao().segmentById(segmentId)?.state == QueueState.UPLOADED
+                val state = database.segmentDao().segmentById(segmentId)?.state
+                if (state == QueueState.UPLOADED || state == QueueState.EVICTED) {
+                    observed = state
+                    true
+                } else {
+                    false
+                }
             } finally {
                 database.close()
             }
         }
+        return checkNotNull(observed)
     }
 
     private fun realStatusProbe(stores: SyncStores, telemetry: GateTelemetry) =
