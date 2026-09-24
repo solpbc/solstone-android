@@ -41,6 +41,7 @@ internal class FakeDrainStore(
         private set
 
     fun row(id: String): SegmentRow = rows.getValue(id)
+    fun allRows(): List<SegmentRow> = rows.values.sortedWith(compareBy<SegmentRow> { it.sealedAt }.thenBy { it.id })
     fun rowOrNull(id: String): SegmentRow? = rows[id]
 
     fun add(row: SegmentRow, fileRows: List<SegmentFileRow> = emptyList()) {

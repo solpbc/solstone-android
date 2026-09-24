@@ -23,7 +23,6 @@ internal fun resetObserverRuntime() {
 internal fun resetPersistence(context: Context) {
     context.deleteDatabase(TEST_DATABASE_NAME)
     context.filesDir.resolve("spool").deleteRecursively()
-    context.filesDir.resolve("journal-cache-limit").delete()
 }
 
 internal fun waitForObserverContainer(): ObserverAppContainer {

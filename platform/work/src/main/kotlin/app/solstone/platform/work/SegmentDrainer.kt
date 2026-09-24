@@ -13,6 +13,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
+import app.solstone.platform.persistence.room.JournalCachePathRefusal
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -109,7 +110,13 @@ fun drainSegments(
             store.recordAttempt(segment.id, segment.attemptCount + 1, now())
 
             when (actions.getValue(segment.id)) {
-                is DrainAction.Skip -> confirmThenRemove(store, finisher, segment)
+                is DrainAction.Skip -> {
+                    confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                        failedThisRun = true
+                        lastFailureAt = now()
+                        lastErrorReason = reason
+                    }
+                }
                 is DrainAction.Upload -> {
                     val result = try {
                         resolveIngestOutcomes(
@@ -142,7 +149,11 @@ fun drainSegments(
                     when (result) {
                         is SegmentSyncResult.Uploaded,
                         is SegmentSyncResult.JournalRemoved -> {
-                            confirmThenRemove(store, finisher, segment)
+                            confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                                failedThisRun = true
+                                lastFailureAt = now()
+                                lastErrorReason = reason
+                            }
                         }
                         is SegmentSyncResult.Retry -> {
                             store.advanceState(segment.id, QueueEvent.MARK_FAILED)
@@ -221,9 +232,28 @@ private fun markPayloadFailed(store: DrainStore, segment: SegmentRow, reason: St
     store.recordFailure(segment.id, null, reason)
 }
 
-private fun confirmThenRemove(store: DrainStore, finisher: ConfirmedCopyFinisher, segment: SegmentRow) {
-    if (!finisher.confirmationReady(segment)) return
+/**
+ * Called once the journal is known to hold [segment]. Returns null when the segment is done, or
+ * the failure reason when its local directory cannot be proven to be its own copy: the segment is
+ * then FAILED so the normal backoff paces the next attempt instead of every drain re-sending it.
+ * A directory that is already gone leaves nothing to prove, so the segment finishes.
+ */
+private fun confirmThenRemove(
+    store: DrainStore,
+    finisher: ConfirmedCopyFinisher,
+    segment: SegmentRow,
+    log: (String, Throwable?) -> Unit,
+): String? {
+    val refusal = finisher.confirmationRefusal(segment)
+    if (refusal != null && refusal != JournalCachePathRefusal.MISSING_DIRECTORY) {
+        val reason = "local copy unproven: ${refusal.name.lowercase()}"
+        log("confirmed copy refused ${segment.id} $refusal", null)
+        store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+        store.recordFailure(segment.id, null, reason)
+        return reason
+    }
     store.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
     store.recordUploaded(segment.id)
     finisher.finishUploaded(segment.id)
+    return null
 }

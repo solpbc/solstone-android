@@ -3,6 +3,7 @@
 
 package app.solstone.observer.phone
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
@@ -352,7 +353,11 @@ class PhoneShellActivity : ComponentActivity() {
                         .onSuccess { problemReports = it }
                 },
                 onManageLocalStorage = {
-                    startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    try {
+                        startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    } catch (_: ActivityNotFoundException) {
+                        startActivity(Intent(Settings.ACTION_SETTINGS))
+                    }
                 },
                 initial = capture.stack,
                 initialShelfOpen = capture.shelfOpen,

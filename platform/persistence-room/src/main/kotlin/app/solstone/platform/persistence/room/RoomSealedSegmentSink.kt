@@ -44,4 +44,14 @@ class RoomSealedSegmentSink(private val dao: SegmentDao) : SealedSegmentSink {
         )
 }
 
-fun SealedSegment.id(dirSegment: String): String = "${key.day}/$stream/$dirSegment"
+fun SealedSegment.id(dirSegment: String): String = segmentRowId(key.day, stream, dirSegment)
+
+fun segmentRowId(day: String, stream: String, dirSegment: String): String = "$day/$stream/$dirSegment"
+
+/**
+ * Whether a segment row already holds this directory leaf. A row outlives its directory once the
+ * journal confirms the copy, so a later segment sealed under the same wire key must take another
+ * leaf rather than reuse the row's id.
+ */
+fun SegmentDao.isLeafOccupied(day: String, stream: String, leaf: String): Boolean =
+    segmentById(segmentRowId(day, stream, leaf)) != null

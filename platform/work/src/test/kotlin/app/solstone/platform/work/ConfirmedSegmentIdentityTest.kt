@@ -6,18 +6,29 @@ package app.solstone.platform.work
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
+import app.solstone.core.model.SegmentKey
+import app.solstone.core.model.WireKeys
 import app.solstone.core.observer.IngestDescriptors
 import app.solstone.core.observer.IngestFileDescriptor
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
+import app.solstone.core.segment.SealedSegment
+import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.PayloadRef
+import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.SyncStateRow
+import app.solstone.platform.persistence.room.isLeafOccupied
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -118,6 +129,43 @@ class ConfirmedSegmentIdentityTest {
         val store = RoomDrainStore(dao)
         val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
 
+        // The spool writer and sink the app containers build, with the same leaf-occupied check.
+        val spoolWriter = FileSpoolWriter(
+            baseDir = spool,
+            isLeafOccupied = { day, stream, leaf -> dao.isLeafOccupied(day, stream, leaf) },
+        )
+        val sealedSink = RoomSealedSegmentSink(dao)
+
+        /** Seals through the real writer; persists the row unless [persistRow] is false. Returns the final directory. */
+        fun seal(
+            day: String,
+            stream: String,
+            wireKey: String,
+            startEpochMs: Long,
+            endEpochMs: Long,
+            payloadName: String,
+            sealedAt: Long,
+            persistRow: Boolean = true,
+        ): Path {
+            val segment = SealedSegment(
+                stream = stream,
+                key = SegmentKey(day, wireKey),
+                wireKeys = WireKeys(day, wireKey, startEpochMs, endEpochMs, "America/New_York", -14400),
+                payloads = listOf(
+                    SegmentPayload("audio", PayloadRef(payloadName, "application/octet-stream", 3, null), startEpochMs, endEpochMs),
+                ),
+                gaps = emptyList(),
+            )
+            val result = spoolWriter.seal(
+                segment,
+                object : PayloadBytesProvider {
+                    override fun open(payload: SegmentPayload): InputStream = ByteArrayInputStream(byteArrayOf(1, 2, 3))
+                },
+            )
+            if (persistRow) sealedSink.persistSealed(segment, result, sealedAt)
+            return requireNotNull(result.directory)
+        }
+
         fun writeSegmentToDisk(
             day: String,
             stream: String,
@@ -197,12 +245,11 @@ class ConfirmedSegmentIdentityTest {
         val wireKey = "20261101_010000_300"
         val firstStart = 1730437200000L
         val secondStart = 1730440800000L
-        val fileA = BundleFile("audio", "a.bin", "sha-a", 3, "application/octet-stream", 1, 2)
-        val fileB = BundleFile("audio", "b.bin", "sha-b", 3, "application/octet-stream", 3, 4)
 
-        // Segment A: wire key K, bare leaf K
-        val dirA = env.writeSegmentToDisk(day, stream, wireKey, wireKey, firstStart, firstStart + 300_000, listOf(fileA))
-        val rowA = env.insertRow(day, stream, wireKey, wireKey, QueueState.SEALED, 100, listOf(fileA))
+        // Segment A: wire key K, sealed at the bare leaf K
+        val dirA = env.seal(day, stream, wireKey, firstStart, firstStart + 300_000, "a.bin", sealedAt = 100)
+        assertEquals(wireKey, dirA.fileName.toString())
+        val rowA = env.dao.segmentById("$day/$stream/$wireKey")!!
 
         // Drain A -> confirmed and removed
         val reportA = drainSegments(
@@ -210,12 +257,7 @@ class ConfirmedSegmentIdentityTest {
             reconcile = { manifests, _ -> manifests.map { ReconcileVerdict(it.key, needsUpload = true) } },
             ingest = { manifest, _ ->
                 env.postedManifests.add(manifest)
-                listOf(
-                    IngestOutcome.Accepted(
-                        "srv-a",
-                        IngestDescriptors.Listed(listOf(IngestFileDescriptor("a.bin", "a.bin", 3, "sha-a", "written"))),
-                    ),
-                )
+                listOf(IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(receipt(manifest))))
             },
             readPayload = { _, _ -> byteArrayOf(1, 2, 3) },
             now = { 1_000_000L },
@@ -228,12 +270,14 @@ class ConfirmedSegmentIdentityTest {
         assertFalse(Files.exists(dirA))
         assertEquals(1, env.postedManifests.size)
 
-        // Segment B: same wire key K, later window. Occupancy check: dao.segmentById("$day/$stream/$wireKey") != null
-        // Occupancy is true because row A is in the DB (even though EVICTED).
-        // So B chooses collision leaf "${wireKey}__ws$secondStart"
+        // Segment B: same wire key K, later window. A's directory is gone but its EVICTED row still
+        // holds the bare leaf, so the writer seals B at the collision leaf and B gets its own row.
         val secondLeaf = "${wireKey}__ws$secondStart"
-        val dirB = env.writeSegmentToDisk(day, stream, wireKey, secondLeaf, secondStart, secondStart + 300_000, listOf(fileB))
-        val rowB = env.insertRow(day, stream, wireKey, secondLeaf, QueueState.SEALED, 200, listOf(fileB))
+        val dirB = env.seal(day, stream, wireKey, secondStart, secondStart + 300_000, "b.bin", sealedAt = 200)
+        assertEquals(secondLeaf, dirB.fileName.toString())
+        val rowB = env.dao.segmentById("$day/$stream/$secondLeaf")!!
+        assertEquals(QueueState.SEALED, rowB.state)
+        assertEquals(wireKey, rowB.segment)
 
         // B stays SEALED across finishPass
         env.finisher.finishPass()
@@ -247,12 +291,7 @@ class ConfirmedSegmentIdentityTest {
             reconcile = { manifests, _ -> manifests.map { ReconcileVerdict(it.key, needsUpload = true) } },
             ingest = { manifest, _ ->
                 env.postedManifests.add(manifest)
-                listOf(
-                    IngestOutcome.Accepted(
-                        "srv-b",
-                        IngestDescriptors.Listed(listOf(IngestFileDescriptor("b.bin", "b.bin", 3, "sha-b", "written"))),
-                    ),
-                )
+                listOf(IngestOutcome.Accepted("srv-b", IngestDescriptors.Listed(receipt(manifest))))
             },
             readPayload = { _, _ -> byteArrayOf(1, 2, 3) },
             now = { 2_000_000L },
@@ -263,6 +302,7 @@ class ConfirmedSegmentIdentityTest {
         assertEquals(SyncOutcome.SUCCESS, reportB.workOutcome)
         assertEquals(2, env.postedManifests.size)
         assertEquals(wireKey, env.postedManifests[1].key.segment)
+        assertEquals(listOf("b.bin"), env.postedManifests[1].files.map { it.name })
         assertEquals(QueueState.EVICTED, env.dao.segmentById(rowB.id)?.state)
         assertFalse(Files.exists(dirB))
 
@@ -312,13 +352,14 @@ class ConfirmedSegmentIdentityTest {
         val secondStart = 1730440800000L
         val secondLeaf = "${wireKey}__ws$secondStart"
         val fileA = BundleFile("audio", "a.bin", "sha-a", 3, "application/octet-stream", 1, 2)
-        val fileB = BundleFile("audio", "b.bin", "sha-b", 3, "application/octet-stream", 3, 4)
 
         // A's EVICTED row exists in DB, its directory is already gone
         val rowA = env.insertRow(day, stream, wireKey, wireKey, QueueState.EVICTED, 100, listOf(fileA))
 
-        // Gap: B's final directory is on disk, but B's row was not written in the database
-        val dirB = env.writeSegmentToDisk(day, stream, wireKey, secondLeaf, secondStart, secondStart + 300_000, listOf(fileB))
+        // Gap: B seals through the writer (A's row holds the bare leaf, so B takes the collision
+        // leaf), but B's row was not written in the database
+        val dirB = env.seal(day, stream, wireKey, secondStart, secondStart + 300_000, "b.bin", sealedAt = 200, persistRow = false)
+        assertEquals(secondLeaf, dirB.fileName.toString())
         assertTrue(Files.exists(dirB))
         assertNull(env.dao.segmentById("$day/$stream/$secondLeaf"))
 
@@ -338,4 +379,7 @@ class ConfirmedSegmentIdentityTest {
         assertTrue(Files.exists(dirB))
         assertEquals(QueueState.EVICTED, env.dao.segmentById(rowA.id)?.state)
     }
+
+    private fun receipt(manifest: BundleManifest): List<IngestFileDescriptor> =
+        manifest.files.map { IngestFileDescriptor(it.name, it.name, it.byteSize, it.sha256, "written") }
 }

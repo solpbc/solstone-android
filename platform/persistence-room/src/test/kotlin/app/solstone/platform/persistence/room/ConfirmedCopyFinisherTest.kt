@@ -118,6 +118,62 @@ class ConfirmedCopyFinisherTest {
         assertTrue(Files.exists(spool.resolve("20260716/audio/other_failed")))
     }
 
+    @Test
+    fun databaseWriteFailureOnOneRowLeavesItAndFinishesTheRest() {
+        val root = Files.createTempDirectory("finisher-test")
+        val spool = root.resolve("spool")
+        val dao = InMemorySegmentDao()
+        val logs = mutableListOf<String>()
+        val finisher = ConfirmedCopyFinisher(spool, dao, log = { logs += it })
+
+        val fullUploaded = createSegmentFixture(spool, "20260716", "audio", "full_uploaded", QueueState.UPLOADED)
+        val uploaded = createSegmentFixture(spool, "20260716", "audio", "uploaded", QueueState.UPLOADED)
+        val fullLegacy = createSegmentFixture(spool, "20260716", "audio", "full_legacy", QueueState.FAILED, lastError = "removed_in_journal")
+        val legacy = createSegmentFixture(spool, "20260716", "audio", "legacy", QueueState.FAILED, lastError = "removed_in_journal")
+        listOf(fullUploaded, uploaded, fullLegacy, legacy).forEach { dao.insertSegment(it) }
+        dao.failUpdateFor += listOf(fullUploaded.id, fullLegacy.id)
+
+        finisher.finishPass()
+
+        assertEquals(QueueState.UPLOADED, dao.segmentById(fullUploaded.id)!!.state)
+        assertTrue(Files.exists(spool.resolve("20260716/audio/full_uploaded")))
+        assertEquals(QueueState.FAILED, dao.segmentById(fullLegacy.id)!!.state)
+        assertTrue(Files.exists(spool.resolve("20260716/audio/full_legacy")))
+
+        assertEquals(QueueState.EVICTED, dao.segmentById(uploaded.id)!!.state)
+        assertFalse(Files.exists(spool.resolve("20260716/audio/uploaded")))
+        assertEquals(QueueState.EVICTED, dao.segmentById(legacy.id)!!.state)
+        assertFalse(Files.exists(spool.resolve("20260716/audio/legacy")))
+
+        assertEquals(
+            listOf(
+                "confirmed copy not finished ${fullUploaded.id} IllegalStateException",
+                "confirmed copy not finished ${fullLegacy.id} IllegalStateException",
+            ),
+            logs,
+        )
+    }
+
+    @Test
+    fun manifestRefusalIsLoggedWithRowAndReason() {
+        val root = Files.createTempDirectory("finisher-test")
+        val spool = root.resolve("spool")
+        val dao = InMemorySegmentDao()
+        val logs = mutableListOf<String>()
+        val finisher = ConfirmedCopyFinisher(spool, dao, log = { logs += it })
+
+        val row = createSegmentFixture(spool, "20260716", "audio", "no_manifest", QueueState.UPLOADED)
+        dao.insertSegment(row)
+        Files.delete(spool.resolve("20260716/audio/no_manifest/manifest"))
+
+        assertEquals(JournalCachePathRefusal.MISSING_MANIFEST, finisher.confirmationRefusal(row))
+        finisher.finishPass()
+
+        assertEquals(QueueState.UPLOADED, dao.segmentById(row.id)!!.state)
+        assertTrue(Files.exists(spool.resolve("20260716/audio/no_manifest")))
+        assertEquals(listOf("confirmed copy refused ${row.id} MISSING_MANIFEST"), logs)
+    }
+
     private fun createSegmentFixture(
         spoolRoot: Path,
         day: String,
@@ -165,6 +221,7 @@ class ConfirmedCopyFinisherTest {
 
     private class InMemorySegmentDao : SegmentDao() {
         private val segments = mutableMapOf<String, SegmentRow>()
+        val failUpdateFor = mutableSetOf<String>()
 
         override fun insertSegment(segment: SegmentRow) {
             segments[segment.id] = segment
@@ -216,6 +273,7 @@ class ConfirmedCopyFinisherTest {
         override fun segmentState(id: String): QueueState? = segments[id]?.state
 
         override fun updateState(id: String, state: QueueState): Int {
+            if (id in failUpdateFor) throw IllegalStateException("database or disk is full")
             val current = segments[id] ?: return 0
             segments[id] = current.copy(state = state)
             return 1

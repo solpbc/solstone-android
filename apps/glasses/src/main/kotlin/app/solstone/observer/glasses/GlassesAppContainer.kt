@@ -43,6 +43,7 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
+import app.solstone.platform.persistence.room.isLeafOccupied
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.power.OemGuidance
 import app.solstone.platform.power.OemGuidanceCatalog
@@ -79,7 +80,11 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
-    private val finisher = ConfirmedCopyFinisher(spoolRoot = spoolDir, dao = database.segmentDao())
+    private val finisher = ConfirmedCopyFinisher(
+        spoolRoot = spoolDir,
+        dao = database.segmentDao(),
+        log = { message -> android.util.Log.w("ConfirmedCopyFinisher", message) },
+    )
     private val funnel = GlassesMutationFunnel(
         executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "glasses-funnel").also { it.isDaemon = true }
@@ -368,7 +373,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             spoolWriter = FileSpoolWriter(
                 spoolDir,
                 isLeafOccupied = { day, stream, leaf ->
-                    database.segmentDao().segmentById("$day/$stream/$leaf") != null
+                    database.segmentDao().isLeafOccupied(day, stream, leaf)
                 },
             ),
             sealedSink = RoomSealedSegmentSink(database.segmentDao()),

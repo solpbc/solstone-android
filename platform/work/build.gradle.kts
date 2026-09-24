@@ -36,4 +36,5 @@ dependencies {
     implementation(project(":core:sources"))
 
     testImplementation(kotlin("test"))
+    testImplementation(project(":core:spool"))
 }

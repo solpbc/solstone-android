@@ -17,10 +17,14 @@ class ConfirmedCopyFinisher(
     private val directoryRemover: SpoolDirectoryRemover = NioSpoolDirectoryRemover(),
     private val log: (String) -> Unit = {},
 ) {
-    fun confirmationReady(row: SegmentRow): Boolean {
-        val proof = proveSegmentDirectory(spoolRoot, row)
-        return proof is SegmentDirectoryProof.Proven && proveManifestIdentity(proof, row) == null
-    }
+    fun confirmationReady(row: SegmentRow): Boolean = confirmationRefusal(row) == null
+
+    /** Why [row]'s local directory cannot be proven to be its own copy, or null when it can. */
+    fun confirmationRefusal(row: SegmentRow): JournalCachePathRefusal? =
+        when (val proof = proveSegmentDirectory(spoolRoot, row)) {
+            is SegmentDirectoryProof.Refused -> proof.reason
+            is SegmentDirectoryProof.Proven -> proveManifestIdentity(proof, row)
+        }
 
     fun finishUploaded(id: String) {
         val row = dao.segmentById(id) ?: return
@@ -35,11 +39,17 @@ class ConfirmedCopyFinisher(
                 if (proof is SegmentDirectoryProof.Refused) {
                     if (proof.reason == JournalCachePathRefusal.MISSING_DIRECTORY) {
                         dao.advanceState(id, QueueEvent.FINISH)
+                    } else {
+                        log("confirmed copy refused $id ${proof.reason}")
                     }
                     return
                 }
                 proof as SegmentDirectoryProof.Proven
-                if (proveManifestIdentity(proof, row) != null) return
+                val identityRefusal = proveManifestIdentity(proof, row)
+                if (identityRefusal != null) {
+                    log("confirmed copy refused $id $identityRefusal")
+                    return
+                }
                 dao.advanceState(id, QueueEvent.FINISH)
                 removeDirectory(id, proof.path)
             }
@@ -52,6 +62,9 @@ class ConfirmedCopyFinisher(
         dao.segmentsByState(QueueState.EVICTED).forEach { row ->
             val proof = proveSegmentDirectory(spoolRoot, row)
             if (proof is SegmentDirectoryProof.Refused) {
+                if (proof.reason != JournalCachePathRefusal.MISSING_DIRECTORY) {
+                    log("confirmed copy refused ${row.id} ${proof.reason}")
+                }
                 return@forEach
             }
             proof as SegmentDirectoryProof.Proven
@@ -63,23 +76,43 @@ class ConfirmedCopyFinisher(
         }
 
         dao.segmentsByState(QueueState.UPLOADED).forEach { row ->
-            finishUploaded(row.id)
+            finishRow(row.id) { finishUploaded(row.id) }
         }
 
         dao.segmentsByState(QueueState.FAILED).forEach { row ->
             if (row.lastError != "removed_in_journal") return@forEach
-            val proof = proveSegmentDirectory(spoolRoot, row)
-            if (proof is SegmentDirectoryProof.Refused) {
-                if (proof.reason == JournalCachePathRefusal.MISSING_DIRECTORY) {
-                    dao.finishLegacyRemovedInJournal(row.id)
-                }
-                return@forEach
+            finishRow(row.id) { finishLegacyRemoved(row) }
+        }
+    }
+
+    private fun finishLegacyRemoved(row: SegmentRow) {
+        val proof = proveSegmentDirectory(spoolRoot, row)
+        if (proof is SegmentDirectoryProof.Refused) {
+            if (proof.reason == JournalCachePathRefusal.MISSING_DIRECTORY) {
+                dao.finishLegacyRemovedInJournal(row.id)
+            } else {
+                log("confirmed copy refused ${row.id} ${proof.reason}")
             }
-            proof as SegmentDirectoryProof.Proven
-            if (proveManifestIdentity(proof, row) != null) return@forEach
-            if (dao.finishLegacyRemovedInJournal(row.id)) {
-                removeDirectory(row.id, proof.path)
-            }
+            return
+        }
+        proof as SegmentDirectoryProof.Proven
+        val identityRefusal = proveManifestIdentity(proof, row)
+        if (identityRefusal != null) {
+            log("confirmed copy refused ${row.id} $identityRefusal")
+            return
+        }
+        if (dao.finishLegacyRemovedInJournal(row.id)) {
+            removeDirectory(row.id, proof.path)
+        }
+    }
+
+    // A database write that fails (a full disk raises SQLiteFullException) leaves this row for a
+    // later pass; it must not stop the rest of the pass or the process.
+    private inline fun finishRow(id: String, finish: () -> Unit) {
+        try {
+            finish()
+        } catch (e: RuntimeException) {
+            log("confirmed copy not finished $id ${e.javaClass.simpleName}")
         }
     }
 

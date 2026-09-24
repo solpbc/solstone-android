@@ -20,13 +20,16 @@ import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
+import app.solstone.platform.persistence.room.DirectoryRemovalResult
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
+import app.solstone.platform.persistence.room.SpoolDirectoryRemover
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.io.FileNotFoundException
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -982,6 +985,141 @@ class SegmentDrainerTest {
     }
 
     @Test
+    fun listingMatchingFileWithUnheldStatusPostsAndDoesNotRemove() {
+        val fixture = TestFixture()
+        val sha = "a".repeat(64)
+        val (seg, dir) = fixture.createSegment(
+            "a",
+            files = listOf(BundleFile("audio", "a.bin", sha, 3, "application/octet-stream", 1, 2)),
+        )
+
+        val fakeHttp = object : PlHttpClient {
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+                maxResponseBytes: Int,
+            ): HttpResponse = HttpResponse(
+                200,
+                emptyMap(),
+                """{"items":[{"key":"a","files":[{"name":"a.bin","size":3,"sha256":"$sha","status":"missing"}]}],"total":1,"protocol_version":3}"""
+                    .toByteArray(),
+            )
+        }
+        var ingestCount = 0
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
+            ingest = { manifest, fileBytes ->
+                ingestCount++
+                manifest.files.forEach { fileBytes(it) }
+                listOf(IngestOutcome.Rejected(503, "temporary_unavailable"))
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(1, ingestCount)
+        assertEquals(SyncOutcome.RETRY, report.workOutcome)
+        assertEquals(QueueState.FAILED, fixture.store.row(seg.id).state)
+        assertTrue(Files.exists(dir))
+    }
+
+    @Test
+    fun validReceiptWithUnprovenLocalCopyFailsWithBackoffInsteadOfReposting() {
+        val fixture = TestFixture()
+        val (seg, dir) = fixture.createSegment("a")
+        Files.delete(dir.resolve("manifest"))
+        var ingestCount = 0
+        val ingest = acceptedIngest("srv-a")
+        val countingIngest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome> = { manifest, fileBytes ->
+            ingestCount++
+            ingest(manifest, fileBytes)
+        }
+
+        val first = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = countingIngest,
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(1, ingestCount)
+        assertEquals(SyncOutcome.RETRY, first.workOutcome)
+        assertTrue(first.failedThisRun)
+        assertEquals(QueueState.FAILED, fixture.store.row(seg.id).state)
+        assertEquals("local copy unproven: missing_manifest", fixture.store.row(seg.id).lastError)
+        assertEquals("local copy unproven: missing_manifest", first.lastErrorReason)
+        assertTrue(Files.exists(dir))
+        assertTrue(fixture.store.logs.contains("confirmed copy refused ${seg.id} MISSING_MANIFEST"))
+
+        val second = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = countingIngest,
+            readPayload = readBytes,
+            now = { NOW + 1 },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(1, ingestCount)
+        assertFalse(second.cleanDrain)
+        assertEquals(QueueState.FAILED, fixture.store.row(seg.id).state)
+        assertTrue(Files.exists(dir))
+    }
+
+    @Test
+    fun listingProvenSegmentWithDirectoryAlreadyGoneFinishes() {
+        val fixture = TestFixture()
+        val sha = "a".repeat(64)
+        val (seg, dir) = fixture.createSegment(
+            "a",
+            state = QueueState.UPLOADING,
+            files = listOf(BundleFile("audio", "a.bin", sha, 3, "application/octet-stream", 1, 2)),
+            writeDisk = false,
+        )
+        assertFalse(Files.exists(dir))
+
+        val fakeHttp = object : PlHttpClient {
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+                maxResponseBytes: Int,
+            ): HttpResponse = HttpResponse(
+                200,
+                emptyMap(),
+                """{"items":[{"key":"a","files":[{"name":"a.bin","size":3,"sha256":"$sha","status":"present"}]}],"total":1,"protocol_version":3}"""
+                    .toByteArray(),
+            )
+        }
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
+            ingest = { _, _ -> error("ingest must not be called for a held segment") },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+        assertTrue(report.cleanDrain)
+        assertEquals(QueueState.EVICTED, fixture.store.row(seg.id).state)
+        assertEquals(0, fixture.store.pendingCount(MAIN_STREAM))
+    }
+
+    @Test
     fun recordUploadedHookCallsFinishPassWithoutThrow() {
         val root = Files.createTempDirectory("hook-test")
         val spool = root.resolve("spool")
@@ -1008,12 +1146,13 @@ class SegmentDrainerTest {
         val store = FakeDrainStore(segmentRow, files = mapOf(segmentId to listOf(file(segmentId))))
 
         var finisherRef: ConfirmedCopyFinisher? = null
+        var hookPasses = 0
         val dao = object : SegmentDao() {
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit
             override fun segmentsByState(state: QueueState): List<SegmentRow> =
-                store.segmentsForDrain().filter { it.state == state }
+                store.allRows().filter { it.state == state }
             override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain()
             override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
             override fun segmentById(id: String): SegmentRow? = store.rowOrNull(id)
@@ -1022,7 +1161,10 @@ class SegmentDrainerTest {
             override fun recordAttempt(id: String, attempts: Int, at: Long): Int = store.recordAttempt(id, attempts, at)
             override fun recordUploaded(id: String): Int {
                 val res = store.recordUploaded(id)
-                finisherRef?.finishPass()
+                finisherRef?.let {
+                    hookPasses += 1
+                    it.finishPass()
+                }
                 return res
             }
             override fun recordFailure(id: String, code: Int?, error: String?): Int = store.recordFailure(id, code, error)
@@ -1047,11 +1189,22 @@ class SegmentDrainerTest {
             override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
             override fun deleteFilesBySource(sourceId: String): Int = 0
         }
-        val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
+        val removedDirectories = mutableListOf<Path>()
+        var removalCalls = 0
+        val countingRemover = SpoolDirectoryRemover { directory ->
+            removalCalls += 1
+            if (Files.exists(directory, NOFOLLOW_LINKS) && directory.toFile().deleteRecursively()) {
+                removedDirectories.add(directory)
+            }
+            if (Files.exists(directory, NOFOLLOW_LINKS)) DirectoryRemovalResult.Incomplete else DirectoryRemovalResult.ConfirmedAbsent
+        }
+        val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao, directoryRemover = countingRemover)
         finisherRef = finisher
 
+        // The drain writes through the hooked dao, so a finish pass runs between marking the
+        // segment uploaded and the drain's own finish of it.
         val report = drainSegments(
-            store = store,
+            store = RoomDrainStore(dao),
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
             readPayload = readBytes,
@@ -1062,8 +1215,11 @@ class SegmentDrainerTest {
 
         assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
         assertTrue(report.cleanDrain)
+        assertEquals(1, hookPasses)
         assertEquals(QueueState.EVICTED, store.row(segmentId).state)
         assertFalse(Files.exists(segmentDir))
+        assertEquals(listOf(segmentDir), removedDirectories)
+        assertEquals(1, removalCalls)
     }
 
     @Test

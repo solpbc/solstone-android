@@ -36,7 +36,6 @@ internal fun resetPersistence(context: Context) {
     context.filesDir.resolve("spool").deleteRecursively()
     context.filesDir.resolve("mock-export").deleteRecursively()
     context.filesDir.resolve("source-wishes").delete()
-    context.filesDir.resolve("journal-cache-limit").delete()
     context.getSharedPreferences("desired-observing-persistence-test", Context.MODE_PRIVATE)
         .edit()
         .clear()

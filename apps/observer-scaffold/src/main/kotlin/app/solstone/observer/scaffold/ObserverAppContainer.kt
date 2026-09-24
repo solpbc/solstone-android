@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.observer.isProviderFresh
 import app.solstone.core.model.ReasonCode
@@ -37,6 +38,7 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
+import app.solstone.platform.persistence.room.isLeafOccupied
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.observer.harness.CaptureRestartSequencer
 import app.solstone.observer.harness.ServiceDestroyWaitSeam
@@ -72,6 +74,7 @@ class ObserverAppContainer(
     private val finisher = ConfirmedCopyFinisher(
         spoolRoot = spoolDir,
         dao = database.segmentDao(),
+        log = { message -> Log.w(FINISHER_LOG_TAG, message) },
     )
     private val background = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -311,7 +314,7 @@ class ObserverAppContainer(
             spoolWriter = FileSpoolWriter(
                 baseDir = spoolDir,
                 isLeafOccupied = { day, stream, leaf ->
-                    database.segmentDao().segmentById("$day/$stream/$leaf") != null
+                    database.segmentDao().isLeafOccupied(day, stream, leaf)
                 },
             ),
             sealedSink = RoomSealedSegmentSink(database.segmentDao()),
@@ -356,6 +359,7 @@ class ObserverAppContainer(
     private companion object {
         const val TICK_INTERVAL_MS = 5_000L
         const val STATUS_POLL_INTERVAL_MS = 5_000L
+        const val FINISHER_LOG_TAG = "ConfirmedCopyFinisher"
     }
 }
 

@@ -23,13 +23,13 @@ import org.junit.runner.RunWith
 /**
  * The owner never lands on operator instrumentation.
  *
- * The shell opens this activity for two owner tasks — `connect a journal` and
- * `manage local storage`. 2.0.0 drew a `Back` button on each, and both the button and the system
- * back gesture went to the harness **menu**: a permission probe, a transport probe, raw start/stop,
- * queue counters, and an evidence browser that prints spool paths, wire segment ids and SHA-256s.
+ * The shell opens this activity for one owner task — `connect a journal`. 2.0.0 drew a `Back`
+ * button on it, and both the button and the system back gesture went to the harness **menu**: a
+ * permission probe, a transport probe, raw start/stop, queue counters, and an evidence browser that
+ * prints spool paths, wire segment ids and SHA-256s.
  *
  * ⚠ **A bare launch must still get the menu** — `apps/watch` declares this activity as its
- * `LAUNCHER`, so on that surface the harness is the whole app. That case is the third test here,
+ * `LAUNCHER`, so on that surface the harness is the whole app. That case is the second test here,
  * and it is the one that would catch this fix going too far.
  */
 @RunWith(AndroidJUnit4::class)
