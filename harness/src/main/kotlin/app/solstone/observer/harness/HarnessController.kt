@@ -70,6 +70,7 @@ class HarnessController(
         CaptureForegroundType.LOCATION,
         CaptureForegroundType.CAMERA,
     ),
+    private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
 
     var desiredOn: Boolean
@@ -131,7 +132,7 @@ class HarnessController(
             if (pairingFact() != PairingFact.PAIRED) {
                 blockers += ReasonCode.UNPAIRED
             }
-            if (blockers.isEmpty() && probePlStatus() !is HarnessPlStatus.Reachable) {
+            if (blockers.isEmpty() && routinePlStatus() !is HarnessPlStatus.Reachable) {
                 blockers += ReasonCode.TRANSPORT_UNAVAILABLE
             }
         }
@@ -356,9 +357,34 @@ class HarnessController(
     }
 
     fun probePlStatus(): HarnessPlStatus {
+        val key = routineProbeKey()
         lastPlStatus = plStatusProbe.probe()
+        routineProbe = RoutineProbe(key, monotonicMs(), lastPlStatus)
         return lastPlStatus
     }
+
+    /**
+     * Reachability for a routine refresh: the last probe, while it is younger than
+     * [ROUTINE_PROBE_MAX_AGE_MS] and the pairing it was taken under has not changed, else a fresh one.
+     *
+     * ⛔ Not a fresh probe per refresh. The 5 s status poll probed twice a tick (start readiness,
+     * then the status read), a new TLS session to the journal every 2.5 s for as long as the app
+     * ran. An owner's own connection check and a pairing preflight still call [probePlStatus].
+     */
+    fun routinePlStatus(): HarnessPlStatus {
+        val cached = routineProbe
+        val age = cached?.let { monotonicMs() - it.atMs }
+        if (cached != null && age != null && age in 0 until ROUTINE_PROBE_MAX_AGE_MS && cached.key == routineProbeKey()) {
+            return cached.status
+        }
+        return probePlStatus()
+    }
+
+    @Volatile private var routineProbe: RoutineProbe? = null
+
+    private data class RoutineProbe(val key: Any, val atMs: Long, val status: HarnessPlStatus)
+
+    private fun routineProbeKey(): Any = pairingFact() to identityStore.load()?.instanceId
 
     fun syncNow(): SyncNowResult {
         val fact = pairingFact()
@@ -508,3 +534,6 @@ fun sourceRuntimeSnapshotOf(
         },
         engineStartIssued = engineStartIssued,
     )
+
+/** How long a routine refresh may reuse a reachability probe. */
+const val ROUTINE_PROBE_MAX_AGE_MS = 60_000L

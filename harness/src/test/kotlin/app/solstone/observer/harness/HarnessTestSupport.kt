@@ -228,6 +228,7 @@ internal fun fixture(
     isUsableNetworkPresent: () -> Boolean = { networkAvailability?.usableNow ?: true },
     sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
     diag: (String) -> Unit = {},
+    monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -258,6 +259,7 @@ internal fun fixture(
             isUsableNetworkPresent = isUsableNetworkPresent,
             opportunisticSync = opportunisticSync,
             diag = diag,
+            monotonicMs = monotonicMs,
         ),
         permissions = permissions,
         lifecycle = lifecycle,

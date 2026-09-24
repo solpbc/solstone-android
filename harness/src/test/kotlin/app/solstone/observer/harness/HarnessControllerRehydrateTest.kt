@@ -42,6 +42,7 @@ class HarnessControllerRehydrateTest {
     @Test
     fun reconcileSelfHealsWhenTransportBlockerClears() {
         var pl: HarnessPlStatus = HarnessPlStatus.PairedButUnreachable("down")
+        var now = 0L
         val f = fixture(
             plStatusProbe = PlStatusProbe { pl },
             snapshot = SourceRuntimeSnapshot(
@@ -50,6 +51,7 @@ class HarnessControllerRehydrateTest {
                 storageOk = true,
                 silenced = SilencedFact.UNKNOWN,
             ),
+            monotonicMs = { now },
         )
         f.desiredStore.setDesiredOn(true)
 
@@ -58,8 +60,10 @@ class HarnessControllerRehydrateTest {
         assertEquals(0, f.lifecycle.starts)
 
         // No-permanent-stranding regression: RED on current main, where only FGS-triggered
-        // rehydrate exists, so a blocker that clears later never recovers.
+        // rehydrate exists, so a blocker that clears later never recovers. The routine poll
+        // reuses a probe for up to ROUTINE_PROBE_MAX_AGE_MS, so recovery lands within that bound.
         pl = HarnessPlStatus.Reachable(200)
+        now += ROUTINE_PROBE_MAX_AGE_MS
         f.controller.reconcile(ObserverStartMode.Rehydrate)
 
         assertEquals(1, f.lifecycle.starts)

@@ -107,7 +107,7 @@ fun buildObserverFlavor(
     )
     val backlogStatus = RealBacklogStatusReader(
         dao = database.segmentDao(),
-        plStatus = controller::probePlStatus,
+        plStatus = controller::routinePlStatus,
         identityStore = stores.identityStore,
         coordinator = stores.journalVersionCoordinator,
     )
