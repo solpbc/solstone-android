@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.9] - 2026-09-24
+
 ### Changed
 - the solstone app now removes what it took in from your phone as soon as your journal confirms it has all of it, or that you removed it from your journal, instead of keeping it up to your local storage limit (4 GB unless you changed it). the local storage screen is gone; when your phone is full, "manage local storage" opens your phone's own storage settings. anything an earlier version kept goes from your phone after this update, once your journal has confirmed it.
 - the solstone app checks its connection to your journal far less often while it runs, so it uses less battery and data.
