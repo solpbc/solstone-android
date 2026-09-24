@@ -7,12 +7,14 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import java.util.concurrent.CopyOnWriteArraySet
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
 import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
+import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourceToggleResult
 import app.solstone.observer.harness.SourcesReadModel
@@ -45,6 +47,18 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
     )
     @Volatile private var inactiveNotificationRequested = false
     @Volatile internal var sourceReadOverride: ((ObserverRuntimeContainer?) -> SourcesReadModel?)? = null
+
+    // The in-app status reads through the same background poll the widget does, so an open screen
+    // follows the backlog as it drains instead of holding the count it read when it last resumed.
+    private val statusListeners = CopyOnWriteArraySet<(HarnessBacklogStatus) -> Unit>()
+
+    internal fun addStatusListener(listener: (HarnessBacklogStatus) -> Unit) {
+        statusListeners += listener
+    }
+
+    internal fun removeStatusListener(listener: (HarnessBacklogStatus) -> Unit) {
+        statusListeners -= listener
+    }
 
     override fun onCreate() {
         PhoneDiagLog.install(applicationContext.filesDir)
@@ -181,8 +195,10 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
 
         val statusModel = container?.let { initialized ->
             runCatching {
+                val backlog = PhoneStatusSupplier.forContainer(initialized).invoke()
+                statusListeners.forEach { listener -> runCatching { listener(backlog) } }
                 phoneStatusSnapshotOf(
-                    backlog = PhoneStatusSupplier.forContainer(initialized).invoke(),
+                    backlog = backlog,
                     registered = readModel?.sources.orEmpty(),
                 ).status
             }.getOrElse { emptyPhoneStatus() }

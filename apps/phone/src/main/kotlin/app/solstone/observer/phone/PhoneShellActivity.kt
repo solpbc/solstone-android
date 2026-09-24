@@ -36,6 +36,7 @@ import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.formfactor.phone.supportReportUrl
 import app.solstone.observer.formfactor.phone.supportState
 import app.solstone.observer.harness.AsyncLoad
+import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
@@ -77,6 +78,9 @@ class PhoneShellActivity : ComponentActivity() {
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val statusListener: (HarnessBacklogStatus) -> Unit = { backlog ->
+        mainHandler.post { if (::statusViewModel.isInitialized) statusViewModel.publish(backlog) }
+    }
     private var notificationsEnabled by mutableStateOf(false)
     /**
      * What the last `check connection` found, cleared when the shell leaves the foreground.
@@ -564,8 +568,14 @@ class PhoneShellActivity : ComponentActivity() {
         mainHandler.post(startWhenReady)
     }
 
+    override fun onStart() {
+        super.onStart()
+        (application as? PhoneApplication)?.addStatusListener(statusListener)
+    }
+
     override fun onStop() {
         super.onStop()
+        (application as? PhoneApplication)?.removeStatusListener(statusListener)
         connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return

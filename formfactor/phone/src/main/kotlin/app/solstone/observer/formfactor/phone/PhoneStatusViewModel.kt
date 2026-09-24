@@ -52,6 +52,19 @@ class PhoneStatusViewModel(
         }
     }
 
+    /**
+     * Shows a status the app already read in the background, without reading it again. The screen
+     * keeps what it shows until this lands, so a routine refresh never blinks through loading.
+     */
+    fun publish(backlog: HarnessBacklogStatus) {
+        if (capturedStatusState != null || readInFlight) return
+        val generation = ++requestedGeneration
+        asyncLoad.load({ phoneStatusSnapshotOf(backlog, sources.snapshot().sources) }) { incoming ->
+            if (incoming is LoadState.Loading) return@load
+            if (generation == requestedGeneration) statusState = incoming
+        }
+    }
+
     private fun startRead(generation: Long) {
         readInFlight = true
         asyncLoad.load({ phoneStatusSnapshotOf(read(), sources.snapshot().sources) }) { incoming ->

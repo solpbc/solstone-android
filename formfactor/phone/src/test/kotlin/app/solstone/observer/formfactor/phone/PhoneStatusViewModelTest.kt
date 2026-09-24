@@ -46,6 +46,27 @@ class PhoneStatusViewModelTest {
     }
 
     @Test
+    fun aBackgroundStatusReplacesTheCountWithoutReadingAgainOrShowingLoading() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var reads = 0
+        val viewModel = viewModel(runner, poster) {
+            reads += 1
+            HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 6, emptyList())
+        }
+        runner.runNext()
+        poster.runNext()
+
+        viewModel.publish(HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 1, emptyList()))
+
+        assertEquals(6, assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status.pendingCount)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status.pendingCount)
+        assertEquals(1, reads)
+    }
+
+    @Test
     fun staleSuccessDoesNotPublishAfterNewerRefreshRequest() {
         val runner = ManualRunner()
         val poster = ManualPoster()
