@@ -7,6 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- fixed cases where a failed pairing change made your phone ask to pair again after a restart.
 - the phone could forget its journal when saving relay access failed.
 - the syncing count on your phone could stay up, because larger things waiting to go into your journal kept retrying and didn't catch up. they land in your journal now.
 

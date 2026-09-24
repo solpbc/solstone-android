@@ -63,8 +63,12 @@ class FilePairingGraph(
             "pushKeyFile and pushKeyProtector must both be null or both non-null"
         }
         currentSnapshotState = synchronized(lock) {
-            cleanBackupAndStagingFiles()
-            recoverOrAdoptLocked()
+            try {
+                recoverOrAdoptLocked().also { cleanBackupAndStagingFiles() }
+            } catch (_: Exception) {
+                // Keep the in-flight marker and backups so a later start can retry recovery.
+                PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
+            }
         }
     }
 
@@ -139,7 +143,7 @@ class FilePairingGraph(
                 priorClientCertSha256 = priorCommitted?.home?.clientCertFingerprint,
                 priorHasDirectEndpoint = priorCommitted?.hasDirectEndpoint ?: false,
                 priorDirectAssociated = priorCommitted?.directAssociated ?: false,
-                priorHasRelayAccess = priorCommitted?.relayLiveEligible ?: false,
+                priorHasRelayAccess = priorCommitted?.home?.let { it.relayOrigin != null && it.deviceToken != null } ?: false,
                 priorIdentityChecksum = if (identityBakFile.exists()) PairingCommitMarker.checksumOf(identityBakFile) else null,
                 priorCredentialChecksum = if (credentialBakFile.exists()) PairingCommitMarker.checksumOf(credentialBakFile) else null,
                 priorEndpointChecksum = if (endpointBakFile.exists()) PairingCommitMarker.checksumOf(endpointBakFile) else null,
@@ -175,7 +179,10 @@ class FilePairingGraph(
             }
 
             if (!identOk || !credOk || !epOk) {
-                restorePriorFromBackupLocked(stagedMarker)
+                if (!rollbackInFlightLocked(stagedMarker)) {
+                    return GraphMutationResult.DurabilityUncertain(IllegalStateException("Read-back and rollback failed"))
+                }
+                inFlightMarker = null
                 stepHook?.onStep(DurableTxnStep.READ_BACK, op.name)
                 return GraphMutationResult.PersistenceFailed(IllegalStateException("Read-back verification failed"))
             }
@@ -218,7 +225,10 @@ class FilePairingGraph(
             GraphMutationResult.Applied(newCommitted)
         } catch (e: Exception) {
             if (!durableDecision) {
-                inFlightMarker?.let(::restorePriorFromBackupLocked) ?: cleanBackupAndStagingFiles()
+                val marker = inFlightMarker
+                if (marker != null) {
+                    if (!rollbackInFlightLocked(marker)) return GraphMutationResult.DurabilityUncertain(e)
+                } else cleanBackupAndStagingFiles()
                 GraphMutationResult.PersistenceFailed(e)
             } else {
                 val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
@@ -392,14 +402,20 @@ class FilePairingGraph(
         currentSnapshotState = liveDisabledSnapshot
         notifySubscribers(liveDisabledSnapshot)
 
+        var backupWritten = false
+        var markerWritten = false
         try {
-            if (identityFile.exists()) fileWriter.write(identityBakFile, identityFile.readBytes())
+            if (identityFile.exists()) {
+                fileWriter.write(identityBakFile, identityFile.readBytes())
+                backupWritten = true
+            }
             val strippedHome = current.home.copy(
                 relayOrigin = null,
                 deviceToken = null,
                 expiresAt = null,
             )
             identityStore.save(strippedHome)
+            check(identityStore.load() == strippedHome) { "Relay revocation readback failed" }
             val marker = PairingCommitMarker(
                 status = CommitMarkerStatus.COMMITTED,
                 instanceId = strippedHome.instanceId,
@@ -412,14 +428,34 @@ class FilePairingGraph(
                 endpointChecksum = if (current.hasDirectEndpoint) PairingCommitMarker.checksumOf(endpointFile) else null,
             )
             writeCommitMarker(marker)
+            markerWritten = true
             cleanBackupAndStagingFiles()
 
             val strippedSnapshot = liveDisabledSnapshot.copy(
                 home = strippedHome,
             )
             currentSnapshotState = strippedSnapshot
+            notifySubscribers(strippedSnapshot)
             GraphMutationResult.Applied(strippedSnapshot)
         } catch (e: Exception) {
+            if (markerWritten) {
+                val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
+                if (recovered is PairingGraphSnapshot.Committed) {
+                    val stripped = recovered.copy(revisions = liveDisabledSnapshot.revisions, relayLiveEligible = false)
+                    currentSnapshotState = stripped
+                    cleanBackupAndStagingFiles()
+                    notifySubscribers(stripped)
+                    return GraphMutationResult.Applied(stripped)
+                }
+            }
+            if (markerWritten || !restoreRelayAccessBackup(backupWritten)) {
+                val uncertain = PairingGraphSnapshot.Uncertain(
+                    sequenceNumber = sequenceGen.incrementAndGet(),
+                    reason = PersistenceIssue.PERSISTENCE_FAILED,
+                )
+                currentSnapshotState = uncertain
+                notifySubscribers(uncertain)
+            }
             GraphMutationResult.PersistenceFailed(e)
         }
     }
@@ -441,7 +477,7 @@ class FilePairingGraph(
                 priorClientCertSha256 = priorCommitted?.home?.clientCertFingerprint,
                 priorHasDirectEndpoint = priorCommitted?.hasDirectEndpoint ?: false,
                 priorDirectAssociated = priorCommitted?.directAssociated ?: false,
-                priorHasRelayAccess = priorCommitted?.relayLiveEligible ?: false,
+                priorHasRelayAccess = priorCommitted?.home?.let { it.relayOrigin != null && it.deviceToken != null } ?: false,
                 priorIdentityChecksum = if (identityBakFile.exists()) PairingCommitMarker.checksumOf(identityBakFile) else null,
                 priorCredentialChecksum = if (credentialBakFile.exists()) PairingCommitMarker.checksumOf(credentialBakFile) else null,
                 priorEndpointChecksum = if (endpointBakFile.exists()) PairingCommitMarker.checksumOf(endpointBakFile) else null,
@@ -488,7 +524,12 @@ class FilePairingGraph(
                 notifySubscribers(absent)
                 GraphMutationResult.Cleared(absent)
             } else {
-                restorePriorFromBackupLocked(null)
+                if (marker?.status == CommitMarkerStatus.IN_FLIGHT) {
+                    if (!rollbackInFlightLocked(marker)) return GraphMutationResult.DurabilityUncertain(e)
+                } else {
+                    // Backup preparation failed before any live file or marker changed.
+                    cleanBackupAndStagingFiles()
+                }
                 GraphMutationResult.PersistenceFailed(e)
             }
         }
@@ -608,9 +649,14 @@ class FilePairingGraph(
         }
         if (!proven) return false
 
+        var priorEndpoint: ByteArray? = null
+        var endpointSaved = false
+        var markerWritten = false
         try {
+            priorEndpoint = if (endpointFile.exists()) endpointFile.readBytes() else null
             endpointStore.save(app.solstone.core.pl.DirectEndpoint(endpoint.host, endpoint.port))
-            directRev++
+            endpointSaved = true
+            check(endpointStore.load() == endpoint) { "Direct endpoint readback failed" }
             val marker = PairingCommitMarker(
                 status = CommitMarkerStatus.COMMITTED,
                 instanceId = current.home.instanceId,
@@ -623,6 +669,8 @@ class FilePairingGraph(
                 endpointChecksum = PairingCommitMarker.checksumOf(endpointFile),
             )
             writeCommitMarker(marker)
+            markerWritten = true
+            directRev++
             val updated = current.copy(
                 sequenceNumber = sequenceGen.incrementAndGet(),
                 revisions = GraphRevisions(pairingRev, directRev, relayRev),
@@ -633,6 +681,25 @@ class FilePairingGraph(
             notifySubscribers(updated)
             return true
         } catch (_: Exception) {
+            if (markerWritten) return true
+            if (endpointSaved) {
+                try {
+                    val bytes = priorEndpoint
+                    if (bytes == null) {
+                        check(!endpointFile.exists() || endpointFile.delete()) { "Endpoint rollback failed" }
+                    } else {
+                        fileWriter.write(endpointFile, bytes)
+                    }
+                } catch (_: Exception) {
+                    // Reflect the actual bytes if rollback also fails.
+                    val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
+                        ?: PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
+                    currentSnapshotState = if (recovered is PairingGraphSnapshot.Committed) {
+                        recovered.copy(revisions = current.revisions, relayLiveEligible = current.relayLiveEligible)
+                    } else recovered
+                    notifySubscribers(currentSnapshotState)
+                }
+            }
             return false
         }
     }
@@ -778,9 +845,27 @@ class FilePairingGraph(
         return rawClean == expected
     }
 
-    private fun restorePriorFromBackupLocked(inFlightMarker: PairingCommitMarker?) {
-        val marker = inFlightMarker ?: PairingCommitMarker.parse(commitMarkerFile)
-        if (marker == null || marker.priorStatus == null || marker.priorStatus == CommitMarkerStatus.ABSENT) {
+    private fun rollbackInFlightLocked(marker: PairingCommitMarker): Boolean = try {
+        restorePriorFromBackupLocked(marker)
+        val restored = PairingCommitMarker.parse(commitMarkerFile)?.let { prior ->
+            if (prior.status == CommitMarkerStatus.ABSENT) PairingGraphSnapshot.Absent(sequenceGen.incrementAndGet())
+            else loadCommittedFromMarker(prior)
+        } ?: PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
+        if (restored !is PairingGraphSnapshot.Committed || currentSnapshotState !is PairingGraphSnapshot.Committed) {
+            currentSnapshotState = restored
+            notifySubscribers(restored)
+        }
+        true
+    } catch (_: Exception) {
+        val uncertain = PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
+        currentSnapshotState = uncertain
+        notifySubscribers(uncertain)
+        false
+    }
+
+    private fun restorePriorFromBackupLocked(marker: PairingCommitMarker) {
+        require(marker.status == CommitMarkerStatus.IN_FLIGHT) { "Rollback requires an in-flight marker" }
+        if (marker.priorStatus == null || marker.priorStatus == CommitMarkerStatus.ABSENT) {
             pushKeyFile?.delete()
             identityFile.delete()
             credentialFile.delete()

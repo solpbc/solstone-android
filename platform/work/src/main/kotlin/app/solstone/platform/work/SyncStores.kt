@@ -68,6 +68,19 @@ class PublisherIdentityMutatorAdapter(
         publisher.revokeRelayAccess(snap.pairing)
     }
 
+    override fun clearRelayAccess(snapshot: AccessSnapshot, stillCurrent: () -> Boolean): AccessMutationResult =
+        withMutationBoundary {
+            if (!stillCurrent() || accessSnapshot() != snapshot) {
+                AccessMutationResult.Conflict("obsolete access")
+            } else {
+                // The graph disables and persists in one mutation. A separate disable would
+                // advance the revision before mutate checks it, discarding the real result.
+                mutate(snapshot.pairing, snapshot.generation) {
+                    it.copy(relayOrigin = null, deviceToken = null, expiresAt = null)
+                }
+            }
+        }
+
     override fun installNewPairing(home: PairedHome): Boolean = true
 
     override fun lastPersistenceIssue(): PersistenceIssue? =
@@ -105,8 +118,8 @@ class PublisherIdentityMutatorAdapter(
             return when (res) {
                 is GraphMutationResult.Applied -> AccessMutationResult.Applied((res.snapshot as PairingGraphSnapshot.Committed).home, res.snapshot.revisions.relayAccessRevision)
                 is GraphMutationResult.Conflict -> AccessMutationResult.Conflict(res.reason)
-                is GraphMutationResult.PersistenceFailed -> AccessMutationResult.PersistenceFailed(res.cause)
-                is GraphMutationResult.DurabilityUncertain -> AccessMutationResult.Conflict("durability uncertain")
+                is GraphMutationResult.PersistenceFailed -> AccessMutationResult.PersistenceFailed(res.cause, currentAccessMutationGen())
+                is GraphMutationResult.DurabilityUncertain -> AccessMutationResult.DurabilityUncertain(res.cause, currentAccessMutationGen())
                 is GraphMutationResult.Cleared -> AccessMutationResult.Conflict("cleared")
             }
         }
