@@ -5,7 +5,7 @@ package app.solstone.core.queue
 
 import app.solstone.core.model.QueueState
 
-enum class QueueEvent { SEAL, START_UPLOAD, MARK_UPLOADED, MARK_FAILED, RETRY, EVICT }
+enum class QueueEvent { SEAL, START_UPLOAD, MARK_UPLOADED, MARK_FAILED, RETRY, FINISH }
 
 enum class RetryDecision { STOP_AUTH, RETRY, HARD_FAIL }
 
@@ -16,9 +16,8 @@ fun transition(from: QueueState, event: QueueEvent): QueueState =
         QueueState.UPLOADING to QueueEvent.MARK_UPLOADED -> QueueState.UPLOADED
         QueueState.UPLOADING to QueueEvent.MARK_FAILED -> QueueState.FAILED
         QueueState.FAILED to QueueEvent.RETRY -> QueueState.UPLOADING
-        QueueState.SEALED to QueueEvent.EVICT -> QueueState.EVICTED
-        QueueState.UPLOADED to QueueEvent.EVICT -> QueueState.EVICTED
-        QueueState.FAILED to QueueEvent.EVICT -> QueueState.EVICTED
+        QueueState.UPLOADED to QueueEvent.FINISH -> QueueState.EVICTED
+        QueueState.EVICTED to QueueEvent.FINISH -> QueueState.EVICTED
         else -> throw IllegalStateException("Illegal queue transition from $from on $event")
     }
 

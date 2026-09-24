@@ -12,6 +12,7 @@ import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -63,6 +64,7 @@ fun drainSegments(
     readPayload: (SegmentRow, BundleFile) -> ByteArray,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
+    finisher: ConfirmedCopyFinisher,
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -107,9 +109,7 @@ fun drainSegments(
             store.recordAttempt(segment.id, segment.attemptCount + 1, now())
 
             when (actions.getValue(segment.id)) {
-                is DrainAction.Skip -> {
-                    store.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
-                }
+                is DrainAction.Skip -> confirmThenRemove(store, finisher, segment)
                 is DrainAction.Upload -> {
                     val result = try {
                         resolveIngestOutcomes(
@@ -140,9 +140,9 @@ fun drainSegments(
                     }
 
                     when (result) {
-                        is SegmentSyncResult.Uploaded -> {
-                            store.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
-                            store.recordUploaded(segment.id)
+                        is SegmentSyncResult.Uploaded,
+                        is SegmentSyncResult.JournalRemoved -> {
+                            confirmThenRemove(store, finisher, segment)
                         }
                         is SegmentSyncResult.Retry -> {
                             store.advanceState(segment.id, QueueEvent.MARK_FAILED)
@@ -165,13 +165,6 @@ fun drainSegments(
                             halted = haltsDrain(result)
                             lastFailureAt = now()
                             lastErrorReason = "auth halted (${result.status})"
-                        }
-                        is SegmentSyncResult.JournalRemoved -> {
-                            store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, "removed_in_journal")
-                            log("segment removed ${segment.id}", null)
-                            lastFailureAt = now()
-                            lastErrorReason = "removed in journal (${result.status})"
                         }
                     }
                 }
@@ -226,4 +219,11 @@ private fun claimForUpload(
 private fun markPayloadFailed(store: DrainStore, segment: SegmentRow, reason: String) {
     store.advanceState(segment.id, QueueEvent.MARK_FAILED)
     store.recordFailure(segment.id, null, reason)
+}
+
+private fun confirmThenRemove(store: DrainStore, finisher: ConfirmedCopyFinisher, segment: SegmentRow) {
+    if (!finisher.confirmationReady(segment)) return
+    store.advanceState(segment.id, QueueEvent.MARK_UPLOADED)
+    store.recordUploaded(segment.id)
+    finisher.finishUploaded(segment.id)
 }

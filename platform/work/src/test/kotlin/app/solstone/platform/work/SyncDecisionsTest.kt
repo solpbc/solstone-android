@@ -249,6 +249,40 @@ class SyncDecisionsTest {
             IngestOutcome.Accepted("srv", IngestDescriptors.Listed(listOf(IngestFileDescriptor("photo.jpg", "photo.jpg", 20, "sha-p", "received_not_written")))),
         )
         assertEquals(SegmentSyncResult.HardFail(422, "custody_not_written"), resolveIngestOutcomes(multiSourceManifest, mismatchThenNotWritten))
+
+        // Mixed Uploaded and JournalRemoved resolves to Uploaded
+        val uploadedAndJournalRemoved = listOf(
+            IngestOutcome.Accepted(
+                "srv",
+                IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"))),
+            ),
+            IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""),
+        )
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(multiSourceManifest, uploadedAndJournalRemoved))
+
+        // Every source JournalRemoved resolves to Uploaded
+        val allJournalRemoved = listOf(
+            IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""),
+            IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""),
+        )
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(multiSourceManifest, allJournalRemoved))
+
+        // JournalRemoved + Retry resolves to Retry
+        val journalRemovedAndRetry = listOf(
+            IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""),
+            IngestOutcome.Rejected(503, "temporary_unavailable"),
+        )
+        assertEquals(SegmentSyncResult.Retry(503, "retry"), resolveIngestOutcomes(multiSourceManifest, journalRemovedAndRetry))
+
+        // A receipt plus an invalid receipt stays unconfirmed (mismatch retry)
+        val receiptPlusInvalidReceipt = listOf(
+            IngestOutcome.Accepted(
+                "srv",
+                IngestDescriptors.Listed(listOf(IngestFileDescriptor("audio.wav", "audio.wav", 10, "sha-a", "written"))),
+            ),
+            IngestOutcome.Accepted("srv", IngestDescriptors.NotAList),
+        )
+        assertEquals(SegmentSyncResult.Retry(429, "custody_mismatch"), resolveIngestOutcomes(multiSourceManifest, receiptPlusInvalidReceipt))
     }
 
     @Test

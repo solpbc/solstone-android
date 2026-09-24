@@ -29,7 +29,6 @@ import app.solstone.observer.formfactor.glasses.StillQrDecoder
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessDiagnostics
-import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.JournalCacheCoordinator
 import app.solstone.observer.harness.HeartbeatFreshness
 import app.solstone.observer.harness.ObserverLifecycle
@@ -40,9 +39,8 @@ import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
-import app.solstone.platform.persistence.room.JournalCacheEvictionService
-import app.solstone.platform.persistence.room.JournalCacheLimitStore
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -81,8 +79,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
-    private val journalCacheLimitStore = JournalCacheLimitStore(context.filesDir.resolve("journal-cache-limit"))
-    private val journalCacheService = JournalCacheEvictionService(spoolDir, database.segmentDao(), journalCacheLimitStore)
+    private val finisher = ConfirmedCopyFinisher(spoolRoot = spoolDir, dao = database.segmentDao())
     private val funnel = GlassesMutationFunnel(
         executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "glasses-funnel").also { it.isDaemon = true }
@@ -101,10 +98,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         canRun = { recoveryCompleted },
         submit = { task -> funnel.execute("journal-cache", task) },
         monotonicElapsedMs = SystemClock::elapsedRealtime,
-        snapshot = journalCacheService::snapshot,
-        saveLimitToStore = journalCacheLimitStore::save,
-        nowEpochMs = System::currentTimeMillis,
-        runPass = journalCacheService::runPass,
+        runPass = finisher::finishPass,
     )
     private var activePipeline: CapturePipeline? = null
     var pipelineBuildCount: Int = 0
@@ -244,10 +238,6 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         enqueueReconcile("fgs-rehydrate", emitNoOwnerRefusal = true)
     }
 
-    fun journalCacheState(): HarnessJournalCacheState = journalCacheCoordinator.state()
-
-    fun saveJournalCacheLimit(bytes: Long): HarnessJournalCacheState = journalCacheCoordinator.saveLimit(bytes)
-
     override fun enqueueCommand(task: () -> Unit): Boolean =
         funnel.execute("command", task)
 
@@ -375,7 +365,12 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         pipelineBuildCount += 1
         return CapturePipeline(
             segmenter = Segmenter(ZoneId.systemDefault()),
-            spoolWriter = FileSpoolWriter(spoolDir),
+            spoolWriter = FileSpoolWriter(
+                spoolDir,
+                isLeafOccupied = { day, stream, leaf ->
+                    database.segmentDao().segmentById("$day/$stream/$leaf") != null
+                },
+            ),
             sealedSink = RoomSealedSegmentSink(database.segmentDao()),
             payloadBytes = captureSetup.payloadBytesProvider,
             engines = captureSetup.engines,
@@ -523,7 +518,6 @@ class GlassesRuntimeHooks {
     @Volatile var onRecoveryComplete: (() -> Unit)? = null
     @Volatile var onEvidenceLoadComplete: (() -> Unit)? = null
     @Volatile var onSyncLoadComplete: (() -> Unit)? = null
-    @Volatile var onJournalCacheLoadComplete: (() -> Unit)? = null
 }
 
 internal class IdempotentPipelineLifecycle<T>(

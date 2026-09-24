@@ -143,10 +143,10 @@ fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome
             results += SegmentSyncResult.Retry(null, "retry")
         }
     }
-    val failures = results.filter { it !is SegmentSyncResult.Uploaded }
-    if (failures.isEmpty()) {
+    if (results.all { it is SegmentSyncResult.Uploaded || it is SegmentSyncResult.JournalRemoved }) {
         return SegmentSyncResult.Uploaded
     }
+    val failures = results.filter { it !is SegmentSyncResult.Uploaded }
     return failures.minBy { it.severityRank() }
 }
 

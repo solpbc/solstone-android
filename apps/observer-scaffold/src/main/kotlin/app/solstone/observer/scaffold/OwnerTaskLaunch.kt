@@ -22,13 +22,12 @@ package app.solstone.observer.scaffold
  */
 fun isOwnerTaskLaunch(
     scansPairQr: Boolean,
-    showsLocalCache: Boolean,
     isViewAction: Boolean,
     hasData: Boolean,
     handlesPairLinks: Boolean,
     firstLaunch: Boolean,
 ): Boolean {
-    if (scansPairQr || showsLocalCache) return true
+    if (scansPairQr) return true
     // ⚠ `firstLaunch` guards the pair-link arm only, matching where the router itself is gated: a
     // configuration change must not re-dispatch a pair link, and must not silently change which
     // surface the owner is on either.

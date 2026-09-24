@@ -15,8 +15,8 @@ import androidx.compose.ui.graphics.toArgb
  * The shell's face, applied to the View-based harness screens an OWNER actually reaches.
  *
  * 🔴 **`connect a journal` is the app's main call to action and it does not run on the Compose
- * shell.** The phone shell hands three owner tasks to `ObserverHarnessUi` — connect a journal,
- * manage local storage, and an App Link pairing — and that class was built as operator
+ * shell.** The phone shell hands two owner tasks to `ObserverHarnessUi` — connect a journal and an
+ * App Link pairing — and that class was built as operator
  * instrumentation, in raw `android.widget` Views. Its own header says so: *"five of the seven
  * screens below are operator instrumentation."* The other two are not, and they were rendering as
  * grey square-cornered platform buttons over system-font body text, hard against the top of an

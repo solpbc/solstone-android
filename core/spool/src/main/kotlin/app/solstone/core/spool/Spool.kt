@@ -46,6 +46,7 @@ interface SpoolWriter {
 class FileSpoolWriter(
     private val baseDir: Path,
     private val fsync: (Path) -> Unit = ::forcePath,
+    private val isLeafOccupied: (day: String, stream: String, leaf: String) -> Boolean = { _, _, _ -> false },
 ) : SpoolWriter {
     override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
         val leaf = when (val selection = selectDirLeaf(segment)) {
@@ -131,7 +132,8 @@ class FileSpoolWriter(
             return DirSelection.Existing(bareParsed.manifest, bareFinal)
         }
 
-        return DirSelection.Leaf(if (!Files.exists(bareFinal)) bareLeaf else collisionLeaf)
+        val occupied = !Files.exists(bareFinal) && isLeafOccupied(segment.key.day, segment.stream, bareLeaf)
+        return DirSelection.Leaf(if (!Files.exists(bareFinal) && !occupied) bareLeaf else collisionLeaf)
     }
 
     private fun cleanupEmptyDraftParents(draftDir: Path) {

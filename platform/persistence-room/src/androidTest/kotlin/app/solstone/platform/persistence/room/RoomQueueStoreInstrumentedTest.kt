@@ -7,14 +7,19 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.solstone.core.model.BundleFile
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
-import app.solstone.core.queue.EvictionBudget
-import app.solstone.core.queue.EvictionInput
+import app.solstone.core.model.SegmentKey
+import app.solstone.core.model.WireKeys
 import app.solstone.core.queue.QueueEvent
-import app.solstone.core.queue.QueueSegmentDescriptor
-import app.solstone.core.queue.evictionPolicy
+import app.solstone.core.segment.SealedSegment
+import app.solstone.core.spool.serializeManifest
+import java.io.File
+import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -23,14 +28,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Instrumented coverage for the durable Room queue store (F4) on a real Android
- * runtime. Drives [RoomQueueStore] / [SegmentDao] against an actual SQLite DB so
- * the persistence behaviour the spool/sync layers depend on is proven on-device
- * (the JVM tests in :core:queue cover the pure state-machine, not the Room SQL).
- *
- * Run on the headless build box GMD:
- *   ./gradlew -Pandroid.testoptions.manageddevices.emulator.gpu=host \
- *       :platform:persistence-room:pixel5api35DebugAndroidTest
+ * Instrumented coverage for the durable Room queue store on a real Android runtime.
  */
 @RunWith(AndroidJUnit4::class)
 class RoomQueueStoreInstrumentedTest {
@@ -148,12 +146,17 @@ class RoomQueueStoreInstrumentedTest {
         assertEquals(QueueState.SEALED, store.advance("up", QueueEvent.SEAL))
         assertEquals(QueueState.UPLOADING, store.advance("up", QueueEvent.START_UPLOAD))
         assertEquals(QueueState.UPLOADED, store.advance("up", QueueEvent.MARK_UPLOADED))
-        assertEquals(QueueState.UPLOADED, stateOf("up"))
+        assertEquals(QueueState.EVICTED, store.advance("up", QueueEvent.FINISH))
+        assertEquals(QueueState.EVICTED, store.advance("up", QueueEvent.FINISH))
+        assertEquals(QueueState.EVICTED, stateOf("up"))
 
         // Illegal transition throws and leaves the persisted state untouched.
         dao.insertSegmentWithFiles(segment("rec", QueueState.RECORDING, sealedAt = 200), emptyList())
         assertThrows(IllegalStateException::class.java) {
             store.advance("rec", QueueEvent.MARK_UPLOADED)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            store.advance("rec", QueueEvent.FINISH)
         }
         assertEquals(QueueState.RECORDING, stateOf("rec"))
 
@@ -161,53 +164,6 @@ class RoomQueueStoreInstrumentedTest {
         assertThrows(NoSuchElementException::class.java) {
             store.advance("ghost", QueueEvent.SEAL)
         }
-    }
-
-    @Test
-    fun applyEvictions_evictsUploadedOldestFirstAndUnsyncedSurvives() {
-        // Three UPLOADED (varying seal time) plus one each of SEALED / UPLOADING / FAILED.
-        insert("u1", QueueState.UPLOADED, sealedAt = 100)
-        insert("u2", QueueState.UPLOADED, sealedAt = 200)
-        insert("u3", QueueState.UPLOADED, sealedAt = 300)
-        insert("s1", QueueState.SEALED, sealedAt = 150)
-        insert("p1", QueueState.UPLOADING, sealedAt = 250)
-        insert("f1", QueueState.FAILED, sealedAt = 350)
-
-        // total = 6 * 50 = 300 bytes; cap at 220 forces evicting exactly two UPLOADED.
-        val descriptors = listOf("u1", "u2", "u3", "s1", "p1", "f1").map { id ->
-            QueueSegmentDescriptor(id, stateOf(id), byteSize = SEGMENT_BYTES, sealedAtEpochMs = sealedOf(id))
-        }
-        val result = evictionPolicy(
-            EvictionInput(
-                segments = descriptors,
-                budget = EvictionBudget(maxBytes = 220),
-                emergency = false,
-                decidedAtEpochMs = 999,
-            ),
-        )
-
-        val applied = store.applyEvictions(result)
-
-        // Oldest-first: u1 (sealedAt 100) then u2 (200); u3 (300) is spared.
-        assertEquals(listOf("u1", "u2"), applied.evictedSegmentIds)
-        assertEquals(2, applied.deletedFileRows)
-        assertEquals(2, applied.eventsInserted)
-
-        assertEquals(QueueState.EVICTED, stateOf("u1"))
-        assertEquals(QueueState.EVICTED, stateOf("u2"))
-        assertEquals(QueueState.UPLOADED, stateOf("u3"))
-        // Unsynced work is never evicted in a non-emergency pass.
-        assertEquals(QueueState.SEALED, stateOf("s1"))
-        assertEquals(QueueState.UPLOADING, stateOf("p1"))
-        assertEquals(QueueState.FAILED, stateOf("f1"))
-
-        // Evicted segments lose their files; everything else keeps them.
-        assertTrue(dao.duplicateBySha256("sha-u1").isEmpty())
-        assertTrue(dao.duplicateBySha256("sha-u2").isEmpty())
-        assertEquals(1, dao.duplicateBySha256("sha-u3").size)
-        assertEquals(1, dao.duplicateBySha256("sha-s1").size)
-        assertEquals(1, dao.duplicateBySha256("sha-p1").size)
-        assertEquals(1, dao.duplicateBySha256("sha-f1").size)
     }
 
     @Test
@@ -256,6 +212,90 @@ class RoomQueueStoreInstrumentedTest {
         }
     }
 
+    @Test
+    fun fileBackedReopenAndFinishPassCleansEvictedAndDoesNotResurrect() {
+        val dbName = "finish-pass-reopen.db"
+        deleteDatabaseFiles(dbName)
+        val spoolDir = File(ctx.filesDir, "test-spool-reopen").toPath()
+        if (Files.exists(spoolDir)) {
+            spoolDir.toFile().deleteRecursively()
+        }
+        Files.createDirectories(spoolDir)
+
+        try {
+            val db1 = openFileBacked(dbName)
+            val dao1 = db1.segmentDao()
+
+            val seg1Dir = spoolDir.resolve("$DAY/validation.watch/e1")
+            Files.createDirectories(seg1Dir)
+            Files.write(seg1Dir.resolve("payload.bin"), "payload1".toByteArray())
+            val sealed1 = SealedSegment("validation.watch", SegmentKey(DAY, "e1"), WireKeys(DAY, "e1", 1000L, 2000L, "UTC", 0), emptyList(), emptyList())
+            val manifest1 = serializeManifest(sealed1, BundleManifest(sealed1.key, listOf(BundleFile("s", "payload.bin", "sha1", 8, "application/octet-stream", 1000L, 2000L)), emptyList()))
+            Files.write(seg1Dir.resolve("manifest"), manifest1.toByteArray())
+
+            val seg2Dir = spoolDir.resolve("$DAY/validation.watch/e2")
+            Files.createDirectories(seg2Dir)
+            Files.write(seg2Dir.resolve("payload.bin"), "payload2".toByteArray())
+            // No manifest in seg2Dir
+
+            dao1.insertSegmentWithFiles(
+                SegmentRow(
+                    id = "$DAY/validation.watch/e1",
+                    day = DAY,
+                    stream = "validation.watch",
+                    segment = "e1",
+                    dirSegment = "e1",
+                    state = QueueState.EVICTED,
+                    byteSize = SEGMENT_BYTES,
+                    sealedAt = 100,
+                    homeInstanceId = null,
+                    observerHandle = null,
+                ),
+                emptyList(),
+            )
+            dao1.insertSegmentWithFiles(
+                SegmentRow(
+                    id = "$DAY/validation.watch/e2",
+                    day = DAY,
+                    stream = "validation.watch",
+                    segment = "e2",
+                    dirSegment = "e2",
+                    state = QueueState.EVICTED,
+                    byteSize = SEGMENT_BYTES,
+                    sealedAt = 200,
+                    homeInstanceId = null,
+                    observerHandle = null,
+                ),
+                emptyList(),
+            )
+
+            db1.close()
+
+            val db2 = openFileBacked(dbName)
+            val dao2 = db2.segmentDao()
+
+            val finisher = ConfirmedCopyFinisher(spoolDir, dao2)
+            finisher.finishPass()
+
+            assertFalse(Files.exists(seg1Dir))
+            assertFalse(Files.exists(seg2Dir))
+
+            val reconciler = SpoolRoomReconciler(spoolDir, dao2)
+            val reconciled = reconciler.reconcile()
+            assertEquals(0, reconciled)
+
+            assertEquals(QueueState.EVICTED, dao2.segmentById("$DAY/validation.watch/e1")!!.state)
+            assertEquals(QueueState.EVICTED, dao2.segmentById("$DAY/validation.watch/e2")!!.state)
+
+            db2.close()
+        } finally {
+            deleteDatabaseFiles(dbName)
+            if (Files.exists(spoolDir)) {
+                spoolDir.toFile().deleteRecursively()
+            }
+        }
+    }
+
     // --- helpers ---------------------------------------------------------------
 
     private fun insert(id: String, state: QueueState, sealedAt: Long) {
@@ -293,9 +333,6 @@ class RoomQueueStoreInstrumentedTest {
 
     private fun stateOf(id: String): QueueState =
         dao.segmentsByDay(DAY).single { it.id == id }.state
-
-    private fun sealedOf(id: String): Long =
-        dao.segmentsByDay(DAY).single { it.id == id }.sealedAt
 
     private fun openFileBacked(name: String): SolstonePersistenceDatabase =
         Room.databaseBuilder(ctx, SolstonePersistenceDatabase::class.java, name)

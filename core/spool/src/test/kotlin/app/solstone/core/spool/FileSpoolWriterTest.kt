@@ -47,6 +47,28 @@ class FileSpoolWriterTest {
     }
 
     @Test
+    fun sealsWithCollisionLeafWhenBareLeafIsOccupiedEvenIfDirectoryIsAbsent() {
+        withTempDir { baseDir ->
+            val segment = segment(startEpochMs = SECOND_START, payloadName = "second.bin")
+            val provider = provider("second.bin" to "second-bytes".toByteArray())
+            val writer = FileSpoolWriter(
+                baseDir = baseDir,
+                isLeafOccupied = { day, stream, leaf ->
+                    day == DAY && stream == STREAM && leaf == WIRE_SEGMENT
+                },
+            )
+
+            val result = writer.seal(segment, provider)
+
+            val collisionLeaf = "${WIRE_SEGMENT}__ws$SECOND_START"
+            val expectedDir = baseDir.resolve(DAY).resolve(STREAM).resolve(collisionLeaf)
+            assertEquals(expectedDir, result.directory)
+            assertTrue(Files.exists(expectedDir.resolve("manifest")))
+            assertFalse(Files.exists(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)))
+        }
+    }
+
+    @Test
     fun resealSameSegmentReturnsExistingFinalWithoutDeleting() {
         withTempDir { baseDir ->
             val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin")
@@ -75,10 +97,10 @@ class FileSpoolWriterTest {
             val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin")
             val finalDir = baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
             val synced = mutableListOf<Path>()
-            val writer = FileSpoolWriter(baseDir) { path ->
+            val writer = FileSpoolWriter(baseDir, fsync = { path ->
                 assertFalse(Files.exists(finalDir), "final dir must not exist before fsync completes")
                 synced.add(path)
-            }
+            })
 
             writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
 

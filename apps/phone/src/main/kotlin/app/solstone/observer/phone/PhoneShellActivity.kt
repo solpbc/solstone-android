@@ -40,7 +40,6 @@ import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.FileSourceWishStore
-import app.solstone.observer.harness.decimalBytes
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.core.identity.JournalMarkPresentation
@@ -235,9 +234,6 @@ class PhoneShellActivity : ComponentActivity() {
                 intakeRunning = ObserverForegroundService.heldCaptureForegroundTypes != null,
                 check = connectionCheck,
             )
-            val storageUsed = container.journalCacheState().latestPass?.measuredUsageBytes
-                ?.let(::decimalBytes)
-                ?: "—"
             val eventLog = when (val log = PhoneDiagLog.installedSink()?.readResult()) {
                 is DiagnosticLogRead.Complete -> log.content
                 is DiagnosticLogRead.Partial -> "some events couldn't be read.\n${log.content}"
@@ -269,7 +265,6 @@ class PhoneShellActivity : ComponentActivity() {
                 journalMarkPresentation = currentMarkPresentation,
                 journalSheetOpen = journalOpen,
                 journalFacts = journalFacts,
-                storageUsed = storageUsed,
                 hapticsEnabled = hapticsEnabled,
                 notificationsEnabled = notificationsEnabled,
                 eventLog = eventLog,
@@ -350,10 +345,7 @@ class PhoneShellActivity : ComponentActivity() {
                         .onSuccess { problemReports = it }
                 },
                 onManageLocalStorage = {
-                    startActivity(
-                        Intent(this, ObserverActivity::class.java)
-                            .putExtra(ObserverActivity.EXTRA_SHOW_LOCAL_CACHE, true),
-                    )
+                    startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
                 },
                 initial = capture.stack,
                 initialShelfOpen = capture.shelfOpen,

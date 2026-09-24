@@ -10,7 +10,16 @@ import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
 import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.HttpResponse
+import app.solstone.core.queue.QueueEvent
+import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
+import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
+import app.solstone.platform.persistence.room.SyncStateRow
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -38,8 +47,9 @@ class SyncWithTransportTest {
             assertV3(trace.client.requests[1])
             assertV3(trace.client.requests[2])
             assertNoLegacyHeaders(trace.client.requests)
-            assertEquals(QueueState.UPLOADED, trace.store.row("a").state)
-            assertEquals(null, trace.store.row("a").lastError)
+            assertEquals(QueueState.EVICTED, trace.store.row(trace.segmentId).state)
+            assertFalse(Files.exists(trace.segmentDir))
+            assertEquals(null, trace.store.row(trace.segmentId).lastError)
             assertTrue(trace.client.closed)
         }
     }
@@ -53,9 +63,9 @@ class SyncWithTransportTest {
             )
 
             assertEquals(SyncOutcome.RETRY, trace.outcome)
-            assertEquals(QueueState.SEALED, trace.store.row("a").state)
-            assertEquals(0, trace.store.row("a").attemptCount)
-            assertEquals(null, trace.store.row("a").lastAttemptAt)
+            assertEquals(QueueState.SEALED, trace.store.row(trace.segmentId).state)
+            assertEquals(0, trace.store.row(trace.segmentId).attemptCount)
+            assertEquals(null, trace.store.row(trace.segmentId).lastAttemptAt)
             assertTrue(trace.store.events.isEmpty())
             assertEquals(
                 listOf("GET /app/network/api/status", "GET $SEGMENTS_PATH/$WORK_TEST_DAY?source=audio"),
@@ -79,10 +89,10 @@ class SyncWithTransportTest {
                 )
 
                 assertEquals(SyncOutcome.RETRY, trace.outcome)
-                assertEquals(QueueState.FAILED, trace.store.row("a").state)
-                assertEquals(1, trace.store.row("a").attemptCount)
-                assertEquals(status, trace.store.row("a").lastStatusCode)
-                assertEquals("retry", trace.store.row("a").lastError)
+                assertEquals(QueueState.FAILED, trace.store.row(trace.segmentId).state)
+                assertEquals(1, trace.store.row(trace.segmentId).attemptCount)
+                assertEquals(status, trace.store.row(trace.segmentId).lastStatusCode)
+                assertEquals("retry", trace.store.row(trace.segmentId).lastError)
                 assertEquals(
                     listOf(
                         "GET /app/network/api/status",
@@ -110,10 +120,10 @@ class SyncWithTransportTest {
                 )
 
                 assertEquals(SyncOutcome.FAILURE, trace.outcome)
-                assertEquals(QueueState.FAILED, trace.store.row("a").state)
-                assertEquals(1, trace.store.row("a").attemptCount)
-                assertEquals(status, trace.store.row("a").lastStatusCode)
-                assertEquals("auth halted", trace.store.row("a").lastError)
+                assertEquals(QueueState.FAILED, trace.store.row(trace.segmentId).state)
+                assertEquals(1, trace.store.row(trace.segmentId).attemptCount)
+                assertEquals(status, trace.store.row(trace.segmentId).lastStatusCode)
+                assertEquals("auth halted", trace.store.row(trace.segmentId).lastError)
                 assertNoLegacyHeaders(trace.client.requests)
             }
         }
@@ -131,6 +141,7 @@ class SyncWithTransportTest {
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
+            finisher = dummyFinisher(),
         )
         assertEquals(SyncOutcome.FAILURE, trustOutcome)
 
@@ -142,6 +153,7 @@ class SyncWithTransportTest {
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
+            finisher = dummyFinisher(),
         )
         assertEquals(SyncOutcome.RETRY, availOutcome)
     }
@@ -150,10 +162,67 @@ class SyncWithTransportTest {
         transport: SyncTransport,
         responses: List<HttpResponse>,
     ): Trace {
+        val root = Files.createTempDirectory("sync-trace")
+        val spool = root.resolve("spool")
+        val segmentId = "$WORK_TEST_DAY/$MAIN_STREAM/a"
+        val segmentDir = spool.resolve(segmentId)
+        Files.createDirectories(segmentDir)
+        Files.write(segmentDir.resolve("a.bin"), byteArrayOf(1))
+        val manifestText = """
+            solstone-bundle-manifest-v1
+            day=$WORK_TEST_DAY
+            segment=a
+            startEpochMs=1
+            endEpochMs=2
+            zoneId=UTC
+            utcOffsetSeconds=0
+            [files]
+            audio	a.bin	sha-a	1	application/octet-stream	1	2
+            [gaps]
+        """.trimIndent()
+        Files.write(segmentDir.resolve("manifest"), manifestText.toByteArray())
+
+        val segmentRow = segment(segmentId).copy(day = WORK_TEST_DAY, stream = MAIN_STREAM, segment = "a", dirSegment = "a")
+        val fileRow = file(segmentId).copy(name = "a.bin", sha256 = "sha-a")
         val store = FakeDrainStore(
-            segment("a"),
-            files = mapOf("a" to listOf(file("a"))),
+            segmentRow,
+            files = mapOf(segmentId to listOf(fileRow)),
         )
+        val dao = object : SegmentDao() {
+            override fun insertSegment(segment: SegmentRow) = Unit
+            override fun insertFiles(files: List<SegmentFileRow>) = Unit
+            override fun insertEvents(events: List<EventRow>) = Unit
+            override fun segmentsByState(state: QueueState): List<SegmentRow> = emptyList()
+            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain()
+            override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
+            override fun segmentById(id: String): SegmentRow? = store.rowOrNull(id)
+            override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
+            override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = store.filesBySegmentId(segmentId)
+            override fun recordAttempt(id: String, attempts: Int, at: Long): Int = store.recordAttempt(id, attempts, at)
+            override fun recordUploaded(id: String): Int = store.recordUploaded(id)
+            override fun recordFailure(id: String, code: Int?, error: String?): Int = store.recordFailure(id, code, error)
+            override fun upsertSyncState(row: SyncStateRow) = store.upsertSyncState(row)
+            override fun syncState(): SyncStateRow? = store.syncState()
+            override fun pendingCount(stream: String): Int = store.pendingCount(stream)
+            override fun pendingSourceIds(stream: String): List<String> = emptyList()
+            override fun segmentState(id: String): QueueState? = store.rowOrNull(id)?.state
+            override fun updateState(id: String, state: QueueState): Int {
+                val event = when (state) {
+                    QueueState.EVICTED -> QueueEvent.FINISH
+                    QueueState.UPLOADING -> QueueEvent.START_UPLOAD
+                    QueueState.UPLOADED -> QueueEvent.MARK_UPLOADED
+                    QueueState.FAILED -> QueueEvent.MARK_FAILED
+                    QueueState.SEALED -> QueueEvent.SEAL
+                    QueueState.RECORDING -> error("illegal")
+                }
+                store.advanceState(id, event)
+                return 1
+            }
+            override fun deleteFilesBySegmentId(segmentId: String): Int = 0
+            override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
+            override fun deleteFilesBySource(sourceId: String): Int = 0
+        }
+        val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
         val client = RecordingPlHttpClient(*responses.toTypedArray())
         val openedTransports = mutableListOf<SyncTransport>()
 
@@ -168,8 +237,9 @@ class SyncWithTransportTest {
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
+            finisher = finisher,
         )
-        return Trace(outcome, store, client, openedTransports)
+        return Trace(outcome, store, client, openedTransports, segmentId, segmentDir)
     }
 
     private fun assertV3(request: RecordedRequest) {
@@ -186,6 +256,8 @@ class SyncWithTransportTest {
         val store: FakeDrainStore,
         val client: RecordingPlHttpClient,
         val openedTransports: List<SyncTransport>,
+        val segmentId: String,
+        val segmentDir: Path,
     )
 
     private companion object {

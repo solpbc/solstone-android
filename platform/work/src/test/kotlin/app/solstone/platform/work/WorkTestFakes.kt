@@ -9,10 +9,15 @@ import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.queue.transition
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
+import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.io.Closeable
+import java.nio.file.Files
+import java.nio.file.Path
 
 internal const val WORK_TEST_DAY = "20260617"
 
@@ -28,6 +33,7 @@ internal class FakeDrainStore(
     ) : this(rows.toList(), files, syncState)
 
     private val rows = rows.associateBy { it.id }.toMutableMap()
+    private val mutableFiles = files.toMutableMap()
     val events = mutableListOf<Pair<String, QueueEvent>>()
     val logs = mutableListOf<String>()
     val failAdvanceFor = mutableSetOf<String>()
@@ -35,6 +41,14 @@ internal class FakeDrainStore(
         private set
 
     fun row(id: String): SegmentRow = rows.getValue(id)
+    fun rowOrNull(id: String): SegmentRow? = rows[id]
+
+    fun add(row: SegmentRow, fileRows: List<SegmentFileRow> = emptyList()) {
+        rows[row.id] = row
+        if (fileRows.isNotEmpty()) {
+            mutableFiles[row.id] = fileRows
+        }
+    }
 
     fun eventsFor(id: String): List<QueueEvent> =
         events.filter { it.first == id }.map { it.second }
@@ -50,7 +64,7 @@ internal class FakeDrainStore(
             .filter { it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED }
             .sortedWith(compareBy<SegmentRow> { it.sealedAt }.thenBy { it.id })
 
-    override fun filesBySegmentId(id: String): List<SegmentFileRow> = files[id].orEmpty()
+    override fun filesBySegmentId(id: String): List<SegmentFileRow> = mutableFiles[id].orEmpty()
 
     override fun advanceState(id: String, event: QueueEvent): QueueState {
         if (id in failAdvanceFor) {
@@ -155,4 +169,33 @@ internal class RecordingPlHttpClient(vararg responses: HttpResponse) : PlHttpCli
     override fun close() {
         closed = true
     }
+}
+
+internal fun dummyFinisher(
+    root: Path = Files.createTempDirectory("dummy-finisher"),
+    dao: SegmentDao = dummyDao(),
+): ConfirmedCopyFinisher = ConfirmedCopyFinisher(root, dao)
+
+internal fun dummyDao(): SegmentDao = object : SegmentDao() {
+    override fun insertSegment(segment: SegmentRow) = Unit
+    override fun insertFiles(files: List<SegmentFileRow>) = Unit
+    override fun insertEvents(events: List<EventRow>) = Unit
+    override fun segmentsByState(state: QueueState): List<SegmentRow> = emptyList()
+    override fun segmentsForDrain(stream: String): List<SegmentRow> = emptyList()
+    override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
+    override fun segmentById(id: String): SegmentRow? = null
+    override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
+    override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = emptyList()
+    override fun recordAttempt(id: String, attempts: Int, at: Long): Int = 0
+    override fun recordUploaded(id: String): Int = 0
+    override fun recordFailure(id: String, code: Int?, error: String?): Int = 0
+    override fun upsertSyncState(row: SyncStateRow) = Unit
+    override fun syncState(): SyncStateRow? = null
+    override fun pendingCount(stream: String): Int = 0
+    override fun pendingSourceIds(stream: String): List<String> = emptyList()
+    override fun segmentState(id: String): QueueState? = null
+    override fun updateState(id: String, state: QueueState): Int = 0
+    override fun deleteFilesBySegmentId(segmentId: String): Int = 0
+    override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
+    override fun deleteFilesBySource(sourceId: String): Int = 0
 }

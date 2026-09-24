@@ -131,10 +131,8 @@ fun PhoneYourJournalPane(
 @Composable
 fun PhoneThisDevicePane(
     version: String,
-    storageUsed: String,
     hapticsEnabled: Boolean,
     onHapticsChanged: (Boolean) -> Unit,
-    onManageLocalStorage: () -> Unit,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
     onOpenProblemReports: () -> Unit,
@@ -164,16 +162,6 @@ fun PhoneThisDevicePane(
         // is the same action and says it too.
         if (mutationFailed) PaneNote("couldn't unpair this device. try again.")
         if (journalKeptItsRecord) PaneNote(JOURNAL_KEPT_ITS_RECORD)
-        PaneSectionTitle("storage")
-        PaneCard {
-            PaneFactRow(label = "in use", value = storageUsed)
-            PaneRowDivider()
-            PaneNavRow(
-                label = "manage local storage",
-                onClick = onManageLocalStorage,
-                modifier = Modifier.testTag("thisDeviceStorage"),
-            )
-        }
         PaneSectionTitle("settings")
         PaneCard {
             PaneSwitchRow(

@@ -25,7 +25,6 @@ import app.solstone.testing.validDirectPairLink
 import app.solstone.observer.harness.BundleExport
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
-import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.HarnessExportResult
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
@@ -92,7 +91,6 @@ class QrClassifiedFailureRuntimeTest {
     fun failingPairLinkHandoffRendersClassifiedStatusWithoutCrashing() {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
                 val ui = ObserverHarnessUi(
                     context = activity,
                     controller = failingController(),
@@ -101,8 +99,6 @@ class QrClassifiedFailureRuntimeTest {
                     previewHeightPx = 1,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "phone-test",
-                    journalCacheState = { cacheState },
-                    saveJournalCacheLimit = { cacheState },
                 )
                 activity.setContentView(ui.view())
                 ui.showPairLink(validDirectPairLink())
@@ -163,7 +159,6 @@ class QrClassifiedFailureRuntimeTest {
     fun leavingTheScannerScreenDetachesThePreviewSoTheCameraCanBeReleased() {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
                 val ui = ObserverHarnessUi(
                     context = activity,
                     controller = failingController(),
@@ -172,8 +167,6 @@ class QrClassifiedFailureRuntimeTest {
                     previewHeightPx = 1,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "phone-test",
-                    journalCacheState = { cacheState },
-                    saveJournalCacheLimit = { cacheState },
                 )
                 activity.setContentView(ui.view())
                 ui.showScanPairQr()

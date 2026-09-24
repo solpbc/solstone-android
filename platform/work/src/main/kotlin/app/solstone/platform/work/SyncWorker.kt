@@ -17,6 +17,7 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.pl.transport.conscrypt.RelayDialWaitingException
@@ -113,6 +114,11 @@ class SyncWorker(
         try {
             val store = RoomDrainStore(db.segmentDao())
             val spoolDir = File(applicationContext.filesDir, "spool")
+            val finisher = ConfirmedCopyFinisher(
+                spoolRoot = spoolDir.toPath(),
+                dao = db.segmentDao(),
+                log = { message -> Log.w(TAG, message) },
+            )
             val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
                 val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
                 if (access.pairing != PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)) return@transportAttempt SyncOutcome.RETRY
@@ -126,6 +132,7 @@ class SyncWorker(
                         openSyncClient(selectedTransport, credentials.credential)
                     },
                     store = store,
+                    finisher = finisher,
                     readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
                     host = deviceLabel(),
                     now = System::currentTimeMillis,

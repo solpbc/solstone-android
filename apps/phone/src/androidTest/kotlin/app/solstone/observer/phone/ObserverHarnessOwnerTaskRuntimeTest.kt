@@ -52,11 +52,6 @@ class ObserverHarnessOwnerTaskRuntimeTest {
     }
 
     @Test
-    fun theManageLocalStorageTaskShowsNoOperatorMenuAndNoDrawnBack() {
-        assertOwnerTask(ObserverActivity.EXTRA_SHOW_LOCAL_CACHE)
-    }
-
-    @Test
     fun aBareLaunchStillGetsTheOperatorMenu() {
         // Non-vacuity for the two tests above: it proves the menu labels they assert absent are
         // labels this build actually renders somewhere, so their absence is a measurement.

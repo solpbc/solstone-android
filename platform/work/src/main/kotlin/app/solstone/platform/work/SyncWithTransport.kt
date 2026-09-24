@@ -7,6 +7,7 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
 import java.io.Closeable
@@ -20,6 +21,7 @@ internal fun <C> syncWithTransport(
     host: String,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
+    finisher: ConfirmedCopyFinisher,
     onUsableConnection: (() -> Unit)? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
@@ -42,7 +44,6 @@ internal fun <C> syncWithTransport(
             }
         }
     }
-
     return client.use { c ->
         val status = try {
             c.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
@@ -85,6 +86,7 @@ internal fun <C> syncWithTransport(
                     readPayload = readPayload,
                     now = now,
                     log = log,
+                    finisher = finisher,
                 )
                 report.workOutcome
             }

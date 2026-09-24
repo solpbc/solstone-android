@@ -279,9 +279,6 @@ class RoomSealedSegmentSinkTest {
         override fun advanceState(id: String, event: QueueEvent): QueueState =
             segmentById(id)?.state ?: throw NoSuchElementException(id)
 
-        override fun applyEvictions(result: app.solstone.core.queue.EvictionResult): app.solstone.core.queue.EvictionApplyResult =
-            app.solstone.core.queue.EvictionApplyResult(emptyList(), 0, 0)
-
         override fun deleteSource(sourceId: String): app.solstone.core.queue.SourceDeleteResult =
             app.solstone.core.queue.SourceDeleteResult(sourceId, 0)
 

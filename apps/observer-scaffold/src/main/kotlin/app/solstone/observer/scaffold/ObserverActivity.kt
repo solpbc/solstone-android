@@ -42,11 +42,8 @@ class ObserverActivity : ComponentActivity() {
             previewHeightPx = spec.previewHeightPx,
             qrBackend = spec.qrBackend,
             qrThreadLabel = spec.deviceLabel.substringAfterLast(' '),
-            journalCacheState = container::journalCacheState,
-            saveJournalCacheLimit = container::saveJournalCacheLimit,
             onEvidenceLoaded = { ObserverHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
             onSyncLoaded = { ObserverHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
-            onJournalCacheLoadComplete = { ObserverHarnessRuntime.hooks?.onJournalCacheLoadComplete?.invoke() },
             markAccessoryFactory = spec.pairingAccessoryFactory,
             ownerButtonStyle = spec.ownerButtonStyle,
             ownerTextStyle = spec.ownerTextStyle,
@@ -122,7 +119,6 @@ class ObserverActivity : ComponentActivity() {
         val target = intent ?: return false
         return isOwnerTaskLaunch(
             scansPairQr = target.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false),
-            showsLocalCache = target.getBooleanExtra(EXTRA_SHOW_LOCAL_CACHE, false),
             isViewAction = target.action == Intent.ACTION_VIEW,
             hasData = target.data != null,
             handlesPairLinks = spec.handlesPairLinks,
@@ -180,16 +176,11 @@ class ObserverActivity : ComponentActivity() {
             enterScan()
             true
         }
-        intent.getBooleanExtra(EXTRA_SHOW_LOCAL_CACHE, false) -> {
-            harnessUi.showLocalCache()
-            true
-        }
         else -> false
     }
 
     companion object {
         const val EXTRA_SCAN_PAIR_QR = "app.solstone.observer.scaffold.EXTRA_SCAN_PAIR_QR"
-        const val EXTRA_SHOW_LOCAL_CACHE = "app.solstone.observer.scaffold.EXTRA_SHOW_LOCAL_CACHE"
         private const val PERMISSION_REQUEST = 10
         private const val CAMERA_FOR_SCAN_REQUEST = 11
         private const val STATE_CAMERA_ASK = "app.solstone.observer.scaffold.STATE_CAMERA_ASK"

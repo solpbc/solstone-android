@@ -9,9 +9,8 @@ import kotlin.test.assertTrue
 
 class OwnerTaskLaunchTest {
     @Test
-    fun theShellsTwoOwnerRoutesAreOwnerTasks() {
+    fun theShellsOwnerRouteIsAnOwnerTask() {
         assertTrue(launch(scansPairQr = true))
-        assertTrue(launch(showsLocalCache = true))
     }
 
     @Test
@@ -19,7 +18,6 @@ class OwnerTaskLaunchTest {
         // The routing extras are re-read from the same intent after a rotation. If `firstLaunch`
         // gated them too, rotating on the pair scanner would drop the owner into the operator menu.
         assertTrue(launch(scansPairQr = true, firstLaunch = false))
-        assertTrue(launch(showsLocalCache = true, firstLaunch = false))
     }
 
     @Test
@@ -45,14 +43,12 @@ class OwnerTaskLaunchTest {
 
     private fun launch(
         scansPairQr: Boolean = false,
-        showsLocalCache: Boolean = false,
         isViewAction: Boolean = false,
         hasData: Boolean = false,
         handlesPairLinks: Boolean = false,
         firstLaunch: Boolean = true,
     ): Boolean = isOwnerTaskLaunch(
         scansPairQr = scansPairQr,
-        showsLocalCache = showsLocalCache,
         isViewAction = isViewAction,
         hasData = hasData,
         handlesPairLinks = handlesPairLinks,

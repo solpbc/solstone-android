@@ -74,24 +74,4 @@ class ObserverActivityDirectScanRuntimeTest {
             }
         }
     }
-
-    @Test
-    fun localCacheExtraShowsLocalCacheControlsInsteadOfMenu() {
-        val intent = Intent(application, ObserverActivity::class.java)
-            .putExtra(ObserverActivity.EXTRA_SHOW_LOCAL_CACHE, true)
-        ActivityScenario.launch<ObserverActivity>(intent).use { scenario ->
-            waitUntil("local cache controls shown") {
-                var present = false
-                scenario.onActivity { activity ->
-                    val texts = activityTexts(activity)
-                    present = texts.any { it.contains("space on this device") }
-                }
-                present
-            }
-            scenario.onActivity { activity ->
-                assertFalse(activityTexts(activity).contains("Permissions"))
-                assertTrue(activityTexts(activity).any { it.contains("space on this device") })
-            }
-        }
-    }
 }

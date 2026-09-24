@@ -24,7 +24,6 @@ import app.solstone.observer.harness.EvidenceReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessExportResult
-import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
 import app.solstone.observer.harness.HeartbeatFreshness
@@ -67,7 +66,6 @@ class ScanPairReticleHierarchyTest {
     fun operatorModePlacesReticleBetweenPreviewAndCaptionWithBackOnTop() {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
                 val ui = ObserverHarnessUi(
                     context = activity,
                     controller = failingController(),
@@ -76,8 +74,6 @@ class ScanPairReticleHierarchyTest {
                     previewHeightPx = 1,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "phone-test",
-                    journalCacheState = { cacheState },
-                    saveJournalCacheLimit = { cacheState },
                 )
                 val outer = ui.view() as ViewGroup
                 activity.setContentView(outer)
@@ -111,7 +107,6 @@ class ScanPairReticleHierarchyTest {
     fun ownerTaskModePlacesReticleBetweenPreviewAndCaptionWithoutBackButton() {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
                 val ui = ObserverHarnessUi(
                     context = activity,
                     controller = failingController(),
@@ -120,8 +115,6 @@ class ScanPairReticleHierarchyTest {
                     previewHeightPx = 1,
                     qrBackend = QrBackend.Camera2,
                     qrThreadLabel = "phone-test",
-                    journalCacheState = { cacheState },
-                    saveJournalCacheLimit = { cacheState },
                 )
                 ui.dismissTo { }
                 val outer = ui.view() as ViewGroup

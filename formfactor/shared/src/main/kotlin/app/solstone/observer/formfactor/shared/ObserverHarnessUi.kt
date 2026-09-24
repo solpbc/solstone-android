@@ -19,11 +19,8 @@ import android.widget.TextView
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
-import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.PairLinkDispatchResult
-import app.solstone.observer.harness.decimalBytes
-import app.solstone.observer.harness.journalCacheText
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
 
@@ -35,11 +32,8 @@ class ObserverHarnessUi(
     private val previewHeightPx: Int,
     private val qrBackend: QrBackend,
     private val qrThreadLabel: String,
-    private val journalCacheState: () -> HarnessJournalCacheState,
-    private val saveJournalCacheLimit: (Long) -> HarnessJournalCacheState,
     private val onEvidenceLoaded: () -> Unit = {},
     private val onSyncLoaded: () -> Unit = {},
-    private val onJournalCacheLoadComplete: () -> Unit = {},
     private val markAccessoryFactory: ((context: Context, onConfirmed: () -> Unit) -> View)? = null,
     /**
      * How an OWNER-facing control and an owner-facing line of text are dressed.
@@ -112,7 +106,6 @@ class ObserverHarnessUi(
             button("Start/stop intake") { showStartStop() }
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
-            button("Local storage") { showLocalCache() }
         }
     }
 
@@ -386,58 +379,6 @@ class ObserverHarnessUi(
             val content = column()
             backButton()
             loadEvidence(content)
-        }
-    }
-
-    fun showLocalCache() {
-        setScreen {
-            val content = column()
-            backButton()
-            loadJournalCache(content)
-        }
-    }
-
-    private fun loadJournalCache(content: LinearLayout) {
-        asyncLoad.load(journalCacheState) { state ->
-            content.removeAllViews()
-            when (state) {
-                LoadState.Loading -> content.text("checking what's on this device…")
-                is LoadState.Loaded -> {
-                    content.renderJournalCache(state.value)
-                    onJournalCacheLoadComplete()
-                }
-                is LoadState.Failed -> {
-                    content.text("couldn't check what's on this device.")
-                    onJournalCacheLoadComplete()
-                }
-            }
-        }
-    }
-
-    private fun LinearLayout.renderJournalCache(state: HarnessJournalCacheState) {
-        text(journalCacheText(state))
-        state.limitChoicesBytes.forEach { choice ->
-            val current = if (choice == state.configuredLimitBytes) " (your limit now)" else ""
-            button("use ${decimalBytes(choice)}$current") {
-                asyncLoad.load({ saveJournalCacheLimit(choice) }) { loadState ->
-                    when (loadState) {
-                        LoadState.Loading -> {
-                            removeAllViews()
-                            text("saving your limit…")
-                        }
-                        is LoadState.Loaded -> {
-                            removeAllViews()
-                            renderJournalCache(loadState.value)
-                            onJournalCacheLoadComplete()
-                        }
-                        is LoadState.Failed -> {
-                            removeAllViews()
-                            text("couldn't save that limit. your previous limit is still in place.")
-                            onJournalCacheLoadComplete()
-                        }
-                    }
-                }
-            }
         }
     }
 

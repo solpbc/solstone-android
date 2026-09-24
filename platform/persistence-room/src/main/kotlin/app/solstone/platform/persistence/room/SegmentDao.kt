@@ -9,9 +9,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import app.solstone.core.model.QueueState
-import app.solstone.core.queue.EvictionApplyResult
-import app.solstone.core.queue.EvictionEvent
-import app.solstone.core.queue.EvictionResult
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.queue.SourceDeleteResult
 import app.solstone.core.queue.transition
@@ -86,18 +83,11 @@ abstract class SegmentDao {
     }
 
     @Transaction
-    open fun applyEvictions(result: EvictionResult): EvictionApplyResult {
-        val ids = result.evictions.map { it.segmentId }
-        ids.forEach { advanceState(it, QueueEvent.EVICT) }
-        val deletedRows = if (ids.isEmpty()) 0 else deleteFilesBySegmentIds(ids)
-        if (result.events.isNotEmpty()) {
-            insertEvents(result.events.map { it.toRow() })
-        }
-        return EvictionApplyResult(
-            evictedSegmentIds = ids,
-            deletedFileRows = deletedRows,
-            eventsInserted = result.events.size,
-        )
+    open fun finishLegacyRemovedInJournal(id: String): Boolean {
+        val row = segmentById(id) ?: return false
+        if (row.state != QueueState.FAILED || row.lastError != "removed_in_journal") return false
+        updateState(id, QueueState.EVICTED)
+        return true
     }
 
     @Transaction
@@ -105,10 +95,10 @@ abstract class SegmentDao {
         SourceDeleteResult(sourceId, deleteFilesBySource(sourceId))
 
     @Query("SELECT state FROM segment WHERE id = :id")
-    protected abstract fun segmentState(id: String): QueueState?
+    abstract fun segmentState(id: String): QueueState?
 
     @Query("UPDATE segment SET state = :state WHERE id = :id")
-    protected abstract fun updateState(id: String, state: QueueState): Int
+    abstract fun updateState(id: String, state: QueueState): Int
 
     @Query("DELETE FROM segment_file WHERE segment_id = :segmentId")
     protected abstract fun deleteFilesBySegmentId(segmentId: String): Int
@@ -118,12 +108,4 @@ abstract class SegmentDao {
 
     @Query("DELETE FROM segment_file WHERE source_id = :sourceId")
     protected abstract fun deleteFilesBySource(sourceId: String): Int
-
-    private fun EvictionEvent.toRow(): EventRow =
-        EventRow(
-            segmentId = segmentId,
-            kind = kind,
-            atEpochMs = atEpochMs,
-            detail = detail,
-        )
 }

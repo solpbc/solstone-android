@@ -27,7 +27,6 @@ import app.solstone.observer.harness.EvidenceReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.HarnessExportResult
-import app.solstone.observer.harness.HarnessJournalCacheState
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.HarnessSyncState
 import app.solstone.observer.harness.HeartbeatFreshness
@@ -77,7 +76,6 @@ class PhonePlStatusProbeAsyncRuntimeTest {
         val detachedGate = CountDownLatch(1)
         val calls = AtomicInteger(0)
         val ranOffMain = AtomicBoolean(false)
-        val cacheState = HarnessJournalCacheState(0, null, emptyList(), null, null)
         val controller = HarnessController(
             permissionStatusReader = PermissionStatusReader {
                 PermissionStatus(
@@ -134,7 +132,6 @@ class PhonePlStatusProbeAsyncRuntimeTest {
         ActivityScenario.launch(ObserverActivity::class.java).use { scenario ->
             val container = waitForObserverContainer()
             assertTrue(waitForRecovery(container))
-            waitUntil("initial local cache pass") { container.journalCacheState().latestPass != null }
 
             try {
                 scenario.onActivity { activity ->
@@ -146,8 +143,6 @@ class PhonePlStatusProbeAsyncRuntimeTest {
                         previewHeightPx = 1,
                         qrBackend = QrBackend.Camera2,
                         qrThreadLabel = "phone-test",
-                        journalCacheState = { cacheState },
-                        saveJournalCacheLimit = { cacheState },
                     )
                     activity.setContentView(ui.view())
                     val root = activity.findViewById<View>(android.R.id.content)

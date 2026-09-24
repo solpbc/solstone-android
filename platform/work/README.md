@@ -122,8 +122,8 @@ fun nextSyncState(
 - `resolveIngestOutcomes`:
   - Verifies file descriptors returned in `Accepted`, `Collision`, and `Duplicate` against manifest files (must be listed, matching submitted filename, size, sha256, and disposition `written`). If descriptors are absent/not-a-list/empty -> `Retry(408, "custody_missing")`; if mismatched sha/size/name -> `Retry(429, "custody_mismatch")`; if disposition is not written -> `HardFail(422, "custody_not_written")`.
   - Maps `Rejected`: 401/403 -> `AuthHalt(status)`, 500 with `segment_removed` -> `JournalRemoved`, 409 and other 4xx except 401/403/408/425/429 -> `HardFail(status, reason)`, 5xx and 408/425/429 -> `Retry(status, reason)`.
-  - Multi-source outcomes are resolved by severity rank (`AuthHalt` > `HardFail` > `Retry` > `JournalRemoved`), keeping the first minimum rank in POST order.
-  - Returns `Uploaded` only when all source outcomes verify successfully.
+  - Multi-source outcomes are resolved by severity rank (`AuthHalt` > `HardFail` > `Retry`), keeping the first minimum rank in POST order.
+  - Returns `Uploaded` when all source outcomes verify successfully or are acknowledged as removed in the journal.
 - `resolveIoError` returns `Retry(null)`.
 - `haltsDrain` returns true only for `AuthHalt`.
 - `nextSyncState` returns singleton `SyncStateRow(id = 0, pendingCount, lastSuccessAt, lastFailureAt)`.
@@ -139,9 +139,9 @@ fun nextSyncState(
 7. For each segment:
    - `advanceState(id, START_UPLOAD)`
    - increment attempt count and set `last_attempt_at`
-   - if reconcile says upload is not needed, `advanceState(MARK_UPLOADED)` without POST
+   - if reconcile says upload is not needed, a proven listing removes the segment directory in that drain without POST; a refused proof leaves the row uploading
    - otherwise POST with `ObserverIngestClient`, mapping outcomes through the pure functions
-   - `Uploaded` marks uploaded, stores `server_key` when non-null, and clears `last_error`
+   - a confirmed upload or `segment_removed` (including `segment_removed` mixed into an otherwise confirmed segment) removes the segment directory in that drain and clears `last_error`; a refused proof leaves the row uploading; `segment_removed` is removal, not a `FAILED` keep
    - `Retry` marks failed, records status/error, and makes the run retry later
    - `HardFail` marks failed and records terminal failure metadata
    - `AuthHalt` marks failed, records metadata, sets `lastFailureAt`, and stops the whole drain
