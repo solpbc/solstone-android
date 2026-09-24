@@ -47,29 +47,33 @@ class MuxSessionTest {
     }
 
     @Test
-    fun responseBeyondInitialWindowEmitsGrantAndCompletes() {
+    fun responseBeyondInitialWindowIsGrantedAtHalfTheWindowAndCompletes() {
         val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
         val total = TEST_INITIAL_RECEIVE_WINDOW + 17
         val response = responseBytes(total)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
             var sent = 0
+            var ungranted = 0
             while (sent < total) {
                 val count = minOf(TEST_MAX_DATA_CHUNK_BYTES, total - sent)
                 val isLast = (sent + count >= total)
                 val flags = if (isLast) FLAG_DATA or FLAG_CLOSE else FLAG_DATA
                 sendFrame(duplex, streamId, flags, response.copyOfRange(sent, sent + count))
                 sent += count
-                val grant = pollFrame(duplex.input)
                 if (isLast) {
                     // Framing § late frames on unknown ids: credit returned for the frame that
                     // closes the stream can only ever arrive after the id is forgotten, and a
                     // WINDOW on a forgotten id is a desync the peer must answer with a RESET.
-                    assertNull(grant, "no credit is owed for the frame that closes the stream")
+                    assertNull(pollFrame(duplex.input, iterations = 20), "no credit is owed for the frame that closes the stream")
                     continue
                 }
+                ungranted += count
+                if (ungranted < TEST_INITIAL_RECEIVE_WINDOW / 2) continue
+                val grant = pollFrame(duplex.input)
                 if (grant == null) duplex.output.close()
-                assertWindow(assertNotNull(grant), streamId, count)
+                assertWindow(assertNotNull(grant), streamId, ungranted)
+                ungranted = 0
             }
         }
 
@@ -78,22 +82,20 @@ class MuxSessionTest {
     }
 
     @Test
-    fun windowGrantEqualsConsumedDataFrameSize() {
+    fun noCreditIsReturnedBelowHalfTheWindow() {
         val (client, server) = pairedDuplexes()
-        val chunkSize = 60 * 1024
-        val response = responseBytes(chunkSize)
+        val response = responseBytes(60 * 1024)
         val home = startHome(server) { duplex ->
             val streamId = readRequest(duplex)
-            // Not closing here: a DATA frame that leaves the stream open is exactly the frame
-            // credit exists for, and the one this test is about.
+            // A DATA frame that leaves the stream open, then a separate CLOSE: the way a journal
+            // ends a response. A grant for it would reach a journal that has already forgotten
+            // the stream and must answer the WINDOW with a PROTOCOL reset.
             sendFrame(duplex, streamId, FLAG_DATA, response)
-            val grant = pollFrame(duplex.input)
-            if (grant == null) duplex.output.close()
-            assertWindow(assertNotNull(grant), streamId, chunkSize)
+            assertNull(pollFrame(duplex.input, iterations = 40), "a small response draws no WINDOW")
             sendFrame(duplex, streamId, FLAG_CLOSE, ByteArray(0))
         }
 
-        client.use { MuxSession(it).request("GET", "/a2", emptyMap(), null) }
+        client.use { assertEquals(200, MuxSession(it).request("GET", "/a2", emptyMap(), null).status) }
         finishHome(home)
     }
 
@@ -125,11 +127,10 @@ class MuxSessionTest {
             for (i in 0 until numChunks) {
                 val isLast = (i == numChunks - 1)
                 sendFrame(duplex, streamId, if (isLast) FLAG_DATA or FLAG_CLOSE else FLAG_DATA, ByteArray(chunkSize))
-                val responseFrame = pollFrame(duplex.input)
                 if (isLast) {
-                    assertReset(assertNotNull(responseFrame), streamId, 0x05)
-                } else {
-                    assertWindow(assertNotNull(responseFrame), streamId, chunkSize)
+                    assertReset(assertNotNull(pollFrame(duplex.input)), streamId, 0x05)
+                } else if ((i + 1) * chunkSize % (TEST_INITIAL_RECEIVE_WINDOW / 2) == 0) {
+                    assertWindow(assertNotNull(pollFrame(duplex.input)), streamId, TEST_INITIAL_RECEIVE_WINDOW / 2)
                 }
             }
         }
@@ -258,10 +259,10 @@ class MuxSessionTest {
             sendFrame(duplex, firstId, FLAG_DATA or FLAG_RESET, byteArrayOf(9))
             assertReset(assertNotNull(pollFrame(duplex.input)), firstId, 0x01)
             val secondId = readRequest(duplex)
-            // Credit first, on a frame that leaves the stream open; the close comes after, and
-            // draws no credit of its own.
+            // A frame that leaves the stream open, then the close: neither draws credit below
+            // half the window.
             sendFrame(duplex, secondId, FLAG_DATA, responseBytes(32))
-            assertWindow(readFrame(duplex.input), secondId, 32)
+            assertNull(pollFrame(duplex.input, iterations = 20))
             sendFrame(duplex, secondId, FLAG_CLOSE, ByteArray(0))
         }
         val session = MuxSession(client)

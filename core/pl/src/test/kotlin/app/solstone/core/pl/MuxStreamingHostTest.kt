@@ -50,14 +50,13 @@ class MuxStreamingHostTest {
                 val resHeaders = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n".toByteArray(Charsets.US_ASCII)
                 sendFrame(duplex, 1, FLAG_DATA, resHeaders)
 
-                val grant1 = pollFrame(duplex.input)
-                assertTrue(grant1 != null && (grant1.flags and FLAG_WINDOW) != 0)
+                // Small chunks draw no WINDOW: credit comes back only at half the window.
+                assertTrue(pollFrame(duplex.input, iterations = 20) == null)
 
                 val chunk1 = "Hello, ".toByteArray(Charsets.US_ASCII)
                 sendFrame(duplex, 1, FLAG_DATA, chunk1)
 
-                val grant2 = pollFrame(duplex.input)
-                assertTrue(grant2 != null && (grant2.flags and FLAG_WINDOW) != 0)
+                assertTrue(pollFrame(duplex.input, iterations = 20) == null)
 
                 val chunk2 = "streaming world!".toByteArray(Charsets.US_ASCII)
                 sendFrame(duplex, 1, FLAG_DATA or FLAG_CLOSE, chunk2)

@@ -122,7 +122,7 @@ class MuxSession(
             senderThread.isDaemon = true
             senderThread.start()
 
-            var receiveWindow = initialReceiveWindow
+            val receive = ReceiveCredit(initialReceiveWindow)
             var cumulativeBytes = 0L
             var isPreOpen = true
 
@@ -189,13 +189,12 @@ class MuxSession(
                         val size = frame.payload.size
                         val closesStream = (frame.flags and FLAG_CLOSE) != 0
                         if (size > 0) {
-                            if (size > receiveWindow) {
+                            if (!receive.debit(size)) {
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
                                 val ex = IOException("PL receive window exceeded")
                                 responseSink.onError(ex)
                                 throw ex
                             }
-                            receiveWindow -= size
                             cumulativeBytes += size
                             notifyObserver { it.onResponseDataConsumed(streamId, size, cumulativeBytes.toInt()) }
                             progressiveParser.feed(frame.payload, 0, size)
@@ -205,8 +204,7 @@ class MuxSession(
                             // and count a protocol error. Every request that ended on a payload-
                             // carrying CLOSE was drawing one.
                             if (!closesStream) {
-                                writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                                receiveWindow += size
+                                receive.grant()?.let { writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(it)) }
                             }
                         }
                         if (closesStream) {
@@ -256,8 +254,7 @@ class MuxSession(
             // than the wire. So the request goes out as credit allows, between frame reads.
             var sendCredit = INITIAL_SEND_WINDOW.toLong()
             val response = ByteArrayOutputStream()
-            // Per-stream flow-control credit is replenished as each DATA frame is consumed.
-            var receiveWindow = initialReceiveWindow
+            val receive = ReceiveCredit(initialReceiveWindow)
             while (true) {
                 while (offset < request.size && sendCredit > 0) {
                     val count = minOf(MAX_DATA_CHUNK_BYTES.toLong(), (request.size - offset).toLong(), sendCredit).toInt()
@@ -333,7 +330,7 @@ class MuxSession(
                         val size = frame.payload.size
                         val closesStream = (frame.flags and FLAG_CLOSE) != 0
                         if (size > 0) {
-                            if (size > receiveWindow) {
+                            if (!receive.debit(size)) {
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
                                 throw IOException("PL receive window exceeded")
                             }
@@ -341,13 +338,11 @@ class MuxSession(
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
                                 throw IOException("PL response too large")
                             }
-                            receiveWindow -= size
                             response.write(frame.payload)
                             notifyObserver { it.onResponseDataConsumed(streamId, size, response.size()) }
                             // See the streaming path above: no credit back on the closing frame.
                             if (!closesStream) {
-                                writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(size))
-                                receiveWindow += size
+                                receive.grant()?.let { writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(it)) }
                             }
                         }
                         if (closesStream) {
@@ -452,6 +447,38 @@ class MuxSession(
 
     private fun resetReason(payload: ByteArray): String =
         if (payload.isEmpty()) "" else (payload[0].toInt() and 0xff).toString()
+}
+
+/**
+ * Receive-side credit for one stream, the policy of spl-core's `RecvWindow`: DATA is debited as it
+ * arrives and consumed at once, and the consumed bytes are granted back together only once half
+ * the initial window has built up.
+ *
+ * ⛔ Not a grant per frame. A journal answers with DATA and then a separate CLOSE, and forgets the
+ * stream at that CLOSE once this side has closed, so the grant for its last DATA frame always
+ * reaches a forgotten id. Framing § late frames makes the journal answer it with a PROTOCOL reset,
+ * which was one refusal on nearly every request. Below half a window no grant is ever sent.
+ */
+internal class ReceiveCredit(private val initialWindow: Int) {
+    private var credit = initialWindow.toLong()
+    private var unacked = 0L
+
+    /** Debits [size] bytes, or returns false without changing state when they exceed the credit. */
+    fun debit(size: Int): Boolean {
+        if (size > credit) return false
+        credit -= size
+        unacked += size
+        return true
+    }
+
+    /** The credit to return now, or null while less than half the window has been consumed. */
+    fun grant(): Int? {
+        if (unacked < initialWindow / 2) return null
+        val grant = unacked.toInt()
+        credit += unacked
+        unacked = 0
+        return grant
+    }
 }
 
 const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
