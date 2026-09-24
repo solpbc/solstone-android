@@ -24,6 +24,7 @@ android {
 
 dependencies {
     api("androidx.work:work-runtime:2.9.1")
+    api(project(":core:push"))
     implementation(project(":platform:persistence-room"))
     implementation(project(":platform:pl-transport-conscrypt"))
     implementation(project(":platform:identity-file"))

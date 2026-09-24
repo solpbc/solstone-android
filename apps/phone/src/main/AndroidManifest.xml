@@ -52,6 +52,13 @@
             android:name="app.solstone.platform.fgs.ObserverForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone|location|camera" />
+        <service
+            android:name=".PhonePushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
         <receiver
             android:name="app.solstone.platform.fgs.ObserverBootReceiver"
             android:exported="false">

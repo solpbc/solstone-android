@@ -16,6 +16,13 @@ import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.core.identity.ObtainResult
+import app.solstone.core.identity.PushKeyAccess
+import app.solstone.core.push.DistributorPort
+import app.solstone.core.push.DistributorResolution
+import app.solstone.core.push.PushRegistrationCoordinator
+import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
@@ -29,6 +36,17 @@ class ScheduleOptionalJobsTest {
         val mutator = FakeMutator(snapshot.copy(clientCertFingerprint = "sha256:different"))
         val (journalCoord, _) = createCoordinators(mutator)
         val (relayCoord, _) = createRelayCoordinator(mutator)
+        val tempDir = Files.createTempDirectory("push-test").toFile()
+        val fakePort = FakeDistributorPort()
+        val pushCoord = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = fakePort,
+            enabled = true,
+            pushKeys = FakePushKeys(),
+            pairingNow = { mutator.currentPairingGeneration() },
+            log = {},
+            enqueue = {},
+        )
         var clientOpened = false
 
         val scheduled = scheduleOptionalJobsIfPairingCurrent(
@@ -36,6 +54,7 @@ class ScheduleOptionalJobsTest {
             mutator = mutator,
             journalVersionCoordinator = journalCoord,
             relayAccessCoordinator = relayCoord,
+            pushRegistration = pushCoord,
             localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android") },
             openClient = {
                 clientOpened = true
@@ -45,6 +64,7 @@ class ScheduleOptionalJobsTest {
 
         assertFalse(scheduled)
         assertFalse(clientOpened)
+        assertFalse(fakePort.registerCalled)
     }
 
     @Test
@@ -52,23 +72,41 @@ class ScheduleOptionalJobsTest {
         val snapshot = sampleHome()
         val mutator = FakeMutator(snapshot)
         val latch = CountDownLatch(1)
+        val pushRequestedLatch = CountDownLatch(1)
         val (journalCoord, _) = createCoordinators(mutator)
         val (relayCoord, _) = createRelayCoordinator(mutator)
+        val tempDir = Files.createTempDirectory("push-test").toFile()
+        val fakePort = FakeDistributorPort()
+        val pushCoord = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = fakePort,
+            enabled = true,
+            pushKeys = FakePushKeys(),
+            pairingNow = { mutator.currentPairingGeneration() },
+            log = {},
+            enqueue = {},
+        )
 
         val scheduled = scheduleOptionalJobsIfPairingCurrent(
             snapshotIdentity = snapshot,
             mutator = mutator,
             journalVersionCoordinator = journalCoord,
             relayAccessCoordinator = relayCoord,
+            pushRegistration = pushCoord,
             localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android") },
             openClient = {
                 latch.countDown()
-                FakePlClient()
+                FakePlClient { path ->
+                    if (path == "/api/push/vapid-key") {
+                        pushRequestedLatch.countDown()
+                    }
+                }
             },
         )
 
         assertTrue(scheduled)
         assertTrue(latch.await(3, TimeUnit.SECONDS))
+        assertTrue(pushRequestedLatch.await(3, TimeUnit.SECONDS))
     }
 
     private fun sampleHome(): PairedHome =
@@ -109,7 +147,9 @@ class ScheduleOptionalJobsTest {
         }
     }
 
-    private class FakePlClient : PlHttpClient {
+    private class FakePlClient(
+        private val onRequest: (path: String) -> Unit = {},
+    ) : PlHttpClient {
         override fun request(
             method: String,
             path: String,
@@ -117,8 +157,26 @@ class ScheduleOptionalJobsTest {
             body: ByteArray?,
             maxResponseBytes: Int,
         ): HttpResponse {
+            onRequest(path)
             return HttpResponse(200, emptyMap(), """{"journal_name":"Test Journal","protocol_version":1,"revision":1,"reported":null,"owner_label":null,"display_label":"Phone","updated_at":null,"journal":{"name":"J","version":"1.0.0"}}""".toByteArray())
         }
+    }
+
+    private class FakeDistributorPort : DistributorPort {
+        var registerCalled = false
+        override fun resolveDefault(): DistributorResolution = DistributorResolution.Found("org.fake.distributor")
+        override fun available(): List<String> = listOf("org.fake.distributor")
+        override val ownPackage: String = "app.solstone.phone"
+        override fun save(pkg: String) {}
+        override fun register(vapidKey: String) {
+            registerCalled = true
+        }
+        override fun unregister() {}
+    }
+
+    private class FakePushKeys : PushKeyAccess {
+        override fun readPushKey(generation: PairingGeneration): ByteArray? = ByteArray(32)
+        override fun obtainPushKey(generation: PairingGeneration): ObtainResult = ObtainResult.Obtained(ByteArray(32))
     }
 
     private class FakeMutator(var home: PairedHome?) : IdentityMutator {

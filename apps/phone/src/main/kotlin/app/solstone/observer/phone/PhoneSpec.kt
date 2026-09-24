@@ -13,6 +13,7 @@ import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.platform.work.JournalRevokeOutcome
+import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.platform.work.syncStores
 
@@ -52,9 +53,7 @@ val phoneSpec = FormFactorSpec(
             onMismatch = {
                 val revoke = revokeThisDeviceOnJournal(stores.publisher)
                 if (stores.publisher.forget() is GraphMutationResult.Cleared) {
-                    stores.journalVersionCoordinator.onIdentityChanged()
-                    stores.relayAccessCoordinator.onIdentityChanged()
-                    stores.journalIdentityCoordinator.onIdentityChanged()
+                    forgetPushAfterCleared(stores)
                     if (revoke == JournalRevokeOutcome.UNREACHED) {
                         PairingMismatchResult.JournalUnreached
                     } else {

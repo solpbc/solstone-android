@@ -30,6 +30,8 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+import app.solstone.core.push.PushRegistrationCoordinator
+
 private const val TAG = "SyncWorker"
 
 fun scheduleOptionalJobsIfPairingCurrent(
@@ -37,6 +39,7 @@ fun scheduleOptionalJobsIfPairingCurrent(
     mutator: IdentityMutator,
     journalVersionCoordinator: JournalVersionRefreshCoordinator,
     relayAccessCoordinator: RelayAccessRefreshCoordinator,
+    pushRegistration: PushRegistrationCoordinator?,
     localDescriptionProvider: () -> ClientReportedDescription,
     openClient: () -> PlHttpClient,
 ): Boolean {
@@ -58,6 +61,11 @@ fun scheduleOptionalJobsIfPairingCurrent(
         caChainFingerprint = snapshotIdentity.caChainFingerprint,
         clientCertFingerprint = snapshotIdentity.clientCertFingerprint,
         openClient = openClient,
+    )
+    pushRegistration?.onUsableConnection(
+        generation = snapshotPairing,
+        openClient = openClient,
+        pairingNow = { mutator.currentPairingGeneration() },
     )
     return true
 }
@@ -143,6 +151,7 @@ class SyncWorker(
                             mutator = stores.identityMutator,
                             journalVersionCoordinator = stores.journalVersionCoordinator,
                             relayAccessCoordinator = stores.relayAccessCoordinator,
+                            pushRegistration = stores.pushRegistration,
                             localDescriptionProvider = { currentPhoneDeviceDescription(applicationContext) },
                             openClient = {
                                 val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)

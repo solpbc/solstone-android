@@ -22,6 +22,9 @@ import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.core.push.DistributorPort
+import app.solstone.core.push.PushDeliveryState
+import app.solstone.core.push.PushRegistrationCoordinator
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
@@ -43,7 +46,14 @@ data class SyncStores(
     val relayAccessCoordinator: RelayAccessRefreshCoordinator,
     val journalMarkStore: JournalMarkStore,
     val journalIdentityCoordinator: JournalIdentityRefreshCoordinator,
-)
+    val pushRegistration: PushRegistrationCoordinator? = null,
+) {
+    val pushDeliveryState: PushDeliveryState
+        get() = pushRegistration?.deliveryState ?: PushDeliveryState.Off
+
+    fun addPushDeliveryStateListener(listener: (PushDeliveryState) -> Unit): () -> Unit =
+        pushRegistration?.addDeliveryStateListener(listener) ?: { }
+}
 
 class PublisherIdentityMutatorAdapter(
     private val publisher: PairingPublisher,
@@ -126,6 +136,30 @@ class PublisherIdentityMutatorAdapter(
     }
 }
 
+private data class PushInstallConfig(
+    val port: DistributorPort,
+    val enabled: Boolean,
+    val log: (String) -> Unit,
+    val enqueue: () -> Unit,
+)
+
+fun installPushRegistration(
+    port: DistributorPort,
+    enabled: Boolean,
+    log: (String) -> Unit,
+    enqueue: () -> Unit,
+) {
+    SyncStoresHolder.setPushInstall(PushInstallConfig(port, enabled, log, enqueue))
+}
+
+fun forgetPushAfterCleared(stores: SyncStores) {
+    stores.journalVersionCoordinator.onIdentityChanged()
+    stores.relayAccessCoordinator.onIdentityChanged()
+    stores.journalIdentityCoordinator.onIdentityChanged()
+    // When the unpair revoke could not reach the journal, that journal's push rows stay until an unpair from the journal side. The local reset still clears this phone.
+    stores.pushRegistration?.reset()
+}
+
 private object SyncStoresHolder {
     @Volatile
     private var publisher: FilePairingGraph? = null
@@ -137,6 +171,18 @@ private object SyncStoresHolder {
     private var raCoordinator: RelayAccessRefreshCoordinator? = null
     @Volatile
     private var jiCoordinator: JournalIdentityRefreshCoordinator? = null
+    @Volatile
+    private var pushCoordinator: PushRegistrationCoordinator? = null
+    @Volatile
+    private var pushAttempted = false
+    @Volatile
+    private var pushInstall: PushInstallConfig? = null
+
+    fun setPushInstall(config: PushInstallConfig) = synchronized(this) {
+        if (!pushAttempted) {
+            pushInstall = config
+        }
+    }
 
     fun getPublisher(dir: File, protector: AndroidKeyStoreProtector): FilePairingGraph =
         publisher ?: synchronized(this) {
@@ -176,6 +222,37 @@ private object SyncStoresHolder {
                 publisher = publisher,
             ).also { jiCoordinator = it }
         }
+
+    fun getPushCoordinator(
+        dir: File,
+        graph: FilePairingGraph,
+        mutator: IdentityMutator,
+    ): PushRegistrationCoordinator? =
+        if (pushAttempted) {
+            pushCoordinator
+        } else {
+            synchronized(this) {
+                if (pushAttempted) {
+                    pushCoordinator
+                } else {
+                    val config = pushInstall
+                    pushAttempted = true
+                    if (config != null) {
+                        PushRegistrationCoordinator(
+                            directory = dir,
+                            port = config.port,
+                            enabled = config.enabled,
+                            pushKeys = graph,
+                            pairingNow = { mutator.currentPairingGeneration() },
+                            log = config.log,
+                            enqueue = config.enqueue,
+                        ).also { pushCoordinator = it }
+                    } else {
+                        null
+                    }
+                }
+            }
+        }
 }
 
 fun plStoreDir(context: Context): File = File(context.filesDir, "pl")
@@ -188,6 +265,7 @@ fun syncStores(context: Context): SyncStores {
     val identityStore = FileIdentityStore(File(dir, "identity.tsv"), protector)
     val graph = SyncStoresHolder.getPublisher(dir, protector)
     val mutator = SyncStoresHolder.getMutator(graph)
+    val pushCoordinator = SyncStoresHolder.getPushCoordinator(dir, graph, mutator)
     return SyncStores(
         publisher = graph,
         pushKeys = graph,
@@ -200,5 +278,6 @@ fun syncStores(context: Context): SyncStores {
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
         journalMarkStore = journalMarkStore,
         journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, graph),
+        pushRegistration = pushCoordinator,
     )
 }

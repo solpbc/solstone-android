@@ -44,6 +44,7 @@ import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.diagnostics.DiagnosticLogRead
+import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -185,9 +186,7 @@ class PhoneShellActivity : ComponentActivity() {
                     PhoneDiagLog.appendRaw("kind=unpair revoke=${revoke.name.lowercase()}")
                     journalKeptItsRecord = revoke == JournalRevokeOutcome.UNREACHED
                     if (stores.publisher.forget() is GraphMutationResult.Cleared) {
-                        stores.journalVersionCoordinator.onIdentityChanged()
-                        stores.relayAccessCoordinator.onIdentityChanged()
-                        stores.journalIdentityCoordinator.onIdentityChanged()
+                        forgetPushAfterCleared(stores)
                         statusViewModel.refresh()
                     } else {
                         journalMutationFailed = true

@@ -9,5 +9,6 @@ kotlin {
 
 dependencies {
     implementation(project(":core:pl"))
+    implementation(project(":core:identity"))
     testImplementation(kotlin("test"))
 }

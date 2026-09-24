@@ -102,8 +102,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "PUSH_REGISTRATION", "true")
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
+            buildConfigField("boolean", "PUSH_REGISTRATION", "false") // push registration stays off in release builds until its privacy and security review has cleared.
         }
     }
 
@@ -118,6 +122,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     flavorDimensions += "mode"
@@ -213,6 +218,19 @@ tasks.register("verifySolstoneGateBuildReceipts") {
     }
 }
 
+tasks.matching { it.name == "compileRealReleaseKotlin" }.configureEach {
+    doLast {
+        val buildConfigDir = layout.buildDirectory.dir("generated/source/buildConfig").get().asFile
+        val buildConfigFile = buildConfigDir.walkTopDown().firstOrNull {
+            it.name == "BuildConfig.java" && it.absolutePath.contains("release")
+        } ?: throw GradleException("Generated BuildConfig.java not found in ${buildConfigDir.absolutePath}")
+        val text = buildConfigFile.readText()
+        if (!text.contains("public static final boolean PUSH_REGISTRATION = false;")) {
+            throw GradleException("realRelease BuildConfig must have PUSH_REGISTRATION = false, found:\n$text")
+        }
+    }
+}
+
 dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:diagnostics"))
@@ -227,7 +245,6 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("androidx.compose.ui:ui:1.10.6")
     implementation("androidx.glance:glance-appwidget:1.1.1")
-    // push registration stays off in release builds until its privacy and security review has cleared.
     implementation("org.unifiedpush.android:connector:3.3.5")
     implementation("org.unifiedpush.android:embedded-fcm-distributor:3.1.0")
 

@@ -36,6 +36,9 @@ import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotification
 import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotificationCatching
 import app.solstone.observer.formfactor.phone.encodePhoneRoute
 
+import app.solstone.platform.work.SyncScheduler
+import app.solstone.platform.work.installPushRegistration
+
 class PhoneApplication : ObserverApplication(phoneSpec) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
@@ -64,6 +67,12 @@ class PhoneApplication : ObserverApplication(phoneSpec) {
         PhoneDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { PhoneDiagLog.appendRaw(it) }
         SyncWorker.syncDiag = { PhoneDiagLog.appendRaw(it) }
+        installPushRegistration(
+            port = UnifiedPushDistributorPort(this),
+            enabled = BuildConfig.PUSH_REGISTRATION,
+            log = { line -> PhoneDiagLog.appendRaw(line) },
+            enqueue = { SyncScheduler.enqueueNow(this, phoneSpec.stream) },
+        )
         super.onCreate()
         widgetStartOutcomes = PhoneWidgetStartOutcomeStore(applicationContext)
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
