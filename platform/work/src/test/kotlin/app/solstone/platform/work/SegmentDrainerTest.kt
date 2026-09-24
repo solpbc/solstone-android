@@ -66,6 +66,38 @@ class SegmentDrainerTest {
     }
 
     @Test
+    fun aSegmentSealedDuringTheDrainGoesOutInTheSameRun() {
+        val fixture = TestFixture()
+        val (first, firstDir) = fixture.createSegment("a")
+        var later: SegmentRow? = null
+        var ingests = 0
+        val accept = acceptedIngest("srv")
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = { manifest, fileBytes ->
+                ingests += 1
+                // The seal-time sync request is dropped while this run holds the queue, so this
+                // run is the only thing that can carry the segment sealed under it.
+                if (later == null) later = fixture.createSegment("b", sealedAt = 2).first
+                accept(manifest, fileBytes)
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+        assertEquals(2, ingests)
+        assertEquals(QueueState.EVICTED, fixture.store.row(first.id).state)
+        assertEquals(QueueState.EVICTED, fixture.store.row(later!!.id).state)
+        assertFalse(Files.exists(firstDir))
+        assertEquals(0, fixture.store.syncState!!.pendingCount)
+    }
+
+    @Test
     fun processedVerdictSkipsUploadAndMarksUploaded() {
         val fixture = TestFixture()
         val (seg, dir) = fixture.createSegment(

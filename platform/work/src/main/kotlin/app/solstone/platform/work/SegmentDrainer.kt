@@ -73,118 +73,130 @@ fun drainSegments(
     var halted = false
     var failedThisRun = false
     var lastErrorReason: String? = null
-    val due = selectDrainSegments(store.segmentsForDrain(), now())
-    val selected = due.take(DRAIN_SEGMENT_CAP)
-    val dueRemaining = due.size > selected.size
+    // A segment sealed while this run drains goes out in the same run: each pass re-reads what is
+    // due, skipping what this run already took, until nothing new is due, a pass fails, or the cap
+    // is spent. Sealing also asks for a sync, but that request is dropped while this one runs.
+    val taken = mutableSetOf<String>()
+    var dueRemaining = false
+    while (!halted && !failedThisRun) {
+        val due = selectDrainSegments(store.segmentsForDrain(), now()).filter { it.id !in taken }
+        if (due.isEmpty()) break
+        val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
+        if (due.size > selected.size) dueRemaining = true
+        if (selected.isEmpty()) break
+        taken += selected.map { it.id }
 
-    for ((day, daySegments) in selected.groupBy { it.day }) {
-        val manifests = daySegments.associateWith { segment ->
-            reconstructManifest(segment, store.filesBySegmentId(segment.id))
-        }
-        val verdicts = try {
-            reconcile(manifests.values.toList(), day)
-        } catch (e: RelayWebSocketClosedException) {
-            throw e
-        } catch (e: ReconcileAuthException) {
-            log("reconcile auth halt day=$day", e)
-            failedThisRun = true
-            halted = true
-            break
-        } catch (e: ReconcileUnavailableException) {
-            log("reconcile unavailable day=$day", e)
-            failedThisRun = true
-            continue
-        } catch (e: IOException) {
-            log("reconcile io day=$day", e)
-            failedThisRun = true
-            continue
-        }
-        val actions = planDayDrain(verdicts, daySegments).associateBy(::drainActionId)
-
-        for (segment in daySegments) {
-            val manifest = manifests.getValue(segment)
-            if (!claimForUpload(store, segment, log)) {
+        for ((day, daySegments) in selected.groupBy { it.day }) {
+            val manifests = daySegments.associateWith { segment ->
+                reconstructManifest(segment, store.filesBySegmentId(segment.id))
+            }
+            val verdicts = try {
+                reconcile(manifests.values.toList(), day)
+            } catch (e: RelayWebSocketClosedException) {
+                throw e
+            } catch (e: ReconcileAuthException) {
+                log("reconcile auth halt day=$day", e)
+                failedThisRun = true
+                halted = true
+                break
+            } catch (e: ReconcileUnavailableException) {
+                log("reconcile unavailable day=$day", e)
+                failedThisRun = true
+                continue
+            } catch (e: IOException) {
+                log("reconcile io day=$day", e)
                 failedThisRun = true
                 continue
             }
-            store.recordAttempt(segment.id, segment.attemptCount + 1, now())
+            val actions = planDayDrain(verdicts, daySegments).associateBy(::drainActionId)
 
-            when (actions.getValue(segment.id)) {
-                is DrainAction.Skip -> {
-                    confirmThenRemove(store, finisher, segment, log)?.let { reason ->
-                        failedThisRun = true
-                        lastFailureAt = now()
-                        lastErrorReason = reason
-                    }
+            for (segment in daySegments) {
+                val manifest = manifests.getValue(segment)
+                if (!claimForUpload(store, segment, log)) {
+                    failedThisRun = true
+                    continue
                 }
-                is DrainAction.Upload -> {
-                    val result = try {
-                        resolveIngestOutcomes(
-                            manifest,
-                            ingest(manifest) { file -> readPayload(segment, file) },
-                        )
-                    } catch (e: RelayWebSocketClosedException) {
-                        throw e
-                    } catch (e: FileNotFoundException) {
-                        val reason = "payload missing"
-                        log("payload missing ${segment.id}", e)
-                        markPayloadFailed(store, segment, reason)
-                        failedThisRun = true
-                        lastFailureAt = now()
-                        lastErrorReason = reason
-                        continue
-                    } catch (e: IllegalArgumentException) {
-                        val reason = "payload unreadable"
-                        log("payload unreadable ${segment.id}", e)
-                        markPayloadFailed(store, segment, reason)
-                        failedThisRun = true
-                        lastFailureAt = now()
-                        lastErrorReason = reason
-                        continue
-                    } catch (e: IOException) {
-                        log("ingest io ${segment.id}", e)
-                        resolveIoError()
-                    }
+                store.recordAttempt(segment.id, segment.attemptCount + 1, now())
 
-                    when (result) {
-                        is SegmentSyncResult.Uploaded,
-                        is SegmentSyncResult.JournalRemoved -> {
-                            confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                when (actions.getValue(segment.id)) {
+                    is DrainAction.Skip -> {
+                        confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                            failedThisRun = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                        }
+                    }
+                    is DrainAction.Upload -> {
+                        val result = try {
+                            resolveIngestOutcomes(
+                                manifest,
+                                ingest(manifest) { file -> readPayload(segment, file) },
+                            )
+                        } catch (e: RelayWebSocketClosedException) {
+                            throw e
+                        } catch (e: FileNotFoundException) {
+                            val reason = "payload missing"
+                            log("payload missing ${segment.id}", e)
+                            markPayloadFailed(store, segment, reason)
+                            failedThisRun = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                            continue
+                        } catch (e: IllegalArgumentException) {
+                            val reason = "payload unreadable"
+                            log("payload unreadable ${segment.id}", e)
+                            markPayloadFailed(store, segment, reason)
+                            failedThisRun = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                            continue
+                        } catch (e: IOException) {
+                            log("ingest io ${segment.id}", e)
+                            resolveIoError()
+                        }
+
+                        when (result) {
+                            is SegmentSyncResult.Uploaded,
+                            is SegmentSyncResult.JournalRemoved -> {
+                                confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                                    failedThisRun = true
+                                    lastFailureAt = now()
+                                    lastErrorReason = reason
+                                }
+                            }
+                            is SegmentSyncResult.Retry -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, result.error)
                                 failedThisRun = true
                                 lastFailureAt = now()
-                                lastErrorReason = reason
+                                lastErrorReason = result.error + (result.status?.let { " ($it)" } ?: "")
                             }
-                        }
-                        is SegmentSyncResult.Retry -> {
-                            store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, result.error)
-                            failedThisRun = true
-                            lastFailureAt = now()
-                            lastErrorReason = result.error + (result.status?.let { " ($it)" } ?: "")
-                        }
-                        is SegmentSyncResult.HardFail -> {
-                            store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, result.error)
-                            failedThisRun = true
-                            lastFailureAt = now()
-                            lastErrorReason = "${result.error} (${result.status})"
-                        }
-                        is SegmentSyncResult.AuthHalt -> {
-                            store.advanceState(segment.id, QueueEvent.MARK_FAILED)
-                            store.recordFailure(segment.id, result.status, "auth halted")
-                            failedThisRun = true
-                            halted = haltsDrain(result)
-                            lastFailureAt = now()
-                            lastErrorReason = "auth halted (${result.status})"
+                            is SegmentSyncResult.HardFail -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, result.error)
+                                failedThisRun = true
+                                lastFailureAt = now()
+                                lastErrorReason = "${result.error} (${result.status})"
+                            }
+                            is SegmentSyncResult.AuthHalt -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, "auth halted")
+                                failedThisRun = true
+                                halted = haltsDrain(result)
+                                lastFailureAt = now()
+                                lastErrorReason = "auth halted (${result.status})"
+                            }
                         }
                     }
                 }
+
+                if (halted) break
             }
 
             if (halted) break
         }
 
-        if (halted) break
+        if (dueRemaining) break
     }
 
     val pendingAfter = store.pendingCount(MAIN_STREAM)

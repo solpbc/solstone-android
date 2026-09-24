@@ -55,7 +55,6 @@ class PhoneForegroundServiceRuntimeTest {
             assertEquals(unpairedBaseline, sync.enqueueNowCalls)
 
             assertTrue(container.controller.onScannedPairLink(validDirectPairLink()) != null)
-            val pairedBaseline = sync.enqueueNowCalls
 
             container.controller.start()
             waitUntilNotificationVisible()
@@ -64,8 +63,11 @@ class PhoneForegroundServiceRuntimeTest {
             container.flavor.heartbeatControl?.setFresh(false)
             assertEquals(SourceState.NEEDS_ATTENTION, container.controller.diagnostics().state)
 
+            // Read just before the call: starting capture can seal a segment, and a seal asks for a
+            // sync of its own. This counts only what the owner's own sync now asks for.
+            val beforeSyncNow = sync.enqueueNowCalls
             assertEquals(SyncNowResult.Enqueued, container.controller.syncNow())
-            assertEquals(pairedBaseline + 1, sync.enqueueNowCalls)
+            assertEquals(beforeSyncNow + 1, sync.enqueueNowCalls)
 
             container.controller.stop()
         }

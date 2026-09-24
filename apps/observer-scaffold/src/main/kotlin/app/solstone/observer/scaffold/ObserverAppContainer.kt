@@ -43,6 +43,7 @@ import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.observer.harness.CaptureRestartSequencer
 import app.solstone.observer.harness.ServiceDestroyWaitSeam
 import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
+import app.solstone.observer.harness.syncingOnSeal
 import java.time.ZoneId
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -317,7 +318,7 @@ class ObserverAppContainer(
                     database.segmentDao().isLeafOccupied(day, stream, leaf)
                 },
             ),
-            sealedSink = RoomSealedSegmentSink(database.segmentDao()),
+            sealedSink = syncingOnSeal(RoomSealedSegmentSink(database.segmentDao())) { controller.syncNow() },
             payloadBytes = captureSetup.payloadBytesProvider,
             engines = sources.engines,
             nowProvider = System::currentTimeMillis,

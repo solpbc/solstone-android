@@ -36,6 +36,7 @@ import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceRuntimeSnapshot
 import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.observer.harness.sourceRuntimeSnapshotFromEngines
+import app.solstone.observer.harness.syncingOnSeal
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.needsAttentionForState
@@ -376,7 +377,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
                     database.segmentDao().isLeafOccupied(day, stream, leaf)
                 },
             ),
-            sealedSink = RoomSealedSegmentSink(database.segmentDao()),
+            sealedSink = syncingOnSeal(RoomSealedSegmentSink(database.segmentDao())) { controller.syncNow() },
             payloadBytes = captureSetup.payloadBytesProvider,
             engines = captureSetup.engines,
             nowProvider = System::currentTimeMillis,
