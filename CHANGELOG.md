@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.8] - 2026-09-24
+
 ### Fixed
 - what the solstone app took in could be removed from your phone without a check that all of it had landed in your journal intact. for anything that goes into your journal from this version on, the app removes it from your phone only after every file has landed in your journal exactly as your phone saved it.
 
