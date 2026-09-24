@@ -7,6 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- the phone could forget its journal when saving relay access failed.
 - the syncing count on your phone could stay up, because larger things waiting to go into your journal kept retrying and didn't catch up. they land in your journal now.
 
 ## [2.1.8] - 2026-09-24

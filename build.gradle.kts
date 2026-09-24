@@ -5,14 +5,14 @@ plugins {
     base
     id("com.android.application") version "8.9.1" apply false
     id("com.android.library") version "8.9.1" apply false
-    id("com.google.devtools.ksp") version "2.0.21-1.0.28" apply false
-    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-    id("org.jetbrains.kotlin.jvm") version "2.0.21" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
+    id("com.google.devtools.ksp") version "2.2.21-2.0.5" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.21" apply false
+    id("org.jetbrains.kotlin.jvm") version "2.2.21" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
 }
 
 fun deniedPrivacyCoordinate(group: String, name: String): String? {
-    val deniedGroupPrefixes = listOf("com.segment", "io.sentry")
+    val deniedGroupPrefixes = listOf("com.segment", "io.sentry", "com.google.firebase")
     val deniedArtifacts = setOf(
         "firebase-analytics",
         "firebase-crashlytics",
@@ -30,7 +30,7 @@ fun deniedPrivacyCoordinate(group: String, name: String): String? {
     val coordinate = "$group:$name"
     if (coordinate in exactCoordinates) return coordinate
     if (deniedGroupPrefixes.any { group == it || group.startsWith("$it.") }) return coordinate
-    if (name in deniedArtifacts) return coordinate
+    if (name in deniedArtifacts || name.startsWith("firebase-")) return coordinate
     return null
 }
 
@@ -672,6 +672,9 @@ tasks.register("privacyGuardSelfTest") {
         check(deniedPrivacyCoordinate("io.sentry", "sentry") != null)
         check(deniedPrivacyCoordinate("com.segment", "analytics") != null)
         check(deniedPrivacyCoordinate("com.google.firebase", "firebase-analytics") != null)
+        check(deniedPrivacyCoordinate("com.google.firebase", "firebase-messaging") != null)
+        check(deniedPrivacyCoordinate("org.example", "firebase-anything") != null)
+        check(deniedPrivacyCoordinate("org.unifiedpush.android", "embedded-fcm-distributor") == null)
         check(deniedPrivacyCoordinate("app.solstone", "core-segment") == null)
         check(deniedPrivacyCoordinate("org.example", "segment") == null)
         check(deniedPrivacyCoordinate("org.jetbrains.kotlin", "kotlin-stdlib") == null)
@@ -1841,6 +1844,211 @@ project(":apps:watch") {
     registerLauncherHomeManifestCheck(requireHome = false)
 }
 
+fun Project.registerRealReleasePushManifestCheck() {
+    tasks.register("checkRealReleasePushManifest") {
+        group = "verification"
+        description = "Checks realRelease merged manifest against real-release-push-manifest-allowlist.txt"
+        dependsOn("processRealReleaseManifest")
+        doLast {
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realRelease/processRealReleaseManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+            val allowlistFile = file("real-release-push-manifest-allowlist.txt")
+            if (!allowlistFile.exists()) {
+                throw GradleException("Allowlist file not found: ${allowlistFile.relativeTo(rootProject.projectDir)}")
+            }
+
+            val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(manifest)
+            doc.documentElement.normalize()
+
+            val permissions = mutableListOf<String>()
+            val permNodes = doc.getElementsByTagName("uses-permission")
+            for (i in 0 until permNodes.length) {
+                val el = permNodes.item(i) as? org.w3c.dom.Element ?: continue
+                val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                if (name.isNotEmpty()) {
+                    permissions += name
+                }
+            }
+            permissions.sort()
+
+            val exportedComponents = mutableListOf<String>()
+            val componentTags = listOf("activity", "service", "receiver", "provider")
+            for (tag in componentTags) {
+                val nodes = doc.getElementsByTagName(tag)
+                for (i in 0 until nodes.length) {
+                    val el = nodes.item(i) as? org.w3c.dom.Element ?: continue
+                    val exportedAttr = el.getAttribute("android:exported").ifEmpty { el.getAttribute("exported") }
+                    if (exportedAttr.equals("true", ignoreCase = true)) {
+                        val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                        val permAttr = el.getAttribute("android:permission").ifEmpty { el.getAttribute("permission") }
+                        val perm = if (permAttr.isNotEmpty()) permAttr else "(none)"
+                        exportedComponents += "$tag: $name [permission: $perm]"
+                    }
+                }
+            }
+            exportedComponents.sort()
+
+            val actualFormatted = buildString {
+                appendLine("=== uses-permission (sorted) ===")
+                permissions.forEach { appendLine(it) }
+                appendLine()
+                appendLine("=== exported=\"true\" components ===")
+                exportedComponents.forEach { appendLine(it) }
+            }.trim()
+
+            val expectedFormatted = allowlistFile.readText().trim()
+            if (actualFormatted != expectedFormatted) {
+                throw GradleException(
+                    "${project.path} realRelease push manifest allowlist check failed.\nExpected:\n$expectedFormatted\n\nActual:\n$actualFormatted",
+                )
+            }
+        }
+    }
+}
+
+fun Project.registerRealReleasePushDexCheck() {
+    tasks.register("checkRealReleasePushDex") {
+        group = "verification"
+        description = "Scans release APK dex files for banned telemetry and verifies presence of connector."
+        dependsOn("assembleRealRelease")
+        doLast {
+            val apkDir = layout.buildDirectory.dir("outputs/apk/real/release").get().asFile
+            val apks = apkDir.listFiles { f -> f.extension == "apk" && !f.name.contains("-unaligned") }.orEmpty()
+            if (apks.isEmpty()) {
+                throw GradleException("No realRelease APK found in ${apkDir.absolutePath}")
+            }
+            val apk = apks.first()
+
+            val sdkDir = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.sdkDirectory
+                ?: System.getenv("ANDROID_HOME")?.let { File(it) }
+                ?: System.getenv("ANDROID_SDK_ROOT")?.let { File(it) }
+                ?: File("/home/jer/android-dev/sdk")
+            val buildToolsDir = File(sdkDir, "build-tools")
+            val dexdump = buildToolsDir.listFiles()
+                ?.sortedByDescending { it.name }
+                ?.map { File(it, "dexdump") }
+                ?.firstOrNull { it.canExecute() }
+                ?: throw GradleException("dexdump binary not found under ${buildToolsDir.absolutePath}")
+
+            var totalClasses = 0
+            var dexCount = 0
+            val classDescriptors = mutableListOf<String>()
+
+            java.util.zip.ZipFile(apk).use { zip ->
+                val dexEntries = zip.entries().asSequence()
+                    .filter { it.name.startsWith("classes") && it.name.endsWith(".dex") }
+                    .toList()
+                dexCount = dexEntries.size
+                if (dexCount == 0) {
+                    throw GradleException("No dex files found inside $apk")
+                }
+                val tempDir = layout.buildDirectory.dir("tmp/dexdump-check").get().asFile
+                tempDir.mkdirs()
+                dexEntries.forEach { entry ->
+                    val tempDex = File(tempDir, entry.name)
+                    zip.getInputStream(entry).use { input ->
+                        tempDex.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val process = ProcessBuilder(dexdump.absolutePath, tempDex.absolutePath)
+                        .redirectErrorStream(true)
+                        .start()
+                    val output = process.inputStream.bufferedReader().use { it.readText() }
+                    process.waitFor()
+                    tempDex.delete()
+
+                    val descriptorRegex = Regex("""Class descriptor\s*:\s*'([^']+)'""")
+                    descriptorRegex.findAll(output).forEach { match ->
+                        totalClasses++
+                        classDescriptors += match.groupValues[1]
+                    }
+                }
+            }
+
+            println("Scanned $totalClasses classes across $dexCount dex files in ${apk.name}")
+
+            val bannedPatterns = listOf(
+                "Lcom/google/firebase",
+                "gms/analytics",
+                "gms/measurement",
+                "crashlytics",
+                "Lcom/google/android/gms/",
+            )
+            val violations = mutableListOf<String>()
+            for (descriptor in classDescriptors) {
+                for (banned in bannedPatterns) {
+                    if (descriptor.contains(banned)) {
+                        violations += "Banned descriptor found: $descriptor (matches '$banned')"
+                    }
+                }
+            }
+            if (violations.isNotEmpty()) {
+                throw GradleException("Dex purity check failed:\n${violations.joinToString("\n")}")
+            }
+
+            val hasConnector = classDescriptors.any { it.startsWith("Lorg/unifiedpush/android/connector/") }
+            if (!hasConnector) {
+                throw GradleException("Expected UnifiedPush connector classes (Lorg/unifiedpush/android/connector/) not found in dex")
+            }
+        }
+    }
+}
+
+fun Project.registerNoPushGatewayCheck() {
+    tasks.register("checkNoPushGateway") {
+        group = "verification"
+        description = "Ensures no EmbeddedDistributorReceiver subclass or custom/exported REGISTER receivers exist."
+        dependsOn("processRealReleaseManifest")
+        doLast {
+            val scanDirs = listOf(
+                projectDir.resolve("src"),
+                rootProject.projectDir.resolve("apps/observer-scaffold/src"),
+            )
+            scanDirs.filter { it.exists() }.forEach { dir ->
+                dir.walkTopDown().filter { it.isFile && (it.extension == "kt" || it.extension == "java") }.forEach { file ->
+                    val text = file.readText()
+                    if (text.contains("EmbeddedDistributorReceiver")) {
+                        throw GradleException("Found EmbeddedDistributorReceiver subclass / reference in ${file.relativeTo(rootProject.projectDir)}")
+                    }
+                }
+            }
+
+            val manifest = layout.buildDirectory
+                .file("intermediates/merged_manifests/realRelease/processRealReleaseManifest/AndroidManifest.xml")
+                .get()
+                .asFile
+            if (!manifest.exists()) {
+                throw GradleException("Merged manifest not found: ${manifest.relativeTo(rootProject.projectDir)}")
+            }
+
+            val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(manifest)
+            doc.documentElement.normalize()
+
+            val receiverNodes = doc.getElementsByTagName("receiver")
+            for (i in 0 until receiverNodes.length) {
+                val el = receiverNodes.item(i) as? org.w3c.dom.Element ?: continue
+                val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                val actions = mutableListOf<String>()
+                val actionNodes = el.getElementsByTagName("action")
+                for (j in 0 until actionNodes.length) {
+                    val actionEl = actionNodes.item(j) as? org.w3c.dom.Element ?: continue
+                    actions += actionEl.getAttribute("android:name").ifEmpty { actionEl.getAttribute("name") }
+                }
+                if ("org.unifiedpush.android.distributor.REGISTER" in actions) {
+                    val exported = el.getAttribute("android:exported").ifEmpty { el.getAttribute("exported") }
+                    if (exported == "true" || name.startsWith("app.solstone.")) {
+                        throw GradleException("Forbidden push gateway receiver declared: $name (exported=$exported, actions=$actions)")
+                    }
+                }
+            }
+        }
+    }
+}
+
 project(":apps:phone") {
     registerMicrophoneManifestCheck(
         coarseLocationOnly = true,
@@ -1853,6 +2061,9 @@ project(":apps:phone") {
     registerPhoneLauncherCountManifestCheck()
     registerPhoneShellExportManifestCheck()
     registerOnBackInvokedCallbackManifestCheck()
+    registerRealReleasePushManifestCheck()
+    registerRealReleasePushDexCheck()
+    registerNoPushGatewayCheck()
 }
 
 project(":apps:glasses") {

@@ -8,8 +8,6 @@ kotlin {
 }
 
 dependencies {
-    api(project(":core:identity"))
-    implementation(project(":core:crypto"))
-    api(project(":core:diagnostics"))
+    implementation(project(":core:pl"))
     testImplementation(kotlin("test"))
 }

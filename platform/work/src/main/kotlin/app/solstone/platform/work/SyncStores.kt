@@ -16,6 +16,7 @@ import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
@@ -32,6 +33,7 @@ import java.io.File
 
 data class SyncStores(
     val publisher: PairingPublisher,
+    val pushKeys: PushKeyAccess,
     val endpointStore: EndpointStore,
     val credentialStore: ClientCredentialStore,
     val identityStore: IdentityStore,
@@ -113,7 +115,7 @@ class PublisherIdentityMutatorAdapter(
 
 private object SyncStoresHolder {
     @Volatile
-    private var publisher: PairingPublisher? = null
+    private var publisher: FilePairingGraph? = null
     @Volatile
     private var mutator: IdentityMutator? = null
     @Volatile
@@ -123,7 +125,7 @@ private object SyncStoresHolder {
     @Volatile
     private var jiCoordinator: JournalIdentityRefreshCoordinator? = null
 
-    fun getPublisher(dir: File, protector: AndroidKeyStoreProtector): PairingPublisher =
+    fun getPublisher(dir: File, protector: AndroidKeyStoreProtector): FilePairingGraph =
         publisher ?: synchronized(this) {
             publisher ?: FilePairingGraph(
                 identityFile = File(dir, "identity.tsv"),
@@ -131,6 +133,8 @@ private object SyncStoresHolder {
                 endpointFile = File(dir, "endpoint.txt"),
                 commitMarkerFile = File(dir, "pairing.commit"),
                 protector = protector,
+                pushKeyFile = File(dir, "push-key.bin"),
+                pushKeyProtector = AndroidKeyStoreProtector("app.solstone.push.wrap.v1"),
             ).also { publisher = it }
         }
 
@@ -169,10 +173,11 @@ fun syncStores(context: Context): SyncStores {
     val journalVersionStore = FileJournalVersionStore(File(dir, "journal_version.tsv"))
     val journalMarkStore = FileJournalMarkStore(File(dir, "journal_mark.json"))
     val identityStore = FileIdentityStore(File(dir, "identity.tsv"), protector)
-    val publisher = SyncStoresHolder.getPublisher(dir, protector)
-    val mutator = SyncStoresHolder.getMutator(publisher)
+    val graph = SyncStoresHolder.getPublisher(dir, protector)
+    val mutator = SyncStoresHolder.getMutator(graph)
     return SyncStores(
-        publisher = publisher,
+        publisher = graph,
+        pushKeys = graph,
         endpointStore = FileEndpointStore(File(dir, "endpoint.txt")),
         credentialStore = FileClientCredentialStore(File(dir, "credential.pem"), protector),
         identityStore = identityStore,
@@ -181,6 +186,6 @@ fun syncStores(context: Context): SyncStores {
         journalVersionCoordinator = SyncStoresHolder.getJvCoordinator(journalVersionStore),
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
         journalMarkStore = journalMarkStore,
-        journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, publisher),
+        journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, graph),
     )
 }

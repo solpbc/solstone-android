@@ -11,11 +11,13 @@ import app.solstone.core.identity.DurableTxnHook
 import app.solstone.core.identity.DurableTxnStep
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.GraphRevisions
+import app.solstone.core.identity.ObtainResult
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingLease
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
@@ -34,7 +36,9 @@ class FilePairingGraph(
     private val protector: SecretProtector,
     private val fileWriter: AtomicFileWriter = AtomicFileWriter.Default,
     private val stepHook: DurableTxnHook? = null,
-) : PairingPublisher {
+    private val pushKeyFile: File? = null,
+    private val pushKeyProtector: SecretProtector? = null,
+) : PairingPublisher, PushKeyAccess {
     private val lock = Any()
     private val identityStore = FileIdentityStore(identityFile, protector, fileWriter = fileWriter)
     private val credentialStore = FileClientCredentialStore(credentialFile, protector, fileWriter = fileWriter)
@@ -55,6 +59,9 @@ class FilePairingGraph(
     private var currentSnapshotState: PairingGraphSnapshot
 
     init {
+        require((pushKeyFile == null) == (pushKeyProtector == null)) {
+            "pushKeyFile and pushKeyProtector must both be null or both non-null"
+        }
         currentSnapshotState = synchronized(lock) {
             cleanBackupAndStagingFiles()
             recoverOrAdoptLocked()
@@ -237,6 +244,23 @@ class FilePairingGraph(
         }
     }
 
+    private fun restoreRelayAccessBackup(backupWritten: Boolean): Boolean {
+        if (!backupWritten) {
+            identityBakFile.delete()
+        } else if (identityBakFile.exists()) {
+            try {
+                fileWriter.write(identityFile, identityBakFile.readBytes())
+                identityBakFile.delete()
+            } catch (_: Exception) {
+                // do not delete bak
+            }
+        }
+        val marker = PairingCommitMarker.parse(commitMarkerFile)
+        return marker != null &&
+            marker.status == CommitMarkerStatus.COMMITTED &&
+            PairingCommitMarker.checksumOf(identityFile) == marker.identityChecksum
+    }
+
     override fun updateRelayAccess(
         expectedPairing: PairingGeneration,
         relayOrigin: String,
@@ -249,8 +273,13 @@ class FilePairingGraph(
             return GraphMutationResult.Conflict("Pairing mismatch")
         }
 
+        var backupWritten = false
+        var markerWritten = false
         try {
-            if (identityFile.exists()) fileWriter.write(identityBakFile, identityFile.readBytes())
+            if (identityFile.exists()) {
+                fileWriter.write(identityBakFile, identityFile.readBytes())
+                backupWritten = true
+            }
             stepHook?.onStep(DurableTxnStep.STAGING_WRITE, CommitInFlightOp.ACCESS_UPDATE.name)
 
             val updatedHome = current.home.copy(
@@ -264,14 +293,16 @@ class FilePairingGraph(
 
             val inspect = identityStore.inspect()
             if (inspect !is StoreInspectResult.Ready || inspect.value != updatedHome) {
-                restorePriorFromBackupLocked(null)
+                val matches = restoreRelayAccessBackup(backupWritten)
                 stepHook?.onStep(DurableTxnStep.READ_BACK, CommitInFlightOp.ACCESS_UPDATE.name)
-                val uncertain = PairingGraphSnapshot.Uncertain(
-                    sequenceNumber = sequenceGen.incrementAndGet(),
-                    reason = PersistenceIssue.PERSISTENCE_FAILED,
-                )
-                currentSnapshotState = uncertain
-                notifySubscribers(uncertain)
+                if (!matches) {
+                    val uncertain = PairingGraphSnapshot.Uncertain(
+                        sequenceNumber = sequenceGen.incrementAndGet(),
+                        reason = PersistenceIssue.PERSISTENCE_FAILED,
+                    )
+                    currentSnapshotState = uncertain
+                    notifySubscribers(uncertain)
+                }
                 return GraphMutationResult.PersistenceFailed(IllegalStateException("Relay access readback failed"))
             }
             stepHook?.onStep(DurableTxnStep.READ_BACK, CommitInFlightOp.ACCESS_UPDATE.name)
@@ -289,6 +320,7 @@ class FilePairingGraph(
                 endpointChecksum = if (current.hasDirectEndpoint) PairingCommitMarker.checksumOf(endpointFile) else null,
             )
             writeCommitMarker(marker)
+            markerWritten = true
 
             cleanBackupAndStagingFiles()
             stepHook?.onStep(DurableTxnStep.CLEANUP, CommitInFlightOp.ACCESS_UPDATE.name)
@@ -304,8 +336,40 @@ class FilePairingGraph(
             notifySubscribers(updatedSnapshot)
             GraphMutationResult.Applied(updatedSnapshot)
         } catch (e: Exception) {
-            restorePriorFromBackupLocked(null)
-            GraphMutationResult.PersistenceFailed(e)
+            if (!markerWritten) {
+                val matches = restoreRelayAccessBackup(backupWritten)
+                if (!matches) {
+                    val uncertain = PairingGraphSnapshot.Uncertain(
+                        sequenceNumber = sequenceGen.incrementAndGet(),
+                        reason = PersistenceIssue.PERSISTENCE_FAILED,
+                    )
+                    currentSnapshotState = uncertain
+                    notifySubscribers(uncertain)
+                }
+                GraphMutationResult.PersistenceFailed(e)
+            } else {
+                val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
+                if (recovered is PairingGraphSnapshot.Committed) {
+                    relayRev++
+                    val committed = recovered.copy(
+                        sequenceNumber = sequenceGen.incrementAndGet(),
+                        revisions = GraphRevisions(pairingRev, directRev, relayRev),
+                        relayLiveEligible = true,
+                    )
+                    currentSnapshotState = committed
+                    cleanBackupAndStagingFiles()
+                    notifySubscribers(committed)
+                    GraphMutationResult.Applied(committed)
+                } else {
+                    val uncertain = PairingGraphSnapshot.Uncertain(
+                        sequenceNumber = sequenceGen.incrementAndGet(),
+                        reason = PersistenceIssue.PERSISTENCE_FAILED,
+                    )
+                    currentSnapshotState = uncertain
+                    notifySubscribers(uncertain)
+                    GraphMutationResult.DurabilityUncertain(e)
+                }
+            }
         }
     }
 
@@ -390,6 +454,7 @@ class FilePairingGraph(
             stepHook?.onStep(DurableTxnStep.DURABLE_COMMIT_DECISION, CommitInFlightOp.FORGET.name)
 
             // Step 3: RENAME_REPLACE - delete artifacts
+            pushKeyFile?.delete()
             identityStore.clear()
             credentialStore.clear()
             endpointStore.clear()
@@ -411,6 +476,7 @@ class FilePairingGraph(
             val marker = PairingCommitMarker.parse(commitMarkerFile)
             if (marker?.status == CommitMarkerStatus.ABSENT) {
                 cleanBackupAndStagingFiles()
+                pushKeyFile?.delete()
                 identityStore.clear()
                 credentialStore.clear()
                 endpointStore.clear()
@@ -426,6 +492,105 @@ class FilePairingGraph(
                 GraphMutationResult.PersistenceFailed(e)
             }
         }
+    }
+
+    override fun readPushKey(generation: PairingGeneration): ByteArray? = synchronized(lock) {
+        val snap = currentSnapshotState as? PairingGraphSnapshot.Committed ?: return null
+        if (snap.pairing != generation) return null
+        val parsed = readPushKeyFileLocked() ?: return null
+        if (parsed.generation != generation) return null
+        parsed.keyBytes
+    }
+
+    override fun obtainPushKey(generation: PairingGeneration): ObtainResult = synchronized(lock) {
+        val file = pushKeyFile
+        val prot = pushKeyProtector
+        if (file == null || prot == null) {
+            return ObtainResult.Failed(IllegalStateException("push key store is not configured"))
+        }
+        val snap = currentSnapshotState as? PairingGraphSnapshot.Committed
+        if (snap == null || snap.pairing != generation) {
+            return ObtainResult.Refused
+        }
+        val existing = readPushKeyFileLocked()
+        if (existing != null && existing.generation == generation) {
+            return ObtainResult.Obtained(existing.keyBytes)
+        }
+
+        val keyBytes = ByteArray(32)
+        java.security.SecureRandom().nextBytes(keyBytes)
+        val payload = encodePushKeyPayload(generation, keyBytes)
+        try {
+            val wrapped = prot.protect(payload)
+            fileWriter.write(file, WRAP_MARKER + wrapped)
+            ObtainResult.Obtained(keyBytes)
+        } catch (e: Exception) {
+            ObtainResult.Failed(e)
+        }
+    }
+
+    private data class ParsedPushKeyPayload(
+        val generation: PairingGeneration,
+        val keyBytes: ByteArray,
+    )
+
+    private fun readPushKeyFileLocked(): ParsedPushKeyPayload? {
+        val file = pushKeyFile ?: return null
+        val prot = pushKeyProtector ?: return null
+        if (!file.exists()) return null
+        val bytes = try { file.readBytes() } catch (_: Exception) { return null }
+        if (!bytes.startsWithMarker()) return null
+        val wrapped = bytes.copyOfRange(WRAP_MARKER.size, bytes.size)
+        val payload = try { prot.unprotect(wrapped) } catch (_: Exception) { return null }
+        return parsePushKeyPayload(payload)
+    }
+
+    private fun parsePushKeyPayload(payload: ByteArray): ParsedPushKeyPayload? {
+        if (payload.size < 6 + 2 + 2 + 32) return null
+        val magic = "SOLPK1".toByteArray(Charsets.US_ASCII)
+        if (!payload.copyOfRange(0, 6).contentEquals(magic)) return null
+        var offset = 6
+        if (offset + 2 > payload.size) return null
+        val instLen = ((payload[offset].toInt() and 0xFF) shl 8) or (payload[offset + 1].toInt() and 0xFF)
+        offset += 2
+        if (offset + instLen > payload.size) return null
+        val instanceId = String(payload, offset, instLen, Charsets.UTF_8)
+        offset += instLen
+
+        if (offset + 2 > payload.size) return null
+        val certLen = ((payload[offset].toInt() and 0xFF) shl 8) or (payload[offset + 1].toInt() and 0xFF)
+        offset += 2
+        if (offset + certLen > payload.size) return null
+        val certFingerprint = String(payload, offset, certLen, Charsets.UTF_8)
+        offset += certLen
+
+        if (payload.size - offset != 32) return null
+        val keyBytes = payload.copyOfRange(offset, offset + 32)
+        return ParsedPushKeyPayload(PairingGeneration(instanceId, certFingerprint), keyBytes)
+    }
+
+    private fun encodePushKeyPayload(generation: PairingGeneration, keyBytes: ByteArray): ByteArray {
+        require(keyBytes.size == 32)
+        val magic = "SOLPK1".toByteArray(Charsets.US_ASCII)
+        val instBytes = generation.instanceId.toByteArray(Charsets.UTF_8)
+        val certBytes = generation.clientCertFingerprint.toByteArray(Charsets.UTF_8)
+        val out = ByteArray(6 + 2 + instBytes.size + 2 + certBytes.size + 32)
+        System.arraycopy(magic, 0, out, 0, 6)
+        var offset = 6
+        out[offset] = ((instBytes.size shr 8) and 0xFF).toByte()
+        out[offset + 1] = (instBytes.size and 0xFF).toByte()
+        offset += 2
+        System.arraycopy(instBytes, 0, out, offset, instBytes.size)
+        offset += instBytes.size
+
+        out[offset] = ((certBytes.size shr 8) and 0xFF).toByte()
+        out[offset + 1] = (certBytes.size and 0xFF).toByte()
+        offset += 2
+        System.arraycopy(certBytes, 0, out, offset, certBytes.size)
+        offset += certBytes.size
+
+        System.arraycopy(keyBytes, 0, out, offset, 32)
+        return out
     }
 
     override fun associateDirectIfProven(
@@ -493,6 +658,7 @@ class FilePairingGraph(
 
         if (marker.status == CommitMarkerStatus.ABSENT) {
             cleanBackupAndStagingFiles()
+            pushKeyFile?.delete()
             identityFile.delete()
             credentialFile.delete()
             endpointFile.delete()
@@ -615,6 +781,7 @@ class FilePairingGraph(
     private fun restorePriorFromBackupLocked(inFlightMarker: PairingCommitMarker?) {
         val marker = inFlightMarker ?: PairingCommitMarker.parse(commitMarkerFile)
         if (marker == null || marker.priorStatus == null || marker.priorStatus == CommitMarkerStatus.ABSENT) {
+            pushKeyFile?.delete()
             identityFile.delete()
             credentialFile.delete()
             endpointFile.delete()

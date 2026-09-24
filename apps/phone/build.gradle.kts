@@ -227,6 +227,9 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("androidx.compose.ui:ui:1.10.6")
     implementation("androidx.glance:glance-appwidget:1.1.1")
+    // push registration stays off in release builds until its privacy and security review has cleared.
+    implementation("org.unifiedpush.android:connector:3.3.5")
+    implementation("org.unifiedpush.android:embedded-fcm-distributor:3.1.0")
 
     testImplementation(kotlin("test"))
 

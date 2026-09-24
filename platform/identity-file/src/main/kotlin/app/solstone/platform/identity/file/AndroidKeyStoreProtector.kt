@@ -11,7 +11,9 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class AndroidKeyStoreProtector : SecretProtector {
+class AndroidKeyStoreProtector(
+    private val alias: String = KEY_ALIAS,
+) : SecretProtector {
     private val key: SecretKey by lazy { loadOrCreateKey() }
 
     override fun protect(plaintext: ByteArray): ByteArray {
@@ -33,11 +35,11 @@ class AndroidKeyStoreProtector : SecretProtector {
 
     private fun loadOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
 
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
+            alias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -48,7 +50,7 @@ class AndroidKeyStoreProtector : SecretProtector {
         return generator.generateKey()
     }
 
-    private companion object {
+    companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "app.solstone.identity.wrap.v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
