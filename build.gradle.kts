@@ -1927,7 +1927,7 @@ fun Project.registerRealReleasePushDexCheck() {
             val sdkDir = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.sdkDirectory
                 ?: System.getenv("ANDROID_HOME")?.let { File(it) }
                 ?: System.getenv("ANDROID_SDK_ROOT")?.let { File(it) }
-                ?: File("/home/jer/android-dev/sdk")
+                ?: throw GradleException("No Android SDK found: set ANDROID_HOME or sdk.dir in local.properties")
             val buildToolsDir = File(sdkDir, "build-tools")
             val dexdump = buildToolsDir.listFiles()
                 ?.sortedByDescending { it.name }
