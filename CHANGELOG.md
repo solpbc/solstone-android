@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.11] - 2026-09-25
+
+### Fixed
+- turning off your last source now stops intake and removes its ongoing notification. if another source is still on, it keeps running.
+- if android no longer asks for a source's permission after repeated denials, the app opens android settings for the app so you can allow that source there. when you return, it starts without another tap.
+
 ## [2.1.10] - 2026-09-25
 
 ### Added

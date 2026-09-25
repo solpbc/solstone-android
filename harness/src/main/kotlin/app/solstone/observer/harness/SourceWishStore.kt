@@ -143,7 +143,8 @@ class FileSourceWishStore(
                 return WishSaveOutcome.OriginalIntact
             }
 
-            val targetSnapshot = if (target.exists()) {
+            val targetExisted = target.exists()
+            val targetSnapshot = if (targetExisted) {
                 runCatching { Files.readAllBytes(targetPath) }.getOrNull()
             } else {
                 null
@@ -159,7 +160,7 @@ class FileSourceWishStore(
                 return WishSaveOutcome.Committed
             } catch (_: Throwable) {
                 temp?.let { runCatching { Files.deleteIfExists(it) } }
-                if (targetSnapshot == null) {
+                if (!targetExisted) {
                     if (!target.exists()) return WishSaveOutcome.OriginalIntact
                 } else {
                     val currentBytes = runCatching { Files.readAllBytes(targetPath) }.getOrNull()

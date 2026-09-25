@@ -130,6 +130,26 @@ class SourceWishStoreWritePathTest {
     }
 
     @Test
+    fun deletedTargetIsUncertainAfterFailedMove() {
+        val dir = Files.createTempDirectory("source-wishes-deleted-target").toFile()
+        val file = dir.resolve("source-wishes")
+        file.writeText("audio\tOn\n")
+
+        val store = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun moveAtomic(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    Files.delete(target)
+                    throw RuntimeException("target disappeared during move")
+                }
+            },
+        )
+
+        assertEquals(WishSaveOutcome.Uncertain, store.saveAll(mapOf("audio" to SourceWish.Off)))
+        assertFalse(file.exists())
+    }
+
+    @Test
     fun failedSaveRollsBackInMemoryStateAndReturnsNotSaved() {
         val dir = Files.createTempDirectory("source-wishes-rollback").toFile()
         val file = dir.resolve("source-wishes")
