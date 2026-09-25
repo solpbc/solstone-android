@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pairing and push-registration stores stay on this device. Their keys are
+     Keystore-wrapped and cannot move, so a copy elsewhere would only be stale state. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="pl" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="pl" />
+    </device-transfer>
+</data-extraction-rules>
