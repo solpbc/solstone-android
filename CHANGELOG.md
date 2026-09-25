@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - what the solstone app takes in now goes into your journal right after each five-minute part is finished, while your phone stays in reach of your journal. before, it waited for the app's next regular sync, which could be 15 minutes or more away.
 
 ### Fixed
+- stopping intake from the notification now asks your phone to send anything waiting to your journal right away. before, it could wait until the next regular sync.
 - rarely, after you stopped intake, the ongoing notification stayed and still read as on. now it goes away when you stop intake.
 
 ## [2.1.9] - 2026-09-24

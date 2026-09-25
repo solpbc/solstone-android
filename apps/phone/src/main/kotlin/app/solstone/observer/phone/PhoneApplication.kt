@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import java.util.concurrent.CopyOnWriteArraySet
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
@@ -39,7 +40,17 @@ import app.solstone.observer.formfactor.phone.encodePhoneRoute
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.installPushRegistration
 
-class PhoneApplication : ObserverApplication(phoneSpec) {
+class PhoneApplication : ObserverApplication(
+    phoneSpec,
+    syncFailureReporter = { message, throwable ->
+        PhoneDiagLog.emit(
+            DiagEvent.CaughtException(
+                site = "opportunistic-sync-${message.replace(' ', '-')}",
+                type = throwable.javaClass.simpleName,
+            ),
+        )
+    },
+) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
     @Volatile private var cachedWidgetModel = emptyWidgetModel()

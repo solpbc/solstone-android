@@ -11,7 +11,10 @@ import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.syncStores
 
-open class ObserverApplication(val spec: FormFactorSpec) : Application() {
+open class ObserverApplication(
+    val spec: FormFactorSpec,
+    private val syncFailureReporter: (String, Throwable) -> Unit = { _, _ -> },
+) : Application() {
     lateinit var runtime: ObserverRuntime
         private set
 
@@ -24,7 +27,9 @@ open class ObserverApplication(val spec: FormFactorSpec) : Application() {
         if (stores.identityMutator.current()?.state == IdentityState.PAIRED) {
             SyncScheduler.enqueueNow(applicationContext, spec.stream)
         }
-        runtime = ObserverRuntime(applicationContext, spec)
+        runtime = ObserverRuntime(applicationContext, spec) { context, formFactor ->
+            ObserverAppContainer(context, formFactor, syncFailureReporter)
+        }
         ObserverHarnessRuntime.runtime = runtime
         ObserverForegroundService.rehydrator = ObserverServiceRehydrator {
             runtime.rehydrateFromForegroundServiceStart()

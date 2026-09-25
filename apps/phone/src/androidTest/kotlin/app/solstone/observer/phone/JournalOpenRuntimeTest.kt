@@ -105,7 +105,9 @@ class JournalOpenRuntimeTest {
 
         assertNull(probe(201))
         assertNull(probe(202))
-        assertNull(probe(203))
+        // 203 is the app notification route and may already exist in this shared test process.
+        assertNotEquals(pi410, probe(203))
+        assertNotEquals(pi411, probe(203))
         assertNull(probe(301))
 
         val healthIntent = JournalPushPoster.buildLaunchIntent(context, "/app/health")

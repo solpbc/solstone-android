@@ -110,16 +110,41 @@ class OpportunisticSyncTest {
     }
 
     @Test
+    fun stopEnqueuesWithoutReadingRoomEvenWhenPendingInspectionWouldFail() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(1, null, null))
+        evidence.failPendingCount = true
+        val sync = RecordingSyncEnqueue()
+        val reports = mutableListOf<String>()
+        val opportunistic = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = sync,
+            networkAvailability = FakeNetworkAvailability(),
+            failureReporter = { message, _ -> reports += message },
+        )
+
+        opportunistic.stop()
+
+        assertEquals(1, sync.calls)
+        assertFalse(opportunistic.isDegraded())
+        assertTrue(reports.isEmpty())
+    }
+
+    @Test
     fun pendingInspectionFailureReportsThroughInjectedReporterAndDoesNotThrow() {
         val evidence = FakeEvidenceReader(sync = HarnessSyncState(1, null, null))
         evidence.failPendingCount = true
         val reports = mutableListOf<Pair<String, String>>()
+        val diagnostics = mutableListOf<Pair<String, String>>()
         val opportunistic = OpportunisticSync(
             evidenceReader = evidence,
             syncEnqueue = RecordingSyncEnqueue(),
             networkAvailability = FakeNetworkAvailability(),
             failureReporter = { message, throwable -> reports += message to throwable.javaClass.simpleName },
         )
+
+        opportunistic.diagnosticReporter = { message, throwable ->
+            diagnostics += message to throwable.javaClass.simpleName
+        }
 
         try {
             opportunistic.enqueueIfPending()
@@ -128,13 +153,9 @@ class OpportunisticSyncTest {
             fail("failure should not escape caller: ${t.javaClass.simpleName}")
         }
 
-        assertEquals(
-            listOf(
-                "pending inspection failed" to "IllegalStateException",
-                "pending inspection failed" to "IllegalStateException",
-            ),
-            reports,
-        )
+        val expected = listOf("pending inspection failed" to "IllegalStateException")
+        assertEquals(expected, reports)
+        assertEquals(expected, diagnostics)
     }
 
     @Test

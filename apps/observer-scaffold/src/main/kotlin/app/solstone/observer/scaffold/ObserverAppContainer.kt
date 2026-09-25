@@ -66,6 +66,7 @@ interface ObserverRuntimeContainer {
 class ObserverAppContainer(
     private val context: Context,
     private val spec: FormFactorSpec,
+    private val syncFailureReporter: (String, Throwable) -> Unit = { _, _ -> },
 ) : ObserverRuntimeContainer {
     override val cameraLock = SingleHolderCameraLock()
     override val captureAuthority = VisibleCaptureOwnerRegistry()
@@ -187,6 +188,7 @@ class ObserverAppContainer(
     }
 
     init {
+        flavor.opportunisticSync?.diagnosticReporter = syncFailureReporter
         ObserverForegroundService.onDestroyCallback = {
             synchronized(destroyLock) {
                 destroyLock.notifyAll()

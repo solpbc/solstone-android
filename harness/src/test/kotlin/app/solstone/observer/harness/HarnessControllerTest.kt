@@ -344,7 +344,7 @@ class HarnessControllerTest {
     }
 
     @Test
-    fun ownerStopWithNoPendingEvidenceEnqueuesNothing() {
+    fun ownerStopEnqueuesEvenWhenNoPendingEvidence() {
         val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
         val f = fixture(
             evidenceReader = evidence,
@@ -354,7 +354,7 @@ class HarnessControllerTest {
         f.controller.start()
         f.controller.stop()
 
-        assertEquals(0, f.sync.calls)
+        assertEquals(1, f.sync.calls)
     }
 
     @Test

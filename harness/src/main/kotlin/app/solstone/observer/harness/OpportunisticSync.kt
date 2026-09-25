@@ -20,6 +20,7 @@ class OpportunisticSync(
     private var started = false
     private var lastEnqueuedPending: Int? = null
     private var _lastError: String? = null
+    @Volatile var diagnosticReporter: ((String, Throwable) -> Unit)? = null
 
     val lastError: String?
         get() = synchronized(lock) { _lastError }
@@ -41,7 +42,10 @@ class OpportunisticSync(
     }
 
     fun stop() {
-        enqueueIfPending()
+        // Stop can come from a notification receiver on the main thread. WorkManager accepts
+        // this request there; a Room pending-count query does not. An empty request may still
+        // make a journal status probe, but it cannot ingest absent material.
+        syncEnqueue.enqueueNow()
         synchronized(lock) {
             if (!started) return
             runCatching { networkAvailability.stop() }
@@ -94,5 +98,6 @@ class OpportunisticSync(
     private fun recordErrorLocked(message: String, throwable: Throwable) {
         _lastError = "$message: ${throwable.javaClass.simpleName}"
         failureReporter(message, throwable)
+        runCatching { diagnosticReporter?.invoke(message, throwable) }
     }
 }

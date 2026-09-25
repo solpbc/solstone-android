@@ -6,9 +6,11 @@ package app.solstone.observer.phone
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.observer.scaffold.ObserverAppContainer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -33,5 +35,21 @@ class RealFlavorOpportunisticSyncRuntimeTest {
         } finally {
             container.close()
         }
+    }
+
+    @Test
+    fun mainThreadPendingReadFailureAppearsInPhoneEventLog() {
+        val application = ApplicationProvider.getApplicationContext<PhoneApplication>()
+        val opportunisticSync = application.runtime.container().flavor.opportunisticSync
+        assertNotNull(opportunisticSync)
+        val marker = "kind=caught site=opportunistic-sync-pending-inspection-failed type=IllegalStateException"
+        val before = PhoneDiagLog.installedSink()!!.readAll().split(marker).size
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            opportunisticSync!!.enqueueIfPending()
+        }
+
+        val after = PhoneDiagLog.installedSink()!!.readAll().split(marker).size
+        assertTrue("pending Room failure should reach the event log", after > before)
     }
 }
