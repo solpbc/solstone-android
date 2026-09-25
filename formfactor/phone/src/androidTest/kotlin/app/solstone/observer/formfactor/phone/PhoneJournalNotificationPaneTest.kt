@@ -3,8 +3,10 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,7 +32,8 @@ class PhoneJournalNotificationPaneTest {
         }
 
         composeTestRule.onNodeWithText(JOURNAL_FROM_YOUR_JOURNAL).assertIsDisplayed()
-        composeTestRule.onNodeWithText(JOURNAL_NOTIFICATIONS_ON).assertIsDisplayed()
+        // Two values read "on" here: the pane's own notifications row and the journal row.
+        composeTestRule.onAllNodesWithText(JOURNAL_NOTIFICATIONS_ON).assertCountEquals(2)
         composeTestRule.onNodeWithText("open notification settings").assertIsDisplayed()
         composeTestRule.onNodeWithText("send test notification").assertIsDisplayed()
         composeTestRule.onNodeWithText("when there's something worth a look").assertIsDisplayed()
