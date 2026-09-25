@@ -29,6 +29,7 @@ internal fun resetObserverRuntime() {
     ObserverHarnessRuntime.runtime = null
     ObserverHarnessRuntime.hooks = null
     PhoneStatusSupplier.override = null
+    PhoneJournalTestHooks.reset()
 }
 
 internal fun resetPersistence(context: Context) {

@@ -1109,7 +1109,7 @@ class PushRegistrationCoordinatorTest {
 
         // Pair device
         currentGen = PairingGeneration("inst-1", "sha256:cert1")
-        val handler = PushMessageHandler(TestPushKeys(), { currentGen }, { _, _, _ -> }, {})
+        val handler = PushMessageHandler(TestPushKeys(), { currentGen }, { _, _, _, _ -> }, {})
         val executor = Executors.newSingleThreadExecutor { r ->
             Thread(r, "test-push-serial").apply { isDaemon = true }
         }
@@ -1256,7 +1256,7 @@ class PushRegistrationCoordinatorTest {
         val handler = PushMessageHandler(
             pushKeys = pushKeys,
             pairingNow = { gen },
-            notifier = { _, title, body ->
+            notifier = { _, title, body, _ ->
                 posted += title to body
             },
             log = { logs += it },
@@ -1346,18 +1346,18 @@ class PushRegistrationCoordinatorTest {
 
     @Test
     fun ac25_notificationIdDrawExcludes100To199() {
-        val draws = mutableListOf(100, 199, 150, 50)
+        val draws = mutableListOf(100, 199, 150, 201, 202, 203, 50)
         val drawnId = nextNotificationId { draws.removeAt(0) }
         assertEquals(50, drawnId)
 
-        // Two onMessage calls with draw sequence yielding two IDs outside 100..199
+        // Two onMessage calls with draw sequence yielding two IDs outside 100..199 and 201..203
         val gen = PairingGeneration("inst-1", "sha256:cert")
-        val handlerDraws = mutableListOf(120, 42, 180, 84)
+        val handlerDraws = mutableListOf(120, 201, 42, 180, 202, 203, 84)
         val postedIds = mutableListOf<Int>()
         val handler = PushMessageHandler(
             pushKeys = TestPushKeys(),
             pairingNow = { gen },
-            notifier = { id, _, _ -> postedIds += id },
+            notifier = { id, _, _, _ -> postedIds += id },
             log = {},
             drawId = { handlerDraws.removeAt(0) },
         )
@@ -1368,8 +1368,8 @@ class PushRegistrationCoordinatorTest {
         assertEquals(2, postedIds.size)
         assertEquals(42, postedIds[0])
         assertEquals(84, postedIds[1])
-        assertFalse(postedIds[0] in 100..199)
-        assertFalse(postedIds[1] in 100..199)
+        assertFalse(postedIds[0] in 100..199 || postedIds[0] in 201..203)
+        assertFalse(postedIds[1] in 100..199 || postedIds[1] in 201..203)
         assertTrue(postedIds[0] != postedIds[1])
     }
 

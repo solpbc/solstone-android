@@ -3,6 +3,7 @@
 
 package app.solstone.observer.phone
 
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -68,8 +69,22 @@ import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverHarnessRuntime
 import app.solstone.platform.work.JournalBrowserUpstreamAdapter
+import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.SyncStores
 import app.solstone.platform.work.syncStores
+import app.solstone.core.push.JournalNotificationRow
+import app.solstone.core.push.journalNotificationRow
+import app.solstone.core.push.journalOpenPath
+import app.solstone.core.push.journalPushRepair
+import app.solstone.core.push.journalPushPickerResult
+import app.solstone.core.push.JournalPushPickerAction
+import app.solstone.core.push.JournalPushRepairAction
+import app.solstone.core.push.JournalPushRepairMemory
+import app.solstone.core.push.PushDeliveryState
+import app.solstone.observer.formfactor.phone.PhoneJournalNotificationRow
+import org.unifiedpush.android.connector.UnifiedPush
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class PhoneShellActivity : ComponentActivity() {
     private lateinit var container: ObserverAppContainer
@@ -84,6 +99,11 @@ class PhoneShellActivity : ComponentActivity() {
         mainHandler.post { if (::statusViewModel.isInitialized) statusViewModel.publish(backlog) }
     }
     private var notificationsEnabled by mutableStateOf(false)
+    private var journalNotificationRow by mutableStateOf<PhoneJournalNotificationRow?>(null)
+    private var pushFactsExecutor: ExecutorService? = null
+    private var pushDeliveryUnsubscribe: (() -> Unit)? = null
+    @Volatile private var pushFactsStopped = false
+    private var repairMemory = JournalPushRepairMemory()
     /**
      * What the last `check connection` found, cleared when the shell leaves the foreground.
      *
@@ -125,6 +145,9 @@ class PhoneShellActivity : ComponentActivity() {
         }
     }
 
+    private fun displayedSnapshot(): PairingGraphSnapshot =
+        PhoneJournalTestHooks.pairingSnapshotOverride ?: stores.publisher.currentSnapshot()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -134,6 +157,29 @@ class PhoneShellActivity : ComponentActivity() {
         }
         container = runtime.container()
         stores = syncStores(applicationContext)
+
+        val openedJournalPath = journalOpenPath(
+            pushRegistration = BuildConfig.PUSH_REGISTRATION,
+            freshCreate = savedInstanceState == null,
+            launchedFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0,
+            pairingCommitted = displayedSnapshot() is PairingGraphSnapshot.Committed,
+            rawPath = intent.getStringExtra(JournalPushPoster.EXTRA_JOURNAL_OPEN),
+        )
+        if (openedJournalPath != null) {
+            PhoneDiagLog.appendRaw("kind=journal_open")
+        }
+
+        if (BuildConfig.PUSH_REGISTRATION) {
+            pushFactsExecutor = Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "phone-push-facts").apply { isDaemon = true }
+            }
+            pushDeliveryUnsubscribe = stores.addPushDeliveryStateListener { nextState ->
+                pushFactsExecutor?.execute {
+                    refreshJournalPush(nextState, repair = false)
+                }
+            }
+        }
+
         val capture = captureSurfaceFromIntent()
         val factory = PhoneShellViewModelFactory(
             sources = container.sources,
@@ -149,14 +195,15 @@ class PhoneShellActivity : ComponentActivity() {
         setContent {
             val statusState = statusViewModel.statusState
             val snapshot = (statusState as? LoadState.Loaded)?.value
-            var pairingSnapshot by remember { mutableStateOf(stores.publisher.currentSnapshot()) }
+            var pairingSnapshot by remember { mutableStateOf(displayedSnapshot()) }
             var markPresentation by remember {
                 mutableStateOf(stores.journalIdentityCoordinator.currentPresentation())
             }
             var markGeneration by remember {
                 mutableStateOf(stores.journalIdentityCoordinator.currentPresentationGeneration())
             }
-            var journalOpen by remember { mutableStateOf(false) }
+            var journalPath by remember { mutableStateOf(openedJournalPath) }
+            var journalOpen by remember { mutableStateOf(openedJournalPath != null) }
             val wishStore = remember { FileSourceWishStore(filesDir.resolve("source-wishes")) }
             var wishStoreState by remember { mutableStateOf(wishStore.read()) }
             val hapticsStore = remember { getSharedPreferences("phone-shell", MODE_PRIVATE) }
@@ -201,10 +248,11 @@ class PhoneShellActivity : ComponentActivity() {
             DisposableEffect(stores) {
                 val pairingSubscription = stores.publisher.subscribe { next ->
                     mainHandler.post {
+                        val effective = displayedSnapshot()
                         val before = pairingSnapshot
-                        pairingSnapshot = next
-                        if (pairingDiagKey(before) != pairingDiagKey(next)) {
-                            PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(next)}")
+                        pairingSnapshot = effective
+                        if (pairingDiagKey(before) != pairingDiagKey(effective)) {
+                            PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(effective)}")
                         }
                     }
                 }
@@ -267,11 +315,17 @@ class PhoneShellActivity : ComponentActivity() {
                 onConnectJournal = {
                     openPairingScanner()
                 },
-                onOpenJournal = { journalOpen = true },
+                onOpenJournal = {
+                    journalPath = null
+                    journalOpen = true
+                },
                 journalPaired = pairingSnapshot is PairingGraphSnapshot.Committed,
                 journalMarkPresentation = currentMarkPresentation,
                 journalSheetOpen = journalOpen,
                 journalFacts = journalFacts,
+                journalPushEnabled = BuildConfig.PUSH_REGISTRATION,
+                journalNotificationRow = journalNotificationRow,
+                onChooseJournalDeliveryApp = { pickJournalDistributor() },
                 hapticsEnabled = hapticsEnabled,
                 notificationsEnabled = notificationsEnabled,
                 eventLog = eventLog,
@@ -373,17 +427,21 @@ class PhoneShellActivity : ComponentActivity() {
                 JournalSheet(
                     presentation = currentMarkPresentation,
                     sessionFactory = {
-                        JournalBrowserSession(
-                            publisher = stores.publisher,
-                            upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher),
-                            diag = { PhoneDiagLog.emit(it) },
-                        )
+                        PhoneJournalTestHooks.sessionOverride?.invoke()
+                            ?: LiveJournalSheetSession(
+                                JournalBrowserSession(
+                                    publisher = stores.publisher,
+                                    upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher),
+                                    diag = { PhoneDiagLog.emit(it) },
+                                ),
+                            )
                     },
                     onClose = { journalOpen = false },
                     onPairingRepair = {
                         journalOpen = false
                         openPairingScanner()
                     },
+                    initialPath = journalPath,
                 )
                 }
             }
@@ -573,6 +631,144 @@ class PhoneShellActivity : ComponentActivity() {
         notificationsEnabled = ObserverNotification.notificationsEnabled(this)
         captureOwnerToken = container.captureAuthority.acquire()
         mainHandler.post(startWhenReady)
+        if (BuildConfig.PUSH_REGISTRATION) {
+            pushFactsExecutor?.execute {
+                refreshJournalPush(stores.pushDeliveryState, repair = true)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        pushFactsStopped = true
+        pushDeliveryUnsubscribe?.invoke()
+        pushFactsExecutor?.shutdown()
+    }
+
+    private fun refreshJournalPush(state: PushDeliveryState, repair: Boolean) {
+        if (pushFactsStopped) return
+
+        val ownPackage = packageName
+        val manager = getSystemService(NotificationManager::class.java)
+        val postNotificationsGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val appNotificationsEnabled = if (Build.VERSION.SDK_INT >= 24) {
+            manager?.areNotificationsEnabled() == true
+        } else {
+            true
+        }
+        val notificationsAllowed = manager != null && postNotificationsGranted && appNotificationsEnabled
+        val journalChannelBlocked = if (Build.VERSION.SDK_INT >= 26) {
+            manager?.getNotificationChannel(JournalPushPoster.CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        } else {
+            false
+        }
+
+        val paired = displayedSnapshot() is PairingGraphSnapshot.Committed
+        val distributorPackages: Set<String>? = if (paired) {
+            runCatching { UnifiedPush.getDistributors(applicationContext).toSet() }.getOrNull()
+        } else {
+            null
+        }
+
+        var appLabel: String? = null
+        var stopped: Boolean? = null
+        if (state is PushDeliveryState.WaitingForDelivery && state.unanswered && state.distributorPackage != ownPackage) {
+            val targetPackage = state.distributorPackage
+            try {
+                val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getApplicationInfo(targetPackage, PackageManager.ApplicationInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getApplicationInfo(targetPackage, 0)
+                }
+                stopped = (appInfo.flags and ApplicationInfo.FLAG_STOPPED) != 0
+                val label = appInfo.loadLabel(packageManager).toString().trim()
+                appLabel = if (label.isBlank()) targetPackage else label
+            } catch (_: Throwable) {
+                appLabel = null
+                stopped = null
+            }
+        }
+
+        val coreRow = journalNotificationRow(
+            state = state,
+            notificationsAllowed = notificationsAllowed,
+            journalChannelBlocked = journalChannelBlocked,
+            distributorPackages = distributorPackages,
+            ownPackage = ownPackage,
+            appLabel = appLabel,
+            stopped = stopped,
+        )
+        val phoneRow: PhoneJournalNotificationRow? = when (coreRow) {
+            JournalNotificationRow.On -> PhoneJournalNotificationRow.On
+            JournalNotificationRow.NeedsDeliveryApp -> PhoneJournalNotificationRow.NeedsDeliveryApp
+            JournalNotificationRow.ChooseDeliveryApp -> PhoneJournalNotificationRow.ChooseDeliveryApp
+            JournalNotificationRow.InsecureAddress -> PhoneJournalNotificationRow.InsecureAddress
+            is JournalNotificationRow.DeliveryAppStopped -> PhoneJournalNotificationRow.DeliveryAppStopped(coreRow.appName)
+            null -> null
+        }
+        mainHandler.post {
+            if (!pushFactsStopped) journalNotificationRow = phoneRow
+        }
+
+        if (repair) {
+            val nowMillis = System.currentTimeMillis()
+            if (paired && distributorPackages != null) {
+                val decision = journalPushRepair(
+                    pushRegistration = BuildConfig.PUSH_REGISTRATION,
+                    pairingCommitted = true,
+                    state = state,
+                    nowMillis = nowMillis,
+                    memory = repairMemory,
+                    ownPackage = ownPackage,
+                    readDistributors = { distributorPackages },
+                    stopped = { pkg ->
+                        if (pkg == (state as? PushDeliveryState.WaitingForDelivery)?.distributorPackage) stopped else null
+                    },
+                )
+                repairMemory = decision.memory
+                when (decision.action) {
+                    JournalPushRepairAction.None -> {}
+                    JournalPushRepairAction.Enqueue -> {
+                        // enqueueNow can drop this request.
+                        SyncScheduler.enqueueNow(applicationContext, phoneSpec.stream)
+                    }
+                    JournalPushRepairAction.Reregister -> {
+                        stores.pushRegistration?.reregister()
+                    }
+                }
+            } else if (!paired) {
+                val decision = journalPushRepair(
+                    pushRegistration = BuildConfig.PUSH_REGISTRATION,
+                    pairingCommitted = false,
+                    state = state,
+                    nowMillis = nowMillis,
+                    memory = repairMemory,
+                    ownPackage = ownPackage,
+                    readDistributors = { error("distributors") },
+                    stopped = { error("stopped") },
+                )
+                repairMemory = decision.memory
+            }
+        }
+    }
+
+    private fun pickJournalDistributor() {
+        val executor = pushFactsExecutor ?: return
+        UnifiedPush.tryPickDistributor(this) { success ->
+            executor.execute {
+                val saved = if (success) UnifiedPush.getSavedDistributor(applicationContext) else null
+                when (val action = journalPushPickerResult(success, saved)) {
+                    is JournalPushPickerAction.StorePick ->
+                        stores.pushRegistration?.onUserPickedDistributor(action.packageName)
+                    JournalPushPickerAction.Enqueue -> {
+                        // enqueueNow can drop this request.
+                        SyncScheduler.enqueueNow(applicationContext, phoneSpec.stream)
+                    }
+                }
+            }
+        }
     }
 
     override fun onStart() {

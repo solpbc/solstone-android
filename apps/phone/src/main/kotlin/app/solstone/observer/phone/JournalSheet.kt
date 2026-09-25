@@ -64,6 +64,8 @@ import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
+import app.solstone.core.push.validJournalOpenPath
+
 private const val INITIAL_FAILURE =
     "couldn't reach your journal. keep the solstone app open and try again."
 private const val LOST_CONNECTION =
@@ -76,12 +78,14 @@ private const val LINK_UNAVAILABLE = "that link isn't available in the app."
 @Composable
 internal fun JournalSheet(
     presentation: JournalMarkPresentation,
-    sessionFactory: () -> JournalBrowserSession,
+    sessionFactory: () -> JournalSheetSession,
     onClose: () -> Unit,
     onPairingRepair: () -> Unit,
+    initialPath: String? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var retryGeneration by remember { mutableIntStateOf(0) }
+    val validatedPath = validJournalOpenPath(initialPath)
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
@@ -126,8 +130,11 @@ internal fun JournalSheet(
         // cannot be tapped at all — a tap on `search` reaches the system bar instead.
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
             key(retryGeneration) {
+                // Retry loses the path.
+                val panePath = if (retryGeneration == 0) validatedPath else null
                 JournalBrowserPane(
                     sessionFactory = sessionFactory,
+                    path = panePath,
                     onRetry = { retryGeneration += 1 },
                     onPairingRepair = onPairingRepair,
                 )
@@ -138,13 +145,14 @@ internal fun JournalSheet(
 
 private sealed interface BrowserPaneState {
     data object Loading : BrowserPaneState
-    data class Showing(val origin: String) : BrowserPaneState
+    data class Showing(val origin: String, val loadTarget: String) : BrowserPaneState
     data class Failed(val message: String) : BrowserPaneState
 }
 
 @Composable
 private fun JournalBrowserPane(
-    sessionFactory: () -> JournalBrowserSession,
+    sessionFactory: () -> JournalSheetSession,
+    path: String? = null,
     onRetry: () -> Unit,
     onPairingRepair: () -> Unit,
 ) {
@@ -181,7 +189,9 @@ private fun JournalBrowserPane(
         }
         session.addLifecycleListener(listener)
         state = try {
-            BrowserPaneState.Showing(session.start().url)
+            val origin = session.start().url
+            val loadTarget = if (path != null) origin + path.removePrefix("/") else origin
+            BrowserPaneState.Showing(origin, loadTarget)
         } catch (_: Throwable) {
             BrowserPaneState.Failed(INITIAL_FAILURE)
         }
@@ -213,6 +223,7 @@ private fun JournalBrowserPane(
                     createJournalWebView(
                         context = context,
                         origin = current.origin,
+                        loadTarget = current.loadTarget,
                         textZoom = (density.fontScale * 100).roundToInt().coerceIn(50, 300),
                         onPageCommitted = {
                             if (alive.get()) committed = true
@@ -263,6 +274,7 @@ private fun JournalBrowserPane(
 internal fun createJournalWebView(
     context: android.content.Context,
     origin: String,
+    loadTarget: String = origin,
     textZoom: Int,
     onPageCommitted: () -> Unit,
     onRetryableFailure: () -> Unit,
@@ -436,6 +448,7 @@ internal fun createJournalWebView(
             }
         }
         setDownloadListener { _, _, _, _, _ -> onUnsupportedTransfer() }
-        loadUrl(origin)
+        PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
+        loadUrl(loadTarget)
     }
 }

@@ -317,6 +317,31 @@ fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
     }
 }
 
+sealed interface PhoneJournalNotificationRow {
+    data object On : PhoneJournalNotificationRow
+    data object NeedsDeliveryApp : PhoneJournalNotificationRow
+    data object ChooseDeliveryApp : PhoneJournalNotificationRow
+    data object InsecureAddress : PhoneJournalNotificationRow
+    data class DeliveryAppStopped(val appName: String) : PhoneJournalNotificationRow
+}
+
+internal const val JOURNAL_FROM_YOUR_JOURNAL = "from your journal"
+internal const val JOURNAL_NOTIFICATIONS_ON = "on"
+internal const val JOURNAL_NOT_REACHING = "not reaching this phone"
+internal const val JOURNAL_NO_APP_NOTE =
+    "notifications from your journal need a separate app to reach this phone, and none is installed. install ntfy, open it once, then come back here."
+internal const val JOURNAL_GET_NTFY = "get ntfy"
+internal const val JOURNAL_GET_NTFY_SUB = "free and open source, from F-Droid"
+internal const val JOURNAL_NTFY_URL = "https://f-droid.org/packages/io.heckel.ntfy/"
+internal const val JOURNAL_CHOOSE_VALUE = "choose an app to deliver notifications"
+internal const val JOURNAL_CHOOSE_SUB = "more than one app on this phone can deliver notifications"
+// Row D's wording is loose for endpoints distributors do not produce.
+internal const val JOURNAL_INSECURE_NOTE =
+    "the app that delivers notifications uses a server address that doesn't start with https, and notifications from your journal only go to addresses that do. change its server to one that starts with https, then come back here."
+
+internal fun journalDeliveryAppStoppedNote(app: String): String =
+    "$app is installed but needs to be opened before it can deliver notifications from your journal. open it once, then come back here."
+
 /** `settings › notifications` (§ 4), including live permission/channel state. */
 @Composable
 fun PhoneNotificationsPane(
@@ -324,8 +349,12 @@ fun PhoneNotificationsPane(
     testFailed: Boolean = false,
     onOpenSettings: () -> Unit,
     onSendTest: () -> Unit,
+    journalPushEnabled: Boolean = false,
+    journalNotificationRow: PhoneJournalNotificationRow? = null,
+    onChooseJournalDeliveryApp: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Notifications) },
     ) {
@@ -346,6 +375,54 @@ fun PhoneNotificationsPane(
                     onClick = onSendTest,
                     modifier = Modifier.testTag("notificationsSendTest"),
                 )
+            }
+            if (journalPushEnabled && journalNotificationRow != null) {
+                PaneRowDivider()
+                when (journalNotificationRow) {
+                    PhoneJournalNotificationRow.On -> {
+                        PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOTIFICATIONS_ON)
+                    }
+                    PhoneJournalNotificationRow.NeedsDeliveryApp -> {
+                        PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOT_REACHING)
+                        PaneRowDivider()
+                        PaneExternalRow(
+                            label = JOURNAL_GET_NTFY,
+                            subLine = JOURNAL_GET_NTFY_SUB,
+                            onClick = { context.openUrl(JOURNAL_NTFY_URL) },
+                            modifier = Modifier.testTag("notificationsGetNtfy"),
+                        )
+                    }
+                    PhoneJournalNotificationRow.ChooseDeliveryApp -> {
+                        PaneNavRow(
+                            label = JOURNAL_FROM_YOUR_JOURNAL,
+                            value = JOURNAL_CHOOSE_VALUE,
+                            subLine = JOURNAL_CHOOSE_SUB,
+                            onClick = onChooseJournalDeliveryApp,
+                            modifier = Modifier.testTag("notificationsChooseApp"),
+                        )
+                    }
+                    PhoneJournalNotificationRow.InsecureAddress -> {
+                        PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOT_REACHING)
+                    }
+                    is PhoneJournalNotificationRow.DeliveryAppStopped -> {
+                        PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOT_REACHING)
+                    }
+                }
+            }
+        }
+        if (journalPushEnabled && journalNotificationRow != null) {
+            when (journalNotificationRow) {
+                PhoneJournalNotificationRow.NeedsDeliveryApp -> {
+                    PaneNote(JOURNAL_NO_APP_NOTE)
+                }
+                PhoneJournalNotificationRow.InsecureAddress -> {
+                    PaneNote(JOURNAL_INSECURE_NOTE)
+                }
+                is PhoneJournalNotificationRow.DeliveryAppStopped -> {
+                    PaneNote(journalDeliveryAppStoppedNote(journalNotificationRow.appName))
+                }
+                PhoneJournalNotificationRow.On,
+                PhoneJournalNotificationRow.ChooseDeliveryApp -> Unit
             }
         }
         // Two locked strings from section 5, verbatim and kept SEPARATE. They are listed

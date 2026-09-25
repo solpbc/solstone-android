@@ -158,10 +158,12 @@ internal fun PaneNavRow(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    value: String? = null,
     subLine: String? = null,
 ) {
     PaneActionRow(
         label = label,
+        value = value,
         subLine = subLine,
         glyph = R.drawable.phone_chevron_right,
         onClick = onClick,
@@ -179,6 +181,7 @@ internal fun PaneExternalRow(
 ) {
     PaneActionRow(
         label = label,
+        value = null,
         subLine = subLine,
         glyph = R.drawable.phone_open_external,
         onClick = onClick,
@@ -189,6 +192,7 @@ internal fun PaneExternalRow(
 @Composable
 private fun PaneActionRow(
     label: String,
+    value: String?,
     subLine: String?,
     glyph: Int,
     onClick: () -> Unit,
@@ -210,6 +214,13 @@ private fun PaneActionRow(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            if (value != null) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = shellSecondaryInk,
+                )
+            }
             if (subLine != null) {
                 Text(
                     text = subLine,
