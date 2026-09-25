@@ -61,6 +61,7 @@ sealed interface SourceToggleResult {
     data object Applied : SourceToggleResult
     data object AwaitingObserver : SourceToggleResult
     data object UnknownSource : SourceToggleResult
+    data class NotSaved(val outcome: WishSaveOutcome) : SourceToggleResult
     data class EngineFailed(val error: Throwable) : SourceToggleResult
 }
 

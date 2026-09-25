@@ -15,6 +15,22 @@ enum class CaptureForegroundType {
         get() = name.lowercase()
 }
 
+sealed interface MaskNarrowResult {
+    data object Applied : MaskNarrowResult
+    data object RequestFailed : MaskNarrowResult
+    data object ApplyFailed : MaskNarrowResult
+}
+
+fun classifyMaskNarrow(serviceReachable: Boolean, apply: () -> Unit): MaskNarrowResult {
+    if (!serviceReachable) return MaskNarrowResult.RequestFailed
+    return try {
+        apply()
+        MaskNarrowResult.Applied
+    } catch (_: Throwable) {
+        MaskNarrowResult.ApplyFailed
+    }
+}
+
 data class ObserverStartCommandPlan(
     val enterForeground: Boolean,
     val initialNeedsAttention: Boolean,

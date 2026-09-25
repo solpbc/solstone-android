@@ -156,6 +156,49 @@ class PhoneObserverWidgetModelTest {
         )
     }
 
+    @Test
+    fun audioOffNoticeColdRendersAttentionAndDiagnosis() {
+        val notice = ReasonCode.AUDIO_CHOICE_NOT_SAVED
+        val model = renderPhoneObserverWidget(
+            readModel = null,
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+            notice = notice,
+        )
+
+        assertEquals("needs attention", model.stateWord)
+        assertEquals("connected", model.syncText)
+        assertEquals(app.solstone.observer.harness.reasonDiagnosis(notice), model.diagnosis)
+        assertTrue(model.needsAttention)
+        assertFalse(model.audioChecked)
+        assertTrue(model.audioWishOn)
+        assertEquals(notice, model.reason)
+    }
+
+    @Test
+    fun audioOffNoticePostInitClearsOnStatesAndRendersDiagnosis() {
+        val fixture = PhoneObserverWidgetHarnessFixture()
+        val snapshot = fixture.snapshot(providerFresh = true, silenced = SilencedFact.NOT_SILENCED)
+        val notice = ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY
+
+        val presented = presentAudioOffNotice(snapshot, notice)
+        kotlin.test.assertNotNull(presented)
+        assertTrue(presented.sources.none { it.state == SourceState.ON }, "No source should remain in ON state")
+
+        val model = renderPhoneObserverWidget(
+            readModel = presented,
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+            notice = notice,
+        )
+
+        assertEquals("needs attention", model.stateWord)
+        assertEquals("connected", model.syncText)
+        assertEquals(app.solstone.observer.harness.reasonDiagnosis(notice), model.diagnosis)
+        assertEquals(ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY, model.reason)
+        assertTrue(model.needsAttention)
+    }
+
     private fun render(
         fixture: PhoneObserverWidgetHarnessFixture,
         providerFresh: Boolean,

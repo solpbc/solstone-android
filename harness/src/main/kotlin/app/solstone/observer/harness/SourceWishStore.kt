@@ -34,9 +34,15 @@ sealed interface WishStoreState {
     data object Unreadable : WishStoreState
 }
 
+sealed interface WishSaveOutcome {
+    data object Committed : WishSaveOutcome
+    data object OriginalIntact : WishSaveOutcome
+    data object Uncertain : WishSaveOutcome
+}
+
 interface SourceWishStore {
     fun read(): WishStoreState
-    fun saveAll(wishes: Map<String, SourceWish>)
+    fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome
 }
 
 class InMemorySourceWishStore(
@@ -49,14 +55,43 @@ class InMemorySourceWishStore(
 
     private var absent: Boolean = initial.isEmpty()
 
-    override fun saveAll(wishes: Map<String, SourceWish>) {
+    override fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome {
         this.wishes.clear()
         this.wishes.putAll(wishes)
         absent = false
+        return WishSaveOutcome.Committed
     }
 }
 
-class FileSourceWishStore(private val file: File) : SourceWishStore {
+class FileSourceWishStore(
+    private val file: File,
+    private val nio: NioOps = RealNioOps,
+) : SourceWishStore {
+    interface NioOps {
+        fun createDirectories(dir: Path)
+        fun createTempFile(dir: Path, prefix: String, suffix: String): Path
+        fun write(path: Path, bytes: ByteArray)
+        fun force(path: Path)
+        fun moveAtomic(source: Path, target: Path)
+        fun moveReplace(source: Path, target: Path)
+    }
+
+    object RealNioOps : NioOps {
+        override fun createDirectories(dir: Path) { Files.createDirectories(dir) }
+        override fun createTempFile(dir: Path, prefix: String, suffix: String): Path =
+            Files.createTempFile(dir, prefix, suffix)
+        override fun write(path: Path, bytes: ByteArray) { Files.write(path, bytes) }
+        override fun force(path: Path) {
+            FileChannel.open(path, WRITE).use { it.force(true) }
+        }
+        override fun moveAtomic(source: Path, target: Path) {
+            Files.move(source, target, REPLACE_EXISTING, ATOMIC_MOVE)
+        }
+        override fun moveReplace(source: Path, target: Path) {
+            Files.move(source, target, REPLACE_EXISTING)
+        }
+    }
+
     override fun read(): WishStoreState {
         // ⛔ These two returns were one line and the same value. A store that exists and will not
         // read is not a store with nothing in it.
@@ -80,7 +115,7 @@ class FileSourceWishStore(private val file: File) : SourceWishStore {
         return WishStoreState.Loaded(loaded)
     }
 
-    override fun saveAll(wishes: Map<String, SourceWish>) {
+    override fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome {
         val body = buildString {
             wishes.forEach { (id, wish) ->
                 append(id)
@@ -89,25 +124,54 @@ class FileSourceWishStore(private val file: File) : SourceWishStore {
                 append('\n')
             }
         }
-        atomicWrite(file, body.toByteArray(StandardCharsets.UTF_8))
+        return atomicWrite(file, body.toByteArray(StandardCharsets.UTF_8), nio)
     }
 
     private companion object {
-        fun atomicWrite(target: File, bytes: ByteArray) {
+        fun atomicWrite(target: File, bytes: ByteArray, nio: NioOps): WishSaveOutcome {
             val parent = target.absoluteFile.parentFile ?: error("wish-store path has no parent")
-            Files.createDirectories(parent.toPath())
-            var temp: Path? = Files.createTempFile(parent.toPath(), "source-wishes", ".tmp")
+            val targetPath = target.toPath()
+            var temp: Path? = null
             try {
-                Files.write(requireNotNull(temp), bytes)
-                FileChannel.open(requireNotNull(temp), WRITE).use { it.force(true) }
+                nio.createDirectories(parent.toPath())
+                val created = nio.createTempFile(parent.toPath(), "source-wishes", ".tmp")
+                temp = created
+                nio.write(created, bytes)
+                nio.force(created)
+            } catch (_: Throwable) {
+                temp?.let { runCatching { Files.deleteIfExists(it) } }
+                return WishSaveOutcome.OriginalIntact
+            }
+
+            val targetSnapshot = if (target.exists()) {
+                runCatching { Files.readAllBytes(targetPath) }.getOrNull()
+            } else {
+                null
+            }
+
+            try {
                 try {
-                    Files.move(requireNotNull(temp), target.toPath(), REPLACE_EXISTING, ATOMIC_MOVE)
+                    nio.moveAtomic(temp, targetPath)
                 } catch (_: AtomicMoveNotSupportedException) {
-                    Files.move(requireNotNull(temp), target.toPath(), REPLACE_EXISTING)
+                    nio.moveReplace(temp, targetPath)
                 }
                 temp = null
-            } finally {
-                temp?.let { Files.deleteIfExists(it) }
+                return WishSaveOutcome.Committed
+            } catch (_: Throwable) {
+                temp?.let { runCatching { Files.deleteIfExists(it) } }
+                if (targetSnapshot == null) {
+                    if (!target.exists()) return WishSaveOutcome.OriginalIntact
+                } else {
+                    val currentBytes = runCatching { Files.readAllBytes(targetPath) }.getOrNull()
+                    if (currentBytes != null && currentBytes.contentEquals(targetSnapshot)) {
+                        return WishSaveOutcome.OriginalIntact
+                    }
+                }
+                val currentBytes = runCatching { Files.readAllBytes(targetPath) }.getOrNull()
+                if (currentBytes != null && currentBytes.contentEquals(bytes)) {
+                    return WishSaveOutcome.Committed
+                }
+                return WishSaveOutcome.Uncertain
             }
         }
     }

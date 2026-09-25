@@ -30,6 +30,7 @@ import androidx.glance.layout.size
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import app.solstone.core.model.ReasonCode
 import app.solstone.observer.formfactor.phone.MINIMUM_TOUCH_TARGET_DP
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetColorRole
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
@@ -89,6 +90,9 @@ internal fun PhoneObserverWidgetContent(model: PhoneObserverWidgetModel) {
                 Column(GlanceModifier.defaultWeight()) {
                     Text(model.stateWord, style = TextStyle(color = content))
                     Text(model.syncText, style = TextStyle(color = content))
+                    model.diagnosis?.let { diag ->
+                        Text(diag, style = TextStyle(color = content))
+                    }
                 }
                 // Declares the MINIMUM_TOUCH_TARGET_DP floor; One UI widget-host scaling can reduce realised bounds.
                 Switch(
@@ -140,9 +144,10 @@ private fun colorFor(role: PhoneObserverWidgetColorRole): ColorProvider =
         )
     }
 
-internal fun emptyWidgetModel(): PhoneObserverWidgetModel =
+internal fun emptyWidgetModel(notice: ReasonCode = ReasonCode.NONE): PhoneObserverWidgetModel =
     renderPhoneObserverWidget(
         readModel = null,
         statusModel = emptyPhoneStatus(),
         startOutcome = PhoneWidgetStartOutcome.None,
+        notice = notice,
     )

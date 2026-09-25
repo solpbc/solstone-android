@@ -28,6 +28,10 @@ class HarnessFactsDisplayTest {
             ReasonCode.TRANSPORT_UNAVAILABLE to "needs attention: can't reach your journal",
             ReasonCode.FOREGROUND_START_NOT_ALLOWED to "needs attention: intake couldn't start from the background",
             ReasonCode.FOREGROUND_TYPE_NOT_HELD to "needs attention: this source needs intake to restart",
+            ReasonCode.AUDIO_CHOICE_NOT_SAVED to "needs attention: the audio choice was not saved",
+            ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE to "needs attention: the audio choice was not saved, and the session stop was not durably recorded",
+            ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE to "needs attention: the audio choice was saved, but the session stop was not durably recorded",
+            ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY to "needs attention: remaining intake stopped unexpectedly",
             // Repeating the state as a reason adds no information, so this is the bare state word.
             ReasonCode.DESIRED_OFF to "needs attention",
         )

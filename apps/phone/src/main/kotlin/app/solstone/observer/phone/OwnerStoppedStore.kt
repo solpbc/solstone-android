@@ -32,9 +32,9 @@ class OwnerStoppedStore(context: Context) {
 
     fun ownerStopped(): Boolean = preferences.getBoolean(KEY_STOPPED, false)
 
-    fun recordStopped() {
+    fun recordStopped(): Boolean {
         // ⚠ `commit`: the process is being asked to stop capturing and may be killed right after.
-        preferences.edit().putBoolean(KEY_STOPPED, true).commit()
+        return preferences.edit().putBoolean(KEY_STOPPED, true).commit()
     }
 
     fun clear() {

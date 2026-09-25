@@ -184,8 +184,13 @@ class PhoneShellActivity : ComponentActivity() {
         }
 
         val capture = captureSurfaceFromIntent()
+        val noticeStore = PhoneAudioOffNoticeStore(this)
+        val decoratedSources = AudioOffNoticeDecoratedSourcesReader(
+            delegate = container.sources,
+            readNotice = { noticeStore.read() },
+        )
         val factory = PhoneShellViewModelFactory(
-            sources = container.sources,
+            sources = decoratedSources,
             readStatus = PhoneStatusSupplier.forContainer(container),
             asyncLoad = container.asyncLoad,
             capturedStatusState = capture.capturedStatusState,
@@ -622,7 +627,13 @@ class PhoneShellActivity : ComponentActivity() {
         PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=${wish.name.lowercase()}")
         if (wish == SourceWish.On) {
             val prior = priorWishFor(sourceId)
-            sourcesViewModel.setWish(sourceId, SourceWish.On)
+            val result = sourcesViewModel.setWish(sourceId, SourceWish.On)
+            if (result is app.solstone.observer.harness.SourceToggleResult.NotSaved) {
+                return
+            }
+            if (sourceId == "audio") {
+                PhoneAudioOffNoticeStore(this).clear()
+            }
             ownerStopped.clear()
             container.controller.ensureObserving()
             val missing = container.sources.requiredPermissions(sourceId).any {
@@ -634,8 +645,13 @@ class PhoneShellActivity : ComponentActivity() {
             }
             requestNotificationsOnce()
         } else {
-            sourcesViewModel.setWish(sourceId, SourceWish.Off)
-            (application as? PhoneApplication)?.applyEffectiveCapture(ownerTurnedSourceOff = true)
+            if (sourceId == "audio") {
+                (application as? PhoneApplication)?.turnAudioOffFromApp()
+                sourcesViewModel.refresh()
+            } else {
+                sourcesViewModel.setWish(sourceId, SourceWish.Off)
+                (application as? PhoneApplication)?.applyEffectiveCapture(ownerTurnedSourceOff = true)
+            }
         }
     }
 
@@ -878,7 +894,10 @@ class PhoneShellActivity : ComponentActivity() {
             val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
             if (awaiting != null) {
                 if (allGranted) {
-                    sourcesViewModel.setWish(awaiting.sourceId, SourceWish.On)
+                    val result = sourcesViewModel.setWish(awaiting.sourceId, SourceWish.On)
+                    if (result !is app.solstone.observer.harness.SourceToggleResult.NotSaved && awaiting.sourceId == "audio") {
+                        PhoneAudioOffNoticeStore(this).clear()
+                    }
                     ownerStopped.clear()
                     container.controller.ensureObserving()
                     if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
@@ -902,6 +921,16 @@ class PhoneShellActivity : ComponentActivity() {
             container.controller.onPermissionsRequested()
             sourcesViewModel.refresh()
             statusViewModel.refresh()
+        }
+    }
+
+    private class AudioOffNoticeDecoratedSourcesReader(
+        private val delegate: SourcesReader,
+        private val readNotice: () -> app.solstone.core.model.ReasonCode,
+    ) : SourcesReader by delegate {
+        override fun snapshot(): app.solstone.observer.harness.SourcesReadModel {
+            val base = delegate.snapshot()
+            return app.solstone.observer.formfactor.phone.presentAudioOffNotice(base, readNotice()) ?: base
         }
     }
 

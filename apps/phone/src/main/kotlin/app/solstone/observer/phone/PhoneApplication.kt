@@ -14,15 +14,18 @@ import app.solstone.core.model.SourceState
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
 import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
+import app.solstone.observer.formfactor.phone.presentAudioOffNotice
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourceToggleResult
 import app.solstone.observer.harness.SourcesReadModel
+import app.solstone.observer.harness.WishSaveOutcome
 import app.solstone.observer.scaffold.ForegroundSourceActivation
 import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverRuntimeContainer
+import app.solstone.observer.scaffold.captureSourceIdentities
 import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.captureForegroundTypeForSourceId
 import app.solstone.platform.fgs.effectiveCapturePlan
@@ -63,6 +66,7 @@ class PhoneApplication : ObserverApplication(
 ) {
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
+    private lateinit var audioOffNotices: PhoneAudioOffNoticeStore
     @Volatile private var cachedWidgetModel = emptyWidgetModel()
     @Volatile private var cachedIntakeModel = derivePhoneIntakeNotification(
         snapshot = null,
@@ -112,6 +116,7 @@ class PhoneApplication : ObserverApplication(
                 }
             }
         }
+        audioOffNotices = PhoneAudioOffNoticeStore(applicationContext)
         widgetStartOutcomes = PhoneWidgetStartOutcomeStore(applicationContext)
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
         runtime.onContainerInitialized(::onContainerInitialized)
@@ -149,6 +154,9 @@ class PhoneApplication : ObserverApplication(
                 when (val activation = runtime.container().activateSourceWhenAlreadyForeground(sourceId)) {
                     is ForegroundSourceActivation.Actuated -> if (activation.result == SourceToggleResult.Applied) {
                         widgetStartOutcomes.clear()
+                        if (sourceId == PHONE_WIDGET_AUDIO_SOURCE_ID) {
+                            audioOffNotices.clear()
+                        }
                     }
                     is ForegroundSourceActivation.StartRefused -> {
                         runtime.containerIfInitialized?.controller?.recordStartRefusal()
@@ -168,53 +176,78 @@ class PhoneApplication : ObserverApplication(
     }
 
     internal fun widgetModel(): PhoneObserverWidgetModel =
-        if (runtime.containerIfInitialized == null) emptyWidgetModel() else cachedWidgetModel
+        if (runtime.containerIfInitialized == null) emptyWidgetModel(audioOffNotices.read()) else cachedWidgetModel
 
     internal fun intakeModel(): PhoneIntakeNotificationModel = cachedIntakeModel
 
     internal fun turnAudioOffFromWidget() {
         PhoneDiagLog.appendRaw("kind=source id=$PHONE_WIDGET_AUDIO_SOURCE_ID wish=off from=widget")
-        val container = runtime.containerIfInitialized
-        if (container != null) {
-            container.sources.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
-            applyEffectiveCapture(ownerTurnedSourceOff = true)
-            refreshWidgetAndUpdate()
-            return
-        }
+        performAudioOffInternal()
+        refreshWidgetAndUpdate()
+    }
 
-        val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
-        val permissions = AndroidPermissionStatusReader(this).read()
+    internal fun turnAudioOffFromApp() {
+        performAudioOffInternal()
+        refreshWidgetAndUpdate()
+    }
+
+    private fun performAudioOffInternal() {
+        val container = runtime.containerIfInitialized
+        val permissions = container?.controller?.permissionStatus ?: AndroidPermissionStatusReader(this).read()
         val declared = ObserverForegroundService.declaredCaptureForegroundTypes ?: emptySet()
         val serviceHeld = ObserverForegroundService.heldCaptureForegroundTypes != null
+        val registrationIds = captureSourceIdentities().map { it.sourceId }
+        val wishStore = FileSourceWishStore(filesDir.resolve("source-wishes"))
+        val ownerStoppedStore = OwnerStoppedStore(this)
+        val desiredStore = SharedPreferencesDesiredObservingStore(this)
 
-        val plan = planColdAudioOff(
-            store = store.read(),
+        val commitThroughRegistry: (() -> AudioOffCommit)? = if (container != null) {
+            {
+                val preWishes = container.sources.snapshot().sources.associate { it.sourceId to it.wish }
+                when (val result = container.sources.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)) {
+                    is SourceToggleResult.NotSaved -> AudioOffCommit(result.outcome, preWishes)
+                    else -> {
+                        val postWishes = container.sources.snapshot().sources.associate { it.sourceId to it.wish }
+                        AudioOffCommit(WishSaveOutcome.Committed, postWishes)
+                    }
+                }
+            }
+        } else {
+            null
+        }
+
+        performAudioOff(
+            registrationIds = registrationIds,
+            readStore = { wishStore.read() },
+            saveResolved = { wishStore.saveAll(it) },
+            commitThroughRegistry = commitThroughRegistry,
             microphoneGranted = permissions.microphoneGranted,
             cameraGranted = permissions.cameraGranted,
             locationGranted = permissions.locationGranted,
             declared = declared,
             serviceHeld = serviceHeld,
+            narrowRunningMask = { ObserverForegroundService.narrowRunningMask(it) },
+            stop = { endSession ->
+                if (serviceHeld) {
+                    suppressInactiveReplacement = true
+                    inactiveNotificationRequested = false
+                    ObserverForegroundService.stop(this)
+                } else if (endSession) {
+                    ObserverForegroundService.stop(this)
+                }
+                if (container != null) {
+                    if (endSession) {
+                        container.controller.stop()
+                    } else {
+                        container.sources.stopEnginesOutside(emptySet())
+                    }
+                }
+            },
+            recordOwnerStopped = { ownerStoppedStore.recordStopped() },
+            commitDesiredOff = { desiredStore.commitDesiredOff() },
+            publishNotice = { audioOffNotices.recordNotice(it) },
+            clearNotice = { audioOffNotices.clear() },
         )
-
-        if (plan.wishesToWrite != null) {
-            store.saveAll(plan.wishesToWrite)
-        }
-        if (plan.recordOwnerStopped) {
-            OwnerStoppedStore(this).recordStopped()
-        }
-        if (plan.commitDesiredOff) {
-            SharedPreferencesDesiredObservingStore(this).commitDesiredOff()
-        }
-        if (plan.stopService) {
-            if (serviceHeld) {
-                suppressInactiveReplacement = true
-            }
-            inactiveNotificationRequested = false
-            ObserverForegroundService.stop(this)
-        } else if (plan.refreshRunningMask) {
-            ObserverForegroundService.refreshRunningCaptureTypes(this)
-        }
-        refreshWidgetAndUpdate()
     }
 
     internal fun applyEffectiveCapture(ownerTurnedSourceOff: Boolean) {
@@ -367,10 +400,13 @@ class PhoneApplication : ObserverApplication(
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()
+        val notice = audioOffNotices.read()
+        val presentedReadModel = presentAudioOffNotice(readModel, notice)
         cachedWidgetModel = renderPhoneObserverWidget(
-            readModel = readModel,
+            readModel = presentedReadModel,
             statusModel = statusModel,
             startOutcome = widgetStartOutcomes.read(),
+            notice = notice,
         )
     }
 

@@ -14,6 +14,17 @@ import app.solstone.testing.FakeContinuousSource
 import app.solstone.testing.fakePayloadBytes
 import java.io.ByteArrayInputStream
 
+fun captureSourceIdentities(): List<CaptureSourceIdentity> = listOf(
+    CaptureSourceIdentity(
+        sourceId = "audio",
+        captureForegroundType = CaptureForegroundType.MICROPHONE,
+    ),
+    CaptureSourceIdentity(
+        sourceId = "location",
+        captureForegroundType = CaptureForegroundType.LOCATION,
+    ),
+)
+
 fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val audio = FakeContinuousSource(
         sourceId = "audio",
@@ -31,21 +42,20 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         fixedPayloadName = "location.jsonl",
         mediaType = "application/x-ndjson",
     )
+    val engines = mapOf(
+        "audio" to (audio to { p: app.solstone.platform.fgs.PermissionStatus -> p.microphoneGranted }),
+        "location" to (location to { p: app.solstone.platform.fgs.PermissionStatus -> p.locationGranted }),
+    )
     return CaptureSetup(
-        registrations = listOf(
+        registrations = captureSourceIdentities().map { identity ->
+            val (engine, permCheck) = engines.getValue(identity.sourceId)
             SourceRegistration(
-                sourceId = "audio",
-                engine = audio,
-                requiredPermissionsGranted = { it.microphoneGranted },
-                captureForegroundType = CaptureForegroundType.MICROPHONE,
-            ),
-            SourceRegistration(
-                sourceId = "location",
-                engine = location,
-                requiredPermissionsGranted = { it.locationGranted },
-                captureForegroundType = CaptureForegroundType.LOCATION,
-            ),
-        ),
+                sourceId = identity.sourceId,
+                engine = engine,
+                requiredPermissionsGranted = permCheck,
+                captureForegroundType = identity.captureForegroundType,
+            )
+        },
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
                 ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))

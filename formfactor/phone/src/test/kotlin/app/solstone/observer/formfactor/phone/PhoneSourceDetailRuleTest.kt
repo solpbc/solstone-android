@@ -117,6 +117,20 @@ class PhoneSourceDetailRuleTest {
                 true,
                 SourceDetailActionKind.RETRY,
             ),
+            ExpectedRule(ReasonCode.AUDIO_CHOICE_NOT_SAVED, "the audio choice was not saved", null, false),
+            ExpectedRule(
+                ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE,
+                "the audio choice was not saved, and the session stop was not durably recorded",
+                null,
+                false,
+            ),
+            ExpectedRule(
+                ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
+                "the audio choice was saved, but the session stop was not durably recorded",
+                null,
+                false,
+            ),
+            ExpectedRule(ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY, "remaining intake stopped unexpectedly", null, false),
         )
 
         expected.forEach { expectedRule ->

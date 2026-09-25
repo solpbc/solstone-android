@@ -32,6 +32,10 @@ fun reasonDiagnosis(reason: ReasonCode): String? = when (reason) {
     ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "intake couldn't start from the background"
     ReasonCode.FOREGROUND_TYPE_NOT_HELD -> "this source needs intake to restart"
     ReasonCode.PERSISTENCE_FAILED -> "couldn't save journal access on this phone"
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED -> "the audio choice was not saved"
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE -> "the audio choice was not saved, and the session stop was not durably recorded"
+    ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE -> "the audio choice was saved, but the session stop was not durably recorded"
+    ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY -> "remaining intake stopped unexpectedly"
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }

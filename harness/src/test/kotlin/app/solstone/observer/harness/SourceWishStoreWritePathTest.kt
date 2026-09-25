@@ -57,4 +57,108 @@ class SourceWishStoreWritePathTest {
         assertEquals(0, rebuiltAudio.startCalls)
         assertEquals(0, rebuiltLocation.startCalls)
     }
+
+    @Test
+    fun saveAllClassifiesByteOutcomesCorrectly() {
+        val dir = Files.createTempDirectory("source-wishes-classify").toFile()
+        val file = dir.resolve("source-wishes")
+        file.writeText("audio\tOn\n")
+
+        // 1. Success -> Committed
+        val store = FileSourceWishStore(file)
+        val res1 = store.saveAll(mapOf("audio" to SourceWish.Off))
+        assertEquals(WishSaveOutcome.Committed, res1)
+        assertEquals("audio\tOff\n", file.readText())
+
+        // 2. Failure during write/force before move -> OriginalIntact, original file bytes unchanged
+        val failingWriteStore = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun write(path: java.nio.file.Path, bytes: ByteArray) {
+                    throw RuntimeException("write failed")
+                }
+            },
+        )
+        val res2 = failingWriteStore.saveAll(mapOf("audio" to SourceWish.On))
+        assertEquals(WishSaveOutcome.OriginalIntact, res2)
+        assertEquals("audio\tOff\n", file.readText())
+
+        val failingForceStore = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun force(path: java.nio.file.Path) {
+                    throw RuntimeException("force failed")
+                }
+            },
+        )
+        val res3 = failingForceStore.saveAll(mapOf("audio" to SourceWish.On))
+        assertEquals(WishSaveOutcome.OriginalIntact, res3)
+        assertEquals("audio\tOff\n", file.readText())
+
+        // 3. moveAtomic throws AtomicMoveNotSupportedException, then moveReplace throws without changing target -> OriginalIntact
+        val failingFallbackMoveStore = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun moveAtomic(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    throw java.nio.file.AtomicMoveNotSupportedException("source", "target", "atomic move unsupported")
+                }
+                override fun moveReplace(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    throw RuntimeException("replace move failed")
+                }
+            },
+        )
+        val res4 = failingFallbackMoveStore.saveAll(mapOf("audio" to SourceWish.On))
+        assertEquals(WishSaveOutcome.OriginalIntact, res4)
+        assertEquals("audio\tOff\n", file.readText())
+
+        // 4. Failure during/after move where target file was altered -> Uncertain
+        val uncertainStore = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun moveAtomic(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    Files.write(target, byteArrayOf(1, 2, 3))
+                    throw RuntimeException("corrupted during move")
+                }
+                override fun moveReplace(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    Files.write(target, byteArrayOf(1, 2, 3))
+                    throw RuntimeException("corrupted during move")
+                }
+            },
+        )
+        val res5 = uncertainStore.saveAll(mapOf("audio" to SourceWish.On))
+        assertEquals(WishSaveOutcome.Uncertain, res5)
+    }
+
+    @Test
+    fun failedSaveRollsBackInMemoryStateAndReturnsNotSaved() {
+        val dir = Files.createTempDirectory("source-wishes-rollback").toFile()
+        val file = dir.resolve("source-wishes")
+        file.writeText("audio\tOn\n")
+
+        val failingStore = FileSourceWishStore(
+            file = file,
+            nio = object : FileSourceWishStore.NioOps by FileSourceWishStore.RealNioOps {
+                override fun moveAtomic(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    throw RuntimeException("simulated write failure")
+                }
+                override fun moveReplace(source: java.nio.file.Path, target: java.nio.file.Path) {
+                    throw RuntimeException("simulated write failure")
+                }
+            },
+        )
+
+        val audio = FakeSourceEngine()
+        val registry = sourceRegistry(
+            registrations = listOf(SourceRegistration("audio", audio)),
+            wishStore = failingStore,
+        )
+
+        val result = registry.setWish("audio", SourceWish.Off)
+        assertIs<SourceToggleResult.NotSaved>(result)
+        assertEquals(WishSaveOutcome.OriginalIntact, (result as SourceToggleResult.NotSaved).outcome)
+
+        // Verify in-memory wish was rolled back to On
+        val audioRow = registry.snapshot().sources.single { it.sourceId == "audio" }
+        assertEquals(SourceWish.On, audioRow.wish)
+    }
 }

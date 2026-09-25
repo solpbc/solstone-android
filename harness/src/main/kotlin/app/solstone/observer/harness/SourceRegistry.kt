@@ -180,10 +180,12 @@ class SourceRegistry(
     override fun setWish(sourceId: String, wish: SourceWish): SourceToggleResult {
         val wrapper = synchronized(lock) {
             if (sourceId !in wishes) return SourceToggleResult.UnknownSource
-            wishes[sourceId] = wish
             // ⛔ One source's act writes one source's entry. Persisting the default-filled map here
             // is what manufactured expressed wishes for every other source.
-            persistWish(sourceId, wish)
+            val outcome = persistWish(sourceId, wish)
+            if (outcome !is WishSaveOutcome.Committed) {
+                return SourceToggleResult.NotSaved(outcome)
+            }
             bound.first { it.sourceId == sourceId }
         }
         val result = wrapper.actuate()
@@ -192,10 +194,20 @@ class SourceRegistry(
     }
 
     /** ⚠ Call under [lock]. */
-    private fun persistWish(sourceId: String, wish: SourceWish) {
+    private fun persistWish(sourceId: String, wish: SourceWish): WishSaveOutcome {
+        val priorPersisted = persisted[sourceId]
+        val priorExpressed = sourceId in expressed
+        val priorWish = wishes[sourceId]
         persisted[sourceId] = wish
+        wishes[sourceId] = wish
         expressed.add(sourceId)
-        wishStore.saveAll(persisted.toMap())
+        val outcome = wishStore.saveAll(persisted.toMap())
+        if (outcome !is WishSaveOutcome.Committed) {
+            if (priorPersisted != null) persisted[sourceId] = priorPersisted else persisted.remove(sourceId)
+            if (!priorExpressed) expressed.remove(sourceId)
+            if (priorWish != null) wishes[sourceId] = priorWish else wishes.remove(sourceId)
+        }
+        return outcome
     }
 
     /**
@@ -254,7 +266,15 @@ class SourceRegistry(
                 expressed.add(it.sourceId)
                 wishes[it.sourceId] = SourceWish.On
             }
-            wishStore.saveAll(persisted.toMap())
+            val outcome = wishStore.saveAll(persisted.toMap())
+            if (outcome !is WishSaveOutcome.Committed) {
+                missing.forEach {
+                    persisted.remove(it.sourceId)
+                    expressed.remove(it.sourceId)
+                    wishes[it.sourceId] = SourceWish.Off
+                }
+                return@synchronized emptyList()
+            }
             missing
         }
     }
@@ -283,10 +303,12 @@ class SourceRegistry(
         val wrote = synchronized(lock) {
             if (sourceId !in wishes || sourceId in expressed) return false
             wishes[sourceId] = SourceWish.Off
-            persistWish(sourceId, SourceWish.Off)
-            true
+            val outcome = persistWish(sourceId, SourceWish.Off)
+            outcome is WishSaveOutcome.Committed
         }
-        notifyListeners()
+        if (wrote) {
+            notifyListeners()
+        }
         return wrote
     }
 
@@ -309,11 +331,20 @@ class SourceRegistry(
         if (storeUnreadable) return
         val changed = synchronized(lock) {
             if (sourceId !in expressed) return
+            val priorPersisted = persisted[sourceId]
+            val priorWish = wishes[sourceId]
             persisted.remove(sourceId)
             expressed.remove(sourceId)
             wishes[sourceId] = SourceWish.Off
-            wishStore.saveAll(persisted.toMap())
-            true
+            val outcome = wishStore.saveAll(persisted.toMap())
+            if (outcome !is WishSaveOutcome.Committed) {
+                if (priorPersisted != null) persisted[sourceId] = priorPersisted
+                expressed.add(sourceId)
+                if (priorWish != null) wishes[sourceId] = priorWish
+                false
+            } else {
+                true
+            }
         }
         if (changed) {
             notifyListeners()

@@ -20,6 +20,21 @@ import app.solstone.platform.location.LocationContinuousSourceEngine
 import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
 
+fun captureSourceIdentities(): List<CaptureSourceIdentity> = listOf(
+    CaptureSourceIdentity(
+        sourceId = AudioContinuousSourceEngine.SOURCE_ID,
+        captureForegroundType = CaptureForegroundType.MICROPHONE,
+    ),
+    CaptureSourceIdentity(
+        sourceId = LocationContinuousSourceEngine.SOURCE_ID,
+        captureForegroundType = CaptureForegroundType.LOCATION,
+    ),
+    CaptureSourceIdentity(
+        sourceId = StillCaptureEngine.SOURCE_ID,
+        captureForegroundType = CaptureForegroundType.CAMERA,
+    ),
+)
+
 fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
     val audio = AudioContinuousSourceEngine(
@@ -31,27 +46,21 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
         stillCamera = selectStillCamera(context),
         cameraLock = cameraLock,
     )
+    val engines = mapOf(
+        AudioContinuousSourceEngine.SOURCE_ID to (audio to { p: app.solstone.platform.fgs.PermissionStatus -> p.microphoneGranted }),
+        LocationContinuousSourceEngine.SOURCE_ID to (location to { p: app.solstone.platform.fgs.PermissionStatus -> p.locationGranted }),
+        StillCaptureEngine.SOURCE_ID to (camera to { p: app.solstone.platform.fgs.PermissionStatus -> p.cameraGranted }),
+    )
     return CaptureSetup(
-        registrations = listOf(
+        registrations = captureSourceIdentities().map { identity ->
+            val (engine, permCheck) = engines.getValue(identity.sourceId)
             SourceRegistration(
-                sourceId = AudioContinuousSourceEngine.SOURCE_ID,
-                engine = audio,
-                requiredPermissionsGranted = { it.microphoneGranted },
-                captureForegroundType = CaptureForegroundType.MICROPHONE,
-            ),
-            SourceRegistration(
-                sourceId = LocationContinuousSourceEngine.SOURCE_ID,
-                engine = location,
-                requiredPermissionsGranted = { it.locationGranted },
-                captureForegroundType = CaptureForegroundType.LOCATION,
-            ),
-            SourceRegistration(
-                sourceId = StillCaptureEngine.SOURCE_ID,
-                engine = camera,
-                requiredPermissionsGranted = { it.cameraGranted },
-                captureForegroundType = CaptureForegroundType.CAMERA,
-            ),
-        ),
+                sourceId = identity.sourceId,
+                engine = engine,
+                requiredPermissionsGranted = permCheck,
+                captureForegroundType = identity.captureForegroundType,
+            )
+        },
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
                 when (payload.sourceId) {

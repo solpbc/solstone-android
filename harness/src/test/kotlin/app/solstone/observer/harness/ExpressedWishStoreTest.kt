@@ -155,6 +155,39 @@ class ExpressedWishStoreTest {
         )
     }
 
+    @Test
+    fun unreadableStoreSaveFailsReturnsNotSavedAndRetainsSnapshotWishes() {
+        val store = FailingSaveUnreadableWishStore()
+        val fakes = listOf("audio", "location", "camera").associateWith { FakeSourceEngine(conditionValue = running()) }
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+            "camera" to CaptureForegroundType.CAMERA,
+        )
+        val f = fixture(permissionStatus = onlyCameraGranted(), snapshot = snapshot())
+        f.desiredStore.setDesiredOn(true)
+        val registry = SourceRegistry(
+            f.controller,
+            fakes.map { (id, engine) ->
+                SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
+            },
+            MainPoster { it() },
+            store,
+        )
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        fakes.forEach { (id, fake) -> assertEquals(1, fake.startCalls, "initial actuation: $id") }
+
+        val result = registry.setWish("audio", SourceWish.Off)
+        kotlin.test.assertIs<SourceToggleResult.NotSaved>(result)
+        assertEquals(WishSaveOutcome.OriginalIntact, result.outcome)
+
+        registry.snapshot().sources.forEach { row ->
+            assertEquals(SourceWish.On, row.wish, "${row.sourceId} wish must remain On")
+            assertTrue(row.wishExpressed, "${row.sourceId} must remain expressed")
+        }
+        fakes.forEach { (id, fake) -> assertEquals(1, fake.startCalls, "startCalls must not increase for $id") }
+    }
+
     /**
      * ⚠ The permission is **denied** here, and that is the whole fixture. An unexpressed source
      * with a *granted* permission is indistinguishable from a pre-upgrade install that has been
@@ -540,8 +573,9 @@ class ExpressedWishStoreTest {
     private class UnreadableWishStore : SourceWishStore {
         val writes = mutableListOf<Map<String, SourceWish>>()
         override fun read(): WishStoreState = WishStoreState.Unreadable
-        override fun saveAll(wishes: Map<String, SourceWish>) {
+        override fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome {
             writes += wishes
+            return WishSaveOutcome.Committed
         }
     }
 
@@ -563,8 +597,9 @@ class ExpressedWishStoreTest {
     private class TrackingMemoryWishStore(initial: Map<String, SourceWish> = emptyMap()) : SourceWishStore {
         var saved: Map<String, SourceWish> = initial
         override fun read(): WishStoreState = WishStoreState.Loaded(saved)
-        override fun saveAll(wishes: Map<String, SourceWish>) {
+        override fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome {
             saved = wishes
+            return WishSaveOutcome.Committed
         }
     }
 
@@ -625,6 +660,80 @@ class ExpressedWishStoreTest {
         assertEquals(SourceWish.On, registry.snapshot().sources.first { it.sourceId == "audio" }.wish)
     }
 
+    private class FailingSaveUnreadableWishStore : SourceWishStore {
+        val writes = mutableListOf<Map<String, SourceWish>>()
+        override fun read(): WishStoreState = WishStoreState.Unreadable
+        override fun saveAll(wishes: Map<String, SourceWish>): WishSaveOutcome {
+            writes += wishes
+            return WishSaveOutcome.OriginalIntact
+        }
+    }
+
+    @Test
+    fun resumeCharacterizationWithColdOffRepairedWishFile() {
+        val dir = java.nio.file.Files.createTempDirectory("harness-resume-char").toFile()
+        val file = dir.resolve("source-wishes")
+        val store = FileSourceWishStore(file)
+        store.saveAll(mapOf("audio" to SourceWish.Off, "location" to SourceWish.On, "camera" to SourceWish.On))
+        assertEquals("audio\tOff\nlocation\tOn\ncamera\tOn\n", file.readText())
+
+        // 1. Both markers present: desiredStore is off (setDesiredOn(false)), ownerStopped returns true.
+        // Location permission is granted (the later grant). Call controller.reconcile(VisibleStart) and controller.reconcile(Rehydrate).
+        // Assert lifecycle.starts stays 0.
+        val f1 = fixture(permissionStatus = onlyLocationGranted(), snapshot = notRunning())
+        f1.desiredStore.setDesiredOn(false)
+        val registry1 = SourceRegistry(
+            controller = f1.controller,
+            registrations = listOf(
+                reg("audio", CaptureForegroundType.MICROPHONE),
+                reg("location", CaptureForegroundType.LOCATION),
+                reg("camera", CaptureForegroundType.CAMERA),
+            ),
+            main = MainPoster { it() },
+            wishStore = store,
+            ownerStopped = { true },
+        )
+        f1.controller.reconcile(ObserverStartMode.VisibleStart)
+        f1.controller.reconcile(ObserverStartMode.Rehydrate)
+        assertEquals(0, f1.lifecycle.starts, "both markers present must keep lifecycle.starts at 0")
+
+        // 2. One marker missing, owner-stopped unset: ownerStopped returns false, desired-on is false.
+        // Call ensureObserving(). Assert lifecycle.starts becomes 1.
+        val f2 = fixture(permissionStatus = onlyLocationGranted(), snapshot = notRunning())
+        f2.desiredStore.setDesiredOn(false)
+        val registry2 = SourceRegistry(
+            controller = f2.controller,
+            registrations = listOf(
+                reg("audio", CaptureForegroundType.MICROPHONE),
+                reg("location", CaptureForegroundType.LOCATION),
+                reg("camera", CaptureForegroundType.CAMERA),
+            ),
+            main = MainPoster { it() },
+            wishStore = store,
+            ownerStopped = { false },
+        )
+        f2.controller.ensureObserving()
+        assertEquals(1, f2.lifecycle.starts, "ensureObserving starts observing when owner-stopped is unset")
+
+        // 3. One marker missing, desired-off unset: ownerStopped returns true, desiredStore.setDesiredOn(true) before reconcile.
+        // Call reconcile(VisibleStart). Assert lifecycle.starts increases.
+        val f3 = fixture(permissionStatus = onlyLocationGranted(), snapshot = notRunning())
+        f3.desiredStore.setDesiredOn(true)
+        val registry3 = SourceRegistry(
+            controller = f3.controller,
+            registrations = listOf(
+                reg("audio", CaptureForegroundType.MICROPHONE),
+                reg("location", CaptureForegroundType.LOCATION),
+                reg("camera", CaptureForegroundType.CAMERA),
+            ),
+            main = MainPoster { it() },
+            wishStore = store,
+            ownerStopped = { true },
+        )
+        f3.controller.reconcile(ObserverStartMode.VisibleStart)
+        assertEquals(1, f3.lifecycle.starts, "desiredStore setDesiredOn(true) allows reconcile to start observing")
+    }
+
     private fun reg(id: String, type: CaptureForegroundType) = SourceRegistration(
         sourceId = id,
         engine = FakeSourceEngine(conditionValue = running()),
@@ -642,6 +751,12 @@ class ExpressedWishStoreTest {
         microphoneGranted = false,
         cameraGranted = true,
         locationGranted = false,
+    )
+
+    private fun onlyLocationGranted() = grantedPermissions().copy(
+        microphoneGranted = false,
+        cameraGranted = false,
+        locationGranted = true,
     )
 
     private fun snapshot() = SourceRuntimeSnapshot(

@@ -105,6 +105,10 @@ private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason
     // unreachable journal does not by itself make intake fail.
     ReasonCode.PROVIDER_SILENT,
     ReasonCode.TRANSPORT_UNAVAILABLE,
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED,
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE,
+    ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
+    ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY,
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }
@@ -121,6 +125,10 @@ private fun reasonRetryIsHonest(reason: ReasonCode): Boolean = when (reason) {
     ReasonCode.STORAGE_FULL,
     ReasonCode.PROVIDER_SILENT,
     ReasonCode.TRANSPORT_UNAVAILABLE,
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED,
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE,
+    ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
+    ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY,
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> false
 }

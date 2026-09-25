@@ -514,6 +514,13 @@ class FgsLogicTest {
         assertEquals(emptySet(), planNullWishes.missingFromHeld)
     }
 
+    @Test
+    fun classifyMaskNarrowOutcomes() {
+        assertEquals(MaskNarrowResult.RequestFailed, classifyMaskNarrow(serviceReachable = false) { })
+        assertEquals(MaskNarrowResult.Applied, classifyMaskNarrow(serviceReachable = true) { })
+        assertEquals(MaskNarrowResult.ApplyFailed, classifyMaskNarrow(serviceReachable = true) { throw RuntimeException("fail") })
+    }
+
     private fun granted(): PermissionStatus =
         PermissionStatus(
             microphoneGranted = true,

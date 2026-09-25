@@ -55,23 +55,31 @@ class CapturePermissionRouteTest {
     @Test
     fun coldAudioOffPlanning() {
         val declared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION)
-        
-        // Unreadable store writes nothing
+        val registrationIds = listOf("audio", "location")
+
+        // Unreadable store repairs wishes: audio -> Off, location -> On
         val unreadablePlan = planColdAudioOff(
             store = app.solstone.observer.harness.WishStoreState.Unreadable,
+            registrationIds = registrationIds,
             microphoneGranted = true,
             cameraGranted = false,
             locationGranted = true,
             declared = declared,
             serviceHeld = true,
         )
-        assertEquals(null, unreadablePlan.wishesToWrite)
-        assertEquals(false, unreadablePlan.stopService)
+        assertEquals(
+            mapOf("audio" to app.solstone.observer.harness.SourceWish.Off, "location" to app.solstone.observer.harness.SourceWish.On),
+            unreadablePlan.wishesToWrite,
+        )
+        assertEquals(false, unreadablePlan.recordOwnerStopped)
         assertEquals(false, unreadablePlan.commitDesiredOff)
+        assertEquals(false, unreadablePlan.stopService)
+        assertEquals(true, unreadablePlan.refreshRunningMask)
 
         // Only audio was on: turning audio off ends session
         val onlyAudioPlan = planColdAudioOff(
             store = app.solstone.observer.harness.WishStoreState.Loaded(mapOf("audio" to app.solstone.observer.harness.SourceWish.On)),
+            registrationIds = registrationIds,
             microphoneGranted = true,
             cameraGranted = false,
             locationGranted = true,
@@ -89,6 +97,7 @@ class CapturePermissionRouteTest {
             store = app.solstone.observer.harness.WishStoreState.Loaded(
                 mapOf("audio" to app.solstone.observer.harness.SourceWish.On, "location" to app.solstone.observer.harness.SourceWish.On)
             ),
+            registrationIds = registrationIds,
             microphoneGranted = true,
             cameraGranted = false,
             locationGranted = true,

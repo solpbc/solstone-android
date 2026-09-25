@@ -28,6 +28,7 @@ class ObserverForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        runningInstance = this
         dispatchLifecycle("fgs phase=create")
         refreshHeartbeat()
         handler.post(heartbeat)
@@ -74,20 +75,12 @@ class ObserverForegroundService : Service() {
             val liveHeldTypes = heldCaptureForegroundTypes
             if (liveHeldTypes != null) {
                 if (effectivePlan.types != liveHeldTypes) {
-                    ServiceCompat.startForeground(
-                        this,
-                        ObserverNotification.SERVICE_NOTIFICATION_ID,
-                        ObserverNotification.ongoing(
-                            this,
-                            needsAttention = false,
-                            decorate = true,
-                            requestPromotion = true,
-                            initialForegroundEntry = false,
-                        ),
-                        captureForegroundTypeMask(effectivePlan.types),
-                    )
-                    heldCaptureForegroundTypes = effectivePlan.types
-                    dispatchForegroundChanged(true)
+                    val narrow = narrowRunningMask(effectivePlan.types)
+                    if (narrow !is MaskNarrowResult.Applied) {
+                        removeForegroundNotification()
+                        stopSelf()
+                        return START_STICKY
+                    }
                 }
                 val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null, subsetEmpty = false)
                 refreshOngoingNotification(this, needsAttention = plan.initialNeedsAttention)
@@ -274,6 +267,7 @@ class ObserverForegroundService : Service() {
 
     override fun onDestroy() {
         dispatchLifecycle("fgs phase=destroy")
+        runningInstance = null
         heldCaptureForegroundTypes = null
         // ⚠ stopService is asynchronous. A refresh that ran on this thread between the stop and
         // now passed its check and posted 101; if that post reaches the system after it has
@@ -306,6 +300,7 @@ class ObserverForegroundService : Service() {
         private val lastBeatNanos = AtomicLong(0L)
         private val lastStartRequestedNanos = AtomicLong(0L)
 
+        @Volatile internal var runningInstance: ObserverForegroundService? = null
         @Volatile var declaredCaptureForegroundTypes: Set<CaptureForegroundType>? = null
         @Volatile var heldCaptureForegroundTypes: Set<CaptureForegroundType>? = null
         @Volatile var captureWishTypes: (() -> Set<CaptureForegroundType>?)? = null
@@ -314,6 +309,30 @@ class ObserverForegroundService : Service() {
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
         @Volatile var onDestroyCallback: (() -> Unit)? = null
         @Volatile var onForegroundChanged: ((Boolean) -> Unit)? = null
+
+        fun narrowRunningMask(types: Set<CaptureForegroundType>): MaskNarrowResult {
+            val instance = runningInstance
+            val result = classifyMaskNarrow(serviceReachable = instance != null) {
+                val target = requireNotNull(instance)
+                ServiceCompat.startForeground(
+                    target,
+                    ObserverNotification.SERVICE_NOTIFICATION_ID,
+                    ObserverNotification.ongoing(
+                        target,
+                        needsAttention = false,
+                        decorate = true,
+                        requestPromotion = true,
+                        initialForegroundEntry = false,
+                    ),
+                    captureForegroundTypeMask(types),
+                )
+            }
+            if (result is MaskNarrowResult.Applied) {
+                heldCaptureForegroundTypes = types
+                dispatchForegroundChanged(true)
+            }
+            return result
+        }
 
         const val EXTRA_REFRESH_RUNNING_CAPTURE_TYPES = "app.solstone.platform.fgs.extra.REFRESH_RUNNING_CAPTURE_TYPES"
 
