@@ -129,6 +129,8 @@ internal fun PaneSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    subLine: String? = null,
+    switchModifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
@@ -138,16 +140,26 @@ internal fun PaneSwitchRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (subLine != null) {
+                Text(
+                    text = subLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = shellSecondaryInk,
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = solstoneSwitchColors(),
+            modifier = switchModifier,
         )
     }
 }

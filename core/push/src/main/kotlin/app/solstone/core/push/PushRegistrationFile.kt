@@ -68,6 +68,8 @@ data class PushRegistrationState(
     val unregisteredAt: Long? = null,
     val pendingDeletes: List<PendingPushDelete> = emptyList(),
     val delivery: PushDeliveryState = PushDeliveryState.Off,
+    /** The owner's own turn-on for this device. Off until they turn it on; nothing registers while off. */
+    val ownerOn: Boolean = false,
 ) {
     companion object {
         val Empty = PushRegistrationState()
@@ -138,6 +140,7 @@ object PushRegistrationFile {
                 )
             },
             "delivery" to encodeDelivery(state.delivery),
+            "ownerOn" to state.ownerOn,
         )
 
     private fun encodeIdentity(id: PushRegistrationIdentity): Map<String, Any?> =
@@ -198,6 +201,7 @@ object PushRegistrationFile {
             PendingPushDelete(url, PairingGeneration(instanceId, cert), failures)
         } ?: emptyList()
         val delivery = (map["delivery"] as? Map<*, *>)?.let(::decodeDelivery) ?: PushDeliveryState.Off
+        val ownerOn = map["ownerOn"] as? Boolean ?: false
 
         return PushRegistrationState(
             lastRegistered = lastRegistered,
@@ -207,6 +211,7 @@ object PushRegistrationFile {
             unregisteredAt = unregisteredAt,
             pendingDeletes = pendingDeletes,
             delivery = delivery,
+            ownerOn = ownerOn,
         )
     }
 

@@ -53,6 +53,14 @@ data class SyncStores(
 
     fun addPushDeliveryStateListener(listener: (PushDeliveryState) -> Unit): () -> Unit =
         pushRegistration?.addDeliveryStateListener(listener) ?: { }
+
+    /** The owner's own turn-on for notifications from the journal. Off until they turn it on. */
+    val journalPushOn: Boolean
+        get() = pushRegistration?.ownerOn ?: false
+
+    fun setJournalPushOn(on: Boolean) {
+        pushRegistration?.setOwnerOn(on)
+    }
 }
 
 class PublisherIdentityMutatorAdapter(

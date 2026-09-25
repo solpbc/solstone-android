@@ -338,6 +338,8 @@ sealed interface PhoneJournalNotificationRow {
 
 internal const val JOURNAL_FROM_YOUR_JOURNAL = "from your journal"
 internal const val JOURNAL_NOTIFICATIONS_ON = "on"
+internal const val JOURNAL_SWITCH_SUB = "off until you turn it on. your journal encrypts each one to this phone's own key."
+internal const val JOURNAL_DELIVERED_BY = "delivered by"
 internal const val JOURNAL_NOT_REACHING = "not reaching this phone"
 internal const val JOURNAL_NO_APP_NOTE =
     "notifications from your journal need a separate app to reach this phone, and none is installed. install ntfy, open it once, then come back here."
@@ -363,6 +365,9 @@ fun PhoneNotificationsPane(
     journalPushEnabled: Boolean = false,
     journalNotificationRow: PhoneJournalNotificationRow? = null,
     onChooseJournalDeliveryApp: () -> Unit = {},
+    journalPushOn: Boolean = false,
+    onJournalPushChange: (Boolean) -> Unit = {},
+    journalDeliveredBy: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -387,12 +392,30 @@ fun PhoneNotificationsPane(
                     modifier = Modifier.testTag("notificationsSendTest"),
                 )
             }
-            if (journalPushEnabled && journalNotificationRow != null) {
+            if (journalPushEnabled) {
+                PaneRowDivider()
+                PaneSwitchRow(
+                    label = JOURNAL_FROM_YOUR_JOURNAL,
+                    subLine = JOURNAL_SWITCH_SUB,
+                    checked = journalPushOn,
+                    onCheckedChange = onJournalPushChange,
+                    switchModifier = Modifier.testTag("notificationsJournalSwitch"),
+                )
+                if (journalPushOn && journalDeliveredBy != null) {
+                    PaneRowDivider()
+                    PaneNavRow(
+                        label = JOURNAL_DELIVERED_BY,
+                        value = journalDeliveredBy,
+                        onClick = onChooseJournalDeliveryApp,
+                        modifier = Modifier.testTag("notificationsDeliveredBy"),
+                    )
+                }
+            }
+            if (journalPushEnabled && journalPushOn && journalNotificationRow != null && journalNotificationRow != PhoneJournalNotificationRow.On) {
                 PaneRowDivider()
                 when (journalNotificationRow) {
-                    PhoneJournalNotificationRow.On -> {
-                        PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOTIFICATIONS_ON)
-                    }
+                    // The switch already says on.
+                    PhoneJournalNotificationRow.On -> Unit
                     PhoneJournalNotificationRow.NeedsDeliveryApp -> {
                         PaneFactRow(label = JOURNAL_FROM_YOUR_JOURNAL, value = JOURNAL_NOT_REACHING)
                         PaneRowDivider()
@@ -421,7 +444,7 @@ fun PhoneNotificationsPane(
                 }
             }
         }
-        if (journalPushEnabled && journalNotificationRow != null) {
+        if (journalPushEnabled && journalPushOn && journalNotificationRow != null) {
             when (journalNotificationRow) {
                 PhoneJournalNotificationRow.NeedsDeliveryApp -> {
                     PaneNote(JOURNAL_NO_APP_NOTE)

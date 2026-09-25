@@ -40,14 +40,14 @@ class PhonePushService : PushService() {
     override fun onUnregistered(instance: String) {
         if (instance != INSTANCE_DEFAULT) return
         val coordinator = syncStores(applicationContext).pushRegistration ?: return
-        if (!coordinator.enabled) return
+        if (!coordinator.ownerOn) return
         serial?.onUnregistered()
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) {
         if (instance != INSTANCE_DEFAULT) return
         val coordinator = syncStores(applicationContext).pushRegistration ?: return
-        if (!coordinator.enabled) return
+        if (!coordinator.ownerOn) return
         serial?.onRegistrationFailed(reason.name)
     }
 
@@ -55,6 +55,11 @@ class PhonePushService : PushService() {
         if (instance != INSTANCE_DEFAULT) return
         val coordinator = syncStores(applicationContext).pushRegistration ?: return
         if (!coordinator.enabled) return
+        if (!coordinator.ownerOn) {
+            // Off on this phone: nothing is shown, and the delivery app is let go.
+            coordinator.releaseStray("message")
+            return
+        }
         serial?.onMessage(message.content, message.decrypted)
     }
 }

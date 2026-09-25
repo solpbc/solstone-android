@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- you can now turn on notifications from your journal, under notifications. your journal encrypts each one to your phone's own key, and turning them off tells your journal to stop sending them.
+
 ### Changed
 - what the solstone app takes in now goes into your journal right after each five-minute part is finished, while your phone stays in reach of your journal. before, it waited for the app's next regular sync, which could be 15 minutes or more away.
 

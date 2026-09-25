@@ -107,7 +107,7 @@ android {
         }
         release {
             signingConfig = signingConfigs.findByName("release")
-            buildConfigField("boolean", "PUSH_REGISTRATION", "false") // push registration stays off in release builds until its privacy and security review has cleared.
+            buildConfigField("boolean", "PUSH_REGISTRATION", "true") // the owner turns it on per device; off until they do.
         }
     }
 
@@ -225,8 +225,8 @@ tasks.matching { it.name == "compileRealReleaseKotlin" }.configureEach {
             it.name == "BuildConfig.java" && it.absolutePath.contains("release")
         } ?: throw GradleException("Generated BuildConfig.java not found in ${buildConfigDir.absolutePath}")
         val text = buildConfigFile.readText()
-        if (!text.contains("public static final boolean PUSH_REGISTRATION = false;")) {
-            throw GradleException("realRelease BuildConfig must have PUSH_REGISTRATION = false, found:\n$text")
+        if (!text.contains("public static final boolean PUSH_REGISTRATION = true;")) {
+            throw GradleException("realRelease BuildConfig must have PUSH_REGISTRATION = true, found:\n$text")
         }
     }
 }

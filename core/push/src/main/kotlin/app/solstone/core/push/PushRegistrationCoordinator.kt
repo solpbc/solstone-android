@@ -53,8 +53,14 @@ class PushRegistrationCoordinator(
     private var memoryState: PushRegistrationState = PushRegistrationFile.read(stateFile, log)
 
     @Volatile
-    var deliveryState: PushDeliveryState = if (enabled) memoryState.delivery else PushDeliveryState.Off
+    var deliveryState: PushDeliveryState = if (enabled && memoryState.ownerOn) memoryState.delivery else PushDeliveryState.Off
         private set
+
+    /** The owner's own turn-on for this device. Nothing registers, and nothing is posted to the journal, while it is off. */
+    val ownerOn: Boolean
+        get() = synchronized(lock) { enabled && memoryState.ownerOn }
+
+    private fun activeLocked(): Boolean = enabled && memoryState.ownerOn
 
     private val listeners = CopyOnWriteArrayList<(PushDeliveryState) -> Unit>()
 
@@ -69,7 +75,7 @@ class PushRegistrationCoordinator(
     }
 
     init {
-        if (!enabled) {
+        if (!enabled || !memoryState.ownerOn) {
             deliveryState = PushDeliveryState.Off
         }
     }
@@ -113,7 +119,8 @@ class PushRegistrationCoordinator(
     private fun executePass(snap: PushPassSnapshot, jobGen: Long) {
         try {
             val G = snap.pairingNow()
-            fun stopped(): Boolean = snap.pairingNow() != G || job.currentGeneration() != jobGen
+            fun superseded(): Boolean = snap.pairingNow() != G || job.currentGeneration() != jobGen
+            fun stopped(): Boolean = superseded() || !ownerOn
 
             if (!enabled || port == null || G == null) {
                 var stateToNotify: PushDeliveryState? = null
@@ -123,6 +130,11 @@ class PushRegistrationCoordinator(
                     stateToNotify = deliveryState
                 }
                 stateToNotify?.let(::notifyListeners)
+                return
+            }
+
+            if (!ownerOn) {
+                executeOffPass(snap, G, jobGen, port, ::superseded)
                 return
             }
 
@@ -336,6 +348,7 @@ class PushRegistrationCoordinator(
                             }
                             stateToNotify?.let(::notifyListeners)
 
+                            if (stopped()) return
                             val vapidBase64Url = Base64.getUrlEncoder().withoutPadding().encodeToString(K)
                             // An event the connector already accepted before unregister can still arrive afterward. If it is stamped with the new attempt, it is POSTed under the new identity. The window is the delivery already in flight.
                             port.register(vapidBase64Url)
@@ -387,7 +400,7 @@ class PushRegistrationCoordinator(
 
                             var casPostedOk = false
                             synchronized(lock) {
-                                if (memoryState.endpoint == endpointToPost) {
+                                if (memoryState.ownerOn && memoryState.endpoint == endpointToPost) {
                                     memoryState = memoryState.copy(endpoint = endpointToPost.copy(posted = true))
                                     persistLocked()
                                     casPostedOk = true
@@ -400,7 +413,7 @@ class PushRegistrationCoordinator(
                                 return
                             }
 
-                            if (snap.pairingNow() != G || job.currentGeneration() != jobGen) {
+                            if (stopped()) {
                                 return
                             }
 
@@ -454,6 +467,94 @@ class PushRegistrationCoordinator(
         } finally {
             afterPass()
         }
+    }
+
+    // Off, whether the owner turned it off or never turned it on: forget this phone's registration, let
+    // the delivery app go, and remove what the journal holds. An install that registered before the owner
+    // turn-on existed is deregistered here on its first pass, and is not enrolled again.
+    private fun executeOffPass(
+        snap: PushPassSnapshot,
+        G: PairingGeneration,
+        jobGen: Long,
+        port: DistributorPort,
+        superseded: () -> Boolean,
+    ) {
+        var stateToNotify: PushDeliveryState? = null
+        var releaseDistributor = false
+        synchronized(lock) {
+            if (activeLocked()) return
+            releaseDistributor = forgetRegistrationLocked(G)
+            updateDeliveryStateLocked(PushDeliveryState.Off)
+            persistLocked()
+            stateToNotify = deliveryState
+        }
+        stateToNotify?.let(::notifyListeners)
+        if (releaseDistributor) {
+            try {
+                port.unregister()
+            } catch (_: Throwable) {
+                log("kind=push reason=internal")
+            }
+        }
+
+        val hasDeletes = synchronized(lock) { memoryState.pendingDeletes.any { it.generation == G } }
+        if (!hasDeletes || superseded()) return
+        var client: PlHttpClient? = null
+        try {
+            client = snap.openClient()
+            if (superseded()) return
+            runDeletePhase(client, G, snap, jobGen)
+        } finally {
+            try {
+                (client as? Closeable)?.close()
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    /** Queues a DELETE for a posted endpoint and clears the registration. Returns whether a delivery app registration may exist. */
+    private fun forgetRegistrationLocked(G: PairingGeneration?): Boolean {
+        val cur = memoryState.endpoint
+        val hadRegistration = cur != null || memoryState.attempt != null || memoryState.lastRegistered != null
+        var pending = memoryState.pendingDeletes
+        val deleteGeneration = cur?.identity?.generation ?: G
+        if (cur != null && cur.posted && deleteGeneration != null) {
+            pending = pending.filterNot { it.url == cur.url } + PendingPushDelete(cur.url, deleteGeneration, 0)
+        }
+        memoryState = memoryState.copy(endpoint = null, attempt = null, lastRegistered = null, pendingDeletes = pending)
+        return hadRegistration
+    }
+
+    fun setOwnerOn(on: Boolean) {
+        if (!enabled) return
+        var stateToNotify: PushDeliveryState? = null
+        var releaseDistributor = false
+        synchronized(lock) {
+            if (memoryState.ownerOn == on) return
+            if (on) {
+                memoryState = memoryState.copy(ownerOn = true)
+            } else {
+                memoryState = memoryState.copy(ownerOn = false)
+                releaseDistributor = forgetRegistrationLocked(pairingNow())
+            }
+            updateDeliveryStateLocked(PushDeliveryState.Off)
+            persistLocked()
+            stateToNotify = deliveryState
+        }
+        if (!on) {
+            // A pass already running is stale once the owner turns it off; its register and POST re-check under the lock.
+            job.fenceGeneration()
+        }
+        log("kind=push owner_on=$on")
+        if (releaseDistributor) {
+            try {
+                port?.unregister()
+            } catch (_: Throwable) {
+                log("kind=push reason=internal")
+            }
+        }
+        stateToNotify?.let(::notifyListeners)
+        enqueue()
     }
 
     private fun clearStaleEndpointIfNecessaryLocked(available: List<String>, G: PairingGeneration) {
@@ -522,11 +623,27 @@ class PushRegistrationCoordinator(
         }
     }
 
+    /** A delivery app answered while the owner has push off: let it go instead of keeping what it sent. */
+    fun releaseStray(what: String) {
+        if (!enabled || ownerOn) return
+        log("kind=push reason=off event=$what")
+        try {
+            port?.unregister()
+        } catch (_: Throwable) {
+            log("kind=push reason=internal")
+        }
+    }
+
     fun onNewEndpoint(url: String, p256dh: String, auth: String) {
         var stateToNotify: PushDeliveryState? = null
         var shouldEnqueue = false
+        var stray = false
         synchronized(lock) {
-            if (!enabled) return
+            if (enabled && !memoryState.ownerOn) {
+                stray = true
+                return@synchronized
+            }
+            if (!activeLocked()) return
             val G = pairingNow() ?: return
             shouldEnqueue = true
 
@@ -559,6 +676,10 @@ class PushRegistrationCoordinator(
             }
             persistLocked()
         }
+        if (stray) {
+            releaseStray("endpoint")
+            return
+        }
         stateToNotify?.let(::notifyListeners)
         if (shouldEnqueue) {
             // enqueueNow's KEEP policy drops a request while a sync is already running. The first registration after an endpoint arrives can wait until the next sync. The callback has already recorded the endpoint.
@@ -570,7 +691,7 @@ class PushRegistrationCoordinator(
         var stateToNotify: PushDeliveryState? = null
         var shouldEnqueue = false
         synchronized(lock) {
-            if (!enabled) return
+            if (!activeLocked()) return
             val G = pairingNow() ?: return
             shouldEnqueue = true
 
@@ -598,7 +719,7 @@ class PushRegistrationCoordinator(
     fun onRegistrationFailed(reason: String) {
         var stateToNotify: PushDeliveryState? = null
         synchronized(lock) {
-            if (!enabled) return
+            if (!activeLocked()) return
             if (pairingNow() == null) return
 
             val att = memoryState.attempt?.copy(answered = true, failure = reason)
@@ -612,7 +733,7 @@ class PushRegistrationCoordinator(
     }
 
     fun reregister() {
-        if (!enabled) return
+        if (!ownerOn) return
         try {
             port?.unregister()
         } catch (_: Throwable) {
@@ -639,7 +760,7 @@ class PushRegistrationCoordinator(
     }
 
     fun onUserPickedDistributor(pkg: String) {
-        if (!enabled) return
+        if (!ownerOn) return
         var stateToNotify: PushDeliveryState? = null
         synchronized(lock) {
             val nextDel = PushDeliveryState.WaitingForDelivery(pkg, false)

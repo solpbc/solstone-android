@@ -21,6 +21,8 @@ import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.push.DistributorPort
 import app.solstone.core.push.DistributorResolution
 import app.solstone.core.push.PushRegistrationCoordinator
+import app.solstone.core.push.PushRegistrationFile
+import app.solstone.core.push.PushRegistrationState
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
@@ -37,6 +39,8 @@ class ScheduleOptionalJobsTest {
         val (journalCoord, _) = createCoordinators(mutator)
         val (relayCoord, _) = createRelayCoordinator(mutator)
         val tempDir = Files.createTempDirectory("push-test").toFile()
+        // The owner has turned notifications from the journal on for this phone.
+        PushRegistrationFile.write(File(tempDir, PushRegistrationFile.FILE_NAME), PushRegistrationState(ownerOn = true)) {}
         val fakePort = FakeDistributorPort()
         val pushCoord = PushRegistrationCoordinator(
             directory = tempDir,
@@ -76,6 +80,8 @@ class ScheduleOptionalJobsTest {
         val (journalCoord, _) = createCoordinators(mutator)
         val (relayCoord, _) = createRelayCoordinator(mutator)
         val tempDir = Files.createTempDirectory("push-test").toFile()
+        // The owner has turned notifications from the journal on for this phone.
+        PushRegistrationFile.write(File(tempDir, PushRegistrationFile.FILE_NAME), PushRegistrationState(ownerOn = true)) {}
         val fakePort = FakeDistributorPort()
         val pushCoord = PushRegistrationCoordinator(
             directory = tempDir,

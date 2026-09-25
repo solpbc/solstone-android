@@ -100,6 +100,8 @@ class PhoneShellActivity : ComponentActivity() {
     }
     private var notificationsEnabled by mutableStateOf(false)
     private var journalNotificationRow by mutableStateOf<PhoneJournalNotificationRow?>(null)
+    private var journalPushOn by mutableStateOf(false)
+    private var journalDeliveredBy by mutableStateOf<String?>(null)
     private var pushFactsExecutor: ExecutorService? = null
     private var pushDeliveryUnsubscribe: (() -> Unit)? = null
     @Volatile private var pushFactsStopped = false
@@ -326,6 +328,9 @@ class PhoneShellActivity : ComponentActivity() {
                 journalPushEnabled = BuildConfig.PUSH_REGISTRATION,
                 journalNotificationRow = journalNotificationRow,
                 onChooseJournalDeliveryApp = { pickJournalDistributor() },
+                journalPushOn = journalPushOn,
+                onJournalPushChange = { on -> setJournalPush(on) },
+                journalDeliveredBy = journalDeliveredBy,
                 hapticsEnabled = hapticsEnabled,
                 notificationsEnabled = notificationsEnabled,
                 eventLog = eventLog,
@@ -713,15 +718,40 @@ class PhoneShellActivity : ComponentActivity() {
             is JournalNotificationRow.DeliveryAppStopped -> PhoneJournalNotificationRow.DeliveryAppStopped(coreRow.appName)
             null -> null
         }
+        val ownerOn = stores.journalPushOn
+        // The delivery app is named only when the owner has a choice to make: two or more on this phone.
+        val deliveredBy: String? = if (ownerOn && distributorPackages != null && distributorPackages.size >= 2) {
+            val current = runCatching { UnifiedPush.getAckDistributor(applicationContext) }.getOrNull()
+                ?: runCatching { UnifiedPush.getSavedDistributor(applicationContext) }.getOrNull()
+            when {
+                current == null -> null
+                current == ownPackage -> EMBEDDED_DISTRIBUTOR_LABEL
+                else -> runCatching {
+                    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        packageManager.getApplicationInfo(current, PackageManager.ApplicationInfoFlags.of(0))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageManager.getApplicationInfo(current, 0)
+                    }
+                    info.loadLabel(packageManager).toString().trim().ifBlank { current }
+                }.getOrNull()
+            }
+        } else {
+            null
+        }
         mainHandler.post {
-            if (!pushFactsStopped) journalNotificationRow = phoneRow
+            if (!pushFactsStopped) {
+                journalNotificationRow = phoneRow
+                journalPushOn = ownerOn
+                journalDeliveredBy = deliveredBy
+            }
         }
 
         if (repair) {
             val nowMillis = System.currentTimeMillis()
             if (paired && distributorPackages != null) {
                 val decision = journalPushRepair(
-                    pushRegistration = BuildConfig.PUSH_REGISTRATION,
+                    pushRegistration = BuildConfig.PUSH_REGISTRATION && ownerOn,
                     pairingCommitted = true,
                     state = state,
                     nowMillis = nowMillis,
@@ -756,6 +786,17 @@ class PhoneShellActivity : ComponentActivity() {
                 )
                 repairMemory = decision.memory
             }
+        }
+    }
+
+    private fun setJournalPush(on: Boolean) {
+        journalPushOn = on
+        if (!on) journalDeliveredBy = null
+        pushFactsExecutor?.execute { stores.setJournalPushOn(on) }
+        val needsPermission = Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (on && needsPermission) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
         }
     }
 
@@ -832,6 +873,8 @@ class PhoneShellActivity : ComponentActivity() {
 
     private companion object {
         const val PERMISSION_REQUEST = 10
+        // The embedded distributor delivers through Google Play services.
+        const val EMBEDDED_DISTRIBUTOR_LABEL = "Google Play services"
         const val NOTIFICATIONS_REQUEST = 11
         const val RECOVERY_POLL_INTERVAL_MS = 50L
 

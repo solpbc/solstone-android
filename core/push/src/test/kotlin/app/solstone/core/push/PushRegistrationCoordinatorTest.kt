@@ -183,7 +183,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = pushKeys,
@@ -240,7 +240,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -284,7 +284,7 @@ class PushRegistrationCoordinatorTest {
         var coordinator: PushRegistrationCoordinator? = null
         var passLatch = CountDownLatch(1)
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -324,14 +324,14 @@ class PushRegistrationCoordinatorTest {
     }
 
     @Test
-    fun ac05_resetWipesCoordinatorAndNextPassUnregistersAndRegisters() {
+    fun ac05_resetWipesCoordinatorTurnsOffAndRegistersOnlyOnceTurnedOn() {
         val tempDir = Files.createTempDirectory("ac05").toFile()
         val port = TestDistributorPort()
         val client = TestPlHttpClient()
         val gen = PairingGeneration("inst-1", "sha256:cert1")
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -351,6 +351,15 @@ class PushRegistrationCoordinatorTest {
         port.calls.clear()
         client.requests.clear()
 
+        // A reset turns the owner's switch off too, so nothing registers until they turn it on again.
+        assertFalse(coordinator.ownerOn)
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertFalse(port.calls.any { it.startsWith("register(") })
+        assertEquals(0, client.requests.size)
+
+        coordinator.setOwnerOn(true)
         passLatch = CountDownLatch(1)
         coordinator.onUsableConnection(gen, { client })
         assertTrue(passLatch.await(3, TimeUnit.SECONDS))
@@ -371,7 +380,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -421,7 +430,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -458,7 +467,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -492,7 +501,7 @@ class PushRegistrationCoordinatorTest {
         val gen = PairingGeneration("inst-1", "sha256:cert1")
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -532,7 +541,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -563,7 +572,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -603,7 +612,7 @@ class PushRegistrationCoordinatorTest {
         var passLatch = CountDownLatch(1)
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -647,7 +656,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -697,7 +706,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -738,7 +747,7 @@ class PushRegistrationCoordinatorTest {
         var enqueueCount = 0
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -785,7 +794,7 @@ class PushRegistrationCoordinatorTest {
 
         var passLatch = CountDownLatch(1)
         var coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -805,7 +814,7 @@ class PushRegistrationCoordinatorTest {
         coordinator.close()
         passLatch = CountDownLatch(1)
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -840,7 +849,7 @@ class PushRegistrationCoordinatorTest {
 
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -897,7 +906,7 @@ class PushRegistrationCoordinatorTest {
 
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -968,7 +977,7 @@ class PushRegistrationCoordinatorTest {
 
         var coordinator: PushRegistrationCoordinator? = null
         coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1034,7 +1043,7 @@ class PushRegistrationCoordinatorTest {
 
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1090,7 +1099,7 @@ class PushRegistrationCoordinatorTest {
         val port = TestDistributorPort()
         var currentGen: PairingGeneration? = null
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1141,7 +1150,7 @@ class PushRegistrationCoordinatorTest {
         val gen = PairingGeneration("inst-1", "sha256:cert1")
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1176,7 +1185,7 @@ class PushRegistrationCoordinatorTest {
         val gen = PairingGeneration("inst-1", "sha256:cert1")
         var passLatch = CountDownLatch(1)
         var coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1209,7 +1218,7 @@ class PushRegistrationCoordinatorTest {
         val gen = PairingGeneration("inst-1", "sha256:cert1")
         var enqueueCount = 0
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1390,7 +1399,7 @@ class PushRegistrationCoordinatorTest {
         val pushKeys = TestPushKeys().apply { key = sensitiveKey }
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = pushKeys,
@@ -1463,7 +1472,7 @@ class PushRegistrationCoordinatorTest {
 
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1482,6 +1491,265 @@ class PushRegistrationCoordinatorTest {
         assertTrue(Regex("^[A-Za-z0-9_-]{87}$").matches(regVapid))
     }
 
+    // The owner has turned push on for this device, keeping whatever else the state file holds.
+    private fun ownerOnIn(dir: File): File {
+        val file = File(dir, PushRegistrationFile.FILE_NAME)
+        val state = PushRegistrationFile.read(file) {}
+        PushRegistrationFile.write(file, state.copy(ownerOn = true)) {}
+        return dir
+    }
+
+    // --- The owner's own turn-on: off by default, nothing registers while off, off deregisters.
+
+    private fun ownerOffCoordinator(
+        dir: File,
+        port: TestDistributorPort,
+        gen: () -> PairingGeneration?,
+        latch: () -> CountDownLatch,
+        logs: MutableList<String> = mutableListOf(),
+    ): PushRegistrationCoordinator = PushRegistrationCoordinator(
+        directory = dir,
+        port = port,
+        enabled = true,
+        pushKeys = TestPushKeys(),
+        pairingNow = gen,
+        clock = { 1000L },
+        log = { logs += it },
+        enqueue = {},
+        afterPass = { latch().countDown() },
+    )
+
+    private fun postedIdentity(gen: PairingGeneration) =
+        PushRegistrationIdentity(gen, sampleVapidKey(), "app.distributor.primary", null)
+
+    @Test
+    fun owner01_defaultOffMakesZeroCallsAndIsOff() {
+        val tempDir = Files.createTempDirectory("owner01").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var passLatch = CountDownLatch(1)
+        val coordinator = ownerOffCoordinator(tempDir, port, { gen }, { passLatch })
+
+        assertFalse(coordinator.ownerOn)
+        assertEquals(PushDeliveryState.Off, coordinator.deliveryState)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        coordinator.reregister()
+        coordinator.onUserPickedDistributor("app.pkg")
+        coordinator.onUnregistered()
+        coordinator.onRegistrationFailed("x")
+
+        assertEquals(PushDeliveryState.Off, coordinator.deliveryState)
+        assertEquals(0, client.requests.size)
+        assertEquals(0, port.calls.size)
+    }
+
+    @Test
+    fun owner02_strayEndpointWhileOffIsLetGoOnce() {
+        val tempDir = Files.createTempDirectory("owner02").toFile()
+        val port = TestDistributorPort()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        val coordinator = ownerOffCoordinator(tempDir, port, { gen }, { CountDownLatch(1) })
+
+        coordinator.onNewEndpoint("https://push.example/stray", "pub", "auth")
+
+        assertEquals(listOf("unregister"), port.calls)
+        assertNull(PushRegistrationFile.read(File(tempDir, PushRegistrationFile.FILE_NAME)) {}.endpoint)
+    }
+
+    @Test
+    fun owner03_turnOnRegistersThenTurnOffUnregistersOnceAndDeletesOnce() {
+        val tempDir = Files.createTempDirectory("owner03").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        var coordinator: PushRegistrationCoordinator? = null
+        coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+        port.onRegister = { _ -> coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1") }
+
+        coordinator.setOwnerOn(true)
+        assertTrue(coordinator.ownerOn)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertTrue(port.calls.any { it.startsWith("register(") })
+        clockTime += 70_000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+        assertEquals(1, client.requests.count { it.method == "POST" })
+
+        port.calls.clear()
+        client.requests.clear()
+        coordinator.setOwnerOn(false)
+        assertEquals(listOf("unregister"), port.calls)
+        assertEquals(PushDeliveryState.Off, coordinator.deliveryState)
+
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(listOf("DELETE"), client.requests.map { it.method })
+        assertTrue(client.requests.single().bodyText!!.contains("https://push.example/ep1"))
+        assertEquals(listOf("unregister"), port.calls)
+
+        port.calls.clear()
+        client.requests.clear()
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(0, client.requests.size)
+        assertEquals(0, port.calls.size)
+    }
+
+    @Test
+    fun owner04_postedRegistrationFromBeforeTheSwitchIsRemovedOnce() {
+        val tempDir = Files.createTempDirectory("owner04").toFile()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        val id = postedIdentity(gen)
+        PushRegistrationFile.write(
+            File(tempDir, PushRegistrationFile.FILE_NAME),
+            PushRegistrationState(
+                lastRegistered = id,
+                endpoint = PushRegistrationEndpoint("https://push.example/old", "pub", "auth", id, posted = true),
+                delivery = PushDeliveryState.Ready,
+            ),
+        ) {}
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        var passLatch = CountDownLatch(1)
+        val coordinator = ownerOffCoordinator(tempDir, port, { gen }, { passLatch })
+        assertEquals(PushDeliveryState.Off, coordinator.deliveryState)
+
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(listOf("unregister"), port.calls)
+        assertEquals(listOf("DELETE"), client.requests.map { it.method })
+
+        port.calls.clear()
+        client.requests.clear()
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(0, port.calls.size)
+        assertEquals(0, client.requests.size)
+    }
+
+    @Test
+    fun owner05_unpostedResidueIsLetGoWithoutADelete() {
+        val tempDir = Files.createTempDirectory("owner05").toFile()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        val id = postedIdentity(gen)
+        PushRegistrationFile.write(
+            File(tempDir, PushRegistrationFile.FILE_NAME),
+            PushRegistrationState(
+                lastRegistered = id,
+                attempt = PushRegistrationAttempt(id, 1000L, answered = false, unanswered = false, failure = null),
+            ),
+        ) {}
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        var passLatch = CountDownLatch(1)
+        val coordinator = ownerOffCoordinator(tempDir, port, { gen }, { passLatch })
+
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(listOf("unregister"), port.calls)
+        assertEquals(0, client.requests.size)
+
+        port.calls.clear()
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(0, port.calls.size)
+        assertEquals(0, client.requests.size)
+    }
+
+    @Test
+    fun owner06_turnedOffMidPassNeverRegistersOrPosts() {
+        val tempDir = Files.createTempDirectory("owner06").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = ownerOnIn(tempDir),
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { 1000L },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+        port.onResolveDefault = { coordinator.setOwnerOn(false) }
+
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        assertFalse(port.calls.any { it.startsWith("register(") })
+        assertEquals(0, client.requests.count { it.method == "POST" })
+        assertEquals(PushDeliveryState.Off, coordinator.deliveryState)
+        assertFalse(PushRegistrationFile.read(File(tempDir, PushRegistrationFile.FILE_NAME)) {}.ownerOn)
+    }
+
+    @Test
+    fun owner07_resetTurnsOffAndANewPairingDoesNotRegister() {
+        val tempDir = Files.createTempDirectory("owner07").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val gen2 = PairingGeneration("inst-2", "sha256:cert2")
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = ownerOnIn(tempDir),
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen2 },
+            clock = { 1000L },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+        assertTrue(coordinator.ownerOn)
+        coordinator.reset()
+        assertFalse(coordinator.ownerOn)
+        port.calls.clear()
+
+        coordinator.onUsableConnection(gen2, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertFalse(port.calls.any { it.startsWith("register(") })
+        assertEquals(0, client.requests.size)
+    }
+
+    @Test
+    fun owner08_ownerOnRoundTripsAndAMissingFieldReadsOff() {
+        val tempDir = Files.createTempDirectory("owner08").toFile()
+        val file = File(tempDir, PushRegistrationFile.FILE_NAME)
+        PushRegistrationFile.write(file, PushRegistrationState(ownerPick = "app.pkg", ownerOn = true)) {}
+        assertTrue(PushRegistrationFile.read(file) {}.ownerOn)
+
+        val text = file.readText()
+        assertTrue(text.contains("\"ownerOn\":true"))
+        file.writeText(text.replace(",\"ownerOn\":true", ""))
+        val legacy = PushRegistrationFile.read(file) {}
+        assertFalse(legacy.ownerOn)
+        assertEquals("app.pkg", legacy.ownerPick)
+    }
+
     private fun mutatingCalls(calls: List<String>): List<String> =
         calls.filter { it != "available" && it != "resolveDefault" }
 
@@ -1496,7 +1764,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1562,7 +1830,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1628,7 +1896,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1694,7 +1962,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1748,7 +2016,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1779,7 +2047,7 @@ class PushRegistrationCoordinatorTest {
         coldPort.installedAt[pkg] = 1_700_000_000_000L
         val coldClient = TestPlHttpClient()
         val coldCoordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = coldPort,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1814,7 +2082,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1868,7 +2136,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1927,7 +2195,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
@@ -1991,7 +2259,7 @@ class PushRegistrationCoordinatorTest {
         var clockTime = 1000L
         var passLatch = CountDownLatch(1)
         val coordinator = PushRegistrationCoordinator(
-            directory = tempDir,
+            directory = ownerOnIn(tempDir),
             port = port,
             enabled = true,
             pushKeys = TestPushKeys(),
