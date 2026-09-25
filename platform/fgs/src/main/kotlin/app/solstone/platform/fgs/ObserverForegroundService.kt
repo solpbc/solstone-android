@@ -145,6 +145,12 @@ class ObserverForegroundService : Service() {
     override fun onDestroy() {
         dispatchLifecycle("fgs phase=destroy")
         heldCaptureForegroundTypes = null
+        // ⚠ stopService is asynchronous. A refresh that ran on this thread between the stop and
+        // now passed its check and posted 101; if that post reaches the system after it has
+        // cancelled the foreground notification, 101 comes back unowned and says the observer is
+        // on after it stopped. This cancel is ordered after any such post, and nothing can post
+        // 101 once the field above is null.
+        getSystemService(NotificationManager::class.java)?.cancel(ObserverNotification.SERVICE_NOTIFICATION_ID)
         handler.removeCallbacks(heartbeat)
         invalidateHeartbeat()
         dispatchForegroundChanged(false)
