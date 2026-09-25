@@ -104,8 +104,7 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
         is PairAttemptOutcome.NotVerified ->
             "something answered at ${authority(outcome.endpointHost, outcome.endpointPort)} " +
                 "but couldn't prove it's your journal. make sure you're connected to your " +
-                "journal's network, directly or over your vpn, then show a new pairing code on " +
-                "your journal and try again."
+                "journal's network, directly or over your vpn, then try again."
     }
 
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
