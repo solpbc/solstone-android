@@ -34,6 +34,8 @@ import app.solstone.observer.harness.VisibleCaptureOwnerRegistry
 import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.ObserverForegroundService
+import app.solstone.platform.fgs.captureForegroundTypesFromTokens
+import app.solstone.platform.fgs.effectiveCapturePlan
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
@@ -70,7 +72,7 @@ class ObserverAppContainer(
 ) : ObserverRuntimeContainer {
     override val cameraLock = SingleHolderCameraLock()
     override val captureAuthority = VisibleCaptureOwnerRegistry()
-    private val captureSetup = createCaptureSetup(context, cameraLock)
+    internal val captureSetup = createCaptureSetup(context, cameraLock)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
     private val finisher = ConfirmedCopyFinisher(
@@ -109,6 +111,7 @@ class ObserverAppContainer(
      * window between launch and the pipeline coming up is genuinely `setting up`.
      */
     @Volatile var ownerStoppedProvider: () -> Boolean = { false }
+    @Volatile var phoneResumeHandler: (() -> Unit)? = null
     private val destroyLock = Object()
     private val destroyWaitSeam = ServiceDestroyWaitSeam { timeoutMs ->
         synchronized(destroyLock) {
@@ -189,6 +192,26 @@ class ObserverAppContainer(
 
     init {
         flavor.opportunisticSync?.diagnosticReporter = syncFailureReporter
+        if (spec.matchForegroundTypesToWishes) {
+            controller.blockStartWhenEffectiveEmpty = {
+                val permissions = controller.permissionStatus
+                val declared = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes)
+                val regMap = captureSetup.registrations.associateBy { it.sourceId }
+                val wishes = sources.snapshot().sources
+                    .filter { it.wish == SourceWish.On }
+                    .mapNotNull { regMap[it.sourceId]?.captureForegroundType }
+                    .toSet()
+                val plan = effectiveCapturePlan(
+                    microphoneGranted = permissions.microphoneGranted,
+                    cameraGranted = permissions.cameraGranted,
+                    locationGranted = permissions.locationGranted,
+                    declared = declared,
+                    wishedOn = wishes,
+                    liveHeld = ObserverForegroundService.heldCaptureForegroundTypes,
+                )
+                plan.endSession
+            }
+        }
         ObserverForegroundService.onDestroyCallback = {
             synchronized(destroyLock) {
                 destroyLock.notifyAll()
@@ -235,16 +258,21 @@ class ObserverAppContainer(
      */
     fun onOwnerResumed() {
         background.execute {
-            val before = sources.snapshot().sources.count { it.wishExpressed }
-            runCatching { sources.onPermissionStatus(controller.refreshPermissions()) }
-            // ⚠ A Settings grant that newly expresses a source is the owner asking for intake, so it
-            // owes the same `ensureObserving` that the in-app toggle does. ⛔ Only when something
-            // was newly expressed — a plain resume must not re-assert an intent the owner revoked
-            // with `stop intake`.
-            val after = sources.snapshot().sources.count { it.wishExpressed }
-            // ⚠ A Settings grant that newly expressed a source is the owner asking, so it brings
-            // intake up even if they had stopped it — asking again is asking.
-            if (after > before) runCatching { controller.ensureObserving() }
+            val phoneHandler = phoneResumeHandler
+            if (phoneHandler != null) {
+                phoneHandler.invoke()
+            } else {
+                val before = sources.snapshot().sources.count { it.wishExpressed }
+                runCatching { sources.onPermissionStatus(controller.refreshPermissions()) }
+                // ⚠ A Settings grant that newly expresses a source is the owner asking for intake, so it
+                // owes the same `ensureObserving` that the in-app toggle does. ⛔ Only when something
+                // was newly expressed — a plain resume must not re-assert an intent the owner revoked
+                // with `stop intake`.
+                val after = sources.snapshot().sources.count { it.wishExpressed }
+                // ⚠ A Settings grant that newly expressed a source is the owner asking, so it brings
+                // intake up even if they had stopped it — asking again is asking.
+                if (after > before) runCatching { controller.ensureObserving() }
+            }
         }
     }
 

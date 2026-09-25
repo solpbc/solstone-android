@@ -28,6 +28,7 @@ val phoneSpec = FormFactorSpec(
     ownerButtonStyle = ::phoneOwnerButtonStyle,
     ownerTextStyle = ::phoneOwnerTextStyle,
     declaredCaptureForegroundTypes = PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES,
+    matchForegroundTypesToWishes = true,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {
             arrayOf(

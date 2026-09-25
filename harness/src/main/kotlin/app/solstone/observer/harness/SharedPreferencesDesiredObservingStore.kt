@@ -18,4 +18,8 @@ class SharedPreferencesDesiredObservingStore(
     override fun setDesiredOn(on: Boolean) {
         preferences.edit().putBoolean(ObserverRuntimePrefs.KEY_DESIRED_ON, on).apply()
     }
+
+    override fun commitDesiredOff() {
+        preferences.edit().putBoolean(ObserverRuntimePrefs.KEY_DESIRED_ON, false).commit()
+    }
 }

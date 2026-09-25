@@ -93,6 +93,7 @@ class PhoneShellActivity : ComponentActivity() {
     private lateinit var stores: SyncStores
     private var captureOwnerToken: Long = -1L
     private val notificationPrompt by lazy { NotificationPromptStore(this) }
+    private val capturePermissionRequests by lazy { CapturePermissionRequestStore(this) }
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val statusListener: (HarnessBacklogStatus) -> Unit = { backlog ->
@@ -313,7 +314,7 @@ class PhoneShellActivity : ComponentActivity() {
                     ownerStopped.clear()
                     container.controller.ensureObserving()
                 },
-                onGrantPermissions = { sourceId -> requestSourcePermissions(sourceId) },
+                onGrantPermissions = { sourceId -> routePermissionRequest(sourceId, priorWishFor(sourceId)) },
                 onConnectJournal = {
                     openPairingScanner()
                 },
@@ -568,13 +569,44 @@ class PhoneShellActivity : ComponentActivity() {
      * its own moment at first intake start ([requestNotificationsOnce]) so each dialog has a cause
      * the owner can see.
      */
-    private fun requestSourcePermissions(sourceId: String) {
+    private fun priorWishFor(sourceId: String): PriorSourceWish {
+        val isExpressed = container.sources.isWishExpressed(sourceId)
+        if (!isExpressed) return PriorSourceWish.Unexpressed
+        val wish = container.sources.snapshot().sources.firstOrNull { it.sourceId == sourceId }?.wish
+        return if (wish == SourceWish.On) PriorSourceWish.On else PriorSourceWish.Off
+    }
+
+    private fun routePermissionRequest(sourceId: String, prior: PriorSourceWish) {
         val permissions = container.sources.requiredPermissions(sourceId)
         if (permissions.isEmpty()) return
-        // ⚠ Told BEFORE the dialog opens, so the screen behind it reads `setting up` rather than
-        // `needs attention: permissions needed` — the fault word as the direct result of saying yes.
-        container.sources.setPermissionRequestInFlight(sourceId)
-        requestPermissions(permissions.toTypedArray(), PERMISSION_REQUEST)
+        val granted = permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+        val previouslyRequested = capturePermissionRequests.wasRequested(sourceId)
+        val shouldShowRationale = permissions.any { shouldShowRequestPermissionRationale(it) }
+        val route = capturePermissionRoute(
+            granted = granted,
+            previouslyRequested = previouslyRequested,
+            shouldShowRationale = shouldShowRationale,
+        )
+        when (route) {
+            CapturePermissionRoute.AlreadyGranted -> {
+                requestNotificationsOnce()
+            }
+            CapturePermissionRoute.RequestDialog -> {
+                capturePermissionRequests.recordAwaiting(sourceId, prior)
+                capturePermissionRequests.recordRequested(sourceId)
+                container.sources.setPermissionRequestInFlight(sourceId)
+                requestPermissions(permissions.toTypedArray(), PERMISSION_REQUEST)
+            }
+            CapturePermissionRoute.OpenAppSettings -> {
+                capturePermissionRequests.recordAwaiting(sourceId, prior)
+                startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", packageName, null),
+                    ),
+                )
+            }
+        }
     }
 
     /**
@@ -588,24 +620,23 @@ class PhoneShellActivity : ComponentActivity() {
      */
     private fun onSourceWish(sourceId: String, wish: SourceWish) {
         PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=${wish.name.lowercase()}")
-        sourcesViewModel.setWish(sourceId, wish)
-        if (wish != SourceWish.On) return
-        // 🔴 Turning a source on IS asking again, so it clears the stop and brings intake back.
-        // ⛔ Without this, an owner who had pressed `stop intake` could turn a source on and watch
-        // it sit there forever, because nothing would start the service.
-        ownerStopped.clear()
-        container.controller.ensureObserving()
-        val missing = container.sources.requiredPermissions(sourceId).any {
-            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        if (wish == SourceWish.On) {
+            val prior = priorWishFor(sourceId)
+            sourcesViewModel.setWish(sourceId, SourceWish.On)
+            ownerStopped.clear()
+            container.controller.ensureObserving()
+            val missing = container.sources.requiredPermissions(sourceId).any {
+                checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing) {
+                routePermissionRequest(sourceId, prior)
+                return
+            }
+            requestNotificationsOnce()
+        } else {
+            sourcesViewModel.setWish(sourceId, SourceWish.Off)
+            (application as? PhoneApplication)?.applyEffectiveCapture(ownerTurnedSourceOff = true)
         }
-        if (missing) {
-            requestSourcePermissions(sourceId)
-            // ⛔ And nothing else here. Notifications wait for the result, so the owner sees one
-            // dialog at a time — stacking them is what piece one of this arc removed.
-            return
-        }
-        // Already granted, so no dialog is coming and this is the moment intake begins.
-        requestNotificationsOnce()
     }
 
     /**
@@ -842,16 +873,36 @@ class PhoneShellActivity : ComponentActivity() {
             // ⛔ Cleared first: the refresh below recomputes every row, and clearing after it would
             // leave one recomposition still reading `setting up` over a settled answer.
             container.sources.setPermissionRequestInFlight(null)
-        }
-        if (requestCode == PERMISSION_REQUEST || requestCode == NOTIFICATIONS_REQUEST) {
+            container.controller.onPermissionsRequested()
+            val awaiting = capturePermissionRequests.readAwaiting()
+            val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (awaiting != null) {
+                if (allGranted) {
+                    sourcesViewModel.setWish(awaiting.sourceId, SourceWish.On)
+                    ownerStopped.clear()
+                    container.controller.ensureObserving()
+                    if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
+                        ObserverForegroundService.refreshRunningCaptureTypes(applicationContext)
+                    }
+                    capturePermissionRequests.clearAwaiting()
+                } else {
+                    when (denialWishWrite(awaiting.priorWish)) {
+                        DenialWishWrite.RemoveEntry -> container.sources.clearExpressedWish(awaiting.sourceId)
+                        DenialWishWrite.KeepOff -> sourcesViewModel.setWish(awaiting.sourceId, SourceWish.Off)
+                        DenialWishWrite.KeepOn -> Unit
+                    }
+                    (application as? PhoneApplication)?.applyEffectiveCapture(ownerTurnedSourceOff = false)
+                    capturePermissionRequests.clearAwaiting()
+                }
+                requestNotificationsOnce()
+            }
+            sourcesViewModel.refresh()
+            statusViewModel.refresh()
+        } else if (requestCode == NOTIFICATIONS_REQUEST) {
             container.controller.onPermissionsRequested()
             sourcesViewModel.refresh()
             statusViewModel.refresh()
         }
-        // ⚠ Its own moment, after the source's dialog has closed rather than beside it. Gated on a
-        // source actually being wished on, so a denial of the source permission does not lead
-        // straight into a second prompt about notifying the owner of nothing.
-        if (requestCode == PERMISSION_REQUEST) requestNotificationsOnce()
     }
 
     private class PhoneShellViewModelFactory(

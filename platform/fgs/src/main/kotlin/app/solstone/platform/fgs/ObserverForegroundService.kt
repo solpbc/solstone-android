@@ -37,6 +37,143 @@ class ObserverForegroundService : Service() {
         val hook = rehydrator
         val widgetSourceId = widgetSourceId(intent)
         val isIntakeStart = intent?.getBooleanExtra(EXTRA_INTAKE_START, false) == true
+        val permissions = AndroidPermissionStatusReader(this).read()
+        val declared = declaredCaptureForegroundTypes ?: emptySet()
+        val granted = linkedSetOf<CaptureForegroundType>().apply {
+            if (permissions.microphoneGranted) add(CaptureForegroundType.MICROPHONE)
+            if (permissions.locationGranted) add(CaptureForegroundType.LOCATION)
+            if (permissions.cameraGranted) add(CaptureForegroundType.CAMERA)
+        }
+
+        val wishSupplier = captureWishTypes
+        val rawWished = wishSupplier?.invoke()
+        val wished = if (widgetSourceId != null && rawWished != null) {
+            captureForegroundTypeForSourceId(widgetSourceId)?.let { rawWished + it } ?: rawWished
+        } else {
+            rawWished
+        }
+
+        if (wishSupplier != null || widgetSourceId != null) {
+            val effectivePlan = effectiveCapturePlan(
+                microphoneGranted = permissions.microphoneGranted,
+                cameraGranted = permissions.cameraGranted,
+                locationGranted = permissions.locationGranted,
+                declared = declared,
+                wishedOn = wished,
+                liveHeld = heldCaptureForegroundTypes,
+            )
+
+            if (effectivePlan.types.isEmpty()) {
+                if (heldCaptureForegroundTypes != null) {
+                    removeForegroundNotification()
+                }
+                stopSelf()
+                return START_STICKY
+            }
+
+            val liveHeldTypes = heldCaptureForegroundTypes
+            if (liveHeldTypes != null) {
+                if (effectivePlan.types != liveHeldTypes) {
+                    ServiceCompat.startForeground(
+                        this,
+                        ObserverNotification.SERVICE_NOTIFICATION_ID,
+                        ObserverNotification.ongoing(
+                            this,
+                            needsAttention = false,
+                            decorate = true,
+                            requestPromotion = true,
+                            initialForegroundEntry = false,
+                        ),
+                        captureForegroundTypeMask(effectivePlan.types),
+                    )
+                    heldCaptureForegroundTypes = effectivePlan.types
+                    dispatchForegroundChanged(true)
+                }
+                val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null, subsetEmpty = false)
+                refreshOngoingNotification(this, needsAttention = plan.initialNeedsAttention)
+                if (!plan.stopSelf) {
+                    cancelAttentionNotification(this)
+                }
+                dispatchLifecycle("fgs phase=start startId=$startId flags=$flags intent=${intent != null}")
+                refreshHeartbeat()
+                if (plan.dispatchRehydrate) {
+                    dispatchRehydrate(hook)
+                }
+                widgetSourceId?.let(::dispatchWidgetStartAccepted)
+                if (isIntakeStart && widgetSourceId == null) {
+                    intakeStartHandler?.invoke()
+                }
+                if (plan.postAttentionOn102) {
+                    postAttentionNotification(this)
+                }
+                if (plan.stopSelf) {
+                    removeForegroundNotification()
+                    stopSelf()
+                }
+                return START_STICKY
+            }
+
+            val subset = effectivePlan.types
+            dispatchLifecycle(typesDiagLine(granted = granted, declared = declared, subset = subset))
+            val plan = onStartCommandPlan(
+                hasIntent = intent != null,
+                hasRehydrator = hook != null,
+                subsetEmpty = false,
+            )
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    ObserverNotification.SERVICE_NOTIFICATION_ID,
+                    ObserverNotification.ongoing(
+                        this,
+                        needsAttention = plan.initialNeedsAttention,
+                        decorate = true,
+                        requestPromotion = true,
+                        initialForegroundEntry = true,
+                    ),
+                    captureForegroundTypeMask(subset),
+                )
+                heldCaptureForegroundTypes = subset
+                dispatchForegroundChanged(true)
+            } catch (e: SecurityException) {
+                handleStartFailure(this, e.javaClass.simpleName)
+                widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
+                stopSelf()
+                return START_STICKY
+            } catch (e: IllegalArgumentException) {
+                handleStartFailure(this, e.javaClass.simpleName)
+                widgetSourceId?.let { dispatchWidgetStartRefused(it, ReasonCode.PERMISSION_REVOKED) }
+                stopSelf()
+                return START_STICKY
+            } catch (e: RuntimeException) {
+                handleStartFailure(this, e.javaClass.simpleName)
+                val reason = widgetRefusalReasonForStartException(e.javaClass.simpleName)
+                widgetSourceId?.let { dispatchWidgetStartRefused(it, reason) }
+                stopSelf()
+                return START_STICKY
+            }
+            if (!plan.stopSelf) {
+                cancelAttentionNotification(this)
+            }
+            dispatchLifecycle("fgs phase=start startId=$startId flags=$flags intent=${intent != null}")
+            refreshHeartbeat()
+            if (plan.dispatchRehydrate) {
+                dispatchRehydrate(hook)
+            }
+            widgetSourceId?.let(::dispatchWidgetStartAccepted)
+            if (isIntakeStart && widgetSourceId == null) {
+                intakeStartHandler?.invoke()
+            }
+            if (plan.postAttentionOn102) {
+                postAttentionNotification(this)
+            }
+            if (plan.stopSelf) {
+                removeForegroundNotification()
+                stopSelf()
+            }
+            return START_STICKY
+        }
+
         val liveHeldTypes = heldCaptureForegroundTypes
         if (liveHeldTypes != null) {
             val plan = onStartCommandPlan(hasIntent = intent != null, hasRehydrator = hook != null, subsetEmpty = false)
@@ -63,13 +200,6 @@ class ObserverForegroundService : Service() {
             return START_STICKY
         }
 
-        val permissions = AndroidPermissionStatusReader(this).read()
-        val declared = declaredCaptureForegroundTypes ?: emptySet()
-        val granted = linkedSetOf<CaptureForegroundType>().apply {
-            if (permissions.microphoneGranted) add(CaptureForegroundType.MICROPHONE)
-            if (permissions.locationGranted) add(CaptureForegroundType.LOCATION)
-            if (permissions.cameraGranted) add(CaptureForegroundType.CAMERA)
-        }
         val subset = satisfiableCaptureForegroundTypes(
             microphoneGranted = permissions.microphoneGranted,
             cameraGranted = permissions.cameraGranted,
@@ -178,11 +308,22 @@ class ObserverForegroundService : Service() {
 
         @Volatile var declaredCaptureForegroundTypes: Set<CaptureForegroundType>? = null
         @Volatile var heldCaptureForegroundTypes: Set<CaptureForegroundType>? = null
+        @Volatile var captureWishTypes: (() -> Set<CaptureForegroundType>?)? = null
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
         @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
         @Volatile var onDestroyCallback: (() -> Unit)? = null
         @Volatile var onForegroundChanged: ((Boolean) -> Unit)? = null
+
+        const val EXTRA_REFRESH_RUNNING_CAPTURE_TYPES = "app.solstone.platform.fgs.extra.REFRESH_RUNNING_CAPTURE_TYPES"
+
+        fun refreshRunningCaptureTypes(context: Context) {
+            if (heldCaptureForegroundTypes == null) return
+            val intent = Intent(context, ObserverForegroundService::class.java).apply {
+                putExtra(EXTRA_REFRESH_RUNNING_CAPTURE_TYPES, true)
+            }
+            context.startService(intent)
+        }
 
         fun dispatchRehydrate(hook: ObserverServiceRehydrator?) {
             hook?.onForegroundServiceStarted()

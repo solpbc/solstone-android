@@ -10,6 +10,7 @@ import app.solstone.core.model.SilencedFact
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
+import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.capturePermission
 import app.solstone.platform.fgs.capturePermissionGranted
@@ -304,6 +305,30 @@ class SourceRegistry(
         notifyListeners()
     }
 
+    fun clearExpressedWish(sourceId: String) {
+        if (storeUnreadable) return
+        val changed = synchronized(lock) {
+            if (sourceId !in expressed) return
+            persisted.remove(sourceId)
+            expressed.remove(sourceId)
+            wishes[sourceId] = SourceWish.Off
+            wishStore.saveAll(persisted.toMap())
+            true
+        }
+        if (changed) {
+            notifyListeners()
+        }
+    }
+
+    fun stopEnginesOutside(heldTypes: Set<CaptureForegroundType>) {
+        bound.forEach { b ->
+            val type = b.registration.captureForegroundType
+            if (type != null && type !in heldTypes) {
+                b.stopEngineOnly()
+            }
+        }
+    }
+
     /** Whether the owner has expressed a wish for this source. */
     fun isWishExpressed(sourceId: String): Boolean = synchronized(lock) { sourceId in expressed }
 
@@ -497,6 +522,16 @@ class SourceRegistry(
                     }
                 } catch (error: Throwable) {
                     SourceToggleResult.EngineFailed(error)
+                }
+            }
+        }
+
+        fun stopEngineOnly() {
+            synchronized(actuationLock) {
+                val shouldStop = synchronized(lock) { started }
+                if (shouldStop) {
+                    inner.stop()
+                    synchronized(lock) { started = false }
                 }
             }
         }

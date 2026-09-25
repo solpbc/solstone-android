@@ -23,6 +23,9 @@ import app.solstone.observer.scaffold.ForegroundSourceActivation
 import app.solstone.observer.scaffold.ObserverAppContainer
 import app.solstone.observer.scaffold.ObserverApplication
 import app.solstone.observer.scaffold.ObserverRuntimeContainer
+import app.solstone.platform.fgs.CaptureForegroundType
+import app.solstone.platform.fgs.captureForegroundTypeForSourceId
+import app.solstone.platform.fgs.effectiveCapturePlan
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHandler
 import app.solstone.platform.fgs.ObserverNotification
@@ -40,6 +43,12 @@ import app.solstone.observer.formfactor.phone.encodePhoneRoute
 
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.installPushRegistration
+
+import android.content.pm.PackageManager
+import app.solstone.platform.fgs.AndroidPermissionStatusReader
+import app.solstone.observer.harness.FileSourceWishStore
+import app.solstone.observer.harness.WishStoreState
+import app.solstone.observer.harness.SharedPreferencesDesiredObservingStore
 
 class PhoneApplication : ObserverApplication(
     phoneSpec,
@@ -61,6 +70,7 @@ class PhoneApplication : ObserverApplication(
         desiredOn = false,
     )
     @Volatile private var inactiveNotificationRequested = false
+    @Volatile private var suppressInactiveReplacement = false
     @Volatile internal var sourceReadOverride: ((ObserverRuntimeContainer?) -> SourcesReadModel?)? = null
 
     // The in-app status reads through the same background poll the widget does, so an open screen
@@ -87,6 +97,21 @@ class PhoneApplication : ObserverApplication(
             enqueue = { SyncScheduler.enqueueNow(this, phoneSpec.stream) },
         )
         super.onCreate()
+        ObserverForegroundService.captureWishTypes = {
+            val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
+            when (val read = store.read()) {
+                is WishStoreState.Unreadable -> null
+                WishStoreState.Absent -> emptySet()
+                is WishStoreState.Loaded -> {
+                    val wishes = read.wishes
+                    val set = linkedSetOf<CaptureForegroundType>()
+                    if (wishes["audio"] == SourceWish.On) set.add(CaptureForegroundType.MICROPHONE)
+                    if (wishes["location"] == SourceWish.On) set.add(CaptureForegroundType.LOCATION)
+                    if (wishes["camera"] == SourceWish.On) set.add(CaptureForegroundType.CAMERA)
+                    set
+                }
+            }
+        }
         widgetStartOutcomes = PhoneWidgetStartOutcomeStore(applicationContext)
         widgetCoordinator = PhoneWidgetCoordinator(applicationContext)
         runtime.onContainerInitialized(::onContainerInitialized)
@@ -101,7 +126,12 @@ class PhoneApplication : ObserverApplication(
         @Suppress("DEPRECATION")
         ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, stopPendingIntent).build()
         ObserverForegroundService.onForegroundChanged = { live ->
-            inactiveNotificationRequested = !live
+            if (!live && suppressInactiveReplacement) {
+                suppressInactiveReplacement = false
+                inactiveNotificationRequested = false
+            } else {
+                inactiveNotificationRequested = !live
+            }
             refreshWidgetAndUpdate()
         }
         ObserverForegroundService.intakeStartHandler = {
@@ -144,8 +174,116 @@ class PhoneApplication : ObserverApplication(
 
     internal fun turnAudioOffFromWidget() {
         PhoneDiagLog.appendRaw("kind=source id=$PHONE_WIDGET_AUDIO_SOURCE_ID wish=off from=widget")
-        runtime.containerIfInitialized?.sources?.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
+        val container = runtime.containerIfInitialized
+        if (container != null) {
+            container.sources.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off)
+            applyEffectiveCapture(ownerTurnedSourceOff = true)
+            refreshWidgetAndUpdate()
+            return
+        }
+
+        val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
+        val permissions = AndroidPermissionStatusReader(this).read()
+        val declared = ObserverForegroundService.declaredCaptureForegroundTypes ?: emptySet()
+        val serviceHeld = ObserverForegroundService.heldCaptureForegroundTypes != null
+
+        val plan = planColdAudioOff(
+            store = store.read(),
+            microphoneGranted = permissions.microphoneGranted,
+            cameraGranted = permissions.cameraGranted,
+            locationGranted = permissions.locationGranted,
+            declared = declared,
+            serviceHeld = serviceHeld,
+        )
+
+        if (plan.wishesToWrite != null) {
+            store.saveAll(plan.wishesToWrite)
+        }
+        if (plan.recordOwnerStopped) {
+            OwnerStoppedStore(this).recordStopped()
+        }
+        if (plan.commitDesiredOff) {
+            SharedPreferencesDesiredObservingStore(this).commitDesiredOff()
+        }
+        if (plan.stopService) {
+            if (serviceHeld) {
+                suppressInactiveReplacement = true
+            }
+            inactiveNotificationRequested = false
+            ObserverForegroundService.stop(this)
+        } else if (plan.refreshRunningMask) {
+            ObserverForegroundService.refreshRunningCaptureTypes(this)
+        }
         refreshWidgetAndUpdate()
+    }
+
+    internal fun applyEffectiveCapture(ownerTurnedSourceOff: Boolean) {
+        val container = runtime.containerIfInitialized ?: return
+        val permissions = container.controller.permissionStatus
+        val declared = ObserverForegroundService.declaredCaptureForegroundTypes ?: emptySet()
+        val wishedTypes = container.sources.snapshot().sources
+            .filter { it.wish == SourceWish.On }
+            .mapNotNull { captureForegroundTypeForSourceId(it.sourceId) }
+            .toSet()
+        val plan = effectiveCapturePlan(
+            microphoneGranted = permissions.microphoneGranted,
+            cameraGranted = permissions.cameraGranted,
+            locationGranted = permissions.locationGranted,
+            declared = declared,
+            wishedOn = wishedTypes,
+            liveHeld = ObserverForegroundService.heldCaptureForegroundTypes,
+        )
+
+        if (plan.endSession) {
+            if (ownerTurnedSourceOff) {
+                OwnerStoppedStore(this).recordStopped()
+            }
+            SharedPreferencesDesiredObservingStore(this).commitDesiredOff()
+            if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
+                suppressInactiveReplacement = true
+            }
+            inactiveNotificationRequested = false
+            container.controller.stop()
+        } else {
+            val liveHeld = ObserverForegroundService.heldCaptureForegroundTypes
+            if (liveHeld != null && liveHeld != plan.types) {
+                ObserverForegroundService.refreshRunningCaptureTypes(this)
+            }
+            container.sources.stopEnginesOutside(plan.types)
+        }
+    }
+
+    private fun handlePhoneResume(container: ObserverAppContainer) {
+        val permissions = container.controller.refreshPermissions()
+        val requestStore = CapturePermissionRequestStore(this)
+        val awaiting = requestStore.readAwaiting()
+        var grantCalledEnsureObserving = false
+        if (awaiting != null) {
+            val required = container.sources.requiredPermissions(awaiting.sourceId)
+            val granted = required.isNotEmpty() && required.all {
+                checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (granted) {
+                container.sources.setWish(awaiting.sourceId, SourceWish.On)
+                OwnerStoppedStore(this).clear()
+                container.controller.ensureObserving()
+                if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
+                    ObserverForegroundService.refreshRunningCaptureTypes(this)
+                }
+                grantCalledEnsureObserving = true
+                requestStore.clearAwaiting()
+            } else {
+                when (denialWishWrite(awaiting.priorWish)) {
+                    DenialWishWrite.RemoveEntry -> container.sources.clearExpressedWish(awaiting.sourceId)
+                    DenialWishWrite.KeepOff -> container.sources.setWish(awaiting.sourceId, SourceWish.Off)
+                    DenialWishWrite.KeepOn -> Unit
+                }
+                requestStore.clearAwaiting()
+            }
+        }
+        if (!grantCalledEnsureObserving) {
+            applyEffectiveCapture(ownerTurnedSourceOff = false)
+        }
     }
 
     internal fun stopObserverFromNotification() {
@@ -163,6 +301,10 @@ class PhoneApplication : ObserverApplication(
         (container as? ObserverAppContainer)?.let { app ->
             val stopped = OwnerStoppedStore(this)
             app.ownerStoppedProvider = { stopped.ownerStopped() }
+            app.phoneResumeHandler = { handlePhoneResume(app) }
+        }
+        container.controller.onEffectiveCaptureEmpty = {
+            applyEffectiveCapture(ownerTurnedSourceOff = false)
         }
         if (widgetStartOutcomes.read() is PhoneWidgetStartOutcome.Refused) {
             container.controller.recordStartRefusal()

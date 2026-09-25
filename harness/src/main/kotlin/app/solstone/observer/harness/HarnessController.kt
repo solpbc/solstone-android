@@ -96,6 +96,8 @@ class HarnessController(
         private set
 
     var sourcesReader: SourcesReader? = null
+    var blockStartWhenEffectiveEmpty: (() -> Boolean)? = null
+    var onEffectiveCaptureEmpty: (() -> Unit)? = null
 
     private var scanSessionHeld = false
     private var reconcileInFlight = false
@@ -219,6 +221,9 @@ class HarnessController(
             emitDiag("reconcile mode=$mode result=idle reason=no-source-on")
             return
         }
+        if (blockStartWhenEffectiveEmpty?.invoke() == true) {
+            return
+        }
         val hasTypeNotHeld = sources?.any {
             it.wish == SourceWish.On && it.reason == ReasonCode.FOREGROUND_TYPE_NOT_HELD
         } == true
@@ -251,6 +256,11 @@ class HarnessController(
     }
 
     fun ensureObserving() {
+        if (blockStartWhenEffectiveEmpty?.invoke() == true) {
+            val blocked = onEffectiveCaptureEmpty
+            if (blocked != null) blocked() else stop()
+            return
+        }
         desiredOn = true
         reconcile(ObserverStartMode.VisibleStart)
     }

@@ -65,6 +65,73 @@ fun satisfiableCaptureForegroundTypes(
     return result
 }
 
+data class EffectiveCapturePlan(
+    val types: Set<CaptureForegroundType>,
+    val endSession: Boolean,
+    val postReplacementNotification: Boolean,
+    val missingFromHeld: Set<CaptureForegroundType>,
+)
+
+fun effectiveCapturePlan(
+    microphoneGranted: Boolean,
+    cameraGranted: Boolean,
+    locationGranted: Boolean,
+    declared: Set<CaptureForegroundType>,
+    wishedOn: Set<CaptureForegroundType>? = null,
+    liveHeld: Set<CaptureForegroundType>? = null,
+): EffectiveCapturePlan {
+    if (wishedOn == null) {
+        val satisfiable = satisfiableCaptureForegroundTypes(
+            microphoneGranted = microphoneGranted,
+            cameraGranted = cameraGranted,
+            locationGranted = locationGranted,
+            declared = declared,
+        )
+        return EffectiveCapturePlan(
+            types = satisfiable,
+            endSession = false,
+            postReplacementNotification = false,
+            missingFromHeld = emptySet(),
+        )
+    }
+    val satisfiable = satisfiableCaptureForegroundTypes(
+        microphoneGranted = microphoneGranted,
+        cameraGranted = cameraGranted,
+        locationGranted = locationGranted,
+        declared = declared,
+    )
+    val types = linkedSetOf<CaptureForegroundType>()
+    if (CaptureForegroundType.MICROPHONE in satisfiable && CaptureForegroundType.MICROPHONE in wishedOn) {
+        types += CaptureForegroundType.MICROPHONE
+    }
+    if (CaptureForegroundType.LOCATION in satisfiable && CaptureForegroundType.LOCATION in wishedOn) {
+        types += CaptureForegroundType.LOCATION
+    }
+    if (CaptureForegroundType.CAMERA in satisfiable && CaptureForegroundType.CAMERA in wishedOn) {
+        types += CaptureForegroundType.CAMERA
+    }
+    val endSession = types.isEmpty()
+    val missingFromHeld = if (liveHeld != null && !endSession) {
+        types - liveHeld
+    } else {
+        emptySet()
+    }
+    return EffectiveCapturePlan(
+        types = types,
+        endSession = endSession,
+        postReplacementNotification = false,
+        missingFromHeld = missingFromHeld,
+    )
+}
+
+fun captureForegroundTypeForSourceId(sourceId: String): CaptureForegroundType? =
+    when (sourceId.trim().lowercase()) {
+        "audio", "microphone" -> CaptureForegroundType.MICROPHONE
+        "location" -> CaptureForegroundType.LOCATION
+        "camera" -> CaptureForegroundType.CAMERA
+        else -> null
+    }
+
 fun captureForegroundTypesFromTokens(tokens: Set<String>): Set<CaptureForegroundType> =
     tokens.mapNotNull { token ->
         when (token.trim().lowercase()) {

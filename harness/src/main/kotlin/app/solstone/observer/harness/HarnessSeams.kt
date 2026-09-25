@@ -15,6 +15,7 @@ interface ObserverLifecycle {
 interface DesiredObservingStore {
     fun isDesiredOn(): Boolean
     fun setDesiredOn(on: Boolean)
+    fun commitDesiredOff() { setDesiredOn(false) }
 }
 
 fun interface VisibleCaptureAuthority {

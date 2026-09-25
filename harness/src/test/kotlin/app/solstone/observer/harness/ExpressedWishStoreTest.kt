@@ -560,6 +560,71 @@ class ExpressedWishStoreTest {
         )
     }
 
+    private class TrackingMemoryWishStore(initial: Map<String, SourceWish> = emptyMap()) : SourceWishStore {
+        var saved: Map<String, SourceWish> = initial
+        override fun read(): WishStoreState = WishStoreState.Loaded(saved)
+        override fun saveAll(wishes: Map<String, SourceWish>) {
+            saved = wishes
+        }
+    }
+
+    @Test
+    fun clearExpressedWishRemovesOneIdAndKeepsOthers() {
+        val store = TrackingMemoryWishStore(mapOf("audio" to SourceWish.On, "location" to SourceWish.On))
+        val registry = registry(store = store, status = allDenied())
+
+        assertTrue(registry.isWishExpressed("audio"))
+        assertTrue(registry.isWishExpressed("location"))
+
+        registry.clearExpressedWish("audio")
+
+        assertFalse(registry.isWishExpressed("audio"))
+        assertTrue(registry.isWishExpressed("location"))
+        assertEquals(SourceWish.Off, registry.snapshot().sources.first { it.sourceId == "audio" }.wish)
+        assertEquals(SourceWish.On, registry.snapshot().sources.first { it.sourceId == "location" }.wish)
+        assertEquals(mapOf("location" to SourceWish.On), store.saved)
+    }
+
+    @Test
+    fun clearExpressedWishDoesNotWriteOnUnreadableStore() {
+        val store = UnreadableWishStore()
+        val registry = registry(store = store, status = grantedPermissions())
+
+        registry.clearExpressedWish("audio")
+        assertTrue(store.writes.isEmpty())
+    }
+
+    @Test
+    fun stopEnginesOutsideStopsEngineAndLeavesWish() {
+        val fakes = mapOf(
+            "audio" to FakeSourceEngine(conditionValue = running()),
+            "location" to FakeSourceEngine(conditionValue = running()),
+        )
+        val types = mapOf(
+            "audio" to CaptureForegroundType.MICROPHONE,
+            "location" to CaptureForegroundType.LOCATION,
+        )
+        val f = fixture(permissionStatus = grantedPermissions(), snapshot = snapshot())
+        val registry = SourceRegistry(
+            f.controller,
+            fakes.map { (id, engine) ->
+                SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
+            },
+            MainPoster { it() },
+            TrackingMemoryWishStore(mapOf("audio" to SourceWish.On, "location" to SourceWish.On)),
+        )
+
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        assertEquals(1, fakes.getValue("audio").startCalls)
+        assertEquals(1, fakes.getValue("location").startCalls)
+
+        registry.stopEnginesOutside(setOf(CaptureForegroundType.LOCATION))
+
+        assertEquals(1, fakes.getValue("audio").stopCalls)
+        assertEquals(0, fakes.getValue("location").stopCalls)
+        assertEquals(SourceWish.On, registry.snapshot().sources.first { it.sourceId == "audio" }.wish)
+    }
+
     private fun reg(id: String, type: CaptureForegroundType) = SourceRegistration(
         sourceId = id,
         engine = FakeSourceEngine(conditionValue = running()),

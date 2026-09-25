@@ -433,6 +433,87 @@ class FgsLogicTest {
         assertFalse(Regex("\\bsol\\b").containsMatchIn(userVisibleNotificationCopy))
     }
 
+    @Test
+    fun effectiveCapturePlanMatchesWishesGrantedAndDeclared() {
+        val declared = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION, CaptureForegroundType.CAMERA)
+        val allWished = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION, CaptureForegroundType.CAMERA)
+        val planAll = effectiveCapturePlan(
+            microphoneGranted = true,
+            cameraGranted = true,
+            locationGranted = true,
+            declared = declared,
+            wishedOn = allWished,
+            liveHeld = null,
+        )
+        assertEquals(declared, planAll.types)
+        assertFalse(planAll.endSession)
+        assertFalse(planAll.postReplacementNotification)
+        assertEquals(emptySet(), planAll.missingFromHeld)
+
+        // One not wished
+        val twoWished = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION)
+        val planTwo = effectiveCapturePlan(
+            microphoneGranted = true,
+            cameraGranted = true,
+            locationGranted = true,
+            declared = declared,
+            wishedOn = twoWished,
+            liveHeld = null,
+        )
+        assertEquals(setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION), planTwo.types)
+        assertFalse(planTwo.endSession)
+
+        // Last wished off / permission denied -> empty, endSession
+        val planEmpty = effectiveCapturePlan(
+            microphoneGranted = true,
+            cameraGranted = true,
+            locationGranted = true,
+            declared = declared,
+            wishedOn = emptySet(),
+            liveHeld = null,
+        )
+        assertEquals(emptySet(), planEmpty.types)
+        assertTrue(planEmpty.endSession)
+        assertFalse(planEmpty.postReplacementNotification)
+
+        val planPermissionDenied = effectiveCapturePlan(
+            microphoneGranted = false,
+            cameraGranted = false,
+            locationGranted = false,
+            declared = declared,
+            wishedOn = setOf(CaptureForegroundType.MICROPHONE),
+            liveHeld = null,
+        )
+        assertEquals(emptySet(), planPermissionDenied.types)
+        assertTrue(planPermissionDenied.endSession)
+        assertFalse(planPermissionDenied.postReplacementNotification)
+
+        // Missing from held
+        val planMissing = effectiveCapturePlan(
+            microphoneGranted = true,
+            cameraGranted = true,
+            locationGranted = true,
+            declared = declared,
+            wishedOn = setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION),
+            liveHeld = setOf(CaptureForegroundType.MICROPHONE),
+        )
+        assertEquals(setOf(CaptureForegroundType.LOCATION), planMissing.missingFromHeld)
+        assertFalse(planMissing.endSession)
+
+        // Null wishedOn -> satisfiableCaptureForegroundTypes
+        val planNullWishes = effectiveCapturePlan(
+            microphoneGranted = true,
+            cameraGranted = false,
+            locationGranted = true,
+            declared = declared,
+            wishedOn = null,
+            liveHeld = null,
+        )
+        assertEquals(setOf(CaptureForegroundType.MICROPHONE, CaptureForegroundType.LOCATION), planNullWishes.types)
+        assertFalse(planNullWishes.endSession)
+        assertEquals(emptySet(), planNullWishes.missingFromHeld)
+    }
+
     private fun granted(): PermissionStatus =
         PermissionStatus(
             microphoneGranted = true,

@@ -22,4 +22,5 @@ data class FormFactorSpec(
     /** How owner-facing harness controls and text are dressed; null keeps the platform default. */
     val ownerButtonStyle: ((Button) -> Unit)? = null,
     val ownerTextStyle: ((TextView) -> Unit)? = null,
+    val matchForegroundTypesToWishes: Boolean = false,
 )

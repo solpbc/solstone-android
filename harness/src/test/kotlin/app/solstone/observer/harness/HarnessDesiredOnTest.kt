@@ -47,4 +47,26 @@ class HarnessDesiredOnTest {
 
         assertEquals(true, second.controller.desiredOn)
     }
+
+    @Test
+    fun ensureObservingWithHookTrueDoesNotStartAndDoesNotSetDesiredOn() {
+        val f = fixture()
+        f.controller.blockStartWhenEffectiveEmpty = { true }
+
+        f.controller.ensureObserving()
+
+        assertFalse(f.controller.desiredOn)
+        assertFalse(f.desiredStore.current)
+    }
+
+    @Test
+    fun ensureObservingWithHookNullSetsDesiredOn() {
+        val f = fixture()
+        f.controller.blockStartWhenEffectiveEmpty = null
+
+        f.controller.ensureObserving()
+
+        assertEquals(true, f.controller.desiredOn)
+        assertEquals(true, f.desiredStore.current)
+    }
 }
