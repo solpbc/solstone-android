@@ -52,7 +52,7 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_REACHED
 import app.solstone.observer.formfactor.phone.PhoneTheme
 import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_RUNNING
-import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_UNREACHED
+import app.solstone.observer.formfactor.phone.checkConnectionUnreached
 import app.solstone.platform.work.JournalRevokeOutcome
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.observer.harness.HarnessPlStatus
@@ -349,15 +349,20 @@ class PhoneShellActivity : ComponentActivity() {
                     PhoneDiagLog.appendRaw("kind=check-connection")
                     connectionCheck = CHECK_CONNECTION_RUNNING
                     shellScope.launch {
-                        val reachable = withContext(Dispatchers.IO) {
-                            runCatching { container.controller.probePlStatus() }
-                                .getOrNull() is HarnessPlStatus.Reachable
+                        val probed = withContext(Dispatchers.IO) {
+                            runCatching { container.controller.probePlStatus() }.getOrNull()
                         }
+                        val reachable = probed is HarnessPlStatus.Reachable
                         PhoneDiagLog.appendRaw(
                             "kind=check-connection result=${if (reachable) "reached" else "unreached"}",
                         )
-                        connectionCheck =
-                            if (reachable) CHECK_CONNECTION_REACHED else CHECK_CONNECTION_UNREACHED
+                        // ⚠ The address is named only when a dial was actually attempted and
+                        // failed; a missing credential or identity keeps the plain words.
+                        connectionCheck = if (reachable) {
+                            CHECK_CONNECTION_REACHED
+                        } else {
+                            checkConnectionUnreached((probed as? HarnessPlStatus.PairedButUnreachable)?.address)
+                        }
                         statusViewModel.refresh()
                     }
                 },

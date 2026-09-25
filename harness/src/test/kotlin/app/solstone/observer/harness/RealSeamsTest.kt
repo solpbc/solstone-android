@@ -449,6 +449,103 @@ class RealSeamsTest {
         kotlin.test.assertTrue(enqueued)
     }
 
+    @Test
+    fun failedCheckNamesTheDialedAddressAndLogsEachDialWithoutRelaySecrets() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
+        val home = PairedHome(
+            instanceId = "instance-7f3a",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = "device-token-9c1e",
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val identityStore = TestIdentityStore().apply { save(home) }
+        val lines = mutableListOf<String>()
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = credentialStore,
+            identityStore = identityStore,
+            mutator = TestMutator(home, liveEligible = true),
+            openTransport = { transport, _ ->
+                when (transport) {
+                    is app.solstone.platform.work.SyncTransport.Direct -> throw java.net.ConnectException("direct refused")
+                    is app.solstone.platform.work.SyncTransport.Relay -> throw java.net.SocketTimeoutException("relay timed out")
+                }
+            },
+            dialEvents = app.solstone.core.pl.DialEventLog { lines += it },
+        )
+
+        val result = kotlin.test.assertIs<HarnessPlStatus.PairedButUnreachable>(probe.probe())
+
+        assertEquals("192.0.2.1:7657", result.address)
+        assertEquals(
+            listOf(
+                "kind=dial host=192.0.2.1 port=7657 outcome=failed",
+                "kind=dial host=link.solstone.app port=443 outcome=no-answer",
+            ),
+            lines,
+        )
+        val relayLine = lines.last()
+        kotlin.test.assertTrue(relayLine.contains("host=link.solstone.app"))
+        kotlin.test.assertFalse(relayLine.contains("device-token-9c1e"))
+        kotlin.test.assertFalse(relayLine.contains("instance-7f3a"))
+        kotlin.test.assertFalse(relayLine.contains("/"), "no origin path: $relayLine")
+    }
+
+    @Test
+    fun checkThatNeverDialedNamesNoAddress() {
+        val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
+        val home = PairedHome(
+            instanceId = "home-1",
+            homeLabel = "Home",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca",
+            clientCertFingerprint = "sha256:client",
+            observerHandle = "phone",
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        val lines = mutableListOf<String>()
+        var opened = false
+
+        val probe = RealPlStatusProbe(
+            endpointStore = endpointStore,
+            credentialStore = TestCredentialStore(),
+            identityStore = TestIdentityStore().apply { save(home) },
+            openTransport = { _, _ ->
+                opened = true
+                throw java.net.ConnectException("must not dial")
+            },
+            dialEvents = app.solstone.core.pl.DialEventLog { lines += it },
+        )
+
+        assertEquals(HarnessPlStatus.PairedButUnreachable("missing credential"), probe.probe())
+        assertNull((probe.probe() as HarnessPlStatus.PairedButUnreachable).address)
+        kotlin.test.assertFalse(opened)
+        assertEquals(emptyList(), lines)
+    }
+
+    @Test
+    fun pinMismatchExceptionClassifiesAsNotVerifiedAtItsCandidate() {
+        val failure = app.solstone.platform.pl.transport.conscrypt.DirectPairNotVerifiedException(
+            "10.0.0.2",
+            7657,
+            "scanned a pair link whose host did not match its CA pin",
+        )
+
+        assertEquals(
+            PairAttemptOutcome.NotVerified("10.0.0.2", 7657),
+            classifyPairException(failure, "10.0.1.2", 7657, PairRoute.DIRECT) { true },
+        )
+    }
+
     private class TestEndpointStore : EndpointStore {
         private var endpoint: DirectEndpoint? = null
         override fun save(endpoint: DirectEndpoint) {

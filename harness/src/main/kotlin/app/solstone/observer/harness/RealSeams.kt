@@ -20,6 +20,7 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.model.QueueState
 import app.solstone.core.pl.ClientReportedDescription
+import app.solstone.core.pl.DialEventLog
 import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
@@ -44,6 +45,9 @@ import app.solstone.core.identity.PairingPublisher
 import app.solstone.platform.work.OpenerFailureKind
 import app.solstone.platform.work.SyncTransport
 import app.solstone.platform.work.classifyOpenerFailure
+import app.solstone.platform.work.dialAddress
+import app.solstone.platform.work.recordDial
+import app.solstone.core.pl.displayAddress
 import app.solstone.platform.work.selectSyncTransport
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.transportAccessStillCurrent
@@ -72,6 +76,7 @@ class RealPairProbe(
     private val journalMarkStore: JournalMarkStore? = null,
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     private val publisher: PairingPublisher? = null,
+    private val dialEvents: DialEventLog? = null,
 ) : PairProbe {
     override fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairAndProbe(
@@ -87,6 +92,9 @@ class RealPairProbe(
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
             publisher = publisher,
+            onDialOutcome = dialEvents?.let { events ->
+                { endpoint, outcome -> events.record(endpoint.host, endpoint.port, outcome) }
+            },
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -166,6 +174,7 @@ class RealPlStatusProbe(
     private val mutator: IdentityMutator? = null,
     private val localDescriptionProvider: (() -> ClientReportedDescription)? = null,
     private val openTransport: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+    private val dialEvents: DialEventLog? = null,
 ) : PlStatusProbe {
     private var wasReachable: Boolean? = null
 
@@ -220,12 +229,19 @@ class RealPlStatusProbe(
             return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
         }
 
+        // The first address actually dialed, so a failed check can name it. Stays null when the
+        // check stopped before any dial.
+        var dialedAddress: String? = null
+
         fun tryTransport(t: SyncTransport): Pair<Int?, Throwable?> {
             return try {
                 if (mutator != null && !transportAccessStillCurrent(t, identity, access, mutator)) {
                     throw java.io.IOException("missing identity")
                 }
-                val client = openClientFor(t, credential)
+                if (dialedAddress == null) {
+                    dialedAddress = t.dialAddress()?.let { displayAddress(it.host, it.port) }
+                }
+                val client = recordDial(dialEvents, t) { openClientFor(t, credential) }
                 try {
                     val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
                     status to null
@@ -277,7 +293,7 @@ class RealPlStatusProbe(
         } else {
             handleReachabilityTransition(false, null, null)
             val err = failure ?: IllegalStateException("probe failed")
-            return HarnessPlStatus.PairedButUnreachable(plFailureDetail(err))
+            return HarnessPlStatus.PairedButUnreachable(plFailureDetail(err), dialedAddress)
         }
     }
 

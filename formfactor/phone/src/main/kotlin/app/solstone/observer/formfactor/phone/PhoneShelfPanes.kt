@@ -228,6 +228,9 @@ fun PhoneTechnicalDetailsPane(
             // below carries the same ground with real events in it.
             PaneFactRow(label = "fingerprint", value = facts.fingerprint)
             PaneRowDivider()
+            // The one saved address this phone dials straight to the journal.
+            PaneFactRow(label = "address", value = facts.address)
+            PaneRowDivider()
             PaneNavRow(label = "check connection", subLine = facts.check, onClick = onCheckConnection)
             PaneRowDivider()
             PaneNavRow(label = "event log", onClick = onOpenEventLog)
@@ -275,6 +278,14 @@ fun PhoneProblemReportsPane(
 const val CHECK_CONNECTION_RUNNING = "checking…"
 const val CHECK_CONNECTION_REACHED = "reached your journal"
 const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
+
+/**
+ * The failed check, naming the address only when one was actually dialed. A check that stopped
+ * before dialing (a missing credential or identity) has no address to name, and keeps the plain
+ * words.
+ */
+fun checkConnectionUnreached(address: String?): String =
+    address?.takeIf(String::isNotBlank)?.let { "couldn't reach your journal at $it" } ?: CHECK_CONNECTION_UNREACHED
 
 // Unpairing asks the journal to drop this device too, and the journal is not always reachable
 // when it is asked. Saying nothing would leave the owner believing both halves happened.

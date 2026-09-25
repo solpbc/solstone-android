@@ -25,6 +25,7 @@ import app.solstone.core.model.IdentityState
 
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
+import app.solstone.core.pl.DialOutcome
 import app.solstone.core.pl.DirectDialObserver
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
@@ -40,6 +41,7 @@ import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.RelayAccessResponse
 import app.solstone.core.pl.SOCKET_TIMEOUT_MS
+import app.solstone.core.pl.classifyDialFailure
 import app.solstone.core.pl.classifyPairResponseStatus
 import app.solstone.core.pl.orderCandidatesBySubnet
 import app.solstone.core.pl.parseDirectPairLink
@@ -70,6 +72,17 @@ class DirectPairEndpointException(
     val endpointPort: Int,
     cause: Exception,
 ) : IOException("direct pair endpoint failed: $endpointHost:$endpointPort", cause)
+
+/**
+ * Something answered at this candidate, but it could not prove it is the journal the pairing code
+ * names: its TLS chain, or the CA in its pair response, did not match the code's pin.
+ */
+class DirectPairNotVerifiedException(
+    val endpointHost: String,
+    val endpointPort: Int,
+    message: String,
+    cause: Throwable? = null,
+) : SSLException(message, cause)
 
 class DirectPairCodeExpiredException(
     val endpointHost: String,
@@ -108,6 +121,7 @@ fun pairAndProbe(
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: PairingPublisher? = null,
+    onDialOutcome: ((DirectEndpoint, DialOutcome) -> Unit)? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -123,6 +137,7 @@ fun pairAndProbe(
     journalMarkStore = journalMarkStore,
     journalIdentityCoordinator = journalIdentityCoordinator,
     publisher = publisher,
+    onDialOutcome = onDialOutcome,
 )
 
 internal fun pairAndProbe(
@@ -142,6 +157,7 @@ internal fun pairAndProbe(
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: PairingPublisher? = null,
+    onDialOutcome: ((DirectEndpoint, DialOutcome) -> Unit)? = null,
 ): PairProbeResult {
 
     val link = parseDirectPairLink(pairLink)
@@ -151,7 +167,12 @@ internal fun pairAndProbe(
 
     var lastError: Exception? = null
     var lastEndpoint: DirectEndpoint? = null
-    var sawCaMismatch = false
+    var firstCaMismatch: DirectEndpoint? = null
+    // Every candidate's outcome is reported, not only the last one's. Reporting must never change
+    // the pairing itself.
+    fun report(endpoint: DirectEndpoint, outcome: DialOutcome) {
+        runCatching { onDialOutcome?.invoke(endpoint, outcome) }
+    }
 
     for (endpoint in ordered) {
         var pinned = false
@@ -166,11 +187,12 @@ internal fun pairAndProbe(
                 session.request("POST", pairPath, pairHeaders, pairBody)
             }
         } catch (e: Exception) {
+            report(endpoint, classifyDialFailure(e))
             if (requestInvoked) {
                 throw directPairFailure(endpoint, e)
             }
-            if (e is SSLException && e.message == PAIR_TLS_CA_PIN_MISMATCH) {
-                sawCaMismatch = true
+            if (e is SSLException && e.message == PAIR_TLS_CA_PIN_MISMATCH && firstCaMismatch == null) {
+                firstCaMismatch = endpoint
             }
             lastError = e
             lastEndpoint = endpoint
@@ -182,8 +204,14 @@ internal fun pairAndProbe(
                 val resp = PairResponse.fromJson(pairHttp.bodyText())
                 val caDer = pemToDer(resp.caChain.first(), "CERTIFICATE")
                 if (!startsWith(sha256(caDer), link.caFingerprintPrefix)) {
-                    throw SSLException("pair response CA fingerprint did not match QR pin")
+                    report(endpoint, DialOutcome.NOT_VERIFIED)
+                    throw DirectPairNotVerifiedException(
+                        endpoint.host,
+                        endpoint.port,
+                        "pair response CA fingerprint did not match QR pin",
+                    )
                 }
+                report(endpoint, DialOutcome.CONNECTED)
                 val clientCertificate = certificateFromPem(resp.clientCert)
                 val clientDer = clientCertificate.encoded
                 if ("sha256:" + sha256Hex(clientDer) != resp.fingerprint) {
@@ -236,9 +264,11 @@ internal fun pairAndProbe(
 
             }
             DialDecision.TERMINAL -> {
+                report(endpoint, DialOutcome.CONNECTED)
                 throw DirectPairCodeExpiredException(endpoint.host, endpoint.port)
             }
             DialDecision.ADVANCE -> {
+                report(endpoint, DialOutcome.CONNECTED)
                 throw directPairFailure(
                     endpoint,
                     IOException("pair failed HTTP " + pairHttp.status),
@@ -247,8 +277,12 @@ internal fun pairAndProbe(
         }
     }
 
-    if (sawCaMismatch) {
-        throw SSLException("scanned a pair link whose host did not match its CA pin")
+    firstCaMismatch?.let { mismatch ->
+        throw DirectPairNotVerifiedException(
+            mismatch.host,
+            mismatch.port,
+            "scanned a pair link whose host did not match its CA pin",
+        )
     }
     val failure = lastError ?: IOException("all pair candidates exhausted")
     val endpoint = lastEndpoint
@@ -502,4 +536,4 @@ private fun configureSocket(socket: SSLSocket) {
 }
 
 private const val CONNECT_TIMEOUT_MS = 5000
-private const val PAIR_TLS_CA_PIN_MISMATCH = "pair TLS peer chain did not match QR CA pin"
+internal const val PAIR_TLS_CA_PIN_MISMATCH = "pair TLS peer chain did not match QR CA pin"

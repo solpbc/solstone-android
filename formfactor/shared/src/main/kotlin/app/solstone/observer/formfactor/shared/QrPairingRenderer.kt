@@ -100,6 +100,11 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
         // difference and then declined to say what it was.
         is PairAttemptOutcome.WindowClosed -> PAIR_CODE_EXPIRED
         is PairAttemptOutcome.OtherFailure -> PAIR_GENERIC
+        // The first candidate that answered without proving itself is the one named. ⚠ This is
+        // operator-approved copy that names the address and stops; it has no next step yet.
+        is PairAttemptOutcome.NotVerified ->
+            "something answered at ${authority(outcome.endpointHost, outcome.endpointPort)} " +
+                "but couldn't prove it's your journal"
     }
 
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
@@ -136,10 +141,12 @@ private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): 
  * RFC 3986 § 3.2.2 gives the bracketed form for exactly this. ⛔ Not a new sentence: the
  * template is unchanged and already gated, only the authority inside it is now unambiguous.
  */
-private fun authority(outcome: PairAttemptOutcome.NetworkUnavailable): String {
-    val host = outcome.endpointHost
+private fun authority(outcome: PairAttemptOutcome.NetworkUnavailable): String =
+    authority(outcome.endpointHost, outcome.endpointPort)
+
+private fun authority(host: String, port: Int): String {
     val bracketed = if (host.count { it == ':' } >= 2 && !host.startsWith("[")) "[$host]" else host
-    return "$bracketed:${outcome.endpointPort}"
+    return "$bracketed:$port"
 }
 
 /**
@@ -262,6 +269,9 @@ fun PairLinkDispatchResult.isRetryableSameLink(): Boolean = when (this) {
         PairAttemptOutcome.ExistingPairingUnreachable -> true
         PairAttemptOutcome.Retry -> true
         is PairAttemptOutcome.NetworkUnavailable -> true
+        // The answer came from whatever the phone's current network routed to; after a network
+        // change (a VPN off, back on the home wi-fi) the same code can reach the journal.
+        is PairAttemptOutcome.NotVerified -> true
         // The window is closed; the same link is the same expired code.
         is PairAttemptOutcome.WindowClosed -> false
         // PAIR_GENERIC's words point at a new code, same reasoning as the Linked branch above.

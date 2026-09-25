@@ -21,4 +21,5 @@ fun decidePhotoPair(outcome: PairAttemptOutcome): PhotoPairOutcome =
         is PairAttemptOutcome.NetworkUnavailable -> PhotoPairOutcome.NETWORK_UNAVAILABLE
         is PairAttemptOutcome.WindowClosed -> PhotoPairOutcome.REFRESH_CODE
         is PairAttemptOutcome.OtherFailure -> PhotoPairOutcome.FAILED
+        is PairAttemptOutcome.NotVerified -> PhotoPairOutcome.FAILED
     }

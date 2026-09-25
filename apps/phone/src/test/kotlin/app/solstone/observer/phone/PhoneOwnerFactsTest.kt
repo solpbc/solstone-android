@@ -6,6 +6,7 @@ package app.solstone.observer.phone
 import app.solstone.core.identity.GraphRevisions
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.observer.harness.WishStoreState
@@ -15,6 +16,28 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PhoneOwnerFactsTest {
+    @Test
+    fun addressRowShowsTheSavedDirectEndpoint() {
+        assertEquals(
+            "192.168.1.20:7657",
+            phoneJournalFacts(
+                committed(direct = true, relayOrigin = null, endpoint = DirectEndpoint("192.168.1.20", 7657)),
+                null,
+                false,
+            ).address,
+        )
+        assertEquals(
+            "[fd00::1]:7657",
+            phoneJournalFacts(
+                committed(direct = true, relayOrigin = null, endpoint = DirectEndpoint("fd00::1", 7657)),
+                null,
+                false,
+            ).address,
+        )
+        assertEquals("—", phoneJournalFacts(committed(direct = false, relayOrigin = "https://link.solstone.app"), null, false).address)
+        assertEquals("—", phoneJournalFacts(PairingGraphSnapshot.Absent(1), null, false).address)
+    }
+
     @Test
     fun fingerprintUsesJournalTrustAnchorAndAmbiguousPathStaysUnknown() {
         val facts = phoneJournalFacts(
@@ -129,6 +152,7 @@ class PhoneOwnerFactsTest {
         direct: Boolean,
         relayOrigin: String?,
         relayLiveEligible: Boolean = true,
+        endpoint: DirectEndpoint? = null,
     ): PairingGraphSnapshot.Committed {
         val hasRelay = relayOrigin != null
         return PairingGraphSnapshot.Committed(
@@ -148,6 +172,7 @@ class PhoneOwnerFactsTest {
             hasDirectEndpoint = direct,
             directAssociated = direct,
             relayLiveEligible = hasRelay && relayLiveEligible,
+            directEndpoint = endpoint,
         )
     }
 }

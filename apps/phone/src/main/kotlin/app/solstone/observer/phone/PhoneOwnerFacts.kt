@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.pl.displayAddress
 import app.solstone.core.pl.parseProductionRelayOrigin
 import app.solstone.observer.formfactor.phone.PhoneJournalFacts
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
@@ -63,6 +64,7 @@ internal fun phoneJournalFacts(
         // ⚠ The same two words the ongoing notification uses. `running` here against `on` in the
         // shade gave one founder-ruled state word two vocabularies on one device.
         intake = if (intakeRunning) "on" else "off",
+        address = committed?.directEndpoint?.let { displayAddress(it.host, it.port) } ?: "—",
         check = check,
     )
 }

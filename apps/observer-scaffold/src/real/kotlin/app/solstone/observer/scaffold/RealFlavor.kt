@@ -23,6 +23,7 @@ import app.solstone.platform.camera.still.SingleHolderCameraLock
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
 import app.solstone.platform.fgs.captureForegroundTypesFromTokens
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import app.solstone.platform.work.DialDiagnostics
 import app.solstone.platform.work.currentPhoneDeviceDescription
 import app.solstone.platform.work.syncStores
 import java.nio.file.Path
@@ -53,6 +54,7 @@ fun buildObserverFlavor(
         journalMarkStore = stores.journalMarkStore,
         journalIdentityCoordinator = stores.journalIdentityCoordinator,
         publisher = stores.publisher,
+        dialEvents = DialDiagnostics.events,
     )
     val relayPairProbe = RealRelayPairProbe(
         credentialStore = stores.credentialStore,
@@ -74,6 +76,7 @@ fun buildObserverFlavor(
         relayAccessCoordinator = stores.relayAccessCoordinator,
         mutator = stores.identityMutator,
         localDescriptionProvider = { currentPhoneDeviceDescription(context) },
+        dialEvents = DialDiagnostics.events,
     )
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,

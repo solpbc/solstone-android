@@ -88,6 +88,18 @@ class QrPairingRendererTest {
         )
     }
 
+    @Test
+    fun pinMismatchNamesTheAddressThatAnswered() {
+        assertEquals(
+            "something answered at 10.0.0.2:7657 but couldn't prove it's your journal",
+            pairStatusText(PairAttemptOutcome.NotVerified("10.0.0.2", 7657)),
+        )
+        assertEquals(
+            "something answered at [fd00::1]:7657 but couldn't prove it's your journal",
+            pairStatusText(PairAttemptOutcome.NotVerified("fd00::1", 7657)),
+        )
+    }
+
     /**
      * 🔴 What the owner used to read here was the platform's exception: a permission-check function
      * name, a process id and a uid. The scanner now has exactly one sentence for a camera that did
