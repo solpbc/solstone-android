@@ -137,7 +137,9 @@ class SyncWorker(
                         if (!transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
                             throw IOException("missing identity")
                         }
-                        openSyncClient(selectedTransport, credentials.credential)
+                        recordDial(DialDiagnostics.events, selectedTransport) {
+                            openSyncClient(selectedTransport, credentials.credential)
+                        }
                     },
                     store = store,
                     finisher = finisher,

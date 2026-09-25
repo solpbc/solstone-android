@@ -28,6 +28,7 @@ import app.solstone.platform.fgs.ObserverForegroundService.ObserverWidgetStartHa
 import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.fgs.ObserverNotificationDecorator
 import app.solstone.platform.fgs.shouldOfferStartAction
+import app.solstone.platform.work.DialDiagnostics
 import app.solstone.platform.work.SyncWorker
 
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
@@ -78,6 +79,7 @@ class PhoneApplication : ObserverApplication(
         PhoneDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { PhoneDiagLog.appendRaw(it) }
         SyncWorker.syncDiag = { PhoneDiagLog.appendRaw(it) }
+        DialDiagnostics.sink = { PhoneDiagLog.appendRaw(it) }
         installPushRegistration(
             port = UnifiedPushDistributorPort(this),
             enabled = BuildConfig.PUSH_REGISTRATION,

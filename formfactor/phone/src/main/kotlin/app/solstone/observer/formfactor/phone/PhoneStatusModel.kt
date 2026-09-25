@@ -29,6 +29,8 @@ data class PhoneJournalFacts(
     val connection: String = "—",
     val fingerprint: String = "—",
     val intake: String = "—",
+    /** The saved direct address, `host:port`, or a dash when none is saved. */
+    val address: String = "—",
     /** What the last `check connection` found, or null before one has been asked for. */
     val check: String? = null,
 )

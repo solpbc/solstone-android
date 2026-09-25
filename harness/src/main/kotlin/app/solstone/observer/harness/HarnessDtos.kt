@@ -24,7 +24,11 @@ data class HarnessPairProbeResult(
 
 sealed interface HarnessPlStatus {
     data object NotPaired : HarnessPlStatus
-    data class PairedButUnreachable(val reason: String?) : HarnessPlStatus
+    /**
+     * [address] is the `host:port` the check actually dialed and failed to reach, or null when no
+     * dial was attempted (a missing credential or identity, say).
+     */
+    data class PairedButUnreachable(val reason: String?, val address: String? = null) : HarnessPlStatus
     data class Reachable(val status: Int) : HarnessPlStatus
 }
 

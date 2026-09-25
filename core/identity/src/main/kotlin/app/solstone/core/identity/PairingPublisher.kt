@@ -47,6 +47,8 @@ sealed interface PairingGraphSnapshot {
         val hasDirectEndpoint: Boolean,
         val directAssociated: Boolean,
         val relayLiveEligible: Boolean,
+        /** The saved direct address, shown to the owner; null when none is saved. */
+        val directEndpoint: DirectEndpoint? = null,
     ) : PairingGraphSnapshot {
         val pairing: PairingGeneration
             get() = PairingGeneration(home.instanceId, home.clientCertFingerprint)

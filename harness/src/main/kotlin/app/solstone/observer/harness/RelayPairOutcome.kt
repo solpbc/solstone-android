@@ -7,6 +7,7 @@ import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowClosedExcepti
 import app.solstone.platform.pl.transport.conscrypt.RelayPairWindowUnavailableException
 import app.solstone.platform.pl.transport.conscrypt.DirectPairCodeExpiredException
 import app.solstone.platform.pl.transport.conscrypt.DirectPairEndpointException
+import app.solstone.platform.pl.transport.conscrypt.DirectPairNotVerifiedException
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketException
@@ -27,6 +28,8 @@ sealed interface PairAttemptOutcome {
         val endpointPort: Int,
         val route: PairRoute,
     ) : PairAttemptOutcome
+    /** Something answered at this address but could not prove it is the journal the code names. */
+    data class NotVerified(val endpointHost: String, val endpointPort: Int) : PairAttemptOutcome
     data class WindowClosed(val statusCode: Int) : PairAttemptOutcome
     data class OtherFailure(val exceptionType: String, val statusCode: Int?) : PairAttemptOutcome
 }
@@ -45,6 +48,9 @@ fun classifyPairException(
     if (e is RelayPairWindowClosedException) return PairAttemptOutcome.WindowClosed(401)
     if (e is DirectPairCodeExpiredException) return PairAttemptOutcome.WindowClosed(410)
     val chain = generateSequence(e) { it.cause }.toList()
+    chain.filterIsInstance<DirectPairNotVerifiedException>().firstOrNull()?.let { mismatch ->
+        return PairAttemptOutcome.NotVerified(mismatch.endpointHost, mismatch.endpointPort)
+    }
     if ((e is IOException && e.message == "WebSocket failed") || chain.any { it.isConnectivityFailure() }) {
         val directFailure = chain.filterIsInstance<DirectPairEndpointException>().firstOrNull()
         val failure = when {

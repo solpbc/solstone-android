@@ -8,6 +8,8 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.ByteDuplex
+import app.solstone.core.pl.DialEventLog
+import app.solstone.core.pl.DialOutcome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.FLAG_CLOSE
@@ -22,6 +24,8 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.ConnectException
+import java.net.SocketTimeoutException
+import javax.net.ssl.SSLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -300,6 +304,10 @@ class DirectPairCommitPolicyTest {
         }
 
         assertEquals("pair response CA fingerprint did not match QR pin", failure.message)
+        // The post-POST mismatch names the candidate that answered, not a bare TLS failure.
+        val mismatch = assertIs<DirectPairNotVerifiedException>(failure)
+        assertEquals("10.0.0.2", mismatch.endpointHost)
+        assertEquals(7657, mismatch.endpointPort)
         assertEquals(1, counts.sessionOpens)
         assertEquals(1, counts.requestInvocations)
         assertEquals(1, counts.allOpenFrames)
@@ -432,6 +440,60 @@ class DirectPairCommitPolicyTest {
         assertEquals(1, counts.requestInvocations)
     }
 
+    @Test
+    fun everyCandidateOutcomeIsRecordedAndThePinMismatchNamesTheFirstMismatchedCandidate() {
+        val counts = Counts()
+        val link = pairLink(listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)))
+        val recorded = mutableListOf<Pair<DirectEndpoint, DialOutcome>>()
+
+        val failure = assertFailsWith<DirectPairNotVerifiedException> {
+            invokePair(link, counts, onDialOutcome = { endpoint, outcome -> recorded += endpoint to outcome }) { _, _ ->
+                counts.sessionOpens++
+                if (counts.sessionOpens == 1) throw SSLException(PAIR_TLS_CA_PIN_MISMATCH)
+                throw SocketTimeoutException("connect timed out")
+            }
+        }
+
+        assertEquals(
+            listOf(
+                DirectEndpoint("10.0.0.2", 7657) to DialOutcome.NOT_VERIFIED,
+                DirectEndpoint("10.0.1.2", 7657) to DialOutcome.NO_ANSWER,
+            ),
+            recorded,
+        )
+        assertEquals("10.0.0.2", failure.endpointHost)
+        assertEquals(7657, failure.endpointPort)
+        assertEquals(2, counts.sessionOpens)
+    }
+
+    @Test
+    fun pairingDialEventsNameTheAddressAndCarryNoPairMaterial() {
+        val counts = Counts()
+        val link = pairLink(listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 1, 2)))
+        val lines = mutableListOf<String>()
+        val log = DialEventLog { lines += it }
+
+        assertFailsWith<DirectPairEndpointException> {
+            invokePair(
+                link,
+                counts,
+                onDialOutcome = { endpoint, outcome -> log.record(endpoint.host, endpoint.port, outcome) },
+            ) { _, _ ->
+                counts.sessionOpens++
+                throw ConnectException("refused $link $NONCE_HEX")
+            }
+        }
+
+        assertEquals(
+            listOf(
+                "kind=dial host=10.0.0.2 port=7657 outcome=failed",
+                "kind=dial host=10.0.1.2 port=7657 outcome=failed",
+            ),
+            lines,
+        )
+        lines.forEach { line -> assertMessageRedacted(line, link) }
+    }
+
     private fun assertCommittedPersistenceFailure(stage: CommittedFailureStage) {
         val counts = Counts()
         val caPrefix = app.solstone.core.crypto.sha256(
@@ -482,6 +544,7 @@ class DirectPairCommitPolicyTest {
         statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = { _, _ ->
             HttpResponse(200, emptyMap(), "ok".toByteArray())
         },
+        onDialOutcome: ((DirectEndpoint, DialOutcome) -> Unit)? = null,
         sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     ) {
         val publisher = FakePairingPublisher(
@@ -503,6 +566,7 @@ class DirectPairCommitPolicyTest {
             },
             statusProbe = statusProbe,
             publisher = publisher,
+            onDialOutcome = onDialOutcome,
         )
     }
 

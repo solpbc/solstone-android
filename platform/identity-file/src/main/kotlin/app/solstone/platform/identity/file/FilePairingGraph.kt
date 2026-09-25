@@ -219,6 +219,7 @@ class FilePairingGraph(
                 hasDirectEndpoint = directEndpoint != null,
                 directAssociated = directEndpoint != null && isDirectAssociated,
                 relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
+                directEndpoint = directEndpoint,
             )
             currentSnapshotState = newCommitted
             notifySubscribers(newCommitted)
@@ -676,6 +677,7 @@ class FilePairingGraph(
                 revisions = GraphRevisions(pairingRev, directRev, relayRev),
                 hasDirectEndpoint = true,
                 directAssociated = true,
+                directEndpoint = endpoint,
             )
             currentSnapshotState = updated
             notifySubscribers(updated)
@@ -774,6 +776,7 @@ class FilePairingGraph(
             hasDirectEndpoint = epPresent,
             directAssociated = marker.directAssociated,
             relayLiveEligible = marker.hasRelayAccess,
+            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
         )
     }
 
@@ -826,6 +829,7 @@ class FilePairingGraph(
             hasDirectEndpoint = epPresent,
             directAssociated = false,
             relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
+            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
         )
     }
 

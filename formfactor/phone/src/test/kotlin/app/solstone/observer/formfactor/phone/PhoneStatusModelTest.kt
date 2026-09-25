@@ -9,6 +9,14 @@ import kotlin.test.assertFalse
 
 class PhoneStatusModelTest {
     @Test
+    fun failedCheckNamesAnAddressOnlyWhenOneWasDialed() {
+        assertEquals("couldn't reach your journal at 192.0.2.1:7657", checkConnectionUnreached("192.0.2.1:7657"))
+        // A check that never dialed (a missing credential, say) keeps the plain words.
+        assertEquals("couldn't reach your journal", checkConnectionUnreached(null))
+        assertEquals("couldn't reach your journal", checkConnectionUnreached(""))
+    }
+
+    @Test
     fun fourPillStatesRenderQuotedCopy() {
         assertEquals(
             "connected",
