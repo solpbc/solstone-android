@@ -71,6 +71,10 @@ class PushRegistrationCoordinatorTest {
             calls += "unregister"
             onUnregister?.invoke()
         }
+
+        val installedAt = mutableMapOf<String, Long?>()
+
+        override fun installedSince(pkg: String): Long? = installedAt[pkg]
     }
 
     private class TestPlHttpClient : PlHttpClient {
@@ -1476,6 +1480,568 @@ class PushRegistrationCoordinatorTest {
         val regVapid = port.registeredVapids.single()
         assertEquals(87, regVapid.length)
         assertTrue(Regex("^[A-Za-z0-9_-]{87}$").matches(regVapid))
+    }
+
+    private fun mutatingCalls(calls: List<String>): List<String> =
+        calls.filter { it != "available" && it != "resolveDefault" }
+
+    @Test
+    fun reinstallInsideIntervalUnregistersDeletesOldEndpointAndPersistsNewInstallTime() {
+        val tempDir = Files.createTempDirectory("reinstall-1").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        port.installedAt[pkg] = 1_700_000_000_000L
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/old", "pubKey1", "auth1")
+        }
+
+        // Pass 1: registers
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Pass 2: inside T (advance by 1000ms), reaches Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        // Reinstall: clear onRegister, clear records, set new install time
+        port.onRegister = null
+        port.calls.clear()
+        client.requests.clear()
+        port.installedAt[pkg] = 1_700_000_000_123L
+
+        // Reinstall pass (clock not advanced by T)
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val expectedVapid = Base64.getUrlEncoder().withoutPadding().encodeToString(sampleVapidKey())
+        assertEquals(
+            listOf("unregister", "save($pkg)", "register($expectedVapid)"),
+            mutatingCalls(port.calls),
+        )
+
+        val deleteReqs = client.requests.filter { it.method == "DELETE" }
+        assertEquals(1, deleteReqs.size)
+        assertTrue(deleteReqs.single().bodyText!!.contains("https://push.example/old"))
+
+        val fileState = PushRegistrationFile.read(File(tempDir, PushRegistrationFile.FILE_NAME)) {}
+        assertTrue(fileState.pendingDeletes.isEmpty())
+        assertEquals(PushDeliveryState.WaitingForDelivery(pkg, false), coordinator.deliveryState)
+        assertEquals(1_700_000_000_123L, fileState.attempt?.identity?.distributorInstalledAt)
+        assertEquals(false, fileState.attempt?.unanswered)
+    }
+
+    @Test
+    fun reinstallContinuationWithNewEndpointReachesReadyWithoutDuplicateDelete() {
+        val tempDir = Files.createTempDirectory("reinstall-2").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        port.installedAt[pkg] = 1_700_000_000_000L
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/old", "pubKey1", "auth1")
+        }
+
+        // Pass 1: registers
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Pass 2: reaches Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        // Reinstall
+        port.onRegister = null
+        port.calls.clear()
+        client.requests.clear()
+        port.installedAt[pkg] = 1_700_000_000_123L
+
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Deliver new endpoint
+        coordinator.onNewEndpoint("https://push.example/new", "pubKey2", "auth2")
+        client.requests.clear()
+
+        // Pass until Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val postReqs = client.requests.filter { it.method == "POST" }
+        assertTrue(postReqs.any { it.bodyText!!.contains("https://push.example/new") })
+
+        val deleteReqs = client.requests.filter { it.method == "DELETE" }
+        assertTrue(deleteReqs.none { it.bodyText?.contains("https://push.example/old") == true })
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+    }
+
+    @Test
+    fun reinstallWithoutAnswerTransitionsToWaitingForDeliveryUnansweredAfterInterval() {
+        val tempDir = Files.createTempDirectory("reinstall-3").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        port.installedAt[pkg] = 1_700_000_000_000L
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/old", "pubKey1", "auth1")
+        }
+
+        // Pass 1: registers
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Pass 2: reaches Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Reinstall
+        port.onRegister = null
+        port.installedAt[pkg] = 1_700_000_000_123L
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val fileState = PushRegistrationFile.read(File(tempDir, PushRegistrationFile.FILE_NAME)) {}
+        val startMillis = fileState.attempt!!.startMillis
+        assertEquals(false, fileState.attempt?.unanswered)
+
+        // Advance clock >= T from attempt start
+        clockTime = startMillis + 60_000L
+        port.calls.clear()
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val expectedVapid = Base64.getUrlEncoder().withoutPadding().encodeToString(sampleVapidKey())
+        assertEquals(
+            listOf("save($pkg)", "register($expectedVapid)"),
+            mutatingCalls(port.calls),
+        )
+
+        val nextFileState = PushRegistrationFile.read(File(tempDir, PushRegistrationFile.FILE_NAME)) {}
+        assertEquals(true, nextFileState.attempt?.unanswered)
+        assertEquals(PushDeliveryState.WaitingForDelivery(pkg, true), coordinator.deliveryState)
+    }
+
+    @Test
+    fun stableInstallTimeAfterReadyRePostsEndpointWithoutRegisterOrUnregister() {
+        val tempDir = Files.createTempDirectory("stable-time").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        port.installedAt[pkg] = 1_700_000_000_000L
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1: registers
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Pass 2: reaches Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        port.calls.clear()
+        client.requests.clear()
+
+        // Three more passes with same install time
+        for (i in 1..3) {
+            clockTime += 1000L
+            passLatch = CountDownLatch(1)
+            coordinator.onUsableConnection(gen, { client })
+            assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        }
+
+        assertEquals(emptyList<String>(), mutatingCalls(port.calls))
+        val posts = client.requests.filter { it.method == "POST" }
+        assertEquals(3, posts.size)
+        assertTrue(posts.all { it.bodyText!!.contains("https://push.example/ep1") })
+    }
+
+    @Test
+    fun coldStartWithSameInstallTimeRePostsEndpointWithoutReRegistering() {
+        val tempDir = Files.createTempDirectory("cold-start").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        port.installedAt[pkg] = 1_700_000_000_000L
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1 & 2 to reach Ready
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        coordinator.close()
+
+        // Cold start with new port and new coordinator on same directory
+        val coldPort = TestDistributorPort()
+        coldPort.installedAt[pkg] = 1_700_000_000_000L
+        val coldClient = TestPlHttpClient()
+        val coldCoordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = coldPort,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        // Three passes
+        for (i in 1..3) {
+            clockTime += 1000L
+            passLatch = CountDownLatch(1)
+            coldCoordinator.onUsableConnection(gen, { coldClient })
+            assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        }
+
+        assertEquals(emptyList<String>(), mutatingCalls(coldPort.calls))
+        val posts = coldClient.requests.filter { it.method == "POST" }
+        assertEquals(3, posts.size)
+        assertTrue(posts.all { it.bodyText!!.contains("https://push.example/ep1") })
+        coldCoordinator.close()
+    }
+
+    @Test
+    fun nullInstallTimeRemainsStableAndRePostsWithoutReRegistering() {
+        val tempDir = Files.createTempDirectory("null-time").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1: registers
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        // Pass 2: reaches Ready
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        port.calls.clear()
+        port.registeredVapids.clear()
+        client.requests.clear()
+
+        // Three later passes, still null
+        for (i in 1..3) {
+            clockTime += 1000L
+            passLatch = CountDownLatch(1)
+            coordinator.onUsableConnection(gen, { client })
+            assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        }
+
+        assertEquals(emptyList<String>(), mutatingCalls(port.calls))
+        val posts = client.requests.filter { it.method == "POST" }
+        assertEquals(3, posts.size)
+        assertTrue(posts.all { it.bodyText!!.contains("https://push.example/ep1") })
+    }
+
+    @Test
+    fun nullToValueInstallTimeTransitionReRegistersOnceAndStabilizes() {
+        val tempDir = Files.createTempDirectory("null-to-val").toFile()
+        val port = TestDistributorPort()
+        val pkg = "app.distributor.primary"
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1 & 2 to reach Ready with null install time
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        // Clear onRegister, clear calls, set installedAt value
+        port.onRegister = null
+        port.calls.clear()
+        port.registeredVapids.clear()
+        port.installedAt[pkg] = 1_700_000_000_123L
+
+        // Four passes without advancing clock by T
+        for (i in 1..4) {
+            clockTime += 1000L
+            passLatch = CountDownLatch(1)
+            coordinator.onUsableConnection(gen, { client })
+            assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        }
+
+        val expectedVapid = Base64.getUrlEncoder().withoutPadding().encodeToString(sampleVapidKey())
+        assertEquals(
+            listOf("unregister", "save($pkg)", "register($expectedVapid)"),
+            mutatingCalls(port.calls),
+        )
+    }
+
+    @Test
+    fun installTimeChangeAffectsOnlyTheResolvedDistributor() {
+        val tempDir = Files.createTempDirectory("resolved-dist").toFile()
+        val port = TestDistributorPort()
+        port.availableList = mutableListOf("app.distributor.other", "app.distributor.chosen")
+        port.resolution = DistributorResolution.Found("app.distributor.chosen")
+        port.installedAt["app.distributor.chosen"] = 100L
+        port.installedAt["app.distributor.other"] = 200L
+
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1 & 2 to reach Ready
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        // Change only other's install time
+        port.calls.clear()
+        port.registeredVapids.clear()
+        port.installedAt["app.distributor.other"] = 300L
+
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(emptyList<String>(), mutatingCalls(port.calls))
+
+        // Change chosen's install time
+        port.onRegister = null
+        port.installedAt["app.distributor.chosen"] = 400L
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val expectedVapid = Base64.getUrlEncoder().withoutPadding().encodeToString(sampleVapidKey())
+        assertEquals(
+            listOf("unregister", "save(app.distributor.chosen)", "register($expectedVapid)"),
+            mutatingCalls(port.calls),
+        )
+    }
+
+    @Test
+    fun installTimeChangeAffectsOnlyTheOwnerPickedDistributor() {
+        val tempDir = Files.createTempDirectory("owner-picked").toFile()
+        val port = TestDistributorPort()
+        port.availableList = mutableListOf("app.distributor.other", "app.distributor.chosen")
+        port.resolution = DistributorResolution.Found("app.distributor.other")
+        port.installedAt["app.distributor.chosen"] = 100L
+        port.installedAt["app.distributor.other"] = 200L
+
+        val client = TestPlHttpClient()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var clockTime = 1000L
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = port,
+            enabled = true,
+            pushKeys = TestPushKeys(),
+            pairingNow = { gen },
+            clock = { clockTime },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+        )
+
+        coordinator.onUserPickedDistributor("app.distributor.chosen")
+
+        port.onRegister = {
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+
+        // Pass 1 & 2 to reach Ready
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(PushDeliveryState.Ready, coordinator.deliveryState)
+
+        // Change only other's install time
+        port.calls.clear()
+        port.registeredVapids.clear()
+        port.installedAt["app.distributor.other"] = 300L
+
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(emptyList<String>(), mutatingCalls(port.calls))
+
+        // Change chosen's install time
+        port.onRegister = null
+        port.installedAt["app.distributor.chosen"] = 400L
+        clockTime += 1000L
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val expectedVapid = Base64.getUrlEncoder().withoutPadding().encodeToString(sampleVapidKey())
+        assertEquals(
+            listOf("unregister", "save(app.distributor.chosen)", "register($expectedVapid)"),
+            mutatingCalls(port.calls),
+        )
+        assertTrue(port.savedPackages.contains("app.distributor.chosen"))
     }
 
     @Test

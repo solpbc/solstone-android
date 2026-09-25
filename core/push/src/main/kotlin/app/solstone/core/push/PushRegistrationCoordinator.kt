@@ -229,7 +229,8 @@ class PushRegistrationCoordinator(
                         }
 
                         val chosenDistributor = D ?: return
-                        val X = PushRegistrationIdentity(G, K, chosenDistributor)
+                        val installedAt = port.installedSince(chosenDistributor)
+                        val X = PushRegistrationIdentity(G, K, chosenDistributor, installedAt)
 
                         var isUsable = false
                         var proceedToRegister = false

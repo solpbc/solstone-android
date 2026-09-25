@@ -16,4 +16,5 @@ interface DistributorPort {
     fun save(pkg: String)
     fun register(vapidKey: String)
     fun unregister()
+    fun installedSince(pkg: String): Long?
 }

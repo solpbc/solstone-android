@@ -4,6 +4,8 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import app.solstone.core.push.DistributorPort
 import app.solstone.core.push.DistributorResolution
 import org.unifiedpush.android.connector.INSTANCE_DEFAULT
@@ -42,4 +44,18 @@ class UnifiedPushDistributorPort(
     override fun unregister() {
         UnifiedPush.unregister(context, INSTANCE_DEFAULT)
     }
+
+    override fun installedSince(pkg: String): Long? =
+        try {
+            val info =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.packageManager.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.packageManager.getPackageInfo(pkg, 0)
+                }
+            info.firstInstallTime
+        } catch (_: Throwable) {
+            null
+        }
 }

@@ -15,12 +15,14 @@ class PushRegistrationIdentity(
     val generation: PairingGeneration,
     val vapidKey: ByteArray,
     val distributorPackage: String,
+    val distributorInstalledAt: Long?,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is PushRegistrationIdentity) return false
         return generation == other.generation &&
             distributorPackage == other.distributorPackage &&
+            distributorInstalledAt == other.distributorInstalledAt &&
             vapidKey.contentEquals(other.vapidKey)
     }
 
@@ -28,6 +30,7 @@ class PushRegistrationIdentity(
         var result = generation.hashCode()
         result = 31 * result + vapidKey.contentHashCode()
         result = 31 * result + distributorPackage.hashCode()
+        result = 31 * result + (distributorInstalledAt?.hashCode() ?: 0)
         return result
     }
 
@@ -143,6 +146,7 @@ object PushRegistrationFile {
             "clientCertFingerprint" to id.generation.clientCertFingerprint,
             "vapid" to Base64.getUrlEncoder().withoutPadding().encodeToString(id.vapidKey),
             "distributor" to id.distributorPackage,
+            "distributorInstalledAt" to id.distributorInstalledAt,
         )
 
     private fun encodeDelivery(delivery: PushDeliveryState): Map<String, Any?> =
@@ -213,7 +217,17 @@ object PushRegistrationFile {
         val distributor = map["distributor"] as String
         val pad = (4 - (vapidStr.length % 4)) % 4
         val vapidBytes = Base64.getUrlDecoder().decode(vapidStr + "=".repeat(pad))
-        return PushRegistrationIdentity(PairingGeneration(instanceId, cert), vapidBytes, distributor)
+        val installedAt = decodeInstalledAt(map["distributorInstalledAt"])
+        return PushRegistrationIdentity(PairingGeneration(instanceId, cert), vapidBytes, distributor, installedAt)
+    }
+
+    private fun decodeInstalledAt(value: Any?): Long? {
+        val number = value as? BigDecimal ?: return null
+        return try {
+            number.longValueExact()
+        } catch (_: ArithmeticException) {
+            null
+        }
     }
 
     private fun decodeDelivery(map: Map<*, *>): PushDeliveryState =

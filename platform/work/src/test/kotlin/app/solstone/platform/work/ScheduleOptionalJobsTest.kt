@@ -172,6 +172,7 @@ class ScheduleOptionalJobsTest {
             registerCalled = true
         }
         override fun unregister() {}
+        override fun installedSince(pkg: String): Long? = null
     }
 
     private class FakePushKeys : PushKeyAccess {
