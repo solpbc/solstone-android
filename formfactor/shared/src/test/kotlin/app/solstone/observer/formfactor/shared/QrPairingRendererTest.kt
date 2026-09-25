@@ -59,6 +59,7 @@ class QrPairingRendererTest {
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER)),
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, host = "8.8.8.8")),
             pairStatusText(networkFailure(ConnectivityFailure.HOST_DID_NOT_ANSWER, PairRoute.RELAY, 443)),
+            pairStatusText(PairAttemptOutcome.NotVerified("10.0.0.2", 7657)),
             PAIR_DISPATCH_FAILED,
             CAMERA_COULD_NOT_START,
             CAMERA_IN_USE_BY_THIS_APP,
@@ -91,11 +92,15 @@ class QrPairingRendererTest {
     @Test
     fun pinMismatchNamesTheAddressThatAnswered() {
         assertEquals(
-            "something answered at 10.0.0.2:7657 but couldn't prove it's your journal",
+            "something answered at 10.0.0.2:7657 but couldn't prove it's your journal. " +
+                "make sure you're connected to your journal's network, directly or over your vpn, " +
+                "then show a new pairing code on your journal and try again.",
             pairStatusText(PairAttemptOutcome.NotVerified("10.0.0.2", 7657)),
         )
         assertEquals(
-            "something answered at [fd00::1]:7657 but couldn't prove it's your journal",
+            "something answered at [fd00::1]:7657 but couldn't prove it's your journal. " +
+                "make sure you're connected to your journal's network, directly or over your vpn, " +
+                "then show a new pairing code on your journal and try again.",
             pairStatusText(PairAttemptOutcome.NotVerified("fd00::1", 7657)),
         )
     }

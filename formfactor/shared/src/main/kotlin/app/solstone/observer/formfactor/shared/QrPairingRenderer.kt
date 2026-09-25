@@ -100,11 +100,12 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
         // difference and then declined to say what it was.
         is PairAttemptOutcome.WindowClosed -> PAIR_CODE_EXPIRED
         is PairAttemptOutcome.OtherFailure -> PAIR_GENERIC
-        // The first candidate that answered without proving itself is the one named. ⚠ This is
-        // operator-approved copy that names the address and stops; it has no next step yet.
+        // The first candidate that answered without proving itself is the one named.
         is PairAttemptOutcome.NotVerified ->
             "something answered at ${authority(outcome.endpointHost, outcome.endpointPort)} " +
-                "but couldn't prove it's your journal"
+                "but couldn't prove it's your journal. make sure you're connected to your " +
+                "journal's network, directly or over your vpn, then show a new pairing code on " +
+                "your journal and try again."
     }
 
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
