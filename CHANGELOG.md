@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - the confirmations for unpairing and forgetting your journal now say where anything still waiting goes: to the journal you pair next.
 
+### Fixed
+- copying apps and data to a new phone no longer brings the solstone app's data along. before, that included anything still waiting, a second copy of what your old phone still had. now that stays only on your old phone, so let it reach your journal before you reset that phone, and pair the new phone the usual way.
+
 ## [2.1.11] - 2026-09-25
 
 ### Fixed
