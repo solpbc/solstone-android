@@ -1,11 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The pairing and push-registration stores stay on this device. Their keys are
-     Keystore-wrapped and cannot move, so a copy elsewhere would only be stale state. -->
+<!-- Nothing in this app's storage moves to another phone, by backup or by a device transfer.
+     android:allowBackup="false" stops cloud backup, but on Android 12 and later it does not stop a
+     device-to-device transfer, so the transfer rules below have to exclude everything explicitly.
+
+     What lives here is tied to this phone: captures not yet delivered, their upload state, the
+     pairing and push stores (whose keys are Keystore-wrapped and cannot move), and settings about
+     this phone's permissions and capture. A copy on a new phone would be an unpaired duplicate of
+     captures the old phone still holds. The new phone starts fresh and is paired the usual way. -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="file" path="pl" />
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="file" path="pl" />
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>
