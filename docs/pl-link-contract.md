@@ -26,8 +26,11 @@ The decoded direct payload has one of two forms:
   It carries one shared big-endian port, `N` IPv4 addresses in encoded order,
   a 16-byte nonce, and a 16-byte CA fingerprint prefix.
 
-Direct candidates are admitted only from `10/8`, `172.16/12`, `192.168/16`,
-`169.254/16`, `100.64/10`, and `127/8`. A disallowed member refuses the whole
+Direct candidates are admitted from any IPv4 address except `0/8` ("this
+network") and `224/3` (multicast and reserved). Private, CGNAT,
+link-local, loopback, and public addresses are all valid. The trust anchor is
+the CA fingerprint prefix in the link, checked during the TLS handshake, not
+the network the address belongs to. A disallowed member refuses the whole
 link; members are never silently filtered. Repeated candidates are coalesced
 by first occurrence before subnet ordering.
 
