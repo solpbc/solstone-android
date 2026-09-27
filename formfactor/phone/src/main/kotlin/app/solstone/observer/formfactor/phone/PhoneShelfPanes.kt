@@ -300,11 +300,12 @@ internal const val JOURNAL_KEPT_ITS_RECORD =
 // the identity, credential and endpoint and nothing else — ⛔ **it does not clear the spool or the
 // segment table**, and `segmentsForDrain` selects on `stream` + `state` alone (`home_instance_id`
 // is written null by both writers and read nowhere). So anything already taken in and not yet
-// delivered survives, and drains to whichever journal this phone pairs to next. A confirm that
-// partitions the world into "more" and "already reached" leaves that population in neither.
+// delivered survives, and drains to whichever journal this phone pairs to next. The confirm
+// names that third population — anything still waiting — and says it goes to the journal you
+// pair next.
 internal const val FORGET_JOURNAL_BODY =
     "nothing more from this device goes into your journal. what already reached it stays " +
-        "there, and anything still waiting won't unless you pair again."
+        "there, and anything still waiting goes to the journal you pair next."
 
 // ⛔ Deliberately does NOT enumerate the events. Four review rounds each found a different
 // writer missing from the list — the widget's own switch, a sync that threw before its emit

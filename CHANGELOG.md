@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- the confirmations for unpairing and forgetting your journal now say where anything still waiting goes: to the journal you pair next.
+
 ## [2.1.11] - 2026-09-25
 
 ### Fixed
