@@ -15,12 +15,13 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 fun wireKeys(startEpochMs: Long, endEpochMs: Long, zoneId: ZoneId): WireKeys {
     val start = Instant.ofEpochMilli(startEpochMs).atZone(zoneId)
     val lenSeconds = ((endEpochMs - startEpochMs).coerceAtLeast(0L)) / 1000L
     val day = DateTimeFormatter.BASIC_ISO_DATE.format(start.toLocalDate())
-    val segment = "%02d%02d%02d_%d".format(start.hour, start.minute, start.second, lenSeconds)
+    val segment = "%02d%02d%02d_%d".format(Locale.ROOT, start.hour, start.minute, start.second, lenSeconds)
     return WireKeys(
         day = day,
         segment = segment,

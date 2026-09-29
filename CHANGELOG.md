@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- with Arabic or Persian as your phone’s language, moments now reach your journal.
+
 ## [2.1.12] - 2026-09-27
 
 ### Changed

@@ -9,7 +9,9 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
 import java.time.LocalDateTime
+import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,6 +19,32 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class SegmentTest {
+    @Test
+    fun wireKeysUseAsciiGregorianTimeUnderDeviceLocales() {
+        val originalLocale = Locale.getDefault()
+        try {
+            for (languageTag in listOf("ar-SA", "fa-IR", "th-TH-u-ca-buddhist", "en-US-u-hc-h12")) {
+                Locale.setDefault(Locale.forLanguageTag(languageTag))
+                for ((instant, zoneName, expectedDay, expectedSegment, offset) in listOf(
+                    listOf("2026-09-29T23:58:00Z", "Asia/Tokyo", "20260930", "085800_300", "32400"),
+                    listOf("2026-11-01T07:15:00Z", "America/Denver", "20261101", "011500_300", "-21600"),
+                    listOf("2026-11-01T08:15:00Z", "America/Denver", "20261101", "011500_300", "-25200"),
+                    listOf("2026-03-08T09:05:00Z", "America/Denver", "20260308", "030500_300", "-21600"),
+                    listOf("2026-01-15T06:30:00Z", "Asia/Kolkata", "20260115", "120000_300", "19800"),
+                )) {
+                    val start = Instant.parse(instant).toEpochMilli()
+                    val keys = wireKeys(start, start + 300_000L, ZoneId.of(zoneName))
+                    assertEquals(expectedDay, keys.day, languageTag)
+                    assertEquals(expectedSegment, keys.segment, languageTag)
+                    assertEquals(zoneName, keys.zoneId)
+                    assertEquals(offset.toInt(), keys.utcOffsetSeconds)
+                }
+            }
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+    }
+
     @Test
     fun wireKeysHandlesDstFallBackRepeatedHour() {
         val zone = ZoneId.of("America/New_York")
