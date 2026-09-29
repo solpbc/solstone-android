@@ -28,10 +28,12 @@ internal object PhoneJournalTestHooks {
     @Volatile var pairingSnapshotOverride: PairingGraphSnapshot? = null
     @Volatile var sessionOverride: (() -> JournalSheetSession)? = null
     @Volatile var onLoadUrl: ((String) -> Unit)? = null
+    @Volatile var onVisitedHistory: ((url: String, canGoBack: Boolean) -> Unit)? = null
 
     fun reset() {
         pairingSnapshotOverride = null
         sessionOverride = null
         onLoadUrl = null
+        onVisitedHistory = null
     }
 }

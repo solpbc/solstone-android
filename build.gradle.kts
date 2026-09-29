@@ -420,6 +420,7 @@ fun phoneShellInsetDoctrineViolations(source: String): List<String> {
 data class PhoneBackHandlerDoctrineReport(
     val callSiteCount: Int,
     val violations: List<String>,
+    val sheetCallSiteCount: Int = 0,
 )
 
 fun skipKotlinStringLiteral(source: String, index: Int): Int {
@@ -530,9 +531,83 @@ fun argumentListHasEnabled(stripped: String, parenIndex: Int): Boolean {
     return Regex("""enabled\s*=""").containsMatchIn(args)
 }
 
+fun readPrecedingIdentifier(source: String, endIndex: Int): String {
+    var i = endIndex
+    while (i >= 0 && source[i].isWhitespace()) i--
+    if (i < 0) return ""
+    val lastChar = source[i]
+    if (!lastChar.isJavaIdentifierPart() && lastChar != '$') return ""
+    val end = i + 1
+    while (i >= 0 && (source[i].isJavaIdentifierPart() || source[i] == '$')) {
+        i--
+    }
+    return source.substring(i + 1, end)
+}
+
+data class BackHandlerParenFrame(val ident: String, val parenIndex: Int)
+
+fun isSheetHandlerAncestorsLegal(source: String, callIndex: Int): Boolean {
+    val parenStack = mutableListOf<BackHandlerParenFrame>()
+    val braceStack = mutableListOf<Boolean>()
+    var lastClosedParen: BackHandlerParenFrame? = null
+    var lastClosedParenEnd = -1
+
+    var i = 0
+    while (i < callIndex && i < source.length) {
+        val skipped = skipKotlinStringLiteral(source, i)
+        if (skipped != i) {
+            i = skipped
+            continue
+        }
+        when (source[i]) {
+            '(' -> {
+                val ident = readPrecedingIdentifier(source, i - 1)
+                parenStack.add(BackHandlerParenFrame(ident, i))
+            }
+            ')' -> {
+                lastClosedParen = if (parenStack.isNotEmpty()) parenStack.removeAt(parenStack.size - 1) else null
+                lastClosedParenEnd = i
+            }
+            '{' -> {
+                var prevIdx = i - 1
+                while (prevIdx >= 0 && source[prevIdx].isWhitespace()) prevIdx--
+                val isIllegal = if (prevIdx >= 0 && prevIdx == lastClosedParenEnd && lastClosedParen != null) {
+                    lastClosedParen.ident in setOf("if", "for", "while", "when")
+                } else if (source.substring(0, i).trimEnd().endsWith("->")) {
+                    true
+                } else {
+                    val ident = readPrecedingIdentifier(source, prevIdx)
+                    ident == "else" || ident in setOf("let", "run", "also", "takeIf")
+                }
+                braceStack.add(isIllegal)
+            }
+            '}' -> {
+                if (braceStack.isNotEmpty()) {
+                    braceStack.removeAt(braceStack.size - 1)
+                }
+            }
+        }
+        i++
+    }
+
+    if (braceStack.any { it }) return false
+
+    // Braceless check:
+    var prevIdx = callIndex - 1
+    while (prevIdx >= 0 && source[prevIdx].isWhitespace()) prevIdx--
+    if (prevIdx >= 0 && prevIdx == lastClosedParenEnd && lastClosedParen != null) {
+        if (lastClosedParen.ident in setOf("if", "for", "while")) return false
+    }
+    val prevIdent = readPrecedingIdentifier(source, prevIdx)
+    if (prevIdent == "else") return false
+
+    return true
+}
+
 fun phoneBackHandlerDoctrineReport(
     mainSources: Map<String, String>,
     moduleSources: Map<String, String>,
+    phoneAppMainSources: Map<String, String>? = null,
 ): PhoneBackHandlerDoctrineReport {
     val violations = mutableListOf<String>()
     var callSiteCount = 0
@@ -578,7 +653,50 @@ fun phoneBackHandlerDoctrineReport(
             violations += "legacy back API in $path"
         }
     }
-    return PhoneBackHandlerDoctrineReport(callSiteCount, violations)
+
+    var sheetCallSiteCount = 0
+    if (phoneAppMainSources != null) {
+        val sheetCallSiteRegex = Regex("""\b(?:Predictive)?BackHandler\s*(?:(\()|(\{))""")
+        phoneAppMainSources.forEach { (path, text) ->
+            val stripped = stripKotlinComments(text)
+            val sites = sheetCallSiteRegex.findAll(stripped).toList()
+            if (path.endsWith("JournalSheet.kt")) {
+                sheetCallSiteCount += sites.size
+            }
+            sites.forEach { site ->
+                val index = site.range.first
+                val isParen = site.groupValues[1] == "("
+                val parenIndex = if (isParen) site.range.first + site.value.indexOf('(') else -1
+                if (!isParen || !argumentListHasEnabled(stripped, parenIndex)) {
+                    violations += "missing enabled = at $path:$index"
+                }
+                if (!isSheetHandlerAncestorsLegal(stripped, index)) {
+                    violations += "sheet handler inside control flow at $path:$index"
+                }
+                if (!path.endsWith("JournalSheet.kt")) {
+                    violations += "sheet handler outside JournalSheet.kt: $path"
+                }
+            }
+        }
+        if (sheetCallSiteCount != 1) {
+            violations += "sheet callSites=$sheetCallSiteCount != 1"
+        }
+        val phoneLegacyPatterns = listOf(
+            "onBackPressed",
+            "KEYCODE_BACK",
+            "NavigationBackHandler(",
+            "navigationEventDispatcher.addHandler",
+            "onBackPressedDispatcher.addCallback",
+        )
+        phoneAppMainSources.forEach { (path, text) ->
+            val stripped = stripKotlinComments(text)
+            if (phoneLegacyPatterns.any { stripped.contains(it) }) {
+                violations += "legacy back API in $path"
+            }
+        }
+    }
+
+    return PhoneBackHandlerDoctrineReport(callSiteCount, violations, sheetCallSiteCount)
 }
 
 fun walkPhoneKotlin(root: File): Map<String, String> {
@@ -1210,8 +1328,9 @@ tasks.register("checkPhoneBackHandlerDoctrine") {
     doLast {
         val mainSources = walkPhoneKotlin(rootProject.file("formfactor/phone/src/main"))
         val moduleSources = walkPhoneKotlin(rootProject.file("formfactor/phone/src"))
-        val report = phoneBackHandlerDoctrineReport(mainSources, moduleSources)
-        logger.lifecycle("phone back-handler doctrine: callSites=${report.callSiteCount}")
+        val phoneAppMainSources = walkPhoneKotlin(rootProject.file("apps/phone/src/main"))
+        val report = phoneBackHandlerDoctrineReport(mainSources, moduleSources, phoneAppMainSources)
+        logger.lifecycle("phone back-handler doctrine: ladderCallSites=${report.callSiteCount} sheetCallSites=${report.sheetCallSiteCount}")
         if (report.violations.isNotEmpty()) {
             throw GradleException(
                 "Phone back-handler doctrine guard failed:\n${report.violations.joinToString("\n")}",
@@ -1392,6 +1511,280 @@ tasks.register("phoneBackHandlerDoctrineGuardSelfTest") {
         val sibling = goodLadder + "\nfun Other() { BackHandler(enabled = true) {} }\n"
         val siblingReport = phoneBackHandlerDoctrineReport(mapOf(ladderPath to sibling), emptyMap())
         check(siblingReport.violations.any { it.startsWith("handler outside PhoneBackLadder body:") })
+
+        val sheetPath = "apps/phone/src/main/kotlin/app/solstone/observer/phone/JournalSheet.kt"
+        val cleanSheetFile = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    BackHandler(enabled = journalCanGoBack) {
+                        webView?.let { it.goBack() }
+                    }
+                }
+            }
+        """.trimIndent()
+
+        val sheetMissingEnabled = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    BackHandler() {
+                        webView?.goBack()
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetMissingEnabledReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetMissingEnabled),
+        )
+        check(sheetMissingEnabledReport.callSiteCount == 4)
+        check(sheetMissingEnabledReport.sheetCallSiteCount == 1)
+        check(sheetMissingEnabledReport.violations.single().startsWith("missing enabled ="))
+
+        val sheetParenless = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    BackHandler {
+                        webView?.goBack()
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetParenlessReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetParenless),
+        )
+        check(sheetParenlessReport.callSiteCount == 4)
+        check(sheetParenlessReport.sheetCallSiteCount == 1)
+        check(sheetParenlessReport.violations.single().startsWith("missing enabled ="))
+
+        val sheetIfWrapped = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    if (journalCanGoBack) {
+                        BackHandler(enabled = journalCanGoBack) {
+                            webView?.let { it.goBack() }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetIfReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetIfWrapped),
+        )
+        check(sheetIfReport.callSiteCount == 4)
+        check(sheetIfReport.sheetCallSiteCount == 1)
+        check(sheetIfReport.violations.single().startsWith("sheet handler inside control flow at "))
+
+        val sheetElseWrapped = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    if (x) {
+                        Text("stay")
+                    } else {
+                        BackHandler(enabled = journalCanGoBack) {
+                            webView?.let { it.goBack() }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetElseReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetElseWrapped),
+        )
+        check(sheetElseReport.callSiteCount == 4)
+        check(sheetElseReport.sheetCallSiteCount == 1)
+        check(sheetElseReport.violations.single().startsWith("sheet handler inside control flow at "))
+
+        val sheetWhenWrapped = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    when (mode) {
+                        Mode.Show -> Box {
+                            BackHandler(enabled = journalCanGoBack) {
+                                webView?.let { it.goBack() }
+                            }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetWhenReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetWhenWrapped),
+        )
+        check(sheetWhenReport.callSiteCount == 4)
+        check(sheetWhenReport.sheetCallSiteCount == 1)
+        check(sheetWhenReport.violations.single().startsWith("sheet handler inside control flow at "))
+
+        val sheetLetWrapped = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    webView?.let {
+                        BackHandler(enabled = journalCanGoBack) {
+                            webView?.let { it.goBack() }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetLetReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetLetWrapped),
+        )
+        check(sheetLetReport.callSiteCount == 4)
+        check(sheetLetReport.sheetCallSiteCount == 1)
+        check(sheetLetReport.violations.single().startsWith("sheet handler inside control flow at "))
+
+        val sheetRunWrapped = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    run {
+                        BackHandler(enabled = journalCanGoBack) {
+                            webView?.let { it.goBack() }
+                        }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetRunReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetRunWrapped),
+        )
+        check(sheetRunReport.callSiteCount == 4)
+        check(sheetRunReport.sheetCallSiteCount == 1)
+        check(sheetRunReport.violations.single().startsWith("sheet handler inside control flow at "))
+
+        val otherPath = "apps/phone/src/main/kotlin/app/solstone/observer/phone/Other.kt"
+        val sheetSecondFileReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(
+                sheetPath to cleanSheetFile,
+                otherPath to "fun Other() { BackHandler(enabled = true) {} }",
+            ),
+        )
+        check(sheetSecondFileReport.callSiteCount == 4)
+        check(sheetSecondFileReport.sheetCallSiteCount == 1)
+        check(sheetSecondFileReport.violations.single().startsWith("sheet handler outside JournalSheet.kt:"))
+
+        val sheetZeroHandlers = """
+            fun Sheet() {
+                Text("close")
+            }
+        """.trimIndent()
+        val sheetZeroReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetZeroHandlers),
+        )
+        check(sheetZeroReport.callSiteCount == 4)
+        check(sheetZeroReport.sheetCallSiteCount == 0)
+        check(sheetZeroReport.violations.single() == "sheet callSites=0 != 1")
+
+        val sheetTwoHandlers = """
+            fun Sheet() {
+                ModalBottomSheet {
+                    BackHandler(enabled = journalCanGoBack) {
+                        webView?.let { it.goBack() }
+                    }
+                    BackHandler(enabled = journalCanGoBack) {
+                        webView?.let { it.goBack() }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetTwoReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetTwoHandlers),
+        )
+        check(sheetTwoReport.callSiteCount == 4)
+        check(sheetTwoReport.sheetCallSiteCount == 2)
+        check(sheetTwoReport.violations.single() == "sheet callSites=2 != 1")
+
+        val sheetLegacyReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(
+                sheetPath to cleanSheetFile,
+                otherPath to "override fun onBackPressed() {}",
+            ),
+        )
+        check(sheetLegacyReport.callSiteCount == 4)
+        check(sheetLegacyReport.sheetCallSiteCount == 1)
+        check(sheetLegacyReport.violations.single().startsWith("legacy back API in "))
+
+        val sheetNavLegacyReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(
+                sheetPath to cleanSheetFile,
+                otherPath to "fun Foo() { NavigationBackHandler(enabled = true) {} }",
+            ),
+        )
+        check(sheetNavLegacyReport.callSiteCount == 4)
+        check(sheetNavLegacyReport.sheetCallSiteCount == 1)
+        check(sheetNavLegacyReport.violations.single().startsWith("legacy back API in "))
+
+        val sheetNavDispatcherReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(
+                sheetPath to cleanSheetFile,
+                otherPath to "fun Foo() { navigationEventDispatcher.addHandler() }",
+            ),
+        )
+        check(sheetNavDispatcherReport.callSiteCount == 4)
+        check(sheetNavDispatcherReport.sheetCallSiteCount == 1)
+        check(sheetNavDispatcherReport.violations.single().startsWith("legacy back API in "))
+
+        val sheetOnBackDispatcherReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(
+                sheetPath to cleanSheetFile,
+                otherPath to "fun Foo() { onBackPressedDispatcher.addCallback() }",
+            ),
+        )
+        check(sheetOnBackDispatcherReport.callSiteCount == 4)
+        check(sheetOnBackDispatcherReport.sheetCallSiteCount == 1)
+        check(sheetOnBackDispatcherReport.violations.single().startsWith("legacy back API in "))
+
+        val sheetCleanWithSiblings = """
+            fun Sheet() {
+                if (condition) {
+                    val a = 1
+                }
+                when (x) {
+                    1 -> val b = 2
+                }
+                value?.let {
+                    val c = 3
+                }
+                ModalBottomSheet {
+                    BackHandler(enabled = journalCanGoBack) {
+                        webView?.let { it.goBack() }
+                    }
+                }
+            }
+        """.trimIndent()
+        val sheetCleanReport = phoneBackHandlerDoctrineReport(
+            mapOf(ladderPath to goodLadder),
+            emptyMap(),
+            mapOf(sheetPath to sheetCleanWithSiblings),
+        )
+        check(sheetCleanReport.violations.isEmpty())
+        check(sheetCleanReport.callSiteCount == 4)
+        check(sheetCleanReport.sheetCallSiteCount == 1)
     }
 }
 

@@ -6,6 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- your phone's back gesture or back button now takes you one page back in your journal. on the first page, it closes your journal.
+
 ### Fixed
 
 - with Arabic or Persian as your phone’s language, moments now reach your journal.

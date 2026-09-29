@@ -20,6 +20,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -162,6 +163,8 @@ private fun JournalBrowserPane(
     var state by remember { mutableStateOf<BrowserPaneState>(BrowserPaneState.Loading) }
     var committed by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var liveWebView by remember { mutableStateOf<WebView?>(null) }
+    var observedCanGoBack by remember { mutableStateOf(false) }
     val session = remember { sessionFactory() }
     val alive = remember { AtomicBoolean(true) }
 
@@ -181,9 +184,13 @@ private fun JournalBrowserPane(
                     BrowserTerminalClass.TRUST_REFUSAL,
                     BrowserTerminalClass.IDENTITY_AUTH_REFUSAL,
                     -> onPairingRepair()
-                    else -> state = BrowserPaneState.Failed(
-                        if (committed) LOST_CONNECTION else INITIAL_FAILURE,
-                    )
+                    else -> {
+                        liveWebView = null
+                        observedCanGoBack = false
+                        state = BrowserPaneState.Failed(
+                            if (committed) LOST_CONNECTION else INITIAL_FAILURE,
+                        )
+                    }
                 }
             }
         }
@@ -200,6 +207,11 @@ private fun JournalBrowserPane(
             session.removeLifecycleListener(listener)
             session.stop()
         }
+    }
+
+    val journalCanGoBack = liveWebView != null && observedCanGoBack
+    BackHandler(enabled = journalCanGoBack) {
+        liveWebView?.goBack()
     }
 
     when (val current = state) {
@@ -225,11 +237,22 @@ private fun JournalBrowserPane(
                         origin = current.origin,
                         loadTarget = current.loadTarget,
                         textZoom = (density.fontScale * 100).roundToInt().coerceIn(50, 300),
+                        onLiveView = { view -> liveWebView = view },
+                        onVisitedHistory = { view, url, currentCanGoBack ->
+                            // alive stays true on the failure screen, so a late history callback is
+                            // accepted only for the current live view, which is cleared before destroy.
+                            if (view === liveWebView) {
+                                observedCanGoBack = currentCanGoBack
+                                PhoneJournalTestHooks.onVisitedHistory?.invoke(url, currentCanGoBack)
+                            }
+                        },
                         onPageCommitted = {
                             if (alive.get()) committed = true
                         },
                         onRetryableFailure = {
                             if (alive.get()) {
+                                liveWebView = null
+                                observedCanGoBack = false
                                 session.stop()
                                 state = BrowserPaneState.Failed(
                                     if (committed) LOST_CONNECTION else INITIAL_FAILURE,
@@ -248,6 +271,10 @@ private fun JournalBrowserPane(
                     )
                 },
                 onRelease = { webView ->
+                    if (liveWebView === webView) {
+                        liveWebView = null
+                        observedCanGoBack = false
+                    }
                     webView.stopLoading()
                     webView.webChromeClient = null
                     webView.webViewClient = WebViewClient()
@@ -276,6 +303,8 @@ internal fun createJournalWebView(
     origin: String,
     loadTarget: String = origin,
     textZoom: Int,
+    onLiveView: (WebView) -> Unit,
+    onVisitedHistory: (WebView, String, Boolean) -> Unit,
     onPageCommitted: () -> Unit,
     onRetryableFailure: () -> Unit,
     onUnsupportedTransfer: () -> Unit,
@@ -295,6 +324,7 @@ internal fun createJournalWebView(
         )
     }
     return WebView(context).apply {
+        onLiveView(this)
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -380,6 +410,10 @@ internal fun createJournalWebView(
 
             override fun onPageCommitVisible(view: WebView, url: String) {
                 if (policy.allows(url)) onPageCommitted()
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                onVisitedHistory(view, url, view.canGoBack())
             }
 
             override fun onReceivedError(
