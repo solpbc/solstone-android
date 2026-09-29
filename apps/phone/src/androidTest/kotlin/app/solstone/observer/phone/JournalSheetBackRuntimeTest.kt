@@ -357,8 +357,15 @@ class JournalSheetBackRuntimeTest {
 
     private fun tapWebView(xFraction: Float, yFraction: Float) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // A history entry is recorded when a navigation commits, before the page has laid out.
+        // A cold web view can take seconds longer to become tappable, so wait for the page itself.
         composeRule.waitUntil(10_000) {
-            findDialogWebView() != null
+            val candidate = findDialogWebView() ?: return@waitUntil false
+            var ready = false
+            instrumentation.runOnMainSync {
+                ready = candidate.progress == 100 && candidate.contentHeight > 0
+            }
+            ready
         }
         val webView = findDialogWebView() ?: error("WebView not found in dialog")
         instrumentation.runOnMainSync {
