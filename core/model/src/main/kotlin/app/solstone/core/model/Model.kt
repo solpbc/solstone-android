@@ -14,7 +14,13 @@ data class SegmentKey(val day: String /* YYYYMMDD */, val segment: String /* HHM
 data class GapEvent(val kind: String, val atEpochMs: Long, val detail: String?)
 data class WireKeys(val day: String, val segment: String, val startEpochMs: Long, val endEpochMs: Long, val zoneId: String, val utcOffsetSeconds: Int)
 data class BundleFile(val sourceId: String, val name: String, val sha256: String, val byteSize: Long, val mediaType: String, val captureStartEpochMs: Long, val captureEndEpochMs: Long)
-data class BundleManifest(val key: SegmentKey, val files: List<BundleFile>, val gaps: List<GapEvent>)
+data class BundleManifest(
+    val key: SegmentKey,
+    val files: List<BundleFile>,
+    val gaps: List<GapEvent>,
+    val zoneId: String? = null,
+    val utcOffsetSeconds: Int? = null,
+)
 open class DirectEndpoint(open val host: String, open val port: Int) {
     operator fun component1(): String = host
     operator fun component2(): Int = port

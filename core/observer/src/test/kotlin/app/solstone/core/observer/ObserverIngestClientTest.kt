@@ -6,8 +6,16 @@ package app.solstone.core.observer
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
+import app.solstone.core.model.WireKeys
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
+import app.solstone.core.segment.wireKeys
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -257,6 +265,135 @@ class ObserverIngestClientTest {
         val rejected = assertIs<IngestOutcome.Rejected>(rejectedList.single())
         assertEquals(401, rejected.status)
         assertEquals("unauthorized", rejected.body)
+    }
+
+    @Test
+    fun ingestEmitsStoredZoneAndUtcOffsetOnMeta() {
+        val cases = listOf(
+            Triple(ZoneId.of("America/Denver"), LocalDateTime.of(2026, 1, 15, 12, 0), -25200),
+            Triple(ZoneId.of("America/Denver"), LocalDateTime.of(2026, 7, 15, 12, 0), -21600),
+            Triple(ZoneId.of("Asia/Kolkata"), LocalDateTime.of(2026, 1, 15, 12, 0), 19800),
+            Triple(ZoneId.of("UTC"), LocalDateTime.of(2026, 1, 15, 12, 0), 0),
+        )
+
+        for ((zone, local, expectedOffset) in cases) {
+            val keys = keysFor(zone, local)
+            assertEquals(expectedOffset, keys.utcOffsetSeconds)
+            val http = RecordingPlHttpClient(okResponse("server-segment"))
+            val client = ObserverIngestClient(http) { "fixed-boundary" }
+            val manifest = BundleManifest(
+                key = SegmentKey(keys.day, keys.segment),
+                files = listOf(BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", keys.startEpochMs, keys.endEpochMs)),
+                gaps = emptyList(),
+                zoneId = keys.zoneId,
+                utcOffsetSeconds = keys.utcOffsetSeconds,
+            )
+
+            val outcomes = client.ingest(
+                manifest = manifest,
+                fileBytes = { byteArrayOf(1, 2, 3) },
+                host = "phone",
+                platform = "android",
+            )
+
+            assertEquals(1, outcomes.size)
+            val parts = parseMultipart(requireNotNull(http.lastRequest.body), "fixed-boundary")
+            val rawEnvelope = parts.first().body.toString(Charsets.UTF_8)
+            val envelope = parseJson(rawEnvelope) as Map<*, *>
+
+            assertEquals(keys.day, envelope["day"])
+            assertEquals(keys.segment, envelope["segment"])
+
+            val meta = envelope["meta"] as Map<*, *>
+            assertEquals("phone", meta["host"])
+            assertEquals("android", meta["platform"])
+            assertEquals(keys.zoneId, meta["tz"])
+
+            assertTrue(rawEnvelope.contains("\"utc_offset_seconds\":${keys.utcOffsetSeconds}"))
+            if (keys.zoneId == "UTC") {
+                assertTrue(rawEnvelope.contains("\"utc_offset_seconds\":0"))
+                assertTrue(rawEnvelope.contains("\"tz\":\"UTC\""))
+            }
+
+            val civil = LocalDate.parse(keys.day, DateTimeFormatter.BASIC_ISO_DATE)
+                .atTime(LocalTime.parse(keys.segment.take(6), DateTimeFormatter.ofPattern("HHmmss")))
+            assertEquals(keys.startEpochMs / 1000, civil.toInstant(ZoneOffset.UTC).epochSecond - keys.utcOffsetSeconds)
+        }
+    }
+
+    @Test
+    fun ingestRetainsZoneAcrossMultiSourceManifestSplits() {
+        val keys = keysFor(ZoneId.of("America/Denver"), LocalDateTime.of(2026, 1, 15, 12, 0))
+        val http = RecordingPlHttpClient(okResponse("server-segment"))
+        val client = ObserverIngestClient(http) { "boundary-${System.nanoTime()}" }
+        val manifest = BundleManifest(
+            key = SegmentKey(keys.day, keys.segment),
+            files = listOf(
+                BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", keys.startEpochMs, keys.endEpochMs),
+                BundleFile("camera", "photo.jpg", "sha-photo", 3, "image/jpeg", keys.startEpochMs, keys.endEpochMs),
+            ),
+            gaps = emptyList(),
+            zoneId = keys.zoneId,
+            utcOffsetSeconds = keys.utcOffsetSeconds,
+        )
+
+        val outcomes = client.ingest(
+            manifest = manifest,
+            fileBytes = { byteArrayOf(1, 2, 3) },
+            host = "phone",
+            platform = "android",
+        )
+
+        assertEquals(2, outcomes.size)
+        assertEquals(2, http.requests.size)
+        for (request in http.requests) {
+            val boundary = requireNotNull(request.headers["Content-Type"]).substringAfter("boundary=")
+            val parts = parseMultipart(requireNotNull(request.body), boundary)
+            val rawEnvelope = parts.first().body.toString(Charsets.UTF_8)
+            val envelope = parseJson(rawEnvelope) as Map<*, *>
+
+            assertTrue(rawEnvelope.contains("\"tz\":\"America/Denver\""))
+            assertTrue(rawEnvelope.contains("\"utc_offset_seconds\":-25200"))
+
+            val meta = envelope["meta"] as Map<*, *>
+            assertEquals("phone", meta["host"])
+            assertEquals("android", meta["platform"])
+            assertEquals("America/Denver", meta["tz"])
+        }
+    }
+
+    @Test
+    fun ingestRejectsNonIanaZoneIdWhileEmittingOffset() {
+        val http = RecordingPlHttpClient(okResponse("server-segment"))
+        val client = ObserverIngestClient(http) { "fixed-boundary" }
+        val manifest = BundleManifest(
+            key = SegmentKey("20260115", "120000_300"),
+            files = listOf(BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", 1, 2)),
+            gaps = emptyList(),
+            zoneId = "MST",
+            utcOffsetSeconds = -25200,
+        )
+
+        val outcomes = client.ingest(
+            manifest = manifest,
+            fileBytes = { byteArrayOf(1, 2, 3) },
+        )
+
+        assertEquals(1, outcomes.size)
+        val parts = parseMultipart(requireNotNull(http.lastRequest.body), "fixed-boundary")
+        val rawEnvelope = parts.first().body.toString(Charsets.UTF_8)
+        val envelope = parseJson(rawEnvelope) as Map<*, *>
+
+        assertTrue(rawEnvelope.contains("\"utc_offset_seconds\":-25200"))
+        assertTrue(!rawEnvelope.contains("\"tz\""))
+
+        val meta = envelope["meta"] as Map<*, *>
+        assertTrue(!meta.containsKey("tz"))
+    }
+
+    private fun keysFor(zone: ZoneId, local: LocalDateTime): WireKeys {
+        val startMs = local.atZone(zone).toInstant().toEpochMilli()
+        return wireKeys(startMs, startMs + 300_000, zone)
     }
 
     private fun okResponse(segment: String): HttpResponse =

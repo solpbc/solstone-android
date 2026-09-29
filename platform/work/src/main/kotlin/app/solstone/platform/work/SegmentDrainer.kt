@@ -58,7 +58,7 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun upsertSyncState(row: SyncStateRow) = dao.upsertSyncState(row)
 }
 
-fun drainSegments(
+internal fun drainSegments(
     store: DrainStore,
     reconcile: (List<BundleManifest>, String) -> List<ReconcileVerdict>,
     ingest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome>,
@@ -66,6 +66,7 @@ fun drainSegments(
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
     finisher: ConfirmedCopyFinisher,
+    readStoredZone: (SegmentRow) -> StoredSegmentZone? = { null },
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -127,10 +128,14 @@ fun drainSegments(
                         }
                     }
                     is DrainAction.Upload -> {
+                        val stored = readStoredZone(segment)
+                        val uploading = stored?.let {
+                            manifest.copy(zoneId = it.zoneId, utcOffsetSeconds = it.utcOffsetSeconds)
+                        } ?: manifest
                         val result = try {
                             resolveIngestOutcomes(
-                                manifest,
-                                ingest(manifest) { file -> readPayload(segment, file) },
+                                uploading,
+                                ingest(uploading) { file -> readPayload(segment, file) },
                             )
                         } catch (e: RelayWebSocketClosedException) {
                             throw e

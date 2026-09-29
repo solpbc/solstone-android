@@ -11,6 +11,7 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
 import java.io.Closeable
+import java.io.File
 import java.io.IOException
 
 internal fun <C> syncWithTransport(
@@ -23,6 +24,7 @@ internal fun <C> syncWithTransport(
     log: (String, Throwable?) -> Unit,
     finisher: ConfirmedCopyFinisher,
     onUsableConnection: (() -> Unit)? = null,
+    spoolDir: File? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)
@@ -87,6 +89,7 @@ internal fun <C> syncWithTransport(
                     now = now,
                     log = log,
                     finisher = finisher,
+                    readStoredZone = { segment -> spoolDir?.let { readStoredZoneFor(it, segment) } },
                 )
                 report.workOutcome
             }

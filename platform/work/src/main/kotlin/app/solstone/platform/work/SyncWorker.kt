@@ -17,6 +17,7 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.core.spool.parseManifest
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -144,6 +145,7 @@ class SyncWorker(
                     store = store,
                     finisher = finisher,
                     readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
+                    spoolDir = spoolDir,
                     host = deviceLabel(),
                     now = System::currentTimeMillis,
                     log = { message, throwable -> Log.w(TAG, message, throwable) },
@@ -304,3 +306,17 @@ internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFil
     }
     return payload.readBytes()
 }
+
+internal data class StoredSegmentZone(val zoneId: String, val utcOffsetSeconds: Int)
+
+internal fun readStoredZoneFor(spoolDir: File, segment: SegmentRow): StoredSegmentZone? {
+    val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.dirSegment)
+    val manifest = File(segmentDir, "manifest")
+    return try {
+        val parsed = parseManifest(manifest.readText())
+        StoredSegmentZone(parsed.zoneId, parsed.utcOffsetSeconds)
+    } catch (_: Exception) {
+        null
+    }
+}
+

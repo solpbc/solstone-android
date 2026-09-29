@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":core:crypto"))
     implementation(project(":core:queue"))
     implementation(project(":core:sources"))
+    implementation(project(":core:spool"))
 
     testImplementation(kotlin("test"))
     testImplementation(project(":core:spool"))

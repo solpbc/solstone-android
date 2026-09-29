@@ -4,14 +4,19 @@
 package app.solstone.platform.work
 
 import app.solstone.core.model.BundleFile
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.QueueState
+import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.INGEST_PATH
 import app.solstone.core.observer.PROTOCOL_VERSION_HEADER
 import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.queue.QueueEvent
+import app.solstone.core.segment.SealedSegment
+import app.solstone.core.segment.wireKeys
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.spool.serializeManifest
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
@@ -20,6 +25,8 @@ import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -156,6 +163,117 @@ class SyncWithTransportTest {
             finisher = dummyFinisher(),
         )
         assertEquals(SyncOutcome.RETRY, availOutcome)
+    }
+
+    @Test
+    fun syncWithTransportReadsPhysicalSpoolManifestAndUploadsStoredZone() {
+        val zone = if (ZoneId.systemDefault().id == "America/Denver") ZoneId.of("Asia/Tokyo") else ZoneId.of("America/Denver")
+        val startMs = LocalDateTime.of(2026, 1, 15, 12, 0).atZone(zone).toInstant().toEpochMilli()
+        val keys = wireKeys(startMs, startMs + 300_000, zone)
+        val dirSegment = "${keys.segment}__ws${keys.startEpochMs}"
+        check(dirSegment != keys.segment)
+
+        val root = Files.createTempDirectory("sync-backlog-zone")
+        val spool = root.resolve("spool")
+        val segmentId = "${keys.day}/$MAIN_STREAM/$dirSegment"
+        val segmentDir = spool.resolve(keys.day).resolve(MAIN_STREAM).resolve(dirSegment)
+        Files.createDirectories(segmentDir)
+        Files.write(segmentDir.resolve("a.bin"), byteArrayOf(1))
+
+        val sealed = SealedSegment(
+            stream = MAIN_STREAM,
+            key = SegmentKey(keys.day, keys.segment),
+            wireKeys = keys,
+            payloads = emptyList(),
+            gaps = emptyList(),
+        )
+        val bundleManifest = BundleManifest(
+            key = SegmentKey(keys.day, keys.segment),
+            files = listOf(
+                BundleFile(
+                    sourceId = "audio",
+                    name = "a.bin",
+                    sha256 = "sha-a",
+                    byteSize = 1,
+                    mediaType = "application/octet-stream",
+                    captureStartEpochMs = keys.startEpochMs,
+                    captureEndEpochMs = keys.endEpochMs,
+                ),
+            ),
+            gaps = emptyList(),
+        )
+        val manifestText = serializeManifest(sealed, bundleManifest)
+        Files.write(segmentDir.resolve("manifest"), manifestText.toByteArray())
+
+        val segmentRow = segment(segmentId).copy(day = keys.day, stream = MAIN_STREAM, segment = keys.segment, dirSegment = dirSegment)
+        val fileRow = file(segmentId).copy(name = "a.bin", sha256 = "sha-a")
+        val store = FakeDrainStore(
+            segmentRow,
+            files = mapOf(segmentId to listOf(fileRow)),
+        )
+        val dao = object : SegmentDao() {
+            override fun insertSegment(segment: SegmentRow) = Unit
+            override fun insertFiles(files: List<SegmentFileRow>) = Unit
+            override fun insertEvents(events: List<EventRow>) = Unit
+            override fun segmentsByState(state: QueueState): List<SegmentRow> = emptyList()
+            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain()
+            override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
+            override fun segmentById(id: String): SegmentRow? = store.rowOrNull(id)
+            override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
+            override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = store.filesBySegmentId(segmentId)
+            override fun recordAttempt(id: String, attempts: Int, at: Long): Int = store.recordAttempt(id, attempts, at)
+            override fun recordUploaded(id: String): Int = store.recordUploaded(id)
+            override fun recordFailure(id: String, code: Int?, error: String?): Int = store.recordFailure(id, code, error)
+            override fun upsertSyncState(row: SyncStateRow) = store.upsertSyncState(row)
+            override fun syncState(): SyncStateRow? = store.syncState()
+            override fun pendingCount(stream: String): Int = store.pendingCount(stream)
+            override fun pendingSourceIds(stream: String): List<String> = emptyList()
+            override fun segmentState(id: String): QueueState? = store.rowOrNull(id)?.state
+            override fun updateState(id: String, state: QueueState): Int {
+                val event = when (state) {
+                    QueueState.EVICTED -> QueueEvent.FINISH
+                    QueueState.UPLOADING -> QueueEvent.START_UPLOAD
+                    QueueState.UPLOADED -> QueueEvent.MARK_UPLOADED
+                    QueueState.FAILED -> QueueEvent.MARK_FAILED
+                    QueueState.SEALED -> QueueEvent.SEAL
+                    QueueState.RECORDING -> error("illegal")
+                }
+                store.advanceState(id, event)
+                return 1
+            }
+            override fun deleteFilesBySegmentId(segmentId: String): Int = 0
+            override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
+            override fun deleteFilesBySource(sourceId: String): Int = 0
+        }
+        val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
+        val client = RecordingPlHttpClient(statusOk(), uploadRequiredSegments(), ingestAccepted())
+
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { client },
+            store = store,
+            readPayload = { segment, file -> readPayloadFor(spool.toFile(), segment, file) },
+            spoolDir = spool.toFile(),
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+            finisher = finisher,
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, outcome)
+        val postRequest = client.requests.first { it.method == "POST" && it.path == INGEST_PATH }
+        assertV3(postRequest)
+        val postBody = requireNotNull(postRequest.body).toString(Charsets.UTF_8)
+        assertEquals(zone.id, keys.zoneId)
+        assertTrue(postBody.contains("\"tz\":\"${keys.zoneId}\""))
+        assertTrue(postBody.contains("\"utc_offset_seconds\":${keys.utcOffsetSeconds}"))
+        assertTrue(postBody.contains("\"host\":\"test-device\""))
+        assertTrue(postBody.contains("\"platform\":\"android\""))
+        assertTrue(postBody.contains("\"day\":\"${keys.day}\""))
+        assertTrue(postBody.contains("\"segment\":\"${keys.segment}\""))
+        if (ZoneId.systemDefault().id != keys.zoneId) {
+            assertFalse(postBody.contains("\"tz\":\"${ZoneId.systemDefault().id}\""))
+        }
     }
 
     private fun runTrace(

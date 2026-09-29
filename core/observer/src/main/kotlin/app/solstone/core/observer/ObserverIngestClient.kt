@@ -24,7 +24,7 @@ class ObserverIngestClient(
         require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
         val outcomes = mutableListOf<IngestOutcome>()
         for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
-            val sourceManifest = BundleManifest(manifest.key, files, manifest.gaps)
+            val sourceManifest = manifest.copy(files = files)
             val boundary = boundaryProvider()
             val body = buildMultipartBody(boundary, sourceManifest, sourceId, fileBytes, host, platform)
             val outcome = http.request(
@@ -76,6 +76,13 @@ class ObserverIngestClient(
         val meta = linkedMapOf<String, Any?>().apply {
             if (host != null) put("host", host)
             if (platform != null) put("platform", platform)
+            val zoneId = manifest.zoneId
+            if (zoneId != null && zoneId in java.time.zone.ZoneRulesProvider.getAvailableZoneIds()) {
+                put("tz", zoneId)
+            }
+            if (manifest.utcOffsetSeconds != null) {
+                put("utc_offset_seconds", manifest.utcOffsetSeconds)
+            }
         }
         if (meta.isNotEmpty()) {
             root["meta"] = meta
