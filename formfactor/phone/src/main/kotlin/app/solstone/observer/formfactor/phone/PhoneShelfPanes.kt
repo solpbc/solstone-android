@@ -65,7 +65,7 @@ fun PhoneYourJournalPane(
                 // `DisclosureGroup("technical details")`.
                 // ⛔ No connection / check-connection rows here. Status already shows
                 // `how your phone connects`; technical details already show `connection`
-                // and `check connection`. 260920-vpx-connection-facts-and-instruments-live-on-status-not-the-shelf.md
+                // and `check connection`.
                 PaneFactRow(label = "label", value = facts.label)
                 PaneRowDivider()
                 PaneNavRow(

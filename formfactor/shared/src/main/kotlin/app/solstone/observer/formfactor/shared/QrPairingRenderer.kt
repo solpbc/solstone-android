@@ -157,9 +157,9 @@ private fun authority(host: String, port: Int): String {
  * wi-fi and to "switch to private network to pair from anywhere" — advice that is false when the
  * address already reaches from anywhere.
  *
- * ⛔ A hostname is deliberately NOT public here: it may resolve anywhere, and VPX ruled on
- * 2026-09-19 (`req_vb6rta4j`) that hostnames keep the wi-fi message. This only adds the literal
- * case, where the address itself settles the question with no lookup.
+ * ⛔ A hostname is deliberately NOT public here: it may resolve anywhere, so a hostname keeps the
+ * wi-fi message. This only adds the literal case, where the address itself settles the question
+ * with no lookup.
  *
  * ⚠ Documentation-range IPv4 (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`) is public on
  * purpose so a tester has a safe address that takes the public-branch copy. The v4 non-public set
