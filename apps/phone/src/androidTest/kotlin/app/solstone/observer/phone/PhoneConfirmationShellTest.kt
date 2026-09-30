@@ -171,6 +171,11 @@ class PhoneConfirmationShellTest {
             val confirmed = confirmCurrentJournal(publisher, confirmStore, "sha256:held-shell")
             assertTrue(confirmed)
 
+            val hitsBeforeRecreate = monitor2.hits
+            scenario.recreate()
+            instrumentation.waitForIdleSync()
+            assertEquals("Recreate after confirm must not start another ObserverActivity", hitsBeforeRecreate, monitor2.hits)
+
             assertEquals(0, sessionCalls.get())
             composeRule.onNodeWithText("close").assertDoesNotExist()
 
