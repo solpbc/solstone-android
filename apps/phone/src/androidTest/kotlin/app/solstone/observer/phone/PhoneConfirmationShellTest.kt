@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.view.View
@@ -28,6 +29,8 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserOrigin
 import app.solstone.observer.scaffold.ObserverActivity
+import app.solstone.platform.fgs.ObserverForegroundService
+import app.solstone.platform.fgs.ObserverNotification
 import app.solstone.platform.work.confirmCurrentJournal
 import app.solstone.platform.work.syncStores
 import org.junit.After
@@ -56,16 +59,28 @@ class PhoneConfirmationShellTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    private fun cleanupForegroundServiceAndNotifications() {
+        ObserverForegroundService.stop(context)
+        waitUntil("foreground service stopped", timeoutMs = 5000L) {
+            ObserverForegroundService.heldCaptureForegroundTypes == null
+        }
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(ObserverNotification.SERVICE_NOTIFICATION_ID)
+        manager?.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
+    }
+
     @Before
     fun setUp() {
         resetObserverRuntime()
         resetPersistence(context)
+        cleanupForegroundServiceAndNotifications()
         PhoneShellActivity.promptedConfirmationThisProcess = false
     }
 
     @After
     fun tearDown() {
         resetObserverRuntime()
+        cleanupForegroundServiceAndNotifications()
         PhoneJournalTestHooks.reset()
         PhoneShellActivity.promptedConfirmationThisProcess = false
         runCatching { syncStores(context).publisher.forget() }
@@ -116,76 +131,83 @@ class PhoneConfirmationShellTest {
 
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val monitor = instrumentation.addMonitor(ObserverActivity::class.java.name, null, false)
+        try {
+            ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+                val observerActivity = instrumentation.waitForMonitorWithTimeout(monitor, 5000) as? ObserverActivity
+                assertNotNull("ObserverActivity must be started", observerActivity)
+                assertTrue(observerActivity!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
 
-        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
-            val observerActivity = instrumentation.waitForMonitorWithTimeout(monitor, 5000) as? ObserverActivity
-            assertNotNull("ObserverActivity must be started", observerActivity)
-            assertTrue(observerActivity!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
+                composeRule.onNodeWithText("does this match your journal?").assertExists()
 
-            composeRule.onNodeWithText("does this match your journal?").assertExists()
-
-            val labels = buttonLabels(observerActivity)
-            MENU_ONLY_CONTROLS.forEach {
-                assertFalse("ObserverActivity must not show operator control $it; saw $labels", labels.contains(it))
-            }
-            assertFalse("ObserverActivity must not draw Back; saw $labels", labels.contains("Back"))
-
-            assertEquals(0, sessionCalls.get())
-            composeRule.onNodeWithText("close").assertDoesNotExist()
-
-            instrumentation.runOnMainSync {
-                @Suppress("DEPRECATION")
-                observerActivity.onBackPressed()
-            }
-            assertTrue("ObserverActivity must be finishing after back", observerActivity.isFinishing)
-            instrumentation.waitForIdleSync()
-
-            // After returning to shell, those 5 labels are still absent
-            scenario.onActivity { shell ->
-                val shellLabels = buttonLabels(shell)
+                val labels = buttonLabels(observerActivity)
                 MENU_ONLY_CONTROLS.forEach {
-                    assertFalse("Shell must not show operator control $it; saw $shellLabels", shellLabels.contains(it))
+                    assertFalse("ObserverActivity must not show operator control $it; saw $labels", labels.contains(it))
                 }
-            }
+                assertFalse("ObserverActivity must not draw Back; saw $labels", labels.contains("Back"))
 
-            val hitsBeforeRecreate = monitor.hits
-            scenario.recreate()
-            instrumentation.waitForIdleSync()
-            assertEquals("Recreate must not start another ObserverActivity", hitsBeforeRecreate, monitor.hits)
+                assertEquals(0, sessionCalls.get())
+                composeRule.onNodeWithText("close").assertDoesNotExist()
+
+                instrumentation.runOnMainSync {
+                    @Suppress("DEPRECATION")
+                    observerActivity.onBackPressed()
+                }
+                assertTrue("ObserverActivity must be finishing after back", observerActivity.isFinishing)
+                instrumentation.waitForIdleSync()
+
+                // After returning to shell, those 5 labels are still absent
+                scenario.onActivity { shell ->
+                    val shellLabels = buttonLabels(shell)
+                    MENU_ONLY_CONTROLS.forEach {
+                        assertFalse("Shell must not show operator control $it; saw $shellLabels", shellLabels.contains(it))
+                    }
+                }
+
+                val hitsBeforeRecreate = monitor.hits
+                scenario.recreate()
+                instrumentation.waitForIdleSync()
+                assertEquals("Recreate must not start another ObserverActivity", hitsBeforeRecreate, monitor.hits)
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
         }
 
         // Close that scenario, set prompt flag false, launch shell again
         PhoneShellActivity.promptedConfirmationThisProcess = false
         val monitor2 = instrumentation.addMonitor(ObserverActivity::class.java.name, null, false)
-        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
-            val observerActivity2 = instrumentation.waitForMonitorWithTimeout(monitor2, 5000) as? ObserverActivity
-            assertNotNull("ObserverActivity must be started on fresh launch", observerActivity2)
-            assertTrue(observerActivity2!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
-            instrumentation.runOnMainSync {
-                @Suppress("DEPRECATION")
-                observerActivity2.onBackPressed()
+        try {
+            ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+                val observerActivity2 = instrumentation.waitForMonitorWithTimeout(monitor2, 5000) as? ObserverActivity
+                assertNotNull("ObserverActivity must be started on fresh launch", observerActivity2)
+                assertTrue(observerActivity2!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
+                instrumentation.runOnMainSync {
+                    @Suppress("DEPRECATION")
+                    observerActivity2.onBackPressed()
+                }
+                instrumentation.waitForIdleSync()
+
+                // On shell, confirmCurrentJournal is true
+                val confirmed = confirmCurrentJournal(publisher, confirmStore, "sha256:held-shell")
+                assertTrue(confirmed)
+
+                val hitsBeforeRecreate = monitor2.hits
+                scenario.recreate()
+                instrumentation.waitForIdleSync()
+                assertEquals("Recreate after confirm must not start another ObserverActivity", hitsBeforeRecreate, monitor2.hits)
+
+                assertEquals(0, sessionCalls.get())
+                composeRule.onNodeWithText("close").assertDoesNotExist()
+
+                val hitsBeforeClick = monitor2.hits
+                composeRule.onNodeWithTag("journalMarkPill").performClick()
+                composeRule.waitUntil(10_000) {
+                    sessionCalls.get() > 0
+                }
+                composeRule.onNodeWithText("close").assertExists()
+                assertEquals("Pill click must not start another ObserverActivity", hitsBeforeClick, monitor2.hits)
             }
-            instrumentation.waitForIdleSync()
-
-            // On shell, confirmCurrentJournal is true
-            val confirmed = confirmCurrentJournal(publisher, confirmStore, "sha256:held-shell")
-            assertTrue(confirmed)
-
-            val hitsBeforeRecreate = monitor2.hits
-            scenario.recreate()
-            instrumentation.waitForIdleSync()
-            assertEquals("Recreate after confirm must not start another ObserverActivity", hitsBeforeRecreate, monitor2.hits)
-
-            assertEquals(0, sessionCalls.get())
-            composeRule.onNodeWithText("close").assertDoesNotExist()
-
-            val hitsBeforeClick = monitor2.hits
-            composeRule.onNodeWithTag("journalMarkPill").performClick()
-            composeRule.waitUntil(10_000) {
-                sessionCalls.get() > 0
-            }
-            composeRule.onNodeWithText("close").assertExists()
-            assertEquals("Pill click must not start another ObserverActivity", hitsBeforeClick, monitor2.hits)
+        } finally {
+            instrumentation.removeMonitor(monitor2)
         }
     }
 
