@@ -32,6 +32,8 @@ import java.security.KeyPair
 import java.security.Signature
 import java.util.Base64
 import javax.security.auth.x500.X500Principal
+import app.solstone.core.identity.JournalConfirmationPolicy
+import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
@@ -40,6 +42,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -752,6 +755,7 @@ class RelayPairingTest {
         journalMarkStore: JournalMarkStore? = null,
         journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
         publisher: app.solstone.core.identity.PairingPublisher? = null,
+        confirmation: app.solstone.core.identity.JournalConfirmationStore? = FakeJournalConfirmationStore(),
         keyPairFactory: () -> KeyPair = { generateP256KeyPair() },
     ): RelayPairResult {
         val pub = publisher ?: FakePairingPublisher(
@@ -774,6 +778,7 @@ class RelayPairingTest {
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
             publisher = pub,
+            confirmation = confirmation,
             keyPairFactory = keyPairFactory,
         )
     }
@@ -895,6 +900,34 @@ class RelayPairingTest {
             val enc = Base64.getUrlEncoder().withoutPadding()
             return "${enc.encodeToString("{}".toByteArray())}.${enc.encodeToString(payload.toByteArray())}.sig"
         }
+    }
+
+    @Test
+    fun optOutStoreSettleThrowsRelayEnrollFailsPairingStillCommits() {
+        JournalConfirmationPolicy.optOut()
+        val stores = Stores()
+        val confirmation = FakeJournalConfirmationStore(throwOnSettle = true)
+        val session = DynamicFakeSession(relayAccessJson = null)
+        val poster = FakePoster(session, enrollStatus = 503, enrollResponseBody = "unavailable")
+
+        val result = pairOverRelay(
+            link(),
+            "device",
+            poster,
+            FakeDialer(session),
+            stores.credentialStore,
+            stores.identityStore,
+            endpointStore = stores.endpointStore,
+            publisher = stores.publisher,
+            confirmation = confirmation,
+        )
+
+        assertEquals(200, result.pairStatus)
+        assertEquals(503, result.enrollStatus)
+        val committed = assertIs<PairingGraphSnapshot.Committed>(stores.publisher.currentSnapshot())
+        assertEquals(INSTANCE_ID, committed.home.instanceId)
+        val home = assertNotNull(stores.identityStore.load())
+        assertEquals(INSTANCE_ID, home.instanceId)
     }
 }
 

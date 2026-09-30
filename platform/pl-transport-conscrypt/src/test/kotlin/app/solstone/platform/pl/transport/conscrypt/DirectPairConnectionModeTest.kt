@@ -312,6 +312,7 @@ class DirectPairConnectionModeTest {
         journalMarkStore: app.solstone.core.identity.JournalMarkStore? = null,
         journalIdentityCoordinator: app.solstone.core.pl.JournalIdentityRefreshCoordinator? = null,
         publisher: app.solstone.core.identity.PairingPublisher? = null,
+        confirmation: app.solstone.core.identity.JournalConfirmationStore? = FakeJournalConfirmationStore(),
     ): PairProbeResult {
         val pub = publisher ?: FakePairingPublisher(
             identityStore = identityStore,
@@ -335,6 +336,7 @@ class DirectPairConnectionModeTest {
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
             publisher = pub,
+            confirmation = confirmation,
         )
     }
 }

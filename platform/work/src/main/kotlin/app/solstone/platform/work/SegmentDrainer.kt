@@ -44,6 +44,7 @@ interface DrainStore {
     fun recordFailure(id: String, code: Int?, error: String?): Int
     fun pendingCount(stream: String): Int
     fun upsertSyncState(row: SyncStateRow)
+    fun segmentRow(id: String): SegmentRow? = null
 }
 
 class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
@@ -56,6 +57,7 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun recordFailure(id: String, code: Int?, error: String?): Int = dao.recordFailure(id, code, error)
     override fun pendingCount(stream: String): Int = dao.pendingCount(stream)
     override fun upsertSyncState(row: SyncStateRow) = dao.upsertSyncState(row)
+    override fun segmentRow(id: String): SegmentRow? = dao.segmentById(id)
 }
 
 internal fun drainSegments(

@@ -19,6 +19,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.model.IdentityState
@@ -219,6 +220,7 @@ fun pairOverRelay(
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: app.solstone.core.identity.PairingPublisher? = null,
     keyPairFactory: () -> KeyPair = { generateP256KeyPair() },
+    confirmation: JournalConfirmationStore? = null,
 ): RelayPairResult {
 
 
@@ -368,7 +370,10 @@ fun pairOverRelay(
             expiresAt = relayAccessDecoded.expiresAt,
             state = IdentityState.PAIRED,
         )
-        val res = activePublisher.installOrReplace(home, credential, firstAdmitted, isDirectAssociated = false)
+        val res = activePublisher.withMutationBoundary {
+            settleBeforeInstall(confirmation)
+            activePublisher.installOrReplace(home, credential, firstAdmitted, isDirectAssociated = false)
+        }
         if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
             if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
                 throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)
@@ -409,7 +414,10 @@ fun pairOverRelay(
         expiresAt = null,
         state = IdentityState.PAIRED,
     )
-    val res = activePublisher.installOrReplace(homeInitial, credential, firstAdmitted, isDirectAssociated = false)
+    val res = activePublisher.withMutationBoundary {
+        settleBeforeInstall(confirmation)
+        activePublisher.installOrReplace(homeInitial, credential, firstAdmitted, isDirectAssociated = false)
+    }
     if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
         if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
             throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)

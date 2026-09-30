@@ -3,6 +3,12 @@
 
 package app.solstone.observer.watch
 
+import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.observer.scaffold.ObserverApplication
 
-class WatchApplication : ObserverApplication(watchSpec)
+class WatchApplication : ObserverApplication(watchSpec) {
+    override fun onCreate() {
+        JournalConfirmationPolicy.optOut()
+        super.onCreate()
+    }
+}

@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import app.solstone.core.diagnostics.DiagEvent
+import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.sources.GLASSES_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverServiceRehydrator
@@ -27,7 +28,10 @@ class GlassesApplication : Application() {
     private var rokidReceiver: GlassesCommandReceiver? = null
 
     override fun onCreate() {
+        JournalConfirmationPolicy.optOut()
         super.onCreate()
+        val stores = app.solstone.platform.work.syncStores(applicationContext)
+        app.solstone.platform.work.JournalConfirmationGrandfather.grandfather(stores.publisher, stores.journalConfirmationStore)
         GlassesDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { GlassesDiagLog.appendRaw(it) }
         ObserverForegroundService.declaredCaptureForegroundTypes =

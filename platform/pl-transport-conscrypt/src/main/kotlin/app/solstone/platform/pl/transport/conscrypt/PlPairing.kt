@@ -18,11 +18,12 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalConfirmationPolicy
+import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.model.IdentityState
-
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
 import app.solstone.core.pl.DialOutcome
@@ -55,6 +56,12 @@ import java.net.SocketException
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.SSLSocket
+
+internal fun settleBeforeInstall(confirmation: JournalConfirmationStore?) {
+    if (!JournalConfirmationPolicy.consults) return
+    val store = confirmation ?: throw IllegalStateException("JournalConfirmationStore required when JournalConfirmationPolicy.consults is true")
+    store.settle()
+}
 
 data class PairProbeResult(
     val handshakePinned: Boolean,
@@ -122,6 +129,7 @@ fun pairAndProbe(
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: PairingPublisher? = null,
     onDialOutcome: ((DirectEndpoint, DialOutcome) -> Unit)? = null,
+    confirmation: JournalConfirmationStore? = null,
 ): PairProbeResult = pairAndProbe(
     pairLink = pairLink,
     deviceLabel = deviceLabel,
@@ -138,6 +146,7 @@ fun pairAndProbe(
     journalIdentityCoordinator = journalIdentityCoordinator,
     publisher = publisher,
     onDialOutcome = onDialOutcome,
+    confirmation = confirmation,
 )
 
 internal fun pairAndProbe(
@@ -158,6 +167,7 @@ internal fun pairAndProbe(
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: PairingPublisher? = null,
     onDialOutcome: ((DirectEndpoint, DialOutcome) -> Unit)? = null,
+    confirmation: JournalConfirmationStore? = null,
 ): PairProbeResult {
 
     val link = parseDirectPairLink(pairLink)
@@ -260,6 +270,7 @@ internal fun pairAndProbe(
                     journalMarkStore = journalMarkStore,
                     journalIdentityCoordinator = journalIdentityCoordinator,
                     publisher = publisher,
+                    confirmation = confirmation,
                 )
 
             }
@@ -309,6 +320,7 @@ internal fun persistOrReturnDirectPairResult(
     journalMarkStore: JournalMarkStore? = null,
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: app.solstone.core.identity.PairingPublisher? = null,
+    confirmation: JournalConfirmationStore? = null,
 ): PairProbeResult {
     val activePublisher = requireNotNull(publisher) { "PairingPublisher is required" }
     val prior = (activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.home
@@ -366,12 +378,15 @@ internal fun persistOrReturnDirectPairResult(
         DirectPairConnectionMode.PAIRING
     }
 
-    val res = activePublisher.installOrReplace(
-        home = home,
-        credential = credential,
-        directEndpoint = endpoint,
-        isDirectAssociated = false,
-    )
+    val res = activePublisher.withMutationBoundary {
+        settleBeforeInstall(confirmation)
+        activePublisher.installOrReplace(
+            home = home,
+            credential = credential,
+            directEndpoint = endpoint,
+            isDirectAssociated = false,
+        )
+    }
     if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
         if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
             throw res.cause as? Exception ?: IOException("pairing graph install failed", res.cause)

@@ -16,6 +16,7 @@ class CoalescingBoundedJob<T>(
     private val executor: ExecutorService = Executors.newCachedThreadPool { r ->
         Thread(r, name).apply { isDaemon = true }
     },
+    private val onGiveUp: ((snapshot: T, generation: Long) -> Unit)? = null,
 ) : Closeable {
     private val lock = Any()
     private val generation = AtomicLong(0)
@@ -81,6 +82,10 @@ class CoalescingBoundedJob<T>(
 
                 try {
                     future.get(boundMillis, TimeUnit.MILLISECONDS)
+                } catch (e: java.util.concurrent.TimeoutException) {
+                    fenceGeneration()
+                    future.cancel(true)
+                    onGiveUp?.invoke(snapshot, targetGen)
                 } catch (_: Throwable) {
                     fenceGeneration()
                     future.cancel(true)

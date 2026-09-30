@@ -33,6 +33,15 @@ import kotlinx.coroutines.withContext
 
 import app.solstone.core.push.PushRegistrationCoordinator
 
+import app.solstone.core.identity.JournalConfirmationPolicy
+import app.solstone.core.identity.StoreInspectResult
+import app.solstone.core.model.QueueState
+import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentFileRow
+import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import app.solstone.platform.persistence.room.SyncStateRow
+
 private const val TAG = "SyncWorker"
 
 fun scheduleOptionalJobsIfPairingCurrent(
@@ -43,6 +52,7 @@ fun scheduleOptionalJobsIfPairingCurrent(
     pushRegistration: PushRegistrationCoordinator?,
     localDescriptionProvider: () -> ClientReportedDescription,
     openClient: () -> PlHttpClient,
+    allowsOwnerMaterial: Boolean = true,
 ): Boolean {
     val currentPairing = mutator.currentPairingGeneration()
     val snapshotPairing = PairingGeneration(snapshotIdentity.instanceId, snapshotIdentity.clientCertFingerprint)
@@ -63,12 +73,133 @@ fun scheduleOptionalJobsIfPairingCurrent(
         clientCertFingerprint = snapshotIdentity.clientCertFingerprint,
         openClient = openClient,
     )
-    pushRegistration?.onUsableConnection(
-        generation = snapshotPairing,
-        openClient = openClient,
-        pairingNow = { mutator.currentPairingGeneration() },
-    )
+    if (allowsOwnerMaterial) {
+        pushRegistration?.onUsableConnection(
+            generation = snapshotPairing,
+            openClient = openClient,
+            pairingNow = { mutator.currentPairingGeneration() },
+        )
+    }
     return true
+}
+
+@Volatile
+internal var workerLog: (level: String, message: String, throwable: Throwable?) -> Unit = { level, message, throwable ->
+    try {
+        when (level) {
+            "i" -> if (throwable != null) Log.i(TAG, message, throwable) else Log.i(TAG, message)
+            "w" -> if (throwable != null) Log.w(TAG, message, throwable) else Log.w(TAG, message)
+            "e" -> if (throwable != null) Log.e(TAG, message, throwable) else Log.e(TAG, message)
+        }
+    } catch (_: RuntimeException) {
+        // Fallback for JVM unit tests where android.util.Log is not mocked
+    }
+}
+
+data class SyncRunExecutionResult(
+    val outcome: SyncOutcome,
+    val heldUnconfirmed: Boolean,
+    val gateBusy: Boolean = false,
+)
+
+internal fun executeSyncRun(
+    stores: SyncStores,
+    context: Context? = null,
+    db: SolstonePersistenceDatabase? = null,
+    spoolDir: File? = null,
+    deviceLabel: String = "android",
+    drainStore: DrainStore? = null,
+    openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+    afterCredentialsFrozen: (() -> Unit)? = null,
+): SyncRunExecutionResult {
+    if (!SyncDrainGate.tryAcquire()) {
+        workerLog("i", "identity boundary already in use; deferring", null)
+        return SyncRunExecutionResult(SyncOutcome.RETRY, false, gateBusy = true)
+    }
+    var acquired = true
+    try {
+        val (credentials, allowsOwnerMaterial) = stores.publisher.withMutationBoundary {
+            val creds = recoverSyncCredentials(stores.publisher)
+            val allows = when (creds) {
+                is SyncCredentials.Ready -> {
+                    !JournalConfirmationPolicy.consults ||
+                        (stores.journalConfirmationStore.inspect().let { it is StoreInspectResult.Ready && it.value.confirmed == creds.identity.clientCertFingerprint })
+                }
+                else -> true
+            }
+            creds to allows
+        }
+        afterCredentialsFrozen?.invoke()
+        when (credentials) {
+            is SyncCredentials.NeedsRepair -> {
+                workerLog("w", "sync credentials need repair: ${credentials.reason}", null)
+                return SyncRunExecutionResult(SyncOutcome.FAILURE, false)
+            }
+            is SyncCredentials.Ready -> {
+                val outcome = sync(
+                    stores = stores,
+                    credentials = credentials,
+                    allowsOwnerMaterial = allowsOwnerMaterial,
+                    context = context,
+                    persistenceDb = db,
+                    customSpoolDir = spoolDir,
+                    deviceLabel = deviceLabel,
+                    drainStore = drainStore,
+                    customOpenClient = openClient,
+                )
+                val held = outcome == SyncOutcome.SUCCESS && !allowsOwnerMaterial
+                return SyncRunExecutionResult(outcome, held)
+            }
+        }
+    } finally {
+        if (acquired) {
+            SyncDrainGate.release()
+        }
+    }
+}
+
+internal fun completeSyncRun(
+    openStores: () -> SyncStores,
+    context: Context? = null,
+    db: SolstonePersistenceDatabase? = null,
+    spoolDir: File? = null,
+    deviceLabel: String = "android",
+    drainStore: DrainStore? = null,
+    openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+    afterCredentialsFrozen: (() -> Unit)? = null,
+): SyncOutcome {
+    var outcome = SyncOutcome.FAILURE
+    var heldUnconfirmed = false
+    var gateBusy = false
+    try {
+        val stores = openStores()
+        val result = executeSyncRun(
+            stores = stores,
+            context = context,
+            db = db,
+            spoolDir = spoolDir,
+            deviceLabel = deviceLabel,
+            drainStore = drainStore,
+            openClient = openClient,
+            afterCredentialsFrozen = afterCredentialsFrozen,
+        )
+        outcome = result.outcome
+        heldUnconfirmed = result.heldUnconfirmed
+        gateBusy = result.gateBusy
+    } catch (e: Throwable) {
+        workerLog("e", "sync threw before its own outcome", e)
+        outcome = SyncOutcome.FAILURE
+        heldUnconfirmed = false
+        gateBusy = false
+    } finally {
+        val diagLine = if (heldUnconfirmed) {
+            "kind=sync outcome=success held=unconfirmed"
+        } else {
+            "kind=sync outcome=${outcome.name.lowercase()}"
+        }
+        runCatching { SyncWorker.syncDiag?.invoke(diagLine) }
+    }
+    return outcome
 }
 
 class SyncWorker(
@@ -77,173 +208,12 @@ class SyncWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
-            // 🔴 One emit point, at the outermost return. The sync body has eight paths that
-            // return before its own outcome mapping — a busy drain gate, credentials needing
-            // repair, two relay-token verdicts and four catch arms — so logging deeper left the
-            // event log silent on exactly the runs an owner opens it to understand.
-            //
-            // ⚠ The verdict travels as this module's own `SyncOutcome`, never as a WorkManager
-            // `Result`: its subclasses are `@RestrictedApi` and lint refuses to read one back.
-            // ⛔ `runCatching`, not a bare call: `runSync` has a `finally` and no catch, so a
-            // throw out of the store open or the credential recovery would escape past the emit
-            // below — leaving the log silent on exactly the broken-store run it exists for.
-            val outcome = runCatching { runSync() }
-                .onFailure { Log.e(TAG, "sync threw before its own outcome", it) }
-                .getOrDefault(SyncOutcome.FAILURE)
-            runCatching { syncDiag?.invoke("kind=sync outcome=${outcome.name.lowercase()}") }
+            val outcome = completeSyncRun(
+                openStores = { syncStores(applicationContext) },
+                context = applicationContext,
+                deviceLabel = deviceLabel(),
+            )
             outcome.toWorkResult()
-        }
-
-    private fun runSync(): SyncOutcome {
-        if (!SyncDrainGate.tryAcquire()) {
-            Log.i(TAG, "identity boundary already in use; deferring")
-            return SyncOutcome.RETRY
-        }
-        return try {
-            val stores = syncStores(applicationContext)
-            when (
-                val credentials = stores.publisher.withMutationBoundary {
-                    recoverSyncCredentials(stores.publisher)
-                }
-            ) {
-                is SyncCredentials.NeedsRepair -> {
-                    Log.w(TAG, "sync credentials need repair: ${credentials.reason}")
-                    SyncOutcome.FAILURE
-                }
-                is SyncCredentials.Ready -> sync(stores, credentials)
-            }
-        } finally {
-            SyncDrainGate.release()
-        }
-    }
-
-    private fun sync(stores: SyncStores, credentials: SyncCredentials.Ready): SyncOutcome {
-        val db = openSolstonePersistenceDatabase(applicationContext)
-        val poster = defaultHttpsPoster()
-        try {
-            val store = RoomDrainStore(db.segmentDao())
-            val spoolDir = File(applicationContext.filesDir, "spool")
-            val finisher = ConfirmedCopyFinisher(
-                spoolRoot = spoolDir.toPath(),
-                dao = db.segmentDao(),
-                log = { message -> Log.w(TAG, message) },
-            )
-            val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
-                val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
-                if (access.pairing != PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)) return@transportAttempt SyncOutcome.RETRY
-                if (selectedTransport is SyncTransport.Relay && relaySnapshot(credentials.identity, selectedTransport, stores.identityMutator) != access) return@transportAttempt SyncOutcome.RETRY
-                syncWithTransport(
-                    transport = selectedTransport,
-                    openClient = {
-                        if (!transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
-                            throw IOException("missing identity")
-                        }
-                        recordDial(DialDiagnostics.events, selectedTransport) {
-                            openSyncClient(selectedTransport, credentials.credential)
-                        }
-                    },
-                    store = store,
-                    finisher = finisher,
-                    readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
-                    spoolDir = spoolDir,
-                    host = deviceLabel(),
-                    now = System::currentTimeMillis,
-                    log = { message, throwable -> Log.w(TAG, message, throwable) },
-                    onUsableConnection = {
-                        scheduleOptionalJobsIfPairingCurrent(
-                            snapshotIdentity = credentials.identity,
-                            mutator = stores.identityMutator,
-                            journalVersionCoordinator = stores.journalVersionCoordinator,
-                            relayAccessCoordinator = stores.relayAccessCoordinator,
-                            pushRegistration = stores.pushRegistration,
-                            localDescriptionProvider = { currentPhoneDeviceDescription(applicationContext) },
-                            openClient = {
-                                val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
-                                    ?: throw IOException("missing identity")
-                                openSyncClient(currentTransport, credentials.credential)
-                            },
-                        )
-                    },
-                )
-            }
-
-            var outcome = when (val transport = credentials.transport) {
-                is SyncTransport.Direct -> syncTransport(transport)
-                is SyncTransport.Relay -> {
-                    val maintained = maintainRelayToken(
-                        identity = credentials.identity,
-                        transport = transport,
-                        poster = poster,
-                        mutator = stores.identityMutator,
-                    )
-                    when (maintained) {
-                        is RelayTokenResult.Ready -> dialWithReactiveRefresh(
-                            identity = credentials.identity,
-                            transport = maintained.transport,
-                            poster = poster,
-                            mutator = stores.identityMutator,
-                            dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
-                            log = { message, throwable -> Log.w(TAG, message, throwable) },
-                        )
-                        RelayTokenResult.ReconnectNeeded -> return SyncOutcome.FAILURE
-                        RelayTokenResult.Obsolete -> return SyncOutcome.RETRY
-                    }
-                }
-            }
-
-            // If direct probe returned RETRY and relay is live-eligible, retry once via Relay
-            if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct) {
-                val relayTransport = relayFallbackTransport(
-                    identity = credentials.identity,
-                    relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
-                )
-                if (relayTransport != null) {
-                    val maintained = maintainRelayToken(
-                        identity = credentials.identity,
-                        transport = relayTransport,
-                        poster = poster,
-                        mutator = stores.identityMutator,
-                    )
-                    if (maintained is RelayTokenResult.Ready) {
-                        outcome = dialWithReactiveRefresh(
-                            identity = credentials.identity,
-                            transport = maintained.transport,
-                            poster = poster,
-                            mutator = stores.identityMutator,
-                            dial = RelayDial { t -> syncTransport(t) },
-                            log = { message, throwable -> Log.w(TAG, message, throwable) },
-                        )
-                    }
-                }
-            }
-
-            return outcome
-        } catch (e: RelayDialWaitingException) {
-            Log.i(TAG, "home offline, waiting; will retry", e)
-            return SyncOutcome.RETRY
-        } catch (e: RelayWebSocketClosedException) {
-            Log.w(TAG, "relay ws closed; retry", e)
-            return SyncOutcome.RETRY
-        } catch (e: IOException) {
-            Log.w(TAG, "sync io; retry", e)
-            return SyncOutcome.RETRY
-        } catch (e: Exception) {
-            Log.e(TAG, "sync failed", e)
-            return SyncOutcome.FAILURE
-        } finally {
-            db.close()
-        }
-    }
-
-    private fun openSyncClient(transport: SyncTransport, credential: ClientCredential) =
-        when (transport) {
-            is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
-            is SyncTransport.Relay -> openRelaySyncClient(
-                transport.relayOrigin,
-                transport.instanceId,
-                transport.deviceToken,
-                credential,
-            )
         }
 
     private fun SyncOutcome.toWorkResult(): Result =
@@ -272,6 +242,226 @@ class SyncWorker(
         var syncDiag: ((String) -> Unit)? = null
     }
 }
+
+private interface CloseablePlHttpClient : PlHttpClient, java.io.Closeable
+
+private class CloseablePlHttpClientAdapter(private val delegate: PlHttpClient) : CloseablePlHttpClient, PlHttpClient by delegate {
+    override fun close() {
+        if (delegate is java.io.Closeable) {
+            delegate.close()
+        }
+    }
+}
+
+private fun toCloseableClient(client: PlHttpClient): CloseablePlHttpClient =
+    if (client is CloseablePlHttpClient) client else CloseablePlHttpClientAdapter(client)
+
+private fun sync(
+    stores: SyncStores,
+    credentials: SyncCredentials.Ready,
+    allowsOwnerMaterial: Boolean = true,
+    context: Context? = null,
+    persistenceDb: SolstonePersistenceDatabase? = null,
+    customSpoolDir: File? = null,
+    deviceLabel: String = "android",
+    drainStore: DrainStore? = null,
+    customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+): SyncOutcome {
+    val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
+    var shouldCloseDb = false
+    var dbToClose: SolstonePersistenceDatabase? = null
+    val (store, finisher) = if (drainStore != null) {
+        val f = ConfirmedCopyFinisher(
+            spoolRoot = spoolDir.toPath(),
+            dao = object : SegmentDao() {
+                override fun insertSegment(segment: SegmentRow) = Unit
+                override fun insertFiles(files: List<SegmentFileRow>) = Unit
+                override fun insertEvents(events: List<EventRow>) = Unit
+                override fun segmentsByState(state: QueueState): List<SegmentRow> = emptyList()
+                override fun segmentsForDrain(stream: String): List<SegmentRow> = drainStore.segmentsForDrain()
+                override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
+                override fun segmentById(id: String): SegmentRow? = drainStore.segmentRow(id)
+                override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
+                override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = drainStore.filesBySegmentId(segmentId)
+                override fun recordAttempt(id: String, attempts: Int, at: Long): Int = drainStore.recordAttempt(id, attempts, at)
+                override fun recordUploaded(id: String): Int = drainStore.recordUploaded(id)
+                override fun recordFailure(id: String, code: Int?, error: String?): Int = drainStore.recordFailure(id, code, error)
+                override fun upsertSyncState(row: SyncStateRow) = drainStore.upsertSyncState(row)
+                override fun syncState(): SyncStateRow? = drainStore.syncState()
+                override fun pendingCount(stream: String): Int = drainStore.pendingCount(stream)
+                override fun pendingSourceIds(stream: String): List<String> = emptyList()
+                override fun segmentState(id: String): QueueState? = drainStore.segmentRow(id)?.state
+                override fun updateState(id: String, state: QueueState): Int {
+                    val event = when (state) {
+                        QueueState.EVICTED -> app.solstone.core.queue.QueueEvent.FINISH
+                        QueueState.UPLOADING -> app.solstone.core.queue.QueueEvent.START_UPLOAD
+                        QueueState.UPLOADED -> app.solstone.core.queue.QueueEvent.MARK_UPLOADED
+                        QueueState.FAILED -> app.solstone.core.queue.QueueEvent.MARK_FAILED
+                        QueueState.SEALED -> app.solstone.core.queue.QueueEvent.SEAL
+                        QueueState.RECORDING -> error("illegal")
+                    }
+                    drainStore.advanceState(id, event)
+                    return 1
+                }
+                override fun deleteFilesBySegmentId(segmentId: String): Int = 0
+                override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
+                override fun deleteFilesBySource(sourceId: String): Int = 0
+            },
+            log = { message -> workerLog("w", message, null) },
+        )
+        drainStore to f
+    } else {
+        val db = persistenceDb ?: (context?.let { openSolstonePersistenceDatabase(it) } ?: throw IllegalStateException("Database or Context required for sync"))
+        if (persistenceDb == null) {
+            shouldCloseDb = true
+            dbToClose = db
+        }
+        val f = ConfirmedCopyFinisher(
+            spoolRoot = spoolDir.toPath(),
+            dao = db.segmentDao(),
+            log = { message -> workerLog("w", message, null) },
+        )
+        RoomDrainStore(db.segmentDao()) to f
+    }
+    val poster = defaultHttpsPoster()
+    try {
+        val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
+            val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
+            if (allowsOwnerMaterial) {
+                if (access.pairing != PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)) return@transportAttempt SyncOutcome.RETRY
+                if (selectedTransport is SyncTransport.Relay && relaySnapshot(credentials.identity, selectedTransport, stores.identityMutator) != access) return@transportAttempt SyncOutcome.RETRY
+            }
+            syncWithTransport(
+                transport = selectedTransport,
+                openClient = {
+                    if (allowsOwnerMaterial && !transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
+                        throw IOException("missing identity")
+                    }
+                    if (customOpenClient != null) {
+                        toCloseableClient(customOpenClient(selectedTransport, credentials.credential))
+                    } else {
+                        toCloseableClient(
+                            recordDial(DialDiagnostics.events, selectedTransport) {
+                                openSyncClient(selectedTransport, credentials.credential)
+                            }
+                        )
+                    }
+                },
+                store = store,
+                finisher = finisher,
+                readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
+                spoolDir = spoolDir,
+                host = deviceLabel,
+                now = System::currentTimeMillis,
+                log = { message, throwable -> workerLog("w", message, throwable) },
+                onUsableConnection = {
+                    scheduleOptionalJobsIfPairingCurrent(
+                        snapshotIdentity = credentials.identity,
+                        mutator = stores.identityMutator,
+                        journalVersionCoordinator = stores.journalVersionCoordinator,
+                        relayAccessCoordinator = stores.relayAccessCoordinator,
+                        pushRegistration = stores.pushRegistration,
+                        localDescriptionProvider = { context?.let { currentPhoneDeviceDescription(it) } ?: ClientReportedDescription(name = "android", platform = "android", deviceType = "phone", appId = "app.solstone.test") },
+                        openClient = {
+                            val currentTransport = if (allowsOwnerMaterial) {
+                                currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
+                                    ?: throw IOException("missing identity")
+                            } else {
+                                selectedTransport
+                            }
+                            if (customOpenClient != null) {
+                                customOpenClient(currentTransport, credentials.credential)
+                            } else {
+                                openSyncClient(currentTransport, credentials.credential)
+                            }
+                        },
+                        allowsOwnerMaterial = allowsOwnerMaterial,
+                    )
+                },
+                allowsOwnerMaterial = allowsOwnerMaterial,
+            )
+        }
+
+        var outcome = when (val transport = credentials.transport) {
+            is SyncTransport.Direct -> syncTransport(transport)
+            is SyncTransport.Relay -> {
+                val maintained = maintainRelayToken(
+                    identity = credentials.identity,
+                    transport = transport,
+                    poster = poster,
+                    mutator = stores.identityMutator,
+                )
+                when (maintained) {
+                    is RelayTokenResult.Ready -> dialWithReactiveRefresh(
+                        identity = credentials.identity,
+                        transport = maintained.transport,
+                        poster = poster,
+                        mutator = stores.identityMutator,
+                        dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
+                        log = { message, throwable -> workerLog("w", message, throwable) },
+                    )
+                    RelayTokenResult.ReconnectNeeded -> return SyncOutcome.FAILURE
+                    RelayTokenResult.Obsolete -> return SyncOutcome.RETRY
+                }
+            }
+        }
+
+        if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct) {
+            val relayTransport = relayFallbackTransport(
+                identity = credentials.identity,
+                relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
+            )
+            if (relayTransport != null) {
+                val maintained = maintainRelayToken(
+                    identity = credentials.identity,
+                    transport = relayTransport,
+                    poster = poster,
+                    mutator = stores.identityMutator,
+                )
+                if (maintained is RelayTokenResult.Ready) {
+                    outcome = dialWithReactiveRefresh(
+                        identity = credentials.identity,
+                        transport = maintained.transport,
+                        poster = poster,
+                        mutator = stores.identityMutator,
+                        dial = RelayDial { t -> syncTransport(t) },
+                        log = { message, throwable -> workerLog("w", message, throwable) },
+                    )
+                }
+            }
+        }
+
+        return outcome
+    } catch (e: RelayDialWaitingException) {
+        workerLog("i", "home offline, waiting; will retry", e)
+        return SyncOutcome.RETRY
+    } catch (e: RelayWebSocketClosedException) {
+        workerLog("w", "relay ws closed; retry", e)
+        return SyncOutcome.RETRY
+    } catch (e: IOException) {
+        workerLog("w", "sync io; retry", e)
+        return SyncOutcome.RETRY
+    } catch (e: Exception) {
+        workerLog("e", "sync failed", e)
+        return SyncOutcome.FAILURE
+    } finally {
+        if (shouldCloseDb) {
+            dbToClose?.close()
+        }
+    }
+}
+
+private fun openSyncClient(transport: SyncTransport, credential: ClientCredential) =
+    when (transport) {
+        is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
+        is SyncTransport.Relay -> openRelaySyncClient(
+            transport.relayOrigin,
+            transport.instanceId,
+            transport.deviceToken,
+            credential,
+        )
+    }
+
 
 // Resamples device descriptions from platform facts at trigger time.
 // Note: Android provides no system hostname/device-name broadcast listener; no polling is used.

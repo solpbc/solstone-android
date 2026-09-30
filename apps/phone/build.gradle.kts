@@ -238,6 +238,7 @@ dependencies {
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":platform:identity-file"))
+    implementation(project(":platform:pl-transport-conscrypt"))
     implementation(project(":platform:work"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))

@@ -59,6 +59,7 @@ open class JournalIdentityRefreshCoordinator(
         name = "journal-identity-refresh",
         boundMillis = boundMillis,
         executor = executor,
+        onGiveUp = { _, _ -> updatePresentation(JournalMarkPresentation.Unavailable) },
     )
 
     private val listeners = CopyOnWriteArrayList<ListenerDelivery<JournalMarkPresentation>>()
@@ -174,18 +175,22 @@ open class JournalIdentityRefreshCoordinator(
                 is IdentityGetResult.Success -> {
                     val resp = getResult.response
                     if (gen == job.currentGeneration() && snap.pairingMatches()) {
-                        val mark = resp.mark
-                        val record = JournalMarkRecord(
-                            instanceId = snap.instanceId,
-                            mark = if (resp.committed) mark else null,
-                            pairing = snap.pairing,
-                        )
-                        val presentation = if (resp.committed && mark != null) {
-                            JournalMarkPresentation.Identified(mark)
+                        if (resp.instanceId != null && resp.instanceId != snap.instanceId) {
+                            updatePresentation(JournalMarkPresentation.Unavailable)
                         } else {
-                            JournalMarkPresentation.Generic
+                            val mark = resp.mark
+                            val record = JournalMarkRecord(
+                                instanceId = snap.instanceId,
+                                mark = if (resp.committed) mark else null,
+                                pairing = snap.pairing,
+                            )
+                            val presentation = if (resp.committed && mark != null) {
+                                JournalMarkPresentation.Identified(mark)
+                            } else {
+                                JournalMarkPresentation.Generic
+                            }
+                            commitIfCurrent(snap, record, presentation)
                         }
-                        commitIfCurrent(snap, record, presentation)
                     }
                 }
                 is IdentityGetResult.NotFound,

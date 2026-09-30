@@ -487,7 +487,7 @@ class ObserverHarnessUi(
      * ✅ Safe from `onStatus`: `Camera2QrPreviewView` delivers status through `post {}`, so this
      * runs on the main thread.
      */
-    private fun showPaired() {
+    fun showPaired() {
         setScreen {
             val offerExit: () -> Unit = {
                 // The mark accessory ends on a Compose Text (confirmed/mismatched line); `done`

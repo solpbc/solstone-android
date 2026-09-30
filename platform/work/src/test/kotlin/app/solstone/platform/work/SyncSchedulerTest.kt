@@ -35,4 +35,11 @@ class SyncSchedulerTest {
     fun streamInputCarriesStreamType() {
         assertEquals("glasses", SyncScheduler.streamInputData("glasses").getString(SyncScheduler.STREAM_TYPE_KEY))
     }
+
+    @Test
+    fun afterConfirmWorkPolicyAndName() {
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.AFTER_CONFIRM_WORK_POLICY)
+        kotlin.test.assertNotEquals(SyncScheduler.NOW_WORK_NAME, SyncScheduler.AFTER_CONFIRM_WORK_NAME)
+        kotlin.test.assertNotEquals(SyncScheduler.PERIODIC_WORK_NAME, SyncScheduler.AFTER_CONFIRM_WORK_NAME)
+    }
 }

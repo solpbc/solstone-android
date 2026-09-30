@@ -14,9 +14,27 @@ import app.solstone.core.identity.PairingLease
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
+import app.solstone.core.identity.JournalConfirmation
+import app.solstone.core.identity.JournalConfirmationStore
+import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.EndpointStore
 import java.util.concurrent.atomic.AtomicLong
+
+class FakeJournalConfirmationStore(
+    var state: JournalConfirmation = JournalConfirmation(confirmed = null, settled = false),
+    var throwOnSettle: Boolean = false,
+) : JournalConfirmationStore {
+    override fun inspect(): StoreInspectResult<JournalConfirmation> = StoreInspectResult.Ready(state)
+    override fun confirm(fingerprint: String) {
+        state = JournalConfirmation(confirmed = fingerprint, settled = true)
+    }
+    override fun settle() {
+        if (throwOnSettle) throw java.io.IOException("settle failed")
+        state = state.copy(settled = true)
+    }
+    override fun addListener(listener: () -> Unit): () -> Unit = {}
+}
 
 class FakePairingPublisher(
     private val identityStore: IdentityStore,

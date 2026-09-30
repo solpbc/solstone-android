@@ -12,10 +12,18 @@ import app.solstone.observer.formfactor.phone.PairingMismatchResult
 import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
 import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.platform.work.JournalRevokeOutcome
+import app.solstone.platform.work.confirmCurrentJournal
+import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.platform.work.syncStores
+
+import app.solstone.core.identity.PairingLease
+import app.solstone.core.pl.DirectEndpoint as PlDirectEndpoint
+import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
+import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 
 val PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "camera")
 
@@ -51,6 +59,22 @@ val phoneSpec = FormFactorSpec(
             context = context,
             coordinator = stores.journalIdentityCoordinator,
             onConfirmed = onConfirmed,
+            currentPairing = { (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing },
+            requestMark = {
+                val direct = stores.publisher.acquireDirectLease()
+                val relay = if (direct == null) stores.publisher.acquireRelayLease() else null
+                val instanceId = direct?.snapshot?.home?.instanceId ?: relay?.snapshot?.home?.instanceId
+                if (instanceId != null) {
+                    stores.journalIdentityCoordinator.onUsableConnection(instanceId) {
+                        if (direct != null) {
+                            openAuthenticatedClient(PlDirectEndpoint(direct.endpoint.host, direct.endpoint.port), direct.credential)
+                        } else {
+                            val r = relay as PairingLease.Relay
+                            openRelaySyncClient(r.relayOrigin, r.instanceId, r.deviceToken, r.credential)
+                        }
+                    }
+                }
+            },
             onMismatch = {
                 val revoke = revokeThisDeviceOnJournal(stores.publisher)
                 if (stores.publisher.forget() is GraphMutationResult.Cleared) {
@@ -62,6 +86,16 @@ val phoneSpec = FormFactorSpec(
                     }
                 } else {
                     PairingMismatchResult.LocalFailure
+                }
+            },
+            onYes = {
+                val snapshot = stores.publisher.currentSnapshot()
+                val fp = (snapshot as? PairingGraphSnapshot.Committed)?.pairing?.clientCertFingerprint
+                if (fp != null && confirmCurrentJournal(stores.publisher, stores.journalConfirmationStore, fp)) {
+                    SyncScheduler.enqueueAfterConfirm(context.applicationContext, PHONE_STREAM)
+                    true
+                } else {
+                    false
                 }
             },
         )

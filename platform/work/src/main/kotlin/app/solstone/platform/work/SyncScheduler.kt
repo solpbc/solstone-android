@@ -19,8 +19,10 @@ import java.util.concurrent.TimeUnit
 object SyncScheduler {
     const val PERIODIC_WORK_NAME = "solstone-sync-periodic"
     const val NOW_WORK_NAME = "solstone-sync-now"
+    const val AFTER_CONFIRM_WORK_NAME = "solstone-sync-after-confirm"
     const val STREAM_TYPE_KEY = "stream_type"
     internal val PERIODIC_WORK_POLICY = ExistingPeriodicWorkPolicy.UPDATE
+    internal val AFTER_CONFIRM_WORK_POLICY = ExistingWorkPolicy.REPLACE
 
     fun enqueuePeriodic(context: Context, streamType: String) {
         val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
@@ -51,6 +53,15 @@ object SyncScheduler {
             },
             Runnable::run,
         )
+    }
+
+    fun enqueueAfterConfirm(context: Context, streamType: String) {
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(networkConstraints())
+            .setInputData(streamInputData(streamType))
+            .build()
+        workManager.enqueueUniqueWork(AFTER_CONFIRM_WORK_NAME, AFTER_CONFIRM_WORK_POLICY, request)
     }
 
     /**

@@ -13,6 +13,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
+import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.identity.PairingGeneration
@@ -65,7 +66,6 @@ class RealHeartbeatFreshness : HeartbeatFreshness {
 }
 
 class RealPairProbe(
-
     private val credentialStore: ClientCredentialStore,
     private val identityStore: IdentityStore,
     private val endpointStore: EndpointStore,
@@ -77,6 +77,7 @@ class RealPairProbe(
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     private val publisher: PairingPublisher? = null,
     private val dialEvents: DialEventLog? = null,
+    private val confirmation: JournalConfirmationStore? = null,
 ) : PairProbe {
     override fun pairAndProbe(pairLink: String, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairAndProbe(
@@ -95,6 +96,7 @@ class RealPairProbe(
             onDialOutcome = dialEvents?.let { events ->
                 { endpoint, outcome -> events.record(endpoint.host, endpoint.port, outcome) }
             },
+            confirmation = confirmation,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,
@@ -126,6 +128,7 @@ class RealRelayPairProbe(
     private val journalMarkStore: JournalMarkStore? = null,
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     private val publisher: PairingPublisher? = null,
+    private val confirmation: JournalConfirmationStore? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
@@ -143,6 +146,7 @@ class RealRelayPairProbe(
             journalMarkStore = journalMarkStore,
             journalIdentityCoordinator = journalIdentityCoordinator,
             publisher = publisher,
+            confirmation = confirmation,
         )
         return HarnessPairProbeResult(
             handshakePinned = result.handshakePinned,

@@ -43,7 +43,9 @@ import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.FileSourceWishStore
+import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.core.identity.JournalMarkPresentation
@@ -161,6 +163,21 @@ class PhoneShellActivity : ComponentActivity() {
         container = runtime.container()
         stores = syncStores(applicationContext)
 
+        if (JournalConfirmationPolicy.consults && !promptedConfirmationThisProcess && savedInstanceState == null) {
+            val snapshot = displayedSnapshot()
+            if (snapshot is PairingGraphSnapshot.Committed) {
+                val inspected = stores.journalConfirmationStore.inspect()
+                val match = inspected is StoreInspectResult.Ready && inspected.value.confirmed == snapshot.home.clientCertFingerprint
+                if (!match) {
+                    promptedConfirmationThisProcess = true
+                    startActivity(
+                        Intent(this, ObserverActivity::class.java)
+                            .putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true),
+                    )
+                }
+            }
+        }
+
         val openedJournalPath = journalOpenPath(
             pushRegistration = BuildConfig.PUSH_REGISTRATION,
             freshCreate = savedInstanceState == null,
@@ -204,6 +221,14 @@ class PhoneShellActivity : ComponentActivity() {
             val statusState = statusViewModel.statusState
             val snapshot = (statusState as? LoadState.Loaded)?.value
             var pairingSnapshot by remember { mutableStateOf(displayedSnapshot()) }
+            var journalConfirmed by remember {
+                mutableStateOf(
+                    stores.journalConfirmationStore.inspect().let {
+                        it is StoreInspectResult.Ready &&
+                            it.value.confirmed == (displayedSnapshot() as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
+                    }
+                )
+            }
             var markPresentation by remember {
                 mutableStateOf(stores.journalIdentityCoordinator.currentPresentation())
             }
@@ -274,12 +299,23 @@ class PhoneShellActivity : ComponentActivity() {
                         }
                     }
                 }
+                val removeConfirmationListener = stores.journalConfirmationStore.addListener {
+                    mainHandler.post {
+                        val currentFp = (displayedSnapshot() as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
+                        val inspected = stores.journalConfirmationStore.inspect()
+                        journalConfirmed = inspected is StoreInspectResult.Ready && inspected.value.confirmed == currentFp
+                    }
+                }
                 onDispose {
                     pairingSubscription.cancel()
                     removeMarkListener()
+                    removeConfirmationListener()
                 }
             }
             LaunchedEffect(pairingSnapshot.sequenceNumber) {
+                val currentFp = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
+                val inspected = stores.journalConfirmationStore.inspect()
+                journalConfirmed = inspected is StoreInspectResult.Ready && inspected.value.confirmed == currentFp
                 if (pairingSnapshot !is PairingGraphSnapshot.Committed) journalOpen = false
                 // The note is about the journal this device just left. Once another pairing commits,
                 // "your journal" names the new one, and the note would read as being about it.
@@ -303,6 +339,7 @@ class PhoneShellActivity : ComponentActivity() {
                 DiagnosticLogRead.Unreadable -> "the event log couldn't be read."
                 null -> "the event log couldn't be read."
             }
+            val journalSheetOpenState = journalOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
@@ -324,12 +361,19 @@ class PhoneShellActivity : ComponentActivity() {
                     openPairingScanner()
                 },
                 onOpenJournal = {
-                    journalPath = null
-                    journalOpen = true
+                    if (pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed) {
+                        journalPath = null
+                        journalOpen = true
+                    } else {
+                        startActivity(
+                            Intent(this@PhoneShellActivity, ObserverActivity::class.java)
+                                .putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true),
+                        )
+                    }
                 },
                 journalPaired = pairingSnapshot is PairingGraphSnapshot.Committed,
                 journalMarkPresentation = currentMarkPresentation,
-                journalSheetOpen = journalOpen,
+                journalSheetOpen = journalSheetOpenState,
                 journalFacts = journalFacts,
                 journalPushEnabled = BuildConfig.PUSH_REGISTRATION,
                 journalNotificationRow = journalNotificationRow,
@@ -404,7 +448,7 @@ class PhoneShellActivity : ComponentActivity() {
                                     build = build,
                                     osVersion = Build.VERSION.RELEASE,
                                     state = supportState(phoneDefaultDetailStatusOf(statusState)),
-                                ),
+                                 ),
                             ),
                         ),
                     )
@@ -434,7 +478,7 @@ class PhoneShellActivity : ComponentActivity() {
                 version = appVersion,
                 captureWidthDp = capture.windowWidthDp,
             )
-            if (journalOpen && pairingSnapshot is PairingGraphSnapshot.Committed) {
+            if (journalSheetOpenState) {
                 // 🔴 The theme is applied INSIDE `PhoneShell`, and this sheet is a sibling of it
                 // rather than a child — so it had been drawing on Material's stock scheme: a
                 // lavender header, a purple `close`, a purple `try again`. The journal is the
@@ -951,7 +995,8 @@ class PhoneShellActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    companion object {
+        internal var promptedConfirmationThisProcess = false
         const val PERMISSION_REQUEST = 10
         // The embedded distributor delivers through Google Play services.
         const val EMBEDDED_DISTRIBUTOR_LABEL = "Google Play services"

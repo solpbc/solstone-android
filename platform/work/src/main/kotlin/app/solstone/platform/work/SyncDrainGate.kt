@@ -13,4 +13,9 @@ object SyncDrainGate {
     fun release() {
         permit.release()
     }
+
+    fun resetForTest() {
+        permit.drainPermits()
+        permit.release()
+    }
 }

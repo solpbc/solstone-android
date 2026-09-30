@@ -25,10 +25,12 @@ import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.push.DistributorPort
 import app.solstone.core.push.PushDeliveryState
 import app.solstone.core.push.PushRegistrationCoordinator
+import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
+import app.solstone.platform.identity.file.FileJournalConfirmationStore
 import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
 import app.solstone.platform.identity.file.FilePairingGraph
@@ -46,6 +48,7 @@ data class SyncStores(
     val relayAccessCoordinator: RelayAccessRefreshCoordinator,
     val journalMarkStore: JournalMarkStore,
     val journalIdentityCoordinator: JournalIdentityRefreshCoordinator,
+    val journalConfirmationStore: JournalConfirmationStore,
     val pushRegistration: PushRegistrationCoordinator? = null,
 ) {
     val pushDeliveryState: PushDeliveryState
@@ -270,6 +273,7 @@ fun syncStores(context: Context): SyncStores {
     val protector = AndroidKeyStoreProtector()
     val journalVersionStore = FileJournalVersionStore(File(dir, "journal_version.tsv"))
     val journalMarkStore = FileJournalMarkStore(File(dir, "journal_mark.json"))
+    val journalConfirmationStore = FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
     val identityStore = FileIdentityStore(File(dir, "identity.tsv"), protector)
     val graph = SyncStoresHolder.getPublisher(dir, protector)
     val mutator = SyncStoresHolder.getMutator(graph)
@@ -286,6 +290,7 @@ fun syncStores(context: Context): SyncStores {
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
         journalMarkStore = journalMarkStore,
         journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, graph),
+        journalConfirmationStore = journalConfirmationStore,
         pushRegistration = pushCoordinator,
     )
 }

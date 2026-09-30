@@ -23,6 +23,7 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserOrigin
+import app.solstone.platform.work.syncStores
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,6 +57,7 @@ class JournalOpenRuntimeTest {
     fun setUp() {
         resetObserverRuntime()
         resetPersistence(context)
+        syncStores(context).journalConfirmationStore.confirm("client-fp")
         loadedUrls.clear()
         PhoneJournalTestHooks.onLoadUrl = { loadedUrls.add(it) }
     }

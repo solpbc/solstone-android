@@ -25,11 +25,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import app.solstone.core.identity.PairingGeneration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -412,24 +414,51 @@ fun JournalMarkCard(
     }
 }
 
+internal fun isPairingConfirmationEnabled(
+    coordinator: JournalIdentityRefreshCoordinator?,
+    presentationGeneration: PairingGeneration?,
+    currentPairing: PairingGeneration?,
+    presentation: JournalMarkPresentation,
+): Boolean {
+    if (coordinator == null) return true
+    if (currentPairing == null || presentationGeneration != currentPairing) return false
+    return when (presentation) {
+        is JournalMarkPresentation.Identified,
+        JournalMarkPresentation.Generic,
+        JournalMarkPresentation.Unavailable -> true
+        JournalMarkPresentation.Loading -> false
+    }
+}
+
 @Composable
 fun PairingSuccessMark(
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit = {},
     onMismatch: () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
+    onYes: (() -> Boolean)? = null,
+    requestMark: (() -> Unit)? = null,
+    currentPairing: () -> PairingGeneration? = { null },
     modifier: Modifier = Modifier,
 ) {
+    val activePairing = currentPairing()
     var presentation by remember {
         mutableStateOf(coordinator?.currentPresentation() ?: JournalMarkPresentation.Generic)
+    }
+    var generation by remember {
+        mutableStateOf(coordinator?.currentPresentationGeneration())
     }
     val view = LocalView.current
     DisposableEffect(coordinator) {
         if (coordinator != null) {
-            val remove = coordinator.addListener { newPres ->
+            val remove = coordinator.addGenerationListener { newGen, newPres ->
                 if (Looper.myLooper() == Looper.getMainLooper()) {
+                    generation = newGen
                     presentation = newPres
                 } else {
-                    view.post { presentation = newPres }
+                    view.post {
+                        generation = newGen
+                        presentation = newPres
+                    }
                 }
             }
             onDispose { remove() }
@@ -437,6 +466,27 @@ fun PairingSuccessMark(
             onDispose { }
         }
     }
+
+    val isCurrentGeneration = coordinator == null || (activePairing != null && generation == activePairing)
+    val effectivePresentation = if (coordinator != null && (!isCurrentGeneration || presentation is JournalMarkPresentation.Loading)) {
+        JournalMarkPresentation.Loading
+    } else {
+        presentation
+    }
+
+    LaunchedEffect(activePairing, coordinator) {
+        if (coordinator != null && activePairing != null && (generation != activePairing || presentation is JournalMarkPresentation.Loading)) {
+            requestMark?.invoke()
+        }
+    }
+
+    val yesEnabled = isPairingConfirmationEnabled(
+        coordinator = coordinator,
+        presentationGeneration = generation,
+        currentPairing = activePairing,
+        presentation = effectivePresentation,
+    )
+
     var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
     var mismatchResult by remember { mutableStateOf<PairingMismatchResult?>(null) }
     val scope = rememberCoroutineScope()
@@ -445,7 +495,7 @@ fun PairingSuccessMark(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.fillMaxWidth(),
     ) {
-        JournalMarkCard(presentation = presentation)
+        JournalMarkCard(presentation = effectivePresentation)
         Spacer(Modifier.height(20.dp))
         when (confirmation) {
             PairingConfirmation.Waiting -> {
@@ -466,9 +516,17 @@ fun PairingSuccessMark(
                 Spacer(Modifier.height(20.dp))
                 Button(
                     onClick = {
-                        confirmation = PairingConfirmation.Confirmed
-                        onConfirmed()
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                onYes?.invoke() == true
+                            }
+                            if (ok) {
+                                confirmation = PairingConfirmation.Confirmed
+                                onConfirmed()
+                            }
+                        }
                     },
+                    enabled = yesEnabled,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) { Text("yes, this is my journal") }
                 Spacer(Modifier.height(8.dp))
@@ -536,6 +594,9 @@ fun createPhonePairingMarkView(
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit,
     onMismatch: () -> PairingMismatchResult,
+    onYes: (() -> Boolean)? = null,
+    requestMark: (() -> Unit)? = null,
+    currentPairing: () -> PairingGeneration? = { null },
 ): View {
     return ComposeView(context).apply {
         setContent {
@@ -544,6 +605,9 @@ fun createPhonePairingMarkView(
                     coordinator = coordinator,
                     onConfirmed = onConfirmed,
                     onMismatch = onMismatch,
+                    onYes = onYes,
+                    requestMark = requestMark,
+                    currentPairing = currentPairing,
                 )
             }
         }

@@ -41,17 +41,25 @@ class OwnerTaskLaunchTest {
         assertFalse(launch(isViewAction = true, hasData = true, handlesPairLinks = true, firstLaunch = false))
     }
 
+    @Test
+    fun confirmationRouteIsAnOwnerTask() {
+        assertTrue(launch(confirmsJournal = true))
+        assertTrue(launch(confirmsJournal = true, firstLaunch = false))
+    }
+
     private fun launch(
         scansPairQr: Boolean = false,
         isViewAction: Boolean = false,
         hasData: Boolean = false,
         handlesPairLinks: Boolean = false,
         firstLaunch: Boolean = true,
+        confirmsJournal: Boolean = false,
     ): Boolean = isOwnerTaskLaunch(
         scansPairQr = scansPairQr,
         isViewAction = isViewAction,
         hasData = hasData,
         handlesPairLinks = handlesPairLinks,
         firstLaunch = firstLaunch,
+        confirmsJournal = confirmsJournal,
     )
 }

@@ -123,6 +123,7 @@ class ObserverActivity : ComponentActivity() {
             hasData = target.data != null,
             handlesPairLinks = spec.handlesPairLinks,
             firstLaunch = firstLaunch,
+            confirmsJournal = target.getBooleanExtra(EXTRA_CONFIRM_JOURNAL, false),
         )
     }
 
@@ -172,6 +173,10 @@ class ObserverActivity : ComponentActivity() {
     }
 
     private fun routeDirectIntent(intent: Intent): Boolean = when {
+        intent.getBooleanExtra(EXTRA_CONFIRM_JOURNAL, false) -> {
+            harnessUi.showPaired()
+            true
+        }
         intent.getBooleanExtra(EXTRA_SCAN_PAIR_QR, false) -> {
             enterScan()
             true
@@ -181,6 +186,7 @@ class ObserverActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SCAN_PAIR_QR = "app.solstone.observer.scaffold.EXTRA_SCAN_PAIR_QR"
+        const val EXTRA_CONFIRM_JOURNAL = "app.solstone.observer.scaffold.EXTRA_CONFIRM_JOURNAL"
         private const val PERMISSION_REQUEST = 10
         private const val CAMERA_FOR_SCAN_REQUEST = 11
         private const val STATE_CAMERA_ASK = "app.solstone.observer.scaffold.STATE_CAMERA_ASK"

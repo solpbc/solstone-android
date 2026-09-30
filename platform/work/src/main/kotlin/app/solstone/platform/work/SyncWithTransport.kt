@@ -25,6 +25,7 @@ internal fun <C> syncWithTransport(
     finisher: ConfirmedCopyFinisher,
     onUsableConnection: (() -> Unit)? = null,
     spoolDir: File? = null,
+    allowsOwnerMaterial: Boolean = true,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)
@@ -74,6 +75,9 @@ internal fun <C> syncWithTransport(
             ReachabilityVerdict.SKIP -> SyncOutcome.FAILURE
             ReachabilityVerdict.RESCHEDULE -> SyncOutcome.RETRY
             ReachabilityVerdict.DRAIN -> {
+                if (!allowsOwnerMaterial) {
+                    return@use SyncOutcome.SUCCESS
+                }
                 val report = drainSegments(
                     store = store,
                     reconcile = SegmentReconciler(c)::diff,

@@ -118,6 +118,7 @@ class DirectAndRelayPairMarkHookTest {
         journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
         journalMarkStore: JournalMarkStore? = null,
         publisher: app.solstone.core.identity.PairingPublisher? = null,
+        confirmation: app.solstone.core.identity.JournalConfirmationStore? = FakeJournalConfirmationStore(),
     ): PairProbeResult {
         val pub = publisher ?: FakePairingPublisher(
             identityStore = identityStore,
@@ -137,6 +138,7 @@ class DirectAndRelayPairMarkHookTest {
             journalIdentityCoordinator = journalIdentityCoordinator,
             journalMarkStore = journalMarkStore,
             publisher = pub,
+            confirmation = confirmation,
         )
     }
 

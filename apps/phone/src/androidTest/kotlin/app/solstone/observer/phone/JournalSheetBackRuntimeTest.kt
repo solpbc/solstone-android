@@ -34,6 +34,7 @@ import app.solstone.core.pl.browser.BrowserTerminalClass
 import app.solstone.core.pl.browser.BrowserTerminalReason
 import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.core.pl.browser.JournalBrowserUpstream
+import app.solstone.platform.work.syncStores
 import java.net.URI
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicReference
@@ -68,6 +69,7 @@ class JournalSheetBackRuntimeTest {
     fun setUp() {
         resetObserverRuntime()
         resetPersistence(context)
+        syncStores(context).journalConfirmationStore.confirm("client-fp")
         history.clear()
         sessions.clear()
         latestSession.set(null)

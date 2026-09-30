@@ -567,6 +567,7 @@ class DirectPairCommitPolicyTest {
             statusProbe = statusProbe,
             publisher = publisher,
             onDialOutcome = onDialOutcome,
+            confirmation = FakeJournalConfirmationStore(),
         )
     }
 

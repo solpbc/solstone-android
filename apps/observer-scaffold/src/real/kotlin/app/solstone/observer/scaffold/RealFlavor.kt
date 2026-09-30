@@ -55,6 +55,7 @@ fun buildObserverFlavor(
         journalIdentityCoordinator = stores.journalIdentityCoordinator,
         publisher = stores.publisher,
         dialEvents = DialDiagnostics.events,
+        confirmation = stores.journalConfirmationStore,
     )
     val relayPairProbe = RealRelayPairProbe(
         credentialStore = stores.credentialStore,
@@ -67,6 +68,7 @@ fun buildObserverFlavor(
         journalMarkStore = stores.journalMarkStore,
         journalIdentityCoordinator = stores.journalIdentityCoordinator,
         publisher = stores.publisher,
+        confirmation = stores.journalConfirmationStore,
     )
     val plStatusProbe = RealPlStatusProbe(
         endpointStore = stores.endpointStore,

@@ -51,6 +51,10 @@ android {
 dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:sources"))
+    implementation(project(":core:identity"))
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation(kotlin("test"))
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")

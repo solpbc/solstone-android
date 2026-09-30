@@ -103,6 +103,8 @@ internal class FakeDrainStore(
     override fun upsertSyncState(row: SyncStateRow) {
         syncState = row
     }
+
+    override fun segmentRow(id: String): SegmentRow? = rows[id]
 }
 
 internal fun segment(
