@@ -228,41 +228,96 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
-    fun yesClickSuccessShowsConnectedSentenceAndCallsOnConfirmed() {
-        val stores = listOf(
-            FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, null, pairingP))),
-            FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, sampleMark, pairingP))),
-            FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "unreadable")),
-        )
+    fun yesClickSuccessWithGenericShowsConnectedSentenceAndCallsOnConfirmed() {
+        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, null, pairingP)))
+        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        var onYesCalled = false
+        var confirmedCalled = false
 
-        for (store in stores) {
-            val publisher = StubPublisher(committedSnapshot(pairingP))
-            val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
-            var onYesCalled = false
-            var confirmedCalled = false
-
-            composeRule.setContent {
-                PhoneTheme {
-                    PairingSuccessMark(
-                        coordinator = coordinator,
-                        currentPairing = { pairingP },
-                        onYes = {
-                            onYesCalled = true
-                            true
-                        },
-                        onConfirmed = { confirmedCalled = true },
-                    )
-                }
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = {
+                        onYesCalled = true
+                        true
+                    },
+                    onConfirmed = { confirmedCalled = true },
+                )
             }
-
-            composeRule.onNodeWithText("yes, this is my journal").performClick()
-            composeRule.waitForIdle()
-
-            assertTrue(onYesCalled)
-            assertTrue(confirmedCalled)
-            composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
-            coordinator.close()
         }
+
+        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.waitForIdle()
+
+        assertTrue(onYesCalled)
+        assertTrue(confirmedCalled)
+        composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
+        coordinator.close()
+    }
+
+    @Test
+    fun yesClickSuccessWithIdentifiedShowsConnectedSentenceAndCallsOnConfirmed() {
+        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, sampleMark, pairingP)))
+        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        var onYesCalled = false
+        var confirmedCalled = false
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = {
+                        onYesCalled = true
+                        true
+                    },
+                    onConfirmed = { confirmedCalled = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.waitForIdle()
+
+        assertTrue(onYesCalled)
+        assertTrue(confirmedCalled)
+        composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
+        coordinator.close()
+    }
+
+    @Test
+    fun yesClickSuccessWithUnavailableShowsConnectedSentenceAndCallsOnConfirmed() {
+        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "unreadable"))
+        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        var onYesCalled = false
+        var confirmedCalled = false
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = {
+                        onYesCalled = true
+                        true
+                    },
+                    onConfirmed = { confirmedCalled = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.waitForIdle()
+
+        assertTrue(onYesCalled)
+        assertTrue(confirmedCalled)
+        composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
+        coordinator.close()
     }
 
     @Test

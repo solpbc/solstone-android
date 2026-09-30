@@ -421,7 +421,7 @@ internal fun isPairingConfirmationEnabled(
     presentation: JournalMarkPresentation,
 ): Boolean {
     if (coordinator == null) return true
-    if (currentPairing == null || presentationGeneration != currentPairing) return false
+    if (presentationGeneration != currentPairing) return false
     return when (presentation) {
         is JournalMarkPresentation.Identified,
         JournalMarkPresentation.Generic,
@@ -467,7 +467,7 @@ fun PairingSuccessMark(
         }
     }
 
-    val isCurrentGeneration = coordinator == null || (activePairing != null && generation == activePairing)
+    val isCurrentGeneration = coordinator == null || (generation == activePairing)
     val effectivePresentation = if (coordinator != null && (!isCurrentGeneration || presentation is JournalMarkPresentation.Loading)) {
         JournalMarkPresentation.Loading
     } else {
