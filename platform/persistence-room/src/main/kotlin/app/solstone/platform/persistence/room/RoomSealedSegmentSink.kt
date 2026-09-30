@@ -55,3 +55,6 @@ fun segmentRowId(day: String, stream: String, dirSegment: String): String = "$da
  */
 fun SegmentDao.isLeafOccupied(day: String, stream: String, leaf: String): Boolean =
     segmentById(segmentRowId(day, stream, leaf)) != null
+
+fun SegmentDao.occupiedDirSegments(day: String, stream: String): Set<String> =
+    segmentsByDay(day).asSequence().filter { it.stream == stream }.map { it.dirSegment }.toSet()

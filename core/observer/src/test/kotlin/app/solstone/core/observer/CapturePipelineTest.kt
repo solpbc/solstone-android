@@ -15,6 +15,8 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
+import app.solstone.core.spool.CountingSpoolWriter
+import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealResult
 import app.solstone.core.spool.SealState
@@ -385,6 +387,351 @@ class CapturePipelineTest {
         assertTrue(diags.any { it.startsWith("capture event=flush-timeout type=TimeoutException message=") })
     }
 
+    @Test
+    fun threePipelinesWithSharedSpoolWriterAndSlightlyDifferentEndTimesAllocateThreeLeavesWithoutRelease() {
+        val baseDir = java.nio.file.Files.createTempDirectory("pipeline-three-leaves")
+        try {
+            val spoolWriter = FileSpoolWriter(baseDir)
+            val sink = ThreadCapturingSink()
+            val zoneId = java.time.ZoneId.of("Europe/Paris")
+            val windowStart = 1_790_706_300_000L
+            val ends = listOf(windowStart + 10_100L, windowStart + 10_400L, windowStart + 10_700L)
+            val payloadNames = listOf("one.bin", "two.bin", "three.bin")
+            val payloadBytesMap = mapOf(
+                "one.bin" to "one-bytes".toByteArray(),
+                "two.bin" to "two-bytes".toByteArray(),
+                "three.bin" to "three-bytes".toByteArray(),
+            )
+            val provider = MapPayloadProvider(payloadBytesMap)
+
+            for (i in 0 until 3) {
+                val emission = SourceEmission(
+                    sourceId = "audio",
+                    stream = MAIN_STREAM,
+                    sourceKind = SourceKind.OBSERVER,
+                    captureStartEpochMs = windowStart,
+                    captureEndEpochMs = ends[i],
+                    payloadRefs = listOf(PayloadRef(payloadNames[i], "application/octet-stream", payloadBytesMap.getValue(payloadNames[i]).size.toLong(), null)),
+                    metadata = emptyMap(),
+                    gaps = emptyList(),
+                )
+                val engine = ScriptedEngine(listOf(emission))
+                val pipeline = CapturePipeline(
+                    segmenter = Segmenter(zoneId),
+                    spoolWriter = spoolWriter,
+                    sealedSink = sink,
+                    payloadBytes = provider,
+                    engines = listOf(engine),
+                    nowProvider = { windowStart + 100_000L },
+                    tickIntervalMs = 10_000L,
+                )
+                pipeline.start()
+                assertTrue(engine.emitted.await(5, TimeUnit.SECONDS))
+                pipeline.stop()
+            }
+
+            assertEquals(3, sink.persistedCount)
+            assertEquals(0, provider.released.size)
+
+            val wireKey = sink.persistedSegments.first().wireKeys.segment
+            val day = sink.persistedSegments.first().wireKeys.day
+            val expectedLeaves = listOf(wireKey, "${wireKey}__ws$windowStart", "${wireKey}__2")
+            expectedLeaves.forEach { leaf ->
+                val leafDir = baseDir.resolve(day).resolve(MAIN_STREAM).resolve(leaf)
+                assertTrue(java.nio.file.Files.isDirectory(leafDir), "Expected leaf dir $leafDir")
+                val manifestText = String(java.nio.file.Files.readAllBytes(leafDir.resolve("manifest")), Charsets.UTF_8)
+                assertTrue(manifestText.contains("segment=$wireKey\n"))
+            }
+        } finally {
+            baseDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun twoPipelinesWithDifferentZonesAndByteIdenticalDescriptorsAllocateTwoLeavesWithoutRelease() {
+        val baseDir = java.nio.file.Files.createTempDirectory("pipeline-two-zones")
+        try {
+            val spoolWriter = FileSpoolWriter(baseDir)
+            val sink = ThreadCapturingSink()
+            val zones = listOf(java.time.ZoneId.of("Asia/Tokyo"), java.time.ZoneId.of("Asia/Seoul"))
+            val windowStart = 1_790_706_300_000L
+            val windowEnd = windowStart + 300_000L
+            val bytes = "same-payload-bytes".toByteArray()
+            val provider = MapPayloadProvider(mapOf("audio.m4a" to bytes))
+
+            for (i in 0 until 2) {
+                val emission = SourceEmission(
+                    sourceId = "audio",
+                    stream = MAIN_STREAM,
+                    sourceKind = SourceKind.OBSERVER,
+                    captureStartEpochMs = windowStart,
+                    captureEndEpochMs = windowEnd,
+                    payloadRefs = listOf(PayloadRef("audio.m4a", "audio/mp4", bytes.size.toLong(), null)),
+                    metadata = emptyMap(),
+                    gaps = emptyList(),
+                )
+                val engine = ScriptedEngine(listOf(emission))
+                val pipeline = CapturePipeline(
+                    segmenter = Segmenter(zones[i]),
+                    spoolWriter = spoolWriter,
+                    sealedSink = sink,
+                    payloadBytes = provider,
+                    engines = listOf(engine),
+                    nowProvider = { windowStart + 100_000L },
+                    tickIntervalMs = 10_000L,
+                )
+                pipeline.start()
+                assertTrue(engine.emitted.await(5, TimeUnit.SECONDS))
+                pipeline.stop()
+            }
+
+            assertEquals(2, sink.persistedCount)
+            assertEquals(0, provider.released.size)
+
+            val wireKey = sink.persistedSegments.first().wireKeys.segment
+            val day = sink.persistedSegments.first().wireKeys.day
+            val expectedLeaves = listOf(wireKey, "${wireKey}__ws$windowStart")
+            expectedLeaves.forEach { leaf ->
+                val leafDir = baseDir.resolve(day).resolve(MAIN_STREAM).resolve(leaf)
+                assertTrue(java.nio.file.Files.isDirectory(leafDir), "Expected leaf dir $leafDir")
+            }
+        } finally {
+            baseDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun providerOpenThrowEmitsDiagAndLeavesExistingPersistedStateUntouched() {
+        val baseDir = java.nio.file.Files.createTempDirectory("pipeline-open-throw")
+        try {
+            val spoolWriter = FileSpoolWriter(baseDir)
+            val sink = ThreadCapturingSink()
+            val diagLogs = mutableListOf<String>()
+            val windowStart = 1_790_706_300_000L
+            val zoneId = java.time.ZoneId.of("Europe/Paris")
+
+            var shouldThrow = false
+            val provider = object : PayloadBytesProvider {
+                val released = mutableListOf<SegmentPayload>()
+                override fun open(payload: SegmentPayload): ByteArrayInputStream {
+                    if (shouldThrow) throw IllegalStateException("provider read failed")
+                    return ByteArrayInputStream(ByteArray(payload.ref.byteSize.toInt()) { 1 })
+                }
+                override fun release(payload: SegmentPayload) {
+                    released += payload
+                }
+            }
+
+            // First seal succeeds
+            val emission1 = SourceEmission(
+                sourceId = "audio",
+                stream = MAIN_STREAM,
+                sourceKind = SourceKind.OBSERVER,
+                captureStartEpochMs = windowStart,
+                captureEndEpochMs = windowStart + 300_000L,
+                payloadRefs = listOf(PayloadRef("first.bin", "application/octet-stream", 4L, null)),
+                metadata = emptyMap(),
+                gaps = emptyList(),
+            )
+            val engine1 = ScriptedEngine(listOf(emission1))
+            val pipeline1 = CapturePipeline(
+                segmenter = Segmenter(zoneId),
+                spoolWriter = spoolWriter,
+                sealedSink = sink,
+                payloadBytes = provider,
+                engines = listOf(engine1),
+                nowProvider = { windowStart + 100_000L },
+                tickIntervalMs = 10_000L,
+                diag = { diagLogs += it },
+            )
+            pipeline1.start()
+            assertTrue(engine1.emitted.await(5, TimeUnit.SECONDS))
+            pipeline1.stop()
+
+            assertEquals(1, sink.persistedCount)
+            val firstPersistedFiles = sink.persistedResults.single().manifest.files
+
+            // Second seal throws in open
+            shouldThrow = true
+            val emission2 = SourceEmission(
+                sourceId = "audio",
+                stream = MAIN_STREAM,
+                sourceKind = SourceKind.OBSERVER,
+                captureStartEpochMs = windowStart,
+                captureEndEpochMs = windowStart + 300_000L,
+                payloadRefs = listOf(PayloadRef("second.bin", "application/octet-stream", 8L, null)),
+                metadata = emptyMap(),
+                gaps = emptyList(),
+            )
+            val engine2 = ScriptedEngine(listOf(emission2))
+            val pipeline2 = CapturePipeline(
+                segmenter = Segmenter(zoneId),
+                spoolWriter = spoolWriter,
+                sealedSink = sink,
+                payloadBytes = provider,
+                engines = listOf(engine2),
+                nowProvider = { windowStart + 100_000L },
+                tickIntervalMs = 10_000L,
+                diag = { diagLogs += it },
+            )
+            pipeline2.start()
+            assertTrue(engine2.emitted.await(5, TimeUnit.SECONDS))
+            pipeline2.stop()
+
+            assertTrue(diagLogs.any { it.contains("capture event=segment-seal-failed") })
+            assertEquals(1, sink.persistedCount)
+            assertTrue(sink.persistedResults.all { it.state == SealState.SEALED })
+            assertEquals(firstPersistedFiles, sink.persistedResults.single().manifest.files)
+            assertEquals(1, provider.released.size)
+        } finally {
+            baseDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun twoPipelinesWithMetadataAndSecondWithAudioAllocatesOwnLeafAndShaWithoutAudioRelease() {
+        val baseDir = java.nio.file.Files.createTempDirectory("pipeline-meta-audio")
+        try {
+            val spoolWriter = FileSpoolWriter(baseDir)
+            val sink = ThreadCapturingSink()
+            val zoneId = java.time.ZoneId.of("Europe/Paris")
+            val windowStart = 1_790_706_300_000L
+            val windowEnd = windowStart + 300_000L
+
+            val metaBytes = "{\"ts\":123}\n".toByteArray()
+            val audioBytes = "audio-recording-bytes-sample".toByteArray()
+            val provider = MapPayloadProvider(
+                mapOf(
+                    "metadata.jsonl" to metaBytes,
+                    "audio.m4a" to audioBytes,
+                ),
+            )
+
+            // Pipeline 1: metadata only
+            val emission1 = SourceEmission(
+                sourceId = "metadata",
+                stream = MAIN_STREAM,
+                sourceKind = SourceKind.OBSERVER,
+                captureStartEpochMs = windowStart,
+                captureEndEpochMs = windowEnd,
+                payloadRefs = listOf(PayloadRef("metadata.jsonl", "application/x-ndjson", metaBytes.size.toLong(), null)),
+                metadata = emptyMap(),
+                gaps = emptyList(),
+            )
+            val engine1 = ScriptedEngine(listOf(emission1))
+            val pipeline1 = CapturePipeline(
+                segmenter = Segmenter(zoneId),
+                spoolWriter = spoolWriter,
+                sealedSink = sink,
+                payloadBytes = provider,
+                engines = listOf(engine1),
+                nowProvider = { windowStart + 100_000L },
+                tickIntervalMs = 10_000L,
+            )
+            pipeline1.start()
+            assertTrue(engine1.emitted.await(5, TimeUnit.SECONDS))
+            pipeline1.stop()
+
+            // Pipeline 2: metadata + audio
+            val emission2Meta = SourceEmission(
+                sourceId = "metadata",
+                stream = MAIN_STREAM,
+                sourceKind = SourceKind.OBSERVER,
+                captureStartEpochMs = windowStart,
+                captureEndEpochMs = windowEnd,
+                payloadRefs = listOf(PayloadRef("metadata.jsonl", "application/x-ndjson", metaBytes.size.toLong(), null)),
+                metadata = emptyMap(),
+                gaps = emptyList(),
+            )
+            val emission2Audio = SourceEmission(
+                sourceId = "audio",
+                stream = MAIN_STREAM,
+                sourceKind = SourceKind.OBSERVER,
+                captureStartEpochMs = windowStart,
+                captureEndEpochMs = windowEnd,
+                payloadRefs = listOf(PayloadRef("audio.m4a", "audio/mp4", audioBytes.size.toLong(), null)),
+                metadata = emptyMap(),
+                gaps = emptyList(),
+            )
+            val engine2 = ScriptedEngine(listOf(emission2Meta, emission2Audio))
+            val pipeline2 = CapturePipeline(
+                segmenter = Segmenter(zoneId),
+                spoolWriter = spoolWriter,
+                sealedSink = sink,
+                payloadBytes = provider,
+                engines = listOf(engine2),
+                nowProvider = { windowStart + 100_000L },
+                tickIntervalMs = 10_000L,
+            )
+            pipeline2.start()
+            assertTrue(engine2.emitted.await(5, TimeUnit.SECONDS))
+            pipeline2.stop()
+
+            assertEquals(2, sink.persistedCount)
+            assertEquals(0, provider.released.size)
+
+            val secondDir = sink.persistedResults[1].directory!!
+            val audioOnDisk = secondDir.resolve("audio.m4a")
+            assertTrue(java.nio.file.Files.exists(audioOnDisk))
+            assertEquals(audioBytes.toList(), java.nio.file.Files.readAllBytes(audioOnDisk).toList())
+
+            val audioManifestFile = sink.persistedResults[1].manifest.files.first { it.name == "audio.m4a" }
+            val expectedSha = app.solstone.core.segment.sha256(audioOnDisk)
+            assertEquals(expectedSha, audioManifestFile.sha256)
+        } finally {
+            baseDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun throwingZoneSourcePipelineSealsAndDoesNotReleasePayloads() {
+        val writer = CountingSpoolWriter()
+        val sink = ThreadCapturingSink()
+        val provider = RecordingPayloadProvider()
+        val windowStart = 1_790_706_300_000L
+
+        val segmenter = Segmenter(
+            zoneSource = { throw IllegalStateException("zone source failure") },
+        )
+        val emission1 = SourceEmission(
+            sourceId = "audio",
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = windowStart,
+            captureEndEpochMs = windowStart + 300_000L,
+            payloadRefs = listOf(PayloadRef("audio1.m4a", "audio/mp4", 4L, null)),
+            metadata = emptyMap(),
+            gaps = emptyList(),
+        )
+        val emission2 = SourceEmission(
+            sourceId = "audio",
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = windowStart + 300_000L,
+            captureEndEpochMs = windowStart + 600_000L,
+            payloadRefs = listOf(PayloadRef("audio2.m4a", "audio/mp4", 4L, null)),
+            metadata = emptyMap(),
+            gaps = emptyList(),
+        )
+        val engine = ScriptedEngine(listOf(emission1, emission2))
+        val pipeline = CapturePipeline(
+            segmenter = segmenter,
+            spoolWriter = writer,
+            sealedSink = sink,
+            payloadBytes = provider,
+            engines = listOf(engine),
+            nowProvider = { windowStart + 700_000L },
+            tickIntervalMs = 10_000L,
+        )
+        pipeline.start()
+        assertTrue(engine.emitted.await(5, TimeUnit.SECONDS))
+        pipeline.stop()
+
+        assertEquals(2, writer.sealedCount)
+        assertEquals(2, sink.persistedCount)
+        assertTrue(provider.released.isEmpty(), "No payloads should have been dropped or released")
+    }
+
     private class JoiningEngine : ContinuousSourceEngine {
         val emitted = CountDownLatch(1)
         val joined = AtomicBoolean(false)
@@ -511,13 +858,30 @@ class CapturePipelineTest {
     private class ThreadCapturingSink : SealedSegmentSink {
         val threadIds = mutableListOf<Long>()
         val persistedSegments = CopyOnWriteArrayList<SealedSegment>()
+        val persistedResults = CopyOnWriteArrayList<SealResult>()
         var persistedCount = 0
             private set
 
         override fun persistSealed(segment: SealedSegment, result: SealResult, sealedAtEpochMs: Long) {
             threadIds += Thread.currentThread().id
             persistedSegments += segment
+            persistedResults += result
             persistedCount += 1
+        }
+    }
+
+    private class MapPayloadProvider(private val bytesMap: Map<String, ByteArray>) : PayloadBytesProvider {
+        val released = mutableListOf<SegmentPayload>()
+        val opened = mutableListOf<SegmentPayload>()
+
+        override fun open(payload: SegmentPayload): ByteArrayInputStream {
+            opened += payload
+            val bytes = bytesMap[payload.ref.name] ?: ByteArray(payload.ref.byteSize.toInt())
+            return ByteArrayInputStream(bytes)
+        }
+
+        override fun release(payload: SegmentPayload) {
+            released += payload
         }
     }
 

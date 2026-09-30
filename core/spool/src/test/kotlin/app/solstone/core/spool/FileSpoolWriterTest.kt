@@ -3,6 +3,8 @@
 
 package app.solstone.core.spool
 
+import app.solstone.core.model.BundleFile
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.model.WireKeys
 import app.solstone.core.segment.SealedSegment
@@ -53,8 +55,8 @@ class FileSpoolWriterTest {
             val provider = provider("second.bin" to "second-bytes".toByteArray())
             val writer = FileSpoolWriter(
                 baseDir = baseDir,
-                isLeafOccupied = { day, stream, leaf ->
-                    day == DAY && stream == STREAM && leaf == WIRE_SEGMENT
+                occupiedLeaves = { day, stream ->
+                    if (day == DAY && stream == STREAM) setOf(WIRE_SEGMENT) else emptySet()
                 },
             )
 
@@ -71,7 +73,7 @@ class FileSpoolWriterTest {
     @Test
     fun resealSameSegmentReturnsExistingFinalWithoutDeleting() {
         withTempDir { baseDir ->
-            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin")
+            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin", declaredByteSize = 11L)
             val writer = FileSpoolWriter(baseDir)
             val firstResult = writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
             val finalDir = firstResult.directory ?: error("missing final dir")
@@ -88,6 +90,124 @@ class FileSpoolWriterTest {
             assertEquals(finalDir, secondResult.directory)
             assertEquals("keep", String(Files.readAllBytes(finalDir.resolve("sentinel")), StandardCharsets.UTF_8))
             assertContentEquals("first-bytes".toByteArray(), Files.readAllBytes(finalDir.resolve("first.bin")))
+        }
+    }
+
+    @Test
+    fun directoryWithLongerPrefixIsNotTreatedAsLeafOfShorterWireKey() {
+        withTempDir { baseDir ->
+            val longerLeaf = "235500_300"
+            val shorterWire = "235500_30"
+            val streamDir = baseDir.resolve(DAY).resolve(STREAM)
+            val longerDir = streamDir.resolve(longerLeaf)
+            Files.createDirectories(longerDir)
+            val payload = longerDir.resolve("first.bin")
+            Files.write(payload, "first-bytes".toByteArray())
+            val longerSealed = SealedSegment(
+                stream = STREAM,
+                key = SegmentKey(DAY, longerLeaf),
+                wireKeys = WireKeys(DAY, longerLeaf, FIRST_START, FIRST_START + 300_000L, "Asia/Tokyo", 32400),
+                payloads = emptyList(),
+                gaps = emptyList(),
+            )
+            val manifestContent = serializeManifest(
+                longerSealed,
+                BundleManifest(
+                    key = longerSealed.key,
+                    files = listOf(BundleFile("source", "first.bin", "sha", 11L, "application/octet-stream", FIRST_START, FIRST_START + 300_000L)),
+                    gaps = emptyList(),
+                ),
+            )
+            Files.write(longerDir.resolve("manifest"), manifestContent.toByteArray(StandardCharsets.UTF_8))
+            Files.write(longerDir.resolve("sentinel"), "sentinel-bytes".toByteArray())
+
+            val shorterSegment = SealedSegment(
+                stream = STREAM,
+                key = SegmentKey(DAY, shorterWire),
+                wireKeys = WireKeys(DAY, shorterWire, FIRST_START, FIRST_START + 300_000L, "Asia/Tokyo", 32400),
+                payloads = listOf(
+                    SegmentPayload("source", PayloadRef("first.bin", "application/octet-stream", 11L, null), FIRST_START, FIRST_START + 300_000L),
+                ),
+                gaps = emptyList(),
+            )
+            val writer = FileSpoolWriter(baseDir)
+            val result = writer.seal(shorterSegment, provider("first.bin" to "first-bytes".toByteArray()))
+
+            val expectedBareDir = streamDir.resolve(shorterWire)
+            assertEquals(expectedBareDir, result.directory)
+            assertTrue(Files.exists(expectedBareDir.resolve("manifest")))
+            val shorterManifest = String(Files.readAllBytes(expectedBareDir.resolve("manifest")), StandardCharsets.UTF_8)
+            assertTrue(shorterManifest.contains("segment=$shorterWire\n"))
+
+            assertEquals("sentinel-bytes", String(Files.readAllBytes(longerDir.resolve("sentinel")), StandardCharsets.UTF_8))
+            assertEquals(manifestContent, String(Files.readAllBytes(longerDir.resolve("manifest")), StandardCharsets.UTF_8))
+        }
+    }
+
+    @Test
+    fun unreadableBareManifestAllocatesCollisionLeafAndPreservesUnreadableDirectory() {
+        withTempDir { baseDir ->
+            val streamDir = baseDir.resolve(DAY).resolve(STREAM)
+            val bareDir = streamDir.resolve(WIRE_SEGMENT)
+            Files.createDirectories(bareDir)
+            Files.write(bareDir.resolve("manifest"), "corrupt manifest header".toByteArray())
+            Files.write(bareDir.resolve("sentinel"), "keep-corrupt".toByteArray())
+
+            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin", declaredByteSize = 11L)
+            val writer = FileSpoolWriter(baseDir)
+            val result = writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
+
+            val collisionLeaf = "${WIRE_SEGMENT}__ws$FIRST_START"
+            val expectedDir = streamDir.resolve(collisionLeaf)
+            assertEquals(expectedDir, result.directory)
+            assertEquals(SealState.SEALED, result.state)
+            assertEquals("keep-corrupt", String(Files.readAllBytes(bareDir.resolve("sentinel")), StandardCharsets.UTF_8))
+            assertEquals("corrupt manifest header", String(Files.readAllBytes(bareDir.resolve("manifest")), StandardCharsets.UTF_8))
+        }
+    }
+
+    @Test
+    fun unreadableCollisionManifestWithOccupiedBareAllocatesThirdFormLeaf() {
+        withTempDir { baseDir ->
+            val streamDir = baseDir.resolve(DAY).resolve(STREAM)
+            val collisionLeaf = "${WIRE_SEGMENT}__ws$FIRST_START"
+            val collisionDir = streamDir.resolve(collisionLeaf)
+            Files.createDirectories(collisionDir)
+            Files.write(collisionDir.resolve("manifest"), "corrupt collision manifest".toByteArray())
+            Files.write(collisionDir.resolve("sentinel"), "keep-collision".toByteArray())
+
+            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin", declaredByteSize = 11L)
+            val writer = FileSpoolWriter(
+                baseDir = baseDir,
+                occupiedLeaves = { day, stream ->
+                    if (day == DAY && stream == STREAM) setOf(WIRE_SEGMENT) else emptySet()
+                },
+            )
+            val result = writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
+
+            val expectedDir = streamDir.resolve("${WIRE_SEGMENT}__2")
+            assertEquals(expectedDir, result.directory)
+            assertEquals(SealState.SEALED, result.state)
+            assertEquals("keep-collision", String(Files.readAllBytes(collisionDir.resolve("sentinel")), StandardCharsets.UTF_8))
+            assertEquals("corrupt collision manifest", String(Files.readAllBytes(collisionDir.resolve("manifest")), StandardCharsets.UTF_8))
+        }
+    }
+
+    @Test
+    fun occupiedLeavesThrowAbortsSealWithoutCreatingDirectories() {
+        withTempDir { baseDir ->
+            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin", declaredByteSize = 11L)
+            val writer = FileSpoolWriter(
+                baseDir = baseDir,
+                occupiedLeaves = { _, _ -> throw IllegalStateException("db failure during occupied lookup") },
+            )
+
+            val ex = assertFailsWith<IllegalStateException> {
+                writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
+            }
+            assertEquals("db failure during occupied lookup", ex.message)
+            assertFalse(Files.exists(baseDir.resolve(DAY)))
+            assertFalse(Files.exists(baseDir.resolve(".draft")))
         }
     }
 
@@ -136,7 +256,11 @@ class FileSpoolWriterTest {
         }
     }
 
-    private fun segment(startEpochMs: Long, payloadName: String): SealedSegment =
+    private fun segment(
+        startEpochMs: Long,
+        payloadName: String,
+        declaredByteSize: Long = payloadName.length.toLong(),
+    ): SealedSegment =
         SealedSegment(
             stream = STREAM,
             key = SegmentKey(DAY, WIRE_SEGMENT),
@@ -151,7 +275,7 @@ class FileSpoolWriterTest {
             payloads = listOf(
                 SegmentPayload(
                     sourceId = "source",
-                    ref = PayloadRef(payloadName, "application/octet-stream", payloadName.length.toLong(), null),
+                    ref = PayloadRef(payloadName, "application/octet-stream", declaredByteSize, null),
                     captureStartEpochMs = startEpochMs,
                     captureEndEpochMs = startEpochMs + 300_000L,
                 ),

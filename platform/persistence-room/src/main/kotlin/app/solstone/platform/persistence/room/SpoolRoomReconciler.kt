@@ -11,6 +11,7 @@ import java.nio.file.Path
 class SpoolRoomReconciler(
     baseDir: Path,
     private val dao: SegmentDao,
+    private val log: (String) -> Unit = {},
 ) {
     private val baseDirFile = File(baseDir.toString())
 
@@ -32,7 +33,12 @@ class SpoolRoomReconciler(
         val streamDir = segmentDir.parentFile ?: return false
         val dayDir = streamDir.parentFile ?: return false
         if (dayDir.parentFile != baseDirFile) return false
-        val parsed = parseManifest(manifestFile.readText(Charsets.UTF_8))
+        val parsed = try {
+            parseManifest(manifestFile.readText(Charsets.UTF_8))
+        } catch (_: Exception) {
+            log("spool reconcile skipped unreadable manifest day=${dayDir.name} stream=${streamDir.name} leaf=${segmentDir.name}")
+            return false
+        }
         val stream = streamDir.name
         val dirSegment = segmentDir.name
         val segmentId = "${parsed.manifest.key.day}/$stream/$dirSegment"

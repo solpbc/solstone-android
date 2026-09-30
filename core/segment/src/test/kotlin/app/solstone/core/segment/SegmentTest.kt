@@ -253,6 +253,143 @@ class SegmentTest {
         assertTrue(locationGap in flushed.gaps)
     }
 
+    @Test
+    fun liveZoneSourceEvaluatesOnBucketCreationAcrossTravelTransitions() {
+        var callCount = 0
+        val segmenter = Segmenter(
+            zoneSource = {
+                callCount++
+                if (callCount == 1) ZoneId.of("Asia/Kolkata") else ZoneId.of("Pacific/Auckland")
+            },
+        )
+        val w1Start = 1_790_706_300_000L
+        val w2Start = 1_790_706_600_000L
+
+        val sealed = mutableListOf<SealedSegment>()
+        sealed += segmenter.feed(audioEmission(w1Start, w1Start + 10_000L)).sealed
+        sealed += segmenter.feed(audioEmission(w1Start + 20_000L, w1Start + 300_000L)).sealed
+
+        sealed += segmenter.feed(audioEmission(w2Start, w2Start + 10_000L)).sealed
+        sealed += segmenter.feed(audioEmission(w2Start + 20_000L, w2Start + 300_000L)).sealed
+
+        sealed += segmenter.flush().sealed
+        assertEquals(2, sealed.size)
+        assertEquals(2, callCount)
+
+        val first = sealed[0]
+        assertEquals("20260929", first.wireKeys.day)
+        assertEquals("235500_300", first.wireKeys.segment)
+        assertEquals("Asia/Kolkata", first.wireKeys.zoneId)
+        assertEquals(19800, first.wireKeys.utcOffsetSeconds)
+
+        val second = sealed[1]
+        assertEquals("20260930", second.wireKeys.day)
+        assertEquals("073000_300", second.wireKeys.segment)
+        assertEquals("Pacific/Auckland", second.wireKeys.zoneId)
+        assertEquals(46800, second.wireKeys.utcOffsetSeconds)
+    }
+
+    @Test
+    fun subsequentEmissionsInOpenBucketRetainCapturedZone() {
+        var currentZone = ZoneId.of("Europe/Paris")
+        var callCount = 0
+        val segmenter = Segmenter(
+            zoneSource = {
+                callCount++
+                currentZone
+            },
+        )
+        val windowStart = 1_790_706_300_000L
+
+        segmenter.feed(audioEmission(windowStart, windowStart + 10_000L))
+        currentZone = ZoneId.of("Pacific/Auckland")
+        segmenter.feed(audioEmission(windowStart + 20_000L, windowStart + 300_000L))
+
+        val flushed = segmenter.flush().sealed.single()
+        assertEquals("Europe/Paris", flushed.wireKeys.zoneId)
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    fun throwingZoneSourceFallsBackToLastSuccessOrSystemOffsetWithoutCachingFallback() {
+        // Case 1: After successful bucket, throwing source uses last successful zone
+        var shouldThrow = false
+        val segmenter = Segmenter(
+            zoneSource = {
+                if (shouldThrow) throw IllegalStateException("zone source failure")
+                ZoneId.of("Asia/Tokyo")
+            },
+        )
+        val w1Start = 1_790_706_300_000L
+        val w2Start = 1_790_706_600_000L
+
+        val sealed = mutableListOf<SealedSegment>()
+        val r1 = segmenter.feed(audioEmission(w1Start, w1Start + 300_000L))
+        assertTrue(r1.droppedPayloads.isEmpty())
+        sealed += r1.sealed
+
+        shouldThrow = true
+        val r2 = segmenter.feed(audioEmission(w2Start, w2Start + 300_000L))
+        assertTrue(r2.droppedPayloads.isEmpty())
+        sealed += r2.sealed
+
+        val flushed = segmenter.flush()
+        assertTrue(flushed.droppedPayloads.isEmpty())
+        sealed += flushed.sealed
+        assertEquals(2, sealed.size)
+        assertEquals("Asia/Tokyo", sealed[0].wireKeys.zoneId)
+        assertEquals("Asia/Tokyo", sealed[1].wireKeys.zoneId)
+
+        // Case 2: Throwing source on first bucket and keeps throwing; uses TimeZone offset without caching
+        val originalTz = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Paris"))
+            val throwingSegmenter = Segmenter(
+                zoneSource = { throw IllegalStateException("persistent failure") },
+            )
+            val t1 = Instant.parse("2026-10-25T00:30:00Z").toEpochMilli() // CEST (+02:00)
+            val t2 = Instant.parse("2026-10-25T02:00:00Z").toEpochMilli() // CET (+01:00)
+
+            val fallbackSealed = mutableListOf<SealedSegment>()
+            val feed1 = throwingSegmenter.feed(audioEmission(t1, t1 + 300_000L))
+            assertTrue(feed1.droppedPayloads.isEmpty())
+            fallbackSealed += feed1.sealed
+
+            val feed2 = throwingSegmenter.feed(audioEmission(t2, t2 + 300_000L))
+            assertTrue(feed2.droppedPayloads.isEmpty())
+            fallbackSealed += feed2.sealed
+
+            val fallbackFlushed = throwingSegmenter.flush()
+            assertTrue(fallbackFlushed.droppedPayloads.isEmpty())
+            fallbackSealed += fallbackFlushed.sealed
+            assertEquals(2, fallbackSealed.size)
+
+            val expectedId1 = java.time.ZoneOffset.ofTotalSeconds(Math.toIntExact(Math.floorDiv(java.util.TimeZone.getDefault().getOffset(t1).toLong(), 1000L))).id
+            val expectedId2 = java.time.ZoneOffset.ofTotalSeconds(Math.toIntExact(Math.floorDiv(java.util.TimeZone.getDefault().getOffset(t2).toLong(), 1000L))).id
+
+            assertEquals("+02:00", expectedId1)
+            assertEquals("+01:00", expectedId2)
+            assertEquals(expectedId1, fallbackSealed[0].wireKeys.zoneId)
+            assertEquals(expectedId2, fallbackSealed[1].wireKeys.zoneId)
+        } finally {
+            java.util.TimeZone.setDefault(originalTz)
+        }
+    }
+
+    @Test
+    fun systemZoneIdTracksDefaultTimeZoneChanges() {
+        val originalTz = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Kolkata"))
+            assertEquals(ZoneId.of("Asia/Kolkata"), systemZoneId())
+
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Auckland"))
+            assertEquals(ZoneId.of("Pacific/Auckland"), systemZoneId())
+        } finally {
+            java.util.TimeZone.setDefault(originalTz)
+        }
+    }
+
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
         SourceEmission(
             sourceId = "audio",

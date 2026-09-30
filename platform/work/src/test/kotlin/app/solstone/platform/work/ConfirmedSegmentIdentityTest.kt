@@ -27,6 +27,7 @@ import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
 import app.solstone.platform.persistence.room.SyncStateRow
 import app.solstone.platform.persistence.room.isLeafOccupied
+import app.solstone.platform.persistence.room.occupiedDirSegments
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.nio.file.Files
@@ -132,7 +133,7 @@ class ConfirmedSegmentIdentityTest {
         // The spool writer and sink the app containers build, with the same leaf-occupied check.
         val spoolWriter = FileSpoolWriter(
             baseDir = spool,
-            isLeafOccupied = { day, stream, leaf -> dao.isLeafOccupied(day, stream, leaf) },
+            occupiedLeaves = { day, stream -> dao.occupiedDirSegments(day, stream) },
         )
         val sealedSink = RoomSealedSegmentSink(dao)
 
@@ -308,6 +309,54 @@ class ConfirmedSegmentIdentityTest {
 
         // Row A is still EVICTED
         assertEquals(QueueState.EVICTED, env.dao.segmentById(rowA.id)?.state)
+    }
+
+    @Test
+    fun evictedBareAndCollisionTwinsAllowThirdFormAllocationAndSurviveFinishPass() {
+        val env = TestEnv()
+        val day = "20261101"
+        val stream = MAIN_STREAM
+        val wireKey = "20261101_010000_300"
+        val startEpoch = 1730437200000L
+        val endEpoch = startEpoch + 300_000L
+
+        val collisionLeaf = "${wireKey}__ws$startEpoch"
+        val thirdLeaf = "${wireKey}__2"
+
+        env.insertRow(
+            day = day,
+            stream = stream,
+            wireKey = wireKey,
+            dirLeaf = wireKey,
+            state = QueueState.EVICTED,
+            sealedAt = 100L,
+            filesList = listOf(BundleFile("audio", "a.bin", "sha-a", 3L, "application/octet-stream", startEpoch, endEpoch)),
+        )
+        env.insertRow(
+            day = day,
+            stream = stream,
+            wireKey = wireKey,
+            dirLeaf = collisionLeaf,
+            state = QueueState.EVICTED,
+            sealedAt = 200L,
+            filesList = listOf(BundleFile("audio", "b.bin", "sha-b", 3L, "application/octet-stream", startEpoch, endEpoch)),
+        )
+
+        val dirC = env.seal(day, stream, wireKey, startEpoch, endEpoch, "c.bin", sealedAt = 300L)
+        assertEquals(thirdLeaf, dirC.fileName.toString())
+
+        val rowC = env.dao.segmentById("$day/$stream/$thirdLeaf")!!
+        assertEquals(QueueState.SEALED, rowC.state)
+        assertEquals(wireKey, rowC.segment)
+        assertEquals(thirdLeaf, rowC.dirSegment)
+
+        val manifestText = String(Files.readAllBytes(dirC.resolve("manifest")), Charsets.UTF_8)
+        assertTrue(manifestText.contains("segment=$wireKey\n"))
+
+        env.finisher.finishPass()
+        assertEquals(QueueState.SEALED, env.dao.segmentById(rowC.id)?.state)
+        assertTrue(Files.exists(dirC.resolve("c.bin")))
+        assertTrue(Files.exists(dirC.resolve("manifest")))
     }
 
     @Test

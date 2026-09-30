@@ -22,6 +22,7 @@ import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.observer.isProviderFresh
 import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.segment.Segmenter
+import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
@@ -44,11 +45,10 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
-import app.solstone.platform.persistence.room.isLeafOccupied
+import app.solstone.platform.persistence.room.occupiedDirSegments
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.power.OemGuidance
 import app.solstone.platform.power.OemGuidanceCatalog
-import java.time.ZoneId
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -218,7 +218,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         startPhotoPairWatch()
         funnel.execute("recovery") {
             applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
-            SpoolRoomReconciler(spoolDir, database.segmentDao()).reconcile()
+            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
@@ -370,12 +370,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
     private fun newPipeline(): CapturePipeline {
         pipelineBuildCount += 1
         return CapturePipeline(
-            segmenter = Segmenter(ZoneId.systemDefault()),
+            segmenter = Segmenter(::systemZoneId),
             spoolWriter = FileSpoolWriter(
                 spoolDir,
-                isLeafOccupied = { day, stream, leaf ->
-                    database.segmentDao().isLeafOccupied(day, stream, leaf)
-                },
+                occupiedLeaves = { day, stream -> database.segmentDao().occupiedDirSegments(day, stream) },
             ),
             sealedSink = syncingOnSeal(RoomSealedSegmentSink(database.segmentDao())) { controller.syncNow() },
             payloadBytes = captureSetup.payloadBytesProvider,

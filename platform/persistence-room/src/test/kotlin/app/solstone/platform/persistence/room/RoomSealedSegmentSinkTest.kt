@@ -141,6 +141,178 @@ class RoomSealedSegmentSinkTest {
         }
     }
 
+    @Test
+    fun threeSealsWithSameWireKeyAndOffsetButDifferentZonesAndDescriptorsCreateThreeLeavesAndRows() {
+        val baseDir = Files.createTempDirectory("spool-three-zones")
+        try {
+            val dao = FakeSegmentDao()
+            val sink = RoomSealedSegmentSink(dao)
+            val writer = FileSpoolWriter(
+                baseDir = baseDir,
+                occupiedLeaves = { day, stream -> dao.occupiedDirSegments(day, stream) },
+            )
+            val wireSegment = "090000_300"
+            val startEpoch = 1_793_519_100_000L
+            val endEpoch = startEpoch + 300_000L
+            val offsetSeconds = 9 * 3600 // +09:00
+
+            val zones = listOf("Asia/Tokyo", "Asia/Seoul", "Pacific/Palau")
+            val payloadNames = listOf("tokyo.bin", "seoul.bin", "palau.bin")
+            val payloadContents = listOf("tokyo-bytes", "seoul-bytes", "palau-bytes")
+
+            for (i in 0 until 3) {
+                val seg = SealedSegment(
+                    stream = MAIN_STREAM,
+                    key = SegmentKey(DAY, wireSegment),
+                    wireKeys = WireKeys(DAY, wireSegment, startEpoch, endEpoch, zones[i], offsetSeconds),
+                    payloads = listOf(
+                        SegmentPayload("audio", PayloadRef(payloadNames[i], "application/octet-stream", payloadContents[i].length.toLong(), null), startEpoch, endEpoch),
+                    ),
+                    gaps = emptyList(),
+                )
+                val prov = object : PayloadBytesProvider {
+                    override fun open(payload: SegmentPayload) =
+                        ByteArrayInputStream(payloadContents[i].toByteArray())
+                }
+                val sealResult = writer.seal(seg, prov)
+                sink.persistSealed(seg, sealResult, sealedAtEpochMs = (i + 1).toLong() * 1000L)
+            }
+
+            val expectedLeaves = listOf(wireSegment, "${wireSegment}__ws$startEpoch", "${wireSegment}__2")
+            val actualDirs = expectedLeaves.map { baseDir.resolve(DAY).resolve(MAIN_STREAM).resolve(it) }
+            actualDirs.forEach { assertTrue(Files.isDirectory(it), "Expected directory $it") }
+
+            assertEquals(3, dao.segments.size)
+            assertEquals(expectedLeaves.map { "$DAY/$MAIN_STREAM/$it" }, dao.segments.map { it.id })
+            assertEquals(listOf(wireSegment, wireSegment, wireSegment), dao.segments.map { it.segment })
+            assertEquals(expectedLeaves, dao.segments.map { it.dirSegment })
+
+            actualDirs.forEach { dir ->
+                val manifestText = String(Files.readAllBytes(dir.resolve("manifest")), Charsets.UTF_8)
+                assertTrue(manifestText.contains("segment=$wireSegment\n"))
+            }
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun reconcileContinuesAcrossCorruptedManifestAndLogsSkip() {
+        val baseDir = Files.createTempDirectory("spool-reconcile-corrupt")
+        try {
+            val dao = FakeSegmentDao()
+            val logs = mutableListOf<String>()
+            val writer = FileSpoolWriter(baseDir)
+
+            val seg1 = manualSegment(FIRST_START, FIRST_START + WINDOW_MS, "first.bin")
+            val seg2 = manualSegment(SECOND_START, SECOND_START + WINDOW_MS, "second.bin")
+            writer.seal(seg1, provider())
+            writer.seal(seg2, provider())
+
+            val manifestFiles = java.io.File(baseDir.toString()).walkTopDown()
+                .filter { it.isFile && it.name == "manifest" && !it.relativeTo(java.io.File(baseDir.toString())).invariantSeparatorsPath.split('/').contains(".draft") }
+                .toList()
+            assertTrue(manifestFiles.size >= 2)
+
+            val corruptManifestFile = manifestFiles.first()
+            val validManifestFile = manifestFiles.last()
+            val originalCorruptBytes = "not a valid manifest header\ncorrupt=true\n".toByteArray(Charsets.UTF_8)
+            Files.write(corruptManifestFile.toPath(), originalCorruptBytes)
+
+            val reconciler = SpoolRoomReconciler(baseDir, dao) { logs += it }
+            val inserted = reconciler.reconcile()
+
+            val validSegmentDir = validManifestFile.parentFile!!
+            val corruptSegmentDir = corruptManifestFile.parentFile!!
+            val validStreamDir = validSegmentDir.parentFile!!
+            val validDayDir = validStreamDir.parentFile!!
+            val corruptStreamDir = corruptSegmentDir.parentFile!!
+            val corruptDayDir = corruptStreamDir.parentFile!!
+
+            val validRowId = "${validDayDir.name}/${validStreamDir.name}/${validSegmentDir.name}"
+            val corruptRowId = "${corruptDayDir.name}/${corruptStreamDir.name}/${corruptSegmentDir.name}"
+
+            assertEquals(1, inserted)
+            assertNotNull(dao.segmentById(validRowId))
+            assertEquals(null, dao.segmentById(corruptRowId))
+            assertEquals(
+                originalCorruptBytes.toList(),
+                Files.readAllBytes(corruptManifestFile.toPath()).toList(),
+            )
+            assertEquals(1, logs.size)
+            assertEquals(
+                "spool reconcile skipped unreadable manifest day=${corruptDayDir.name} stream=${corruptStreamDir.name} leaf=${corruptSegmentDir.name}",
+                logs.single(),
+            )
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sameKeyIdentityAndSourceNamesWithDifferentByteSizeAllocatesNewLeafAndRow() {
+        val baseDir = Files.createTempDirectory("spool-byte-size-diff")
+        try {
+            val dao = FakeSegmentDao()
+            val sink = RoomSealedSegmentSink(dao)
+            val writer = FileSpoolWriter(
+                baseDir = baseDir,
+                occupiedLeaves = { day, stream -> dao.occupiedDirSegments(day, stream) },
+            )
+            val wireSegment = "090000_300"
+            val startEpoch = 1_793_519_100_000L
+            val endEpoch = startEpoch + 300_000L
+            val zoneId = "Asia/Tokyo"
+            val offsetSeconds = 9 * 3600
+
+            val seg1 = SealedSegment(
+                stream = MAIN_STREAM,
+                key = SegmentKey(DAY, wireSegment),
+                wireKeys = WireKeys(DAY, wireSegment, startEpoch, endEpoch, zoneId, offsetSeconds),
+                payloads = listOf(
+                    SegmentPayload("audio", PayloadRef("audio.bin", "application/octet-stream", 4L, null), startEpoch, endEpoch),
+                ),
+                gaps = emptyList(),
+            )
+            val prov1 = object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) = ByteArrayInputStream(ByteArray(4) { 1 })
+            }
+            val res1 = writer.seal(seg1, prov1)
+            sink.persistSealed(seg1, res1, sealedAtEpochMs = 1000L)
+
+            val seg2 = SealedSegment(
+                stream = MAIN_STREAM,
+                key = SegmentKey(DAY, wireSegment),
+                wireKeys = WireKeys(DAY, wireSegment, startEpoch, endEpoch, zoneId, offsetSeconds),
+                payloads = listOf(
+                    SegmentPayload("audio", PayloadRef("audio.bin", "application/octet-stream", 8L, null), startEpoch, endEpoch),
+                ),
+                gaps = emptyList(),
+            )
+            val prov2 = object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) = ByteArrayInputStream(ByteArray(8) { 2 })
+            }
+            val res2 = writer.seal(seg2, prov2)
+            sink.persistSealed(seg2, res2, sealedAtEpochMs = 2000L)
+
+            assertEquals(2, dao.segments.size)
+            val firstRow = dao.segmentById("$DAY/$MAIN_STREAM/$wireSegment")!!
+            val secondRow = dao.segmentById("$DAY/$MAIN_STREAM/${wireSegment}__ws$startEpoch")!!
+            assertEquals(4L, firstRow.byteSize)
+            assertEquals(8L, secondRow.byteSize)
+
+            val firstFiles = dao.filesBySegmentId(firstRow.id)
+            assertEquals(1, firstFiles.size)
+            assertEquals(4L, firstFiles.single().byteSize)
+
+            val secondFiles = dao.filesBySegmentId(secondRow.id)
+            assertEquals(1, secondFiles.size)
+            assertEquals(8L, secondFiles.single().byteSize)
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
     private fun emission(
         sourceId: String,
         stream: String,

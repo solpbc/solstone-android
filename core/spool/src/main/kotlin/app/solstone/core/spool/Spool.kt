@@ -46,7 +46,7 @@ interface SpoolWriter {
 class FileSpoolWriter(
     private val baseDir: Path,
     private val fsync: (Path) -> Unit = ::forcePath,
-    private val isLeafOccupied: (day: String, stream: String, leaf: String) -> Boolean = { _, _, _ -> false },
+    private val occupiedLeaves: (day: String, stream: String) -> Set<String> = { _, _ -> emptySet() },
 ) : SpoolWriter {
     override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
         val leaf = when (val selection = selectDirLeaf(segment)) {
@@ -113,27 +113,52 @@ class FileSpoolWriter(
     }
 
     private fun selectDirLeaf(segment: SealedSegment): DirSelection {
-        val bareLeaf = segment.key.segment
-        val collisionLeaf = "${segment.key.segment}__ws${segment.wireKeys.startEpochMs}"
-        val bareFinal = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(bareLeaf)
-        val collisionFinal = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(collisionLeaf)
-        val collisionParsed = parseFinalManifest(collisionFinal)
-        if (collisionParsed != null) {
-            if (collisionParsed.identityMatches(segment)) {
-                return DirSelection.Existing(collisionParsed.manifest, collisionFinal)
+        val s = segment.key.segment
+        val escapedS = Regex.escape(s)
+        val secondPattern = Regex("^${escapedS}__ws[0-9]+$")
+        val thirdPattern = Regex("^${escapedS}__([1-9][0-9]*)$")
+        fun matchesGrammar(name: String): Boolean = name == s || secondPattern.matches(name) || thirdPattern.matches(name)
+
+        val roomLeaves = occupiedLeaves(segment.key.day, segment.stream)
+        val streamDir = baseDir.resolve(segment.key.day).resolve(segment.stream)
+        val diskLeaves = if (Files.isDirectory(streamDir)) {
+            Files.newDirectoryStream(streamDir).use { stream ->
+                stream.filter { Files.isDirectory(it) }
+                    .map { it.fileName.toString() }
+                    .filter { matchesGrammar(it) }
+                    .toList()
             }
-            throw IllegalStateException("collision segment leaf already exists with different identity: $collisionLeaf")
-        } else if (Files.exists(collisionFinal)) {
-            throw IllegalStateException("collision segment leaf already exists without a readable manifest: $collisionLeaf")
+        } else {
+            emptyList()
         }
 
-        val bareParsed = parseFinalManifest(bareFinal)
-        if (bareParsed != null && bareParsed.identityMatches(segment)) {
-            return DirSelection.Existing(bareParsed.manifest, bareFinal)
+        val occupied = mutableSetOf<String>()
+        occupied.addAll(roomLeaves.filter { matchesGrammar(it) })
+        occupied.addAll(diskLeaves)
+
+        val sortedDiskLeaves = diskLeaves.sorted()
+        for (leafName in sortedDiskLeaves) {
+            val dir = streamDir.resolve(leafName)
+            val parsed = parseFinalManifest(dir) ?: continue
+            if (parsed.identityMatches(segment) && parsed.descriptorMatches(segment)) {
+                return DirSelection.Existing(parsed.manifest, dir)
+            }
         }
 
-        val occupied = !Files.exists(bareFinal) && isLeafOccupied(segment.key.day, segment.stream, bareLeaf)
-        return DirSelection.Leaf(if (!Files.exists(bareFinal) && !occupied) bareLeaf else collisionLeaf)
+        val bareLeaf = s
+        val collisionLeaf = "${s}__ws${segment.wireKeys.startEpochMs}"
+        if (bareLeaf !in occupied) {
+            return DirSelection.Leaf(bareLeaf)
+        }
+        if (collisionLeaf !in occupied) {
+            return DirSelection.Leaf(collisionLeaf)
+        }
+
+        val thirdIndices = occupied.mapNotNull { name ->
+            thirdPattern.matchEntire(name)?.groupValues?.get(1)?.toLongOrNull()
+        }
+        val nextIndex = if (thirdIndices.isNotEmpty()) thirdIndices.maxOrNull()!! + 1 else 2L
+        return DirSelection.Leaf("${s}__$nextIndex")
     }
 
     private fun cleanupEmptyDraftParents(draftDir: Path) {
@@ -165,6 +190,48 @@ private fun ParsedManifest.identityMatches(segment: SealedSegment): Boolean =
         endEpochMs == segment.wireKeys.endEpochMs &&
         zoneId == segment.wireKeys.zoneId &&
         utcOffsetSeconds == segment.wireKeys.utcOffsetSeconds
+
+private data class PayloadDescriptor(
+    val sourceId: String,
+    val name: String,
+    val captureStartEpochMs: Long,
+    val captureEndEpochMs: Long,
+    val byteSize: Long,
+    val mediaType: String,
+) : Comparable<PayloadDescriptor> {
+    override fun compareTo(other: PayloadDescriptor): Int =
+        compareBy<PayloadDescriptor> { it.sourceId }
+            .thenBy { it.name }
+            .thenBy { it.captureStartEpochMs }
+            .thenBy { it.captureEndEpochMs }
+            .thenBy { it.byteSize }
+            .thenBy { it.mediaType }
+            .compare(this, other)
+}
+
+private fun ParsedManifest.descriptorMatches(segment: SealedSegment): Boolean {
+    val incoming = segment.payloads.map {
+        PayloadDescriptor(
+            sourceId = it.sourceId,
+            name = it.ref.name,
+            captureStartEpochMs = it.captureStartEpochMs,
+            captureEndEpochMs = it.captureEndEpochMs,
+            byteSize = it.ref.byteSize,
+            mediaType = it.ref.mediaType,
+        )
+    }.sorted()
+    val fromManifest = manifest.files.map {
+        PayloadDescriptor(
+            sourceId = it.sourceId,
+            name = it.name,
+            captureStartEpochMs = it.captureStartEpochMs,
+            captureEndEpochMs = it.captureEndEpochMs,
+            byteSize = it.byteSize,
+            mediaType = it.mediaType,
+        )
+    }.sorted()
+    return incoming == fromManifest
+}
 
 private fun requireSingleLeaf(path: Path, parent: Path, leaf: String) {
     require(path.normalize().parent == parent.normalize() && path.fileName.toString() == leaf) {

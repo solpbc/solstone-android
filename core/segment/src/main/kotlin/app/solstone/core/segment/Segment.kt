@@ -14,8 +14,12 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.TimeZone
+
+fun systemZoneId(): ZoneId = ZoneId.systemDefault()
 
 fun wireKeys(startEpochMs: Long, endEpochMs: Long, zoneId: ZoneId): WireKeys {
     val start = Instant.ofEpochMilli(startEpochMs).atZone(zoneId)
@@ -68,12 +72,15 @@ data class SegmenterResult(
 )
 
 class Segmenter(
-    private val zoneId: ZoneId,
+    private val zoneSource: () -> ZoneId,
     private val windowMs: Long = 300_000L,
     private val graceMs: Long = 5_000L,
 ) {
+    constructor(zoneId: ZoneId, windowMs: Long = 300_000L, graceMs: Long = 5_000L) : this({ zoneId }, windowMs, graceMs)
+
     private val open = linkedMapOf<WindowKey, WindowBucket>()
     private val sealedWatermark = mutableMapOf<String, Long>()
+    private var lastSuccessfulZone: ZoneId? = null
 
     init {
         require(windowMs > 0) { "windowMs must be positive" }
@@ -100,7 +107,11 @@ class Segmenter(
             )
             val lateWindowStart = watermark + windowMs
             val bucket = open.getOrPut(WindowKey(stream, lateWindowStart)) {
-                WindowBucket(stream = stream, windowStartEpochMs = lateWindowStart)
+                WindowBucket(
+                    stream = stream,
+                    windowStartEpochMs = lateWindowStart,
+                    zoneId = resolveBucketZone(lateWindowStart),
+                )
             }
             bucket.gaps += lateGap
             bucket.gaps += emission.gaps
@@ -112,7 +123,13 @@ class Segmenter(
         }
 
         val key = WindowKey(stream, windowStartEpochMs)
-        val bucket = open.getOrPut(key) { WindowBucket(stream = stream, windowStartEpochMs = windowStartEpochMs) }
+        val bucket = open.getOrPut(key) {
+            WindowBucket(
+                stream = stream,
+                windowStartEpochMs = windowStartEpochMs,
+                zoneId = resolveBucketZone(windowStartEpochMs),
+            )
+        }
         bucket.maxCaptureEndEpochMs = maxOf(bucket.maxCaptureEndEpochMs, emission.captureEndEpochMs)
         bucket.payloads += emission.payloadRefs.map { ref ->
             SegmentPayload(
@@ -147,6 +164,17 @@ class Segmenter(
             droppedPayloads = emptyList(),
         )
 
+    private fun resolveBucketZone(windowStartEpochMs: Long): ZoneId =
+        try {
+            val resolved = zoneSource()
+            lastSuccessfulZone = resolved
+            resolved
+        } catch (_: Exception) {
+            lastSuccessfulZone ?: ZoneOffset.ofTotalSeconds(
+                Math.toIntExact(Math.floorDiv(TimeZone.getDefault().getOffset(windowStartEpochMs).toLong(), 1000L)),
+            )
+        }
+
     private fun windowStart(epochMs: Long): Long =
         Math.floorDiv(epochMs, windowMs) * windowMs
 
@@ -180,6 +208,7 @@ class Segmenter(
     private data class WindowBucket(
         val stream: String,
         val windowStartEpochMs: Long,
+        val zoneId: ZoneId,
         val payloads: MutableList<SegmentPayload> = mutableListOf(),
         val gaps: MutableList<GapEvent> = mutableListOf(),
         var maxCaptureEndEpochMs: Long = windowStartEpochMs,
