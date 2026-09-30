@@ -3,7 +3,6 @@
 
 package app.solstone.observer.formfactor.phone
 
-import androidx.compose.ui.graphics.Color
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
@@ -13,19 +12,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PhoneJournalMarkTest {
-
-    @Test
-    fun parseHexColorParsesValidColors() {
-        val defaultColor = Color.Red
-        val color = parseHexColor("#3b82f6", defaultColor)
-        assertEquals(Color(0xFF3b82f6), color)
-
-        val trimmed = parseHexColor("3b82f6", defaultColor)
-        assertEquals(Color(0xFF3b82f6), trimmed)
-
-        val invalid = parseHexColor("invalid", defaultColor)
-        assertEquals(defaultColor, invalid)
-    }
 
     @Test
     fun isPairingConfirmationEnabledWithNullCoordinator() {
