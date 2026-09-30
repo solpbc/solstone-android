@@ -49,8 +49,8 @@ ci-device:
 	  :platform:identity-file:pixel5api35DebugAndroidTest \
 	  :formfactor:phone:pixel5api35DebugAndroidTest \
 	  :apps:phone:pixel5api35MockDebugAndroidTest
-	# AC5a real-flavor narrow gate. The class filter must match exactly one test;
-	# device-gate operators must confirm the real run reports Tests run: 1.
+	# AC5a real-flavor narrow gate. The class filter must match exactly one class;
+	# device-gate operators must confirm the real run reports Tests run: 2.
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.phone.RealFlavorOpportunisticSyncRuntimeTest \
 	  :apps:phone:pixel5api35RealDebugAndroidTest
