@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.13] - 2026-09-29
+
 ### Changed
 - your phone's back gesture or back button now takes you one page back in your journal. on the first page, it closes your journal.
 
