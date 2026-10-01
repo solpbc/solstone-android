@@ -229,6 +229,7 @@ internal fun fixture(
     sourceSnapshotProvider: (() -> SourceRuntimeSnapshot)? = null,
     diag: (String) -> Unit = {},
     monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    foregroundServiceLive: () -> Boolean = { false },
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -260,6 +261,7 @@ internal fun fixture(
             opportunisticSync = opportunisticSync,
             diag = diag,
             monotonicMs = monotonicMs,
+            foregroundServiceLive = foregroundServiceLive,
         ),
         permissions = permissions,
         lifecycle = lifecycle,

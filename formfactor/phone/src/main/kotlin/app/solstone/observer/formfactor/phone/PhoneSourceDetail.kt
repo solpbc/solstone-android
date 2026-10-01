@@ -81,6 +81,9 @@ fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = SourceDetailRule(
 fun sourceDetailRule(state: SourceState, reason: ReasonCode): SourceDetailRule {
     val base = sourceDetailRule(reason)
     if (state != SourceState.PAUSED || base.action != null) return base
+    // ⛔ Not for a microphone the system has silenced: nothing the owner presses frees it, and it
+    // resumes on its own. A resume control there names an action the screen cannot perform.
+    if (reason == ReasonCode.MICROPHONE_SILENCED) return base
     return base.copy(
         action = SourceDetailAction("resume intake", SourceDetailActionKind.RESUME_INTAKE),
         retryHonest = true,
@@ -109,6 +112,7 @@ private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason
     ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE,
     ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
     ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY,
+    ReasonCode.MICROPHONE_SILENCED,
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }
@@ -129,6 +133,7 @@ private fun reasonRetryIsHonest(reason: ReasonCode): Boolean = when (reason) {
     ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE,
     ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
     ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY,
+    ReasonCode.MICROPHONE_SILENCED,
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> false
 }

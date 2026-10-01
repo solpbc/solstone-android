@@ -46,6 +46,15 @@ class PhoneSourceDetailRuleTest {
         }
     }
 
+    /** A microphone the system silenced comes back on its own; no control the owner presses frees it. */
+    @Test
+    fun aSilencedMicrophoneIsPausedWithAReasonAndNoResumeControl() {
+        val silenced = sourceDetailRule(SourceState.PAUSED, ReasonCode.MICROPHONE_SILENCED)
+        assertEquals(null, silenced.action)
+        assertFalse(silenced.retryHonest)
+        assertEquals(reasonDiagnosis(ReasonCode.MICROPHONE_SILENCED), silenced.diagnosis)
+    }
+
     @Test
     fun sameSnapshotUsesEachSourceOwnReason() {
         val snapshot = SourcesReadModel(

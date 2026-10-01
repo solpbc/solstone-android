@@ -104,6 +104,72 @@ class HarnessControllerStartRefusalDetailTest {
         assertEquals(ReasonCode.FOREGROUND_START_NOT_ALLOWED, audioRow.reason)
     }
 
+    /**
+     * Another app taking the microphone (a screen recording with audio) reads `paused`, which is
+     * short of `on`, so the background status poll reaches the start gate — and the visibility check
+     * blocks it. With the service already up, that is not a refusal: intake is running.
+     */
+    @Test
+    fun backgroundReconcileWhileServiceLiveDoesNotRecordRefusal() {
+        val f = fixture(
+            visibleCaptureAuthority = VisibleCaptureAuthority { false },
+            desiredStore = FakeDesiredObservingStore(initial = true),
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            snapshot = SourceRuntimeSnapshot(
+                engineRunning = true,
+                providerEmitting = true,
+                storageOk = true,
+                silenced = SilencedFact.SILENCED,
+            ),
+            foregroundServiceLive = { true },
+        )
+        val registry = sourceRegistry(f = f, registrations = listOf(liveAudio()))
+
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(false, f.controller.lastStartRefused)
+        val audioRow = registry.snapshot().sources.first { it.sourceId == "audio" }
+        assertEquals(ReasonCode.NONE, audioRow.reason)
+    }
+
+    @Test
+    fun refusalRecordedBeforeServiceCameUpClearsOnNextReconcile() {
+        var live = false
+        val f = fixture(
+            visibleCaptureAuthority = VisibleCaptureAuthority { false },
+            desiredStore = FakeDesiredObservingStore(initial = true),
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(200) },
+            foregroundServiceLive = { live },
+        )
+        val registry = sourceRegistry(f = f, registrations = listOf(liveAudio()))
+        f.controller.recordStartRefusal()
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+        assertTrue(f.controller.lastStartRefused)
+
+        live = true
+        f.controller.reconcile(ObserverStartMode.Rehydrate)
+
+        assertEquals(false, f.controller.lastStartRefused)
+        val audioRow = registry.snapshot().sources.first { it.sourceId == "audio" }
+        assertEquals(SourceState.ON, audioRow.state)
+    }
+
+    private fun liveAudio() = SourceRegistration(
+        sourceId = "audio",
+        engine = FakeSourceEngine(
+            conditionValue = SourceCondition(
+                desiredOn = true,
+                running = true,
+                available = true,
+                needsAttention = false,
+                paused = false,
+                silenced = SilencedFact.NOT_SILENCED,
+            )
+        ),
+        requiredPermissionsGranted = { it.microphoneGranted },
+        captureForegroundType = CaptureForegroundType.MICROPHONE,
+    )
+
     @Test
     fun controllerStopClearsStartRefused() {
         val f = fixture(

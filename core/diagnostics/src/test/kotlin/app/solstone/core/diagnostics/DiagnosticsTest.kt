@@ -274,6 +274,26 @@ class DiagnosticsTest {
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy()))
     }
 
+    /**
+     * The system silencing the microphone and the owner pausing are both `paused`, and only the
+     * second is the owner's doing — so only the second may read `you paused this`.
+     */
+    @Test
+    fun ownerPauseOutranksASilencedMicrophoneAndOnlyTheSilenceCarriesAReason() {
+        assertEquals(
+            SourceState.PAUSED to ReasonCode.MICROPHONE_SILENCED,
+            reduce(healthy().copy(silenced = SilencedFact.SILENCED)),
+        )
+        assertEquals(
+            SourceState.PAUSED to ReasonCode.NONE,
+            reduce(healthy().copy(silenced = SilencedFact.SILENCED, paused = true)),
+        )
+        assertEquals(
+            SourceState.PAUSED to ReasonCode.NONE,
+            reduce(healthy().copy(paused = true)),
+        )
+    }
+
     @Test
     fun providerEmissionAndSilencedAreIndependentFactsInReduce() {
         assertEquals(
@@ -281,7 +301,7 @@ class DiagnosticsTest {
             reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.NOT_SILENCED)),
         )
         assertEquals(
-            SourceState.PAUSED to ReasonCode.NONE,
+            SourceState.PAUSED to ReasonCode.MICROPHONE_SILENCED,
             reduce(healthy().copy(providerEmitting = true, silenced = SilencedFact.SILENCED)),
         )
         assertEquals(

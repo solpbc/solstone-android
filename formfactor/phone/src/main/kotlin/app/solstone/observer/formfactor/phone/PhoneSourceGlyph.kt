@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.annotation.DrawableRes
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceStatus
 
@@ -50,7 +51,10 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
 fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status.state) {
     SourceState.OFF ->
         if (paired) "not sending to your journal. turn it on any time." else "turn it on any time."
-    SourceState.PAUSED -> "you paused this. resume to start sending again."
+    SourceState.PAUSED ->
+        // The owner's pause and the system's are different facts; only the first is "you".
+        if (status.reason == ReasonCode.MICROPHONE_SILENCED) sourceDetailRule(status.reason).diagnosis
+        else "you paused this. resume to start sending again."
     SourceState.SETTING_UP ->
         if (paired) "getting ready. connecting to your journal." else "getting ready…"
     SourceState.NEEDS_ATTENTION ->

@@ -22,6 +22,7 @@ import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.SourceCondition
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.CaptureForegroundType
+import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
@@ -71,6 +72,8 @@ class HarnessController(
         CaptureForegroundType.CAMERA,
     ),
     private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    // Whether the foreground service is up and holding its capture types — intake that started.
+    private val foregroundServiceLive: () -> Boolean = { ObserverForegroundService.heldCaptureForegroundTypes != null },
 ) {
 
     var desiredOn: Boolean
@@ -209,6 +212,16 @@ class HarnessController(
 
     private fun reconcileOnce(mode: ObserverStartMode) {
         if (!desiredOn) return
+        // 🔴 **A live foreground service is intake that started, so a refusal recorded before it is
+        // history.** The flag outranks every other reason on every source row, and nothing else
+        // cleared it while intake ran: an external tester's phone read `needs attention: intake
+        // couldn't start from the background` on all three sources, in the app and the shade, while
+        // the service held all three types and segments kept syncing. Only `stop intake` and a
+        // restart from the app cleared it.
+        if (lastStartRefused && foregroundServiceLive()) {
+            lastStartRefused = false
+            emitDiag("reconcile mode=$mode start-refusal cleared reason=foreground-live")
+        }
         val sources = sourcesReader?.snapshot()?.sources
         // 🔴 **A granted capture permission is not a reason to bring intake up; a source the owner
         // wants on is.** Start readiness is computed from permissions alone, so with a permission
@@ -239,7 +252,11 @@ class HarnessController(
 
         val readiness = startReadiness(mode)
         if (!readiness.allowed) {
-            if (readiness.blockers.contains(ReasonCode.FOREGROUND_START_NOT_ALLOWED)) {
+            // ⚠ Not a refusal while the service is live. Any state short of `on` reaches here — the
+            // live case was a microphone another app took over (a screen recording with audio), which
+            // reads `paused` — and from the background the visibility check blocks the "start". But
+            // nothing was refused: Android was never asked, and intake was already running.
+            if (readiness.blockers.contains(ReasonCode.FOREGROUND_START_NOT_ALLOWED) && !foregroundServiceLive()) {
                 lastStartRefused = true
             }
             emitDiag("reconcile mode=$mode result=blocked blockers=${readiness.blockers.map { it.name }.sorted().joinToString(",")}")

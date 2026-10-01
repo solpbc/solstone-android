@@ -118,7 +118,9 @@ fun renderPhoneObserverWidget(
     } else {
         readModel == null ||
             presentation.state == SourceState.NEEDS_ATTENTION ||
-            presentation.reason != ReasonCode.NONE
+            // ⚠ A microphone the system silenced carries a reason so it can say why, and it is
+            // not a fault: nothing is wrong with intake, and it picks up again on its own.
+            presentation.reason !in setOf(ReasonCode.NONE, ReasonCode.MICROPHONE_SILENCED)
     }
     val diagnosis = reasonDiagnosis(presentation.reason)
     return PhoneObserverWidgetModel(

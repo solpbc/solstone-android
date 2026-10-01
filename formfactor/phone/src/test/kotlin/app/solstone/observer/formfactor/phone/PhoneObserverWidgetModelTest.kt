@@ -35,6 +35,7 @@ class PhoneObserverWidgetModelTest {
         val freshSilenced = render(fixture, providerFresh = true, silenced = SilencedFact.SILENCED)
         assertEquals("paused", freshSilenced.stateWord)
         assertFalse(freshSilenced.audioChecked)
+        assertFalse(freshSilenced.needsAttention, "a silenced microphone is not a fault")
 
         val staleNotSilenced = render(fixture, providerFresh = false, silenced = SilencedFact.NOT_SILENCED)
         assertEquals("needs attention", staleNotSilenced.stateWord)

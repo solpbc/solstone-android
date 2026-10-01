@@ -32,6 +32,7 @@ class HarnessFactsDisplayTest {
             ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE to "needs attention: audio intake may resume after restart",
             ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE to "needs attention: couldn't confirm the stop was saved",
             ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY to "needs attention: other sources stopped unexpectedly",
+            ReasonCode.MICROPHONE_SILENCED to "needs attention: another app has the microphone, or access is off. audio picks up again on its own once the microphone is free or microphone access is back on.",
             // Repeating the state as a reason adds no information, so this is the bare state word.
             ReasonCode.DESIRED_OFF to "needs attention",
         )

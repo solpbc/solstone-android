@@ -88,7 +88,13 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
         // restarted` and `setting up / getting ready…` are both wrong about it — and the second one
         // is the live case: pressing `stop intake` leaves a wish-on source with no engine, which
         // read `getting ready…` forever while nothing was getting ready.
-        f.desiredOn && (f.silenced == SilencedFact.SILENCED || f.paused) -> SourceState.PAUSED to ReasonCode.NONE
+        f.desiredOn && f.paused -> SourceState.PAUSED to ReasonCode.NONE
+        // ⚠ Paused by the SYSTEM, not the owner: Android hands the microphone to another app (a
+        // screen recording with audio is the live case) or the owner's microphone switch is off, and
+        // this recording gets silence until it is free. Under `NONE` it read `you paused this. resume
+        // to start sending again.` with a resume control — a choice the owner never made, and a
+        // control that cannot help. It resumes on its own.
+        f.desiredOn && f.silenced == SilencedFact.SILENCED -> SourceState.PAUSED to ReasonCode.MICROPHONE_SILENCED
         f.desiredOn && f.engineStartIssued && !f.engineRunning -> SourceState.NEEDS_ATTENTION to ReasonCode.REBOOTED
         f.desiredOn && !f.engineStartIssued && !f.engineRunning -> SourceState.SETTING_UP to ReasonCode.NONE
         !f.desiredOn -> SourceState.OFF to ReasonCode.NONE

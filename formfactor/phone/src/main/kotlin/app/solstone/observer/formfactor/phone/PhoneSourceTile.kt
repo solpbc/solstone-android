@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceStatus
@@ -181,6 +182,8 @@ fun PhoneSourceTile(
                 style = MaterialTheme.typography.bodySmall,
                 color = shellSecondaryInk,
                 maxLines = 3,
+                // A sub-line longer than the tile shows its cut; the source's own page shows all of it.
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

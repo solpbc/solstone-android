@@ -36,6 +36,7 @@ fun reasonDiagnosis(reason: ReasonCode): String? = when (reason) {
     ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE -> "audio intake may resume after restart"
     ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE -> "couldn't confirm the stop was saved"
     ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY -> "other sources stopped unexpectedly"
+    ReasonCode.MICROPHONE_SILENCED -> "another app has the microphone, or access is off. audio picks up again on its own once the microphone is free or microphone access is back on."
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }
