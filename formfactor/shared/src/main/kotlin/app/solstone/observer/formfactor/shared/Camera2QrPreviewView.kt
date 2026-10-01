@@ -306,8 +306,8 @@ class Camera2QrPreviewView(
         val map = manager.getCameraCharacteristics(cameraId)
             .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             ?: return null
-        return map.getOutputSizes(ImageFormat.YUV_420_888)
-            ?.minByOrNull { size -> size.width.toLong() * size.height.toLong() }
+        val offered = map.getOutputSizes(ImageFormat.YUV_420_888)?.map { it.width to it.height } ?: return null
+        return qrAnalysisSize(offered)?.let { (width, height) -> Size(width, height) }
     }
 
     private fun reportCameraFailure(detail: String) {
