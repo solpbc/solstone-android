@@ -1919,8 +1919,347 @@ fun pairingPublisherArchitectureViolations(content: String, relativePath: String
     return violations
 }
 
+// The pure-JVM modules (core/*, platform/camera-still) compile against the host JDK, not
+// android.jar. So a JDK API that Android does not have compiles, passes the JVM unit tests, and
+// fails on the phone at its first call. That shipped once: the segment upload asked
+// java.time.zone.ZoneRulesProvider for its zone ids, the class does not exist on Android, and every
+// send threw NoSuchMethodError while every gate was green. This guard reads each platform reference
+// in the compiled bytecode those modules ship in the app and checks it against the SDK's
+// api-versions.xml at the app's minSdk, so that class of defect fails `make ci` instead.
+
+val androidPlatformPackagePrefixes = listOf(
+    "java/", "javax/", "jdk/", "sun/", "com/sun/", "org/w3c/", "org/xml/", "org/json/", "android/", "dalvik/",
+)
+
+// D8 rewrites these invokedynamic bootstraps into plain classes, so the device never resolves them.
+val androidDesugaredBootstrapOwners = setOf(
+    "java/lang/invoke/LambdaMetafactory",
+    "java/lang/invoke/StringConcatFactory",
+    "java/lang/runtime/ObjectMethods",
+)
+
+// "owner.member" (member = field name, or method name + descriptor) to the reason the device is fine.
+// ⛔ Every entry needs a reason a reader can check, such as a D8 backport at this minSdk.
+val androidApiSurfaceAllowlist: Map<String, String> = mapOf()
+
+fun isAndroidPlatformType(internalName: String): Boolean =
+    androidPlatformPackagePrefixes.any { internalName.startsWith(it) }
+
+data class AndroidApiMember(val since: Int?, val removed: Int?)
+
+data class AndroidApiClass(
+    val since: Int,
+    val removed: Int?,
+    val supers: List<String>,
+    val members: Map<String, AndroidApiMember>,
+)
+
+data class AndroidApiReference(val owner: String, val member: String?, val site: String)
+
+fun parseAndroidApiVersions(xml: File): Map<String, AndroidApiClass> {
+    val classes = HashMap<String, AndroidApiClass>()
+    javax.xml.parsers.SAXParserFactory.newInstance().newSAXParser().parse(
+        xml,
+        object : org.xml.sax.helpers.DefaultHandler() {
+            var name: String? = null
+            var since = 1
+            var removed: Int? = null
+            val supers = mutableListOf<String>()
+            val members = HashMap<String, AndroidApiMember>()
+
+            override fun startElement(uri: String?, localName: String?, qName: String, attributes: org.xml.sax.Attributes) {
+                fun level(attribute: String) = attributes.getValue(attribute)?.toIntOrNull()
+                when (qName) {
+                    "class" -> {
+                        name = attributes.getValue("name")
+                        since = level("since") ?: 1
+                        removed = level("removed")
+                        supers.clear()
+                        members.clear()
+                    }
+                    "extends", "implements" -> if (name != null) supers += attributes.getValue("name")
+                    "method", "field" -> if (name != null) {
+                        members[attributes.getValue("name")] = AndroidApiMember(level("since"), level("removed"))
+                    }
+                }
+            }
+
+            override fun endElement(uri: String?, localName: String?, qName: String) {
+                if (qName == "class") {
+                    name?.let { classes[it] = AndroidApiClass(since, removed, supers.toList(), HashMap(members)) }
+                    name = null
+                }
+            }
+        },
+    )
+    return classes
+}
+
+fun collectAndroidApiReferences(classBytes: ByteArray): List<AndroidApiReference> {
+    val refs = mutableListOf<AndroidApiReference>()
+    var site = ""
+    fun type(t: org.objectweb.asm.Type) {
+        val element = if (t.sort == org.objectweb.asm.Type.ARRAY) t.elementType else t
+        if (element.sort == org.objectweb.asm.Type.OBJECT) refs += AndroidApiReference(element.internalName, null, site)
+    }
+    fun internalName(name: String) =
+        type(if (name.startsWith("[")) org.objectweb.asm.Type.getType(name) else org.objectweb.asm.Type.getObjectType(name))
+    fun descriptor(desc: String) {
+        val t = org.objectweb.asm.Type.getType(desc)
+        if (t.sort == org.objectweb.asm.Type.METHOD) {
+            t.argumentTypes.forEach(::type)
+            type(t.returnType)
+        } else {
+            type(t)
+        }
+    }
+    fun member(owner: String, key: String, desc: String) {
+        descriptor(desc)
+        // A method on an array type (clone) is the VM's, so only the element type needs checking.
+        if (owner.startsWith("[")) internalName(owner) else refs += AndroidApiReference(owner, key, site)
+    }
+    fun handle(h: org.objectweb.asm.Handle) =
+        member(h.owner, if (h.tag <= org.objectweb.asm.Opcodes.H_PUTSTATIC) h.name else h.name + h.desc, h.desc)
+    fun constant(value: Any?) {
+        when (value) {
+            is org.objectweb.asm.Type ->
+                if (value.sort == org.objectweb.asm.Type.METHOD) descriptor(value.descriptor) else type(value)
+            is org.objectweb.asm.Handle -> handle(value)
+        }
+    }
+    val methodVisitor = object : org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+        override fun visitTypeInsn(opcode: Int, type: String) = internalName(type)
+        override fun visitFieldInsn(opcode: Int, owner: String, name: String, descriptor: String) =
+            member(owner, name, descriptor)
+        override fun visitMethodInsn(opcode: Int, owner: String, name: String, descriptor: String, isInterface: Boolean) =
+            member(owner, name + descriptor, descriptor)
+        override fun visitInvokeDynamicInsn(
+            name: String,
+            descriptor: String,
+            bootstrap: org.objectweb.asm.Handle,
+            vararg arguments: Any?,
+        ) {
+            descriptor(descriptor)
+            if (bootstrap.owner !in androidDesugaredBootstrapOwners) handle(bootstrap)
+            arguments.forEach(::constant)
+        }
+        override fun visitLdcInsn(value: Any?) = constant(value)
+        override fun visitMultiANewArrayInsn(descriptor: String, numDimensions: Int) = descriptor(descriptor)
+        override fun visitTryCatchBlock(
+            start: org.objectweb.asm.Label,
+            end: org.objectweb.asm.Label,
+            handler: org.objectweb.asm.Label,
+            type: String?,
+        ) {
+            type?.let(::internalName)
+        }
+    }
+    var className = ""
+    org.objectweb.asm.ClassReader(classBytes).accept(
+        object : org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+            override fun visit(
+                version: Int,
+                access: Int,
+                name: String,
+                signature: String?,
+                superName: String?,
+                interfaces: Array<out String>?,
+            ) {
+                className = name
+                site = name
+                superName?.let(::internalName)
+                interfaces?.forEach(::internalName)
+            }
+            override fun visitField(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                value: Any?,
+            ): org.objectweb.asm.FieldVisitor? {
+                site = "$className.$name"
+                descriptor(descriptor)
+                return null
+            }
+            override fun visitMethod(
+                access: Int,
+                name: String,
+                descriptor: String,
+                signature: String?,
+                exceptions: Array<out String>?,
+            ): org.objectweb.asm.MethodVisitor {
+                site = "$className.$name"
+                descriptor(descriptor)
+                exceptions?.forEach(::internalName)
+                return methodVisitor
+            }
+        },
+        org.objectweb.asm.ClassReader.SKIP_DEBUG or org.objectweb.asm.ClassReader.SKIP_FRAMES,
+    )
+    return refs
+}
+
+// The member's API level and removal, searched up the Android hierarchy the way the runtime resolves it.
+fun findAndroidApiMember(
+    owner: String,
+    key: String,
+    api: Map<String, AndroidApiClass>,
+    seen: MutableSet<String> = mutableSetOf(),
+): AndroidApiMember? {
+    if (!seen.add(owner)) return null
+    val declaring = api[owner] ?: return null
+    declaring.members[key]?.let { return AndroidApiMember(it.since ?: declaring.since, it.removed) }
+    if (key.startsWith("<init>")) return null
+    return (declaring.supers + "java/lang/Object").firstNotNullOfOrNull { findAndroidApiMember(it, key, api, seen) }
+}
+
+fun androidApiSurfaceViolation(ref: AndroidApiReference, api: Map<String, AndroidApiClass>, minSdk: Int): String? {
+    if (!isAndroidPlatformType(ref.owner)) return null
+    val target = if (ref.member == null) ref.owner else "${ref.owner}.${ref.member}"
+    if (target in androidApiSurfaceAllowlist) return null
+    val owner = api[ref.owner] ?: return "$target: ${ref.owner} is not in the Android SDK (used by ${ref.site})"
+    owner.removed?.let { return "$target: ${ref.owner} was removed in API $it (used by ${ref.site})" }
+    if (owner.since > minSdk) return "$target: ${ref.owner} needs API ${owner.since}, minSdk is $minSdk (used by ${ref.site})"
+    val key = ref.member ?: return null
+    val member = findAndroidApiMember(ref.owner, key, api)
+        ?: return "$target: not in the Android SDK (used by ${ref.site})"
+    member.removed?.let { return "$target: removed in API $it (used by ${ref.site})" }
+    val since = maxOf(owner.since, member.since ?: 1)
+    if (since > minSdk) return "$target: needs API $since, minSdk is $minSdk (used by ${ref.site})"
+    return null
+}
+
+fun Project.registerAndroidApiSurfaceCheck() {
+    tasks.register("checkAndroidApiSurface") {
+        group = "verification"
+        description = "Fails if a pure-JVM module the app ships calls a JDK API that Android lacks at minSdk."
+        dependsOn(
+            provider {
+                rootProject.subprojects
+                    .filter { it.plugins.hasPlugin("org.jetbrains.kotlin.jvm") }
+                    .map { "${it.path}:classes" }
+            },
+        )
+        doLast {
+            val android = project.extensions.getByType(com.android.build.gradle.BaseExtension::class.java)
+            val minSdk = android.defaultConfig.minSdkVersion?.apiLevel
+                ?: throw GradleException("$path: no minSdk to check against")
+            val compileSdk = android.compileSdkVersion
+                ?: throw GradleException("$path: no compileSdk to check against")
+            val apiFile = File(android.sdkDirectory, "platforms/$compileSdk/data/api-versions.xml")
+            if (!apiFile.isFile) throw GradleException("Android API database not found: $apiFile")
+            val api = parseAndroidApiVersions(apiFile)
+
+            val shipped = project.configurations.getByName("realReleaseRuntimeClasspath")
+                .incoming.resolutionResult.allComponents
+                .mapNotNull { (it.id as? org.gradle.api.artifacts.component.ProjectComponentIdentifier)?.projectPath }
+                .map { rootProject.project(it) }
+                .filter { it.plugins.hasPlugin("org.jetbrains.kotlin.jvm") }
+                .sortedBy { it.path }
+            if (shipped.isEmpty()) {
+                throw GradleException("No pure-JVM module found in the release runtime classpath, so nothing would be checked")
+            }
+
+            var classCount = 0
+            var platformRefs = 0
+            val violations = sortedSetOf<String>()
+            shipped.forEach { module ->
+                val classFiles = module.extensions.getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
+                    .getByName("main").output.classesDirs.files
+                    .filter { it.isDirectory }
+                    .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.extension == "class" }.toList() }
+                if (classFiles.isEmpty()) throw GradleException("${module.path} has no compiled classes to check")
+                classFiles.forEach { classFile ->
+                    classCount++
+                    collectAndroidApiReferences(classFile.readBytes())
+                        .filter { isAndroidPlatformType(it.owner) }
+                        .forEach { ref ->
+                            platformRefs++
+                            androidApiSurfaceViolation(ref, api, minSdk)?.let { violations += "${module.path}: $it" }
+                        }
+                }
+            }
+            println(
+                "Android API surface: $platformRefs platform references in $classCount classes from " +
+                    "${shipped.size} modules (${shipped.joinToString { it.path }}) checked against $compileSdk at minSdk $minSdk",
+            )
+            if (violations.isNotEmpty()) {
+                throw GradleException(
+                    "Android API surface guard failed. These compile against the host JDK but fail on a phone:\n" +
+                        violations.joinToString("\n"),
+                )
+            }
+        }
+    }
+}
+
+tasks.register("androidApiSurfaceGuardSelfTest") {
+    group = "verification"
+    description = "Exercises the Android API surface guard against a synthetic API table and generated bytecode."
+
+    doLast {
+        val api = mapOf(
+            "java/lang/Object" to AndroidApiClass(1, null, emptyList(), mapOf("hashCode()I" to AndroidApiMember(null, null))),
+            "java/time/ZoneId" to AndroidApiClass(
+                26,
+                null,
+                listOf("java/lang/Object"),
+                mapOf("getAvailableZoneIds()Ljava/util/Set;" to AndroidApiMember(null, null)),
+            ),
+            "java/lang/CharSequence" to AndroidApiClass(
+                1,
+                null,
+                listOf("java/lang/Object"),
+                mapOf(
+                    "isEmpty()Z" to AndroidApiMember(35, null),
+                    "length()I" to AndroidApiMember(null, null),
+                ),
+            ),
+            "java/lang/String" to AndroidApiClass(1, null, listOf("java/lang/Object", "java/lang/CharSequence"), emptyMap()),
+            "java/util/Gone" to AndroidApiClass(1, null, emptyList(), mapOf("x" to AndroidApiMember(null, 23))),
+        )
+        fun violation(owner: String, member: String?) =
+            androidApiSurfaceViolation(AndroidApiReference(owner, member, "Site.m"), api, 26)
+
+        check(violation("java/time/zone/ZoneRulesProvider", "getAvailableZoneIds()Ljava/util/Set;")!!.contains("not in the Android SDK"))
+        check(violation("java/time/ZoneId", "getAvailableZoneIds()Ljava/util/Set;") == null)
+        check(violation("java/time/ZoneId", "nope()V")!!.contains("not in the Android SDK"))
+        check(violation("java/lang/String", "length()I") == null) // inherited through implements
+        check(violation("java/lang/String", "hashCode()I") == null) // inherited from Object
+        check(violation("java/lang/String", "isEmpty()Z")!!.contains("needs API 35"))
+        check(violation("java/util/Gone", "x")!!.contains("removed in API 23"))
+        check(violation("app/solstone/Anything", "whatever()V") == null)
+        check(androidApiSurfaceViolation(AndroidApiReference("java/time/ZoneId", null, "Site.m"), api, 25)!!.contains("needs API 26"))
+
+        // The bytecode half: a generated class making the exact call that shipped must be seen.
+        val writer = org.objectweb.asm.ClassWriter(0)
+        writer.visit(org.objectweb.asm.Opcodes.V17, org.objectweb.asm.Opcodes.ACC_PUBLIC, "probe/Zones", null, "java/lang/Object", null)
+        val method = writer.visitMethod(org.objectweb.asm.Opcodes.ACC_STATIC, "ids", "()Ljava/util/Set;", null, null)
+        method.visitCode()
+        method.visitMethodInsn(
+            org.objectweb.asm.Opcodes.INVOKESTATIC,
+            "java/time/zone/ZoneRulesProvider",
+            "getAvailableZoneIds",
+            "()Ljava/util/Set;",
+            false,
+        )
+        method.visitInsn(org.objectweb.asm.Opcodes.ARETURN)
+        method.visitMaxs(1, 0)
+        method.visitEnd()
+        writer.visitEnd()
+        val refs = collectAndroidApiReferences(writer.toByteArray())
+        check(
+            refs.contains(
+                AndroidApiReference("java/time/zone/ZoneRulesProvider", "getAvailableZoneIds()Ljava/util/Set;", "probe/Zones.ids"),
+            ),
+        )
+        check(refs.any { it.owner == "java/util/Set" && it.member == null })
+    }
+}
+
 tasks.named("check") {
     dependsOn(
+        "androidApiSurfaceGuardSelfTest",
         "checkPrivacyDeps",
         "checkCorePurity",
         "checkSplGateDriver",
@@ -2457,6 +2796,7 @@ project(":apps:phone") {
     registerRealReleasePushManifestCheck()
     registerRealReleasePushDexCheck()
     registerNoPushGatewayCheck()
+    registerAndroidApiSurfaceCheck()
 }
 
 project(":apps:glasses") {
