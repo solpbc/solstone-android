@@ -11,6 +11,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - this is a security fix: when you pair your phone with a journal, nothing you've kept on it goes to that journal until you confirm it's your journal. before, what you'd kept could start going to it as soon as pairing finished, even to a journal you then said wasn't yours. if you paired before this update, you won't be asked.
+- moments you kept with version 2.1.13 didn't reach your journal. they stayed on your phone, and they go into your journal once you install this update.
 - leaving the app while another app was using the microphone, such as a screen recording with sound, could mark every source as needing attention, saying intake couldn't start from the background. it stayed that way until you stopped intake and started it again, even though intake kept running. now your audio source says why it's paused, instead of saying you paused it, and the other sources stay on. audio picks up again on its own once the microphone is free again or access is back on.
 - the pairing scanner now reads your journal's code from farther away. before, you might have had to hold your phone much closer than the on-screen guides suggested, and try more than once.
 - if you stop and start intake again within a few minutes, moments from that stretch are no longer lost before they reach your journal.
