@@ -77,7 +77,7 @@ class ObserverIngestClient(
             if (host != null) put("host", host)
             if (platform != null) put("platform", platform)
             val zoneId = manifest.zoneId
-            if (zoneId != null && zoneId in java.time.zone.ZoneRulesProvider.getAvailableZoneIds()) {
+            if (zoneId != null && zoneId in java.time.ZoneId.getAvailableZoneIds()) {
                 put("tz", zoneId)
             }
             if (manifest.utcOffsetSeconds != null) {
