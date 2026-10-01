@@ -22,16 +22,16 @@ import app.solstone.core.pl.EndpointStore
 import java.util.concurrent.atomic.AtomicLong
 
 class FakeJournalConfirmationStore(
-    var state: JournalConfirmation = JournalConfirmation(confirmed = null, settled = false),
+    var state: JournalConfirmation = JournalConfirmation(confirmed = null),
     var throwOnSettle: Boolean = false,
 ) : JournalConfirmationStore {
     override fun inspect(): StoreInspectResult<JournalConfirmation> = StoreInspectResult.Ready(state)
     override fun confirm(fingerprint: String) {
-        state = JournalConfirmation(confirmed = fingerprint, settled = true)
+        state = JournalConfirmation(confirmed = fingerprint)
     }
     override fun settle() {
         if (throwOnSettle) throw java.io.IOException("settle failed")
-        state = state.copy(settled = true)
+        state = state.copy(confirmed = state.confirmed)
     }
     override fun addListener(listener: () -> Unit): () -> Unit = {}
 }

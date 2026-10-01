@@ -30,7 +30,19 @@ object JournalConfirmationGrandfather {
             testHook?.invoke()
             if (snapshot is PairingGraphSnapshot.Committed) {
                 if (store.inspect() is StoreInspectResult.Missing) {
-                    store.confirm(snapshot.home.clientCertFingerprint)
+                    try {
+                        store.confirm(snapshot.home.clientCertFingerprint)
+                    } catch (t: Exception) {
+                        workerLog("w", "confirmation write failed; pairing left unconfirmed", t)
+                    }
+                }
+            } else if (snapshot is PairingGraphSnapshot.Absent) {
+                if (store.inspect() is StoreInspectResult.Missing) {
+                    try {
+                        store.settle()
+                    } catch (t: Exception) {
+                        workerLog("w", "confirmation write failed; pairing left unconfirmed", t)
+                    }
                 }
             }
         }

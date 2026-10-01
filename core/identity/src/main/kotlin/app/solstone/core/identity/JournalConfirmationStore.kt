@@ -5,7 +5,6 @@ package app.solstone.core.identity
 
 data class JournalConfirmation(
     val confirmed: String?,
-    val settled: Boolean,
 )
 
 interface JournalConfirmationStore {

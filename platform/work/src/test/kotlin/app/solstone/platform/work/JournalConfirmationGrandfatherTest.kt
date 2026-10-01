@@ -89,18 +89,18 @@ class JournalConfirmationGrandfatherTest {
 
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
         assertEquals("sha256:cert-1", inspected.value.confirmed)
-        assertTrue(inspected.value.settled)
     }
 
     @Test
-    fun grandfatherDoesNothingWhenAbsent() {
+    fun grandfatherSettlesNullConfirmedWhenAbsent() {
         val graph = createGraph()
         val confirmFile = File(temp.root, "journal_confirmation.json")
         val confirmStore = FileJournalConfirmationStore(confirmFile)
 
         JournalConfirmationGrandfather.grandfather(graph, confirmStore)
 
-        assertIs<StoreInspectResult.Missing>(confirmStore.inspect())
+        val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
+        assertEquals(null, inspected.value.confirmed)
     }
 
     @Test
@@ -123,15 +123,17 @@ class JournalConfirmationGrandfatherTest {
         val confirmFile = File(temp.root, "journal_confirmation.json")
         val confirmStore = FileJournalConfirmationStore(confirmFile)
 
-        // First run when absent
+        // First run when absent -> settles null confirmed
         JournalConfirmationGrandfather.grandfather(graph, confirmStore)
-        assertIs<StoreInspectResult.Missing>(confirmStore.inspect())
+        val inspected1 = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
+        assertEquals(null, inspected1.value.confirmed)
 
-        // Later pairing is committed, but grandfather already ran in this process
+        // Later pairing is committed, but grandfather already ran in this process -> stays null confirmed
         graph.installOrReplace(testHome(cert = "sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
         JournalConfirmationGrandfather.grandfather(graph, confirmStore)
 
-        assertIs<StoreInspectResult.Missing>(confirmStore.inspect())
+        val inspected2 = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
+        assertEquals(null, inspected2.value.confirmed)
     }
 
     @Test
@@ -152,7 +154,6 @@ class JournalConfirmationGrandfatherTest {
         assertTrue(matchResult)
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
         assertEquals("sha256:match", inspected.value.confirmed)
-        assertTrue(inspected.value.settled)
     }
 
     @Test
@@ -168,7 +169,6 @@ class JournalConfirmationGrandfatherTest {
 
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
         assertEquals(customCert, inspected.value.confirmed)
-        assertTrue(inspected.value.settled)
     }
 
     @Test
@@ -224,7 +224,6 @@ class JournalConfirmationGrandfatherTest {
         // The snapshot read before testHook was cert-a
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
         assertEquals("sha256:cert-a", inspected.value.confirmed)
-        assertTrue(inspected.value.settled)
     }
 
     @Test
@@ -241,5 +240,64 @@ class JournalConfirmationGrandfatherTest {
 
         val result = confirmCurrentJournal(graph, failingStore, "sha256:match")
         assertFalse(result)
+    }
+
+    @Test
+    fun grandfatherConfirmThrowsCatchesLogsAndLeavesMissingWithoutThrowing() {
+        val graph = createGraph()
+        graph.installOrReplace(testHome(cert = "sha256:cert-fail"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+
+        var loggedMessage: String? = null
+        val oldLogger = workerLog
+        workerLog = { level, message, _ ->
+            if (level == "w") loggedMessage = message
+        }
+        try {
+            val failingStore = object : JournalConfirmationStore {
+                override fun inspect(): StoreInspectResult<JournalConfirmation> = StoreInspectResult.Missing
+                override fun confirm(fingerprint: String) { throw IOException("disk error") }
+                override fun settle() { throw IOException("disk error") }
+                override fun addListener(listener: () -> Unit): () -> Unit = {}
+            }
+
+            JournalConfirmationGrandfather.grandfather(graph, failingStore)
+            assertIs<StoreInspectResult.Missing>(failingStore.inspect())
+            assertEquals("confirmation write failed; pairing left unconfirmed", loggedMessage)
+
+            // resetForTest and run grandfather again
+            loggedMessage = null
+            JournalConfirmationGrandfather.resetForTest()
+            JournalConfirmationGrandfather.grandfather(graph, failingStore)
+            assertIs<StoreInspectResult.Missing>(failingStore.inspect())
+            assertEquals("confirmation write failed; pairing left unconfirmed", loggedMessage)
+        } finally {
+            workerLog = oldLogger
+        }
+    }
+
+    @Test
+    fun grandfatherUncertainWritesNothingThenCommittedConfirmsWithoutSettledKey() {
+        val graph = createGraph()
+        graph.installOrReplace(testHome(cert = "sha256:cert-a"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        // Corrupt commit marker to make snapshot Uncertain
+        File(temp.root, "pairing.commit").writeText("invalid-commit-data")
+
+        val uncertainGraph = createGraph()
+        val confirmFile = File(temp.root, "journal_confirmation.json")
+        val confirmStore = FileJournalConfirmationStore(confirmFile)
+
+        JournalConfirmationGrandfather.grandfather(uncertainGraph, confirmStore)
+        assertFalse(confirmFile.exists())
+        assertIs<StoreInspectResult.Missing>(confirmStore.inspect())
+
+        // Reset and run against committed graph
+        JournalConfirmationGrandfather.resetForTest()
+        val cleanGraph = createGraph()
+        cleanGraph.installOrReplace(testHome(cert = "sha256:cert-a"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        JournalConfirmationGrandfather.grandfather(cleanGraph, confirmStore)
+
+        val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
+        assertEquals("sha256:cert-a", inspected.value.confirmed)
+        assertFalse(confirmFile.readText().contains("settled"))
     }
 }

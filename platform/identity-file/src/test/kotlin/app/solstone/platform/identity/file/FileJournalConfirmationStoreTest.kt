@@ -28,7 +28,7 @@ class FileJournalConfirmationStoreTest {
     }
 
     @Test
-    fun confirmWritesVerbatimFingerprintAndSettledTrue() {
+    fun confirmWritesVerbatimFingerprint() {
         val file = File(temp.root, "journal_confirmation.json")
         val store = FileJournalConfirmationStore(file)
         val latch = java.util.concurrent.CountDownLatch(2)
@@ -43,20 +43,20 @@ class FileJournalConfirmationStoreTest {
 
         assertTrue(latch.await(5, java.util.concurrent.TimeUnit.SECONDS))
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(store.inspect())
-        assertEquals(JournalConfirmation(confirmed = fp, settled = true), inspected.value)
+        assertEquals(JournalConfirmation(confirmed = fp), inspected.value)
         assertEquals(2, notifications.get())
         removeListener()
     }
 
     @Test
-    fun settleOnEmptyStoreWritesNullConfirmedAndSettledTrue() {
+    fun settleOnEmptyStoreWritesNullConfirmed() {
         val file = File(temp.root, "journal_confirmation.json")
         val store = FileJournalConfirmationStore(file)
 
         store.settle()
 
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(store.inspect())
-        assertEquals(JournalConfirmation(confirmed = null, settled = true), inspected.value)
+        assertEquals(JournalConfirmation(confirmed = null), inspected.value)
     }
 
     @Test
@@ -69,7 +69,7 @@ class FileJournalConfirmationStoreTest {
         store.settle()
 
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(store.inspect())
-        assertEquals(JournalConfirmation(confirmed = fp, settled = true), inspected.value)
+        assertEquals(JournalConfirmation(confirmed = fp), inspected.value)
     }
 
     @Test

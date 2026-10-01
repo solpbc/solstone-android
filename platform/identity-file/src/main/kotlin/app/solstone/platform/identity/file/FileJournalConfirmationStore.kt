@@ -26,14 +26,15 @@ class FileJournalConfirmationStore(private val file: File) : JournalConfirmation
             val text = file.readText(Charsets.UTF_8)
             val root = parseJson(text) as? Map<*, *>
                 ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "confirmation root")
-            val settled = root["settled"] as? Boolean
-                ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "confirmation settled")
+            if (!root.containsKey("confirmed")) {
+                return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "confirmation key")
+            }
             val rawConfirmed = root["confirmed"]
             if (rawConfirmed != null && rawConfirmed !is String) {
                 return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "confirmation confirmed")
             }
             val confirmed = rawConfirmed as? String
-            StoreInspectResult.Ready(JournalConfirmation(confirmed = confirmed, settled = settled))
+            StoreInspectResult.Ready(JournalConfirmation(confirmed = confirmed))
         } catch (t: Throwable) {
             StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, t.javaClass.simpleName)
         }
@@ -42,7 +43,6 @@ class FileJournalConfirmationStore(private val file: File) : JournalConfirmation
     override fun confirm(fingerprint: String) {
         val root = mapOf(
             "confirmed" to fingerprint,
-            "settled" to true,
         )
         val json = toJson(root)
         atomicWriteOwnerOnly(file, json.toByteArray(Charsets.UTF_8))
@@ -53,7 +53,6 @@ class FileJournalConfirmationStore(private val file: File) : JournalConfirmation
         val existingConfirmed = (inspect() as? StoreInspectResult.Ready)?.value?.confirmed
         val root = mapOf(
             "confirmed" to existingConfirmed,
-            "settled" to true,
         )
         val json = toJson(root)
         atomicWriteOwnerOnly(file, json.toByteArray(Charsets.UTF_8))

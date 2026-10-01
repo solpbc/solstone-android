@@ -319,7 +319,6 @@ class FilePairingGraphDeathMatrixTest {
                 assertEquals("sha256:cert-a", snap.home.clientCertFingerprint)
                 // A remains confirmed
                 assertEquals(snap.home.clientCertFingerprint, inspect.value.confirmed)
-                assertTrue(inspect.value.settled)
             } else {
                 // Committed to B
                 assertTrue(snap is PairingGraphSnapshot.Committed)
@@ -413,7 +412,6 @@ class FilePairingGraphDeathMatrixTest {
         assertEquals("home-1", snap.home.instanceId)
         val inspect = confirmStore.inspect() as StoreInspectResult.Ready
         assertEquals("sha256:cert-1", inspect.value.confirmed)
-        assertTrue(inspect.value.settled)
     }
 
     @Test
@@ -464,7 +462,6 @@ class FilePairingGraphDeathMatrixTest {
         assertEquals("sha256:cert-a", snap.home.clientCertFingerprint)
         val inspect = confirmStore.inspect() as StoreInspectResult.Ready
         assertEquals("sha256:cert-a", inspect.value.confirmed)
-        assertTrue(inspect.value.settled)
     }
 
     @Test
