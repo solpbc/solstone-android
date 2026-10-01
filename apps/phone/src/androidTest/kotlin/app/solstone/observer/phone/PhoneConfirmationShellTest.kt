@@ -137,7 +137,7 @@ class PhoneConfirmationShellTest {
                 assertNotNull("ObserverActivity must be started", observerActivity)
                 assertTrue(observerActivity!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
 
-                composeRule.onNodeWithText("does this match your journal?").assertExists()
+                composeRule.onNodeWithTag("pairingConnecting").assertExists()
 
                 val labels = buttonLabels(observerActivity)
                 MENU_ONLY_CONTROLS.forEach {

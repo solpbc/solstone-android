@@ -17,6 +17,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.JournalMarkRecord
+import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
@@ -95,13 +97,19 @@ class PhoneHeldRevokeAndMarkTest {
     fun pairingAccessoryMismatchClickCausesDeleteUnderClients() {
         val server = standIn!!
         installTestPairing(server)
+        val stores = syncStores(context)
+        val committed = (stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed).pairing
+        stores.journalMarkStore.save(
+            JournalMarkRecord(instanceId = committed.instanceId, mark = null, pairing = committed),
+        )
+        stores.journalIdentityCoordinator.onPairingChanged()
         val factory = phoneSpec.pairingAccessoryFactory!!
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContentView(factory(activity) {})
             }
-            composeRule.onNodeWithText("that doesn't match").performClick()
+            composeRule.onNodeWithTag("pairingCancelPairing").performClick()
             composeRule.waitForIdle()
 
             composeRule.waitUntil(5000) {

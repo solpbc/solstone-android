@@ -228,9 +228,9 @@ class PhoneJournalMarkComposeTest {
             }
         }
 
-        // A fresh pairing has no stored mark yet, so the card reads as loading
-        composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, mark loading")
+        // A fresh pairing has no stored mark yet, so prompt renders connecting and no card
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
 
         // Trigger usable connection
         coordinator.onUsableConnection(
@@ -240,9 +240,9 @@ class PhoneJournalMarkComposeTest {
         )
 
         assertTrue(inRequest.await(5, TimeUnit.SECONDS))
-        // While GET in flight, card still reads as loading
-        composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, mark loading")
+        // While GET in flight, prompt still renders connecting and no card
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
 
         // Release GET response
         releaseRequest.countDown()
@@ -277,6 +277,8 @@ class PhoneJournalMarkComposeTest {
             .assertContentDescriptionEquals("your journal, not set up yet")
         composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertExists()
     }
 
     @Test
@@ -293,12 +295,12 @@ class PhoneJournalMarkComposeTest {
             }
         }
 
-        composeRule.onNodeWithText("does this match your journal?").assertExists()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
         composeRule.onNodeWithText(
             "your journal shows this same mark in its network app. it should match, exactly.",
             useUnmergedTree = true,
-        ).assertExists()
-        composeRule.onNodeWithText("that doesn't match").performClick()
+        ).assertDoesNotExist()
+        composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
         composeRule.waitForIdle()
 
         assertEquals(1, mismatched)

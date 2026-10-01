@@ -137,9 +137,9 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
-        composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, mark loading")
-        composeRule.onNodeWithText("yes, this is my journal").assertIsNotEnabled()
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
+        composeRule.onNodeWithText("yes, this is my journal").assertDoesNotExist()
         assertEquals(1, requestCalls.get())
         coordinator.close()
     }
@@ -162,7 +162,8 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithTag("journalMarkCard")
             .assertContentDescriptionEquals("your journal, not set up yet")
-        composeRule.onNodeWithText("yes, this is my journal").assertIsEnabled()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertIsEnabled()
         coordinator.close()
     }
 
@@ -207,7 +208,8 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithTag("journalMarkCard")
             .assertContentDescriptionEquals("your journal's mark, unavailable right now")
-        composeRule.onNodeWithText("yes, this is my journal").assertIsEnabled()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertIsEnabled()
         coordinator.close()
     }
 
@@ -238,7 +240,9 @@ class PhoneJournalMarkConfirmationComposeTest {
         assertEquals(JournalMarkPresentation.Identified(sampleMark), coordinator.currentPresentation())
         assertEquals(pairingA, coordinator.currentPresentationGeneration())
         assertTrue(pairingA != pairingB)
-        composeRule.onNodeWithText("yes, this is my journal").assertIsNotEnabled()
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        composeRule.onNodeWithText("yes, this is my journal").assertDoesNotExist()
+        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
         coordinator.close()
     }
 
@@ -348,7 +352,7 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
-        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
         composeRule.waitForIdle()
 
         assertTrue(onYesCalled)
@@ -395,6 +399,7 @@ class PhoneJournalMarkConfirmationComposeTest {
         val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
         var onYesCalled = false
         var confirmedCalled = false
+        var mismatchCount = 0
 
         composeRule.setContent {
             PhoneTheme {
@@ -406,16 +411,61 @@ class PhoneJournalMarkConfirmationComposeTest {
                         true
                     },
                     onConfirmed = { confirmedCalled = true },
+                    onMismatch = {
+                        mismatchCount += 1
+                        PairingMismatchResult.Disconnected
+                    },
                 )
             }
         }
 
-        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
+        composeRule.onNodeWithTag("journalMarkCard").assertExists()
+
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
         composeRule.waitForIdle()
 
         assertTrue(onYesCalled)
+        assertEquals(0, mismatchCount)
         assertTrue(confirmedCalled)
         composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
+        coordinator.close()
+    }
+
+    @Test
+    fun unavailableCancelCallsOnMismatchOnceAndNeverOnYes() {
+        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "unreadable"))
+        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        var onYesCalled = false
+        var confirmedCount = 0
+        var mismatchCount = 0
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = { _ ->
+                        onYesCalled = true
+                        true
+                    },
+                    onConfirmed = { confirmedCount += 1 },
+                    onMismatch = {
+                        mismatchCount += 1
+                        PairingMismatchResult.Disconnected
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
+        composeRule.waitForIdle()
+
+        assertFalse(onYesCalled)
+        assertEquals(1, mismatchCount)
+        assertEquals(1, confirmedCount)
+        composeRule.onNodeWithText("this phone is no longer connected to that journal.").assertExists()
         coordinator.close()
     }
 
@@ -441,12 +491,13 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
-        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
         composeRule.waitForIdle()
 
         assertTrue(onYesCalled)
         assertFalse(confirmedCalled)
-        composeRule.onNodeWithText("does this match your journal?").assertExists()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertExists()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
         composeRule.onNodeWithText("this phone is connected to your journal.").assertDoesNotExist()
         composeRule.onNodeWithText("couldn't disconnect this phone. try again.").assertDoesNotExist()
         coordinator.close()
@@ -479,7 +530,8 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
-        composeRule.onNodeWithText("that doesn't match").performClick()
+        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
+        composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
         composeRule.waitForIdle()
 
         assertFalse(onYesCalled)

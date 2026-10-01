@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -414,6 +415,111 @@ fun JournalMarkCard(
     }
 }
 
+internal enum class PairingPromptAction { Confirm, Drop }
+
+internal sealed class PairingPromptShape {
+    abstract val requestsMark: Boolean
+    abstract val showsQuestion: Boolean
+    abstract val card: JournalMarkPresentation?
+    abstract val withBody: Boolean
+    abstract val primary: PairingPromptAction?
+    abstract val secondary: PairingPromptAction?
+    abstract val primaryEnabled: Boolean
+
+    data class Connecting(override val requestsMark: Boolean) : PairingPromptShape() {
+        override val showsQuestion: Boolean = false
+        override val card: JournalMarkPresentation? = null
+        override val withBody: Boolean = false
+        override val primary: PairingPromptAction? = null
+        override val secondary: PairingPromptAction? = null
+        override val primaryEnabled: Boolean = false
+    }
+
+    data class Unverified(
+        override val withBody: Boolean,
+        override val card: JournalMarkPresentation,
+        override val primaryEnabled: Boolean,
+    ) : PairingPromptShape() {
+        override val requestsMark: Boolean = false
+        override val showsQuestion: Boolean = false
+        override val primary: PairingPromptAction = PairingPromptAction.Confirm
+        override val secondary: PairingPromptAction = PairingPromptAction.Drop
+    }
+
+    data class Match(
+        override val card: JournalMarkPresentation,
+        override val primaryEnabled: Boolean,
+    ) : PairingPromptShape() {
+        override val requestsMark: Boolean = false
+        override val showsQuestion: Boolean = true
+        override val withBody: Boolean = false
+        override val primary: PairingPromptAction = PairingPromptAction.Confirm
+        override val secondary: PairingPromptAction = PairingPromptAction.Drop
+    }
+}
+
+internal const val PAIRING_CONNECTING_TAG = "pairingConnecting"
+internal const val PAIRING_CONTINUE_ANYWAY_TAG = "pairingContinueAnyway"
+internal const val PAIRING_CANCEL_PAIRING_TAG = "pairingCancelPairing"
+
+internal fun pairingPromptShape(
+    coordinator: JournalIdentityRefreshCoordinator?,
+    presentation: JournalMarkPresentation,
+    presentationGeneration: PairingGeneration?,
+    currentPairing: PairingGeneration?,
+): PairingPromptShape {
+    if (coordinator == null) {
+        return PairingPromptShape.Unverified(
+            withBody = false,
+            card = JournalMarkPresentation.Generic,
+            primaryEnabled = isPairingConfirmationEnabled(
+                coordinator = coordinator,
+                presentationGeneration = presentationGeneration,
+                currentPairing = currentPairing,
+                presentation = JournalMarkPresentation.Generic,
+            ),
+        )
+    }
+    if (presentationGeneration != currentPairing || presentation is JournalMarkPresentation.Loading) {
+        return PairingPromptShape.Connecting(requestsMark = currentPairing != null)
+    }
+    return when (presentation) {
+        JournalMarkPresentation.Generic -> PairingPromptShape.Unverified(
+            withBody = false,
+            card = JournalMarkPresentation.Generic,
+            primaryEnabled = isPairingConfirmationEnabled(
+                coordinator = coordinator,
+                presentationGeneration = presentationGeneration,
+                currentPairing = currentPairing,
+                presentation = JournalMarkPresentation.Generic,
+            ),
+        )
+        JournalMarkPresentation.Unavailable -> PairingPromptShape.Unverified(
+            withBody = true,
+            card = JournalMarkPresentation.Unavailable,
+            primaryEnabled = isPairingConfirmationEnabled(
+                coordinator = coordinator,
+                presentationGeneration = presentationGeneration,
+                currentPairing = currentPairing,
+                presentation = JournalMarkPresentation.Unavailable,
+            ),
+        )
+        is JournalMarkPresentation.Identified -> PairingPromptShape.Match(
+            card = presentation,
+            primaryEnabled = isPairingConfirmationEnabled(
+                coordinator = coordinator,
+                presentationGeneration = presentationGeneration,
+                currentPairing = currentPairing,
+                presentation = presentation,
+            ),
+        )
+        JournalMarkPresentation.Loading -> {
+            // Current-generation Loading is handled in step 2, and this arm must not request.
+            error("unreachable")
+        }
+    }
+}
+
 internal fun isPairingConfirmationEnabled(
     coordinator: JournalIdentityRefreshCoordinator?,
     presentationGeneration: PairingGeneration?,
@@ -467,87 +573,150 @@ fun PairingSuccessMark(
         }
     }
 
-    val isCurrentGeneration = coordinator == null || (generation == activePairing)
-    val effectivePresentation = if (coordinator != null && (!isCurrentGeneration || presentation is JournalMarkPresentation.Loading)) {
-        JournalMarkPresentation.Loading
-    } else {
-        presentation
-    }
+    val shape = pairingPromptShape(
+        coordinator = coordinator,
+        presentation = presentation,
+        presentationGeneration = generation,
+        currentPairing = activePairing,
+    )
 
     LaunchedEffect(activePairing, coordinator) {
-        if (coordinator != null && activePairing != null && (generation != activePairing || presentation is JournalMarkPresentation.Loading)) {
+        val requestShape = pairingPromptShape(
+            coordinator = coordinator,
+            presentation = presentation,
+            presentationGeneration = generation,
+            currentPairing = activePairing,
+        )
+        if (requestShape.requestsMark) {
             requestMark?.invoke()
         }
     }
-
-    val yesEnabled = isPairingConfirmationEnabled(
-        coordinator = coordinator,
-        presentationGeneration = generation,
-        currentPairing = activePairing,
-        presentation = effectivePresentation,
-    )
 
     var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
     var mismatchResult by remember { mutableStateOf<PairingMismatchResult?>(null) }
     val scope = rememberCoroutineScope()
     val bodyColor = MaterialTheme.colorScheme.onBackground
+
+    val onConfirmClick: () -> Unit = {
+        val presented = generation
+        if (presented != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    onYes?.invoke(presented) == true
+                }
+                if (ok) {
+                    confirmation = PairingConfirmation.Confirmed
+                    onConfirmed()
+                }
+            }
+        }
+    }
+
+    val onDropClick: () -> Unit = {
+        confirmation = PairingConfirmation.Removing
+        scope.launch {
+            mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
+            confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
+                PairingConfirmation.Failed
+            } else {
+                onConfirmed()
+                PairingConfirmation.Mismatched
+            }
+        }
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.fillMaxWidth(),
     ) {
-        JournalMarkCard(presentation = effectivePresentation)
-        Spacer(Modifier.height(20.dp))
+        val card = shape.card
+        if (card != null) {
+            JournalMarkCard(presentation = card)
+            Spacer(Modifier.height(20.dp))
+        }
         when (confirmation) {
             PairingConfirmation.Waiting -> {
-                Text(
-                    text = "does this match your journal?",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = bodyColor,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "your journal shows this same mark in its network app. it should " +
-                        "match, exactly.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = shellSecondaryInk,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = {
-                        val presented = generation
-                        if (presented != null) {
-                            scope.launch {
-                                val ok = withContext(Dispatchers.IO) {
-                                    onYes?.invoke(presented) == true
-                                }
-                                if (ok) {
-                                    confirmation = PairingConfirmation.Confirmed
-                                    onConfirmed()
-                                }
-                            }
+                when (shape) {
+                    is PairingPromptShape.Connecting -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.testTag(PAIRING_CONNECTING_TAG),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "connecting\u2026",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = bodyColor,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    is PairingPromptShape.Unverified -> {
+                        Text(
+                            text = "couldn't verify",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = bodyColor,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (shape.withBody) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "the check of your journal's mark didn't finish. that doesn't mean the marks disagree.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = shellSecondaryInk,
+                                textAlign = TextAlign.Center,
+                            )
                         }
-                    },
-                    enabled = yesEnabled,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text("yes, this is my journal") }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        confirmation = PairingConfirmation.Removing
-                        scope.launch {
-                            mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
-                            confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
-                                PairingConfirmation.Failed
-                            } else {
-                                onConfirmed()
-                                PairingConfirmation.Mismatched
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text("that doesn't match") }
+                        Spacer(Modifier.height(20.dp))
+                        Button(
+                            onClick = onConfirmClick,
+                            enabled = shape.primaryEnabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag(PAIRING_CONTINUE_ANYWAY_TAG)
+                                .semantics {
+                                    contentDescription = "continue pairing without verifying the journal mark"
+                                },
+                        ) { Text("continue anyway") }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onDropClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag(PAIRING_CANCEL_PAIRING_TAG)
+                                .semantics {
+                                    contentDescription = "cancel pairing and discard this attempt"
+                                },
+                        ) { Text("cancel pairing") }
+                    }
+                    is PairingPromptShape.Match -> {
+                        Text(
+                            text = "does this match your journal?",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = bodyColor,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "your journal shows this same mark in its network app. it should " +
+                                "match, exactly.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = shellSecondaryInk,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Button(
+                            onClick = onConfirmClick,
+                            enabled = shape.primaryEnabled,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        ) { Text("yes, this is my journal") }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onDropClick,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        ) { Text("that doesn't match") }
+                    }
+                }
             }
             PairingConfirmation.Removing -> Text(
                 "disconnecting this phone…",
