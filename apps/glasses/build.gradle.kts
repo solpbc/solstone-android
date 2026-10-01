@@ -35,6 +35,7 @@ android {
         }
         create("real") {
             dimension = "mode"
+            testInstrumentationRunner = "app.solstone.observer.glasses.GlassesRealTestRunner"
         }
     }
 
@@ -83,4 +84,12 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation(project(":platform:work"))
+    androidTestImplementation(project(":platform:identity-file"))
+    androidTestImplementation(project(":platform:persistence-room"))
+    androidTestImplementation(project(":platform:pl-transport-conscrypt"))
+    androidTestImplementation(project(":core:pl"))
+    androidTestImplementation(project(":core:crypto"))
+    androidTestImplementation(project(":core:observer"))
+    androidTestImplementation(project(":testing"))
 }

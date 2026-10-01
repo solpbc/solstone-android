@@ -211,6 +211,67 @@ class PhoneConfirmationShellTest {
         }
     }
 
+    @Test
+    fun pillClickWhileHeldStartsObserverActivityAndKeepsJournalSheetClosed() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        val stores = syncStores(context)
+        val publisher = stores.publisher
+        val confirmStore = stores.journalConfirmationStore
+
+        publisher.forget()
+
+        val home = PairedHome(
+            instanceId = "home-held-pill",
+            homeLabel = "Home",
+            relayOrigin = "https://link.solstone.app",
+            caChainFingerprint = "sha256:ca-1",
+            clientCertFingerprint = "sha256:held-shell-pill",
+            observerHandle = "obs",
+            deviceToken = "token-1",
+            expiresAt = "2030-01-01T00:00:00Z",
+            state = IdentityState.PAIRED,
+        )
+        val cred = ClientCredential(
+            privateKeyPem = "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n",
+            clientCertPem = "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----\n",
+            caChainPem = listOf("-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n"),
+        )
+        val installResult = publisher.installOrReplace(home, cred, null, false)
+        assertTrue(installResult is GraphMutationResult.Applied)
+
+        confirmStore.confirm("sha256:not-this")
+        PhoneShellActivity.promptedConfirmationThisProcess = true
+
+        val sessionCalls = AtomicInteger(0)
+        PhoneJournalTestHooks.sessionOverride = {
+            sessionCalls.incrementAndGet()
+            FakeJournalSheetSession("http://127.0.0.1:8080/")
+        }
+
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val monitor = instrumentation.addMonitor(ObserverActivity::class.java.name, null, false)
+        try {
+            ActivityScenario.launch(PhoneShellActivity::class.java).use {
+                composeRule.onNodeWithTag("journalMarkPill").performClick()
+                val startedActivity = instrumentation.waitForMonitorWithTimeout(monitor, 5000) as? ObserverActivity
+                assertNotNull("ObserverActivity must be started on pill click while held", startedActivity)
+                assertTrue(startedActivity!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
+
+                assertEquals(0, sessionCalls.get())
+                composeRule.onNodeWithText("close").assertDoesNotExist()
+
+                instrumentation.runOnMainSync {
+                    @Suppress("DEPRECATION")
+                    startedActivity.onBackPressed()
+                }
+                instrumentation.waitForIdleSync()
+            }
+        } finally {
+            instrumentation.removeMonitor(monitor)
+        }
+    }
+
     private fun buttonLabels(activity: Activity): List<String> =
         buildList { collectButtons(activity.findViewById(android.R.id.content), this) }
 

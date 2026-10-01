@@ -47,6 +47,7 @@ ci-device:
 	  :platform:persistence-room:pixel5api35DebugAndroidTest \
 	  :platform:pl-transport-conscrypt:pixel5api35DebugAndroidTest \
 	  :platform:identity-file:pixel5api35DebugAndroidTest \
+	  :platform:work:pixel5api35DebugAndroidTest \
 	  :formfactor:phone:pixel5api35DebugAndroidTest \
 	  :apps:phone:pixel5api35MockDebugAndroidTest
 	# AC5a real-flavor narrow gate. The class filter must match exactly one class;
@@ -129,7 +130,25 @@ validate-rogbid-pl:
 ci-device-experimental:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :apps:watch:pixel5api35MockDebugAndroidTest \
-	  :apps:glasses:pixel5api35MockDebugAndroidTest
+	  :apps:glasses:pixel5api35MockDebugAndroidTest \
+	  :apps:watch:pixel5api35RealDebugAndroidTest \
+	  :apps:glasses:pixel5api35RealDebugAndroidTest
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  -Pandroid.testInstrumentationRunnerArguments.startup=upgraded \
+	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.watch.WatchUpgradedInstallSendTest \
+	  :apps:watch:pixel5api35RealDebugAndroidTest
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  -Pandroid.testInstrumentationRunnerArguments.startup=death \
+	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.watch.WatchProcessDeathSendTest \
+	  :apps:watch:pixel5api35RealDebugAndroidTest
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  -Pandroid.testInstrumentationRunnerArguments.startup=upgraded \
+	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.glasses.GlassesUpgradedInstallSendTest \
+	  :apps:glasses:pixel5api35RealDebugAndroidTest
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
+	  -Pandroid.testInstrumentationRunnerArguments.startup=death \
+	  -Pandroid.testInstrumentationRunnerArguments.class=app.solstone.observer.glasses.GlassesProcessDeathSendTest \
+	  :apps:glasses:pixel5api35RealDebugAndroidTest
 
 # --- HITL: the real-hardware human-usability gate (blocks the release) ---
 #

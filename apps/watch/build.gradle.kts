@@ -32,6 +32,7 @@ android {
         }
         create("real") {
             dimension = "mode"
+            testInstrumentationRunner = "app.solstone.observer.watch.WatchRealTestRunner"
         }
     }
 
@@ -66,5 +67,12 @@ dependencies {
     androidTestImplementation(project(":platform:camera-still"))
     androidTestImplementation(project(":platform:fgs"))
     androidTestImplementation(project(":platform:persistence-room"))
+    androidTestImplementation(project(":platform:work"))
+    androidTestImplementation(project(":platform:identity-file"))
+    androidTestImplementation(project(":platform:pl-transport-conscrypt"))
+    androidTestImplementation(project(":core:pl"))
+    androidTestImplementation(project(":core:crypto"))
+    androidTestImplementation(project(":core:model"))
+    androidTestImplementation(project(":core:observer"))
     androidTestImplementation(project(":testing"))
 }
