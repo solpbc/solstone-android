@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -137,7 +138,13 @@ class PhoneConfirmationShellTest {
                 assertNotNull("ObserverActivity must be started", observerActivity)
                 assertTrue(observerActivity!!.intent.getBooleanExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, false))
 
-                composeRule.onNodeWithTag("pairingConnecting").assertExists()
+                // The prompt opens connecting and moves to couldn't-verify when its mark check
+                // against this fake journal fails, on the check's own schedule. Either state is
+                // the prompt; which one a frame shows is timing, not this flow's contract.
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithTag("pairingConnecting").fetchSemanticsNodes().isNotEmpty() ||
+                        composeRule.onAllNodesWithTag("pairingContinueAnyway").fetchSemanticsNodes().isNotEmpty()
+                }
 
                 val labels = buttonLabels(observerActivity)
                 MENU_ONLY_CONTROLS.forEach {
