@@ -4,6 +4,9 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -11,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.solstone.core.crypto.sha256Hex
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.model.DirectEndpoint
@@ -55,23 +59,23 @@ class PhoneHeldRevokeAndMarkTest {
         val publisher = stores.publisher
         publisher.forget()
 
-        val home = PairedHome(
-            instanceId = standIn.instanceId,
-            homeLabel = "Home",
-            relayOrigin = null,
-            caChainFingerprint = "sha256:ca-1",
-            clientCertFingerprint = "sha256:client-test",
-            observerHandle = "obs",
-            deviceToken = null,
-            expiresAt = null,
-            state = IdentityState.PAIRED,
-        )
         val clientCert = JournalLoopbackStandIn.signedCertificate(
             subjectPublicKey = standIn.serverKeyPair.public,
             issuerKeyPair = standIn.caKeyPair,
             issuerSubject = "Journal CA",
             subjectName = "solstone-client",
             isCa = false,
+        )
+        val home = PairedHome(
+            instanceId = standIn.instanceId,
+            homeLabel = "Home",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca-1",
+            clientCertFingerprint = "sha256:" + sha256Hex(clientCert.encoded),
+            observerHandle = "obs",
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
         )
         val cred = ClientCredential(
             privateKeyPem = app.solstone.core.crypto.pem("PRIVATE KEY", standIn.serverKeyPair.private.encoded),
@@ -147,7 +151,7 @@ class PhoneHeldRevokeAndMarkTest {
             composeRule.onNodeWithText("unpair").performClick()
             composeRule.waitForIdle()
 
-            composeRule.onNodeWithText("unpair").performClick()
+            composeRule.onNode(hasText("unpair") and hasAnyAncestor(isDialog())).performClick()
             composeRule.waitForIdle()
 
             composeRule.waitUntil(5000) {
