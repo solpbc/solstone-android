@@ -120,7 +120,9 @@ fun waitForGlassesSegmentsEvicted(db: SolstonePersistenceDatabase, timeoutMs: Lo
         }
         Thread.sleep(50)
     }
+    val sealed = db.segmentDao().segmentsByState(QueueState.SEALED)
+    val uploading = db.segmentDao().segmentsByState(QueueState.UPLOADING)
+    val failed = db.segmentDao().segmentsByState(QueueState.FAILED)
     val evicted = db.segmentDao().segmentsByState(QueueState.EVICTED)
-    val all = db.segmentDao().segmentsForDrain("glasses")
-    assertTrue("Segments not evicted within timeout. Evicted: ${evicted.size}, remaining: ${all.map { it.state }}", evicted.size >= 2)
+    assertTrue("Segments not evicted within timeout. SEALED: ${sealed.size}, UPLOADING: ${uploading.size}, FAILED: ${failed.size}, EVICTED: ${evicted.size}", evicted.size >= 2)
 }

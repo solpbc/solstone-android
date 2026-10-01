@@ -38,6 +38,8 @@ import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.DirectPairConnectionMode
 import app.solstone.platform.pl.transport.conscrypt.RelayPairConnectionMode
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
+import app.solstone.platform.pl.transport.conscrypt.HttpsPoster
+import app.solstone.platform.pl.transport.conscrypt.RelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe as conscryptPairAndProbe
@@ -129,13 +131,15 @@ class RealRelayPairProbe(
     private val journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     private val publisher: PairingPublisher? = null,
     private val confirmation: JournalConfirmationStore? = null,
+    private val poster: HttpsPoster = defaultHttpsPoster(),
+    private val dialer: RelayPairDialer? = null,
 ) : RelayPairProbe {
     override fun pairOverRelay(link: RelayPairLink, deviceLabel: String): HarnessPairProbeResult {
         val result = conscryptPairOverRelay(
             link = link,
             deviceLabel = deviceLabel,
-            httpsPoster = defaultHttpsPoster(),
-            relayPairDialer = defaultRelayPairDialer(streamObserver, dialObserver),
+            httpsPoster = poster,
+            relayPairDialer = dialer ?: defaultRelayPairDialer(streamObserver, dialObserver),
             credentialStore = credentialStore,
             identityStore = identityStore,
             journalVersionStore = journalVersionStore,

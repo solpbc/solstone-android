@@ -13,7 +13,7 @@ import app.solstone.core.identity.DurableTxnStep
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
-import app.solstone.core.sources.WATCH_STREAM
+import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.identity.file.AndroidKeyStoreProtector
 import app.solstone.platform.identity.file.FilePairingGraph
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -83,7 +83,7 @@ class WatchRealTestRunner : AndroidJUnitRunner() {
                 )
                 graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
                 File(plDir, "journal_confirmation.json").delete()
-                seedWatchSegments(db, spoolDir, WATCH_STREAM, s.instanceId)
+                seedWatchSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
             } else if (startup == "death") {
                 val graph = FilePairingGraph(
                     identityFile = File(plDir, "identity.tsv"),
@@ -101,7 +101,7 @@ class WatchRealTestRunner : AndroidJUnitRunner() {
                 )
                 graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
                 File(plDir, "journal_confirmation.json").delete()
-                seedWatchSegments(db, spoolDir, WATCH_STREAM, s.instanceId)
+                seedWatchSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
             }
         }
 

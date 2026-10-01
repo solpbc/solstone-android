@@ -151,19 +151,22 @@ class JournalLoopbackStandIn(
     }
 
     private fun handleConnection(socket: Socket) {
-        val rawInput = socket.getInputStream()
-        val output = socket.getOutputStream()
-        val pushback = PushbackInputStream(rawInput, 8)
-        val firstByte = pushback.read()
-        if (firstByte < 0) return
-        pushback.unread(firstByte)
+        try {
+            val rawInput = socket.getInputStream()
+            val output = socket.getOutputStream()
+            val pushback = PushbackInputStream(rawInput, 8)
+            val firstByte = pushback.read()
+            if (firstByte < 0) return
+            pushback.unread(firstByte)
 
-        // If first byte is ASCII letter ('G', 'P', 'D', 'H', etc.), it's an HTTP request over TLS
-        val isHttp = firstByte.toChar() in 'A'..'Z'
-        if (isHttp) {
-            handleHttpOrWebSocket(pushback, output, socket)
-        } else {
-            handleMuxStream(pushback, output, socket)
+            // If first byte is ASCII letter ('G', 'P', 'D', 'H', etc.), it's an HTTP request over TLS
+            val isHttp = firstByte.toChar() in 'A'..'Z'
+            if (isHttp) {
+                handleHttpOrWebSocket(pushback, output, socket)
+            } else {
+                handleMuxStream(pushback, output, socket)
+            }
+        } catch (_: Exception) {
         }
     }
 

@@ -167,12 +167,15 @@ class WorkManagerSyncConfirmationRuntimeTest {
     fun confirmingDuringRunningNowSyncThatEndsSuccessSendsBothSegments() {
         stores.journalConfirmationStore.confirm("sha256:other")
         SyncScheduler.enqueueNow(context, MAIN_STREAM)
+        triggerConstraints("solstone-sync-now")
 
         assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
         stores.journalConfirmationStore.confirm("sha256:cert-1")
         SyncScheduler.enqueueAfterConfirm(context, MAIN_STREAM)
         releaseInFlightLatch.countDown()
 
+        waitUntilNotRunning("solstone-sync-now")
+        triggerConstraints("solstone-sync-after-confirm")
         waitUntilWorkCompleted("solstone-sync-after-confirm")
 
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
@@ -185,13 +188,15 @@ class WorkManagerSyncConfirmationRuntimeTest {
         stores.journalConfirmationStore.confirm("sha256:other")
         failFirstStatus.set(true)
         SyncScheduler.enqueueNow(context, MAIN_STREAM)
+        triggerConstraints("solstone-sync-now")
 
         assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
         stores.journalConfirmationStore.confirm("sha256:cert-1")
         SyncScheduler.enqueueAfterConfirm(context, MAIN_STREAM)
         releaseInFlightLatch.countDown()
 
-        waitUntilWorkCompleted("solstone-sync-now")
+        waitUntilNotRunning("solstone-sync-now")
+        triggerConstraints("solstone-sync-after-confirm")
         waitUntilWorkCompleted("solstone-sync-after-confirm")
 
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
@@ -204,12 +209,15 @@ class WorkManagerSyncConfirmationRuntimeTest {
         stores.journalConfirmationStore.confirm("sha256:other")
         retryFirstStatus.set(true)
         SyncScheduler.enqueueNow(context, MAIN_STREAM)
+        triggerConstraints("solstone-sync-now")
 
         assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
         stores.journalConfirmationStore.confirm("sha256:cert-1")
         SyncScheduler.enqueueAfterConfirm(context, MAIN_STREAM)
         releaseInFlightLatch.countDown()
 
+        waitUntilNotRunning("solstone-sync-now")
+        triggerConstraints("solstone-sync-after-confirm")
         waitUntilWorkCompleted("solstone-sync-after-confirm")
 
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
@@ -221,26 +229,15 @@ class WorkManagerSyncConfirmationRuntimeTest {
     fun confirmingWhilePeriodicHoldsDrainGateSendsBothSegments() {
         stores.journalConfirmationStore.confirm("sha256:other")
         SyncScheduler.enqueuePeriodic(context, MAIN_STREAM)
-
-        val deadline = System.currentTimeMillis() + 5000L
-        var periodicId: java.util.UUID? = null
-        while (System.currentTimeMillis() < deadline) {
-            val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(SyncScheduler.PERIODIC_WORK_NAME).get()
-            if (infos.isNotEmpty()) {
-                periodicId = infos.first().id
-                break
-            }
-            Thread.sleep(50)
-        }
-        val workId = checkNotNull(periodicId) { "periodic work not found" }
-        WorkManagerTestInitHelper.getTestDriver(context)?.setAllConstraintsMet(workId)
-        WorkManagerTestInitHelper.getTestDriver(context)?.setPeriodDelayMet(workId)
+        triggerConstraints(SyncScheduler.PERIODIC_WORK_NAME, isPeriodic = true)
 
         assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
         stores.journalConfirmationStore.confirm("sha256:cert-1")
         SyncScheduler.enqueueAfterConfirm(context, MAIN_STREAM)
         releaseInFlightLatch.countDown()
 
+        waitUntilNotRunning(SyncScheduler.PERIODIC_WORK_NAME)
+        triggerConstraints("solstone-sync-after-confirm")
         waitUntilWorkCompleted("solstone-sync-after-confirm")
 
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
@@ -255,22 +252,57 @@ class WorkManagerSyncConfirmationRuntimeTest {
         assertTrue(inspection !is StoreInspectResult.Ready || inspection.value.confirmed != "sha256:cert-1")
 
         SyncScheduler.enqueueNow(context, MAIN_STREAM)
+        triggerConstraints("solstone-sync-now")
 
         assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
         releaseInFlightLatch.countDown()
-        waitUntilWorkCompleted("solstone-sync-now")
+        waitUntilNotRunning("solstone-sync-now")
 
         assertEquals(0, drainStore.segmentsByState(QueueState.EVICTED).size)
         assertEquals(2, drainStore.segmentsByState(QueueState.SEALED).size)
 
         stores.journalConfirmationStore.confirm("sha256:cert-1")
         SyncScheduler.enqueueAfterConfirm(context, MAIN_STREAM)
+        triggerConstraints("solstone-sync-after-confirm")
 
         waitUntilWorkCompleted("solstone-sync-after-confirm")
 
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
         assertTrue(recordingClient.requests.any { it.method == "GET" && it.path.startsWith(SEGMENTS_PATH) })
         assertTrue(recordingClient.requests.any { it.method == "POST" && it.path == INGEST_PATH })
+    }
+
+    private fun triggerConstraints(uniqueWorkName: String, isPeriodic: Boolean = false, timeoutMs: Long = 5000L) {
+        val driver = checkNotNull(WorkManagerTestInitHelper.getTestDriver(context)) { "TestDriver not found" }
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var targetId: java.util.UUID? = null
+        while (System.currentTimeMillis() < deadline) {
+            val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get()
+            val unfinished = infos.firstOrNull { !it.state.isFinished }
+            if (unfinished != null) {
+                targetId = unfinished.id
+                break
+            }
+            Thread.sleep(50)
+        }
+        val workId = checkNotNull(targetId) { "No active work request found for $uniqueWorkName" }
+        driver.setAllConstraintsMet(workId)
+        if (isPeriodic) {
+            driver.setPeriodDelayMet(workId)
+        }
+    }
+
+    private fun waitUntilNotRunning(uniqueWorkName: String, timeoutMs: Long = 10_000L) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get()
+            if (infos.isNotEmpty() && infos.none { it.state == WorkInfo.State.RUNNING }) {
+                return
+            }
+            Thread.sleep(50)
+        }
+        val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get()
+        assertTrue("Work $uniqueWorkName is still running; states=${infos.map { it.state }}", infos.none { it.state == WorkInfo.State.RUNNING })
     }
 
     private fun waitUntilWorkCompleted(uniqueWorkName: String, timeoutMs: Long = 10_000L) {
@@ -333,9 +365,10 @@ class WorkManagerSyncConfirmationRuntimeTest {
     }
 
     private fun setupSpoolAndDrainStore(spoolDir: File): Pair<FakeDrainStore, List<String>> {
+        val stream = MAIN_STREAM
         val day1 = "2026-03-01"
-        val segmentId1 = "$day1/phone/seg-1"
-        val segmentDir1 = File(File(File(spoolDir, day1), "phone"), "seg-1").apply { mkdirs() }
+        val segmentId1 = "$day1/$stream/seg-1"
+        val segmentDir1 = File(File(File(spoolDir, day1), stream), "seg-1").apply { mkdirs() }
         File(segmentDir1, "a.bin").writeBytes(byteArrayOf(1, 2, 3))
         val manifest1 = """
             solstone-bundle-manifest-v1
@@ -352,8 +385,8 @@ class WorkManagerSyncConfirmationRuntimeTest {
         File(segmentDir1, "manifest").writeText(manifest1)
 
         val day2 = "2026-03-02"
-        val segmentId2 = "$day2/phone/seg-2"
-        val segmentDir2 = File(File(File(spoolDir, day2), "phone"), "seg-2").apply { mkdirs() }
+        val segmentId2 = "$day2/$stream/seg-2"
+        val segmentDir2 = File(File(File(spoolDir, day2), stream), "seg-2").apply { mkdirs() }
         File(segmentDir2, "b.bin").writeBytes(byteArrayOf(4, 5, 6))
         val manifest2 = """
             solstone-bundle-manifest-v1
@@ -372,7 +405,7 @@ class WorkManagerSyncConfirmationRuntimeTest {
         val segRow1 = SegmentRow(
             id = segmentId1,
             day = day1,
-            stream = "phone",
+            stream = stream,
             segment = "seg-1",
             dirSegment = "seg-1",
             state = QueueState.SEALED,
@@ -399,7 +432,7 @@ class WorkManagerSyncConfirmationRuntimeTest {
         val segRow2 = SegmentRow(
             id = segmentId2,
             day = day2,
-            stream = "phone",
+            stream = stream,
             segment = "seg-2",
             dirSegment = "seg-2",
             state = QueueState.SEALED,
