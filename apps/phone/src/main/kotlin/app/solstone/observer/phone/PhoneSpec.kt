@@ -79,6 +79,8 @@ val phoneSpec = FormFactorSpec(
                         pairingMatches = { (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing == asked },
                         openClient = opener,
                     )
+                } else {
+                    null
                 }
             },
             onMismatch = {

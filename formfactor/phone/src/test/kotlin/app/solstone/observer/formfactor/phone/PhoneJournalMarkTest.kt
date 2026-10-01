@@ -138,6 +138,12 @@ class PhoneJournalMarkTest {
         val coordinator = createTestCoordinator()
         val gen = PairingGeneration("home-1", "sha256:cert-1")
 
+        val loadingRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Loading,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
         val loadingShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Loading,
@@ -145,7 +151,7 @@ class PhoneJournalMarkTest {
             currentPairing = gen,
         )
         assertTrue(loadingShape is PairingPromptShape.Connecting)
-        assertTrue(loadingShape.requestsMark)
+        assertTrue(loadingRequests)
         assertFalse(loadingShape.showsQuestion)
         assertEquals(null, loadingShape.card)
         assertFalse(loadingShape.withBody)
@@ -153,6 +159,12 @@ class PhoneJournalMarkTest {
         assertEquals(null, loadingShape.secondary)
         assertFalse(loadingShape.primaryEnabled)
 
+        val genericRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Generic,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
         val genericShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Generic,
@@ -160,7 +172,7 @@ class PhoneJournalMarkTest {
             currentPairing = gen,
         )
         assertTrue(genericShape is PairingPromptShape.Unverified)
-        assertFalse(genericShape.requestsMark)
+        assertFalse(genericRequests)
         assertFalse(genericShape.showsQuestion)
         assertEquals(JournalMarkPresentation.Generic, genericShape.card)
         assertFalse(genericShape.withBody)
@@ -168,6 +180,12 @@ class PhoneJournalMarkTest {
         assertEquals(PairingPromptAction.Drop, genericShape.secondary)
         assertTrue(genericShape.primaryEnabled)
 
+        val unavailableRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Unavailable,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
         val unavailableShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Unavailable,
@@ -175,7 +193,7 @@ class PhoneJournalMarkTest {
             currentPairing = gen,
         )
         assertTrue(unavailableShape is PairingPromptShape.Unverified)
-        assertFalse(unavailableShape.requestsMark)
+        assertTrue(unavailableRequests)
         assertFalse(unavailableShape.showsQuestion)
         assertEquals(JournalMarkPresentation.Unavailable, unavailableShape.card)
         assertTrue(unavailableShape.withBody)
@@ -184,6 +202,12 @@ class PhoneJournalMarkTest {
         assertTrue(unavailableShape.primaryEnabled)
 
         val identifiedPres = JournalMarkPresentation.Identified(fixtureMark)
+        val matchRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = identifiedPres,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
         val matchShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = identifiedPres,
@@ -191,7 +215,7 @@ class PhoneJournalMarkTest {
             currentPairing = gen,
         )
         assertTrue(matchShape is PairingPromptShape.Match)
-        assertFalse(matchShape.requestsMark)
+        assertFalse(matchRequests)
         assertTrue(matchShape.showsQuestion)
         assertEquals(identifiedPres, matchShape.card)
         assertFalse(matchShape.withBody)
@@ -204,6 +228,12 @@ class PhoneJournalMarkTest {
     fun currentGenerationLoadingRequestsMarkAndRendersConnecting() {
         val coordinator = createTestCoordinator()
         val gen = PairingGeneration("home-1", "sha256:cert-1")
+        val requests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Loading,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
         val shape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Loading,
@@ -211,7 +241,7 @@ class PhoneJournalMarkTest {
             currentPairing = gen,
         )
         assertTrue(shape is PairingPromptShape.Connecting)
-        assertTrue(shape.requestsMark)
+        assertTrue(requests)
     }
 
     @Test
@@ -228,6 +258,12 @@ class PhoneJournalMarkTest {
         )
 
         for (pres in presentations) {
+            val requests = pairingPromptRequestsMark(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = genA,
+                currentPairing = genB,
+            )
             val shape = pairingPromptShape(
                 coordinator = coordinator,
                 presentation = pres,
@@ -235,22 +271,27 @@ class PhoneJournalMarkTest {
                 currentPairing = genB,
             )
             assertTrue(shape is PairingPromptShape.Connecting)
-            assertTrue(shape.requestsMark)
+            assertTrue(requests)
         }
     }
 
     @Test
-    fun settledPresentationsAtCurrentGenerationDoNotRequest() {
+    fun settledIdentifiedAndGenericAtCurrentGenerationDoNotRequest() {
         val coordinator = createTestCoordinator()
         val gen = PairingGeneration("home-1", "sha256:cert-1")
 
         val presentations = listOf(
             JournalMarkPresentation.Identified(fixtureMark),
-            JournalMarkPresentation.Unavailable,
             JournalMarkPresentation.Generic,
         )
 
         for (pres in presentations) {
+            val requests = pairingPromptRequestsMark(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = gen,
+                currentPairing = gen,
+            )
             val shape = pairingPromptShape(
                 coordinator = coordinator,
                 presentation = pres,
@@ -258,8 +299,29 @@ class PhoneJournalMarkTest {
                 currentPairing = gen,
             )
             assertFalse(shape is PairingPromptShape.Connecting)
-            assertFalse(shape.requestsMark)
+            assertFalse(requests)
         }
+    }
+
+    @Test
+    fun settledUnavailableAtCurrentGenerationRequests() {
+        val coordinator = createTestCoordinator()
+        val gen = PairingGeneration("home-1", "sha256:cert-1")
+
+        val requests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Unavailable,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
+        val shape = pairingPromptShape(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Unavailable,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
+        assertFalse(shape is PairingPromptShape.Connecting)
+        assertTrue(requests)
     }
 
     @Test
@@ -267,6 +329,12 @@ class PhoneJournalMarkTest {
         val coordinator = createTestCoordinator()
         val genA = PairingGeneration("home-1", "sha256:cert-1")
 
+        val idRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Identified(fixtureMark),
+            presentationGeneration = genA,
+            currentPairing = null,
+        )
         val idShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Identified(fixtureMark),
@@ -274,8 +342,14 @@ class PhoneJournalMarkTest {
             currentPairing = null,
         )
         assertTrue(idShape is PairingPromptShape.Connecting)
-        assertFalse(idShape.requestsMark)
+        assertFalse(idRequests)
 
+        val genRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Generic,
+            presentationGeneration = genA,
+            currentPairing = null,
+        )
         val genShape = pairingPromptShape(
             coordinator = coordinator,
             presentation = JournalMarkPresentation.Generic,
@@ -283,7 +357,7 @@ class PhoneJournalMarkTest {
             currentPairing = null,
         )
         assertTrue(genShape is PairingPromptShape.Connecting)
-        assertFalse(genShape.requestsMark)
+        assertFalse(genRequests)
     }
 
     @Test
@@ -297,6 +371,12 @@ class PhoneJournalMarkTest {
         )
 
         for (pres in presentations) {
+            val requests = pairingPromptRequestsMark(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = null,
+                currentPairing = null,
+            )
             val shape = pairingPromptShape(
                 coordinator = coordinator,
                 presentation = pres,
@@ -304,13 +384,19 @@ class PhoneJournalMarkTest {
                 currentPairing = null,
             )
             assertFalse(shape is PairingPromptShape.Connecting)
-            assertFalse(shape.requestsMark)
+            assertFalse(requests)
         }
     }
 
     @Test
     fun absentCoordinatorIsUnverifiedWithoutRequest() {
         val currentPairing = PairingGeneration("home-1", "sha256:cert-1")
+        val requests = pairingPromptRequestsMark(
+            coordinator = null,
+            presentation = JournalMarkPresentation.Loading,
+            presentationGeneration = null,
+            currentPairing = currentPairing,
+        )
         val shape = pairingPromptShape(
             coordinator = null,
             presentation = JournalMarkPresentation.Loading,
@@ -321,6 +407,132 @@ class PhoneJournalMarkTest {
         assertFalse(shape.withBody)
         assertEquals(JournalMarkPresentation.Generic, shape.card)
         assertFalse(shape.showsQuestion)
-        assertFalse(shape.requestsMark)
+        assertFalse(requests)
+    }
+
+    @Test
+    fun pairingPromptRequestsMarkDecisionTable() {
+        val coordinator = createTestCoordinator()
+        val genA = PairingGeneration("home-1", "sha256:cert-1")
+        val genB = PairingGeneration("home-2", "sha256:cert-2")
+
+        // 1. coordinator null -> false
+        assertFalse(pairingPromptRequestsMark(null, JournalMarkPresentation.Loading, genA, genA))
+        assertFalse(pairingPromptRequestsMark(null, JournalMarkPresentation.Unavailable, genA, genA))
+
+        // 2. currentPairing null -> false
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Loading, genA, null))
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Unavailable, genA, null))
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Identified(fixtureMark), genA, null))
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Generic, genA, null))
+
+        // 3. stale generation (presentationGeneration != currentPairing) with currentPairing != null -> true
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Identified(fixtureMark), genA, genB))
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Generic, genA, genB))
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Unavailable, genA, genB))
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Loading, genA, genB))
+
+        // 4. Loading at current pairing -> true
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Loading, genA, genA))
+
+        // 5. Unavailable at current pairing -> true
+        assertTrue(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Unavailable, genA, genA))
+
+        // 6. Identified at current pairing -> false
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Identified(fixtureMark), genA, genA))
+
+        // 7. Generic at current pairing -> false
+        assertFalse(pairingPromptRequestsMark(coordinator, JournalMarkPresentation.Generic, genA, genA))
+    }
+
+    @Test
+    fun awaitingFlagRendersConnectingAndAwaitingFalsePreservesSettledShape() {
+        val coordinator = createTestCoordinator()
+        val genA = PairingGeneration("home-1", "sha256:cert-1")
+        val genB = PairingGeneration("home-2", "sha256:cert-2")
+
+        val presentations = listOf(
+            JournalMarkPresentation.Identified(fixtureMark),
+            JournalMarkPresentation.Unavailable,
+            JournalMarkPresentation.Generic,
+        )
+
+        for (pres in presentations) {
+            // Current generation with awaiting = true
+            val shapeCurrentAwaiting = pairingPromptShape(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = genA,
+                currentPairing = genA,
+                awaiting = true,
+            )
+            assertTrue(shapeCurrentAwaiting is PairingPromptShape.Connecting)
+
+            // Stale generation with awaiting = true
+            val shapeStaleAwaiting = pairingPromptShape(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = genA,
+                currentPairing = genB,
+                awaiting = true,
+            )
+            assertTrue(shapeStaleAwaiting is PairingPromptShape.Connecting)
+
+            // Current generation with awaiting = false keeps settled shape
+            val shapeCurrentSettled = pairingPromptShape(
+                coordinator = coordinator,
+                presentation = pres,
+                presentationGeneration = genA,
+                currentPairing = genA,
+                awaiting = false,
+            )
+            assertFalse(shapeCurrentSettled is PairingPromptShape.Connecting)
+            assertTrue(shapeCurrentSettled.primaryEnabled)
+        }
+    }
+
+    @Test
+    fun initialWaitSeedingFromCoordinatorState() {
+        val coordinator = createTestCoordinator()
+        val gen = PairingGeneration("home-1", "sha256:cert-1")
+
+        val unavailableReq = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Unavailable,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
+        val unavailableWait = if (unavailableReq) PairingPromptWait.OpenPending else PairingPromptWait.None
+        assertEquals(PairingPromptWait.OpenPending, unavailableWait)
+
+        val identifiedReq = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Identified(fixtureMark),
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
+        val identifiedWait = if (identifiedReq) PairingPromptWait.OpenPending else PairingPromptWait.None
+        assertEquals(PairingPromptWait.None, identifiedWait)
+
+        val genericReq = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = JournalMarkPresentation.Generic,
+            presentationGeneration = gen,
+            currentPairing = gen,
+        )
+        val genericWait = if (genericReq) PairingPromptWait.OpenPending else PairingPromptWait.None
+        assertEquals(PairingPromptWait.None, genericWait)
+    }
+
+    @Test
+    fun pairingPromptWaitAfterRequestStepFunction() {
+        // decision false, ticket non-null -> None
+        assertEquals(PairingPromptWait.None, pairingPromptWaitAfterRequest(requestsMark = false, ticket = 42L))
+        // decision false, ticket null -> None
+        assertEquals(PairingPromptWait.None, pairingPromptWaitAfterRequest(requestsMark = false, ticket = null))
+        // decision true, ticket null -> None
+        assertEquals(PairingPromptWait.None, pairingPromptWaitAfterRequest(requestsMark = true, ticket = null))
+        // decision true, ticket present -> Ticket
+        assertEquals(PairingPromptWait.Ticket(42L), pairingPromptWaitAfterRequest(requestsMark = true, ticket = 42L))
     }
 }

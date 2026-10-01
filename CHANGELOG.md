@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - while your journal's mark is still loading, the pairing prompt shows that it's still connecting to your journal instead of a placeholder mark. if the mark can't be checked, it asks whether to continue or cancel pairing, instead of asking you to say it matches.
+- if your journal's mark couldn't be checked earlier, for example while your phone was offline, the pairing prompt checks again when you open it. before, it kept showing "mark unavailable" even once your phone was back online.
 - while a pairing waits for you to confirm your journal's mark, the app's status, the status screen and the widget say so, and the status screen can ask you again. before, they could read as connected or syncing while nothing was going to your journal.
 
 ## [2.1.14] - 2026-09-30

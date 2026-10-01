@@ -39,11 +39,17 @@ private class ListenerDelivery<T>(
     }
 }
 
+sealed class JournalMarkEvent {
+    data class Presented(val generation: PairingGeneration?, val presentation: JournalMarkPresentation) : JournalMarkEvent()
+    data class Answered(val through: Long) : JournalMarkEvent()
+}
+
 data class IdentityRefreshSnapshot(
     val instanceId: String,
     val pairing: PairingGeneration?,
     val pairingMatches: () -> Boolean = { true },
     val openClient: () -> PlHttpClient,
+    val requestSeq: Long,
 )
 
 open class JournalIdentityRefreshCoordinator(
@@ -55,20 +61,27 @@ open class JournalIdentityRefreshCoordinator(
     private val onMarkUpdated: () -> Unit = {},
     private val publisher: PairingPublisher? = null,
 ) : Closeable {
+    private val submitLock = Any()
+    private val publishLock = Any()
+    private var requestCounter: Long = 0
+    private var answeredThrough: Long = 0
+
     private val job: CoalescingBoundedJob<IdentityRefreshSnapshot> = CoalescingBoundedJob(
         name = "journal-identity-refresh",
         boundMillis = boundMillis,
         executor = executor,
         onGiveUp = { snap, targetGen -> onJobGiveUp(snap, targetGen) },
+        onJobEnded = { snap, _ -> answer(snap.requestSeq) },
     )
 
     private fun onJobGiveUp(snap: IdentityRefreshSnapshot, targetGen: Long) {
-        presentUnavailableIfCurrent(snap, job.currentGeneration() == targetGen + 1)
+        presentUnavailableIfCurrent(snap, targetGen + 1)
     }
 
     private val listeners = CopyOnWriteArrayList<ListenerDelivery<JournalMarkPresentation>>()
     private val generationListeners =
         CopyOnWriteArrayList<ListenerDelivery<Pair<PairingGeneration?, JournalMarkPresentation>>>()
+    private val markListeners = CopyOnWriteArrayList<ListenerDelivery<JournalMarkEvent>>()
 
     @Volatile
     private var currentPresentation: JournalMarkPresentation = initialPresentation()
@@ -102,10 +115,14 @@ open class JournalIdentityRefreshCoordinator(
 
     fun currentPresentationGeneration(): PairingGeneration? = currentPresentationGeneration
 
+    fun answeredThrough(): Long = synchronized(publishLock) { answeredThrough }
+
     fun addListener(listener: (JournalMarkPresentation) -> Unit): () -> Unit {
         val delivery = ListenerDelivery(listener)
-        listeners.add(delivery)
-        delivery.deliver(currentPresentation)
+        synchronized(publishLock) {
+            listeners.add(delivery)
+            delivery.deliver(currentPresentation)
+        }
         return {
             listeners.remove(delivery)
             delivery.close()
@@ -118,18 +135,34 @@ open class JournalIdentityRefreshCoordinator(
         val delivery = ListenerDelivery<Pair<PairingGeneration?, JournalMarkPresentation>> { event ->
             listener(event.first, event.second)
         }
-        generationListeners.add(delivery)
-        delivery.deliver(currentPresentationGeneration to currentPresentation)
+        synchronized(publishLock) {
+            generationListeners.add(delivery)
+            delivery.deliver(currentPresentationGeneration to currentPresentation)
+        }
         return {
             generationListeners.remove(delivery)
             delivery.close()
         }
     }
 
-    private fun updatePresentation(
+    fun addMarkListener(
+        listener: (JournalMarkEvent) -> Unit,
+    ): () -> Unit {
+        val delivery = ListenerDelivery(listener)
+        synchronized(publishLock) {
+            markListeners.add(delivery)
+            delivery.deliver(JournalMarkEvent.Presented(currentPresentationGeneration, currentPresentation))
+            delivery.deliver(JournalMarkEvent.Answered(answeredThrough))
+        }
+        return {
+            markListeners.remove(delivery)
+            delivery.close()
+        }
+    }
+
+    private fun updatePresentationLocked(
         newPresentation: JournalMarkPresentation,
-        generation: PairingGeneration? =
-            (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing,
+        generation: PairingGeneration?,
     ) {
         currentPresentation = newPresentation
         currentPresentationGeneration = generation
@@ -139,18 +172,56 @@ open class JournalIdentityRefreshCoordinator(
         for (listener in generationListeners) {
             listener.deliver(generation to newPresentation)
         }
-        runCatching { onMarkUpdated() }
+        for (listener in markListeners) {
+            listener.deliver(JournalMarkEvent.Presented(generation, newPresentation))
+        }
+    }
+
+    private fun answer(seq: Long) {
+        synchronized(publishLock) {
+            if (seq > answeredThrough) {
+                answeredThrough = seq
+                val event = JournalMarkEvent.Answered(answeredThrough)
+                for (listener in markListeners) {
+                    listener.deliver(event)
+                }
+            }
+        }
     }
 
     open fun onIdentityChanged() {
-        job.bumpGeneration()
-        store.clear()
-        updatePresentation(initialPresentation())
+        var updated = false
+        synchronized(submitLock) {
+            job.bumpGeneration()
+            store.clear()
+            synchronized(publishLock) {
+                val init = initialPresentation()
+                val gen = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                updatePresentationLocked(init, gen)
+                answer(requestCounter)
+            }
+            updated = true
+        }
+        if (updated) {
+            runCatching { onMarkUpdated() }
+        }
     }
 
     open fun onPairingChanged() {
-        job.bumpGeneration()
-        updatePresentation(initialPresentation())
+        var updated = false
+        synchronized(submitLock) {
+            job.bumpGeneration()
+            synchronized(publishLock) {
+                val init = initialPresentation()
+                val gen = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                updatePresentationLocked(init, gen)
+                answer(requestCounter)
+            }
+            updated = true
+        }
+        if (updated) {
+            runCatching { onMarkUpdated() }
+        }
     }
 
     open fun onUsableConnection(
@@ -158,40 +229,48 @@ open class JournalIdentityRefreshCoordinator(
         pairingMatches: () -> Boolean = { true },
         openClient: () -> PlHttpClient,
     ) {
-        val snapshot = IdentityRefreshSnapshot(
-            instanceId = instanceId,
-            pairing = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)
-                ?.pairing
-                ?.takeIf { it.instanceId == instanceId },
-            pairingMatches = pairingMatches,
-            openClient = openClient,
-        )
-        job.submit(snapshot) { snap, gen ->
-            executeIdentityJob(snap, gen)
+        synchronized(submitLock) {
+            val snapshot = IdentityRefreshSnapshot(
+                instanceId = instanceId,
+                pairing = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)
+                    ?.pairing
+                    ?.takeIf { it.instanceId == instanceId },
+                pairingMatches = pairingMatches,
+                openClient = openClient,
+                requestSeq = requestCounter,
+            )
+            job.submit(snapshot) { snap, gen ->
+                executeIdentityJob(snap, gen)
+            }
         }
     }
 
     fun onMarkRequested(
         pairingMatches: () -> Boolean,
         openClient: (() -> PlHttpClient)?,
-    ) {
-        val currentCommitted = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            ?: return
-        val snapshot = IdentityRefreshSnapshot(
-            instanceId = currentCommitted.instanceId,
-            pairing = currentCommitted,
-            pairingMatches = pairingMatches,
-            openClient = openClient ?: { error("no client for parked mark request") },
-        )
-        job.submit(snapshot) { snap, gen ->
-            if (openClient != null) {
-                executeIdentityJob(snap, gen)
-            } else {
-                try {
-                    Thread.sleep(Long.MAX_VALUE)
-                } catch (_: InterruptedException) {
+    ): Long? {
+        synchronized(submitLock) {
+            val currentCommitted = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                ?: return null
+            val seq = ++requestCounter
+            val snapshot = IdentityRefreshSnapshot(
+                instanceId = currentCommitted.instanceId,
+                pairing = currentCommitted,
+                pairingMatches = pairingMatches,
+                openClient = openClient ?: { error("no client for parked mark request") },
+                requestSeq = seq,
+            )
+            job.submit(snapshot) { snap, gen ->
+                if (openClient != null) {
+                    executeIdentityJob(snap, gen)
+                } else {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE)
+                    } catch (_: InterruptedException) {
+                    }
                 }
             }
+            return seq
         }
     }
 
@@ -204,7 +283,7 @@ open class JournalIdentityRefreshCoordinator(
                     val resp = getResult.response
                     if (gen == job.currentGeneration() && snap.pairingMatches()) {
                         if (resp.instanceId != null && resp.instanceId != snap.instanceId) {
-                            presentUnavailableIfCurrent(snap, gen == job.currentGeneration())
+                            presentUnavailableIfCurrent(snap, gen)
                         } else {
                             val mark = resp.mark
                             val record = JournalMarkRecord(
@@ -217,17 +296,17 @@ open class JournalIdentityRefreshCoordinator(
                             } else {
                                 JournalMarkPresentation.Generic
                             }
-                            commitIfCurrent(snap, record, presentation)
+                            commitIfCurrent(snap, record, presentation, gen)
                         }
                     }
                 }
                 is IdentityGetResult.NotFound,
                 is IdentityGetResult.Failure -> {
-                    presentUnavailableIfCurrent(snap, gen == job.currentGeneration())
+                    presentUnavailableIfCurrent(snap, gen)
                 }
             }
         } catch (_: Throwable) {
-            presentUnavailableIfCurrent(snap, gen == job.currentGeneration())
+            presentUnavailableIfCurrent(snap, gen)
         } finally {
             if (client is Closeable) {
                 runCatching { client.close() }
@@ -237,25 +316,49 @@ open class JournalIdentityRefreshCoordinator(
 
     private fun presentUnavailableIfCurrent(
         snap: IdentityRefreshSnapshot,
+        gen: Long,
+    ) {
+        presentUnavailable(snap, gen == job.currentGeneration()) { gen == job.currentGeneration() }
+    }
+
+    private fun presentUnavailable(
+        snap: IdentityRefreshSnapshot,
         generationAllows: Boolean,
+        generationAllowsNow: () -> Boolean = { generationAllows },
     ) {
         if (!generationAllows || !snap.pairingMatches()) return
         val authority = publisher
         if (authority == null) {
-            updatePresentation(JournalMarkPresentation.Unavailable, snap.pairing)
+            var updated = false
+            synchronized(publishLock) {
+                if (generationAllowsNow() && snap.pairingMatches()) {
+                    updatePresentationLocked(JournalMarkPresentation.Unavailable, snap.pairing)
+                    updated = true
+                }
+            }
+            if (updated) {
+                runCatching { onMarkUpdated() }
+            }
             return
         }
         var matches = false
         authority.withMutationBoundary {
             val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (snap.pairing != null && current == snap.pairing && snap.pairingMatches()) {
+            if (generationAllows && snap.pairing != null && current == snap.pairing && snap.pairingMatches()) {
                 matches = true
             }
         }
         if (matches) {
-            val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (current == snap.pairing) {
-                updatePresentation(JournalMarkPresentation.Unavailable, snap.pairing)
+            var updated = false
+            synchronized(publishLock) {
+                val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                if (generationAllowsNow() && current == snap.pairing && snap.pairingMatches()) {
+                    updatePresentationLocked(JournalMarkPresentation.Unavailable, snap.pairing)
+                    updated = true
+                }
+            }
+            if (updated) {
+                runCatching { onMarkUpdated() }
             }
         }
     }
@@ -264,27 +367,44 @@ open class JournalIdentityRefreshCoordinator(
         snapshot: IdentityRefreshSnapshot,
         record: JournalMarkRecord,
         presentation: JournalMarkPresentation,
+        gen: Long,
     ) {
         val authority = publisher
         if (authority == null) {
-            if (!snapshot.pairingMatches()) return
+            if (gen != job.currentGeneration() || !snapshot.pairingMatches()) return
             store.save(record)
-            updatePresentation(presentation, snapshot.pairing)
+            var committed = false
+            synchronized(publishLock) {
+                if (gen == job.currentGeneration() && snapshot.pairingMatches()) {
+                    updatePresentationLocked(presentation, snapshot.pairing)
+                    committed = true
+                }
+            }
+            if (committed) {
+                runCatching { onMarkUpdated() }
+            }
             return
         }
         var committed = false
         authority.withMutationBoundary {
             val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (snapshot.pairing == null || current != snapshot.pairing || !snapshot.pairingMatches()) {
+            if (gen != job.currentGeneration() || snapshot.pairing == null || current != snapshot.pairing || !snapshot.pairingMatches()) {
                 return@withMutationBoundary
             }
             store.save(record)
             committed = true
         }
         if (committed) {
-            val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (current == snapshot.pairing) {
-                updatePresentation(presentation, snapshot.pairing)
+            var updated = false
+            synchronized(publishLock) {
+                val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                if (gen == job.currentGeneration() && current == snapshot.pairing && snapshot.pairingMatches()) {
+                    updatePresentationLocked(presentation, snapshot.pairing)
+                    updated = true
+                }
+            }
+            if (updated) {
+                runCatching { onMarkUpdated() }
             }
         }
     }
@@ -293,7 +413,9 @@ open class JournalIdentityRefreshCoordinator(
         job.close()
         listeners.forEach { it.close() }
         generationListeners.forEach { it.close() }
+        markListeners.forEach { it.close() }
         listeners.clear()
         generationListeners.clear()
+        markListeners.clear()
     }
 }

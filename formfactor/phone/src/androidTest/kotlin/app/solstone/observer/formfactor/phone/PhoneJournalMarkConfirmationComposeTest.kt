@@ -36,7 +36,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.PlHttpClient
 
 @RunWith(AndroidJUnit4::class)
 class PhoneJournalMarkConfirmationComposeTest {
@@ -132,7 +137,10 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    requestMark = { requestCalls.incrementAndGet() },
+                    requestMark = {
+                        requestCalls.incrementAndGet()
+                        null
+                    },
                 )
             }
         }
@@ -538,6 +546,93 @@ class PhoneJournalMarkConfirmationComposeTest {
         assertEquals(1, mismatchCount)
         assertEquals(1, confirmedCount)
         composeRule.onNodeWithText("this phone is no longer connected to that journal.").assertExists()
+        coordinator.close()
+    }
+
+    @Test
+    fun cachedUnavailableRequestsMarkShowsConnectingThenRendersContinueAnywayOnAnswer() {
+        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "corrupt"))
+        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            publisher = publisher,
+            boundMillis = 60_000L,
+        )
+
+        // Finish an earlier failing onUsableConnection (client throws) and wait until that check has published,
+        // then onPairingChanged.
+        val initialUnavailableLatch = CountDownLatch(1)
+        val removeInitialListener = coordinator.addListener {
+            if (it is JournalMarkPresentation.Unavailable) initialUnavailableLatch.countDown()
+        }
+        coordinator.onUsableConnection(
+            instanceId = pairingP.instanceId,
+            pairingMatches = { true },
+            openClient = { error("network failed") },
+        )
+        assertTrue(initialUnavailableLatch.await(5, TimeUnit.SECONDS))
+        removeInitialListener()
+
+        coordinator.onPairingChanged()
+        assertEquals(JournalMarkPresentation.Unavailable, coordinator.currentPresentation())
+        assertEquals(pairingP, coordinator.currentPresentationGeneration())
+
+        val requestCount = AtomicInteger(0)
+        val ticketClientEntered = CountDownLatch(1)
+        val releaseTicketClient = CountDownLatch(1)
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    requestMark = {
+                        requestCount.incrementAndGet()
+                        coordinator.onMarkRequested(
+                            pairingMatches = { true },
+                            openClient = {
+                                object : PlHttpClient {
+                                    override fun request(
+                                        method: String,
+                                        path: String,
+                                        headers: Map<String, String>,
+                                        body: ByteArray?,
+                                        maxResponseBytes: Int,
+                                    ): HttpResponse {
+                                        ticketClientEntered.countDown()
+                                        while (releaseTicketClient.count > 0) {
+                                            try {
+                                                releaseTicketClient.await(5, TimeUnit.SECONDS)
+                                            } catch (_: InterruptedException) {
+                                            }
+                                        }
+                                        throw IOException("ticket failed")
+                                    }
+                                }
+                            },
+                        )
+                    },
+                )
+            }
+        }
+
+        // Wait until client has entered
+        assertTrue(ticketClientEntered.await(5, TimeUnit.SECONDS))
+        composeRule.waitForIdle()
+
+        // At first idle, pairingConnecting is shown and pairingContinueAnyway is absent, and lambda called once
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertDoesNotExist()
+        assertEquals(1, requestCount.get())
+
+        // Release latch
+        releaseTicketClient.countDown()
+        composeRule.waitForIdle()
+
+        // pairingContinueAnyway is enabled, and lambda was still called once
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertIsEnabled()
+        assertEquals(1, requestCount.get())
+
         coordinator.close()
     }
 }

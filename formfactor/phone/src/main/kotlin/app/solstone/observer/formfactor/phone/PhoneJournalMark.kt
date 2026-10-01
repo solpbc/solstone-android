@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import app.solstone.core.identity.JournalMark
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
+import app.solstone.core.pl.JournalMarkEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -418,7 +419,6 @@ fun JournalMarkCard(
 internal enum class PairingPromptAction { Confirm, Drop }
 
 internal sealed class PairingPromptShape {
-    abstract val requestsMark: Boolean
     abstract val showsQuestion: Boolean
     abstract val card: JournalMarkPresentation?
     abstract val withBody: Boolean
@@ -426,7 +426,7 @@ internal sealed class PairingPromptShape {
     abstract val secondary: PairingPromptAction?
     abstract val primaryEnabled: Boolean
 
-    data class Connecting(override val requestsMark: Boolean) : PairingPromptShape() {
+    object Connecting : PairingPromptShape() {
         override val showsQuestion: Boolean = false
         override val card: JournalMarkPresentation? = null
         override val withBody: Boolean = false
@@ -440,7 +440,6 @@ internal sealed class PairingPromptShape {
         override val card: JournalMarkPresentation,
         override val primaryEnabled: Boolean,
     ) : PairingPromptShape() {
-        override val requestsMark: Boolean = false
         override val showsQuestion: Boolean = false
         override val primary: PairingPromptAction = PairingPromptAction.Confirm
         override val secondary: PairingPromptAction = PairingPromptAction.Drop
@@ -450,7 +449,6 @@ internal sealed class PairingPromptShape {
         override val card: JournalMarkPresentation,
         override val primaryEnabled: Boolean,
     ) : PairingPromptShape() {
-        override val requestsMark: Boolean = false
         override val showsQuestion: Boolean = true
         override val withBody: Boolean = false
         override val primary: PairingPromptAction = PairingPromptAction.Confirm
@@ -462,11 +460,29 @@ internal const val PAIRING_CONNECTING_TAG = "pairingConnecting"
 internal const val PAIRING_CONTINUE_ANYWAY_TAG = "pairingContinueAnyway"
 internal const val PAIRING_CANCEL_PAIRING_TAG = "pairingCancelPairing"
 
+internal fun pairingPromptRequestsMark(
+    coordinator: JournalIdentityRefreshCoordinator?,
+    presentation: JournalMarkPresentation,
+    presentationGeneration: PairingGeneration?,
+    currentPairing: PairingGeneration?,
+): Boolean {
+    if (coordinator == null) return false
+    if (currentPairing == null) return false
+    if (presentationGeneration != currentPairing) return true
+    return when (presentation) {
+        JournalMarkPresentation.Loading,
+        JournalMarkPresentation.Unavailable -> true
+        is JournalMarkPresentation.Identified,
+        JournalMarkPresentation.Generic -> false
+    }
+}
+
 internal fun pairingPromptShape(
     coordinator: JournalIdentityRefreshCoordinator?,
     presentation: JournalMarkPresentation,
     presentationGeneration: PairingGeneration?,
     currentPairing: PairingGeneration?,
+    awaiting: Boolean = false,
 ): PairingPromptShape {
     if (coordinator == null) {
         return PairingPromptShape.Unverified(
@@ -480,8 +496,11 @@ internal fun pairingPromptShape(
             ),
         )
     }
+    if (awaiting) {
+        return PairingPromptShape.Connecting
+    }
     if (presentationGeneration != currentPairing || presentation is JournalMarkPresentation.Loading) {
-        return PairingPromptShape.Connecting(requestsMark = currentPairing != null)
+        return PairingPromptShape.Connecting
     }
     return when (presentation) {
         JournalMarkPresentation.Generic -> PairingPromptShape.Unverified(
@@ -520,6 +539,21 @@ internal fun pairingPromptShape(
     }
 }
 
+internal sealed class PairingPromptWait {
+    object None : PairingPromptWait()
+    object OpenPending : PairingPromptWait()
+    data class Ticket(val ticket: Long) : PairingPromptWait()
+}
+
+internal fun pairingPromptWaitAfterRequest(
+    requestsMark: Boolean,
+    ticket: Long?,
+): PairingPromptWait {
+    if (!requestsMark) return PairingPromptWait.None
+    if (ticket == null) return PairingPromptWait.None
+    return PairingPromptWait.Ticket(ticket)
+}
+
 internal fun isPairingConfirmationEnabled(
     coordinator: JournalIdentityRefreshCoordinator?,
     presentationGeneration: PairingGeneration?,
@@ -542,29 +576,53 @@ fun PairingSuccessMark(
     onConfirmed: () -> Unit = {},
     onMismatch: () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
     onYes: ((PairingGeneration) -> Boolean)? = null,
-    requestMark: (() -> Unit)? = null,
+    requestMark: (() -> Long?)? = null,
     currentPairing: () -> PairingGeneration? = { null },
     modifier: Modifier = Modifier,
 ) {
     val activePairing = currentPairing()
-    var presentation by remember {
+    var presentation by remember(activePairing, coordinator) {
         mutableStateOf(coordinator?.currentPresentation() ?: JournalMarkPresentation.Generic)
     }
-    var generation by remember {
+    var generation by remember(activePairing, coordinator) {
         mutableStateOf(coordinator?.currentPresentationGeneration())
     }
+    var answeredThrough by remember(activePairing, coordinator) {
+        mutableStateOf(coordinator?.answeredThrough() ?: 0L)
+    }
+    var waitState by remember(activePairing, coordinator) {
+        val seededRequests = pairingPromptRequestsMark(
+            coordinator = coordinator,
+            presentation = coordinator?.currentPresentation() ?: JournalMarkPresentation.Generic,
+            presentationGeneration = coordinator?.currentPresentationGeneration(),
+            currentPairing = activePairing,
+        )
+        mutableStateOf<PairingPromptWait>(
+            if (seededRequests) PairingPromptWait.OpenPending else PairingPromptWait.None
+        )
+    }
+
     val view = LocalView.current
     DisposableEffect(coordinator) {
         if (coordinator != null) {
-            val remove = coordinator.addGenerationListener { newGen, newPres ->
-                if (Looper.myLooper() == Looper.getMainLooper()) {
-                    generation = newGen
-                    presentation = newPres
-                } else {
-                    view.post {
-                        generation = newGen
-                        presentation = newPres
+            val remove = coordinator.addMarkListener { event ->
+                val action = {
+                    when (event) {
+                        is JournalMarkEvent.Presented -> {
+                            generation = event.generation
+                            presentation = event.presentation
+                        }
+                        is JournalMarkEvent.Answered -> {
+                            if (event.through > answeredThrough) {
+                                answeredThrough = event.through
+                            }
+                        }
                     }
+                }
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    action()
+                } else {
+                    view.post(action)
                 }
             }
             onDispose { remove() }
@@ -573,23 +631,31 @@ fun PairingSuccessMark(
         }
     }
 
+    val effectiveWait = when (val current = waitState) {
+        is PairingPromptWait.Ticket -> if (answeredThrough >= current.ticket) PairingPromptWait.None else current
+        else -> current
+    }
+    val awaiting = effectiveWait != PairingPromptWait.None
+
     val shape = pairingPromptShape(
         coordinator = coordinator,
         presentation = presentation,
         presentationGeneration = generation,
         currentPairing = activePairing,
+        awaiting = awaiting,
     )
 
     LaunchedEffect(activePairing, coordinator) {
-        val requestShape = pairingPromptShape(
+        val currentPres = coordinator?.currentPresentation() ?: presentation
+        val currentGen = coordinator?.currentPresentationGeneration()
+        val requests = pairingPromptRequestsMark(
             coordinator = coordinator,
-            presentation = presentation,
-            presentationGeneration = generation,
+            presentation = currentPres,
+            presentationGeneration = currentGen,
             currentPairing = activePairing,
         )
-        if (requestShape.requestsMark) {
-            requestMark?.invoke()
-        }
+        val ticket = if (requests) requestMark?.invoke() else null
+        waitState = pairingPromptWaitAfterRequest(requests, ticket)
     }
 
     var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
@@ -767,7 +833,7 @@ fun createPhonePairingMarkView(
     onConfirmed: () -> Unit,
     onMismatch: () -> PairingMismatchResult,
     onYes: ((PairingGeneration) -> Boolean)? = null,
-    requestMark: (() -> Unit)? = null,
+    requestMark: (() -> Long?)? = null,
     currentPairing: () -> PairingGeneration? = { null },
 ): View {
     return ComposeView(context).apply {

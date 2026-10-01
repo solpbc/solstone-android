@@ -190,4 +190,174 @@ class CoalescingBoundedJobTest {
             assertEquals(listOf(1, 2), ran)
         }
     }
+
+    @Test
+    fun onJobEndedFiresOncePerDrainedSnapshotOnSuccessTimeoutAndThrow() {
+        val executor = Executors.newCachedThreadPool()
+        val events = mutableListOf<String>()
+        val successLatch = CountDownLatch(1)
+        val timeoutLatch = CountDownLatch(1)
+        val throwLatch = CountDownLatch(1)
+
+        val runner = CoalescingBoundedJob<String>(
+            name = "test-job",
+            boundMillis = 50L,
+            executor = executor,
+            onGiveUp = { snap, _ ->
+                synchronized(events) { events += "giveUp:$snap" }
+            },
+            onJobEnded = { snap, _ ->
+                synchronized(events) { events += "ended:$snap" }
+                when (snap) {
+                    "success" -> successLatch.countDown()
+                    "timeout" -> timeoutLatch.countDown()
+                    "throw" -> throwLatch.countDown()
+                }
+            },
+        )
+
+        runner.submit("success") { _, _ -> }
+        kotlin.test.assertTrue(successLatch.await(3, TimeUnit.SECONDS))
+
+        val hangLatch = CountDownLatch(1)
+        runner.submit("timeout") { _, _ ->
+            hangLatch.await(3, TimeUnit.SECONDS)
+        }
+        kotlin.test.assertTrue(timeoutLatch.await(3, TimeUnit.SECONDS))
+        hangLatch.countDown()
+
+        runner.submit("throw") { _, _ ->
+            throw RuntimeException("task failed")
+        }
+        kotlin.test.assertTrue(throwLatch.await(3, TimeUnit.SECONDS))
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        synchronized(events) {
+            assertEquals(
+                listOf("ended:success", "giveUp:timeout", "ended:timeout", "ended:throw"),
+                events,
+            )
+        }
+    }
+
+    @Test
+    fun onJobEndedDoesNotFireForDroppedPendingSnapshotOnBumpGeneration() {
+        val executor = Executors.newCachedThreadPool()
+        val inFlightStarted = CountDownLatch(1)
+        val inFlightBlocker = CountDownLatch(1)
+        val inFlightEnded = CountDownLatch(1)
+        val endedEvents = mutableListOf<String>()
+
+        val runner = CoalescingBoundedJob<String>(
+            name = "test-job",
+            boundMillis = 2000L,
+            executor = executor,
+            onJobEnded = { snap, _ ->
+                synchronized(endedEvents) { endedEvents += snap }
+                if (snap == "inFlight") inFlightEnded.countDown()
+            },
+        )
+
+        runner.submit("inFlight") { _, _ ->
+            inFlightStarted.countDown()
+            inFlightBlocker.await(3, TimeUnit.SECONDS)
+        }
+        kotlin.test.assertTrue(inFlightStarted.await(3, TimeUnit.SECONDS))
+
+        // Submit pending while in-flight is running
+        runner.submit("pendingToDrop") { _, _ -> }
+
+        // Drop pending by bumping generation
+        runner.bumpGeneration()
+
+        // Release inFlight
+        inFlightBlocker.countDown()
+        kotlin.test.assertTrue(inFlightEnded.await(3, TimeUnit.SECONDS))
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        synchronized(endedEvents) {
+            assertEquals(listOf("inFlight"), endedEvents)
+        }
+    }
+
+    @Test
+    fun throwingGiveUpOrJobEndedDoesNotBreakDrainOfPendingSnapshot() {
+        val executor = Executors.newCachedThreadPool()
+        val secondEnded = CountDownLatch(1)
+        val endedEvents = mutableListOf<String>()
+
+        // 1. Throwing onGiveUp
+        val runner1 = CoalescingBoundedJob<String>(
+            name = "test-job-giveup-throw",
+            boundMillis = 50L,
+            executor = executor,
+            onGiveUp = { snap, _ ->
+                if (snap == "timedOut") {
+                    throw RuntimeException("giveUp throw")
+                }
+            },
+            onJobEnded = { snap, _ ->
+                synchronized(endedEvents) { endedEvents += snap }
+                if (snap == "successor") secondEnded.countDown()
+            },
+        )
+
+        val timedOutBlocker = CountDownLatch(1)
+        runner1.submit("timedOut") { _, _ ->
+            timedOutBlocker.await(3, TimeUnit.SECONDS)
+        }
+        // Submit successor while timedOut is waiting
+        runner1.submit("successor") { _, _ -> }
+
+        kotlin.test.assertTrue(secondEnded.await(3, TimeUnit.SECONDS))
+        timedOutBlocker.countDown()
+        runner1.close()
+
+        synchronized(endedEvents) {
+            assertEquals(listOf("timedOut", "successor"), endedEvents)
+            endedEvents.clear()
+        }
+
+        // 2. Throwing onJobEnded
+        val secondEnded2 = CountDownLatch(1)
+        val firstStarted2 = CountDownLatch(1)
+        val firstBlocker2 = CountDownLatch(1)
+
+        val runner2 = CoalescingBoundedJob<String>(
+            name = "test-job-ended-throw",
+            boundMillis = 2000L,
+            executor = executor,
+            onJobEnded = { snap, _ ->
+                synchronized(endedEvents) { endedEvents += snap }
+                if (snap == "first") {
+                    throw RuntimeException("jobEnded throw")
+                } else if (snap == "second") {
+                    secondEnded2.countDown()
+                }
+            },
+        )
+
+        runner2.submit("first") { _, _ ->
+            firstStarted2.countDown()
+            firstBlocker2.await(3, TimeUnit.SECONDS)
+        }
+        kotlin.test.assertTrue(firstStarted2.await(3, TimeUnit.SECONDS))
+
+        runner2.submit("second") { _, _ -> }
+        firstBlocker2.countDown()
+
+        kotlin.test.assertTrue(secondEnded2.await(3, TimeUnit.SECONDS))
+        runner2.close()
+
+        executor.shutdown()
+        executor.awaitTermination(3, TimeUnit.SECONDS)
+
+        synchronized(endedEvents) {
+            assertEquals(listOf("first", "second"), endedEvents)
+        }
+    }
 }

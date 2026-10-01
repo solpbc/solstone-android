@@ -19,6 +19,7 @@ import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import java.io.IOException
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -51,6 +52,8 @@ class JournalIdentityRefreshCoordinatorTest {
     // The pairing authority reduced to the one fact these tests vary: is a pairing committed.
     private class FakePairingPublisher(var home: PairedHome?) : PairingPublisher {
         private var seq = 0L
+        var mutationBoundaryHook: (() -> Unit)? = null
+        var mutationBoundaryAfterHook: (() -> Unit)? = null
 
         override fun currentSnapshot(): PairingGraphSnapshot {
             seq += 1
@@ -68,7 +71,14 @@ class JournalIdentityRefreshCoordinatorTest {
         override fun subscribe(observer: (PairingGraphSnapshot) -> Unit): SubscriptionHandle =
             SubscriptionHandle {}
 
-        override fun <T> withMutationBoundary(block: () -> T): T = block()
+        override fun <T> withMutationBoundary(block: () -> T): T {
+            mutationBoundaryHook?.invoke()
+            try {
+                return block()
+            } finally {
+                mutationBoundaryAfterHook?.invoke()
+            }
+        }
         override fun acquireDirectLease(): PairingLease.Direct? = null
         override fun acquireRelayLease(): PairingLease.Relay? = null
         override fun validateLease(lease: PairingLease): Boolean = true
@@ -654,6 +664,612 @@ class JournalIdentityRefreshCoordinatorTest {
         assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
         assertEquals(PairingGeneration("inst-2", "sha256:cert2"), coordinator.currentPresentationGeneration())
 
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun noCommittedPairingReturnsNullAndTicketsStrictlyIncrease() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = null)
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        val ticketNoPairing = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNull(ticketNoPairing)
+
+        publisher.home = pairedHome()
+        val ticket1 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticket1)
+        assertEquals(1L, ticket1)
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+
+        val ticket2 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticket2)
+        assertEquals(2L, ticket2)
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun replayDoesNotEndWaitWhenBelowTicket() {
+        val store = FakeMarkStore()
+        store.save(JournalMarkRecord("inst-1", null, PairingGeneration("inst-1", "sha256:cert1")))
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        val inTicketed = CountDownLatch(1)
+        val releaseTicketed = CountDownLatch(1)
+        val ticket = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    inTicketed.countDown()
+                    releaseTicketed.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertNotNull(ticket)
+        assertTrue(inTicketed.await(5, TimeUnit.SECONDS))
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val replayLatch = CountDownLatch(2)
+        val removeListener = coordinator.addMarkListener {
+            events.add(it)
+            replayLatch.countDown()
+        }
+        assertTrue(replayLatch.await(5, TimeUnit.SECONDS))
+
+        assertEquals(2, events.size)
+        assertIs<JournalMarkEvent.Presented>(events[0])
+        val answered = assertIs<JournalMarkEvent.Answered>(events[1])
+        assertTrue(answered.through < ticket)
+
+        releaseTicketed.countDown()
+        removeListener()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun preOpenGiveUpDoesNotEndTicket() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 50L,
+            publisher = publisher,
+        )
+
+        val firstStarted = CountDownLatch(1)
+        val firstBlocker = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val secondBlocker = CountDownLatch(1)
+        val secondSaved = CountDownLatch(1)
+        store.onSave = { secondSaved.countDown() }
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    firstStarted.countDown()
+                    firstBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertTrue(firstStarted.await(5, TimeUnit.SECONDS))
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val removeListener = coordinator.addMarkListener { events.add(it) }
+
+        val ticket = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    secondStarted.countDown()
+                    secondBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertNotNull(ticket)
+
+        // Wait for first usableConnection to hit 50ms bound
+        assertTrue(secondStarted.await(5, TimeUnit.SECONDS))
+
+        // Ensure before second completes, no Answered >= ticket has arrived
+        val answeredPrior = events.filterIsInstance<JournalMarkEvent.Answered>().map { it.through }
+        assertTrue(answeredPrior.all { it < ticket })
+
+        firstBlocker.countDown()
+        secondBlocker.countDown()
+        assertTrue(secondSaved.await(5, TimeUnit.SECONDS))
+
+        // Wait until answered >= ticket arrives
+        val finalAnsweredLatch = CountDownLatch(1)
+        val removeFollower = coordinator.addMarkListener {
+            if (it is JournalMarkEvent.Answered && it.through >= ticket) {
+                finalAnsweredLatch.countDown()
+            }
+        }
+        assertTrue(finalAnsweredLatch.await(5, TimeUnit.SECONDS))
+
+        // Verify Presented preceded Answered for the ticketed result
+        val identifiedIdx = events.indexOfLast { it is JournalMarkEvent.Presented && it.presentation is JournalMarkPresentation.Identified }
+        val answeredIdx = events.indexOfLast { it is JournalMarkEvent.Answered && it.through >= ticket }
+        assertTrue(identifiedIdx != -1 && answeredIdx != -1 && identifiedIdx < answeredIdx)
+
+        removeListener()
+        removeFollower()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun preOpenSuccessDoesNotEndTicket() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 15_000L,
+            publisher = publisher,
+        )
+
+        val firstStarted = CountDownLatch(1)
+        val firstBlocker = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val secondBlocker = CountDownLatch(1)
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    firstStarted.countDown()
+                    firstBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertTrue(firstStarted.await(5, TimeUnit.SECONDS))
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val removeListener = coordinator.addMarkListener { events.add(it) }
+
+        val ticket = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    secondStarted.countDown()
+                    secondBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertNotNull(ticket)
+
+        // Release first task (returns Identified)
+        firstBlocker.countDown()
+        assertTrue(secondStarted.await(5, TimeUnit.SECONDS))
+
+        // Before second finishes, no Answered >= ticket has arrived
+        val answeredPrior = events.filterIsInstance<JournalMarkEvent.Answered>().map { it.through }
+        assertTrue(answeredPrior.all { it < ticket })
+
+        secondBlocker.countDown()
+
+        val finalAnsweredLatch = CountDownLatch(1)
+        val removeFollower = coordinator.addMarkListener {
+            if (it is JournalMarkEvent.Answered && it.through >= ticket) {
+                finalAnsweredLatch.countDown()
+            }
+        }
+        assertTrue(finalAnsweredLatch.await(5, TimeUnit.SECONDS))
+
+        removeListener()
+        removeFollower()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun freshUnavailableEndsTicketTwiceViaThrowAndParkedTimeout() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 50L,
+            publisher = publisher,
+        )
+
+        // 1. Client throws
+        val events1 = CopyOnWriteArrayList<JournalMarkEvent>()
+        val answered1 = CountDownLatch(1)
+        val remove1 = coordinator.addMarkListener {
+            events1.add(it)
+            if (it is JournalMarkEvent.Answered && it.through >= 1L) answered1.countDown()
+        }
+
+        val ticket1 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> throw IOException("door closed") } },
+        )
+        assertNotNull(ticket1)
+        assertTrue(answered1.await(5, TimeUnit.SECONDS))
+
+        val unavailIdx1 = events1.indexOfLast { it is JournalMarkEvent.Presented && it.presentation is JournalMarkPresentation.Unavailable }
+        val ansIdx1 = events1.indexOfLast { it is JournalMarkEvent.Answered && it.through >= ticket1 }
+        assertTrue(unavailIdx1 != -1 && ansIdx1 != -1 && unavailIdx1 < ansIdx1)
+        remove1()
+
+        // 2. Parked no-client request hits timeout
+        val events2 = CopyOnWriteArrayList<JournalMarkEvent>()
+        val answered2 = CountDownLatch(1)
+        val remove2 = coordinator.addMarkListener {
+            events2.add(it)
+            if (it is JournalMarkEvent.Answered && it.through >= 2L) answered2.countDown()
+        }
+
+        val ticket2 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = null,
+        )
+        assertNotNull(ticket2)
+        assertTrue(answered2.await(5, TimeUnit.SECONDS))
+
+        val unavailIdx2 = events2.indexOfLast { it is JournalMarkEvent.Presented && it.presentation is JournalMarkPresentation.Unavailable }
+        val ansIdx2 = events2.indexOfLast { it is JournalMarkEvent.Answered && it.through >= ticket2 }
+        assertTrue(unavailIdx2 != -1 && ansIdx2 != -1 && unavailIdx2 < ansIdx2)
+        remove2()
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun suppressedChecksStillAnswerWithNothingForShellSentinel() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        val shellPresList = CopyOnWriteArrayList<JournalMarkPresentation>()
+        val shellGenList = CopyOnWriteArrayList<Pair<PairingGeneration?, JournalMarkPresentation>>()
+        val markEvents = CopyOnWriteArrayList<JournalMarkEvent>()
+
+        val presLatch = CountDownLatch(2)
+        val genLatch = CountDownLatch(2)
+
+        val removeAddListener = coordinator.addListener {
+            shellPresList.add(it)
+            presLatch.countDown()
+        }
+        val removeAddGen = coordinator.addGenerationListener { gen, pres ->
+            shellGenList.add(gen to pres)
+            genLatch.countDown()
+        }
+        val removeMark = coordinator.addMarkListener { markEvents.add(it) }
+
+        // (a) pairingMatches() returns false
+        val answeredA = CountDownLatch(1)
+        val removeWatcherA = coordinator.addMarkListener {
+            if (it is JournalMarkEvent.Answered && it.through >= 1L) answeredA.countDown()
+        }
+        val ticketA = coordinator.onMarkRequested(
+            pairingMatches = { false },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticketA)
+        assertTrue(answeredA.await(5, TimeUnit.SECONDS))
+        removeWatcherA()
+
+        // (b) pairingMatches() throws on every call from second onward
+        var callCount = 0
+        val answeredB = CountDownLatch(1)
+        val removeWatcherB = coordinator.addMarkListener {
+            if (it is JournalMarkEvent.Answered && it.through >= 2L) answeredB.countDown()
+        }
+        val ticketB = coordinator.onMarkRequested(
+            pairingMatches = {
+                callCount++
+                if (callCount > 1) throw RuntimeException("pairingMatches throw")
+                true
+            },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticketB)
+        assertTrue(answeredB.await(5, TimeUnit.SECONDS))
+        removeWatcherB()
+
+        // Verify that after tickets A and B, Answered arrived with NO Presented between
+        val presentedEventsAfterReplay = markEvents.drop(1).filterIsInstance<JournalMarkEvent.Presented>()
+        assertEquals(0, presentedEventsAfterReplay.size)
+
+        // Then onPairingChanged is the sentinel
+        coordinator.onPairingChanged()
+        assertTrue(presLatch.await(5, TimeUnit.SECONDS))
+        assertTrue(genLatch.await(5, TimeUnit.SECONDS))
+
+        // Pre-registered addGenerationListener and addListener each saw exactly [replay, sentinel]
+        assertEquals(2, shellPresList.size)
+        assertEquals(2, shellGenList.size)
+
+        removeAddListener()
+        removeAddGen()
+        removeMark()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun resetsAnswerWhatTheyDropAndDoNotAnswerSubsequentTicketEarly() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        val firstStarted = CountDownLatch(1)
+        val firstBlocker = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val secondBlocker = CountDownLatch(1)
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    firstStarted.countDown()
+                    firstBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertTrue(firstStarted.await(5, TimeUnit.SECONDS))
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val ticket1AnsweredLatch = CountDownLatch(1)
+        val removeListener = coordinator.addMarkListener {
+            events.add(it)
+            if (it is JournalMarkEvent.Answered && it.through >= 1L) ticket1AnsweredLatch.countDown()
+        }
+
+        val ticket1 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticket1)
+
+        // onPairingChanged bumps generation, answers dropped ticket1
+        coordinator.onPairingChanged()
+
+        // Release first in-flight task
+        firstBlocker.countDown()
+
+        // Wait for ticket1 to be answered
+        assertTrue(ticket1AnsweredLatch.await(5, TimeUnit.SECONDS))
+        val answered1 = events.filterIsInstance<JournalMarkEvent.Answered>().map { it.through }
+        assertTrue(answered1.any { it >= ticket1 })
+
+        // Take a new ticket whose client is held on a second latch
+        val ticket2 = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    secondStarted.countDown()
+                    secondBlocker.await(5, TimeUnit.SECONDS)
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+        assertNotNull(ticket2)
+        assertTrue(secondStarted.await(5, TimeUnit.SECONDS))
+
+        // No Answered at or above ticket2 until second latch is released
+        val answeredPrior2 = events.filterIsInstance<JournalMarkEvent.Answered>().map { it.through }
+        assertTrue(answeredPrior2.all { it < ticket2 })
+
+        secondBlocker.countDown()
+
+        val finalAnsweredLatch = CountDownLatch(1)
+        val removeFollower = coordinator.addMarkListener {
+            if (it is JournalMarkEvent.Answered && it.through >= ticket2) {
+                finalAnsweredLatch.countDown()
+            }
+        }
+        assertTrue(finalAnsweredLatch.await(5, TimeUnit.SECONDS))
+
+        removeListener()
+        removeFollower()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun stalePublishRejectedByGenerationCheck() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 50L,
+            publisher = publisher,
+        )
+
+        val firstBoundaryEntered = CountDownLatch(1)
+        val firstBoundaryRelease = CountDownLatch(1)
+        var firstBoundaryIntercepted = false
+        var heldThreadId: Long? = null
+        val staleBoundaryFinished = CountDownLatch(1)
+
+        publisher.mutationBoundaryHook = {
+            if (!firstBoundaryIntercepted) {
+                firstBoundaryIntercepted = true
+                heldThreadId = Thread.currentThread().id
+                firstBoundaryEntered.countDown()
+                while (firstBoundaryRelease.count > 0) {
+                    try {
+                        firstBoundaryRelease.await(5, TimeUnit.SECONDS)
+                    } catch (_: InterruptedException) {
+                    }
+                }
+            }
+        }
+        publisher.mutationBoundaryAfterHook = {
+            if (heldThreadId != null && Thread.currentThread().id == heldThreadId) {
+                staleBoundaryFinished.countDown()
+            }
+        }
+
+        val uncommittedJson = """{"committed":false,"instance_id":null,"mark":null}"""
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), uncommittedJson.toByteArray()) } },
+        )
+
+        // Wait until task 1 enters boundary
+        assertTrue(firstBoundaryEntered.await(5, TimeUnit.SECONDS))
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val identifiedPublished = CountDownLatch(1)
+        val removeListener = coordinator.addMarkListener {
+            events.add(it)
+            if (it is JournalMarkEvent.Presented && it.presentation is JournalMarkPresentation.Identified) {
+                identifiedPublished.countDown()
+            }
+        }
+
+        // Submit ticketed check which returns Identified
+        val ticket = coordinator.onMarkRequested(
+            pairingMatches = { true },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+        assertNotNull(ticket)
+
+        // Wait until ticketed check has published Identified (held past the 50ms bound)
+        assertTrue(identifiedPublished.await(5, TimeUnit.SECONDS))
+
+        // Release stale boundary
+        firstBoundaryRelease.countDown()
+        assertTrue(staleBoundaryFinished.await(5, TimeUnit.SECONDS))
+
+        // Presentation, last Presented, and store must be Identified, never Generic
+        assertIs<JournalMarkPresentation.Identified>(coordinator.currentPresentation())
+        val lastPresented = events.filterIsInstance<JournalMarkEvent.Presented>().lastOrNull()
+        assertNotNull(lastPresented)
+        assertIs<JournalMarkPresentation.Identified>(lastPresented.presentation)
+        assertNotNull(store.load()?.mark)
+
+        removeListener()
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun staleGiveUpRejectedByGenerationCheck() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 50L,
+            publisher = publisher,
+        )
+
+        val firstBoundaryEntered = CountDownLatch(1)
+        val firstBoundaryRelease = CountDownLatch(1)
+        var firstBoundaryIntercepted = false
+        val giveUpBoundaryFinished = CountDownLatch(1)
+
+        publisher.mutationBoundaryHook = {
+            if (!firstBoundaryIntercepted) {
+                firstBoundaryIntercepted = true
+                firstBoundaryEntered.countDown()
+                while (firstBoundaryRelease.count > 0) {
+                    try {
+                        firstBoundaryRelease.await(5, TimeUnit.SECONDS)
+                    } catch (_: InterruptedException) {
+                    }
+                }
+            }
+        }
+        publisher.mutationBoundaryAfterHook = {
+            if (firstBoundaryIntercepted && giveUpBoundaryFinished.count > 0) {
+                giveUpBoundaryFinished.countDown()
+            }
+        }
+
+        // Task stays inside HTTP call swallowing interruption until released, so it does not enter withMutationBoundary itself
+        val taskRelease = CountDownLatch(1)
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = {
+                RoutingFakeClient { _, _ ->
+                    while (taskRelease.count > 0) {
+                        try {
+                            taskRelease.await(5, TimeUnit.SECONDS)
+                        } catch (_: InterruptedException) {
+                        }
+                    }
+                    HttpResponse(200, emptyMap(), validMarkJson.toByteArray())
+                }
+            },
+        )
+
+        // Wait for give-up to enter boundary
+        assertTrue(firstBoundaryEntered.await(5, TimeUnit.SECONDS))
+
+        // Reset via onPairingChanged
+        coordinator.onPairingChanged()
+
+        val events = CopyOnWriteArrayList<JournalMarkEvent>()
+        val replayLatch = CountDownLatch(1)
+        val removeListener = coordinator.addMarkListener {
+            events.add(it)
+            if (it is JournalMarkEvent.Presented) replayLatch.countDown()
+        }
+        assertTrue(replayLatch.await(5, TimeUnit.SECONDS))
+
+        // Release boundary, then release task
+        firstBoundaryRelease.countDown()
+        assertTrue(giveUpBoundaryFinished.await(5, TimeUnit.SECONDS))
+        taskRelease.countDown()
+
+        val lastPresented = events.filterIsInstance<JournalMarkEvent.Presented>().lastOrNull()
+        assertNotNull(lastPresented)
+        // Initial presentation for paired home with empty store is Loading
+        assertIs<JournalMarkPresentation.Loading>(lastPresented.presentation)
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+
+        removeListener()
         coordinator.close()
         executor.shutdown()
     }

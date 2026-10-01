@@ -17,6 +17,7 @@ class CoalescingBoundedJob<T>(
         Thread(r, name).apply { isDaemon = true }
     },
     private val onGiveUp: ((snapshot: T, generation: Long) -> Unit)? = null,
+    private val onJobEnded: ((snapshot: T, generation: Long) -> Unit)? = null,
 ) : Closeable {
     private val lock = Any()
     private val generation = AtomicLong(0)
@@ -85,7 +86,7 @@ class CoalescingBoundedJob<T>(
                 } catch (e: java.util.concurrent.TimeoutException) {
                     fenceGeneration()
                     future.cancel(true)
-                    onGiveUp?.invoke(snapshot, targetGen)
+                    runCatching { onGiveUp?.invoke(snapshot, targetGen) }
                 } catch (_: Throwable) {
                     fenceGeneration()
                     future.cancel(true)
@@ -95,6 +96,7 @@ class CoalescingBoundedJob<T>(
                             activeFuture = null
                         }
                     }
+                    runCatching { onJobEnded?.invoke(snapshot, targetGen) }
                 }
             }
         } finally {
