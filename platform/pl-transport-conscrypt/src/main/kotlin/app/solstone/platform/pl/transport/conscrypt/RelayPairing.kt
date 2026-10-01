@@ -491,6 +491,12 @@ fun pairOverRelay(
                     }
                 }
             }
+        } else if (firstAdmitted != null) {
+            activePublisher.associateDirectIfProven(
+                expectedPairing = app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint),
+                endpoint = firstAdmitted,
+                proof = { true },
+            )
         }
     } catch (_: Exception) {
         // Transitional enroll failed: stores keep new pairing with null relay token
