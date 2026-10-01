@@ -56,6 +56,7 @@ class PhoneShortWindowGeometryTest {
                         status = connected(),
                         onToggle = { _, _ -> },
                         onStartObserving = {},
+                        onConfirmMark = {},
                     )
                 }
             }
@@ -238,5 +239,6 @@ class PhoneShortWindowGeometryTest {
         online = true,
         pendingCount = 0,
         hasContentPending = false,
+        awaitingMarkConfirmation = false,
     )
 }

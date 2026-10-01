@@ -33,6 +33,7 @@ class PhoneStatusSnapshotTest {
                 pendingSourceIds = listOf("z-orphan", "location", "a-orphan", "audio", "audio"),
             ),
             registered = listOf(audio, location),
+            awaitingMarkConfirmation = false,
         )
 
         assertEquals(listOf("audio", "location", "a-orphan", "z-orphan"), snapshot.waiting.map { it.sourceId })
@@ -50,6 +51,7 @@ class PhoneStatusSnapshotTest {
         val snapshot = phoneStatusSnapshotOf(
             backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 1, pendingSourceIds = emptyList()),
             registered = emptyList(),
+            awaitingMarkConfirmation = false,
         )
 
         assertEquals(1, snapshot.status.pendingCount)
@@ -68,12 +70,34 @@ class PhoneStatusSnapshotTest {
                 journalVersion = reading,
             ),
             registered = emptyList(),
+            awaitingMarkConfirmation = false,
         )
         assertEquals(reading, snapshot.status.journalVersion)
     }
 
+    @Test
+    fun passesThroughAwaitingMarkConfirmation() {
+        val awaiting = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 0, pendingSourceIds = emptyList()),
+            registered = emptyList(),
+            awaitingMarkConfirmation = true,
+        )
+        assertTrue(awaiting.status.awaitingMarkConfirmation)
+
+        val notAwaiting = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 0, pendingSourceIds = emptyList()),
+            registered = emptyList(),
+            awaitingMarkConfirmation = false,
+        )
+        assertFalse(notAwaiting.status.awaitingMarkConfirmation)
+    }
+
     private fun flagsFor(plStatus: HarnessPlStatus): Pair<Boolean, Boolean> {
-        val snapshot = phoneStatusSnapshotOf(HarnessBacklogStatus(plStatus, 0, emptyList()), emptyList())
+        val snapshot = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(plStatus, 0, emptyList()),
+            registered = emptyList(),
+            awaitingMarkConfirmation = false,
+        )
         return snapshot.status.paired to snapshot.status.online
     }
 

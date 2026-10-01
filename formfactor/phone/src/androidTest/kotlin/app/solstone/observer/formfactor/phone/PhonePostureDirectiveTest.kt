@@ -60,6 +60,7 @@ class PhonePostureDirectiveTest {
                     onToggle = { _, _ -> },
                     onStartObserving = {},
                     windowAdaptiveInfo = adaptiveInfo,
+                    onConfirmMark = {},
                 )
             }
         }
@@ -122,6 +123,7 @@ class PhonePostureDirectiveTest {
         online = true,
         pendingCount = 0,
         hasContentPending = false,
+        awaitingMarkConfirmation = false,
     )
 
     private companion object {

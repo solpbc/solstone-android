@@ -15,6 +15,7 @@ enum class PhoneStatusCapture {
     UNPAIRED,
     PAIRED_OFFLINE,
     PAIRED_CAUGHT_UP,
+    PAIRED_AWAITING_MARK,
 }
 
 fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
@@ -23,6 +24,7 @@ fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
     "unpaired" -> PhoneStatusCapture.UNPAIRED
     "paired-offline" -> PhoneStatusCapture.PAIRED_OFFLINE
     "paired-caught-up" -> PhoneStatusCapture.PAIRED_CAUGHT_UP
+    "paired-awaiting-mark" -> PhoneStatusCapture.PAIRED_AWAITING_MARK
     else -> null
 }
 
@@ -43,9 +45,10 @@ fun resolvePhoneStatusCapture(
     return when (decodePhoneStatusCapture(raw)) {
         PhoneStatusCapture.LOADING -> LoadState.Loading
         PhoneStatusCapture.FAILED -> LoadState.Failed(CapturedPhoneStatusFailure)
-        PhoneStatusCapture.UNPAIRED -> capturedStatusState(paired = false, online = false, pendingCount = 0)
-        PhoneStatusCapture.PAIRED_OFFLINE -> capturedStatusState(paired = true, online = false, pendingCount = 1)
-        PhoneStatusCapture.PAIRED_CAUGHT_UP -> capturedStatusState(paired = true, online = true, pendingCount = 0)
+        PhoneStatusCapture.UNPAIRED -> capturedStatusState(paired = false, online = false, pendingCount = 0, awaitingMarkConfirmation = false)
+        PhoneStatusCapture.PAIRED_OFFLINE -> capturedStatusState(paired = true, online = false, pendingCount = 1, awaitingMarkConfirmation = false)
+        PhoneStatusCapture.PAIRED_CAUGHT_UP -> capturedStatusState(paired = true, online = true, pendingCount = 0, awaitingMarkConfirmation = false)
+        PhoneStatusCapture.PAIRED_AWAITING_MARK -> capturedStatusState(paired = true, online = true, pendingCount = 0, awaitingMarkConfirmation = true)
         null -> null
     }
 }
@@ -54,6 +57,7 @@ private fun capturedStatusState(
     paired: Boolean,
     online: Boolean,
     pendingCount: Int,
+    awaitingMarkConfirmation: Boolean = false,
 ): LoadState<PhoneStatusSnapshot> {
     val waiting = if (pendingCount > 0) {
         listOf(SourceStatus("audio", SourceWish.On, SourceState.ON, ReasonCode.NONE))
@@ -67,6 +71,7 @@ private fun capturedStatusState(
                 online = online,
                 pendingCount = pendingCount,
                 hasContentPending = waiting.isNotEmpty(),
+                awaitingMarkConfirmation = awaitingMarkConfirmation,
             ),
             waiting = waiting,
         ),

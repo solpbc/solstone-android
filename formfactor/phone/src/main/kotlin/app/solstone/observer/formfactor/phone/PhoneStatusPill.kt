@@ -62,6 +62,7 @@ fun PhoneStatusPill(
         StatusPillKind.SYNCING -> "syncing"
         StatusPillKind.OFFLINE -> "offline"
         StatusPillKind.NOT_PAIRED -> "not paired"
+        StatusPillKind.AWAITING_MARK_CONFIRMATION -> "confirm the mark"
     }
     val pulse = kind == StatusPillKind.SYNCING
     val infinite: InfiniteTransition = rememberInfiniteTransition(label = "statusPulse")
@@ -77,12 +78,12 @@ fun PhoneStatusPill(
     val calm = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
     val mark = when (kind) {
         StatusPillKind.CONNECTED, StatusPillKind.SYNCING -> TileDotMark.DISC
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED -> TileDotMark.RING
+        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION -> TileDotMark.RING
     }
     val dotColor = when (kind) {
         StatusPillKind.CONNECTED -> LocalStatusOnGreen.current
         StatusPillKind.SYNCING -> MaterialTheme.colorScheme.primaryContainer
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED -> calm
+        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION -> calm
     }
     Box(
         modifier = modifier

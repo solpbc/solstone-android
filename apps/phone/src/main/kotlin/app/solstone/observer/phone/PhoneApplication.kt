@@ -397,6 +397,7 @@ class PhoneApplication : ObserverApplication(
                 phoneStatusSnapshotOf(
                     backlog = backlog,
                     registered = readModel?.sources.orEmpty(),
+                    awaitingMarkConfirmation = phoneAwaitingMarkConfirmation(applicationContext),
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()

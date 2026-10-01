@@ -4,17 +4,19 @@
 package app.solstone.observer.phone
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.LocalContext
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.Switch
 import androidx.glance.appwidget.SwitchDefaults
 import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartService
 import androidx.glance.appwidget.appWidgetBackground
@@ -32,15 +34,18 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import app.solstone.core.model.ReasonCode
 import app.solstone.observer.formfactor.phone.MINIMUM_TOUCH_TARGET_DP
+import app.solstone.observer.formfactor.phone.MarkConfirmationRoute
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetColorRole
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.SolstoneColors
+import app.solstone.observer.formfactor.phone.manualMarkConfirmationRoute
 import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.formfactor.phone.sourceLabel
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.scaffold.ObserverActivity
 import app.solstone.platform.fgs.ObserverForegroundService
 
 internal const val PHONE_WIDGET_AUDIO_SOURCE_ID = "audio"
@@ -61,6 +66,22 @@ class PhoneObserverWidgetReceiver : GlanceAppWidgetReceiver() {
 class PhoneWidgetOffAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         (context.applicationContext as? PhoneApplication)?.turnAudioOffFromWidget()
+    }
+}
+
+class PhoneWidgetConfirmMarkAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val route = manualMarkConfirmationRoute(
+            awaitingMarkConfirmation = phoneAwaitingMarkConfirmation(context),
+            promptedConfirmationThisProcess = PhoneShellActivity.promptedConfirmationThisProcess,
+        )
+        if (route == MarkConfirmationRoute.CONFIRM) {
+            val intent = Intent(context, ObserverActivity::class.java).apply {
+                putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        }
     }
 }
 
@@ -87,7 +108,11 @@ internal fun PhoneObserverWidgetContent(model: PhoneObserverWidgetModel) {
                 .cornerRadius(R.dimen.phone_observer_widget_inner_radius),
         ) {
             Row(GlanceModifier.fillMaxSize()) {
-                Column(GlanceModifier.defaultWeight()) {
+                Column(
+                    GlanceModifier
+                        .defaultWeight()
+                        .clickable(actionRunCallback<PhoneWidgetConfirmMarkAction>()),
+                ) {
                     Text(model.stateWord, style = TextStyle(color = content))
                     Text(model.syncText, style = TextStyle(color = content))
                     model.diagnosis?.let { diag ->
@@ -122,6 +147,7 @@ internal fun widgetRootModifier(surface: ColorProvider): GlanceModifier =
 internal fun emptyPhoneStatus() = phoneStatusSnapshotOf(
     backlog = HarnessBacklogStatus(HarnessPlStatus.NotPaired, pendingCount = 0, pendingSourceIds = emptyList()),
     registered = emptyList(),
+    awaitingMarkConfirmation = false,
 ).status
 
 private fun colorFor(role: PhoneObserverWidgetColorRole): ColorProvider =

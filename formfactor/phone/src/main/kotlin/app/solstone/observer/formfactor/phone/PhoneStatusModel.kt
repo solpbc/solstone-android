@@ -11,6 +11,7 @@ enum class StatusPillKind {
     SYNCING,
     OFFLINE,
     NOT_PAIRED,
+    AWAITING_MARK_CONFIRMATION,
 }
 
 data class PhoneStatusModel(
@@ -18,6 +19,7 @@ data class PhoneStatusModel(
     val online: Boolean,
     val pendingCount: Int,
     val hasContentPending: Boolean,
+    val awaitingMarkConfirmation: Boolean,
     val wrist: WristShare = WristShare.Unknown,
     val journalVersion: JournalVersionReading? = null,
 )
@@ -44,6 +46,7 @@ fun journalVersionDisplayText(reading: JournalVersionReading?): String = when (r
 fun statusPillKind(model: PhoneStatusModel): StatusPillKind = when {
     !model.paired -> StatusPillKind.NOT_PAIRED
     !model.online -> StatusPillKind.OFFLINE
+    model.awaitingMarkConfirmation -> StatusPillKind.AWAITING_MARK_CONFIRMATION
     model.pendingCount > 0 -> StatusPillKind.SYNCING
     else -> StatusPillKind.CONNECTED
 }
@@ -53,4 +56,9 @@ fun statusPillText(model: PhoneStatusModel): String = when (statusPillKind(model
     StatusPillKind.SYNCING -> "${model.pendingCount} syncing"
     StatusPillKind.OFFLINE -> "offline · ${model.pendingCount} waiting"
     StatusPillKind.NOT_PAIRED -> "not paired"
+    StatusPillKind.AWAITING_MARK_CONFIRMATION -> if (model.pendingCount > 0) {
+        "confirm the mark · ${model.pendingCount} waiting"
+    } else {
+        "confirm the mark"
+    }
 }

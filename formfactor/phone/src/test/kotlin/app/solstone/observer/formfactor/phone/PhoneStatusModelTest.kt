@@ -20,20 +20,61 @@ class PhoneStatusModelTest {
     fun fourPillStatesRenderQuotedCopy() {
         assertEquals(
             "connected",
-            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false)),
+            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false)),
         )
         assertEquals(
             "3 syncing",
-            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 3, hasContentPending = true)),
+            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 3, hasContentPending = true, awaitingMarkConfirmation = false)),
         )
         assertEquals(
             "offline · 2 waiting",
-            statusPillText(PhoneStatusModel(paired = true, online = false, pendingCount = 2, hasContentPending = true)),
+            statusPillText(PhoneStatusModel(paired = true, online = false, pendingCount = 2, hasContentPending = true, awaitingMarkConfirmation = false)),
         )
         assertEquals(
             "not paired",
-            statusPillText(PhoneStatusModel(paired = false, online = true, pendingCount = 4, hasContentPending = true)),
+            statusPillText(PhoneStatusModel(paired = false, online = true, pendingCount = 4, hasContentPending = true, awaitingMarkConfirmation = false)),
         )
+    }
+
+    @Test
+    fun awaitingMarkConfirmationPrecedence() {
+        val beatsConnected = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = true,
+        )
+        assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(beatsConnected))
+
+        val beatsSyncing = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 5,
+            hasContentPending = true,
+            awaitingMarkConfirmation = true,
+        )
+        assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(beatsSyncing))
+
+        val offlineBeatsAwaiting = PhoneStatusModel(
+            paired = true,
+            online = false,
+            pendingCount = 2,
+            hasContentPending = true,
+            awaitingMarkConfirmation = true,
+        )
+        assertEquals(StatusPillKind.OFFLINE, statusPillKind(offlineBeatsAwaiting))
+        assertEquals("offline · 2 waiting", statusPillText(offlineBeatsAwaiting))
+
+        val notPairedModel = PhoneStatusModel(
+            paired = false,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = true,
+        )
+        assertEquals(StatusPillKind.NOT_PAIRED, statusPillKind(notPairedModel))
+        assertEquals("not paired", statusPillText(notPairedModel))
     }
 
     @Test
@@ -43,6 +84,7 @@ class PhoneStatusModelTest {
             online = true,
             pendingCount = 3,
             hasContentPending = true,
+            awaitingMarkConfirmation = false,
         )
         assertEquals("3 syncing", statusPillText(model))
         assertFalse(statusPillText(model).contains("4"))
@@ -51,7 +93,7 @@ class PhoneStatusModelTest {
     @Test
     fun retiredOfflineFormDoesNotAppear() {
         val text = statusPillText(
-            PhoneStatusModel(paired = true, online = false, pendingCount = 38, hasContentPending = true),
+            PhoneStatusModel(paired = true, online = false, pendingCount = 38, hasContentPending = true, awaitingMarkConfirmation = false),
         )
         assertEquals("offline · 38 waiting", text)
         assertFalse(text.contains("38 offline"))

@@ -47,6 +47,7 @@ internal fun PhoneDefaultDetailPane(
     status: PhoneDefaultDetailStatus,
     onConnectJournal: () -> Unit,
     onOpenSource: (String) -> Unit,
+    onConfirmMark: () -> Unit,
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -82,6 +83,7 @@ internal fun PhoneDefaultDetailPane(
             is PhoneDefaultDetailStatus.Paired -> PhoneDefaultDetailPaired(
                 snapshot = status.snapshot,
                 onOpenSource = onOpenSource,
+                onConfirmMark = onConfirmMark,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -116,6 +118,7 @@ private fun PhoneDefaultDetailFailure(
 private fun PhoneDefaultDetailPaired(
     snapshot: PhoneStatusSnapshot,
     onOpenSource: (String) -> Unit,
+    onConfirmMark: () -> Unit,
     modifier: Modifier,
 ) {
     PhoneDefaultStatusPane(modifier = modifier) {
@@ -123,6 +126,7 @@ private fun PhoneDefaultDetailPaired(
             model = snapshot.status,
             waiting = snapshot.waiting,
             onOpenSource = onOpenSource,
+            onConfirmMark = onConfirmMark,
         )
     }
 }

@@ -49,6 +49,7 @@ class PhoneDeckScrollRestorationTest {
                     status = connected(),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }
@@ -101,5 +102,6 @@ class PhoneDeckScrollRestorationTest {
         online = true,
         pendingCount = 0,
         hasContentPending = false,
+        awaitingMarkConfirmation = false,
     )
 }

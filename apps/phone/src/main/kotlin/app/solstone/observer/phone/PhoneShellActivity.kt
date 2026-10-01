@@ -44,8 +44,12 @@ import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.FileSourceWishStore
 import app.solstone.core.identity.JournalConfirmationPolicy
+import app.solstone.core.identity.awaitingMarkConfirmation
+import app.solstone.core.identity.confirmedFor
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.StoreInspectResult
+import app.solstone.observer.formfactor.phone.MarkConfirmationRoute
+import app.solstone.observer.formfactor.phone.manualMarkConfirmationRoute
 import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.core.identity.JournalMarkPresentation
@@ -163,19 +167,12 @@ class PhoneShellActivity : ComponentActivity() {
         container = runtime.container()
         stores = syncStores(applicationContext)
 
-        if (JournalConfirmationPolicy.consults && !promptedConfirmationThisProcess && savedInstanceState == null) {
-            val snapshot = displayedSnapshot()
-            if (snapshot is PairingGraphSnapshot.Committed) {
-                val inspected = stores.journalConfirmationStore.inspect()
-                val match = inspected is StoreInspectResult.Ready && inspected.value.confirmed == snapshot.home.clientCertFingerprint
-                if (!match) {
-                    promptedConfirmationThisProcess = true
-                    startActivity(
-                        Intent(this, ObserverActivity::class.java)
-                            .putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true),
-                    )
-                }
-            }
+        if (!promptedConfirmationThisProcess && savedInstanceState == null && awaitingMarkConfirmation(JournalConfirmationPolicy.consults, displayedSnapshot(), stores.journalConfirmationStore)) {
+            promptedConfirmationThisProcess = true
+            startActivity(
+                Intent(this, ObserverActivity::class.java)
+                    .putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true),
+            )
         }
 
         val openedJournalPath = journalOpenPath(
@@ -210,6 +207,7 @@ class PhoneShellActivity : ComponentActivity() {
             sources = decoratedSources,
             readStatus = PhoneStatusSupplier.forContainer(container),
             asyncLoad = container.asyncLoad,
+            awaitingMarkConfirmation = { phoneAwaitingMarkConfirmation(this@PhoneShellActivity) },
             capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
@@ -222,11 +220,13 @@ class PhoneShellActivity : ComponentActivity() {
             val snapshot = (statusState as? LoadState.Loaded)?.value
             var pairingSnapshot by remember { mutableStateOf(displayedSnapshot()) }
             var journalConfirmed by remember {
+                val snapshot = displayedSnapshot()
                 mutableStateOf(
-                    stores.journalConfirmationStore.inspect().let {
-                        it is StoreInspectResult.Ready &&
-                            it.value.confirmed == (displayedSnapshot() as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
-                    }
+                    snapshot is PairingGraphSnapshot.Committed && confirmedFor(
+                        JournalConfirmationPolicy.consults,
+                        stores.journalConfirmationStore,
+                        snapshot.home.clientCertFingerprint,
+                    )
                 )
             }
             var markPresentation by remember {
@@ -281,6 +281,7 @@ class PhoneShellActivity : ComponentActivity() {
             DisposableEffect(stores) {
                 val pairingSubscription = stores.publisher.subscribe { next ->
                     mainHandler.post {
+                        statusViewModel.refresh()
                         val effective = displayedSnapshot()
                         val before = pairingSnapshot
                         pairingSnapshot = effective
@@ -301,9 +302,13 @@ class PhoneShellActivity : ComponentActivity() {
                 }
                 val removeConfirmationListener = stores.journalConfirmationStore.addListener {
                     mainHandler.post {
-                        val currentFp = (displayedSnapshot() as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
-                        val inspected = stores.journalConfirmationStore.inspect()
-                        journalConfirmed = inspected is StoreInspectResult.Ready && inspected.value.confirmed == currentFp
+                        statusViewModel.refresh()
+                        val snapshot = displayedSnapshot()
+                        journalConfirmed = snapshot is PairingGraphSnapshot.Committed && confirmedFor(
+                            JournalConfirmationPolicy.consults,
+                            stores.journalConfirmationStore,
+                            snapshot.home.clientCertFingerprint,
+                        )
                     }
                 }
                 onDispose {
@@ -313,9 +318,12 @@ class PhoneShellActivity : ComponentActivity() {
                 }
             }
             LaunchedEffect(pairingSnapshot.sequenceNumber) {
-                val currentFp = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.home?.clientCertFingerprint
-                val inspected = stores.journalConfirmationStore.inspect()
-                journalConfirmed = inspected is StoreInspectResult.Ready && inspected.value.confirmed == currentFp
+                val snapshot = pairingSnapshot
+                journalConfirmed = snapshot is PairingGraphSnapshot.Committed && confirmedFor(
+                    JournalConfirmationPolicy.consults,
+                    stores.journalConfirmationStore,
+                    snapshot.home.clientCertFingerprint,
+                )
                 if (pairingSnapshot !is PairingGraphSnapshot.Committed) journalOpen = false
                 // The note is about the journal this device just left. Once another pairing commits,
                 // "your journal" names the new one, and the note would read as being about it.
@@ -359,6 +367,22 @@ class PhoneShellActivity : ComponentActivity() {
                 onGrantPermissions = { sourceId -> routePermissionRequest(sourceId, priorWishFor(sourceId)) },
                 onConnectJournal = {
                     openPairingScanner()
+                },
+                onConfirmMark = {
+                    val route = manualMarkConfirmationRoute(
+                        awaitingMarkConfirmation = awaitingMarkConfirmation(
+                            JournalConfirmationPolicy.consults,
+                            displayedSnapshot(),
+                            stores.journalConfirmationStore,
+                        ),
+                        promptedConfirmationThisProcess = promptedConfirmationThisProcess,
+                    )
+                    if (route == MarkConfirmationRoute.CONFIRM) {
+                        startActivity(
+                            Intent(this@PhoneShellActivity, ObserverActivity::class.java)
+                                .putExtra(ObserverActivity.EXTRA_CONFIRM_JOURNAL, true),
+                        )
+                    }
                 },
                 onOpenJournal = {
                     if (pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed) {
@@ -982,6 +1006,7 @@ class PhoneShellActivity : ComponentActivity() {
         private val sources: SourcesReader,
         private val readStatus: () -> app.solstone.observer.harness.HarnessBacklogStatus,
         private val asyncLoad: AsyncLoad,
+        private val awaitingMarkConfirmation: () -> Boolean,
         private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -989,7 +1014,13 @@ class PhoneShellActivity : ComponentActivity() {
             return when {
                 modelClass.isAssignableFrom(SourcesViewModel::class.java) -> SourcesViewModel(sources, asyncLoad) as T
                 modelClass.isAssignableFrom(PhoneStatusViewModel::class.java) ->
-                    PhoneStatusViewModel(readStatus, sources, asyncLoad, capturedStatusState) as T
+                    PhoneStatusViewModel(
+                        read = readStatus,
+                        sources = sources,
+                        asyncLoad = asyncLoad,
+                        awaitingMarkConfirmation = awaitingMarkConfirmation,
+                        capturedStatusState = capturedStatusState,
+                    ) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")
             }
         }

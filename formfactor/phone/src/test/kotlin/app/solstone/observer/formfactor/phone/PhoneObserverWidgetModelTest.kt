@@ -200,6 +200,30 @@ class PhoneObserverWidgetModelTest {
         assertTrue(model.needsAttention)
     }
 
+    @Test
+    fun awaitingMarkConfirmationPresentsInWidget() {
+        val trueStatus = status(awaitingMarkConfirmation = true)
+        val falseStatus = status(awaitingMarkConfirmation = false)
+
+        val trueRendered = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = trueStatus,
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        val falseRendered = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = falseStatus,
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+
+        assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(trueStatus))
+        assertEquals(statusPillText(trueStatus), trueRendered.syncText)
+        assertTrue(trueRendered.awaitingMarkConfirmation)
+        assertFalse(falseRendered.awaitingMarkConfirmation)
+        assertEquals(falseRendered.needsAttention, trueRendered.needsAttention)
+        assertEquals(falseRendered.colors, trueRendered.colors)
+    }
+
     private fun render(
         fixture: PhoneObserverWidgetHarnessFixture,
         providerFresh: Boolean,
@@ -211,11 +235,12 @@ class PhoneObserverWidgetModelTest {
             startOutcome = PhoneWidgetStartOutcome.None,
         )
 
-    private fun status(pendingCount: Int = 0): PhoneStatusModel =
+    private fun status(pendingCount: Int = 0, awaitingMarkConfirmation: Boolean = false): PhoneStatusModel =
         PhoneStatusModel(
             paired = true,
             online = true,
             pendingCount = pendingCount,
             hasContentPending = pendingCount > 0,
+            awaitingMarkConfirmation = awaitingMarkConfirmation,
         )
 }

@@ -173,14 +173,43 @@ class PhoneStatusViewModelTest {
         assertEquals(2, reads)
     }
 
+    @Test
+    fun publishAndRefreshBothReadAwaitingMarkConfirmation() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var awaiting = true
+        val viewModel = viewModel(runner, poster, awaitingMarkConfirmation = { awaiting }) {
+            HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 2, emptyList())
+        }
+        runner.runNext()
+        poster.runNext()
+        val initial = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        kotlin.test.assertTrue(initial.value.status.awaitingMarkConfirmation)
+
+        viewModel.publish(HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 3, emptyList()))
+        runner.runNext()
+        poster.runNext()
+        val published = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        kotlin.test.assertTrue(published.value.status.awaitingMarkConfirmation)
+
+        awaiting = false
+        viewModel.publish(HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 4, emptyList()))
+        runner.runNext()
+        poster.runNext()
+        val publishedFalse = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        kotlin.test.assertFalse(publishedFalse.value.status.awaitingMarkConfirmation)
+    }
+
     private fun viewModel(
         runner: ManualRunner,
         poster: ManualPoster,
+        awaitingMarkConfirmation: () -> Boolean = { false },
         read: () -> HarnessBacklogStatus,
     ): PhoneStatusViewModel = PhoneStatusViewModel(
         read = read,
         sources = TestSourcesReader,
         asyncLoad = AsyncLoad(runner, poster),
+        awaitingMarkConfirmation = awaitingMarkConfirmation,
     )
 }
 

@@ -183,6 +183,8 @@ private object SyncStoresHolder {
     @Volatile
     private var jiCoordinator: JournalIdentityRefreshCoordinator? = null
     @Volatile
+    private var journalConfirmationStore: FileJournalConfirmationStore? = null
+    @Volatile
     private var pushCoordinator: PushRegistrationCoordinator? = null
     @Volatile
     private var pushAttempted = false
@@ -194,6 +196,12 @@ private object SyncStoresHolder {
             pushInstall = config
         }
     }
+
+    fun getJournalConfirmationStore(dir: File): FileJournalConfirmationStore =
+        journalConfirmationStore ?: synchronized(this) {
+            journalConfirmationStore ?: FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
+                .also { journalConfirmationStore = it }
+        }
 
     fun getPublisher(dir: File, protector: AndroidKeyStoreProtector): FilePairingGraph =
         publisher ?: synchronized(this) {
@@ -273,7 +281,7 @@ fun syncStores(context: Context): SyncStores {
     val protector = AndroidKeyStoreProtector()
     val journalVersionStore = FileJournalVersionStore(File(dir, "journal_version.tsv"))
     val journalMarkStore = FileJournalMarkStore(File(dir, "journal_mark.json"))
-    val journalConfirmationStore = FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
+    val journalConfirmationStore = SyncStoresHolder.getJournalConfirmationStore(dir)
     val identityStore = FileIdentityStore(File(dir, "identity.tsv"), protector)
     val graph = SyncStoresHolder.getPublisher(dir, protector)
     val mutator = SyncStoresHolder.getMutator(graph)

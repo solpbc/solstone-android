@@ -220,6 +220,7 @@ class PhoneDeckNonSourceTileTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = initial?.let { PhoneRouteStack.Empty.showInDetail(it) }
                     ?: PhoneRouteStack.Empty,
             )
@@ -287,4 +288,5 @@ private fun connected() = PhoneStatusModel(
     online = true,
     pendingCount = 0,
     hasContentPending = false,
+    awaitingMarkConfirmation = false,
 )

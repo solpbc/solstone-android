@@ -35,6 +35,7 @@ import app.solstone.core.push.PushRegistrationCoordinator
 
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.StoreInspectResult
+import app.solstone.core.identity.confirmedFor
 import app.solstone.core.model.QueueState
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
@@ -121,10 +122,11 @@ internal fun executeSyncRun(
         val (credentials, allowsOwnerMaterial) = stores.publisher.withMutationBoundary {
             val creds = recoverSyncCredentials(stores.publisher)
             val allows = when (creds) {
-                is SyncCredentials.Ready -> {
-                    !JournalConfirmationPolicy.consults ||
-                        (stores.journalConfirmationStore.inspect().let { it is StoreInspectResult.Ready && it.value.confirmed == creds.identity.clientCertFingerprint })
-                }
+                is SyncCredentials.Ready -> confirmedFor(
+                    JournalConfirmationPolicy.consults,
+                    stores.journalConfirmationStore,
+                    creds.identity.clientCertFingerprint,
+                )
                 else -> true
             }
             creds to allows

@@ -45,6 +45,7 @@ class PhoneDeckExitTest {
                     status = null,
                     onToggle = { _, _: SourceWish -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }

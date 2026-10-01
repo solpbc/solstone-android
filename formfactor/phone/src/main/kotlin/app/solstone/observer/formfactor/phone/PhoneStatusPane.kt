@@ -62,6 +62,7 @@ fun PhoneStatusPane(
     waiting: List<SourceStatus>,
     onDismiss: () -> Unit,
     onOpenSource: (String) -> Unit,
+    onConfirmMark: () -> Unit,
     modifier: Modifier = Modifier,
     onConnectJournal: () -> Unit = {},
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
@@ -122,6 +123,7 @@ fun PhoneStatusPane(
                         model = model,
                         waiting = waiting,
                         onOpenSource = onOpenSource,
+                        onConfirmMark = onConfirmMark,
                         journalFacts = journalFacts,
                         onOpenTechnicalDetails = onOpenTechnicalDetails,
                     )
@@ -146,10 +148,11 @@ internal fun PhonePairedStatusContent(
     model: PhoneStatusModel,
     waiting: List<SourceStatus>,
     onOpenSource: (String) -> Unit,
+    onConfirmMark: () -> Unit,
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
     onOpenTechnicalDetails: () -> Unit = {},
 ) {
-    PhonePairedStatusSummary(model)
+    PhonePairedStatusSummary(model, onConfirmMark)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneFactRow(label = "journal version", value = journalFacts.version)
     PaneFactRow(label = "how your phone connects", value = journalFacts.location)
@@ -163,26 +166,39 @@ internal fun PhonePairedStatusContent(
 }
 
 @Composable
-private fun PhonePairedStatusSummary(model: PhoneStatusModel) {
-    when (statusPillKind(model)) {
-        StatusPillKind.CONNECTED -> {
-            PaneLead("all caught up")
-            PaneSubLine("everything is in your journal")
+private fun PhonePairedStatusSummary(
+    model: PhoneStatusModel,
+    onConfirmMark: () -> Unit,
+) {
+    val summary = pairedStatusSummary(model) ?: return
+    val markLine = "waiting for you to confirm your journal's mark"
+    when (summary.lead) {
+        PairedStatusLead.CAUGHT_UP -> PaneLead("all caught up")
+        PairedStatusLead.COUNT -> PaneCount(model.pendingCount)
+        PairedStatusLead.MARK_LINE -> PaneLead(markLine)
+    }
+    if (summary.markLineFollowsCount) {
+        PaneLead(markLine)
+    }
+    if (summary.subLine) {
+        val subText = when (statusPillKind(model)) {
+            StatusPillKind.CONNECTED -> "everything is in your journal"
+            StatusPillKind.SYNCING -> "syncing to your journal…"
+            StatusPillKind.OFFLINE -> "on this device"
+            StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
+            StatusPillKind.NOT_PAIRED -> ""
         }
-        StatusPillKind.SYNCING -> {
-            PaneCount(model.pendingCount)
-            // ⛔ Locked string, and it is a KNOWN-OPEN founder question
-            // (it sits against CMO's subject register). The pill, this
-            // pane and the aggregate label move together or not at all —
-            // do not quietly reword one of them.
-            PaneSubLine("syncing to your journal…")
+        if (subText.isNotEmpty()) {
+            PaneSubLine(subText)
         }
-        StatusPillKind.OFFLINE -> {
-            PaneCount(model.pendingCount)
-            // ⛔ Never a safety claim — only where it is.
-            PaneSubLine("on this device")
+    }
+    if (summary.action) {
+        TextButton(
+            onClick = onConfirmMark,
+            modifier = Modifier.testTag("statusConfirmMark"),
+        ) {
+            Text("confirm the mark")
         }
-        StatusPillKind.NOT_PAIRED -> Unit
     }
 }
 

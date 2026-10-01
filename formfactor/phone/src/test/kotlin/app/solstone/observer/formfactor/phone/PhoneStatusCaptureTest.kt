@@ -17,6 +17,7 @@ class PhoneStatusCaptureTest {
         assertEquals(PhoneStatusCapture.UNPAIRED, decodePhoneStatusCapture("unpaired"))
         assertEquals(PhoneStatusCapture.PAIRED_OFFLINE, decodePhoneStatusCapture("paired-offline"))
         assertEquals(PhoneStatusCapture.PAIRED_CAUGHT_UP, decodePhoneStatusCapture("paired-caught-up"))
+        assertEquals(PhoneStatusCapture.PAIRED_AWAITING_MARK, decodePhoneStatusCapture("paired-awaiting-mark"))
     }
 
     @Test
@@ -49,11 +50,16 @@ class PhoneStatusCaptureTest {
         assertEquals(true, caughtUp.status.paired)
         assertEquals(true, caughtUp.status.online)
         assertEquals(0, caughtUp.status.pendingCount)
+
+        val awaitingMark = loadedCapture("paired-awaiting-mark")
+        assertEquals(true, awaitingMark.status.paired)
+        assertEquals(true, awaitingMark.status.online)
+        assertEquals(true, awaitingMark.status.awaitingMarkConfirmation)
     }
 
     @Test
     fun nonDebuggableRejectsEveryCaptureValue() {
-        listOf("loading", "failed", "unpaired", "paired-offline", "paired-caught-up").forEach { raw ->
+        listOf("loading", "failed", "unpaired", "paired-offline", "paired-caught-up", "paired-awaiting-mark").forEach { raw ->
             assertNull(resolvePhoneStatusCapture(raw, debuggable = false))
         }
         listOf("compact", "wide").forEach { raw ->

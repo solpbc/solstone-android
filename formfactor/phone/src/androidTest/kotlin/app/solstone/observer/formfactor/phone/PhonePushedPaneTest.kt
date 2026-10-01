@@ -35,6 +35,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -51,6 +52,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty
                     .showInDetail(PhoneRoute.AboutSolstone)
                     .pushInDetail(PhoneRoute.Licences),
@@ -70,6 +72,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -86,6 +89,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty
                     .showInDetail(PhoneRoute.AboutSolstone)
                     .pushInDetail(PhoneRoute.Licences),
@@ -105,6 +109,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.waitForIdle()
@@ -119,6 +124,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -134,6 +140,7 @@ class PhonePushedPaneTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -161,4 +168,5 @@ private fun connected() = PhoneStatusModel(
     online = true,
     pendingCount = 0,
     hasContentPending = false,
+    awaitingMarkConfirmation = false,
 )

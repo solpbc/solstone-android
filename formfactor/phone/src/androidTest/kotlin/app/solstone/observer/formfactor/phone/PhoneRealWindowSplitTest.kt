@@ -42,6 +42,7 @@ class PhoneRealWindowSplitTest {
                 status = null,
                 onToggle = { _, _: SourceWish -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.waitForIdle()

@@ -246,6 +246,7 @@ class PhoneObserverWidgetRuntimeTest {
             reason = ReasonCode.NONE,
             pendingCount = 0,
             syncText = "connected",
+            awaitingMarkConfirmation = false,
             colors = setOf(
                 PhoneObserverWidgetColorRole.SURFACE,
                 PhoneObserverWidgetColorRole.CONTENT,
@@ -262,6 +263,7 @@ class PhoneObserverWidgetRuntimeTest {
             reason = ReasonCode.FOREGROUND_START_NOT_ALLOWED,
             pendingCount = 0,
             syncText = "not paired",
+            awaitingMarkConfirmation = false,
             colors = setOf(
                 PhoneObserverWidgetColorRole.SURFACE,
                 PhoneObserverWidgetColorRole.CONTENT,

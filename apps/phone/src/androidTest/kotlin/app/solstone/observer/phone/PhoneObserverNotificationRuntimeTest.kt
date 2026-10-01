@@ -131,6 +131,7 @@ class PhoneObserverNotificationRuntimeTest {
             online = true,
             pendingCount = 42,
             hasContentPending = true,
+            awaitingMarkConfirmation = false,
         )
         val syncText = statusPillText(distinctiveStatusModel)
         PhoneStatusSupplier.override = {

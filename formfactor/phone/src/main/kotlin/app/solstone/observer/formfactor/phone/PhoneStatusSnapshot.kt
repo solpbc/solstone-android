@@ -18,6 +18,7 @@ data class PhoneStatusSnapshot(
 fun phoneStatusSnapshotOf(
     backlog: HarnessBacklogStatus,
     registered: List<SourceStatus>,
+    awaitingMarkConfirmation: Boolean,
 ): PhoneStatusSnapshot {
     val (paired, online) = when (backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
@@ -41,6 +42,7 @@ fun phoneStatusSnapshotOf(
             online = online,
             pendingCount = backlog.pendingCount,
             hasContentPending = backlog.pendingSourceIds.isNotEmpty(),
+            awaitingMarkConfirmation = awaitingMarkConfirmation,
             journalVersion = backlog.journalVersion,
         ),
         waiting = waiting,

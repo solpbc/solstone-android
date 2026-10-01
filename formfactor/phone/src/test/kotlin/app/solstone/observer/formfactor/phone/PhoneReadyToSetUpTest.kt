@@ -85,7 +85,7 @@ class PhoneReadyToSetUpTest {
     fun theWidgetRendersReadyToSetUpInActiveColoursNotAttention() {
         val model = renderPhoneObserverWidget(
             readModel = freshInstall(),
-            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false),
+            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
             startOutcome = PhoneWidgetStartOutcome.None,
         )
         assertEquals("ready to set up", model.stateWord)
@@ -103,7 +103,7 @@ class PhoneReadyToSetUpTest {
         // read the sources, which is NOT the same as reading them and finding nothing wrong.
         val model = renderPhoneObserverWidget(
             readModel = null,
-            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false),
+            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
             startOutcome = PhoneWidgetStartOutcome.None,
         )
         assertTrue(model.needsAttention)
@@ -121,7 +121,7 @@ class PhoneReadyToSetUpTest {
                     SourceStatus("audio", SourceWish.Off, SourceState.OFF, ReasonCode.NONE, wishExpressed = true),
                 ),
             ),
-            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false),
+            statusModel = PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
             startOutcome = PhoneWidgetStartOutcome.None,
         )
         assertEquals("off", model.stateWord)

@@ -78,7 +78,7 @@ class PhoneDefaultDetailPaneTest {
         var connections = 0
 
         setWideContent(
-            status = PhoneStatusModel(false, false, 0, false),
+            status = PhoneStatusModel(false, false, 0, false, false),
             detailStatus = PhoneDefaultDetailStatus.Unpaired,
             onConnectJournal = { connections += 1 },
         )
@@ -86,6 +86,21 @@ class PhoneDefaultDetailPaneTest {
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
         composeRule.onNodeWithTag("yourJournalConnect").assertIsDisplayed().performClick()
         assertEquals(1, connections)
+    }
+
+    @Test
+    fun awaitingMarkConfirmationInWideDefaultDetailOffersConfirmButtonAndCallsBack() {
+        var confirms = 0
+        val snapshot = snapshot(paired = true, online = true, pendingCount = 0, awaitingMarkConfirmation = true)
+        setWideContent(
+            status = snapshot.status,
+            detailStatus = PhoneDefaultDetailStatus.Paired(snapshot),
+            onConfirmMark = { confirms += 1 },
+        )
+
+        composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+        composeRule.onNodeWithTag("statusConfirmMark").assertIsDisplayed().performClick()
+        assertEquals(1, confirms)
     }
 
     @Test
@@ -104,6 +119,7 @@ class PhoneDefaultDetailPaneTest {
                     },
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }
@@ -134,10 +150,11 @@ class PhoneDefaultDetailPaneTest {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
                 PhoneObserverScreen(
                     loadState = loadedSources(),
-                    status = PhoneStatusModel(true, true, 0, false),
+                    status = PhoneStatusModel(true, true, 0, false, false),
                     defaultDetailStatus = detailStatus,
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }
@@ -162,6 +179,7 @@ class PhoneDefaultDetailPaneTest {
                     status = null,
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                     windowAdaptiveInfo = adaptiveInfo,
                 )
             }
@@ -179,6 +197,7 @@ class PhoneDefaultDetailPaneTest {
         detailStatus: PhoneDefaultDetailStatus,
         sources: List<SourceStatus> = emptyList(),
         onConnectJournal: () -> Unit = {},
+        onConfirmMark: () -> Unit = {},
     ) {
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
@@ -189,6 +208,7 @@ class PhoneDefaultDetailPaneTest {
                     onToggle = { _, _ -> },
                     onStartObserving = {},
                     onConnectJournal = onConnectJournal,
+                    onConfirmMark = onConfirmMark,
                 )
             }
         }
@@ -216,12 +236,14 @@ private fun snapshot(
     online: Boolean,
     pendingCount: Int,
     waiting: List<SourceStatus> = emptyList(),
+    awaitingMarkConfirmation: Boolean = false,
 ): PhoneStatusSnapshot = PhoneStatusSnapshot(
     status = PhoneStatusModel(
         paired = paired,
         online = online,
         pendingCount = pendingCount,
         hasContentPending = waiting.isNotEmpty(),
+        awaitingMarkConfirmation = awaitingMarkConfirmation,
     ),
     waiting = waiting,
 )

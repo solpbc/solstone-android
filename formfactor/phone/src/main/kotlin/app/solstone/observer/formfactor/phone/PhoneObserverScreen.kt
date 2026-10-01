@@ -109,6 +109,7 @@ fun PhoneObserverScreen(
     initialStatusOpen: Boolean = false,
     version: String = "",
     captureWidthDp: Int? = null,
+    onConfirmMark: () -> Unit,
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo(
         supportLargeAndXLargeWidth = true,
@@ -163,6 +164,7 @@ fun PhoneObserverScreen(
                 windowPosture = Posture(),
             )
         } ?: windowAdaptiveInfo,
+        onConfirmMark = onConfirmMark,
     )
 }
 
@@ -215,6 +217,7 @@ internal fun PhoneObserverScreen(
     initialStatusOpen: Boolean = false,
     version: String = "",
     windowAdaptiveInfo: WindowAdaptiveInfo,
+    onConfirmMark: () -> Unit,
 ) {
     var paneStates by rememberPaneStates(
         initial = PaneStates.Empty
@@ -318,6 +321,7 @@ internal fun PhoneObserverScreen(
                                 paneStates = paneStates.close(PhonePane.STATUS)
                                 detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                             },
+                            onConfirmMark = onConfirmMark,
                             onConnectJournal = onConnectJournal,
                             journalFacts = journalFacts,
                             onOpenTechnicalDetails = {
@@ -504,6 +508,7 @@ internal fun PhoneObserverScreen(
                                 onOpenSource = { id ->
                                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                                 },
+                                onConfirmMark = onConfirmMark,
                                 defaultDetailStatus = defaultDetailStatus,
                                 onRefreshStatus = onRefreshStatus,
                                 version = version,
@@ -582,6 +587,7 @@ internal fun PhoneObserverScreen(
                     onOpenSource = { id ->
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
+                    onConfirmMark = onConfirmMark,
                     defaultDetailStatus = defaultDetailStatus,
                     onRefreshStatus = onRefreshStatus,
                     version = version,

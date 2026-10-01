@@ -16,6 +16,7 @@ class PhoneStatusViewModel(
     private val read: () -> HarnessBacklogStatus,
     private val sources: SourcesReader,
     private val asyncLoad: AsyncLoad,
+    private val awaitingMarkConfirmation: () -> Boolean,
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
 ) : ViewModel() {
     var statusState: LoadState<PhoneStatusSnapshot> by mutableStateOf(LoadState.Loading)
@@ -59,7 +60,7 @@ class PhoneStatusViewModel(
     fun publish(backlog: HarnessBacklogStatus) {
         if (capturedStatusState != null || readInFlight) return
         val generation = ++requestedGeneration
-        asyncLoad.load({ phoneStatusSnapshotOf(backlog, sources.snapshot().sources) }) { incoming ->
+        asyncLoad.load({ phoneStatusSnapshotOf(backlog, sources.snapshot().sources, awaitingMarkConfirmation()) }) { incoming ->
             if (incoming is LoadState.Loading) return@load
             if (generation == requestedGeneration) statusState = incoming
         }
@@ -67,7 +68,7 @@ class PhoneStatusViewModel(
 
     private fun startRead(generation: Long) {
         readInFlight = true
-        asyncLoad.load({ phoneStatusSnapshotOf(read(), sources.snapshot().sources) }) { incoming ->
+        asyncLoad.load({ phoneStatusSnapshotOf(read(), sources.snapshot().sources, awaitingMarkConfirmation()) }) { incoming ->
             if (incoming is LoadState.Loading) {
                 if (generation == requestedGeneration) statusState = incoming
                 return@load

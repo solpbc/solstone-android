@@ -116,6 +116,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourceSwitch-audio", useUnmergedTree = true).assertIsDisplayed()
@@ -130,6 +131,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourceSwitch-watch", useUnmergedTree = true).assertDoesNotExist()
@@ -145,6 +147,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> toggles += 1 },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourceTile-audio").performTouchInput { click(center) }
@@ -161,7 +164,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillSyncingCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true, false), onClick = {})
         }
         composeRule.onNodeWithText("4 syncing").assertIsDisplayed()
     }
@@ -169,7 +172,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillOfflineCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true, false), onClick = {})
         }
         composeRule.onNodeWithText("offline · 2 waiting").assertIsDisplayed()
     }
@@ -177,7 +180,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillNotPairedCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false, false), onClick = {})
         }
         composeRule.onNodeWithText("not paired").assertIsDisplayed()
     }
@@ -187,10 +190,11 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, true, 1, true),
+                status = PhoneStatusModel(true, true, 1, true, false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -209,6 +213,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -224,6 +229,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -240,6 +246,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 version = "version-sentinel",
             )
         }
@@ -267,6 +274,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -289,6 +297,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -307,6 +316,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -328,6 +338,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -350,6 +361,7 @@ class PhoneObserverScreenTest {
                     status = connected(),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }
@@ -373,6 +385,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 // initialShelfOpen starts this fixture open; production reaches
                 // the same state by dragging the gestures-enabled drawer over
                 // this detail stack.
@@ -400,6 +413,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("phoneShelfOpener").performClick()
@@ -428,6 +442,7 @@ class PhoneObserverScreenTest {
                     status = connected(),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                 )
             }
         }
@@ -463,6 +478,7 @@ class PhoneObserverScreenTest {
                     status = connected(),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onConfirmMark = {},
                     initial = PhoneRouteStack.Empty.showInDetail(route),
                 )
             }
@@ -486,6 +502,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.AboutSolstone),
             )
         }
@@ -513,6 +530,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
                 initialShelfOpen = true,
             )
         }
@@ -535,10 +553,11 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, false, 1, true),
+                status = PhoneStatusModel(true, false, 1, true, false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -553,7 +572,7 @@ class PhoneObserverScreenTest {
         var pending by mutableStateOf(6)
         composeRule.setContent {
             PhoneStatusPill(
-                model = PhoneStatusModel(true, true, pending, true),
+                model = PhoneStatusModel(true, true, pending, true, false),
                 onClick = {},
             )
         }
@@ -583,6 +602,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.waitForIdle()
@@ -630,6 +650,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourcesFailed").assertIsDisplayed()
@@ -644,6 +665,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         val node = composeRule.onNodeWithTag("sourceSwitch-audio", useUnmergedTree = true).fetchSemanticsNode()
@@ -671,6 +693,7 @@ class PhoneObserverScreenTest {
                             if (sourceId == "location") toggles += 1
                         },
                         onStartObserving = {},
+                        onConfirmMark = {},
                     )
                 }
             }
@@ -721,6 +744,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithText("SETTING_UP", useUnmergedTree = true).assertDoesNotExist()
@@ -736,6 +760,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithText("paused", useUnmergedTree = true).assertIsDisplayed()
@@ -752,6 +777,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
@@ -769,6 +795,7 @@ class PhoneObserverScreenTest {
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("sourceLabel-audio", useUnmergedTree = true)
@@ -840,10 +867,11 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
                 onConnectJournal = { connectCalls += 1 },
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("journalMarkPill").performClick()
@@ -858,11 +886,12 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
                 showWelcome = true,
                 onToggle = { _, _ -> },
                 onStartObserving = {},
                 onConnectJournal = { connectCalls += 1 },
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("welcomeConnectJournal").assertIsDisplayed().performClick()
@@ -883,6 +912,7 @@ class PhoneObserverScreenTest {
                 journalFacts = facts,
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
@@ -910,6 +940,7 @@ class PhoneObserverScreenTest {
                 initial = PhoneRouteStack.Empty.showInDetail(PhoneRoute.YourJournal),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
+                onConfirmMark = {},
             )
         }
         composeRule.onNodeWithText("studio").assertIsDisplayed()
@@ -943,4 +974,5 @@ private fun connected() = PhoneStatusModel(
     online = true,
     pendingCount = 0,
     hasContentPending = false,
+    awaitingMarkConfirmation = false,
 )
