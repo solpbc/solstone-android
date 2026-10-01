@@ -435,7 +435,7 @@ fun PairingSuccessMark(
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit = {},
     onMismatch: () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
-    onYes: (() -> Boolean)? = null,
+    onYes: ((PairingGeneration) -> Boolean)? = null,
     requestMark: (() -> Unit)? = null,
     currentPairing: () -> PairingGeneration? = { null },
     modifier: Modifier = Modifier,
@@ -516,13 +516,16 @@ fun PairingSuccessMark(
                 Spacer(Modifier.height(20.dp))
                 Button(
                     onClick = {
-                        scope.launch {
-                            val ok = withContext(Dispatchers.IO) {
-                                onYes?.invoke() == true
-                            }
-                            if (ok) {
-                                confirmation = PairingConfirmation.Confirmed
-                                onConfirmed()
+                        val presented = generation
+                        if (presented != null) {
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) {
+                                    onYes?.invoke(presented) == true
+                                }
+                                if (ok) {
+                                    confirmation = PairingConfirmation.Confirmed
+                                    onConfirmed()
+                                }
                             }
                         }
                     },
@@ -594,7 +597,7 @@ fun createPhonePairingMarkView(
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit,
     onMismatch: () -> PairingMismatchResult,
-    onYes: (() -> Boolean)? = null,
+    onYes: ((PairingGeneration) -> Boolean)? = null,
     requestMark: (() -> Unit)? = null,
     currentPairing: () -> PairingGeneration? = { null },
 ): View {

@@ -424,4 +424,237 @@ class JournalIdentityRefreshCoordinatorTest {
         coordinator.close()
         executor.shutdown()
     }
+
+    @Test
+    fun staleJobFailureDoesNotOverwriteNewerPairingPresentation() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        val inRequest = CountDownLatch(1)
+        val releaseRequest = CountDownLatch(1)
+
+        val client = RoutingFakeClient { _, _ ->
+            inRequest.countDown()
+            releaseRequest.await(5, TimeUnit.SECONDS)
+            throw IOException("failed")
+        }
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = { client },
+        )
+
+        assertTrue(inRequest.await(5, TimeUnit.SECONDS))
+
+        // Pairing changes to B before request completes
+        val homeB = PairedHome(
+            instanceId = "inst-2",
+            homeLabel = "Home B",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca2",
+            clientCertFingerprint = "sha256:cert2",
+            observerHandle = null,
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        publisher.home = homeB
+        val recordB = JournalMarkRecord("inst-2", null, PairingGeneration("inst-2", "sha256:cert2"))
+        store.save(recordB)
+        coordinator.onPairingChanged()
+
+        // Release stale throwing request
+        releaseRequest.countDown()
+        Thread.sleep(150)
+
+        // Presentation for B should remain Generic (from store save), not overwritten to Unavailable
+        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertEquals(PairingGeneration("inst-2", "sha256:cert2"), coordinator.currentPresentationGeneration())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun onMarkRequestedWithNullOpenClientParksUntilBound() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 400L,
+            publisher = publisher,
+        )
+
+        val pairingA = PairingGeneration("inst-1", "sha256:cert1")
+        coordinator.onMarkRequested(
+            pairingMatches = { (publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing == pairingA },
+            openClient = null,
+        )
+
+        // Sleep ~100ms. Assert presentation is still not Unavailable (still Loading)
+        Thread.sleep(100)
+        assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+
+        // Sleep until past the bound (total > 400ms)
+        Thread.sleep(450)
+        assertIs<JournalMarkPresentation.Unavailable>(coordinator.currentPresentation())
+        assertEquals(pairingA, coordinator.currentPresentationGeneration())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun onMarkRequestedNoLeaseLeavesNewerPairingUnchanged() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 400L,
+            publisher = publisher,
+        )
+
+        val pairingA = PairingGeneration("inst-1", "sha256:cert1")
+        coordinator.onMarkRequested(
+            pairingMatches = { (publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing == pairingA },
+            openClient = null,
+        )
+
+        // Move publisher to B with no onPairingChanged and no second bumpGeneration
+        val homeB = PairedHome(
+            instanceId = "inst-2",
+            homeLabel = "Home B",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca2",
+            clientCertFingerprint = "sha256:cert2",
+            observerHandle = null,
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        publisher.home = homeB
+        val recordB = JournalMarkRecord("inst-2", null, PairingGeneration("inst-2", "sha256:cert2"))
+        store.save(recordB)
+
+        val presentationAfterMove = coordinator.currentPresentation()
+        val genAfterMove = coordinator.currentPresentationGeneration()
+
+        // Wait past the bound
+        Thread.sleep(550)
+
+        // Assert both are unchanged
+        assertEquals(presentationAfterMove, coordinator.currentPresentation())
+        assertEquals(genAfterMove, coordinator.currentPresentationGeneration())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun staleFetchBetweenBumpAndInstallDoesNotWriteUnavailableOnB() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            boundMillis = 400L,
+            publisher = publisher,
+        )
+
+        // Publisher is A. Call onPairingChanged while still A (this is the bump).
+        coordinator.onPairingChanged()
+
+        val inRequest = CountDownLatch(1)
+        val releaseRequest = CountDownLatch(1)
+        val client = RoutingFakeClient { _, _ ->
+            inRequest.countDown()
+            releaseRequest.await(5, TimeUnit.SECONDS)
+            throw IOException("failed")
+        }
+
+        coordinator.onUsableConnection(
+            instanceId = "inst-1",
+            pairingMatches = { true },
+            openClient = { client },
+        )
+
+        assertTrue(inRequest.await(5, TimeUnit.SECONDS))
+
+        // Move publisher to B. Do not call onPairingChanged again.
+        val homeB = PairedHome(
+            instanceId = "inst-2",
+            homeLabel = "Home B",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca2",
+            clientCertFingerprint = "sha256:cert2",
+            observerHandle = null,
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        publisher.home = homeB
+        val recordB = JournalMarkRecord("inst-2", null, PairingGeneration("inst-2", "sha256:cert2"))
+        store.save(recordB)
+
+        val presentationAfterMove = coordinator.currentPresentation()
+        val genAfterMove = coordinator.currentPresentationGeneration()
+
+        // Release client so it fails
+        releaseRequest.countDown()
+        Thread.sleep(150)
+
+        // Assert both recorded values are unchanged
+        assertEquals(presentationAfterMove, coordinator.currentPresentation())
+        assertEquals(genAfterMove, coordinator.currentPresentationGeneration())
+
+        coordinator.close()
+        executor.shutdown()
+    }
+
+    @Test
+    fun onMarkRequestedWithNewerPairingBCommittedLeavesBUnchanged() {
+        val store = FakeMarkStore()
+        val publisher = FakePairingPublisher(home = pairedHome())
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalIdentityRefreshCoordinator(store, executor, publisher = publisher)
+
+        var pairingAIsCurrent = true
+        coordinator.onMarkRequested(
+            pairingMatches = { pairingAIsCurrent },
+            openClient = { RoutingFakeClient { _, _ -> HttpResponse(200, emptyMap(), validMarkJson.toByteArray()) } },
+        )
+
+        // Before job executes, pairing flips to B
+        pairingAIsCurrent = false
+        val homeB = PairedHome(
+            instanceId = "inst-2",
+            homeLabel = "Home B",
+            relayOrigin = null,
+            caChainFingerprint = "sha256:ca2",
+            clientCertFingerprint = "sha256:cert2",
+            observerHandle = null,
+            deviceToken = null,
+            expiresAt = null,
+            state = IdentityState.PAIRED,
+        )
+        publisher.home = homeB
+        val recordB = JournalMarkRecord("inst-2", null, PairingGeneration("inst-2", "sha256:cert2"))
+        store.save(recordB)
+        coordinator.onPairingChanged()
+
+        Thread.sleep(150)
+        assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
+        assertEquals(PairingGeneration("inst-2", "sha256:cert2"), coordinator.currentPresentationGeneration())
+
+        coordinator.close()
+        executor.shutdown()
+    }
 }

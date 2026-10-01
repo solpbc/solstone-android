@@ -61,18 +61,24 @@ val phoneSpec = FormFactorSpec(
             onConfirmed = onConfirmed,
             currentPairing = { (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing },
             requestMark = {
-                val direct = stores.publisher.acquireDirectLease()
-                val relay = if (direct == null) stores.publisher.acquireRelayLease() else null
-                val instanceId = direct?.snapshot?.home?.instanceId ?: relay?.snapshot?.home?.instanceId
-                if (instanceId != null) {
-                    stores.journalIdentityCoordinator.onUsableConnection(instanceId) {
-                        if (direct != null) {
-                            openAuthenticatedClient(PlDirectEndpoint(direct.endpoint.host, direct.endpoint.port), direct.credential)
-                        } else {
-                            val r = relay as PairingLease.Relay
-                            openRelaySyncClient(r.relayOrigin, r.instanceId, r.deviceToken, r.credential)
+                val asked = (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
+                if (asked != null) {
+                    val direct = stores.publisher.acquireDirectLease()
+                    val relay = if (direct == null) stores.publisher.acquireRelayLease() else null
+                    val opener: (() -> app.solstone.core.pl.PlHttpClient)? = when {
+                        direct != null -> {
+                            { openAuthenticatedClient(PlDirectEndpoint(direct.endpoint.host, direct.endpoint.port), direct.credential) }
                         }
+                        relay != null -> {
+                            val r = relay as PairingLease.Relay
+                            { openRelaySyncClient(r.relayOrigin, r.instanceId, r.deviceToken, r.credential) }
+                        }
+                        else -> null
                     }
+                    stores.journalIdentityCoordinator.onMarkRequested(
+                        pairingMatches = { (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing == asked },
+                        openClient = opener,
+                    )
                 }
             },
             onMismatch = {
@@ -88,10 +94,8 @@ val phoneSpec = FormFactorSpec(
                     PairingMismatchResult.LocalFailure
                 }
             },
-            onYes = {
-                val snapshot = stores.publisher.currentSnapshot()
-                val fp = (snapshot as? PairingGraphSnapshot.Committed)?.pairing?.clientCertFingerprint
-                if (fp != null && confirmCurrentJournal(stores.publisher, stores.journalConfirmationStore, fp)) {
+            onYes = { presented ->
+                if (confirmCurrentJournal(stores.publisher, stores.journalConfirmationStore, presented.clientCertFingerprint)) {
                     SyncScheduler.enqueueAfterConfirm(context.applicationContext, PHONE_STREAM)
                     true
                 } else {

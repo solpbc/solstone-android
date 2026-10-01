@@ -27,9 +27,11 @@ import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -82,10 +84,10 @@ class PhoneJournalMarkConfirmationComposeTest {
         relayLiveEligible = false,
     )
 
-    private class StubPublisher(private val snapshot: PairingGraphSnapshot) : PairingPublisher {
+    private class StubPublisher(var snapshot: PairingGraphSnapshot) : PairingPublisher {
         override fun currentSnapshot(): PairingGraphSnapshot = snapshot
         override fun subscribe(observer: (PairingGraphSnapshot) -> Unit): SubscriptionHandle = error("unused")
-        override fun <T> withMutationBoundary(block: () -> T): T = error("unused")
+        override fun <T> withMutationBoundary(block: () -> T): T = block()
         override fun acquireDirectLease(): PairingLease.Direct? = error("unused")
         override fun acquireRelayLease(): PairingLease.Relay? = error("unused")
         override fun validateLease(lease: PairingLease): Boolean = error("unused")
@@ -94,6 +96,21 @@ class PhoneJournalMarkConfirmationComposeTest {
         override fun revokeRelayAccess(expectedPairing: PairingGeneration): GraphMutationResult = error("unused")
         override fun forget(): GraphMutationResult = error("unused")
         override fun associateDirectIfProven(expectedPairing: PairingGeneration, endpoint: app.solstone.core.model.DirectEndpoint, proof: () -> Boolean): Boolean = error("unused")
+    }
+
+    private class FakeConfirmationStore : app.solstone.core.identity.JournalConfirmationStore {
+        var confirmedFingerprint: String? = null
+        var inspectResult: StoreInspectResult<app.solstone.core.identity.JournalConfirmation> = StoreInspectResult.Missing
+
+        override fun inspect(): StoreInspectResult<app.solstone.core.identity.JournalConfirmation> = inspectResult
+        override fun confirm(fingerprint: String) {
+            confirmedFingerprint = fingerprint
+            inspectResult = StoreInspectResult.Ready(app.solstone.core.identity.JournalConfirmation(fingerprint))
+        }
+        override fun settle() {
+            inspectResult = StoreInspectResult.Ready(app.solstone.core.identity.JournalConfirmation(null))
+        }
+        override fun addListener(listener: () -> Unit): () -> Unit = { }
     }
 
     private class FakeMarkStore(var result: StoreInspectResult<JournalMarkRecord> = StoreInspectResult.Missing) : JournalMarkStore {
@@ -195,35 +212,117 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
-    fun storeReadyWithDifferentGenerationReadsAsLoadingDisablesYesAndCallsRequestMark() {
-        val differentPairing = PairingGeneration("other-inst", "sha256:other-cert")
-        val record = JournalMarkRecord(instanceId = "other-inst", mark = sampleMark, pairing = differentPairing)
+    fun identifiedPresentationWithStaleCommittedPairingDisablesYesButton() {
+        val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
+        val pairingB = PairingGeneration("inst-b", "sha256:cert-b")
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
         val store = FakeMarkStore(StoreInspectResult.Ready(record))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val publisher = StubPublisher(committedSnapshot(pairingA))
         val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
-        val requestCalls = AtomicInteger(0)
-        var onYesCalled = false
+
+        assertEquals(JournalMarkPresentation.Identified(sampleMark), coordinator.currentPresentation())
+        assertEquals(pairingA, coordinator.currentPresentationGeneration())
+
+        // Set publisher's committed pairing to B without calling onPairingChanged
+        publisher.snapshot = committedSnapshot(pairingB)
 
         composeRule.setContent {
             PhoneTheme {
                 PairingSuccessMark(
                     coordinator = coordinator,
-                    currentPairing = { pairingP },
-                    onYes = {
-                        onYesCalled = true
-                        true
-                    },
-                    requestMark = { requestCalls.incrementAndGet() },
+                    currentPairing = { pairingB },
                 )
             }
         }
 
-        composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, mark loading")
-        composeRule.onNodeWithText("liquefy", useUnmergedTree = true).assertDoesNotExist()
+        assertEquals(JournalMarkPresentation.Identified(sampleMark), coordinator.currentPresentation())
+        assertEquals(pairingA, coordinator.currentPresentationGeneration())
+        assertTrue(pairingA != pairingB)
         composeRule.onNodeWithText("yes, this is my journal").assertIsNotEnabled()
-        assertEquals(1, requestCalls.get())
-        assertFalse(onYesCalled)
+        coordinator.close()
+    }
+
+    @Test
+    fun yesButtonClickUsesComposedGenerationAndRejectsIfPairingChanged() {
+        val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
+        val pairingB = PairingGeneration("inst-b", "sha256:cert-b")
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
+        val markStore = FakeMarkStore(StoreInspectResult.Ready(record))
+        val confirmStore = FakeConfirmationStore()
+        val publisher = StubPublisher(committedSnapshot(pairingA))
+        val coordinator = JournalIdentityRefreshCoordinator(store = markStore, publisher = publisher)
+
+        var confirmedCalled = false
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingA },
+                    onYes = { presented ->
+                        app.solstone.platform.work.confirmCurrentJournal(
+                            publisher = publisher,
+                            store = confirmStore,
+                            fingerprint = presented.clientCertFingerprint,
+                        )
+                    },
+                    onConfirmed = { confirmedCalled = true },
+                )
+            }
+        }
+
+        assertEquals(pairingA, coordinator.currentPresentationGeneration())
+        composeRule.onNodeWithText("yes, this is my journal").assertIsEnabled()
+
+        // Commit B on publisher without firing generation listener (no recomposition)
+        publisher.snapshot = committedSnapshot(pairingB)
+
+        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.waitForIdle()
+
+        assertNull(confirmStore.confirmedFingerprint)
+        assertFalse(confirmedCalled)
+        composeRule.onNodeWithText("does this match your journal?").assertExists()
+        coordinator.close()
+    }
+
+    @Test
+    fun yesButtonClickWhilePairingCurrentConfirmsCurrentPairing() {
+        val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
+        val markStore = FakeMarkStore(StoreInspectResult.Ready(record))
+        val confirmStore = FakeConfirmationStore()
+        val publisher = StubPublisher(committedSnapshot(pairingA))
+        val coordinator = JournalIdentityRefreshCoordinator(store = markStore, publisher = publisher)
+
+        var confirmedCalled = false
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingA },
+                    onYes = { presented ->
+                        app.solstone.platform.work.confirmCurrentJournal(
+                            publisher = publisher,
+                            store = confirmStore,
+                            fingerprint = presented.clientCertFingerprint,
+                        )
+                    },
+                    onConfirmed = { confirmedCalled = true },
+                )
+            }
+        }
+
+        assertEquals(pairingA, coordinator.currentPresentationGeneration())
+        composeRule.onNodeWithText("yes, this is my journal").assertIsEnabled()
+
+        composeRule.onNodeWithText("yes, this is my journal").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals("sha256:cert-a", confirmStore.confirmedFingerprint)
+        assertTrue(confirmedCalled)
+        composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
         coordinator.close()
     }
 
@@ -240,7 +339,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    onYes = {
+                    onYes = { _ ->
                         onYesCalled = true
                         true
                     },
@@ -271,7 +370,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    onYes = {
+                    onYes = { _ ->
                         onYesCalled = true
                         true
                     },
@@ -302,7 +401,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    onYes = {
+                    onYes = { _ ->
                         onYesCalled = true
                         true
                     },
@@ -333,7 +432,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    onYes = {
+                    onYes = { _ ->
                         onYesCalled = true
                         false
                     },
@@ -367,7 +466,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                 PairingSuccessMark(
                     coordinator = coordinator,
                     currentPairing = { pairingP },
-                    onYes = {
+                    onYes = { _ ->
                         onYesCalled = true
                         true
                     },

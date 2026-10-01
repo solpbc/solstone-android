@@ -84,4 +84,5 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
     androidTestImplementation(project(":harness"))
     androidTestImplementation(project(":core:model"))
+    androidTestImplementation(project(":platform:work"))
 }
