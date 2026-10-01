@@ -71,37 +71,55 @@ class GlassesRealTestRunner : AndroidJUnitRunner() {
             )
             val endpoint = DirectEndpoint("127.0.0.1", s.port)
 
-            if (startup == "upgraded") {
-                val graph = FilePairingGraph(
-                    identityFile = File(plDir, "identity.tsv"),
-                    credentialFile = File(plDir, "credential.pem"),
-                    endpointFile = File(plDir, "endpoint.txt"),
-                    commitMarkerFile = File(plDir, "pairing.commit"),
-                    protector = protector,
-                    pushKeyFile = File(plDir, "push-key.bin"),
-                    pushKeyProtector = protector,
-                )
-                graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
-                File(plDir, "journal_confirmation.json").delete()
-                seedGlassesSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
-            } else if (startup == "death") {
-                val graph = FilePairingGraph(
-                    identityFile = File(plDir, "identity.tsv"),
-                    credentialFile = File(plDir, "credential.pem"),
-                    endpointFile = File(plDir, "endpoint.txt"),
-                    commitMarkerFile = File(plDir, "pairing.commit"),
-                    protector = protector,
-                    pushKeyFile = File(plDir, "push-key.bin"),
-                    pushKeyProtector = protector,
-                    stepHook = { step, _ ->
-                        if (step == DurableTxnStep.DURABLE_COMMIT_DECISION) {
-                            throw RuntimeException("Simulated process death after durable commit decision")
-                        }
-                    },
-                )
-                graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
-                File(plDir, "journal_confirmation.json").delete()
-                seedGlassesSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
+            try {
+                if (startup == "upgraded") {
+                    val graph = FilePairingGraph(
+                        identityFile = File(plDir, "identity.tsv"),
+                        credentialFile = File(plDir, "credential.pem"),
+                        endpointFile = File(plDir, "endpoint.txt"),
+                        commitMarkerFile = File(plDir, "pairing.commit"),
+                        protector = protector,
+                        pushKeyFile = File(plDir, "push-key.bin"),
+                        pushKeyProtector = protector,
+                    )
+                    graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
+                    File(plDir, "journal_confirmation.json").delete()
+                    val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    try {
+                        pool.submit {
+                            seedGlassesSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
+                        }.get()
+                    } finally {
+                        pool.shutdown()
+                    }
+                } else if (startup == "death") {
+                    val graph = FilePairingGraph(
+                        identityFile = File(plDir, "identity.tsv"),
+                        credentialFile = File(plDir, "credential.pem"),
+                        endpointFile = File(plDir, "endpoint.txt"),
+                        commitMarkerFile = File(plDir, "pairing.commit"),
+                        protector = protector,
+                        pushKeyFile = File(plDir, "push-key.bin"),
+                        pushKeyProtector = protector,
+                        stepHook = { step, _ ->
+                            if (step == DurableTxnStep.DURABLE_COMMIT_DECISION) {
+                                throw RuntimeException("Simulated process death after durable commit decision")
+                            }
+                        },
+                    )
+                    graph.installOrReplace(home, cred, endpoint, isDirectAssociated = true)
+                    File(plDir, "journal_confirmation.json").delete()
+                    val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    try {
+                        pool.submit {
+                            seedGlassesSegments(db, spoolDir, MAIN_STREAM, s.instanceId)
+                        }.get()
+                    } finally {
+                        pool.shutdown()
+                    }
+                }
+            } finally {
+                db.close()
             }
         }
 
