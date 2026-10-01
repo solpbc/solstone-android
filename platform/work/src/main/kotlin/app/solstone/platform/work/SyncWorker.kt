@@ -52,7 +52,7 @@ fun scheduleOptionalJobsIfPairingCurrent(
     pushRegistration: PushRegistrationCoordinator?,
     localDescriptionProvider: () -> ClientReportedDescription,
     openClient: () -> PlHttpClient,
-    allowsOwnerMaterial: Boolean = true,
+    allowsOwnerMaterial: Boolean,
 ): Boolean {
     val currentPairing = mutator.currentPairingGeneration()
     val snapshotPairing = PairingGeneration(snapshotIdentity.instanceId, snapshotIdentity.clientCertFingerprint)
@@ -111,12 +111,12 @@ internal fun executeSyncRun(
     drainStore: DrainStore? = null,
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
+    localDescriptionProvider: (() -> ClientReportedDescription)? = null,
 ): SyncRunExecutionResult {
     if (!SyncDrainGate.tryAcquire()) {
         workerLog("i", "identity boundary already in use; deferring", null)
         return SyncRunExecutionResult(SyncOutcome.RETRY, false, gateBusy = true)
     }
-    var acquired = true
     try {
         val (credentials, allowsOwnerMaterial) = stores.publisher.withMutationBoundary {
             val creds = recoverSyncCredentials(stores.publisher)
@@ -146,15 +146,14 @@ internal fun executeSyncRun(
                     deviceLabel = deviceLabel,
                     drainStore = drainStore,
                     customOpenClient = openClient,
+                    localDescriptionProvider = localDescriptionProvider,
                 )
                 val held = outcome == SyncOutcome.SUCCESS && !allowsOwnerMaterial
                 return SyncRunExecutionResult(outcome, held)
             }
         }
     } finally {
-        if (acquired) {
-            SyncDrainGate.release()
-        }
+        SyncDrainGate.release()
     }
 }
 
@@ -167,6 +166,7 @@ internal fun completeSyncRun(
     drainStore: DrainStore? = null,
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
+    localDescriptionProvider: (() -> ClientReportedDescription)? = null,
 ): SyncOutcome {
     var outcome = SyncOutcome.FAILURE
     var heldUnconfirmed = false
@@ -182,6 +182,7 @@ internal fun completeSyncRun(
             drainStore = drainStore,
             openClient = openClient,
             afterCredentialsFrozen = afterCredentialsFrozen,
+            localDescriptionProvider = localDescriptionProvider,
         )
         outcome = result.outcome
         heldUnconfirmed = result.heldUnconfirmed
@@ -206,12 +207,45 @@ class SyncWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
+    private var testOpenStores: (() -> SyncStores)? = null
+    private var testOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null
+    private var testDrainStore: DrainStore? = null
+    private var testSpoolDir: File? = null
+    private var testAfterCredentialsFrozen: (() -> Unit)? = null
+    private var testLocalDescriptionProvider: (() -> ClientReportedDescription)? = null
+    private var testDeviceLabel: String? = null
+
+    internal constructor(
+        context: Context,
+        params: WorkerParameters,
+        openStores: (() -> SyncStores)? = null,
+        openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+        drainStore: DrainStore? = null,
+        spoolDir: File? = null,
+        afterCredentialsFrozen: (() -> Unit)? = null,
+        localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+        deviceLabel: String? = null,
+    ) : this(context, params) {
+        this.testOpenStores = openStores
+        this.testOpenClient = openClient
+        this.testDrainStore = drainStore
+        this.testSpoolDir = spoolDir
+        this.testAfterCredentialsFrozen = afterCredentialsFrozen
+        this.testLocalDescriptionProvider = localDescriptionProvider
+        this.testDeviceLabel = deviceLabel
+    }
+
     override suspend fun doWork(): Result =
         withContext(Dispatchers.IO) {
             val outcome = completeSyncRun(
-                openStores = { syncStores(applicationContext) },
-                context = applicationContext,
-                deviceLabel = deviceLabel(),
+                openStores = testOpenStores ?: { syncStores(applicationContext) },
+                context = if (testOpenStores != null) null else applicationContext,
+                spoolDir = testSpoolDir,
+                deviceLabel = testDeviceLabel ?: deviceLabel(),
+                drainStore = testDrainStore,
+                openClient = testOpenClient,
+                afterCredentialsFrozen = testAfterCredentialsFrozen,
+                localDescriptionProvider = testLocalDescriptionProvider,
             )
             outcome.toWorkResult()
         }
@@ -259,13 +293,14 @@ private fun toCloseableClient(client: PlHttpClient): CloseablePlHttpClient =
 private fun sync(
     stores: SyncStores,
     credentials: SyncCredentials.Ready,
-    allowsOwnerMaterial: Boolean = true,
+    allowsOwnerMaterial: Boolean,
     context: Context? = null,
     persistenceDb: SolstonePersistenceDatabase? = null,
     customSpoolDir: File? = null,
     deviceLabel: String = "android",
     drainStore: DrainStore? = null,
     customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+    localDescriptionProvider: (() -> ClientReportedDescription)? = null,
 ): SyncOutcome {
     val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
     var shouldCloseDb = false
@@ -327,16 +362,19 @@ private fun sync(
     try {
         val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
             val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
-            if (allowsOwnerMaterial) {
-                if (access.pairing != PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)) return@transportAttempt SyncOutcome.RETRY
-                if (selectedTransport is SyncTransport.Relay && relaySnapshot(credentials.identity, selectedTransport, stores.identityMutator) != access) return@transportAttempt SyncOutcome.RETRY
+            val pairingMatches = access.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
+            val relayMatches = if (selectedTransport is SyncTransport.Relay) {
+                relaySnapshot(credentials.identity, selectedTransport, stores.identityMutator) == access
+            } else {
+                true
+            }
+            val accessStillCurrent = transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)
+            if (!pairingMatches || !relayMatches || !accessStillCurrent) {
+                return@transportAttempt if (allowsOwnerMaterial) SyncOutcome.RETRY else SyncOutcome.SUCCESS
             }
             syncWithTransport(
                 transport = selectedTransport,
                 openClient = {
-                    if (allowsOwnerMaterial && !transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
-                        throw IOException("missing identity")
-                    }
                     if (customOpenClient != null) {
                         toCloseableClient(customOpenClient(selectedTransport, credentials.credential))
                     } else {
@@ -355,20 +393,22 @@ private fun sync(
                 now = System::currentTimeMillis,
                 log = { message, throwable -> workerLog("w", message, throwable) },
                 onUsableConnection = {
+                    val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
+                    if (currentTransport == null) {
+                        if (allowsOwnerMaterial) {
+                            throw IOException("missing identity")
+                        }
+                        return@syncWithTransport
+                    }
                     scheduleOptionalJobsIfPairingCurrent(
                         snapshotIdentity = credentials.identity,
                         mutator = stores.identityMutator,
                         journalVersionCoordinator = stores.journalVersionCoordinator,
                         relayAccessCoordinator = stores.relayAccessCoordinator,
                         pushRegistration = stores.pushRegistration,
-                        localDescriptionProvider = { context?.let { currentPhoneDeviceDescription(it) } ?: ClientReportedDescription(name = "android", platform = "android", deviceType = "phone", appId = "app.solstone.test") },
+                        localDescriptionProvider = localDescriptionProvider
+                            ?: { context?.let { currentPhoneDeviceDescription(it) } ?: throw IllegalStateException("localDescriptionProvider or Context required for sync") },
                         openClient = {
-                            val currentTransport = if (allowsOwnerMaterial) {
-                                currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
-                                    ?: throw IOException("missing identity")
-                            } else {
-                                selectedTransport
-                            }
                             if (customOpenClient != null) {
                                 customOpenClient(currentTransport, credentials.credential)
                             } else {

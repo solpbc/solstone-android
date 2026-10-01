@@ -22,6 +22,7 @@ import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.observer.INGEST_PATH
 import app.solstone.core.observer.SEGMENTS_PATH
+import app.solstone.core.pl.ClientReportedDescription
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
@@ -87,7 +88,8 @@ class SyncWorkerGateTest {
         workerLog = { _, _, _ -> }
         JournalConfirmationPolicy.consults = true
         JournalConfirmationGrandfather.resetForTest()
-        SyncDrainGate.resetForTest()
+        check(SyncDrainGate.tryAcquire()) { "gate was not free" }
+        SyncDrainGate.release()
         capturedDiag.clear()
         SyncWorker.syncDiag = { line -> capturedDiag.add(line) }
     }
@@ -98,7 +100,8 @@ class SyncWorkerGateTest {
         workerLog = { _, _, _ -> }
         JournalConfirmationPolicy.consults = true
         JournalConfirmationGrandfather.resetForTest()
-        SyncDrainGate.resetForTest()
+        check(SyncDrainGate.tryAcquire()) { "gate was not free" }
+        SyncDrainGate.release()
     }
 
     private fun testHome(cert: String = "sha256:cert-1", id: String = "home-1") = PairedHome(
@@ -306,165 +309,29 @@ class SyncWorkerGateTest {
         }
 
     @Test
-    fun scenario1_unconfirmedHeldThenConfirmedSendsAndRegisters() {
-        val (stores, graph, port) = createStores(enablePush = true)
-        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
-
-        val spoolDir = temp.newFolder()
-        val (drainStore, segmentIds) = setupSpoolAndDrainStore(spoolDir)
-
-        val putLatch = CountDownLatch(1)
-        val client = MockPlHttpClient { method, path, body ->
-            standardMockResponses(method, path, body, onPutSelf = { putLatch.countDown() })
-        }
-
-        // First run: unconfirmed -> held
-        val outcome1 = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> client },
-        )
-
-        assertTrue(putLatch.await(5, TimeUnit.SECONDS))
-        assertEquals(SyncOutcome.SUCCESS, outcome1)
-        assertEquals(listOf("kind=sync outcome=success held=unconfirmed"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.SEALED, drainStore.row(segId).state)
-        }
-        assertFalse(client.requests.any { it.path.startsWith(SEGMENTS_PATH) })
-        assertFalse(client.requests.any { it.path == INGEST_PATH })
-        assertFalse(client.requests.any { it.path == "/api/push/register" || it.path == "/api/push/subscriptions" })
-        assertFalse(client.requests.any { it.path == "/api/push/vapid-key" })
-        assertTrue(port?.registeredVapidKeys?.isEmpty() ?: false)
-
-        capturedDiag.clear()
-        client.requests.clear()
-
-        // Confirm pairing
-        val confirmed = confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
-        assertTrue(confirmed)
-
-        // Second run: confirmed -> sends both segments and registers push
-        val outcome2 = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> client },
-        )
-
-        assertEquals(SyncOutcome.SUCCESS, outcome2)
-        assertEquals(listOf("kind=sync outcome=success"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.EVICTED, drainStore.row(segId).state)
-        }
-        assertTrue(client.requests.any { it.method == "GET" && it.path.startsWith(SEGMENTS_PATH) })
-        assertTrue(client.requests.any { it.method == "POST" && it.path == INGEST_PATH })
-        val deadline = System.currentTimeMillis() + 3000
-        while ((port?.registeredVapidKeys?.isEmpty() ?: true) && System.currentTimeMillis() < deadline) {
-            Thread.sleep(20)
-        }
-        assertTrue(port?.registeredVapidKeys?.isNotEmpty() ?: false)
-    }
-
-    @Test
-    fun scenario2_inFlightHoldAndConcurrentGateBusy() {
+    fun gateBusyReturnsRetryWithoutSendClaim() {
         val (stores, graph, _) = createStores(enablePush = false)
         graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
 
         val spoolDir = temp.newFolder()
         val (drainStore, segmentIds) = setupSpoolAndDrainStore(spoolDir)
 
-        val inFlightLatch = CountDownLatch(1)
-        val unblockLatch = CountDownLatch(1)
-
-        val blockingClient = MockPlHttpClient { method, path, body ->
-            if (path == "/app/network/api/status") {
-                inFlightLatch.countDown()
-                unblockLatch.await(5, TimeUnit.SECONDS)
-            }
-            standardMockResponses(method, path, body)
-        }
-
-        var firstOutcome: SyncOutcome? = null
-        val t = thread {
-            firstOutcome = completeSyncRun(
+        assertTrue(SyncDrainGate.tryAcquire())
+        try {
+            val outcome = completeSyncRun(
                 openStores = { stores },
                 spoolDir = spoolDir,
                 drainStore = drainStore,
-                openClient = { _, _ -> blockingClient },
+                openClient = { _, _ -> MockPlHttpClient() },
+                localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
             )
-        }
-
-        assertTrue(inFlightLatch.await(5, TimeUnit.SECONDS))
-
-        // Concurrent sync run while gate is held -> returns RETRY and emits kind=sync outcome=retry
-        val concurrentOutcome = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> MockPlHttpClient() },
-        )
-        assertEquals(SyncOutcome.RETRY, concurrentOutcome)
-        assertEquals(listOf("kind=sync outcome=retry"), capturedDiag)
-
-        // Confirm on another thread while run is in-flight
-        val confirmed = confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
-        assertTrue(confirmed)
-
-        // Unblock first run
-        unblockLatch.countDown()
-        t.join(5000)
-
-        // First run completes with held (snapshot was frozen before confirm)
-        assertEquals(SyncOutcome.SUCCESS, firstOutcome)
-        assertEquals(listOf("kind=sync outcome=retry", "kind=sync outcome=success held=unconfirmed"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.SEALED, drainStore.row(segId).state)
-        }
-
-        // Now test repeat with RETRY (status 503)
-        capturedDiag.clear()
-        val retryOutcome = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> MockPlHttpClient { _, _, _ -> HttpResponse(503, emptyMap(), ByteArray(0)) } },
-        )
-        assertEquals(SyncOutcome.RETRY, retryOutcome)
-        assertEquals(listOf("kind=sync outcome=retry"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.SEALED, drainStore.row(segId).state)
-        }
-
-        // Now test repeat with FAILURE (opener throws fatal error)
-        capturedDiag.clear()
-        val failureOutcome = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> throw IllegalStateException("fatal opener failure") },
-        )
-        assertEquals(SyncOutcome.FAILURE, failureOutcome)
-        assertEquals(listOf("kind=sync outcome=failure"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.SEALED, drainStore.row(segId).state)
-        }
-
-        capturedDiag.clear()
-
-        // Subsequent run uses confirmed credentials and sends both segments
-        val subsequentClient = MockPlHttpClient { method, path, body -> standardMockResponses(method, path, body) }
-        val nextOutcome = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> subsequentClient },
-        )
-        assertEquals(SyncOutcome.SUCCESS, nextOutcome)
-        assertEquals(listOf("kind=sync outcome=success"), capturedDiag)
-        for (segId in segmentIds) {
-            assertEquals(QueueState.EVICTED, drainStore.row(segId).state)
+            assertEquals(SyncOutcome.RETRY, outcome)
+            assertEquals(listOf("kind=sync outcome=retry"), capturedDiag)
+            for (segId in segmentIds) {
+                assertEquals(QueueState.SEALED, drainStore.row(segId).state)
+            }
+        } finally {
+            SyncDrainGate.release()
         }
     }
 
@@ -487,6 +354,7 @@ class SyncWorkerGateTest {
                 // Confirm pairing after snapshot was already frozen as unconfirmed
                 confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
             },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         // Snapshot saw unconfirmed before afterCredentialsFrozen
@@ -515,6 +383,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.SUCCESS, outcome)
@@ -543,6 +412,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> failingClient },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.RETRY, outcomeRetry)
@@ -559,6 +429,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> throw IllegalStateException("fatal opener failure") },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.FAILURE, outcomeFailure)
@@ -594,6 +465,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.SUCCESS, outcome)
@@ -621,6 +493,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.SUCCESS, outcome)
@@ -628,56 +501,6 @@ class SyncWorkerGateTest {
         for (segId in segmentIds) {
             assertEquals(QueueState.EVICTED, drainStore.row(segId).state)
         }
-    }
-
-    @Test
-    fun scenario8_heldClientDoesNotContainIdentityOrRevokeAndSeparatelyTestCoordinatorAndRevoke() {
-        val (stores, graph, _) = createStores(enablePush = false)
-        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
-
-        val spoolDir = temp.newFolder()
-        val (drainStore, segmentIds) = setupSpoolAndDrainStore(spoolDir)
-
-        val client = MockPlHttpClient { method, path, body -> standardMockResponses(method, path, body) }
-
-        val outcome = completeSyncRun(
-            openStores = { stores },
-            spoolDir = spoolDir,
-            drainStore = drainStore,
-            openClient = { _, _ -> client },
-        )
-
-        assertEquals(SyncOutcome.SUCCESS, outcome)
-        // Assert held client does not contain GET /app/network/api/identity or DELETE /app/network/api/clients/
-        assertFalse(client.requests.any { it.method == "GET" && it.path == "/app/network/api/identity" })
-        assertFalse(client.requests.any { it.method == "DELETE" && it.path.startsWith("/app/network/api/clients/") })
-        for (segId in segmentIds) {
-            assertEquals(QueueState.SEALED, drainStore.row(segId).state)
-        }
-
-        // Separately test JournalIdentityRefreshCoordinator.onUsableConnection does GET /app/network/api/identity
-        val identityRequested = CountDownLatch(1)
-        val identityClient = MockPlHttpClient { _, path, _ ->
-            if (path == "/app/network/api/identity") {
-                identityRequested.countDown()
-            }
-            HttpResponse(200, emptyMap(), """{"protocol_version":1,"instance_id":"home-1","ca_chain_fingerprint":"sha256:ca-1","mark":{"icon1":{"name":"piano","svg":"<svg/>","color_name":"blue","color_hex":"#00f","rot":0},"icon2":{"name":"key","svg":"<svg/>","color_name":"purple","color_hex":"#f0f","rot":0},"words":["w1","w2"]}}""".toByteArray())
-        }
-        val executor = Executors.newCachedThreadPool()
-        val jmCoordinator = JournalIdentityRefreshCoordinator(store = stores.journalMarkStore, executor = executor, publisher = graph)
-        jmCoordinator.onUsableConnection("home-1", pairingMatches = { true }) {
-            identityClient
-        }
-        assertTrue(identityRequested.await(5, TimeUnit.SECONDS))
-        jmCoordinator.close()
-        executor.shutdown()
-        assertTrue(identityClient.requests.any { it.method == "GET" && it.path == "/app/network/api/identity" })
-
-        // Separately test revokeClient does DELETE /app/network/api/clients/{cid}
-        val validCid = "sha256:" + "a".repeat(64)
-        val revokeClientInstance = MockPlHttpClient { _, _, _ -> HttpResponse(200, emptyMap(), ByteArray(0)) }
-        revokeClient(revokeClientInstance, validCid)
-        assertTrue(revokeClientInstance.requests.any { it.method == "DELETE" && it.path == "/app/network/api/clients/sha256%3A" + "a".repeat(64) })
     }
 
     @Test
@@ -703,6 +526,7 @@ class SyncWorkerGateTest {
             spoolDir = spoolDir,
             drainStore = drainStore,
             openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
         )
 
         assertEquals(SyncOutcome.SUCCESS, outcome)

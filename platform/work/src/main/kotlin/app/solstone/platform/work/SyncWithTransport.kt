@@ -25,7 +25,7 @@ internal fun <C> syncWithTransport(
     finisher: ConfirmedCopyFinisher,
     onUsableConnection: (() -> Unit)? = null,
     spoolDir: File? = null,
-    allowsOwnerMaterial: Boolean = true,
+    allowsOwnerMaterial: Boolean,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)

@@ -149,6 +149,7 @@ class SyncWithTransportTest {
             now = { NOW },
             log = { _, _ -> },
             finisher = dummyFinisher(),
+            allowsOwnerMaterial = true,
         )
         assertEquals(SyncOutcome.FAILURE, trustOutcome)
 
@@ -161,8 +162,30 @@ class SyncWithTransportTest {
             now = { NOW },
             log = { _, _ -> },
             finisher = dummyFinisher(),
+            allowsOwnerMaterial = true,
         )
         assertEquals(SyncOutcome.RETRY, availOutcome)
+    }
+
+    @Test
+    fun allowsOwnerMaterialFalseReturnsSuccessWithoutReconcileOrIngest() {
+        val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
+        val client = RecordingPlHttpClient(statusOk())
+
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { client },
+            store = store,
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+            finisher = dummyFinisher(),
+            allowsOwnerMaterial = false,
+        )
+        assertEquals(SyncOutcome.SUCCESS, outcome)
+        assertEquals(listOf("GET /app/network/api/status"), client.requests.map { "${it.method} ${it.path}" })
+        assertEquals(QueueState.SEALED, store.row("a").state)
     }
 
     @Test
@@ -258,6 +281,7 @@ class SyncWithTransportTest {
             now = { NOW },
             log = { _, _ -> },
             finisher = finisher,
+            allowsOwnerMaterial = true,
         )
 
         assertEquals(SyncOutcome.SUCCESS, outcome)
@@ -356,6 +380,7 @@ class SyncWithTransportTest {
             now = { NOW },
             log = { _, _ -> },
             finisher = finisher,
+            allowsOwnerMaterial = true,
         )
         return Trace(outcome, store, client, openedTransports, segmentId, segmentDir)
     }

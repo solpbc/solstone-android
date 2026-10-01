@@ -30,8 +30,6 @@ class GlassesApplication : Application() {
     override fun onCreate() {
         JournalConfirmationPolicy.optOut()
         super.onCreate()
-        val stores = app.solstone.platform.work.syncStores(applicationContext)
-        app.solstone.platform.work.JournalConfirmationGrandfather.grandfather(stores.publisher, stores.journalConfirmationStore)
         GlassesDiagLog.install(applicationContext.filesDir)
         ObserverForegroundService.lifecycleDiag = { GlassesDiagLog.appendRaw(it) }
         ObserverForegroundService.declaredCaptureForegroundTypes =

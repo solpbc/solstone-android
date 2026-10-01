@@ -59,11 +59,12 @@ class ScheduleOptionalJobsTest {
             journalVersionCoordinator = journalCoord,
             relayAccessCoordinator = relayCoord,
             pushRegistration = pushCoord,
-            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android") },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
             openClient = {
                 clientOpened = true
                 FakePlClient()
             },
+            allowsOwnerMaterial = true,
         )
 
         assertFalse(scheduled)
@@ -99,7 +100,7 @@ class ScheduleOptionalJobsTest {
             journalVersionCoordinator = journalCoord,
             relayAccessCoordinator = relayCoord,
             pushRegistration = pushCoord,
-            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android") },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
             openClient = {
                 latch.countDown()
                 FakePlClient { path ->
@@ -108,11 +109,51 @@ class ScheduleOptionalJobsTest {
                     }
                 }
             },
+            allowsOwnerMaterial = true,
         )
 
         assertTrue(scheduled)
         assertTrue(latch.await(3, TimeUnit.SECONDS))
         assertTrue(pushRequestedLatch.await(3, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun allowsOwnerMaterialFalseSchedulesCoordinatorsWithoutPushRegistration() {
+        val snapshot = sampleHome()
+        val mutator = FakeMutator(snapshot)
+        val latch = CountDownLatch(1)
+        val (journalCoord, _) = createCoordinators(mutator)
+        val (relayCoord, _) = createRelayCoordinator(mutator)
+        val tempDir = Files.createTempDirectory("push-test").toFile()
+        PushRegistrationFile.write(File(tempDir, PushRegistrationFile.FILE_NAME), PushRegistrationState(ownerOn = true)) {}
+        val fakePort = FakeDistributorPort()
+        val pushCoord = PushRegistrationCoordinator(
+            directory = tempDir,
+            port = fakePort,
+            enabled = true,
+            pushKeys = FakePushKeys(),
+            pairingNow = { mutator.currentPairingGeneration() },
+            log = {},
+            enqueue = {},
+        )
+
+        val scheduled = scheduleOptionalJobsIfPairingCurrent(
+            snapshotIdentity = snapshot,
+            mutator = mutator,
+            journalVersionCoordinator = journalCoord,
+            relayAccessCoordinator = relayCoord,
+            pushRegistration = pushCoord,
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            openClient = {
+                latch.countDown()
+                FakePlClient()
+            },
+            allowsOwnerMaterial = false,
+        )
+
+        assertTrue(scheduled)
+        assertTrue(latch.await(3, TimeUnit.SECONDS))
+        assertFalse(fakePort.registerCalled)
     }
 
     private fun sampleHome(): PairedHome =

@@ -394,7 +394,18 @@ internal fun persistOrReturnDirectPairResult(
         throw IOException("pairing graph install failed")
     }
 
-    val statusHttp = statusProbe(endpoint, credential)
+    val statusHttp = try {
+        statusProbe(endpoint, credential)
+    } catch (e: Exception) {
+        runCatching {
+            activePublisher.associateDirectIfProven(
+                expectedPairing = app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint),
+                endpoint = endpoint,
+                proof = { true },
+            )
+        }
+        throw e
+    }
     val isAssociated = statusHttp.status == 200
 
     if (isAssociated) {
