@@ -51,6 +51,8 @@ There are two maintained gates. **`make ci` is the fast gate.** It runs the GitH
 
 **Run `make ci-device` manually before declaring an on-device change shipped**: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `dist-phone` does not run this gate. `make ci` does not run Android instrumented tests. It does check every platform reference the pure-JVM `core/*` and `platform/camera-still` modules ship in the app against the Android SDK at the app's `minSdk` (`:apps:phone:checkAndroidApiSurface`), because those modules compile against the host JDK and a JDK API Android lacks would otherwise pass every JVM test and fail on the phone. That check reads API presence only; runtime behaviour still needs the device gate.
 
+**No gate in this repo sends a segment to a journal.** The device gate and the HITL flow never pair, so a build can pass every one of them and send nothing. A change on the path a segment travels (the `core` modules that build, queue and send it, the transport, identity, work and persistence adapters, the phone manifest or build file, or phone code named for pairing or sync) owes an operator-run paired send before it ships: a bench phone pairs with a disposable journal, directly and through the relay, and a segment over the 1 MiB send credit from that exact build has to arrive. `make ci` names this debt at the end of its output when it is owed.
+
 ### If you change an owner-facing screen, check the release gate's flow
 
 🔴 **`.maestro/phone-smoke.yaml` asserts specific on-screen text, and `make ci` cannot see it.** It

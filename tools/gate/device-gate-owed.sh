@@ -52,14 +52,35 @@ fi
 changed=$( { git diff --name-only "$base" HEAD; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u )
 owed=$(printf '%s\n' "$changed" | grep -E "$gated_re" || true)
 
+# 🔴 The paired send: a real phone pairs with a real disposable journal and a segment over the
+# 1 MiB send credit has to arrive. Nothing in this repo's gates sends a segment, so 2.1.13 passed
+# all of them and sent nothing, and every release before 2.1.9 refused real-sized segments on the
+# direct door. It is operator-run, against a bench phone, so this only names the debt — for any
+# change on the path a segment travels, or to what the app is allowed to do.
+send_re='^core/(model|sources|segment|spool|queue|pl|identity|observer)/|^platform/(pl-transport-conscrypt|identity-file|work|persistence-room|audio)/|^apps/phone/(build\.gradle\.kts|src/main/AndroidManifest\.xml)$|^apps/phone/src/main/.*(Pair|Sync|Journal|Transport|Ingest)[A-Za-z]*\.kt$'
+send_owed=$(printf '%s\n' "$changed" | grep -E "$send_re" || true)
+paired_send_report() {
+  [ -n "$send_owed" ] || return 0
+  echo ""
+  echo "=============================================================================="
+  echo " PAIRED SEND OWED — this change touches the path a segment travels:"
+  printf '%s\n' "$send_owed" | head -5 | sed 's/^/   /'
+  echo " Before it ships, an operator runs the paired-send gate on a bench phone: pair to"
+  echo " a disposable journal, direct and through the relay, and prove a segment over"
+  echo " 1 MiB from this exact build arrives. No gate in this repo sends one."
+  echo "=============================================================================="
+}
+
 if [ -z "$owed" ]; then
   echo "device gate: not owed — this change touches no product Kotlin."
+  paired_send_report
   exit 0
 fi
 
 receipt="artifacts/ci-device/$(git rev-parse HEAD)"
 if [ -f "$receipt" ] && [ -z "$(git status --porcelain --untracked-files=normal)" ]; then
   echo "device gate: already green at this revision ($receipt)."
+  paired_send_report
   exit 0
 fi
 
@@ -76,8 +97,9 @@ echo " them, so an instrumented test written but never run, and any behaviour on
 echo " Android runtime shows, ship green through this gate. (A host-JDK API that Android"
 echo " lacks is now caught here, by checkAndroidApiSurface.)"
 echo ""
-echo "   ANDROID_REMOTE_HOST=suze.local make android-host-ci-device   (from a checkout)"
-echo "   make ci-device                                              (on the build box)"
+echo "   ANDROID_REMOTE_HOST=<build-host> make android-host-ci-device   (from a checkout)"
+echo "   make ci-device                                                (on the build box)"
 echo "=============================================================================="
+paired_send_report
 echo ""
 exit 0
