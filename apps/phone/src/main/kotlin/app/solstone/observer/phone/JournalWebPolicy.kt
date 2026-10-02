@@ -10,9 +10,46 @@ internal class JournalWebPolicy(origin: String) {
 
     fun allows(url: String): Boolean = parse(url) == authority
 
-    fun ownerInitiatedForeign(url: String, isMainFrame: Boolean, hasGesture: Boolean): Boolean {
-        if (!isMainFrame || !hasGesture || allows(url)) return false
-        return runCatching { URI(url) }.getOrNull() != null
+    fun decide(url: String, isMainFrame: Boolean): JournalWebNavigation {
+        if (allows(url)) {
+            return JournalWebNavigation(
+                consume = false,
+                openUrl = null,
+                notifyIfGesture = false,
+            )
+        }
+        if (!isMainFrame) {
+            return JournalWebNavigation(
+                consume = true,
+                openUrl = null,
+                notifyIfGesture = false,
+            )
+        }
+        if (isHandoffUrl(url)) {
+            return JournalWebNavigation(
+                consume = true,
+                openUrl = url,
+                notifyIfGesture = false,
+            )
+        }
+        return JournalWebNavigation(
+            consume = true,
+            openUrl = null,
+            notifyIfGesture = true,
+        )
+    }
+
+    private fun isHandoffUrl(value: String): Boolean {
+        if ('@' in value) return false
+        val uri = runCatching { URI(value) }.getOrNull() ?: return false
+        if (uri.userInfo != null) return false
+        val scheme = uri.scheme?.lowercase() ?: return false
+        if (scheme != "http" && scheme != "https") return false
+        val host = uri.host?.lowercase() ?: return false
+        val originHost = authority.host
+        return host != originHost &&
+            !host.startsWith("$originHost.") &&
+            !host.endsWith(".$originHost")
     }
 
     private fun parse(value: String): Authority? {
@@ -30,6 +67,31 @@ internal class JournalWebPolicy(origin: String) {
     }
 
     private data class Authority(val scheme: String, val host: String, val port: Int)
+}
+
+internal data class JournalWebNavigation(
+    val consume: Boolean,
+    val openUrl: String?,
+    val notifyIfGesture: Boolean,
+)
+
+internal fun applyJournalWebNavigation(
+    decision: JournalWebNavigation,
+    hasGesture: Boolean,
+    open: (String) -> Unit,
+    notify: () -> Unit,
+): Boolean {
+    val openUrl = decision.openUrl
+    if (openUrl != null) {
+        try {
+            open(openUrl)
+        } catch (_: Throwable) {
+            notify()
+        }
+    } else if (decision.notifyIfGesture && hasGesture) {
+        notify()
+    }
+    return decision.consume
 }
 
 internal data class JournalWebInsetPolicy(

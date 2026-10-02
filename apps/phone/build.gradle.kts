@@ -218,6 +218,25 @@ tasks.register("verifySolstoneGateBuildReceipts") {
     }
 }
 
+tasks.register("verifyJournalWebHostContractAsset") {
+    group = "verification"
+    dependsOn("assembleRealDebug")
+    doLast {
+        val apk = layout.buildDirectory
+            .file("outputs/apk/real/debug/phone-real-debug.apk")
+            .get()
+            .asFile
+        val source = file("src/main/assets/journal-web-host/host-contract.json").readBytes()
+        ZipFile(apk).use { zip ->
+            val entry = requireNotNull(zip.getEntry("assets/journal-web-host/host-contract.json")) {
+                "missing journal web host contract asset in $apk"
+            }
+            val actual = zip.getInputStream(entry).use { it.readBytes() }
+            check(actual.contentEquals(source)) { "journal web host contract asset mismatch in $apk" }
+        }
+    }
+}
+
 tasks.matching { it.name == "compileRealReleaseKotlin" }.configureEach {
     doLast {
         val buildConfigDir = layout.buildDirectory.dir("generated/source/buildConfig").get().asFile

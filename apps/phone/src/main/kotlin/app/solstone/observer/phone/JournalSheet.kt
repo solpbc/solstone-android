@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Message
@@ -55,6 +56,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.pl.browser.BrowserTerminalClass
 import app.solstone.core.pl.browser.JournalBrowserLifecycle
@@ -389,10 +391,13 @@ internal fun createJournalWebView(
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
-                if (policy.ownerInitiatedForeign(url, request.isForMainFrame, request.hasGesture())) {
-                    onUnsupportedNavigation()
-                }
-                return !policy.allows(url)
+                val decision = policy.decide(url, request.isForMainFrame)
+                return applyJournalWebNavigation(
+                    decision,
+                    request.hasGesture(),
+                    open = { destination -> deliverJournalExternalView(context, destination) },
+                    notify = onUnsupportedNavigation,
+                )
             }
 
             @Suppress("DEPRECATION")
@@ -476,13 +481,45 @@ internal fun createJournalWebView(
                 isDialog: Boolean,
                 isUserGesture: Boolean,
                 resultMsg: Message,
-            ): Boolean {
-                if (isUserGesture) onUnsupportedNavigation()
-                return false
-            }
+            ): Boolean = false
         }
         setDownloadListener { _, _, _, _, _ -> onUnsupportedTransfer() }
+        applyJournalWebHostUserAgent(context, settings)
         PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
         loadUrl(loadTarget)
     }
+}
+
+internal fun journalExternalViewIntent(url: String): Intent =
+    Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+
+internal fun deliverJournalExternalView(context: android.content.Context, url: String) {
+    val intent = journalExternalViewIntent(url)
+    val starter = PhoneJournalTestHooks.externalViewStarter
+    if (starter != null) starter(intent) else context.startActivity(intent)
+}
+
+private fun applyJournalWebHostUserAgent(
+    context: android.content.Context,
+    settings: android.webkit.WebSettings,
+) {
+    val result = runCatching {
+        context.assets.open("journal-web-host/host-contract.json").use { input ->
+            parseJournalWebHostContract(input.readBytes())
+        }
+    }.getOrElse { JournalWebHostContractParse.Refused }
+
+    when (result) {
+        is JournalWebHostContractParse.Product -> {
+            runCatching {
+                val defaultAgent = settings.userAgentString
+                settings.userAgentString = journalUserAgent(defaultAgent, result.value)
+            }.onFailure { emitInvalidJournalWebHostContract() }
+        }
+        JournalWebHostContractParse.Refused -> emitInvalidJournalWebHostContract()
+    }
+}
+
+private fun emitInvalidJournalWebHostContract() {
+    PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "host-contract", outcome = "invalid"))
 }

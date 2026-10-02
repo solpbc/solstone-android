@@ -3,6 +3,7 @@
 
 package app.solstone.observer.phone
 
+import android.content.Intent
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserOrigin
@@ -29,11 +30,13 @@ internal object PhoneJournalTestHooks {
     @Volatile var sessionOverride: (() -> JournalSheetSession)? = null
     @Volatile var onLoadUrl: ((String) -> Unit)? = null
     @Volatile var onVisitedHistory: ((url: String, canGoBack: Boolean) -> Unit)? = null
+    @Volatile var externalViewStarter: ((Intent) -> Unit)? = null
 
     fun reset() {
         pairingSnapshotOverride = null
         sessionOverride = null
         onLoadUrl = null
         onVisitedHistory = null
+        externalViewStarter = null
     }
 }
