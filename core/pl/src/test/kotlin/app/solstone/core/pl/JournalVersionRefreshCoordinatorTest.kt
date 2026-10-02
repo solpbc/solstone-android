@@ -218,7 +218,9 @@ class JournalVersionRefreshCoordinatorTest {
             }
         }
 
-        saved.await(3, TimeUnit.SECONDS)
+        assertTrue(saved.await(3, TimeUnit.SECONDS))
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
         assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
 
         coordinator.onConnectionLost()
@@ -229,8 +231,6 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
         assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J"), store.savedRecord)
 
-        executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
     }
 
     @Test

@@ -40,7 +40,6 @@ internal class JournalWebPolicy(origin: String) {
     }
 
     private fun isHandoffUrl(value: String): Boolean {
-        if ('@' in value) return false
         val uri = runCatching { URI(value) }.getOrNull() ?: return false
         if (uri.userInfo != null) return false
         val scheme = uri.scheme?.lowercase() ?: return false

@@ -56,7 +56,12 @@ class JournalWebPolicyTest {
         assertEquals(0, exactOpenCount)
         assertEquals(0, exactNoticeCount)
 
-        listOf("http://example.test/help", "https://example.test/help").forEach { url ->
+        listOf(
+            "http://example.test/help",
+            "https://example.test/help",
+            "https://example.test/path@value",
+            "https://example.test/help?email=person@example.test",
+        ).forEach { url ->
             listOf(true, false).forEach { hasGesture ->
                 val decision = policy.decide(url, isMainFrame = true)
                 val opened = mutableListOf<String>()
@@ -102,7 +107,7 @@ class JournalWebPolicyTest {
             "http://0123456789abcdef0123456789abcdef.localhost:7658/",
             "https://0123456789abcdef0123456789abcdef.localhost:7657/",
             "http://user@0123456789abcdef0123456789abcdef.localhost:7657/",
-            "https://example.test/path@value",
+            "https://user@example.test/help",
             "http://0123456789abcdef0123456789abcdef.localhost.evil.test/",
             "https://evil.0123456789abcdef0123456789abcdef.localhost/",
             "javascript:alert(1)",
