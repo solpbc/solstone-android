@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.16] - 2026-10-03
+
+### Added
+
+- settings › about solstone now shows two lines you can copy with one tap: this app's version and build with your android version, and your journal's version. if copying doesn't work, you can select the text and copy it yourself.
+
+### Changed
+
+- when you report a problem from the app, the support page opens with those same two lines filled in, and you can check or change them before you send. before, a report didn't say which version of your journal you use.
+- when you open your journal in the app, links to other websites now open in your phone's browser. before, the app said the link wasn't available in the app.
+
 ## [2.1.15] - 2026-10-02
 
 ### Fixed
