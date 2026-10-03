@@ -41,7 +41,7 @@ import app.solstone.observer.formfactor.phone.supportReportUrl
 import app.solstone.observer.formfactor.phone.supportReportFields
 import app.solstone.observer.formfactor.phone.supportState
 import app.solstone.observer.formfactor.phone.readAndroidAboutFacts
-import app.solstone.observer.formfactor.phone.phoneAboutBlock
+import app.solstone.observer.formfactor.phone.rememberPhoneAboutBlock
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.LoadState
@@ -353,9 +353,16 @@ class PhoneShellActivity : ComponentActivity() {
                 null -> "the event log couldn't be read."
             }
             val journalSheetOpenState = journalOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
+            val aboutFacts = remember { readAndroidAboutFacts(this) }
+            var aboutSnapshotEpoch by remember { mutableStateOf(0L) }
+            val aboutBlock = rememberPhoneAboutBlock(
+                aboutFacts, snapshot?.status?.journalVersion, aboutSnapshotEpoch,
+            )
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
+                aboutBlock = aboutBlock,
+                onAboutOpened = { aboutSnapshotEpoch++ },
                 waiting = snapshot?.waiting.orEmpty(),
                 defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
                 onRefreshStatus = statusViewModel::refresh,
@@ -463,8 +470,7 @@ class PhoneShellActivity : ComponentActivity() {
                     notificationsEnabled = ObserverNotification.notificationsEnabled(this)
                 },
                 onReportProblem = {
-                    val facts = readAndroidAboutFacts(this)
-                    val about = phoneAboutBlock(facts, snapshot?.status?.journalVersion, System.currentTimeMillis())
+                    val facts = aboutFacts
                     startActivity(
                         Intent(
                             Intent.ACTION_VIEW,
@@ -474,21 +480,20 @@ class PhoneShellActivity : ComponentActivity() {
                                     build = facts.build,
                                     osVersion = facts.osVersion,
                                     state = supportState(phoneDefaultDetailStatusOf(statusState)),
-                                    about = about,
+                                    about = aboutBlock,
                                  ),
                             ),
                         ),
                     )
                 },
                 onSaveProblemReport = {
-                    val facts = readAndroidAboutFacts(this)
-                    val about = phoneAboutBlock(facts, snapshot?.status?.journalVersion, System.currentTimeMillis())
+                    val facts = aboutFacts
                     val body = supportReportFields(
                         version = facts.versionName,
                         build = facts.build,
                         osVersion = facts.osVersion,
                         state = supportState(phoneDefaultDetailStatusOf(statusState)),
-                        about = about,
+                        about = aboutBlock,
                     )
                     runCatching { problemReportStore.save(body) }
                         .onSuccess { problemReports = it }

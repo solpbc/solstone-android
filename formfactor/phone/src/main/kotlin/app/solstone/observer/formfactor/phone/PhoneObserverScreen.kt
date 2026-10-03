@@ -103,6 +103,8 @@ fun PhoneObserverScreen(
     onReportProblem: () -> Unit = {},
     onSaveProblemReport: () -> Unit = {},
     onCopyAbout: (String) -> Boolean = { false },
+    aboutBlock: String? = null,
+    onAboutOpened: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -154,6 +156,8 @@ fun PhoneObserverScreen(
         onReportProblem = onReportProblem,
         onSaveProblemReport = onSaveProblemReport,
         onCopyAbout = onCopyAbout,
+        aboutBlock = aboutBlock,
+        onAboutOpened = onAboutOpened,
         onManageLocalStorage = onManageLocalStorage,
         modifier = modifier,
         initial = initial,
@@ -213,6 +217,8 @@ internal fun PhoneObserverScreen(
     onReportProblem: () -> Unit = {},
     onSaveProblemReport: () -> Unit = {},
     onCopyAbout: (String) -> Boolean,
+    aboutBlock: String? = null,
+    onAboutOpened: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -406,6 +412,7 @@ internal fun PhoneObserverScreen(
                     if (hapticsEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                     scope.launch {
                         drawerState.close()
+                        if (route == PhoneRoute.AboutSolstone) onAboutOpened()
                         detailStack = detailStack.showInDetail(route)
                     }
                 },
@@ -497,6 +504,7 @@ internal fun PhoneObserverScreen(
                                 onReportProblem = onReportProblem,
                                 onSaveProblemReport = onSaveProblemReport,
                                 onCopyAbout = onCopyAbout,
+                                aboutBlock = aboutBlock,
                                 onOpenTechnicalDetails = {
                                     detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
                                 },
@@ -577,6 +585,7 @@ internal fun PhoneObserverScreen(
                     onReportProblem = onReportProblem,
                     onSaveProblemReport = onSaveProblemReport,
                     onCopyAbout = onCopyAbout,
+                    aboutBlock = aboutBlock,
                     onOpenTechnicalDetails = {
                         detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
                     },

@@ -35,12 +35,11 @@ fun PhoneAboutPane(
     copy: (String) -> Boolean = { false },
     modifier: Modifier = Modifier,
     facts: AndroidAboutFacts? = null,
+    aboutBlock: String? = null,
 ) {
     val context = LocalContext.current
     val aboutFacts = facts ?: remember(context) { readAndroidAboutFacts(context) }
-    val block = remember(aboutFacts, reading) {
-        phoneAboutBlock(aboutFacts, reading, System.currentTimeMillis())
-    }
+    val block = aboutBlock ?: rememberPhoneAboutBlock(aboutFacts, reading)
     var copied by remember(block) { mutableStateOf(false) }
     var copyFailed by remember(block) { mutableStateOf(false) }
     PhonePaneScaffold(

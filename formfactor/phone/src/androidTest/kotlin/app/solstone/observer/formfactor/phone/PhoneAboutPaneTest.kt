@@ -3,13 +3,21 @@
 
 package app.solstone.observer.formfactor.phone
 
+import android.content.ContextWrapper
+import android.content.Intent
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionReading
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.net.URLDecoder
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -73,5 +81,70 @@ class PhoneAboutPaneTest {
         composeRule.onNodeWithText("copy").assertTextEquals("copy")
         composeRule.onNodeWithText("copied").assertDoesNotExist()
         composeRule.onNodeWithText(expectedBlock).assertTextEquals(expectedBlock)
+    }
+
+    @Test
+    fun reportKeepsCopiedSnapshotWhenClockAdvancesAndPaneChanges() {
+        val now = mutableStateOf(1_000_000L)
+        val showHelp = mutableStateOf(false)
+        val snapshotEpoch = mutableStateOf(0L)
+        val lastKnown = reading.copy(
+            freshness = JournalVersionFreshness.LAST_KNOWN,
+            versionSeenAt = now.value - 90_000L,
+            name = "private-journal-name",
+        )
+        val expected = "$expectedBlock · last seen 1 minute ago"
+        var copied: String? = null
+        var opened: Intent? = null
+        val context = object : ContextWrapper(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+        ) {
+            override fun startActivity(intent: Intent) {
+                opened = intent
+            }
+        }
+        composeRule.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                PhoneTheme {
+                    val block = rememberPhoneAboutBlock(facts, lastKnown, snapshotEpoch.value) { now.value }
+                    if (showHelp.value) {
+                        PhoneHelpPane(
+                            reading = lastKnown,
+                            status = PhoneDefaultDetailStatus.Unpaired,
+                            aboutBlock = block,
+                        )
+                    } else {
+                        PhoneAboutPane(
+                            onOpenLicences = {},
+                            reading = lastKnown,
+                            copy = { copied = it; true },
+                            facts = facts,
+                            aboutBlock = block,
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText(expected).assertTextEquals(expected)
+        composeRule.onNodeWithText("copy").performClick()
+        composeRule.runOnIdle {
+            assertEquals(expected, copied)
+            now.value += 8 * 60_000L
+            showHelp.value = true
+        }
+        composeRule.onNodeWithTag("helpReportProblem").performClick()
+        composeRule.runOnIdle {
+            val fragment = requireNotNull(opened?.data?.encodedFragment)
+            val fields = fragment.split('&').associate { part ->
+                val (key, value) = part.split('=', limit = 2)
+                key to URLDecoder.decode(value, Charsets.UTF_8.name())
+            }
+            assertEquals(expected, fields["about"])
+            assertEquals(copied, fields["about"])
+            snapshotEpoch.value++
+            showHelp.value = false
+        }
+        composeRule.onNodeWithText("$expectedBlock · last seen 9 minutes ago")
+            .assertTextEquals("$expectedBlock · last seen 9 minutes ago")
     }
 }

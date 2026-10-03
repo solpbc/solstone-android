@@ -6,6 +6,8 @@ package app.solstone.observer.formfactor.phone
 import android.content.Context
 import android.os.Build
 import android.system.Os
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import app.solstone.core.pl.JournalVersionReading
 import app.solstone.core.pl.aboutBlock
 import app.solstone.core.pl.journalDisplayLine
@@ -18,6 +20,14 @@ data class AndroidAboutFacts(
     val osVersion: String?,
     val arch: String?,
 )
+
+@Composable
+fun rememberPhoneAboutBlock(
+    facts: AndroidAboutFacts,
+    reading: JournalVersionReading?,
+    snapshotEpoch: Long = 0L,
+    clock: () -> Long = System::currentTimeMillis,
+): String = remember(facts, reading, snapshotEpoch) { phoneAboutBlock(facts, reading, clock()) }
 
 fun readAndroidAboutFacts(context: Context): AndroidAboutFacts {
     val packageInfo = runCatching {

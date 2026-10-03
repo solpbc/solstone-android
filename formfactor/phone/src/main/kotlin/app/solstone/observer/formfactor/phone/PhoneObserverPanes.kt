@@ -69,6 +69,7 @@ internal fun PhoneDetailPane(
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
     onCopyAbout: (String) -> Boolean,
+    aboutBlock: String? = null,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
     onOpenProblemReports: () -> Unit,
@@ -124,6 +125,7 @@ internal fun PhoneDetailPane(
             onReportProblem = onReportProblem,
             onSaveProblemReport = onSaveProblemReport,
             onCopyAbout = onCopyAbout,
+            aboutBlock = aboutBlock,
             onOpenTechnicalDetails = onOpenTechnicalDetails,
             onOpenEventLog = onOpenEventLog,
             onOpenProblemReports = onOpenProblemReports,
@@ -179,6 +181,7 @@ private fun PhoneDetailContent(
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
     onCopyAbout: (String) -> Boolean,
+    aboutBlock: String? = null,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
     onOpenProblemReports: () -> Unit,
@@ -206,6 +209,7 @@ private fun PhoneDetailContent(
             onOpenLicences = onOpenLicences,
             reading = journalVersion,
             copy = onCopyAbout,
+            aboutBlock = aboutBlock,
             modifier = modifier,
         )
         PhoneRoute.Licences -> PhoneLicencesPane(modifier = modifier)
@@ -267,6 +271,7 @@ private fun PhoneDetailContent(
         PhoneRoute.Help -> PhoneHelpPane(
             reading = journalVersion,
             status = defaultDetailStatus,
+            aboutBlock = aboutBlock,
             modifier = modifier,
         )
         // Deliberately unimplemented placeholder routes, kept for the navigation

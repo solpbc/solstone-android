@@ -477,8 +477,11 @@ fun PhoneHelpPane(
     reading: app.solstone.core.pl.JournalVersionReading?,
     status: PhoneDefaultDetailStatus,
     modifier: Modifier = Modifier,
+    aboutBlock: String? = null,
 ) {
     val context = LocalContext.current
+    val reportFacts = remember(context) { readAndroidAboutFacts(context) }
+    val reportAbout = aboutBlock ?: rememberPhoneAboutBlock(reportFacts, reading)
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Help) },
     ) {
@@ -495,15 +498,14 @@ fun PhoneHelpPane(
                 label = "report a problem",
                 subLine = "review and send on the support site",
                 onClick = {
-                    val facts = readAndroidAboutFacts(context)
-                    val about = phoneAboutBlock(facts, reading, System.currentTimeMillis())
+                    val facts = reportFacts
                     context.openUrl(
                         supportReportUrl(
                             version = facts.versionName,
                             build = facts.build,
                             osVersion = facts.osVersion,
                             state = supportState(status),
-                            about = about,
+                            about = reportAbout,
                         ),
                     )
                 },
