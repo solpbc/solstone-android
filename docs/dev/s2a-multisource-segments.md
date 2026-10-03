@@ -34,6 +34,7 @@ production code changes are intentionally not included here.
 - Remove `fullWindow`. Covered length is always:
   - `(maxCaptureEndEpochMs - windowStartEpochMs).coerceIn(0, windowMs)`
 - `wireKeys(windowStartEpochMs, windowStartEpochMs + coveredMs, zoneId)` is the only LEN path.
+- `wireKeys` bounds LEN to whole seconds in [1, 300], so a sub-second window or recovered recording still keys as `_1`, and no key exceeds one window.
 
 ### Late emissions
 

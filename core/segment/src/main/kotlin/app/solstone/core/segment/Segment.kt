@@ -21,9 +21,15 @@ import java.util.TimeZone
 
 fun systemZoneId(): ZoneId = ZoneId.systemDefault()
 
+// A segment key's LEN is the captured duration in whole seconds, bounded so that a
+// sub-second capture still names a segment of at least one second and no key spans
+// more than one capture window. Every key, live or recovered, is built here.
+const val MIN_SEGMENT_LEN_SECONDS = 1L
+const val MAX_SEGMENT_LEN_SECONDS = 300L
+
 fun wireKeys(startEpochMs: Long, endEpochMs: Long, zoneId: ZoneId): WireKeys {
     val start = Instant.ofEpochMilli(startEpochMs).atZone(zoneId)
-    val lenSeconds = ((endEpochMs - startEpochMs).coerceAtLeast(0L)) / 1000L
+    val lenSeconds = ((endEpochMs - startEpochMs) / 1000L).coerceIn(MIN_SEGMENT_LEN_SECONDS, MAX_SEGMENT_LEN_SECONDS)
     val day = DateTimeFormatter.BASIC_ISO_DATE.format(start.toLocalDate())
     val segment = "%02d%02d%02d_%d".format(Locale.ROOT, start.hour, start.minute, start.second, lenSeconds)
     return WireKeys(

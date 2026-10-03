@@ -71,6 +71,29 @@ class AudioRecoveryManagerTest {
     }
 
     @Test
+    fun subSecondRecoveredRecordingKeysWithOneSecondLen() {
+        val sealed = recoverSingle(WINDOW_START, WINDOW_START, WINDOW_END, WINDOW_END, durationMs = 400L)
+        assertEquals(1L, segmentLen(sealed.key.segment))
+        assertEquals(sealed.key.segment, sealed.wireKeys.segment)
+        assertEquals(WINDOW_START + 400L, sealed.payloads.single().captureEndEpochMs)
+    }
+
+    @Test
+    fun recoveredRecordingPastWindowEndKeysAtOneWindowLen() {
+        val sealed = recoverSingle(WINDOW_START, WINDOW_START, WINDOW_END, WINDOW_END + 1_500L, durationMs = 301_500L)
+        assertEquals(300L, segmentLen(sealed.key.segment))
+        assertEquals(sealed.key.segment, sealed.wireKeys.segment)
+        assertEquals(WINDOW_START + 301_500L, sealed.payloads.single().captureEndEpochMs)
+    }
+
+    @Test
+    fun recoveredRecordingKeepsItsCapturedLen() {
+        val sealed = recoverSingle(WINDOW_START + 1_000L, WINDOW_START, WINDOW_END, WINDOW_END, durationMs = 120_400L)
+        assertEquals("221321_120", sealed.key.segment)
+        assertEquals(WINDOW_START + 121_400L, sealed.payloads.single().captureEndEpochMs)
+    }
+
+    @Test
     fun storedSampleDurationWithExistingM4aSkipsRemux() {
         val root = tempDirectory()
         val spoolDir = tempDirectory().toPath()
@@ -604,6 +627,50 @@ class AudioRecoveryManagerTest {
         assertFalse(legacyCacheAlreadyDelivered("other-sha", listOf(validFact)))
     }
 
+    private fun recoverSingle(
+        captureStartEpochMs: Long,
+        windowStartEpochMs: Long,
+        windowEndEpochMs: Long,
+        openEndEpochMs: Long,
+        durationMs: Long,
+    ): SealedSegment {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source")
+        val attemptId = "rec-len-test"
+        val attemptDir = File(audioDir, attemptId).apply { mkdirs() }
+        val info = AudioRecordInfo(
+            id = attemptId,
+            captureStartEpochMs = captureStartEpochMs,
+            zoneId = "UTC",
+            utcOffsetSeconds = 0,
+            windowStartEpochMs = windowStartEpochMs,
+            windowEndEpochMs = windowEndEpochMs,
+            openEndEpochMs = openEndEpochMs,
+        )
+        File(attemptDir, "record.txt").writeText(info.serialize())
+        File(attemptDir, "capture.adts").writeBytes("fake-adts-data".encodeToByteArray())
+        val sink = FakeSealedSegmentSink()
+        val interruption = FakeInterruption()
+
+        AudioRecoveryManager(
+            audioSourceDir = audioDir,
+            cacheAudioDir = File(root, "cache-source"),
+            spoolDir = tempDirectory().toPath(),
+            occupiedLeaves = { _, _ -> emptySet() },
+            lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+            sealedSink = sink,
+            interruption = interruption,
+            remuxer = FakeRemuxer(durationMs = durationMs),
+            isReadableM4aProbe = { true },
+        ).recover()
+
+        assertFalse(interruption.marked)
+        assertFalse(attemptDir.exists())
+        return sink.persisted.single()
+    }
+
+    private fun segmentLen(segment: String): Long = segment.substringAfter('_').toLong()
+
     private fun tempDirectory(): File = Files.createTempDirectory("recovery-test").toFile()
 
     private class FakeRemuxer(private val durationMs: Long) : AacAdtsRemuxer {
@@ -631,5 +698,10 @@ class AudioRecoveryManagerTest {
         override fun persistSealed(segment: SealedSegment, result: SealResult, sealedAtEpochMs: Long) {
             persisted += segment
         }
+    }
+
+    private companion object {
+        const val WINDOW_START = 1_700_000_000_000L
+        const val WINDOW_END = WINDOW_START + 300_000L
     }
 }

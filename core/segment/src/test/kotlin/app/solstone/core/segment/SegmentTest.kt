@@ -91,6 +91,51 @@ class SegmentTest {
     }
 
     @Test
+    fun wireKeysBoundLenToAtLeastOneSecondAndAtMostOneWindow() {
+        val zone = ZoneId.of("UTC")
+        val start = 1_772_582_410_000L
+        for (durationMs in listOf(-5_000L, 0L, 1L, 400L, 999L, 1_000L, 20_999L, 299_999L, 300_000L, 300_999L, 301_500L, 900_000L)) {
+            val keys = wireKeys(start, start + durationMs, zone)
+            val len = segmentLen(keys.segment)
+            assertTrue(len in MIN_SEGMENT_LEN_SECONDS..MAX_SEGMENT_LEN_SECONDS, "${durationMs}ms keyed as ${keys.segment}")
+            assertEquals(start + durationMs, keys.endEpochMs)
+        }
+        assertEquals(1L, segmentLen(wireKeys(start, start + 400L, zone).segment))
+        assertEquals(1L, segmentLen(wireKeys(start, start, zone).segment))
+        assertEquals(20L, segmentLen(wireKeys(start, start + 20_999L, zone).segment))
+        assertEquals(300L, segmentLen(wireKeys(start, start + 300_000L, zone).segment))
+        assertEquals(300L, segmentLen(wireKeys(start, start + 301_500L, zone).segment))
+    }
+
+    @Test
+    fun subSecondLiveCaptureSealsWithOneSecondLen() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(locationEmission(BASE_EPOCH_MS, BASE_EPOCH_MS))
+        segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 400L))
+
+        val sealed = segmenter.flush().sealed.single()
+
+        assertEquals(1L, segmentLen(sealed.key.segment))
+        assertEquals(sealed.key.segment, sealed.wireKeys.segment)
+        assertEquals(BASE_EPOCH_MS + 400L, sealed.wireKeys.endEpochMs)
+        assertEquals(listOf("location", "audio"), sealed.payloads.map { it.sourceId })
+    }
+
+    @Test
+    fun gapOnlyLateEmissionWindowSealsWithOneSecondLen() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(audioEmission(BASE_EPOCH_MS, BASE_EPOCH_MS + 300_000L))
+        assertEquals(1, segmenter.sealDue(BASE_EPOCH_MS + 305_000L).sealed.size)
+        segmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 20_000L))
+
+        val late = segmenter.flush().sealed.single()
+
+        assertTrue(late.payloads.isEmpty())
+        assertEquals("late_emission", late.gaps.single().kind)
+        assertEquals(1L, segmentLen(late.key.segment))
+    }
+
+    @Test
     fun segmenterUsesCaptureTimeGridAndLenForFullAndPartialWindows() {
         val segmenter = Segmenter(ZoneId.of("UTC"))
 
@@ -389,6 +434,8 @@ class SegmentTest {
             java.util.TimeZone.setDefault(originalTz)
         }
     }
+
+    private fun segmentLen(segment: String): Long = segment.substringAfter('_').toLong()
 
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
         SourceEmission(
