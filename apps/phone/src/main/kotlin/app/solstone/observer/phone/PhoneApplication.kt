@@ -401,6 +401,8 @@ class PhoneApplication : ObserverApplication(
                     recoveryCompleted = initialized.recoveryCompleted,
                     audioAwaitingCustody = phoneAudioAwaitingCustody(applicationContext, initialized),
                     unresolvedAudioInterruption = phoneUnresolvedAudioInterruption(applicationContext),
+                    unresolvedOtherInterruption = phoneUnresolvedOtherInterruption(applicationContext),
+                    unresolvedUnknownRecovery = phoneUnresolvedUnknownRecovery(applicationContext),
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()
@@ -469,9 +471,11 @@ class PhoneApplication : ObserverApplication(
 }
 
 internal fun phoneAudioAwaitingCustody(context: Context, container: app.solstone.observer.scaffold.ObserverRuntimeContainer?): Boolean {
+    val legacy = context.cacheDir.resolve("audio-source")
+    if (legacy.exists() && (legacy.listFiles()?.isNotEmpty() != false)) return true
     val dir = context.filesDir.resolve("audio-source")
     if (!dir.exists() || !dir.isDirectory) return false
-    val attemptDirs = dir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return false
+    val attemptDirs = dir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return true
     if (attemptDirs.isEmpty()) return false
     val inFlight = container?.inFlightAudioIds.orEmpty()
     return attemptDirs.any { it.name !in inFlight }
@@ -480,4 +484,16 @@ internal fun phoneAudioAwaitingCustody(context: Context, container: app.solstone
 internal fun phoneUnresolvedAudioInterruption(context: Context): Boolean {
     val store = app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
     return store.isUnresolved()
+}
+
+internal fun phoneUnresolvedOtherInterruption(context: Context): Boolean =
+    app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()).isUnresolved()
+
+internal fun phoneUnresolvedUnknownRecovery(context: Context): Boolean {
+    val store = app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath())
+    if (store.isUnresolved()) return true
+    val drafts = context.filesDir.resolve("spool/.draft")
+    var unreadable = false
+    val remaining = drafts.walkTopDown().onFail { _, _ -> unreadable = true }.any { it.isFile }
+    return remaining || unreadable
 }

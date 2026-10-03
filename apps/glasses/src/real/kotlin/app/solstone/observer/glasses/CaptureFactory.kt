@@ -106,6 +106,8 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                             name = fileRow.name,
                             spoolPayloadExists = exists,
                             spoolPayloadShaMatches = matches,
+                            confirmedUploaded = segmentRow.state == app.solstone.core.model.QueueState.UPLOADED ||
+                                segmentRow.state == app.solstone.core.model.QueueState.EVICTED,
                         )
                     }
                     return app.solstone.platform.audio.classifyAudioAttempt(

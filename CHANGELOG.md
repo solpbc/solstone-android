@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.17] - 2026-10-03
+
+### Fixed
+
+- updates and unexpected stops could leave up to five minutes of audio out of your journal. unfinished audio now stays on your phone for recovery when the app next starts.
+- old interrupted audio still on your phone that cannot be recovered now shows "audio was interrupted" instead of "all caught up".
+
 ## [2.1.16] - 2026-10-03
 
 ### Added

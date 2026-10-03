@@ -8,7 +8,12 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.channels.FileChannel
 import java.nio.ByteBuffer
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 
 data class AacRemux(val sampleDurationMs: Long, val outputBytes: Long)
 
@@ -17,7 +22,11 @@ fun interface AacAdtsRemuxer {
 }
 
 class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
-    override fun remux(adts: File, m4a: File): AacRemux {
+    override fun remux(adts: File, m4a: File): AacRemux = publishRemuxOutput(m4a) { temp ->
+        remuxToTemporary(adts, temp)
+    }
+
+    private fun remuxToTemporary(adts: File, m4a: File): AacRemux {
         if (!adts.exists() || adts.length() <= 0L) {
             return AacRemux(sampleDurationMs = 0L, outputBytes = 0L)
         }
@@ -64,6 +73,10 @@ class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
 
                     val sampleTimeUs = extractor.sampleTime
                     val sampleFlags = extractor.sampleFlags
+                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
+                        extractor.advance()
+                        continue
+                    }
 
                     if (firstSampleTimeUs == -1L) {
                         firstSampleTimeUs = sampleTimeUs
@@ -73,14 +86,9 @@ class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
                     bufferInfo.offset = 0
                     bufferInfo.size = sampleSize
                     bufferInfo.presentationTimeUs = sampleTimeUs
-                    // Extractor and codec share some numeric values for different meanings.
-                    // SAMPLE_FLAG_PARTIAL_FRAME is 4, which is BUFFER_FLAG_END_OF_STREAM.
                     var codecFlags = 0
                     if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
                         codecFlags = codecFlags or MediaCodec.BUFFER_FLAG_KEY_FRAME
-                    }
-                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
-                        codecFlags = codecFlags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
                     }
                     bufferInfo.flags = codecFlags
 
@@ -103,8 +111,8 @@ class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
                     }
                     durationUs = maxOf(samplesDurationUs, presentationDeltaUs)
                 }
+                muxer.stop()
             } finally {
-                runCatching { muxer.stop() }
                 runCatching { muxer.release() }
             }
 
@@ -118,5 +126,26 @@ class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
         } finally {
             runCatching { extractor.release() }
         }
+    }
+}
+
+internal fun publishRemuxOutput(m4a: File, encode: (File) -> AacRemux): AacRemux {
+    val parent = requireNotNull(m4a.parentFile)
+    val temp = File.createTempFile("remux-", ".m4a", parent)
+    try {
+        val result = encode(temp)
+        if (result.sampleDurationMs <= 0 || result.outputBytes <= 0) return AacRemux(0, 0)
+        check(temp.length() == result.outputBytes) { "remux output size differs" }
+        FileOutputStream(temp, true).use { it.fd.sync() }
+        Files.move(temp.toPath(), m4a.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        val interrupted = Thread.interrupted()
+        try {
+            FileChannel.open(parent.toPath(), StandardOpenOption.READ).use { it.force(true) }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
+        return result
+    } finally {
+        temp.delete()
     }
 }

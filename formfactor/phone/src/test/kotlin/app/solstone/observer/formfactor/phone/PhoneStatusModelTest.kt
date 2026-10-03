@@ -9,6 +9,26 @@ import kotlin.test.assertFalse
 
 class PhoneStatusModelTest {
     @Test
+    fun typedRecoveryEvidenceBlocksCleanStateWithoutChangingBacklogOrConnectivity() {
+        val clean = PhoneStatusModel(true, true, 0, false, false, true, false, false)
+        for (history in listOf(clean.copy(unresolvedOtherInterruption = true),
+                clean.copy(unresolvedUnknownRecovery = true))) {
+            assertEquals(StatusPillKind.SYNCING, statusPillKind(history))
+            assertEquals(0, history.pendingCount)
+            assertFalse(audioCustodyLines(history).contains(STATUS_AUDIO_INTERRUPTED_LEAD))
+            assertEquals(StatusPillKind.OFFLINE, statusPillKind(history.copy(online = false)))
+            assertEquals(StatusPillKind.SYNCING, statusPillKind(history.copy(pendingCount = 2)))
+            assertFalse(audioCustodyLines(history.copy(pendingCount = 2)).isEmpty())
+        }
+        val both = clean.copy(unresolvedOtherInterruption = true, unresolvedAudioInterruption = true,
+            unresolvedUnknownRecovery = true)
+        assertEquals(STATUS_OTHER_INTERRUPTED_LEAD, statusPillText(both))
+        assertEquals(3, audioCustodyLines(both).count { it in setOf(STATUS_AUDIO_INTERRUPTED_LEAD,
+            STATUS_OTHER_INTERRUPTED_LEAD, STATUS_UNKNOWN_RECOVERY_LEAD) })
+        assertEquals(StatusPillKind.CONNECTED, statusPillKind(clean))
+    }
+
+    @Test
     fun failedCheckNamesAnAddressOnlyWhenOneWasDialed() {
         assertEquals("couldn't reach your journal at 192.0.2.1:7657", checkConnectionUnreached("192.0.2.1:7657"))
         // A check that never dialed (a missing credential, say) keeps the plain words.

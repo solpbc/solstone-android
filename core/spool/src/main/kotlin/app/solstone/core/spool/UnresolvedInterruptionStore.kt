@@ -17,12 +17,19 @@ interface UnresolvedInterruption {
     fun isUnresolved(): Boolean
 }
 
-class UnresolvedInterruptionStore(private val file: Path) : UnresolvedInterruption {
+class UnresolvedInterruptionStore(
+    private val file: Path,
+    private val syncDirectory: (Path) -> Unit = ::forceDirectory,
+) : UnresolvedInterruption {
     override fun markUnresolved(): Boolean {
         return try {
             val parent = file.parent ?: return false
             Files.createDirectories(parent)
-            if (isUnresolved()) return true
+            if (isUnresolved()) {
+                FileOutputStream(file.toFile(), true).use { it.fd.sync() }
+                syncDirectory(parent)
+                return true
+            }
             val temp = Files.createTempFile(parent, "interruption-", ".tmp")
             try {
                 FileOutputStream(temp.toFile()).use { fos ->
@@ -34,7 +41,7 @@ class UnresolvedInterruptionStore(private val file: Path) : UnresolvedInterrupti
                 } catch (_: AtomicMoveNotSupportedException) {
                     Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
                 }
-                forceDirectory(parent)
+                syncDirectory(parent)
                 true
             } finally {
                 Files.deleteIfExists(temp)
@@ -46,11 +53,9 @@ class UnresolvedInterruptionStore(private val file: Path) : UnresolvedInterrupti
 
     override fun isUnresolved(): Boolean {
         return try {
-            if (!Files.isRegularFile(file)) return false
-            val content = String(Files.readAllBytes(file), StandardCharsets.UTF_8).trim()
-            content == UNRESOLVED_TOKEN
+            !Files.notExists(file)
         } catch (_: Exception) {
-            false
+            true
         }
     }
 
@@ -59,11 +64,11 @@ class UnresolvedInterruptionStore(private val file: Path) : UnresolvedInterrupti
         val UNRESOLVED_BYTES = UNRESOLVED_TOKEN.toByteArray(StandardCharsets.UTF_8)
 
         fun forceDirectory(dir: Path) {
+            val interrupted = Thread.interrupted()
             try {
-                FileChannel.open(dir, StandardOpenOption.READ).use { channel ->
-                    channel.force(true)
-                }
-            } catch (_: Exception) {
+                FileChannel.open(dir, StandardOpenOption.READ).use { it.force(true) }
+            } finally {
+                if (interrupted) Thread.currentThread().interrupt()
             }
         }
     }

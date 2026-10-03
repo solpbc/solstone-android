@@ -501,11 +501,17 @@ class AudioRecoveryManagerTest {
                 name = "audio.m4a",
                 spoolPayloadExists = false,
                 spoolPayloadShaMatches = false,
+                confirmedUploaded = true,
             ),
         )
         assertEquals(
             AudioCommitStatus.CommittedMatch,
             classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf, evictedFact),
+        )
+        assertEquals(
+            AudioCommitStatus.CustodyUnproven,
+            classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf,
+                evictedFact.map { it.copy(confirmedUploaded = false) }),
         )
 
         // 3. same bounds with a different sha is a collision
@@ -564,6 +570,7 @@ class AudioRecoveryManagerTest {
             zoneId = "UTC",
         )
         assertTrue(legacyCacheAlreadyDelivered(sha, listOf(validFact)))
+        assertFalse(legacyCacheAlreadyDelivered(sha, listOf(validFact.copy(sourceId = "camera"))))
 
         // No zone / blank zone -> false
         assertFalse(legacyCacheAlreadyDelivered(sha, listOf(validFact.copy(zoneId = null))))

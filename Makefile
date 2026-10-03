@@ -305,8 +305,8 @@ pull-released-apk:
 
 # Publish the signed APK to the release origin, updates.solstone.app. THIS is
 # the release publish; the GitHub release below is the mirror, and on a new cut
-# this target runs first. It never contacts GitHub, so a GitHub outage cannot
-# stop or delay it.
+# github-release must first mint and verify the candidate's remote tag and mirror.
+# This target then publishes those same frozen bytes to the origin.
 #
 # Unlike github-release it does not require HEAD == CANDIDATE: it mints no ref,
 # and instead requires the remote tag vVERSION to already peel to CANDIDATE.

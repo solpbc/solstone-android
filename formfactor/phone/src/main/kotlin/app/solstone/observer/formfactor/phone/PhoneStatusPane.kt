@@ -174,7 +174,8 @@ private fun PhonePairedStatusSummary(
     val custody = audioCustodyLines(model)
     val pillText = statusPillText(model)
 
-    if (pillText == STATUS_AUDIO_INTERRUPTED_LEAD || pillText == STATUS_WAITING_TO_SYNC_LEAD) {
+    if (pillText in setOf(STATUS_AUDIO_INTERRUPTED_LEAD, STATUS_WAITING_TO_SYNC_LEAD,
+            STATUS_OTHER_INTERRUPTED_LEAD, STATUS_UNKNOWN_RECOVERY_LEAD)) {
         if (custody.isNotEmpty()) {
             PaneLead(custody[0])
             for (i in 1 until custody.size) {

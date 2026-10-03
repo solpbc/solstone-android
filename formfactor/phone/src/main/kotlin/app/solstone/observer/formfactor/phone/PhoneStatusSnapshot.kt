@@ -22,6 +22,8 @@ fun phoneStatusSnapshotOf(
     recoveryCompleted: Boolean,
     audioAwaitingCustody: Boolean,
     unresolvedAudioInterruption: Boolean,
+    unresolvedOtherInterruption: Boolean = false,
+    unresolvedUnknownRecovery: Boolean = false,
 ): PhoneStatusSnapshot {
     val (paired, online) = when (backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
@@ -48,6 +50,8 @@ fun phoneStatusSnapshotOf(
             recoveryCompleted = recoveryCompleted,
             audioAwaitingCustody = audioAwaitingCustody,
             unresolvedAudioInterruption = unresolvedAudioInterruption,
+            unresolvedOtherInterruption = unresolvedOtherInterruption,
+            unresolvedUnknownRecovery = unresolvedUnknownRecovery,
             journalVersion = backlog.journalVersion,
         ),
         waiting = waiting,

@@ -522,17 +522,33 @@ class AudioContinuousSourceEngine(
         private const val SLEEP_SLICE_MS = 1_000L
         private const val JOIN_TIMEOUT_MS = 5_000L
 
-        fun writeAndForceRecordTxt(recordFile: File, info: AudioRecordInfo): Boolean {
+        fun writeAndForceRecordTxt(
+            recordFile: File,
+            info: AudioRecordInfo,
+            beforePublish: () -> Unit = {},
+        ): Boolean {
+            var temp: File? = null
             return try {
                 val dir = recordFile.parentFile ?: return false
                 dir.mkdirs()
-                FileOutputStream(recordFile).use { fos ->
+                val publicationTemp = File.createTempFile("record-", ".tmp", dir)
+                temp = publicationTemp
+                FileOutputStream(publicationTemp).use { fos ->
                     fos.write(info.serialize().toByteArray(StandardCharsets.UTF_8))
                     fos.fd.sync()
                 }
-                forceDirectory(dir.toPath())
+                beforePublish()
+                java.nio.file.Files.move(
+                    publicationTemp.toPath(), recordFile.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+                forceDirectory(dir.toPath()) &&
+                    (dir.parentFile?.let { forceDirectory(it.toPath()) } ?: true)
             } catch (_: Exception) {
                 false
+            } finally {
+                temp?.delete()
             }
         }
 

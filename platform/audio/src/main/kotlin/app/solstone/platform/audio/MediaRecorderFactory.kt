@@ -55,7 +55,6 @@ private class MediaRecording(private val output: File) : AudioRecording {
             runCatching { localRecorder.stop() }
             runCatching { localRecorder.release() }
         }
-        output.delete()
     }
 
     override fun silenced(): SilencedFact =

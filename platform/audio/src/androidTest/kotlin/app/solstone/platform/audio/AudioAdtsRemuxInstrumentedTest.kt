@@ -12,6 +12,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -124,12 +125,11 @@ class AudioAdtsRemuxInstrumentedTest {
     }
 
     @Test
-    fun remuxCorruptAdtsReturnsZero() {
+    fun unreadableNonemptyAdtsIsNotReportedAsSuccessfulRecovery() {
         val adts = File(tempDir, "corrupt.adts").apply { writeBytes(byteArrayOf(1, 2, 3, 4, 5)) }
         val m4a = File(tempDir, "out.m4a")
-        val result = remuxer.remux(adts, m4a)
-        assertEquals(0L, result.sampleDurationMs)
-        assertEquals(0L, result.outputBytes)
+        assertThrows(Exception::class.java) { remuxer.remux(adts, m4a) }
+        assertTrue(adts.exists())
         assertFalse(m4a.exists())
     }
 }

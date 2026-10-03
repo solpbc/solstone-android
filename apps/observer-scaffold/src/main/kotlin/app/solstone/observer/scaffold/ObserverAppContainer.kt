@@ -225,9 +225,14 @@ class ObserverAppContainer(
         mainHandler.post(pollRunnable)
         background.execute {
             val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
-            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption)
             SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
             captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
+            applyRecoveryActions(
+                RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption,
+                UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()),
+                UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath()),
+            )
+            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

@@ -54,12 +54,13 @@ class FileSpoolWriter(
     private val occupiedLeaves: (day: String, stream: String) -> Set<String> = { _, _ -> emptySet() },
 ) : SpoolWriter {
     override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
-        val leaf = when (val selection = selectDirLeaf(segment)) {
-            is DirSelection.Existing -> return SealResult(
-                manifest = selection.manifest,
-                directory = selection.finalDir,
-                state = SealState.SEALED,
-            )
+        val leaf = when (val selection = selectDirLeaf(segment, payloadBytes)) {
+            is DirSelection.Existing -> {
+                selection.manifest.files.forEach { fsync(selection.finalDir.resolve(it.name)) }
+                fsync(selection.finalDir.resolve("manifest"))
+                syncFinalPublication(selection.finalDir)
+                return SealResult(selection.manifest, selection.finalDir, SealState.SEALED)
+            }
             is DirSelection.Leaf -> selection.leaf
         }
         val draftDir = baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(leaf)
@@ -113,11 +114,21 @@ class FileSpoolWriter(
         } catch (_: AtomicMoveNotSupportedException) {
             Files.move(draftDir, finalDir)
         }
+        syncFinalPublication(finalDir)
         cleanupEmptyDraftParents(draftDir)
         return SealResult(manifest = manifest, directory = finalDir, state = SealState.SEALED)
     }
 
-    private fun selectDirLeaf(segment: SealedSegment): DirSelection {
+    private fun syncFinalPublication(finalDir: Path) {
+        var current: Path? = finalDir
+        while (current != null) {
+            fsync(current)
+            if (current == baseDir.parent) break
+            current = current.parent
+        }
+    }
+
+    private fun selectDirLeaf(segment: SealedSegment, payloadBytes: PayloadBytesProvider): DirSelection {
         val s = segment.key.segment
         val escapedS = Regex.escape(s)
         val secondPattern = Regex("^${escapedS}__ws[0-9]+$")
@@ -145,7 +156,27 @@ class FileSpoolWriter(
         for (leafName in sortedDiskLeaves) {
             val dir = streamDir.resolve(leafName)
             val parsed = parseFinalManifest(dir) ?: continue
-            if (parsed.identityMatches(segment) && parsed.descriptorMatches(segment)) {
+            if (parsed.identityMatches(segment) && parsed.descriptorMatches(segment) &&
+                parsed.manifest.files.all { file ->
+                    val target = dir.resolve(file.name)
+                    target.normalize().parent == dir.normalize() &&
+                        Files.isRegularFile(target) && Files.size(target) == file.byteSize &&
+                        app.solstone.core.segment.sha256(target) == file.sha256 &&
+                        segment.payloads.firstOrNull { it.ref.name == file.name && it.sourceId == file.sourceId }
+                            ?.let { payload ->
+                                payloadBytes.open(payload).use { input ->
+                                    val digest = MessageDigest.getInstance("SHA-256")
+                                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                    while (true) {
+                                        val size = input.read(buffer)
+                                        if (size < 0) break
+                                        digest.update(buffer, 0, size)
+                                    }
+                                    digest.digest().joinToString("") { "%02x".format(it) } == file.sha256
+                                }
+                            } == true
+                }
+            ) {
                 return DirSelection.Existing(parsed.manifest, dir)
             }
         }
@@ -245,7 +276,7 @@ private fun requireSingleLeaf(path: Path, parent: Path, leaf: String) {
 }
 
 private fun forcePath(path: Path) {
-    FileChannel.open(path, StandardOpenOption.WRITE).use { channel ->
+    FileChannel.open(path, if (Files.isDirectory(path)) StandardOpenOption.READ else StandardOpenOption.WRITE).use { channel ->
         channel.force(true)
     }
 }

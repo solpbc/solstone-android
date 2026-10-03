@@ -216,6 +216,8 @@ class PhoneShellActivity : ComponentActivity() {
             recoveryCompleted = { container.recoveryCompleted },
             audioAwaitingCustody = { phoneAudioAwaitingCustody(this@PhoneShellActivity, container) },
             unresolvedAudioInterruption = { phoneUnresolvedAudioInterruption(this@PhoneShellActivity) },
+            unresolvedOtherInterruption = { phoneUnresolvedOtherInterruption(this@PhoneShellActivity) },
+            unresolvedUnknownRecovery = { phoneUnresolvedUnknownRecovery(this@PhoneShellActivity) },
             capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
@@ -1030,6 +1032,8 @@ class PhoneShellActivity : ComponentActivity() {
         private val recoveryCompleted: () -> Boolean,
         private val audioAwaitingCustody: () -> Boolean,
         private val unresolvedAudioInterruption: () -> Boolean,
+        private val unresolvedOtherInterruption: () -> Boolean,
+        private val unresolvedUnknownRecovery: () -> Boolean,
         private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1045,6 +1049,8 @@ class PhoneShellActivity : ComponentActivity() {
                         recoveryCompleted = recoveryCompleted,
                         audioAwaitingCustody = audioAwaitingCustody,
                         unresolvedAudioInterruption = unresolvedAudioInterruption,
+                        unresolvedOtherInterruption = unresolvedOtherInterruption,
+                        unresolvedUnknownRecovery = unresolvedUnknownRecovery,
                         capturedStatusState = capturedStatusState,
                     ) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")

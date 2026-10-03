@@ -219,9 +219,14 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         startPhotoPairWatch()
         funnel.execute("recovery") {
             val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
-            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption)
             SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
             captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
+            applyRecoveryActions(
+                RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption,
+                UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()),
+                UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath()),
+            )
+            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

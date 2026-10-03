@@ -23,6 +23,8 @@ data class PhoneStatusModel(
     val recoveryCompleted: Boolean,
     val audioAwaitingCustody: Boolean,
     val unresolvedAudioInterruption: Boolean,
+    val unresolvedOtherInterruption: Boolean = false,
+    val unresolvedUnknownRecovery: Boolean = false,
     val wrist: WristShare = WristShare.Unknown,
     val journalVersion: JournalVersionReading? = null,
 )
@@ -51,19 +53,31 @@ fun statusPillKind(model: PhoneStatusModel): StatusPillKind = when {
     !model.online -> StatusPillKind.OFFLINE
     model.awaitingMarkConfirmation -> StatusPillKind.AWAITING_MARK_CONFIRMATION
     model.pendingCount > 0 -> StatusPillKind.SYNCING
-    !model.recoveryCompleted || model.audioAwaitingCustody || model.unresolvedAudioInterruption -> StatusPillKind.SYNCING
+    !model.recoveryCompleted || model.audioAwaitingCustody || model.unresolvedAudioInterruption ||
+        model.unresolvedOtherInterruption || model.unresolvedUnknownRecovery -> StatusPillKind.SYNCING
     else -> StatusPillKind.CONNECTED
 }
 
 const val STATUS_AUDIO_INTERRUPTED_LEAD = "audio was interrupted"
 const val STATUS_AUDIO_INTERRUPTED_DETAIL = "some audio hasn't reached your journal."
+const val STATUS_OTHER_INTERRUPTED_LEAD = "there's a gap in your journal"
+const val STATUS_OTHER_INTERRUPTED_DETAIL = "some of what you shared hasn't reached it."
+const val STATUS_UNKNOWN_RECOVERY_LEAD = "an unfinished item couldn't be checked"
 const val STATUS_WAITING_TO_SYNC_LEAD = "waiting to sync"
 const val STATUS_ON_THIS_DEVICE = "on this device"
 
 fun audioCustodyLines(model: PhoneStatusModel): List<String> = buildList {
+    if (model.unresolvedOtherInterruption) {
+        add(STATUS_OTHER_INTERRUPTED_LEAD)
+        add(STATUS_OTHER_INTERRUPTED_DETAIL)
+    }
     if (model.unresolvedAudioInterruption) {
         add(STATUS_AUDIO_INTERRUPTED_LEAD)
         add(STATUS_AUDIO_INTERRUPTED_DETAIL)
+    }
+    if (model.unresolvedUnknownRecovery) {
+        add(STATUS_UNKNOWN_RECOVERY_LEAD)
+        add(STATUS_ON_THIS_DEVICE)
     }
     if (model.audioAwaitingCustody) {
         add(STATUS_WAITING_TO_SYNC_LEAD)
@@ -80,7 +94,9 @@ fun statusPillText(model: PhoneStatusModel): String = when {
         "confirm the mark"
     }
     model.pendingCount > 0 -> "${model.pendingCount} syncing"
+    model.unresolvedOtherInterruption -> STATUS_OTHER_INTERRUPTED_LEAD
     model.unresolvedAudioInterruption -> STATUS_AUDIO_INTERRUPTED_LEAD
+    model.unresolvedUnknownRecovery -> STATUS_UNKNOWN_RECOVERY_LEAD
     model.audioAwaitingCustody -> STATUS_WAITING_TO_SYNC_LEAD
     !model.recoveryCompleted -> "0 syncing"
     else -> "connected"

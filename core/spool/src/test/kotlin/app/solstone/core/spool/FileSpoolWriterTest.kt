@@ -81,10 +81,7 @@ class FileSpoolWriterTest {
 
             val secondResult = writer.seal(
                 segment,
-                object : PayloadBytesProvider {
-                    override fun open(payload: SegmentPayload) =
-                        error("idempotent reseal must not reopen payload bytes")
-                },
+                provider("first.bin" to "first-bytes".toByteArray()),
             )
 
             assertEquals(finalDir, secondResult.directory)
@@ -218,7 +215,9 @@ class FileSpoolWriterTest {
             val finalDir = baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
             val synced = mutableListOf<Path>()
             val writer = FileSpoolWriter(baseDir, fsync = { path ->
-                assertFalse(Files.exists(finalDir), "final dir must not exist before fsync completes")
+                if (!Files.isDirectory(path)) {
+                    assertFalse(Files.exists(finalDir), "payload and manifest sync must precede publication")
+                }
                 synced.add(path)
             })
 
@@ -228,9 +227,54 @@ class FileSpoolWriterTest {
                 listOf(
                     baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin"),
                     baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("manifest"),
+                    finalDir,
+                    finalDir.parent,
+                    finalDir.parent.parent,
+                    baseDir,
+                    baseDir.parent,
                 ),
                 synced,
             )
+        }
+    }
+
+    @Test
+    fun sameSizeCorruptFinalCannotClaimCustodyOfOriginal() {
+        withTempDir { baseDir ->
+            val segment = segment(FIRST_START, "first.bin", 11L)
+            val bytes = provider("first.bin" to "first-bytes".toByteArray())
+            val writer = FileSpoolWriter(baseDir)
+            val first = writer.seal(segment, bytes).directory!!
+            Files.write(first.resolve("first.bin"), "wrong-bytes".toByteArray())
+            val recovered = writer.seal(segment, bytes).directory!!
+            assertTrue(first != recovered)
+            assertContentEquals("first-bytes".toByteArray(), Files.readAllBytes(recovered.resolve("first.bin")))
+            assertContentEquals("wrong-bytes".toByteArray(), Files.readAllBytes(first.resolve("first.bin")))
+        }
+    }
+
+    @Test
+    fun sameDescriptorsWithDifferentIncomingBytesKeepBothTakes() {
+        withTempDir { baseDir ->
+            val segment = segment(FIRST_START, "first.bin", 11L)
+            val writer = FileSpoolWriter(baseDir)
+            val first = writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray())).directory!!
+            val second = writer.seal(segment, provider("first.bin" to "other-bytes".toByteArray())).directory!!
+            assertTrue(first != second)
+            assertContentEquals("first-bytes".toByteArray(), Files.readAllBytes(first.resolve("first.bin")))
+            assertContentEquals("other-bytes".toByteArray(), Files.readAllBytes(second.resolve("first.bin")))
+        }
+    }
+
+    @Test
+    fun directorySyncFailureNeverReturnsSealedCustody() {
+        withTempDir { baseDir ->
+            val writer = FileSpoolWriter(baseDir, fsync = {
+                if (Files.isDirectory(it)) throw java.io.IOException("publication sync failed")
+            })
+            assertFailsWith<java.io.IOException> {
+                writer.seal(segment(FIRST_START, "first.bin", 11L), provider("first.bin" to "first-bytes".toByteArray()))
+            }
         }
     }
 

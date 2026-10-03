@@ -12,6 +12,8 @@ import java.nio.file.StandardCopyOption
 fun applyRecoveryActions(
     actions: List<RecoveryAction>,
     interruption: UnresolvedInterruption,
+    otherInterruption: UnresolvedInterruption,
+    unknownInterruption: UnresolvedInterruption,
 ): List<SpoolRecoveryEvent> {
     val events = mutableListOf<SpoolRecoveryEvent>()
     actions.forEach { action ->
@@ -52,7 +54,7 @@ fun applyRecoveryActions(
                             detail = "final already exists",
                         )
                     } else {
-                        if (interruption.markUnresolved()) {
+                        if (markRecoveryEvidence(action.draftDir, interruption, otherInterruption, unknownInterruption)) {
                             events += SpoolRecoveryEvent(
                                 kind = "partial_segment",
                                 atEpochMs = action.parsedManifest.endEpochMs,
@@ -76,7 +78,14 @@ fun applyRecoveryActions(
                 )
             }
             is RecoveryAction.Discard -> {
-                if (interruption.markUnresolved()) {
+                val content = recoveryContent(action.draftDir)
+                if (content == RecoveryContent.EMPTY ||
+                    markRecoveryEvidence(action.draftDir, interruption, otherInterruption, unknownInterruption)
+                ) {
+                    if (content == RecoveryContent.UNKNOWN) {
+                        events += action.event
+                        return@forEach
+                    }
                     action.draftDir.deleteRecursively()
                     cleanupEmptyDraftParents(action.draftDir)
                     events += action.event
@@ -85,6 +94,40 @@ fun applyRecoveryActions(
         }
     }
     return events
+}
+
+private enum class RecoveryContent { AUDIO, OTHER, UNKNOWN, EMPTY }
+
+private fun recoveryContent(dir: Path): RecoveryContent {
+    val manifest = dir.resolve("manifest")
+    val parsed = runCatching {
+        parseManifest(String(Files.readAllBytes(manifest), StandardCharsets.UTF_8))
+    }.getOrNull()
+    if (parsed != null && parsed.manifest.files.isNotEmpty()) {
+        return if (parsed.manifest.files.any {
+                it.sourceId == "audio" || it.mediaType.startsWith("audio/") || it.name == "audio.m4a"
+            }) RecoveryContent.AUDIO else RecoveryContent.OTHER
+    }
+    val empty = runCatching {
+        Files.list(dir).use { children ->
+            children.allMatch { child ->
+                parsed != null && child.fileName.toString() == "manifest"
+            }
+        }
+    }.getOrDefault(false)
+    return if (empty) RecoveryContent.EMPTY else RecoveryContent.UNKNOWN
+}
+
+private fun markRecoveryEvidence(
+    dir: Path,
+    audio: UnresolvedInterruption,
+    other: UnresolvedInterruption,
+    unknown: UnresolvedInterruption,
+): Boolean = when (recoveryContent(dir)) {
+    RecoveryContent.AUDIO -> audio.markUnresolved()
+    RecoveryContent.OTHER -> other.markUnresolved()
+    RecoveryContent.UNKNOWN -> unknown.markUnresolved()
+    RecoveryContent.EMPTY -> true
 }
 
 private fun cleanupEmptyDraftParents(draftDir: Path) {

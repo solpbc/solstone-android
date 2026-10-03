@@ -31,6 +31,7 @@ import java.time.ZoneId
 sealed interface AudioCommitStatus {
     object CommittedMatch : AudioCommitStatus
     object IdentityCollisionDifferentBytes : AudioCommitStatus
+    object CustodyUnproven : AudioCommitStatus
     object NotFound : AudioCommitStatus
 }
 
@@ -44,6 +45,7 @@ data class AudioSpoolFact(
     val spoolPayloadExists: Boolean,
     val spoolPayloadShaMatches: Boolean,
     val zoneId: String? = null,
+    val confirmedUploaded: Boolean = false,
 )
 
 fun classifyAudioAttempt(
@@ -65,7 +67,11 @@ fun classifyAudioAttempt(
             if (fact.spoolPayloadExists && !fact.spoolPayloadShaMatches) {
                 return AudioCommitStatus.IdentityCollisionDifferentBytes
             }
-            committedMatch = true
+            if (fact.confirmedUploaded || (fact.spoolPayloadExists && fact.spoolPayloadShaMatches)) {
+                committedMatch = true
+            } else {
+                return AudioCommitStatus.CustodyUnproven
+            }
         } else if (fact.sha256 != sha256) {
             if (fact.segmentId == wireId || (fact.captureStartEpochMs == captureStartEpochMs && fact.captureEndEpochMs == captureEndEpochMs)) {
                 return AudioCommitStatus.IdentityCollisionDifferentBytes
@@ -78,6 +84,8 @@ fun classifyAudioAttempt(
 fun legacyCacheAlreadyDelivered(sha256: String, facts: List<AudioSpoolFact>): Boolean {
     return facts.any { fact ->
         !fact.zoneId.isNullOrBlank() &&
+            fact.sourceId == AudioContinuousSourceEngine.SOURCE_ID &&
+            fact.name == AudioContinuousSourceEngine.PAYLOAD_NAME &&
             fact.captureEndEpochMs > fact.captureStartEpochMs &&
             fact.sha256 == sha256 &&
             fact.spoolPayloadExists &&
@@ -127,115 +135,125 @@ class AudioRecoveryManager(
             val attemptId = dir.name
             if (attemptId in inFlightIds) continue
 
-            val recordFile = File(dir, "record.txt")
-            if (!recordFile.exists() || !recordFile.isFile) {
-                // No record.txt: claim nothing.
-                continue
-            }
-
-            val info = AudioRecordInfo.parse(recordFile.readText(Charsets.UTF_8)) ?: continue
-
-            val adtsFile = File(dir, "capture.adts")
-            val m4aFile = File(dir, AudioContinuousSourceEngine.PAYLOAD_NAME)
-            val adtsNonEmpty = adtsFile.exists() && adtsFile.length() > 0L
-            val m4aNonEmpty = m4aFile.exists() && m4aFile.length() > 0L
-
-            val captureEndEpochMs: Long
-            if (!adtsNonEmpty && !m4aNonEmpty) {
-                if (interruption.markUnresolved()) {
-                    dir.deleteRecursively()
-                }
-                continue
-            } else if (info.sampleDurationMs != null && info.sampleDurationMs > 0L && m4aNonEmpty) {
-                val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
-                captureEndEpochMs = minOf(info.captureStartEpochMs + info.sampleDurationMs, openEnd)
-            } else if (adtsNonEmpty) {
-                val remux = try {
-                    remuxer.remux(adtsFile, m4aFile)
-                } catch (_: Throwable) {
+            try {
+                val recordFile = File(dir, "record.txt")
+                if (!recordFile.exists() || !recordFile.isFile) {
+                    if (File(dir, "capture.adts").length() > 0 || File(dir, "audio.m4a").length() > 0) interruption.markUnresolved()
                     continue
                 }
-                if (remux.sampleDurationMs <= 0L || remux.outputBytes <= 0L) {
+
+                val info = AudioRecordInfo.parse(recordFile.readText(Charsets.UTF_8))
+                if (info == null) {
+                    if (File(dir, "capture.adts").length() > 0 || File(dir, "audio.m4a").length() > 0) interruption.markUnresolved()
+                    continue
+                }
+
+                val adtsFile = File(dir, "capture.adts")
+                val m4aFile = File(dir, AudioContinuousSourceEngine.PAYLOAD_NAME)
+                val adtsNonEmpty = adtsFile.exists() && adtsFile.length() > 0L
+                val m4aNonEmpty = m4aFile.exists() && m4aFile.length() > 0L
+
+                val captureEndEpochMs: Long
+                if (!adtsNonEmpty && !m4aNonEmpty) {
                     if (interruption.markUnresolved()) {
                         dir.deleteRecursively()
                     }
                     continue
-                }
-                val updatedInfo = info.copy(sampleDurationMs = remux.sampleDurationMs)
-                if (!AudioContinuousSourceEngine.writeAndForceRecordTxt(recordFile, updatedInfo)) {
-                    continue
-                }
-                val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
-                captureEndEpochMs = minOf(info.captureStartEpochMs + remux.sampleDurationMs, openEnd)
-            } else {
-                interruption.markUnresolved()
-                continue
-            }
-
-            if (captureEndEpochMs <= info.captureStartEpochMs) {
-                interruption.markUnresolved()
-                continue
-            }
-
-            val m4aSha256 = sha256(m4aFile.toPath())
-            val m4aSize = m4aFile.length()
-            val baseKeys = wireKeys(info.captureStartEpochMs, captureEndEpochMs, ZoneId.of(info.zoneId))
-            val finalWireKeys = baseKeys.copy(utcOffsetSeconds = info.utcOffsetSeconds)
-
-            val status = lookup.findStatus(
-                sha256 = m4aSha256,
-                captureStartEpochMs = info.captureStartEpochMs,
-                captureEndEpochMs = captureEndEpochMs,
-                sourceId = AudioContinuousSourceEngine.SOURCE_ID,
-                name = AudioContinuousSourceEngine.PAYLOAD_NAME,
-                day = finalWireKeys.day,
-                stream = MAIN_STREAM,
-                segmentLeaf = finalWireKeys.segment,
-            )
-
-            when (status) {
-                is AudioCommitStatus.CommittedMatch -> {
-                    dir.deleteRecursively()
-                    continue
-                }
-                is AudioCommitStatus.IdentityCollisionDifferentBytes -> {
+                } else if (info.sampleDurationMs != null && info.sampleDurationMs > 0L && m4aNonEmpty && isReadableM4aProbe(m4aFile)) {
+                    val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
+                    captureEndEpochMs = minOf(info.captureStartEpochMs + info.sampleDurationMs, openEnd)
+                } else if (adtsNonEmpty) {
+                    val remux = try {
+                        remuxer.remux(adtsFile, m4aFile)
+                    } catch (_: Throwable) {
+                        continue
+                    }
+                    if (remux.sampleDurationMs <= 0L || remux.outputBytes <= 0L) {
+                        if (interruption.markUnresolved()) {
+                            dir.deleteRecursively()
+                        }
+                        continue
+                    }
+                    val updatedInfo = info.copy(sampleDurationMs = remux.sampleDurationMs)
+                    if (!AudioContinuousSourceEngine.writeAndForceRecordTxt(recordFile, updatedInfo)) {
+                        continue
+                    }
+                    val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
+                    captureEndEpochMs = minOf(info.captureStartEpochMs + remux.sampleDurationMs, openEnd)
+                } else {
                     interruption.markUnresolved()
                     continue
                 }
-                is AudioCommitStatus.NotFound -> {
-                    val payload = SegmentPayload(
-                        sourceId = AudioContinuousSourceEngine.SOURCE_ID,
-                        ref = PayloadRef(AudioContinuousSourceEngine.PAYLOAD_NAME, AudioContinuousSourceEngine.MEDIA_TYPE, m4aSize, null),
-                        captureStartEpochMs = info.captureStartEpochMs,
-                        captureEndEpochMs = captureEndEpochMs,
-                    )
-                    val segment = SealedSegment(
-                        stream = MAIN_STREAM,
-                        key = SegmentKey(finalWireKeys.day, finalWireKeys.segment),
-                        wireKeys = finalWireKeys,
-                        payloads = listOf(payload),
-                        gaps = emptyList(),
-                    )
 
-                    val singleProvider = object : PayloadBytesProvider {
-                        override fun open(payload: SegmentPayload): InputStream = m4aFile.inputStream()
-                        override fun release(payload: SegmentPayload) {}
-                    }
-
-                    val sealResult = try {
-                        spoolWriter.seal(segment, singleProvider)
-                    } catch (_: Throwable) {
-                        continue
-                    }
-
-                    try {
-                        sealedSink.persistSealed(segment, sealResult, nowProvider())
-                    } catch (_: Throwable) {
-                        continue
-                    }
-
-                    dir.deleteRecursively()
+                if (captureEndEpochMs <= info.captureStartEpochMs) {
+                    interruption.markUnresolved()
+                    continue
                 }
+
+                val m4aSha256 = sha256(m4aFile.toPath())
+                val m4aSize = m4aFile.length()
+                val baseKeys = wireKeys(info.captureStartEpochMs, captureEndEpochMs, ZoneId.of(info.zoneId))
+                val finalWireKeys = baseKeys.copy(utcOffsetSeconds = info.utcOffsetSeconds)
+
+                val status = lookup.findStatus(
+                    sha256 = m4aSha256,
+                    captureStartEpochMs = info.captureStartEpochMs,
+                    captureEndEpochMs = captureEndEpochMs,
+                    sourceId = AudioContinuousSourceEngine.SOURCE_ID,
+                    name = AudioContinuousSourceEngine.PAYLOAD_NAME,
+                    day = finalWireKeys.day,
+                    stream = MAIN_STREAM,
+                    segmentLeaf = finalWireKeys.segment,
+                )
+
+                when (status) {
+                    is AudioCommitStatus.CommittedMatch -> {
+                        dir.deleteRecursively()
+                        continue
+                    }
+                    is AudioCommitStatus.IdentityCollisionDifferentBytes -> {
+                        interruption.markUnresolved()
+                        continue
+                    }
+                    is AudioCommitStatus.CustodyUnproven -> continue
+                    is AudioCommitStatus.NotFound -> {
+                        val payload = SegmentPayload(
+                            sourceId = AudioContinuousSourceEngine.SOURCE_ID,
+                            ref = PayloadRef(AudioContinuousSourceEngine.PAYLOAD_NAME, AudioContinuousSourceEngine.MEDIA_TYPE, m4aSize, null),
+                            captureStartEpochMs = info.captureStartEpochMs,
+                            captureEndEpochMs = captureEndEpochMs,
+                        )
+                        val segment = SealedSegment(
+                            stream = MAIN_STREAM,
+                            key = SegmentKey(finalWireKeys.day, finalWireKeys.segment),
+                            wireKeys = finalWireKeys,
+                            payloads = listOf(payload),
+                            gaps = emptyList(),
+                        )
+
+                        val singleProvider = object : PayloadBytesProvider {
+                            override fun open(payload: SegmentPayload): InputStream = m4aFile.inputStream()
+                            override fun release(payload: SegmentPayload) {}
+                        }
+
+                        val sealResult = try {
+                            spoolWriter.seal(segment, singleProvider)
+                        } catch (_: Throwable) {
+                            continue
+                        }
+
+                        try {
+                            sealedSink.persistSealed(segment, sealResult, nowProvider())
+                        } catch (_: Throwable) {
+                            continue
+                        }
+
+                        dir.deleteRecursively()
+                    }
+                }
+            } catch (_: Exception) {
+                // Preserve this attempt and continue classifying the rest.
+                continue
             }
         }
     }
@@ -277,13 +295,14 @@ class AudioRecoveryManager(
 
             if (targetFile.exists()) {
                 val targetSha = runCatching { sha256(targetFile.toPath()) }.getOrNull()
-                if (targetSha != null && fileSha256.isNotEmpty() && targetSha == fileSha256) {
+                if (targetSha != null && fileSha256.isNotEmpty() && targetSha == fileSha256 &&
+                    forceFileAndParent(targetFile, audioSourceDir)) {
                     file.delete()
                 }
             } else {
                 try {
                     Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                    if (forceFileAndParent(targetFile)) {
+                    if (forceFileAndParent(targetFile, audioSourceDir)) {
                         file.delete()
                     }
                 } catch (_: Exception) {
@@ -293,13 +312,15 @@ class AudioRecoveryManager(
     }
 
     private companion object {
-        fun forceFileAndParent(file: File): Boolean {
+        fun forceFileAndParent(file: File, durableRoot: File): Boolean {
             val wasInterrupted = Thread.interrupted()
             return try {
                 FileChannel.open(file.toPath(), StandardOpenOption.READ).use { it.force(true) }
-                val parent = file.parentFile?.toPath()
-                if (parent != null) {
-                    FileChannel.open(parent, StandardOpenOption.READ).use { it.force(true) }
+                var parent = file.parentFile
+                while (parent != null) {
+                    FileChannel.open(parent.toPath(), StandardOpenOption.READ).use { it.force(true) }
+                    if (parent == durableRoot.parentFile) break
+                    parent = parent.parentFile
                 }
                 true
             } catch (_: Exception) {

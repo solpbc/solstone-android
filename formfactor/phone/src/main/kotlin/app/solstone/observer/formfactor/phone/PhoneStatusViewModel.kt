@@ -20,6 +20,8 @@ class PhoneStatusViewModel(
     private val recoveryCompleted: () -> Boolean,
     private val audioAwaitingCustody: () -> Boolean,
     private val unresolvedAudioInterruption: () -> Boolean,
+    private val unresolvedOtherInterruption: () -> Boolean = { false },
+    private val unresolvedUnknownRecovery: () -> Boolean = { false },
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
 ) : ViewModel() {
     var statusState: LoadState<PhoneStatusSnapshot> by mutableStateOf(LoadState.Loading)
@@ -71,6 +73,8 @@ class PhoneStatusViewModel(
                 recoveryCompleted = recoveryCompleted(),
                 audioAwaitingCustody = audioAwaitingCustody(),
                 unresolvedAudioInterruption = unresolvedAudioInterruption(),
+                unresolvedOtherInterruption = unresolvedOtherInterruption(),
+                unresolvedUnknownRecovery = unresolvedUnknownRecovery(),
             )
         }) { incoming ->
             if (incoming is LoadState.Loading) return@load
@@ -88,6 +92,8 @@ class PhoneStatusViewModel(
                 recoveryCompleted = recoveryCompleted(),
                 audioAwaitingCustody = audioAwaitingCustody(),
                 unresolvedAudioInterruption = unresolvedAudioInterruption(),
+                unresolvedOtherInterruption = unresolvedOtherInterruption(),
+                unresolvedUnknownRecovery = unresolvedUnknownRecovery(),
             )
         }) { incoming ->
             if (incoming is LoadState.Loading) {
