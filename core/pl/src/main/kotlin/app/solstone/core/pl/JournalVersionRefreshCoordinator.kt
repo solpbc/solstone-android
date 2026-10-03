@@ -11,7 +11,16 @@ import java.util.concurrent.Executors
 
 enum class JournalVersionFreshness { NEVER_OBSERVED, LAST_KNOWN, CURRENT }
 
-data class JournalVersionReading(val version: String?, val freshness: JournalVersionFreshness, val name: String? = null)
+data class JournalVersionReading(
+    val version: String?,
+    val freshness: JournalVersionFreshness,
+    val name: String? = null,
+    val os: String? = null,
+    val osVersion: String? = null,
+    val arch: String? = null,
+    val build: String? = null,
+    val versionSeenAt: Long? = null,
+)
 
 data class MetadataSnapshot(
     val instanceId: String,
@@ -22,19 +31,36 @@ data class MetadataSnapshot(
     val openClient: () -> PlHttpClient,
 )
 
+private data class PendingAbout(
+    val aboutGeneration: Long,
+    val metadataGeneration: Long,
+    val instanceId: String,
+    val caChainFingerprint: String,
+    val pairingMatches: () -> Boolean,
+    val about: JournalAbout,
+)
+
 class JournalVersionRefreshCoordinator(
     private val store: JournalVersionStore,
     executor: ExecutorService = Executors.newCachedThreadPool { r ->
         Thread(r, "journal-version-refresh").apply { isDaemon = true }
     },
     boundMillis: Long = 15_000L,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : Closeable {
     private val job = CoalescingBoundedJob<MetadataSnapshot>(
         name = "journal-version-refresh",
         boundMillis = boundMillis,
         executor = executor,
     )
+    private val aboutJob = CoalescingBoundedJob<MetadataSnapshot>(
+        name = "journal-about-refresh",
+        boundMillis = boundMillis,
+        executor = executor,
+    )
     @Volatile private var freshForLatestGeneration = false
+    private var acceptedMetadataGeneration: Long? = null
+    private var pendingAbout: PendingAbout? = null
 
     fun onUsableConnection(
         instanceId: String,
@@ -52,8 +78,15 @@ class JournalVersionRefreshCoordinator(
             pairingMatches = pairingMatches,
             openClient = openClient,
         )
+        synchronized(this) {
+            acceptedMetadataGeneration = null
+            pendingAbout = null
+        }
         job.submit(snapshot) { snap, gen ->
             executeMetadataJob(snap, gen)
+        }
+        aboutJob.submit(snapshot) { snap, gen ->
+            executeAboutJob(snap, gen)
         }
     }
 
@@ -100,11 +133,9 @@ class JournalVersionRefreshCoordinator(
                                                         finalName = retryPut.response.journalName
                                                     }
                                                 }
-                                            } else {
-                                                if (retryGet.response.journalVersion != null) {
-                                                    finalVersion = retryGet.response.journalVersion
-                                                    finalName = retryGet.response.journalName
-                                                }
+                                            } else if (retryGet.response.journalVersion != null) {
+                                                finalVersion = retryGet.response.journalVersion
+                                                finalName = retryGet.response.journalName
                                             }
                                         }
                                     }
@@ -119,15 +150,7 @@ class JournalVersionRefreshCoordinator(
                     if (finalVersion != null) {
                         synchronized(this) {
                             if (gen == job.currentGeneration() && snap.pairingMatches()) {
-                                store.save(
-                                    JournalVersionRecord(
-                                        instanceId = snap.instanceId,
-                                        caChainFingerprint = snap.caChainFingerprint,
-                                        version = finalVersion,
-                                        name = finalName,
-                                    ),
-                                )
-                                freshForLatestGeneration = true
+                                saveAcceptedMetadata(snap, gen, finalVersion, finalName)
                             }
                         }
                     }
@@ -139,15 +162,7 @@ class JournalVersionRefreshCoordinator(
                         synchronized(this) {
                             if (gen == job.currentGeneration() && snap.pairingMatches()) {
                                 val existingName = store.load()?.takeIf { it.instanceId == snap.instanceId }?.name
-                                store.save(
-                                    JournalVersionRecord(
-                                        instanceId = snap.instanceId,
-                                        caChainFingerprint = snap.caChainFingerprint,
-                                        version = legacyVersion,
-                                        name = existingName,
-                                    ),
-                                )
-                                freshForLatestGeneration = true
+                                saveAcceptedMetadata(snap, gen, legacyVersion, existingName)
                             }
                         }
                     }
@@ -159,16 +174,112 @@ class JournalVersionRefreshCoordinator(
         } catch (_: Exception) {
             // Retain last-known metadata
         } finally {
-            try {
-                (client as? Closeable)?.close()
-            } catch (_: Exception) {
+            closeClient(client)
+        }
+    }
+
+    private fun saveAcceptedMetadata(snap: MetadataSnapshot, gen: Long, version: String, name: String?) {
+        val existing = store.load()?.takeIf {
+            it.instanceId == snap.instanceId && it.caChainFingerprint == snap.caChainFingerprint
+        }
+        val sameVersion = existing != null && stripVersion(existing.version) == stripVersion(version)
+        store.save(
+            JournalVersionRecord(
+                instanceId = snap.instanceId,
+                caChainFingerprint = snap.caChainFingerprint,
+                version = version,
+                name = name,
+                os = existing?.takeIf { sameVersion }?.os,
+                osVersion = existing?.takeIf { sameVersion }?.osVersion,
+                arch = existing?.takeIf { sameVersion }?.arch,
+                build = existing?.takeIf { sameVersion }?.build,
+                versionSeenAt = clock(),
+                hostFactsAt = existing?.takeIf { sameVersion }?.hostFactsAt,
+            ),
+        )
+        freshForLatestGeneration = true
+        acceptedMetadataGeneration = gen
+        applyPendingAbout(gen)
+    }
+
+    private fun executeAboutJob(snap: MetadataSnapshot, aboutGen: Long) {
+        var client: PlHttpClient? = null
+        try {
+            client = snap.openClient()
+            val result = fetchJournalAbout(client)
+            if (result is JournalAboutResult.Accepted) {
+                synchronized(this) {
+                    if (aboutGen != aboutJob.currentGeneration()) return
+                    val metadataGen = job.currentGeneration()
+                    val pending = PendingAbout(
+                        aboutGeneration = aboutGen,
+                        metadataGeneration = metadataGen,
+                        instanceId = snap.instanceId,
+                        caChainFingerprint = snap.caChainFingerprint,
+                        pairingMatches = snap.pairingMatches,
+                        about = result.about,
+                    )
+                    if (acceptedMetadataGeneration == metadataGen) {
+                        commitAbout(pending)
+                    } else {
+                        pendingAbout = pending
+                    }
+                }
             }
+        } catch (_: Exception) {
+            // About is optional and never changes metadata freshness.
+        } finally {
+            closeClient(client)
+        }
+    }
+
+    private fun applyPendingAbout(metadataGen: Long) {
+        val pending = pendingAbout ?: return
+        pendingAbout = null
+        if (pending.metadataGeneration != metadataGen || pending.aboutGeneration != aboutJob.currentGeneration()) return
+        commitAbout(pending)
+    }
+
+    private fun commitAbout(pending: PendingAbout) {
+        val metadataGen = pending.metadataGeneration
+        if (pending.aboutGeneration != aboutJob.currentGeneration() ||
+            metadataGen != job.currentGeneration() ||
+            acceptedMetadataGeneration != metadataGen ||
+            !pending.pairingMatches()
+        ) return
+
+        val current = store.load() ?: return
+        if (current.instanceId != pending.instanceId ||
+            current.caChainFingerprint != pending.caChainFingerprint ||
+            stripVersion(pending.about.version) != stripVersion(current.version)
+        ) return
+
+        store.save(
+            current.copy(
+                os = pending.about.os,
+                osVersion = pending.about.osVersion,
+                arch = pending.about.arch,
+                build = pending.about.build,
+                hostFactsAt = clock(),
+            ),
+        )
+    }
+
+    private fun stripVersion(version: String): String = version.trimStart { it == 'v' }
+
+    private fun closeClient(client: PlHttpClient?) {
+        try {
+            (client as? Closeable)?.close()
+        } catch (_: Exception) {
         }
     }
 
     fun onConnectionLost() {
         synchronized(this) {
             job.bumpGeneration()
+            aboutJob.bumpGeneration()
+            acceptedMetadataGeneration = null
+            pendingAbout = null
             freshForLatestGeneration = false
         }
     }
@@ -176,6 +287,9 @@ class JournalVersionRefreshCoordinator(
     fun onIdentityChanged() {
         synchronized(this) {
             job.bumpGeneration()
+            aboutJob.bumpGeneration()
+            acceptedMetadataGeneration = null
+            pendingAbout = null
             freshForLatestGeneration = false
             store.clear()
         }
@@ -184,6 +298,9 @@ class JournalVersionRefreshCoordinator(
     fun onPairingChanged() {
         synchronized(this) {
             job.bumpGeneration()
+            aboutJob.bumpGeneration()
+            acceptedMetadataGeneration = null
+            pendingAbout = null
             freshForLatestGeneration = false
         }
     }
@@ -193,12 +310,31 @@ class JournalVersionRefreshCoordinator(
         return when {
             record == null || record.instanceId != instanceId || record.caChainFingerprint != caChainFingerprint ->
                 JournalVersionReading(null, JournalVersionFreshness.NEVER_OBSERVED, null)
-            freshForLatestGeneration -> JournalVersionReading(record.version, JournalVersionFreshness.CURRENT, record.name)
-            else -> JournalVersionReading(record.version, JournalVersionFreshness.LAST_KNOWN, record.name)
+            freshForLatestGeneration -> JournalVersionReading(
+                version = record.version,
+                freshness = JournalVersionFreshness.CURRENT,
+                name = record.name,
+                os = record.os,
+                osVersion = record.osVersion,
+                arch = record.arch,
+                build = record.build,
+                versionSeenAt = record.versionSeenAt,
+            )
+            else -> JournalVersionReading(
+                version = record.version,
+                freshness = JournalVersionFreshness.LAST_KNOWN,
+                name = record.name,
+                os = record.os,
+                osVersion = record.osVersion,
+                arch = record.arch,
+                build = record.build,
+                versionSeenAt = record.versionSeenAt,
+            )
         }
     }
 
     override fun close() {
         job.close()
+        aboutJob.close()
     }
 }

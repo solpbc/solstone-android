@@ -5,6 +5,8 @@ package app.solstone.observer.phone
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
@@ -36,7 +38,10 @@ import app.solstone.observer.formfactor.phone.phoneDefaultDetailStatusOf
 import app.solstone.observer.formfactor.phone.resolvePhoneCaptureWidthDp
 import app.solstone.observer.formfactor.phone.resolvePhoneStatusCapture
 import app.solstone.observer.formfactor.phone.supportReportUrl
+import app.solstone.observer.formfactor.phone.supportReportFields
 import app.solstone.observer.formfactor.phone.supportState
+import app.solstone.observer.formfactor.phone.readAndroidAboutFacts
+import app.solstone.observer.formfactor.phone.phoneAboutBlock
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.LoadState
@@ -458,36 +463,43 @@ class PhoneShellActivity : ComponentActivity() {
                     notificationsEnabled = ObserverNotification.notificationsEnabled(this)
                 },
                 onReportProblem = {
-                    val build = runCatching {
-                        val info = packageManager.getPackageInfo(packageName, 0)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toString()
-                        else @Suppress("DEPRECATION") info.versionCode.toString()
-                    }.getOrDefault("unknown")
+                    val facts = readAndroidAboutFacts(this)
+                    val about = phoneAboutBlock(facts, snapshot?.status?.journalVersion, System.currentTimeMillis())
                     startActivity(
                         Intent(
                             Intent.ACTION_VIEW,
                             Uri.parse(
                                 supportReportUrl(
-                                    version = appVersion,
-                                    build = build,
-                                    osVersion = Build.VERSION.RELEASE,
+                                    version = facts.versionName,
+                                    build = facts.build,
+                                    osVersion = facts.osVersion,
                                     state = supportState(phoneDefaultDetailStatusOf(statusState)),
+                                    about = about,
                                  ),
                             ),
                         ),
                     )
                 },
                 onSaveProblemReport = {
-                    val body = buildString {
-                        appendLine("saved_at=${java.time.Instant.now()}")
-                        appendLine("app_version=$appVersion")
-                        appendLine("android=${Build.VERSION.RELEASE}")
-                        appendLine("state=${supportState(phoneDefaultDetailStatusOf(statusState))}")
-                        appendLine()
-                        append(eventLog)
-                    }
+                    val facts = readAndroidAboutFacts(this)
+                    val about = phoneAboutBlock(facts, snapshot?.status?.journalVersion, System.currentTimeMillis())
+                    val body = supportReportFields(
+                        version = facts.versionName,
+                        build = facts.build,
+                        osVersion = facts.osVersion,
+                        state = supportState(phoneDefaultDetailStatusOf(statusState)),
+                        about = about,
+                    )
                     runCatching { problemReportStore.save(body) }
                         .onSuccess { problemReports = it }
+                },
+                onCopyAbout = { text ->
+                    runCatching {
+                        getSystemService(ClipboardManager::class.java)?.let { clipboard ->
+                            clipboard.setPrimaryClip(ClipData.newPlainText("about", text))
+                            true
+                        } ?: false
+                    }.getOrDefault(false)
                 },
                 onManageLocalStorage = {
                     try {

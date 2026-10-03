@@ -102,6 +102,7 @@ fun PhoneObserverScreen(
     onSendTestNotification: () -> Unit = {},
     onReportProblem: () -> Unit = {},
     onSaveProblemReport: () -> Unit = {},
+    onCopyAbout: (String) -> Boolean = { false },
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -152,6 +153,7 @@ fun PhoneObserverScreen(
         onSendTestNotification = onSendTestNotification,
         onReportProblem = onReportProblem,
         onSaveProblemReport = onSaveProblemReport,
+        onCopyAbout = onCopyAbout,
         onManageLocalStorage = onManageLocalStorage,
         modifier = modifier,
         initial = initial,
@@ -210,6 +212,7 @@ internal fun PhoneObserverScreen(
     onSendTestNotification: () -> Unit = {},
     onReportProblem: () -> Unit = {},
     onSaveProblemReport: () -> Unit = {},
+    onCopyAbout: (String) -> Boolean,
     onManageLocalStorage: () -> Unit = {},
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
@@ -493,6 +496,7 @@ internal fun PhoneObserverScreen(
                                 onSendTestNotification = onSendTestNotification,
                                 onReportProblem = onReportProblem,
                                 onSaveProblemReport = onSaveProblemReport,
+                                onCopyAbout = onCopyAbout,
                                 onOpenTechnicalDetails = {
                                     detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
                                 },
@@ -512,7 +516,7 @@ internal fun PhoneObserverScreen(
                                 defaultDetailStatus = defaultDetailStatus,
                                 onRefreshStatus = onRefreshStatus,
                                 version = version,
-                                journalVersion = journalVersionDisplayText(status?.journalVersion),
+                                journalVersion = status?.journalVersion,
                                 isOnHome = homeTileStore::hasTile,
                                 onToggle = onToggle,
                                 modifier = Modifier.padding(paddingValues),
@@ -572,6 +576,7 @@ internal fun PhoneObserverScreen(
                     onSendTestNotification = onSendTestNotification,
                     onReportProblem = onReportProblem,
                     onSaveProblemReport = onSaveProblemReport,
+                    onCopyAbout = onCopyAbout,
                     onOpenTechnicalDetails = {
                         detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
                     },
@@ -591,7 +596,7 @@ internal fun PhoneObserverScreen(
                     defaultDetailStatus = defaultDetailStatus,
                     onRefreshStatus = onRefreshStatus,
                     version = version,
-                    journalVersion = journalVersionDisplayText(status?.journalVersion),
+                    journalVersion = status?.journalVersion,
                     isOnHome = homeTileStore::hasTile,
                     onToggle = onToggle,
                     modifier = modifier.padding(paddingValues),

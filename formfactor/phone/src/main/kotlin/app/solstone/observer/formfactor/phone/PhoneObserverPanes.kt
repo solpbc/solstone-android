@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.core.identity.JournalMarkPresentation
+import app.solstone.core.pl.JournalVersionReading
 
 // Guards the selected preferred deck width: 2 x 48dp tiles + 8dp grid gap + 2 x 16dp compact
 // margins = 136dp. The split collapses entirely rather than shrinking the leading pane below it.
@@ -67,6 +68,7 @@ internal fun PhoneDetailPane(
     onSendTestNotification: () -> Unit,
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
+    onCopyAbout: (String) -> Boolean,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
     onOpenProblemReports: () -> Unit,
@@ -78,7 +80,7 @@ internal fun PhoneDetailPane(
     modifier: Modifier = Modifier,
     leadingSlot: (@Composable () -> Unit)? = null,
     version: String = "",
-    journalVersion: String = "",
+    journalVersion: JournalVersionReading? = null,
     isOnHome: (String) -> Boolean = { true },
     onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
@@ -121,6 +123,7 @@ internal fun PhoneDetailPane(
             onSendTestNotification = onSendTestNotification,
             onReportProblem = onReportProblem,
             onSaveProblemReport = onSaveProblemReport,
+            onCopyAbout = onCopyAbout,
             onOpenTechnicalDetails = onOpenTechnicalDetails,
             onOpenEventLog = onOpenEventLog,
             onOpenProblemReports = onOpenProblemReports,
@@ -175,6 +178,7 @@ private fun PhoneDetailContent(
     onSendTestNotification: () -> Unit,
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
+    onCopyAbout: (String) -> Boolean,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
     onOpenProblemReports: () -> Unit,
@@ -185,7 +189,7 @@ private fun PhoneDetailContent(
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier,
     version: String = "",
-    journalVersion: String = "",
+    journalVersion: JournalVersionReading? = null,
     isOnHome: (String) -> Boolean = { true },
     onToggle: (String, app.solstone.observer.harness.SourceWish) -> Unit = { _, _ -> },
 ) {
@@ -200,8 +204,8 @@ private fun PhoneDetailContent(
         )
         PhoneRoute.AboutSolstone -> PhoneAboutPane(
             onOpenLicences = onOpenLicences,
-            version = version,
-            journalVersion = journalVersion,
+            reading = journalVersion,
+            copy = onCopyAbout,
             modifier = modifier,
         )
         PhoneRoute.Licences -> PhoneLicencesPane(modifier = modifier)
@@ -261,7 +265,7 @@ private fun PhoneDetailContent(
             modifier = modifier,
         )
         PhoneRoute.Help -> PhoneHelpPane(
-            version = version,
+            reading = journalVersion,
             status = defaultDetailStatus,
             modifier = modifier,
         )

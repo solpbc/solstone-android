@@ -7,45 +7,68 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import app.solstone.core.pl.JournalVersionReading
 
 /**
- * `settings › about solstone` (§ 4): version, licenses, open source, privacy policy,
- * terms.
- *
- * ⚠ It was a single unstyled word — `licenses` — on an otherwise blank screen, with no
- * version, no source link and no legal routes at all.
- *
- * ⛔ **`terms` is stated and is not a link.** `solpbc.org/terms` returns 404 (checked
- * 2026-09-01); a row labelled `terms` that opens nothing is precisely the control § 2.4
- * forbids. The footer word stays, the link does not exist yet, and the missing page is
- * flagged rather than linked-to on faith.
+ * `settings › about solstone`: a copyable two-line app and journal version block, licenses,
+ * open source, and privacy policy.
  */
 @Composable
 fun PhoneAboutPane(
     onOpenLicences: () -> Unit,
+    reading: JournalVersionReading?,
+    copy: (String) -> Boolean = { false },
     modifier: Modifier = Modifier,
-    version: String = "",
-    journalVersion: String = "",
+    facts: AndroidAboutFacts? = null,
 ) {
     val context = LocalContext.current
+    val aboutFacts = facts ?: remember(context) { readAndroidAboutFacts(context) }
+    val block = remember(aboutFacts, reading) {
+        phoneAboutBlock(aboutFacts, reading, System.currentTimeMillis())
+    }
+    var copied by remember(block) { mutableStateOf(false) }
+    var copyFailed by remember(block) { mutableStateOf(false) }
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.AboutSolstone) },
     ) {
         // ⛔ No leading heading — the app bar already says `about solstone`.
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
-            PaneFactRow(label = "version", value = version.ifBlank { "—" })
+            PaneFactRow(
+                label = "about",
+                value = block,
+                valueContent = {
+                    SelectionContainer {
+                        Text(
+                            text = block,
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            color = shellSecondaryInk,
+                        )
+                    }
+                },
+            )
             PaneRowDivider()
-            PaneFactRow(label = "journal version", value = journalVersion.ifBlank { "unknown" })
-            PaneRowDivider()
+            TextButton(onClick = {
+                copied = copy(block)
+                copyFailed = !copied
+            }) {
+                Text(if (copied) "copied" else "copy")
+            }
             PaneNavRow(
                 label = "licenses",
                 onClick = onOpenLicences,
@@ -66,6 +89,7 @@ fun PhoneAboutPane(
                 modifier = Modifier.testTag("aboutPrivacyRow"),
             )
         }
+        if (copyFailed) PaneNote("couldn't copy. select the text and copy it.")
         PaneNote("solstone is open source, under the AGPL.")
     }
 }

@@ -6,21 +6,31 @@ package app.solstone.observer.formfactor.phone
 import java.net.URLEncoder
 
 fun supportReportUrl(
-    version: String,
-    build: String,
+    version: String?,
+    build: String?,
     osVersion: String?,
     state: String,
+    about: String,
+): String = "$SUPPORT_SITE_URL/#${supportReportFields(version, build, osVersion, state, about)}"
+
+fun supportReportFields(
+    version: String?,
+    build: String?,
+    osVersion: String?,
+    state: String,
+    about: String,
 ): String {
     val fields = buildList {
         add("report" to "v1")
         add("app" to "solstone for android")
-        version.takeIf(String::isNotEmpty)?.let { add("version" to it.take(120)) }
-        build.takeIf(String::isNotEmpty)?.let { add("build" to it.take(120)) }
+        version?.trimStart { it == 'v' }?.takeIf(String::isNotBlank)?.let { add("version" to it.take(120)) }
+        build?.takeIf(String::isNotBlank)?.let { add("build" to it.take(120)) }
         add("os" to "android")
-        osVersion?.takeIf(String::isNotEmpty)?.let { add("os_version" to it.take(120)) }
+        osVersion?.takeIf(String::isNotBlank)?.let { add("os_version" to it.take(120)) }
         state.takeIf(String::isNotEmpty)?.let { add("state" to it.take(500)) }
+        add("about" to about)
     }
-    return "$SUPPORT_SITE_URL/#" + fields.joinToString("&") { (key, value) ->
+    return fields.joinToString("&") { (key, value) ->
         "${formEncode(key)}=${formEncode(value)}"
     }
 }

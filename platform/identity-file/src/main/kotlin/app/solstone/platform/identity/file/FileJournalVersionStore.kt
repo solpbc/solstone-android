@@ -15,6 +15,12 @@ class FileJournalVersionStore(private val file: File) : JournalVersionStore {
             add("caChainFingerprint\t${record.caChainFingerprint}")
             add("version\t${record.version}")
             record.name?.let { add("name\t$it") }
+            record.os?.takeIf(String::isNotBlank)?.let { add("os\t$it") }
+            record.osVersion?.takeIf(String::isNotBlank)?.let { add("os_version\t$it") }
+            record.arch?.takeIf(String::isNotBlank)?.let { add("arch\t$it") }
+            record.build?.takeIf(String::isNotBlank)?.let { add("build\t$it") }
+            record.versionSeenAt?.takeIf { it >= 0L }?.let { add("versionSeenAt\t$it") }
+            record.hostFactsAt?.takeIf { it >= 0L }?.let { add("hostFactsAt\t$it") }
         }
         atomicWriteOwnerOnly(file, lines.joinToString(separator = "\n", postfix = "\n").toByteArray())
     }
@@ -32,8 +38,21 @@ class FileJournalVersionStore(private val file: File) : JournalVersionStore {
             val caChainFingerprint = map["caChainFingerprint"] ?: return null
             val version = map["version"] ?: return null
             val name = map["name"]?.ifBlank { null }
+            fun optionalFact(key: String): String? = map[key]?.takeIf(String::isNotBlank)
+            fun optionalTimestamp(key: String): Long? = map[key]?.toLongOrNull()?.takeIf { it >= 0L }
             if (instanceId.isBlank() || caChainFingerprint.isBlank() || version.isBlank()) return null
-            JournalVersionRecord(instanceId, caChainFingerprint, version, name)
+            JournalVersionRecord(
+                instanceId = instanceId,
+                caChainFingerprint = caChainFingerprint,
+                version = version,
+                name = name,
+                os = optionalFact("os"),
+                osVersion = optionalFact("os_version"),
+                arch = optionalFact("arch"),
+                build = optionalFact("build"),
+                versionSeenAt = optionalTimestamp("versionSeenAt"),
+                hostFactsAt = optionalTimestamp("hostFactsAt"),
+            )
         }.getOrNull()
     }
 

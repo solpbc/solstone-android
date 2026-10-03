@@ -10,6 +10,7 @@ import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import java.io.Closeable
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -39,8 +40,9 @@ class JournalVersionRefreshCoordinatorTest {
     }
 
     private class RoutingFakeClient(
+        private val onClose: () -> Unit = {},
         private val handler: (method: String, path: String, body: ByteArray?) -> HttpResponse,
-    ) : PlHttpClient {
+    ) : PlHttpClient, Closeable {
         var lastMaxResponseBytes: Int = -1
         override fun request(
             method: String,
@@ -52,6 +54,8 @@ class JournalVersionRefreshCoordinatorTest {
             lastMaxResponseBytes = maxResponseBytes
             return handler(method, path, body)
         }
+
+        override fun close() = onClose()
     }
 
     @Test
@@ -60,7 +64,7 @@ class JournalVersionRefreshCoordinatorTest {
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android", appId = "app.solstone.phone")
         val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"1.2.3"},"reported":{"name":"Old Name","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
@@ -90,7 +94,7 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals("Home Journal", reading.name)
         assertEquals(JournalVersionFreshness.CURRENT, reading.freshness)
         assertEquals(1, putCalled.get())
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Home Journal"), store.savedRecord)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Home Journal", versionSeenAt = 123L), store.savedRecord)
     }
 
     @Test
@@ -99,7 +103,7 @@ class JournalVersionRefreshCoordinatorTest {
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
 
         val localDesc = ClientReportedDescription(name = "Pixel 8", platform = "android")
         val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"1.2.3"},"reported":{"name":"Pixel 8","platform":"android","device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".trimIndent()
@@ -210,7 +214,7 @@ class JournalVersionRefreshCoordinatorTest {
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
 
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
             RoutingFakeClient { _, _, _ ->
@@ -229,23 +233,33 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals("1.2.3", reading.version)
         assertEquals("J", reading.name)
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J"), store.savedRecord)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J", versionSeenAt = 123L), store.savedRecord)
 
     }
 
     @Test
     fun identityMismatchReadsAsNeverObserved() {
         val store = FakeStore()
-        store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "J"))
+        store.save(
+            JournalVersionRecord(
+                "jid-1", "sha256:ca1", "1.2.3", "J",
+                os = "ubuntu", osVersion = "24.04", arch = "x86_64", build = "42",
+                versionSeenAt = 10L, hostFactsAt = 20L,
+            ),
+        )
         val coordinator = JournalVersionRefreshCoordinator(store)
 
         val mismatchJid = coordinator.currentReading("jid-other", "sha256:ca1")
         assertNull(mismatchJid.version)
         assertEquals(JournalVersionFreshness.NEVER_OBSERVED, mismatchJid.freshness)
+        assertNull(mismatchJid.os)
+        assertNull(mismatchJid.versionSeenAt)
 
         val mismatchCa = coordinator.currentReading("jid-1", "sha256:other")
         assertNull(mismatchCa.version)
         assertEquals(JournalVersionFreshness.NEVER_OBSERVED, mismatchCa.freshness)
+        assertNull(mismatchCa.arch)
+        assertNull(mismatchCa.versionSeenAt)
     }
 
     @Test
@@ -253,7 +267,7 @@ class JournalVersionRefreshCoordinatorTest {
         val store = FakeStore()
         store.save(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Initial Journal"))
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
 
         val latch = CountDownLatch(1)
         coordinator.onUsableConnection("jid-1", "sha256:ca1") {
@@ -430,7 +444,7 @@ class JournalVersionRefreshCoordinatorTest {
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalVersionRefreshCoordinator(store, executor)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
 
         var clientUsed: RoutingFakeClient? = null
 
@@ -457,8 +471,408 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals("2.0.0", reading.version)
         assertEquals("Previously Cached Name", reading.name)
         assertEquals(JournalVersionFreshness.CURRENT, reading.freshness)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "2.0.0", "Previously Cached Name"), store.savedRecord)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "2.0.0", "Previously Cached Name", versionSeenAt = 123L), store.savedRecord)
     }
+
+    @Test
+    fun metadataSavesWhileAboutIsBlockedThenMatchingAboutAddsFacts() {
+        val store = FakeStore()
+        val aboutStarted = CountDownLatch(1)
+        val allowAbout = CountDownLatch(1)
+        val savedTwice = CountDownLatch(2)
+        val metadataSaved = CountDownLatch(1)
+        val aboutWasBlockedAtMetadataSave = AtomicInteger(0)
+        val metadataWasSaved = AtomicInteger(0)
+        store.onSave = {
+            if (metadataWasSaved.getAndIncrement() == 0) {
+                if (aboutStarted.count == 0L && allowAbout.count == 1L) aboutWasBlockedAtMetadataSave.incrementAndGet()
+                metadataSaved.countDown()
+            }
+            savedTwice.countDown()
+        }
+        val executor = Executors.newCachedThreadPool()
+        val clock = AtomicLong(100L)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { clock.getAndIncrement() })
+        val metadataStarted = CountDownLatch(1)
+        val allowMetadata = CountDownLatch(1)
+        val openCount = AtomicInteger(0)
+
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                openCount.incrementAndGet()
+                RoutingFakeClient(
+                    handler = { method, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> {
+                                metadataStarted.countDown()
+                                awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
+                                HttpResponse(200, emptyMap(), clientsSelfJson("2.0.0", updatedAt = "2099-01-01T00:00:00Z").toByteArray())
+                            }
+                            "/api/system/about" -> {
+                                aboutStarted.countDown()
+                                awaitUninterruptibly(allowAbout, 5, TimeUnit.SECONDS)
+                                HttpResponse(200, emptyMap(), aboutJson("2.0.0").toByteArray())
+                            }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                )
+            }
+
+            assertTrue(metadataStarted.await(3, TimeUnit.SECONDS))
+            assertTrue(aboutStarted.await(3, TimeUnit.SECONDS))
+            allowMetadata.countDown()
+            assertTrue(metadataSaved.await(3, TimeUnit.SECONDS))
+            assertEquals(2, openCount.get())
+            assertEquals("2.0.0", store.savedRecord?.version)
+            assertEquals(100L, store.savedRecord?.versionSeenAt)
+            assertNull(store.savedRecord?.os)
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+            assertEquals(1, aboutWasBlockedAtMetadataSave.get())
+
+            allowAbout.countDown()
+            assertTrue(savedTwice.await(3, TimeUnit.SECONDS))
+            assertEquals("ubuntu", store.savedRecord?.os)
+            assertEquals("24.04", store.savedRecord?.osVersion)
+            assertEquals("x86_64", store.savedRecord?.arch)
+            assertEquals(101L, store.savedRecord?.hostFactsAt)
+            assertEquals(100L, store.savedRecord?.versionSeenAt)
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            allowMetadata.countDown()
+            allowAbout.countDown()
+            coordinator.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun aboutFinishesFirstWaitsForSameVersionMetadataAndDoesNotRefreshVersionTime() {
+        val initial = JournalVersionRecord(
+            "jid-1", "sha256:ca1", "1.2.3", os = "old-os", osVersion = "old", arch = "old-arch", build = "7",
+            versionSeenAt = 10L, hostFactsAt = 20L,
+        )
+        val store = FakeStore().apply { save(initial) }
+        val savedTwice = CountDownLatch(2)
+        store.onSave = { savedTwice.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 30L })
+        val metadataStarted = CountDownLatch(1)
+        val allowMetadata = CountDownLatch(1)
+        val aboutFinished = CountDownLatch(1)
+
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> {
+                                metadataStarted.countDown()
+                                awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
+                                HttpResponse(200, emptyMap(), clientsSelfJson("1.2.3").toByteArray())
+                            }
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("v1.2.3").toByteArray()).also { aboutFinished.countDown() }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                )
+            }
+
+            assertTrue(metadataStarted.await(3, TimeUnit.SECONDS))
+            assertTrue(aboutFinished.await(3, TimeUnit.SECONDS))
+            assertEquals(initial, store.savedRecord)
+            assertEquals(JournalVersionFreshness.LAST_KNOWN, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+
+            allowMetadata.countDown()
+            assertTrue(savedTwice.await(3, TimeUnit.SECONDS))
+            assertEquals("ubuntu", store.savedRecord?.os)
+            assertEquals("24.04", store.savedRecord?.osVersion)
+            assertEquals("x86_64", store.savedRecord?.arch)
+            assertEquals("42", store.savedRecord?.build)
+            assertEquals(30L, store.savedRecord?.versionSeenAt)
+            assertEquals(30L, store.savedRecord?.hostFactsAt)
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            allowMetadata.countDown()
+            coordinator.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun heldAboutForDifferentVersionIsDroppedAndSameVersion404RetainsFacts() {
+        val initial = JournalVersionRecord(
+            "jid-1", "sha256:ca1", "1.2.3", os = "old-os", osVersion = "old", arch = "old-arch", build = "7",
+            versionSeenAt = 10L, hostFactsAt = 20L,
+        )
+        val store = FakeStore().apply { save(initial) }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 30L })
+        val metadataStarted = CountDownLatch(1)
+        val allowMetadata = CountDownLatch(1)
+        val aboutFinished = CountDownLatch(1)
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> {
+                                metadataStarted.countDown()
+                                awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
+                                HttpResponse(200, emptyMap(), clientsSelfJson("2.0.0").toByteArray())
+                            }
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("1.2.3").toByteArray()).also { aboutFinished.countDown() }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                )
+            }
+            assertTrue(metadataStarted.await(3, TimeUnit.SECONDS))
+            assertTrue(aboutFinished.await(3, TimeUnit.SECONDS))
+            assertEquals(initial, store.savedRecord)
+            allowMetadata.countDown()
+            assertTrue(saved.await(3, TimeUnit.SECONDS))
+            assertEquals("2.0.0", store.savedRecord?.version)
+            assertNull(store.savedRecord?.os)
+            assertNull(store.savedRecord?.osVersion)
+            assertNull(store.savedRecord?.arch)
+            assertNull(store.savedRecord?.build)
+            assertNull(store.savedRecord?.hostFactsAt)
+            assertEquals(30L, store.savedRecord?.versionSeenAt)
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            allowMetadata.countDown()
+            coordinator.close()
+            executor.shutdownNow()
+        }
+
+        val sameStore = FakeStore().apply { save(initial) }
+        val sameExecutor = Executors.newCachedThreadPool()
+        val sameCoordinator = JournalVersionRefreshCoordinator(sameStore, sameExecutor, clock = { 40L })
+        val sameSaved = CountDownLatch(1)
+        sameStore.onSave = { sameSaved.countDown() }
+        try {
+            sameCoordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient { _, path, _ ->
+                    when (path) {
+                        "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), clientsSelfJson("v1.2.3").toByteArray())
+                        "/api/system/about" -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                    }
+                }
+            }
+            assertTrue(sameSaved.await(3, TimeUnit.SECONDS))
+            assertEquals("v1.2.3", sameStore.savedRecord?.version)
+            assertEquals("old-os", sameStore.savedRecord?.os)
+            assertEquals(20L, sameStore.savedRecord?.hostFactsAt)
+            assertEquals(40L, sameStore.savedRecord?.versionSeenAt)
+            assertEquals(JournalVersionFreshness.CURRENT, sameCoordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            sameCoordinator.close()
+            sameExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun metadataFailureDoesNotCommitHeldAboutOrChangeLastKnownFacts() {
+        val initial = JournalVersionRecord(
+            "jid-1", "sha256:ca1", "1.2.3", os = "ubuntu", osVersion = "24.04", arch = "x86_64", build = "42",
+            versionSeenAt = 10L, hostFactsAt = 20L,
+        )
+        val store = FakeStore().apply { save(initial) }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 30L })
+        val metadataStarted = CountDownLatch(1)
+        val allowMetadata = CountDownLatch(1)
+        val aboutFinished = CountDownLatch(1)
+        val allClosed = CountDownLatch(1)
+        val closeCount = AtomicInteger(0)
+
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> {
+                                metadataStarted.countDown()
+                                awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
+                                throw java.io.IOException("network reset")
+                            }
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("1.2.3", os = "new-os").toByteArray()).also { aboutFinished.countDown() }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                    onClose = { if (closeCount.incrementAndGet() == 2) allClosed.countDown() },
+                )
+            }
+            assertTrue(metadataStarted.await(3, TimeUnit.SECONDS))
+            assertTrue(aboutFinished.await(3, TimeUnit.SECONDS))
+            assertEquals(initial, store.savedRecord)
+            allowMetadata.countDown()
+            assertTrue(allClosed.await(3, TimeUnit.SECONDS))
+            assertEquals(initial, store.savedRecord)
+            assertEquals(JournalVersionFreshness.LAST_KNOWN, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            allowMetadata.countDown()
+            coordinator.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun aboutTimeoutAndIdentityChangeFenceLateBodiesAndDisconnectRetainsCommittedFacts() {
+        val store = FakeStore()
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, boundMillis = 100L, clock = { 50L })
+        val aboutStarted = CountDownLatch(1)
+        val timeoutInterrupted = CountDownLatch(1)
+        val releaseAbout = CountDownLatch(1)
+        val aboutClosed = CountDownLatch(1)
+        val saved = CountDownLatch(1)
+        store.onSave = { saved.countDown() }
+
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), clientsSelfJson("2.0.0").toByteArray())
+                            "/api/system/about" -> {
+                                aboutStarted.countDown()
+                                try {
+                                    releaseAbout.await(5, TimeUnit.SECONDS)
+                                } catch (_: InterruptedException) {
+                                    timeoutInterrupted.countDown()
+                                    awaitUninterruptibly(releaseAbout, 5, TimeUnit.SECONDS)
+                                }
+                                HttpResponse(200, emptyMap(), aboutJson("2.0.0").toByteArray())
+                            }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                    onClose = { aboutClosed.countDown() },
+                )
+            }
+            assertTrue(saved.await(3, TimeUnit.SECONDS))
+            assertTrue(aboutStarted.await(3, TimeUnit.SECONDS))
+            assertTrue(timeoutInterrupted.await(3, TimeUnit.SECONDS))
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+            assertNull(store.savedRecord?.os)
+
+            releaseAbout.countDown()
+            assertTrue(aboutClosed.await(3, TimeUnit.SECONDS))
+            assertNull(store.savedRecord?.os)
+            assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            releaseAbout.countDown()
+            coordinator.close()
+            executor.shutdownNow()
+        }
+
+        val identityStore = FakeStore()
+        val identityExecutor = Executors.newCachedThreadPool()
+        val identityCoordinator = JournalVersionRefreshCoordinator(identityStore, identityExecutor, clock = { 60L })
+        val identityAboutStarted = CountDownLatch(1)
+        val releaseIdentityAbout = CountDownLatch(1)
+        val identityAboutClosed = CountDownLatch(1)
+        val identitySaved = CountDownLatch(1)
+        identityStore.onSave = { identitySaved.countDown() }
+        try {
+            identityCoordinator.onUsableConnection("jid-old", "sha256:old") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), clientsSelfJson("1.0.0").toByteArray())
+                            "/api/system/about" -> {
+                                identityAboutStarted.countDown()
+                                awaitUninterruptibly(releaseIdentityAbout, 5, TimeUnit.SECONDS)
+                                HttpResponse(200, emptyMap(), aboutJson("1.0.0").toByteArray())
+                            }
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                    onClose = { identityAboutClosed.countDown() },
+                )
+            }
+            assertTrue(identitySaved.await(3, TimeUnit.SECONDS))
+            assertTrue(identityAboutStarted.await(3, TimeUnit.SECONDS))
+            identityCoordinator.onIdentityChanged()
+            assertNull(identityStore.savedRecord)
+            releaseIdentityAbout.countDown()
+            assertTrue(identityAboutClosed.await(3, TimeUnit.SECONDS))
+            assertNull(identityStore.savedRecord)
+        } finally {
+            releaseIdentityAbout.countDown()
+            identityCoordinator.close()
+            identityExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun disconnectDemotesCommittedAboutFactsAndUnknownDoesNotCreateVersionRecord() {
+        val store = FakeStore()
+        val savedTwice = CountDownLatch(2)
+        store.onSave = { savedTwice.countDown() }
+        val executor = Executors.newCachedThreadPool()
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 70L })
+        try {
+            coordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient { _, path, _ ->
+                    when (path) {
+                        "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), clientsSelfJson("1.2.3").toByteArray())
+                        "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("1.2.3").toByteArray())
+                        else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                    }
+                }
+            }
+            assertTrue(savedTwice.await(3, TimeUnit.SECONDS))
+            assertEquals("ubuntu", store.savedRecord?.os)
+            coordinator.onConnectionLost()
+            val reading = coordinator.currentReading("jid-1", "sha256:ca1")
+            assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
+            assertEquals("ubuntu", reading.os)
+            assertEquals(70L, reading.versionSeenAt)
+            assertEquals(70L, store.savedRecord?.hostFactsAt)
+        } finally {
+            coordinator.close()
+            executor.shutdownNow()
+        }
+
+        val unknownStore = FakeStore()
+        val unknownExecutor = Executors.newCachedThreadPool()
+        val unknownCoordinator = JournalVersionRefreshCoordinator(unknownStore, unknownExecutor)
+        val aboutDone = CountDownLatch(1)
+        try {
+            unknownCoordinator.onUsableConnection("jid-1", "sha256:ca1") {
+                RoutingFakeClient(
+                    handler = { _, path, _ ->
+                        when (path) {
+                            "/app/network/api/clients/self" -> HttpResponse(404, emptyMap(), ByteArray(0))
+                            "/api/system/status" -> HttpResponse(503, emptyMap(), ByteArray(0))
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("unknown").toByteArray())
+                            else -> HttpResponse(404, emptyMap(), ByteArray(0))
+                        }
+                    },
+                    onClose = { aboutDone.countDown() },
+                )
+            }
+            assertTrue(aboutDone.await(3, TimeUnit.SECONDS))
+            assertNull(unknownStore.savedRecord)
+            assertEquals(JournalVersionFreshness.NEVER_OBSERVED, unknownCoordinator.currentReading("jid-1", "sha256:ca1").freshness)
+        } finally {
+            unknownCoordinator.close()
+            unknownExecutor.shutdownNow()
+        }
+    }
+
+    private fun clientsSelfJson(version: String, updatedAt: String? = null): String =
+        """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"$version"},"reported":null,"owner_label":null,"display_label":"Phone","updated_at":${updatedAt?.let { "\"$it\"" } ?: "null"}}"""
+
+    private fun aboutJson(version: String, os: String = "ubuntu"): String =
+        """{"protocol_version":1,"version":"$version","os":"$os","os_version":"24.04","arch":"x86_64","build":"42","about":"journal $version · $os 24.04 · x86_64"}"""
 
     private class FakeMutator(
         var home: PairedHome?,
@@ -541,7 +955,7 @@ class JournalVersionRefreshCoordinatorTest {
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
         val executor = Executors.newCachedThreadPool()
-        val journalCoordinator = JournalVersionRefreshCoordinator(store, executor)
+        val journalCoordinator = JournalVersionRefreshCoordinator(store, executor, clock = { 123L })
         val relayCoordinator = RelayAccessRefreshCoordinator(mutator, executor)
 
         val getStarted = CountDownLatch(1)
@@ -628,6 +1042,6 @@ class JournalVersionRefreshCoordinatorTest {
 
         assertEquals(1, putCalls.get())
         assertEquals("Pixel 8 New", localDesc.name)
-        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Home Journal"), store.savedRecord)
+        assertEquals(JournalVersionRecord("jid-1", "sha256:ca1", "1.2.3", "Home Journal", versionSeenAt = 123L), store.savedRecord)
     }
 }

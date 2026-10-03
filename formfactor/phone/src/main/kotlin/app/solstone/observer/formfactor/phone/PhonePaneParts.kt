@@ -100,6 +100,7 @@ internal fun PaneFactRow(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
+    valueContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -115,11 +116,15 @@ internal fun PaneFactRow(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.width(12.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = shellSecondaryInk,
-        )
+        if (valueContent == null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = shellSecondaryInk,
+            )
+        } else {
+            valueContent()
+        }
     }
 }
 

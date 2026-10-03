@@ -312,8 +312,7 @@ internal const val FORGET_JOURNAL_BODY =
 // point — because an enumeration is a completeness claim and this log's writers are not a
 // closed set. What the owner needs here is that an empty log is normal and what it is for.
 internal const val EVENT_LOG_EMPTY =
-    "nothing yet. this fills as the app runs, and saving a problem report puts a copy of it in " +
-        "that report."
+    "nothing yet. this fills as the app runs."
 
 @Composable
 fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
@@ -475,20 +474,11 @@ fun PhoneNotificationsPane(
  */
 @Composable
 fun PhoneHelpPane(
-    version: String,
+    reading: app.solstone.core.pl.JournalVersionReading?,
     status: PhoneDefaultDetailStatus,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val build = runCatching {
-        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.longVersionCode.toString()
-        } else {
-            @Suppress("DEPRECATION")
-            packageInfo.versionCode.toString()
-        }
-    }.getOrDefault("unknown")
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Help) },
     ) {
@@ -505,12 +495,15 @@ fun PhoneHelpPane(
                 label = "report a problem",
                 subLine = "review and send on the support site",
                 onClick = {
+                    val facts = readAndroidAboutFacts(context)
+                    val about = phoneAboutBlock(facts, reading, System.currentTimeMillis())
                     context.openUrl(
                         supportReportUrl(
-                            version = version,
-                            build = build,
-                            osVersion = Build.VERSION.RELEASE,
+                            version = facts.versionName,
+                            build = facts.build,
+                            osVersion = facts.osVersion,
                             state = supportState(status),
+                            about = about,
                         ),
                     )
                 },

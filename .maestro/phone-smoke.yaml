@@ -138,7 +138,7 @@ appId: app.solstone.observer.phone
 - tapOn:
     point: "6%,7%"
 - tapOn: "about solstone"
-- assertVisible: "version"
+- assertVisible: "about"
 - assertVisible: "open source"
 - assertVisible: "privacy policy"
 - takeScreenshot: artifacts/hitl/about
