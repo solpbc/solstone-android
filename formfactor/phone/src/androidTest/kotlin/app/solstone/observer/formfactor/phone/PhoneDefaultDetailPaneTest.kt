@@ -180,6 +180,7 @@ class PhoneDefaultDetailPaneTest {
                     onToggle = { _, _ -> },
                     onStartObserving = {},
                     onConfirmMark = {},
+                    onCopyAbout = { false },
                     windowAdaptiveInfo = adaptiveInfo,
                 )
             }

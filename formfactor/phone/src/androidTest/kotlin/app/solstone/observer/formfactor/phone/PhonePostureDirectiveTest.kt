@@ -59,6 +59,7 @@ class PhonePostureDirectiveTest {
                     status = connected(),
                     onToggle = { _, _ -> },
                     onStartObserving = {},
+                    onCopyAbout = { false },
                     windowAdaptiveInfo = adaptiveInfo,
                     onConfirmMark = {},
                 )

@@ -5,7 +5,6 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionReading
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
