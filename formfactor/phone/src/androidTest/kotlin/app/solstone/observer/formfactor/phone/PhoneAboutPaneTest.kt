@@ -5,8 +5,8 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionReading
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -58,7 +58,7 @@ class PhoneAboutPaneTest {
     }
 
     @Test
-    fun failedCopyShowsRecoveryTextAndKeepsBlockVisible() {
+    fun failedCopyKeepsCopyControlAndBlockVisible() {
         composeRule.setContent {
             PhoneTheme {
                 PhoneAboutPane(
@@ -71,9 +71,8 @@ class PhoneAboutPaneTest {
         }
 
         composeRule.onNodeWithText("copy").performClick()
-        composeRule.onNodeWithText("couldn't copy. select the text and copy it.").assertTextEquals(
-            "couldn't copy. select the text and copy it.",
-        )
-        composeRule.onNodeWithText(expectedBlock).assertTextContains("journal 1.2.3")
+        composeRule.onNodeWithText("copy").assertTextEquals("copy")
+        composeRule.onNodeWithText("copied").assertDoesNotExist()
+        composeRule.onNodeWithText(expectedBlock).assertTextEquals(expectedBlock)
     }
 }
