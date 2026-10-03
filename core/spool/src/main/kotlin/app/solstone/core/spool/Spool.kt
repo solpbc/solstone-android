@@ -48,6 +48,32 @@ interface SpoolWriter {
     fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult
 }
 
+fun confirmDurableSpoolCustody(
+    baseDir: Path,
+    segmentDir: Path,
+    fsync: (Path) -> Unit = ::forcePath,
+): Boolean = try {
+    require(segmentDir.normalize().startsWith(baseDir.normalize()))
+    val parsed = parseFinalManifest(segmentDir) ?: error("missing spool manifest")
+    parsed.manifest.files.forEach { file ->
+        val payload = segmentDir.resolve(file.name)
+        require(payload.normalize().parent == segmentDir.normalize())
+        require(Files.isRegularFile(payload) && Files.size(payload) == file.byteSize)
+        require(app.solstone.core.segment.sha256(payload) == file.sha256)
+        fsync(payload)
+    }
+    fsync(segmentDir.resolve("manifest"))
+    var directory: Path? = segmentDir
+    while (directory != null) {
+        fsync(directory)
+        if (directory == baseDir.parent) break
+        directory = directory.parent
+    }
+    true
+} catch (_: Exception) {
+    false
+}
+
 class FileSpoolWriter(
     private val baseDir: Path,
     private val fsync: (Path) -> Unit = ::forcePath,

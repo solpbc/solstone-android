@@ -106,6 +106,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                             name = fileRow.name,
                             spoolPayloadExists = exists,
                             spoolPayloadShaMatches = matches,
+                            spoolCustodyDurable = matches && app.solstone.core.spool.confirmDurableSpoolCustody(spoolDir, spoolPayload.parent),
                             confirmedUploaded = segmentRow.state == app.solstone.core.model.QueueState.UPLOADED ||
                                 segmentRow.state == app.solstone.core.model.QueueState.EVICTED,
                         )
@@ -146,6 +147,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                             spoolPayloadExists = true,
                             spoolPayloadShaMatches = matches,
                             zoneId = parsed.zoneId,
+                            spoolCustodyDurable = matches && app.solstone.core.spool.confirmDurableSpoolCustody(spoolDir, segDir),
                         )
                     }
                     return app.solstone.platform.audio.legacyCacheAlreadyDelivered(sha256, facts)

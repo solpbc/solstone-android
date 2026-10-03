@@ -23,6 +23,27 @@ import kotlin.test.assertTrue
 
 class FileSpoolWriterTest {
     @Test
+    fun readableFinalNeedsSuccessfulPublicationSyncBeforeRecoveryCanTrustIt() {
+        withTempDir { baseDir ->
+            val segment = segment(startEpochMs = FIRST_START, payloadName = "first.bin")
+            val writer = FileSpoolWriter(baseDir, fsync = { file ->
+                if (Files.isDirectory(file)) throw java.io.IOException("publication interrupted")
+            })
+            assertFailsWith<java.io.IOException> {
+                writer.seal(segment, provider("first.bin" to "first-bytes".toByteArray()))
+            }
+            val finalDir = baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            assertTrue(Files.isRegularFile(finalDir.resolve("first.bin")))
+            assertFalse(confirmDurableSpoolCustody(baseDir, finalDir) { file ->
+                if (Files.isDirectory(file)) throw java.io.IOException("publication still unavailable")
+            })
+            assertTrue(confirmDurableSpoolCustody(baseDir, finalDir))
+            Files.write(finalDir.resolve("first.bin"), "wrong-bytes".toByteArray())
+            assertFalse(confirmDurableSpoolCustody(baseDir, finalDir))
+        }
+    }
+
+    @Test
     fun sealsDstTwinsWithBareAndSuffixedDirLeaves() {
         withTempDir { baseDir ->
             val first = segment(startEpochMs = FIRST_START, payloadName = "first.bin")

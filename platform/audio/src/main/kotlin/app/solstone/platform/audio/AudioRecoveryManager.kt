@@ -46,6 +46,7 @@ data class AudioSpoolFact(
     val spoolPayloadShaMatches: Boolean,
     val zoneId: String? = null,
     val confirmedUploaded: Boolean = false,
+    val spoolCustodyDurable: Boolean = false,
 )
 
 fun classifyAudioAttempt(
@@ -64,10 +65,10 @@ fun classifyAudioAttempt(
     for (fact in facts) {
         if (fact.sourceId != sourceId || fact.name != name) continue
         if (fact.sha256 == sha256 && fact.captureStartEpochMs == captureStartEpochMs && fact.captureEndEpochMs == captureEndEpochMs) {
-            if (fact.spoolPayloadExists && !fact.spoolPayloadShaMatches) {
+            if (!fact.confirmedUploaded && fact.spoolPayloadExists && !fact.spoolPayloadShaMatches) {
                 return AudioCommitStatus.IdentityCollisionDifferentBytes
             }
-            if (fact.confirmedUploaded || (fact.spoolPayloadExists && fact.spoolPayloadShaMatches)) {
+            if (fact.confirmedUploaded || (fact.spoolPayloadExists && fact.spoolPayloadShaMatches && fact.spoolCustodyDurable)) {
                 committedMatch = true
             } else {
                 return AudioCommitStatus.CustodyUnproven
@@ -89,7 +90,7 @@ fun legacyCacheAlreadyDelivered(sha256: String, facts: List<AudioSpoolFact>): Bo
             fact.captureEndEpochMs > fact.captureStartEpochMs &&
             fact.sha256 == sha256 &&
             fact.spoolPayloadExists &&
-            fact.spoolPayloadShaMatches
+            fact.spoolPayloadShaMatches && fact.spoolCustodyDurable
     }
 }
 

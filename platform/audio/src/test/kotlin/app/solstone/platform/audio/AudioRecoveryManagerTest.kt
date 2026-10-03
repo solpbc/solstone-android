@@ -513,6 +513,19 @@ class AudioRecoveryManagerTest {
             classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf,
                 evictedFact.map { it.copy(confirmedUploaded = false) }),
         )
+        assertEquals(AudioCommitStatus.CommittedMatch,
+            classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf,
+                evictedFact.map { it.copy(spoolPayloadExists = true, spoolPayloadShaMatches = false) }))
+
+        // A readable matching final still needs durable publication.
+        val localMatch = evictedFact.single().copy(
+            confirmedUploaded = false, spoolPayloadExists = true, spoolPayloadShaMatches = true,
+        )
+        assertEquals(AudioCommitStatus.CustodyUnproven,
+            classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf, listOf(localMatch)))
+        assertEquals(AudioCommitStatus.CommittedMatch,
+            classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf,
+                listOf(localMatch.copy(spoolCustodyDurable = true))))
 
         // 3. same bounds with a different sha is a collision
         val differentShaSameBounds = listOf(
@@ -568,8 +581,10 @@ class AudioRecoveryManagerTest {
             spoolPayloadExists = true,
             spoolPayloadShaMatches = true,
             zoneId = "UTC",
+            spoolCustodyDurable = true,
         )
         assertTrue(legacyCacheAlreadyDelivered(sha, listOf(validFact)))
+        assertFalse(legacyCacheAlreadyDelivered(sha, listOf(validFact.copy(spoolCustodyDurable = false))))
         assertFalse(legacyCacheAlreadyDelivered(sha, listOf(validFact.copy(sourceId = "camera"))))
 
         // No zone / blank zone -> false
