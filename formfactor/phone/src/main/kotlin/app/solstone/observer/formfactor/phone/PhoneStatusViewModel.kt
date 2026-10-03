@@ -17,9 +17,9 @@ class PhoneStatusViewModel(
     private val sources: SourcesReader,
     private val asyncLoad: AsyncLoad,
     private val awaitingMarkConfirmation: () -> Boolean,
-    private val recoveryCompleted: () -> Boolean = { true },
-    private val audioAwaitingCustody: () -> Boolean = { false },
-    private val unresolvedAudioInterruption: () -> Boolean = { false },
+    private val recoveryCompleted: () -> Boolean,
+    private val audioAwaitingCustody: () -> Boolean,
+    private val unresolvedAudioInterruption: () -> Boolean,
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
 ) : ViewModel() {
     var statusState: LoadState<PhoneStatusSnapshot> by mutableStateOf(LoadState.Loading)

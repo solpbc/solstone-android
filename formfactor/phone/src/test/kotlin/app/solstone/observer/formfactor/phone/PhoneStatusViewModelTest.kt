@@ -245,6 +245,9 @@ class PhoneStatusViewModelTest {
         sources = TestSourcesReader,
         asyncLoad = AsyncLoad(runner, poster),
         awaitingMarkConfirmation = awaitingMarkConfirmation,
+        recoveryCompleted = { true },
+        audioAwaitingCustody = { false },
+        unresolvedAudioInterruption = { false },
     )
 }
 
