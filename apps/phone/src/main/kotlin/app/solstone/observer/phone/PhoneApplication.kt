@@ -398,6 +398,9 @@ class PhoneApplication : ObserverApplication(
                     backlog = backlog,
                     registered = readModel?.sources.orEmpty(),
                     awaitingMarkConfirmation = phoneAwaitingMarkConfirmation(applicationContext),
+                    recoveryCompleted = initialized.recoveryCompleted,
+                    audioAwaitingCustody = phoneAudioAwaitingCustody(applicationContext, initialized),
+                    unresolvedAudioInterruption = phoneUnresolvedAudioInterruption(applicationContext),
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()
@@ -463,4 +466,18 @@ class PhoneApplication : ObserverApplication(
         const val STOP_CAPTURE_REQUEST_CODE = 202
         const val PHONE_ROUTE_REQUEST_CODE = 203
     }
+}
+
+internal fun phoneAudioAwaitingCustody(context: Context, container: app.solstone.observer.scaffold.ObserverRuntimeContainer?): Boolean {
+    val dir = context.filesDir.resolve("audio-source")
+    if (!dir.exists() || !dir.isDirectory) return false
+    val attemptDirs = dir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return false
+    if (attemptDirs.isEmpty()) return false
+    val inFlight = container?.inFlightAudioIds.orEmpty()
+    return attemptDirs.any { it.name !in inFlight }
+}
+
+internal fun phoneUnresolvedAudioInterruption(context: Context): Boolean {
+    val store = app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
+    return store.isUnresolved()
 }

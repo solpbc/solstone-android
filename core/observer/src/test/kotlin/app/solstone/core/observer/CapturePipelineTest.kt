@@ -137,7 +137,7 @@ class CapturePipelineTest {
     }
 
     @Test
-    fun drainSealFailureReleasesPayloadsAndContinuesBatch() {
+    fun drainSealFailureDoesNotReleasePayloadsAndContinuesBatch() {
         val provider = RecordingPayloadProvider()
         val writer = FailingFirstSpoolWriter()
         val sink = ThreadCapturingSink()
@@ -164,12 +164,14 @@ class CapturePipelineTest {
         pipeline.stop()
 
         assertTrue(diags.any { it.startsWith("capture event=segment-seal-failed day=") })
-        assertTrue(provider.released.any { it.ref.name == "audio-0.m4a" })
+        assertFalse(provider.released.any { it.ref.name == "audio-0.m4a" })
+        assertTrue(provider.released.any { it.ref.name == "audio-1.m4a" })
         assertTrue(diags.any { it.startsWith("capture event=segment-sealed count=") })
     }
 
     @Test
-    fun persistFailureEmitsSpoolRoomReconcilerOrphanDiagAndContinues() {
+    fun persistFailureEmitsSpoolRoomReconcilerOrphanDiagAndDoesNotRelease() {
+        val provider = RecordingPayloadProvider()
         val diags = mutableListOf<String>()
         val engine = ScriptedEngine(
             listOf(
@@ -181,7 +183,7 @@ class CapturePipelineTest {
             segmenter = Segmenter(java.time.ZoneId.of("UTC")),
             spoolWriter = ThreadCapturingSpoolWriter(AtomicBoolean(true)),
             sealedSink = FailingFirstSink(),
-            payloadBytes = ByteArrayPayloadProvider(),
+            payloadBytes = provider,
             engines = listOf(engine),
             nowProvider = { BASE_EPOCH_MS + 610_000L },
             tickIntervalMs = 10L,
@@ -198,6 +200,8 @@ class CapturePipelineTest {
                     "type=IllegalStateException message=room down" in it
             },
         )
+        assertFalse(provider.released.any { it.ref.name == "audio-0.m4a" })
+        assertTrue(provider.released.any { it.ref.name == "audio-1.m4a" })
     }
 
     @Test
@@ -228,7 +232,7 @@ class CapturePipelineTest {
                     "type=IllegalStateException message=seal down" in it
             }
         }
-        waitUntil("failed tick payload release") { provider.released.any { it.ref.name == "tick-0.m4a" } }
+        assertFalse(provider.released.any { it.ref.name == "tick-0.m4a" })
 
         engine.emit(
             emission(
@@ -244,6 +248,7 @@ class CapturePipelineTest {
         pipeline.stop()
 
         assertEquals(listOf("tick-1.m4a"), sink.persistedSegments.flatMap { it.payloads }.map { it.ref.name })
+        assertEquals(listOf("tick-1.m4a"), provider.released.map { it.ref.name })
         assertFalse(provider.opened.any { it.ref.name == "tick-0.m4a" })
     }
 
@@ -291,7 +296,8 @@ class CapturePipelineTest {
         pipeline.stop()
 
         assertEquals(listOf("tick-0.m4a", "tick-2.m4a"), sink.persistedSegments.flatMap { it.payloads }.map { it.ref.name })
-        assertTrue(provider.released.any { it.ref.name == "tick-1.m4a" })
+        assertFalse(provider.released.any { it.ref.name == "tick-1.m4a" })
+        assertEquals(listOf("tick-0.m4a", "tick-2.m4a"), provider.released.map { it.ref.name })
         assertTrue(
             diags.any {
                 it.startsWith("capture event=segment-seal-failed day=") &&
@@ -431,7 +437,7 @@ class CapturePipelineTest {
             }
 
             assertEquals(3, sink.persistedCount)
-            assertEquals(0, provider.released.size)
+            assertEquals(3, provider.released.size)
 
             val wireKey = sink.persistedSegments.first().wireKeys.segment
             val day = sink.persistedSegments.first().wireKeys.day
@@ -486,7 +492,7 @@ class CapturePipelineTest {
             }
 
             assertEquals(2, sink.persistedCount)
-            assertEquals(0, provider.released.size)
+            assertEquals(2, provider.released.size)
 
             val wireKey = sink.persistedSegments.first().wireKeys.segment
             val day = sink.persistedSegments.first().wireKeys.day
@@ -668,7 +674,7 @@ class CapturePipelineTest {
             pipeline2.stop()
 
             assertEquals(2, sink.persistedCount)
-            assertEquals(0, provider.released.size)
+            assertEquals(3, provider.released.size)
 
             val secondDir = sink.persistedResults[1].directory!!
             val audioOnDisk = secondDir.resolve("audio.m4a")
@@ -729,7 +735,7 @@ class CapturePipelineTest {
 
         assertEquals(2, writer.sealedCount)
         assertEquals(2, sink.persistedCount)
-        assertTrue(provider.released.isEmpty(), "No payloads should have been dropped or released")
+        assertEquals(2, provider.released.size)
     }
 
     private class JoiningEngine : ContinuousSourceEngine {

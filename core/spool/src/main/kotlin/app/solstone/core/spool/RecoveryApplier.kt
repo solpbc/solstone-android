@@ -3,24 +3,63 @@
 
 package app.solstone.core.spool
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
-fun applyRecoveryActions(actions: List<RecoveryAction>): List<SpoolRecoveryEvent> {
+fun applyRecoveryActions(
+    actions: List<RecoveryAction>,
+    interruption: UnresolvedInterruption,
+): List<SpoolRecoveryEvent> {
     val events = mutableListOf<SpoolRecoveryEvent>()
     actions.forEach { action ->
         when (action) {
             is RecoveryAction.Finalize -> {
                 if (Files.exists(action.finalDir)) {
-                    action.draftDir.deleteRecursively()
-                    cleanupEmptyDraftParents(action.draftDir)
-                    events += SpoolRecoveryEvent(
-                        kind = "partial_segment",
-                        atEpochMs = action.parsedManifest.endEpochMs,
-                        detail = "final already exists",
-                    )
+                    val draftManifest = action.parsedManifest
+                    val finalManifestPath = action.finalDir.resolve("manifest")
+                    val finalParsed = if (Files.isRegularFile(finalManifestPath)) {
+                        runCatching {
+                            parseManifest(String(Files.readAllBytes(finalManifestPath), StandardCharsets.UTF_8))
+                        }.getOrNull()
+                    } else {
+                        null
+                    }
+
+                    val equal = finalParsed != null &&
+                        draftManifest.startEpochMs == finalParsed.startEpochMs &&
+                        draftManifest.endEpochMs == finalParsed.endEpochMs &&
+                        draftManifest.zoneId == finalParsed.zoneId &&
+                        draftManifest.utcOffsetSeconds == finalParsed.utcOffsetSeconds &&
+                        draftManifest.manifest.files.size == finalParsed.manifest.files.size &&
+                        draftManifest.manifest.files.all { df ->
+                            val draftFile = action.draftDir.resolve(df.name)
+                            val finalFile = action.finalDir.resolve(df.name)
+                            Files.isRegularFile(draftFile) &&
+                                Files.isRegularFile(finalFile) &&
+                                Files.size(draftFile) == Files.size(finalFile) &&
+                                app.solstone.core.segment.sha256(draftFile) == app.solstone.core.segment.sha256(finalFile)
+                        }
+
+                    if (equal) {
+                        action.draftDir.deleteRecursively()
+                        cleanupEmptyDraftParents(action.draftDir)
+                        events += SpoolRecoveryEvent(
+                            kind = "partial_segment",
+                            atEpochMs = action.parsedManifest.endEpochMs,
+                            detail = "final already exists",
+                        )
+                    } else {
+                        if (interruption.markUnresolved()) {
+                            events += SpoolRecoveryEvent(
+                                kind = "partial_segment",
+                                atEpochMs = action.parsedManifest.endEpochMs,
+                                detail = "final already exists",
+                            )
+                        }
+                    }
                     return@forEach
                 }
                 Files.createDirectories(action.finalDir.parent)
@@ -37,9 +76,11 @@ fun applyRecoveryActions(actions: List<RecoveryAction>): List<SpoolRecoveryEvent
                 )
             }
             is RecoveryAction.Discard -> {
-                action.draftDir.deleteRecursively()
-                cleanupEmptyDraftParents(action.draftDir)
-                events += action.event
+                if (interruption.markUnresolved()) {
+                    action.draftDir.deleteRecursively()
+                    cleanupEmptyDraftParents(action.draftDir)
+                    events += action.event
+                }
             }
         }
     }

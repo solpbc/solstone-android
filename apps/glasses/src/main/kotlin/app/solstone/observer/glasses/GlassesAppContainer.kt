@@ -25,6 +25,7 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
+import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.observer.formfactor.glasses.StillQrDecoder
 import app.solstone.observer.harness.AsyncLoad
@@ -217,8 +218,10 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
         funnel.execute("recovery") {
-            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
+            val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
+            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption)
             SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
+            captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

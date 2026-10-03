@@ -33,6 +33,7 @@ data class PhoneObserverWidgetModel(
     val diagnosis: String? = null,
     val pendingCount: Int,
     val syncText: String,
+    val syncDetail: String? = null,
     val colors: Set<PhoneObserverWidgetColorRole>,
 )
 
@@ -124,6 +125,10 @@ fun renderPhoneObserverWidget(
             presentation.reason !in setOf(ReasonCode.NONE, ReasonCode.MICROPHONE_SILENCED)
     }
     val diagnosis = reasonDiagnosis(presentation.reason)
+    val syncText = statusPillText(statusModel)
+    val custody = audioCustodyLines(statusModel)
+    val remainingCustody = custody.filter { it != syncText }
+    val syncDetail = if (remainingCustody.isNotEmpty()) remainingCustody.joinToString("\n") else null
     return PhoneObserverWidgetModel(
         audioChecked = audioChecked,
         audioWishOn = audioWishOn,
@@ -133,7 +138,8 @@ fun renderPhoneObserverWidget(
         awaitingMarkConfirmation = statusModel.awaitingMarkConfirmation,
         diagnosis = diagnosis,
         pendingCount = statusModel.pendingCount,
-        syncText = statusPillText(statusModel),
+        syncText = syncText,
+        syncDetail = syncDetail,
         colors = buildSet {
             add(PhoneObserverWidgetColorRole.SURFACE)
             add(PhoneObserverWidgetColorRole.CONTENT)

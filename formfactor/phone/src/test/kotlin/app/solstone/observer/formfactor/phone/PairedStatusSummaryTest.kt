@@ -20,6 +20,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 0,
                 hasContentPending = false,
                 awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNull(summary)
@@ -34,6 +37,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 0,
                 hasContentPending = false,
                 awaitingMarkConfirmation = true,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -52,6 +58,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 3,
                 hasContentPending = true,
                 awaitingMarkConfirmation = true,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -70,6 +79,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 0,
                 hasContentPending = false,
                 awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -88,6 +100,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 2,
                 hasContentPending = true,
                 awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -106,6 +121,9 @@ class PairedStatusSummaryTest {
                 pendingCount = 4,
                 hasContentPending = true,
                 awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)

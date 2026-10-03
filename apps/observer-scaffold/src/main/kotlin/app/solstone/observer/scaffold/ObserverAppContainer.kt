@@ -16,6 +16,7 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
+import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.BacklogStatusReader
@@ -60,6 +61,7 @@ interface ObserverRuntimeContainer {
     val sources: SourceRegistry
     val backlogStatus: BacklogStatusReader
     val recoveryCompleted: Boolean
+    val inFlightAudioIds: Set<String> get() = emptySet()
     fun setBackgroundStatusRefreshListener(listener: (() -> Unit)?)
     fun rehydrateInBackground()
     fun close()
@@ -171,6 +173,8 @@ class ObserverAppContainer(
     )
     @Volatile override var recoveryCompleted: Boolean = false
         private set
+    override val inFlightAudioIds: Set<String>
+        get() = captureSetup.inFlightAudioIds()
     @Volatile private var deferredStartMode: ObserverStartMode? = null
 
     private val pollRunnable = object : Runnable {
@@ -220,8 +224,10 @@ class ObserverAppContainer(
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
-            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()))
+            val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
+            applyRecoveryActions(RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption)
             SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
+            captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

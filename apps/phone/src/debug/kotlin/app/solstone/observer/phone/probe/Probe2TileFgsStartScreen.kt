@@ -84,9 +84,11 @@ internal object Probe2Starts {
             exception.javaClass.name == "android.app.ForegroundServiceStartNotAllowedException"
 
     fun audioBytes(context: Context): Long {
-        val dir = context.cacheDir.resolve("audio-source")
-        val files = dir.listFiles() ?: return 0L
-        return files.filter { it.name.startsWith("audio-") && it.name.endsWith(".m4a") }.sumOf { it.length() }
+        val dir = context.filesDir.resolve("audio-source")
+        if (!dir.exists() || !dir.isDirectory) return 0L
+        return dir.walkTopDown()
+            .filter { it.isFile && (it.name == "capture.adts" || it.name.endsWith(".m4a") || it.name.endsWith(".adts")) }
+            .sumOf { it.length() }
     }
 
     fun scheduleClassify(context: Context, mode: String, caller: Probe2Caller) {

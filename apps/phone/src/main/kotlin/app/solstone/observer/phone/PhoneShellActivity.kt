@@ -213,6 +213,9 @@ class PhoneShellActivity : ComponentActivity() {
             readStatus = PhoneStatusSupplier.forContainer(container),
             asyncLoad = container.asyncLoad,
             awaitingMarkConfirmation = { phoneAwaitingMarkConfirmation(this@PhoneShellActivity) },
+            recoveryCompleted = { container.recoveryCompleted },
+            audioAwaitingCustody = { phoneAudioAwaitingCustody(this@PhoneShellActivity, container) },
+            unresolvedAudioInterruption = { phoneUnresolvedAudioInterruption(this@PhoneShellActivity) },
             capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
@@ -1024,6 +1027,9 @@ class PhoneShellActivity : ComponentActivity() {
         private val readStatus: () -> app.solstone.observer.harness.HarnessBacklogStatus,
         private val asyncLoad: AsyncLoad,
         private val awaitingMarkConfirmation: () -> Boolean,
+        private val recoveryCompleted: () -> Boolean,
+        private val audioAwaitingCustody: () -> Boolean,
+        private val unresolvedAudioInterruption: () -> Boolean,
         private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1036,6 +1042,9 @@ class PhoneShellActivity : ComponentActivity() {
                         sources = sources,
                         asyncLoad = asyncLoad,
                         awaitingMarkConfirmation = awaitingMarkConfirmation,
+                        recoveryCompleted = recoveryCompleted,
+                        audioAwaitingCustody = audioAwaitingCustody,
+                        unresolvedAudioInterruption = unresolvedAudioInterruption,
                         capturedStatusState = capturedStatusState,
                     ) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")

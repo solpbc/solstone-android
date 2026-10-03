@@ -171,6 +171,27 @@ private fun PhonePairedStatusSummary(
     onConfirmMark: () -> Unit,
 ) {
     val summary = pairedStatusSummary(model) ?: return
+    val custody = audioCustodyLines(model)
+    val pillText = statusPillText(model)
+
+    if (pillText == STATUS_AUDIO_INTERRUPTED_LEAD || pillText == STATUS_WAITING_TO_SYNC_LEAD) {
+        if (custody.isNotEmpty()) {
+            PaneLead(custody[0])
+            for (i in 1 until custody.size) {
+                PaneSubLine(custody[i])
+            }
+        }
+        if (summary.action) {
+            TextButton(
+                onClick = onConfirmMark,
+                modifier = Modifier.testTag("statusConfirmMark"),
+            ) {
+                Text("confirm the mark")
+            }
+        }
+        return
+    }
+
     val markLine = "waiting for you to confirm your journal's mark"
     when (summary.lead) {
         PairedStatusLead.CAUGHT_UP -> PaneLead("all caught up")
@@ -191,6 +212,9 @@ private fun PhonePairedStatusSummary(
         if (subText.isNotEmpty()) {
             PaneSubLine(subText)
         }
+    }
+    custody.forEach { line ->
+        PaneSubLine(line)
     }
     if (summary.action) {
         TextButton(

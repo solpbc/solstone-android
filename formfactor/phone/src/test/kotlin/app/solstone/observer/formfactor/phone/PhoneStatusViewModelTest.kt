@@ -200,6 +200,41 @@ class PhoneStatusViewModelTest {
         kotlin.test.assertFalse(publishedFalse.value.status.awaitingMarkConfirmation)
     }
 
+    @Test
+    fun publishAndRefreshBothReadCustodyAndRecoveryFacts() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var recovering = false
+        var custody = true
+        var interrupted = true
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 1, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { recovering },
+            audioAwaitingCustody = { custody },
+            unresolvedAudioInterruption = { interrupted },
+        )
+        runner.runNext()
+        poster.runNext()
+        val initial = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        kotlin.test.assertFalse(initial.value.status.recoveryCompleted)
+        kotlin.test.assertTrue(initial.value.status.audioAwaitingCustody)
+        kotlin.test.assertTrue(initial.value.status.unresolvedAudioInterruption)
+
+        recovering = true
+        custody = false
+        interrupted = false
+        viewModel.publish(HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 2, emptyList()))
+        runner.runNext()
+        poster.runNext()
+        val published = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        kotlin.test.assertTrue(published.value.status.recoveryCompleted)
+        kotlin.test.assertFalse(published.value.status.audioAwaitingCustody)
+        kotlin.test.assertFalse(published.value.status.unresolvedAudioInterruption)
+    }
+
     private fun viewModel(
         runner: ManualRunner,
         poster: ManualPoster,

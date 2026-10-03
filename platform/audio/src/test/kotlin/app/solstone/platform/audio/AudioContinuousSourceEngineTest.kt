@@ -3,14 +3,15 @@
 
 package app.solstone.platform.audio
 
-import app.solstone.core.model.SourceKind
 import app.solstone.core.model.SilencedFact
+import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
+import app.solstone.core.spool.UnresolvedInterruption
 import app.solstone.platform.power.StorageStatus
 import app.solstone.platform.power.UsableSpaceProvider
 import app.solstone.testing.BASE_CAPTURE_EPOCH_MS
@@ -34,10 +35,7 @@ class AudioContinuousSourceEngineTest {
     fun conditionExposesOnlyInFlightRecordingSilencedFact() {
         val sink = CapturingSink()
         val releaseSleep = CountDownLatch(1)
-        val engine = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+        val engine = createEngine(
             sleeper = {
                 releaseSleep.await(1, TimeUnit.SECONDS)
                 throw InterruptedException()
@@ -62,10 +60,7 @@ class AudioContinuousSourceEngineTest {
     @Test
     fun conditionIsUnknownForStartFailureAndPostFinishDeadTime() {
         val failedSink = CapturingSink()
-        val failed = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+        val failed = createEngine(
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(startError = IllegalStateException("boom")),
         )
@@ -79,9 +74,7 @@ class AudioContinuousSourceEngineTest {
         val releaseFinish = CountDownLatch(1)
         var now = OFF_BOUNDARY_EPOCH_MS
         var sleeps = 0
-        val deadTime = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
+        val deadTime = createEngine(
             nowProvider = { now },
             sleeper = {
                 if (sleeps++ == 0) {
@@ -111,9 +104,7 @@ class AudioContinuousSourceEngineTest {
         val holdWindow = CountDownLatch(1)
         val stopFinished = CountDownLatch(1)
         val oldStartReturned = ThreadLocal<Boolean>()
-        val engine = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
+        val engine = createEngine(
             nowProvider = {
                 if (oldStartReturned.get() == true) {
                     oldStartReturned.remove()
@@ -161,10 +152,7 @@ class AudioContinuousSourceEngineTest {
     @Test
     fun stoppedConditionIsNeverSilenced() {
         val holdWindow = CountDownLatch(1)
-        val engine = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+        val engine = createEngine(
             sleeper = {
                 awaitIgnoringInterrupts(holdWindow)
                 throw InterruptedException()
@@ -188,13 +176,10 @@ class AudioContinuousSourceEngineTest {
         val sink = CapturingSink()
         var now = OFF_BOUNDARY_EPOCH_MS
         var sleepCount = 0
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
             nowProvider = { now },
             sleeper = {
-                // First sleep advances the off-boundary recording to the wall-clock boundary,
-                // so the first emission is a completed [BASE, BASE + WINDOW_MS) window.
                 if (sleepCount++ == 0) {
                     now = BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS
                 } else {
@@ -212,7 +197,9 @@ class AudioContinuousSourceEngineTest {
         assertEquals(OFF_BOUNDARY_EPOCH_MS, emission.captureStartEpochMs)
         assertEquals(BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS, emission.captureEndEpochMs)
         assertEquals(AudioContinuousSourceEngine.PAYLOAD_NAME, emission.payloadRefs.single().name)
-        assertTrue(File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
+        val attemptDirs = outputDirectory.listFiles { f -> f.isDirectory && f.name.startsWith("rec-") }
+        assertTrue(attemptDirs != null && attemptDirs.isNotEmpty())
+        assertTrue(attemptDirs!!.any { File(it, AudioContinuousSourceEngine.PAYLOAD_NAME).exists() })
     }
 
     @Test
@@ -240,10 +227,8 @@ class AudioContinuousSourceEngineTest {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
         val recordingStarted = CountDownLatch(1)
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
             sleeper = {
                 recordingStarted.countDown()
                 Thread.sleep(Long.MAX_VALUE)
@@ -260,7 +245,9 @@ class AudioContinuousSourceEngineTest {
         val ref = emission.payloadRefs.single()
         assertEquals(AudioContinuousSourceEngine.PAYLOAD_NAME, ref.name)
         assertTrue(ref.byteSize > 0L)
-        assertTrue(File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
+        val attemptDirs = outputDirectory.listFiles { f -> f.isDirectory && f.name.startsWith("rec-") }
+        assertEquals(1, attemptDirs?.size)
+        assertTrue(File(attemptDirs!!.single(), AudioContinuousSourceEngine.PAYLOAD_NAME).exists())
         assertTrue(emission.gaps.isEmpty())
     }
 
@@ -268,10 +255,10 @@ class AudioContinuousSourceEngineTest {
     fun startFailureAndZeroByteRecordingEmitGapsWithoutPayloads() {
         val failedOutputDirectory = tempDirectory()
         val failedSink = CapturingSink()
-        val failedEngine = AudioContinuousSourceEngine(
+        val failedInterruption = FakeUnresolvedInterruption()
+        val failedEngine = createEngine(
             outputDirectory = failedOutputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            interruption = failedInterruption,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(startError = IllegalStateException("boom")),
         )
@@ -284,13 +271,14 @@ class AudioContinuousSourceEngineTest {
         assertTrue(failedEmission.payloadRefs.isEmpty())
         assertEquals("capture_gap", failedEmission.gaps.single().kind)
         assertEquals("IllegalStateException", failedEmission.gaps.single().detail)
+        assertTrue(failedInterruption.marked)
 
         val emptyOutputDirectory = tempDirectory()
         val emptySink = CapturingSink()
-        val emptyEngine = AudioContinuousSourceEngine(
+        val emptyInterruption = FakeUnresolvedInterruption()
+        val emptyEngine = createEngine(
             outputDirectory = emptyOutputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            interruption = emptyInterruption,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = ByteArray(0)),
         )
@@ -302,17 +290,15 @@ class AudioContinuousSourceEngineTest {
         val emptyEmission = emptySink.emissions.single()
         assertTrue(emptyEmission.payloadRefs.isEmpty())
         assertEquals("empty_recording", emptyEmission.gaps.single().detail)
-        assertFalse(File(emptyOutputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
+        assertTrue(emptyInterruption.marked)
     }
 
     @Test
-    fun openReturnsPayloadBytesOnce() {
+    fun openReturnsPayloadBytesOnceAndReleaseDeletesDir() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
         )
@@ -325,17 +311,25 @@ class AudioContinuousSourceEngineTest {
         val ref = emission.payloadRefs.single()
         val payload = SegmentPayload(emission.sourceId, ref, emission.captureStartEpochMs, emission.captureEndEpochMs)
         assertEquals(ref.byteSize.toInt(), engine.open(payload).use { it.readBytes() }.size)
+
+        val attemptDirs = outputDirectory.listFiles { f -> f.isDirectory && f.name.startsWith("rec-") }
+        assertEquals(1, attemptDirs?.size)
+        val attemptDir = attemptDirs!!.single()
+        assertTrue(attemptDir.exists())
+
+        engine.release(payload)
+        assertFalse(attemptDir.exists())
         assertFailsWith<IllegalArgumentException> { engine.open(payload) }
     }
 
     @Test
-    fun releaseDeletesDroppedFile() {
+    fun discardUncommittedMarksInterruptionAndDeletesDir() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
-        val engine = AudioContinuousSourceEngine(
+        val interruption = FakeUnresolvedInterruption()
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+            interruption = interruption,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
         )
@@ -346,13 +340,46 @@ class AudioContinuousSourceEngineTest {
 
         val emission = sink.emissions.single()
         val payload = SegmentPayload(emission.sourceId, emission.payloadRefs.single(), emission.captureStartEpochMs, emission.captureEndEpochMs)
-        val path = File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a")
-        assertTrue(path.exists())
+        val attemptDirs = outputDirectory.listFiles { f -> f.isDirectory && f.name.startsWith("rec-") }
+        assertEquals(1, attemptDirs?.size)
+        val attemptDir = attemptDirs!!.single()
+        assertTrue(attemptDir.exists())
 
+        assertTrue(engine.discardUncommitted(payload))
+        assertTrue(interruption.marked)
+        assertFalse(attemptDir.exists())
+    }
+
+    @Test
+    fun inFlightRecordingIdsTracksActiveAndRegisteredAttempts() {
+        val outputDirectory = tempDirectory()
+        val sink = CapturingSink()
+        val recordingStarted = CountDownLatch(1)
+        val engine = createEngine(
+            outputDirectory = outputDirectory,
+            sleeper = {
+                recordingStarted.countDown()
+                Thread.sleep(Long.MAX_VALUE)
+            },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+        )
+
+        engine.start(sink)
+        assertTrue(recordingStarted.await(1, TimeUnit.SECONDS))
+        val inFlightActive = engine.inFlightRecordingIds()
+        assertEquals(1, inFlightActive.size)
+        assertTrue(inFlightActive.single().startsWith("rec-"))
+
+        engine.stop()
+        waitForEmissions(sink, 1)
+        val inFlightRegistered = engine.inFlightRecordingIds()
+        assertEquals(1, inFlightRegistered.size)
+        assertEquals(inFlightActive.single(), inFlightRegistered.single())
+
+        val emission = sink.emissions.single()
+        val payload = SegmentPayload(emission.sourceId, emission.payloadRefs.single(), emission.captureStartEpochMs, emission.captureEndEpochMs)
         engine.release(payload)
-
-        assertFalse(path.exists())
-        assertFailsWith<IllegalArgumentException> { engine.open(payload) }
+        assertTrue(engine.inFlightRecordingIds().isEmpty())
     }
 
     @Test
@@ -385,13 +412,11 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
-    fun finishFailureEmitsGapDeletesFileAndDoesNotExposePayload() {
+    fun finishFailureSalvagesAudioWhenRemuxSucceeds() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(
                 bytesToWrite = AUDIO_BYTES,
@@ -404,9 +429,8 @@ class AudioContinuousSourceEngineTest {
         engine.stop()
 
         val emission = sink.emissions.single()
-        assertTrue(emission.payloadRefs.isEmpty())
-        assertEquals("finish_failed type=IllegalStateException message=stop failed", emission.gaps.single().detail)
-        assertFalse(File(outputDirectory, "audio-$BASE_CAPTURE_EPOCH_MS.m4a").exists())
+        assertEquals(1, emission.payloadRefs.size)
+        assertEquals(AudioContinuousSourceEngine.PAYLOAD_NAME, emission.payloadRefs.single().name)
     }
 
     @Test
@@ -414,10 +438,8 @@ class AudioContinuousSourceEngineTest {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
         val diags = CopyOnWriteArrayList<String>()
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
             sleeper = { throw IllegalStateException("sleep failed") },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
             diag = diags::add,
@@ -426,8 +448,6 @@ class AudioContinuousSourceEngineTest {
         engine.start(sink)
         waitForEmissions(sink, 1)
 
-        // The worker clears `running` in its finally block, after the emission the wait above
-        // observes, so asserting it directly is a race that reddens roughly one run in eight.
         waitForCondition { !engine.condition().running }
         assertEquals("engine_failed type=IllegalStateException message=sleep failed", sink.emissions.single().gaps.single().detail)
         assertTrue("capture event=engine-failed source=audio type=IllegalStateException message=sleep failed" in diags)
@@ -436,10 +456,7 @@ class AudioContinuousSourceEngineTest {
     @Test
     fun guardedEmitCapturesRejectedExecutionAndStopsWorker() {
         val diags = CopyOnWriteArrayList<String>()
-        val engine = AudioContinuousSourceEngine(
-            outputDirectory = tempDirectory(),
-            storageStatus = okStorage(),
-            nowProvider = { OFF_BOUNDARY_EPOCH_MS },
+        val engine = createEngine(
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
             diag = diags::add,
@@ -455,9 +472,8 @@ class AudioContinuousSourceEngineTest {
         val sink = CapturingSink()
         var now = OFF_BOUNDARY_EPOCH_MS
         var sleepCount = 0
-        val engine = AudioContinuousSourceEngine(
+        val engine = createEngine(
             outputDirectory = outputDirectory,
-            storageStatus = okStorage(),
             nowProvider = { now },
             sleeper = {
                 if (sleepCount++ == 0) {
@@ -472,6 +488,50 @@ class AudioContinuousSourceEngineTest {
         waitForEmissions(sink, 1)
         engine.stop()
         return sink.emissions.first()
+    }
+
+    private fun createEngine(
+        outputDirectory: File = tempDirectory(),
+        storageStatus: StorageStatus = okStorage(),
+        remuxer: AacAdtsRemuxer = FakeAacRemuxer(),
+        interruption: UnresolvedInterruption = FakeUnresolvedInterruption(),
+        nowProvider: () -> Long = { OFF_BOUNDARY_EPOCH_MS },
+        sleeper: (Long) -> Unit = { Thread.sleep(it) },
+        recorderFactory: AudioRecorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+        diag: (String) -> Unit = {},
+    ): AudioContinuousSourceEngine = AudioContinuousSourceEngine(
+        outputDirectory = outputDirectory,
+        storageStatus = storageStatus,
+        remuxer = remuxer,
+        interruption = interruption,
+        nowProvider = nowProvider,
+        sleeper = sleeper,
+        recorderFactory = recorderFactory,
+        diag = diag,
+    )
+
+    private class FakeAacRemuxer(
+        private val remuxDurationMs: Long = 300_000L,
+        private val remuxFailure: Throwable? = null,
+    ) : AacAdtsRemuxer {
+        override fun remux(adts: File, m4a: File): AacRemux {
+            remuxFailure?.let { throw it }
+            if (!adts.exists() || adts.length() <= 0L) {
+                return AacRemux(0L, 0L)
+            }
+            m4a.writeBytes(adts.readBytes())
+            return AacRemux(sampleDurationMs = remuxDurationMs, outputBytes = m4a.length())
+        }
+    }
+
+    private class FakeUnresolvedInterruption : UnresolvedInterruption {
+        var marked = false
+        override fun markUnresolved(): Boolean {
+            marked = true
+            return true
+        }
+
+        override fun isUnresolved(): Boolean = marked
     }
 
     private class FakeAudioRecorderFactory(
@@ -493,6 +553,7 @@ class AudioContinuousSourceEngineTest {
     ) : AudioRecording {
         override fun start() {
             startError?.let { throw it }
+            output.parentFile?.mkdirs()
             output.writeBytes(bytesToWrite)
         }
 
@@ -514,6 +575,7 @@ class AudioContinuousSourceEngineTest {
         override fun create(output: File): AudioRecording =
             object : AudioRecording {
                 override fun start() {
+                    output.parentFile?.mkdirs()
                     output.writeBytes(AUDIO_BYTES)
                 }
 
@@ -544,6 +606,7 @@ class AudioContinuousSourceEngineTest {
                     override fun start() {
                         firstStartEntered.countDown()
                         awaitIgnoringInterrupts(allowFirstStart)
+                        output.parentFile?.mkdirs()
                         output.writeBytes(AUDIO_BYTES)
                         oldStartReturned.set(true)
                     }
@@ -636,6 +699,6 @@ class AudioContinuousSourceEngineTest {
 
         val UTC: ZoneId = ZoneId.of("UTC")
         const val OFF_BOUNDARY_EPOCH_MS = BASE_CAPTURE_EPOCH_MS + 137_000L
-        val AUDIO_BYTES = "fake-m4a-bytes".encodeToByteArray()
+        val AUDIO_BYTES = "fake-adts-bytes".encodeToByteArray()
     }
 }

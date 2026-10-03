@@ -20,19 +20,19 @@ class PhoneStatusModelTest {
     fun fourPillStatesRenderQuotedCopy() {
         assertEquals(
             "connected",
-            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false)),
+            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false)),
         )
         assertEquals(
             "3 syncing",
-            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 3, hasContentPending = true, awaitingMarkConfirmation = false)),
+            statusPillText(PhoneStatusModel(paired = true, online = true, pendingCount = 3, hasContentPending = true, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false)),
         )
         assertEquals(
             "offline · 2 waiting",
-            statusPillText(PhoneStatusModel(paired = true, online = false, pendingCount = 2, hasContentPending = true, awaitingMarkConfirmation = false)),
+            statusPillText(PhoneStatusModel(paired = true, online = false, pendingCount = 2, hasContentPending = true, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false)),
         )
         assertEquals(
             "not paired",
-            statusPillText(PhoneStatusModel(paired = false, online = true, pendingCount = 4, hasContentPending = true, awaitingMarkConfirmation = false)),
+            statusPillText(PhoneStatusModel(paired = false, online = true, pendingCount = 4, hasContentPending = true, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false)),
         )
     }
 
@@ -44,6 +44,9 @@ class PhoneStatusModelTest {
             pendingCount = 0,
             hasContentPending = false,
             awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(beatsConnected))
 
@@ -53,6 +56,9 @@ class PhoneStatusModelTest {
             pendingCount = 5,
             hasContentPending = true,
             awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(beatsSyncing))
 
@@ -62,6 +68,9 @@ class PhoneStatusModelTest {
             pendingCount = 2,
             hasContentPending = true,
             awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals(StatusPillKind.OFFLINE, statusPillKind(offlineBeatsAwaiting))
         assertEquals("offline · 2 waiting", statusPillText(offlineBeatsAwaiting))
@@ -72,6 +81,9 @@ class PhoneStatusModelTest {
             pendingCount = 0,
             hasContentPending = false,
             awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals(StatusPillKind.NOT_PAIRED, statusPillKind(notPairedModel))
         assertEquals("not paired", statusPillText(notPairedModel))
@@ -85,6 +97,9 @@ class PhoneStatusModelTest {
             pendingCount = 3,
             hasContentPending = true,
             awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals("3 syncing", statusPillText(model))
         assertFalse(statusPillText(model).contains("4"))
@@ -93,10 +108,86 @@ class PhoneStatusModelTest {
     @Test
     fun retiredOfflineFormDoesNotAppear() {
         val text = statusPillText(
-            PhoneStatusModel(paired = true, online = false, pendingCount = 38, hasContentPending = true, awaitingMarkConfirmation = false),
+            PhoneStatusModel(paired = true, online = false, pendingCount = 38, hasContentPending = true, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
         )
         assertEquals("offline · 38 waiting", text)
         assertFalse(text.contains("38 offline"))
+    }
+
+    @Test
+    fun audioCustodyAndInterruptionPillAndLines() {
+        val interrupted = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = true,
+        )
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(interrupted))
+        assertEquals("audio was interrupted", statusPillText(interrupted))
+        assertEquals(
+            listOf("audio was interrupted", "some audio hasn't reached your journal."),
+            audioCustodyLines(interrupted),
+        )
+
+        val custody = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = true,
+            unresolvedAudioInterruption = false,
+        )
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(custody))
+        assertEquals("waiting to sync", statusPillText(custody))
+        assertEquals(
+            listOf("waiting to sync", "on this device"),
+            audioCustodyLines(custody),
+        )
+
+        val both = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = true,
+            unresolvedAudioInterruption = true,
+        )
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(both))
+        assertEquals("audio was interrupted", statusPillText(both))
+        assertEquals(
+            listOf(
+                "audio was interrupted",
+                "some audio hasn't reached your journal.",
+                "waiting to sync",
+                "on this device",
+            ),
+            audioCustodyLines(both),
+        )
+
+        val recovering = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = false,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
+        )
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(recovering))
+        assertEquals("0 syncing", statusPillText(recovering))
+        assertEquals(
+            emptyList<String>(),
+            audioCustodyLines(recovering),
+        )
     }
 
     @Test

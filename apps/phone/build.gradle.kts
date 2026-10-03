@@ -254,6 +254,7 @@ dependencies {
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:diagnostics"))
     implementation(project(":core:sources"))
+    implementation(project(":core:spool"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":platform:identity-file"))

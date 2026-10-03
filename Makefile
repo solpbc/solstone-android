@@ -48,6 +48,7 @@ ci-device:
 	  :platform:pl-transport-conscrypt:pixel5api35DebugAndroidTest \
 	  :platform:identity-file:pixel5api35DebugAndroidTest \
 	  :platform:work:pixel5api35DebugAndroidTest \
+	  :platform:audio:pixel5api35DebugAndroidTest \
 	  :formfactor:phone:pixel5api35DebugAndroidTest \
 	  :apps:phone:pixel5api35MockDebugAndroidTest
 	# AC5a real-flavor narrow gate. The class filter must match exactly one class;

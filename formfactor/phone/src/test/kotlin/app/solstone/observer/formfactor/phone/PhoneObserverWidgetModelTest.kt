@@ -235,12 +235,55 @@ class PhoneObserverWidgetModelTest {
             startOutcome = PhoneWidgetStartOutcome.None,
         )
 
-    private fun status(pendingCount: Int = 0, awaitingMarkConfirmation: Boolean = false): PhoneStatusModel =
+    @Test
+    fun widgetSyncDetailSurfacesInterruptionAndCustody() {
+        val interrupted = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(unresolvedAudioInterruption = true),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals("some audio hasn't reached your journal.", interrupted.syncDetail)
+
+        val custody = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(audioAwaitingCustody = true),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals("on this device", custody.syncDetail)
+
+        val both = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(unresolvedAudioInterruption = true, audioAwaitingCustody = true),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals(
+            "some audio hasn't reached your journal.\nwaiting to sync\non this device",
+            both.syncDetail,
+        )
+
+        val connected = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals(null, connected.syncDetail)
+    }
+
+    private fun status(
+        pendingCount: Int = 0,
+        awaitingMarkConfirmation: Boolean = false,
+        recoveryCompleted: Boolean = true,
+        audioAwaitingCustody: Boolean = false,
+        unresolvedAudioInterruption: Boolean = false,
+    ): PhoneStatusModel =
         PhoneStatusModel(
             paired = true,
             online = true,
             pendingCount = pendingCount,
             hasContentPending = pendingCount > 0,
             awaitingMarkConfirmation = awaitingMarkConfirmation,
+            recoveryCompleted = recoveryCompleted,
+            audioAwaitingCustody = audioAwaitingCustody,
+            unresolvedAudioInterruption = unresolvedAudioInterruption,
         )
 }

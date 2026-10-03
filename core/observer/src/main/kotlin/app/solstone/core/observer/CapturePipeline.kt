@@ -111,7 +111,7 @@ class CapturePipeline(
     private fun releaseDropped(result: SegmenterResult) {
         result.droppedPayloads.forEach { payload ->
             try {
-                payloadBytes.release(payload)
+                payloadBytes.discardUncommitted(payload)
             } catch (t: Throwable) {
                 emitDiag("capture event=payload-release-failed source=${payload.sourceId} type=${t.javaClass.simpleName}")
             }
@@ -126,7 +126,6 @@ class CapturePipeline(
                 emitDiag(
                     "capture event=segment-seal-failed day=${segment.key.day} stream=${segment.stream} segment=${segment.key.segment} type=${t.javaClass.simpleName} message=${t.message ?: ""}",
                 )
-                releasePayloads(segment.payloads)
                 return@forEach
             }
             try {
@@ -137,6 +136,7 @@ class CapturePipeline(
                 )
                 return@forEach
             }
+            releasePayloads(segment.payloads)
             sealedCount += 1
             emitDiag("capture event=segment-sealed count=$sealedCount")
         }

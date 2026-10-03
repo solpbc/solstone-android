@@ -20,7 +20,7 @@ private class MediaRecording(private val output: File) : AudioRecording {
         val localRecorder = MediaRecorder()
         try {
             localRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            localRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            localRecorder.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
             localRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             localRecorder.setAudioSamplingRate(AudioContinuousSourceEngine.SAMPLE_RATE_HZ)
             localRecorder.setAudioChannels(AudioContinuousSourceEngine.CHANNELS)

@@ -19,6 +19,9 @@ fun phoneStatusSnapshotOf(
     backlog: HarnessBacklogStatus,
     registered: List<SourceStatus>,
     awaitingMarkConfirmation: Boolean,
+    recoveryCompleted: Boolean,
+    audioAwaitingCustody: Boolean,
+    unresolvedAudioInterruption: Boolean,
 ): PhoneStatusSnapshot {
     val (paired, online) = when (backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
@@ -32,7 +35,6 @@ fun phoneStatusSnapshotOf(
             if (status.sourceId in pendingIds) add(status)
         }
         (pendingIds - registeredById.keys).sorted().forEach { sourceId ->
-            // The pane reads only sourceId; the remaining required fields have no unknown member and are never rendered.
             add(SourceStatus(sourceId, SourceWish.Off, SourceState.OFF, ReasonCode.NONE))
         }
     }
@@ -43,6 +45,9 @@ fun phoneStatusSnapshotOf(
             pendingCount = backlog.pendingCount,
             hasContentPending = backlog.pendingSourceIds.isNotEmpty(),
             awaitingMarkConfirmation = awaitingMarkConfirmation,
+            recoveryCompleted = recoveryCompleted,
+            audioAwaitingCustody = audioAwaitingCustody,
+            unresolvedAudioInterruption = unresolvedAudioInterruption,
             journalVersion = backlog.journalVersion,
         ),
         waiting = waiting,

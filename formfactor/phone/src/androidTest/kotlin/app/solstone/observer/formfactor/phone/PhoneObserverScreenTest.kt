@@ -164,7 +164,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillSyncingCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true, false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
         }
         composeRule.onNodeWithText("4 syncing").assertIsDisplayed()
     }
@@ -172,7 +172,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillOfflineCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true, false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
         }
         composeRule.onNodeWithText("offline · 2 waiting").assertIsDisplayed()
     }
@@ -180,7 +180,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillNotPairedCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false, false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
         }
         composeRule.onNodeWithText("not paired").assertIsDisplayed()
     }
@@ -190,7 +190,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, true, 1, true, false),
+                status = PhoneStatusModel(true, true, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -553,7 +553,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, false, 1, true, false),
+                status = PhoneStatusModel(true, false, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -572,7 +572,7 @@ class PhoneObserverScreenTest {
         var pending by mutableStateOf(6)
         composeRule.setContent {
             PhoneStatusPill(
-                model = PhoneStatusModel(true, true, pending, true, false),
+                model = PhoneStatusModel(true, true, pending, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                 onClick = {},
             )
         }
@@ -867,7 +867,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
                 onConnectJournal = { connectCalls += 1 },
@@ -886,7 +886,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                 showWelcome = true,
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -975,4 +975,7 @@ private fun connected() = PhoneStatusModel(
     pendingCount = 0,
     hasContentPending = false,
     awaitingMarkConfirmation = false,
+    recoveryCompleted = true,
+    audioAwaitingCustody = false,
+    unresolvedAudioInterruption = false,
 )

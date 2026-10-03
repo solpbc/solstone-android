@@ -17,6 +17,9 @@ class PhoneStatusViewModel(
     private val sources: SourcesReader,
     private val asyncLoad: AsyncLoad,
     private val awaitingMarkConfirmation: () -> Boolean,
+    private val recoveryCompleted: () -> Boolean = { true },
+    private val audioAwaitingCustody: () -> Boolean = { false },
+    private val unresolvedAudioInterruption: () -> Boolean = { false },
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
 ) : ViewModel() {
     var statusState: LoadState<PhoneStatusSnapshot> by mutableStateOf(LoadState.Loading)
@@ -60,7 +63,16 @@ class PhoneStatusViewModel(
     fun publish(backlog: HarnessBacklogStatus) {
         if (capturedStatusState != null || readInFlight) return
         val generation = ++requestedGeneration
-        asyncLoad.load({ phoneStatusSnapshotOf(backlog, sources.snapshot().sources, awaitingMarkConfirmation()) }) { incoming ->
+        asyncLoad.load({
+            phoneStatusSnapshotOf(
+                backlog = backlog,
+                registered = sources.snapshot().sources,
+                awaitingMarkConfirmation = awaitingMarkConfirmation(),
+                recoveryCompleted = recoveryCompleted(),
+                audioAwaitingCustody = audioAwaitingCustody(),
+                unresolvedAudioInterruption = unresolvedAudioInterruption(),
+            )
+        }) { incoming ->
             if (incoming is LoadState.Loading) return@load
             if (generation == requestedGeneration) statusState = incoming
         }
@@ -68,7 +80,16 @@ class PhoneStatusViewModel(
 
     private fun startRead(generation: Long) {
         readInFlight = true
-        asyncLoad.load({ phoneStatusSnapshotOf(read(), sources.snapshot().sources, awaitingMarkConfirmation()) }) { incoming ->
+        asyncLoad.load({
+            phoneStatusSnapshotOf(
+                backlog = read(),
+                registered = sources.snapshot().sources,
+                awaitingMarkConfirmation = awaitingMarkConfirmation(),
+                recoveryCompleted = recoveryCompleted(),
+                audioAwaitingCustody = audioAwaitingCustody(),
+                unresolvedAudioInterruption = unresolvedAudioInterruption(),
+            )
+        }) { incoming ->
             if (incoming is LoadState.Loading) {
                 if (generation == requestedGeneration) statusState = incoming
                 return@load

@@ -115,6 +115,9 @@ internal fun PhoneObserverWidgetContent(model: PhoneObserverWidgetModel) {
                 ) {
                     Text(model.stateWord, style = TextStyle(color = content))
                     Text(model.syncText, style = TextStyle(color = content))
+                    model.syncDetail?.let { detail ->
+                        Text(detail, style = TextStyle(color = content))
+                    }
                     model.diagnosis?.let { diag ->
                         Text(diag, style = TextStyle(color = content))
                     }
@@ -148,6 +151,9 @@ internal fun emptyPhoneStatus() = phoneStatusSnapshotOf(
     backlog = HarnessBacklogStatus(HarnessPlStatus.NotPaired, pendingCount = 0, pendingSourceIds = emptyList()),
     registered = emptyList(),
     awaitingMarkConfirmation = false,
+    recoveryCompleted = false,
+    audioAwaitingCustody = false,
+    unresolvedAudioInterruption = false,
 ).status
 
 private fun colorFor(role: PhoneObserverWidgetColorRole): ColorProvider =

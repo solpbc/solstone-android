@@ -34,6 +34,9 @@ class PhoneStatusSnapshotTest {
             ),
             registered = listOf(audio, location),
             awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
 
         assertEquals(listOf("audio", "location", "a-orphan", "z-orphan"), snapshot.waiting.map { it.sourceId })
@@ -52,6 +55,9 @@ class PhoneStatusSnapshotTest {
             backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 1, pendingSourceIds = emptyList()),
             registered = emptyList(),
             awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
 
         assertEquals(1, snapshot.status.pendingCount)
@@ -71,25 +77,26 @@ class PhoneStatusSnapshotTest {
             ),
             registered = emptyList(),
             awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         assertEquals(reading, snapshot.status.journalVersion)
     }
 
     @Test
-    fun passesThroughAwaitingMarkConfirmation() {
-        val awaiting = phoneStatusSnapshotOf(
-            backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 0, pendingSourceIds = emptyList()),
-            registered = emptyList(),
-            awaitingMarkConfirmation = true,
-        )
-        assertTrue(awaiting.status.awaitingMarkConfirmation)
-
-        val notAwaiting = phoneStatusSnapshotOf(
+    fun passesThroughRecoveryAndCustodyFacts() {
+        val snapshot = phoneStatusSnapshotOf(
             backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 0, pendingSourceIds = emptyList()),
             registered = emptyList(),
             awaitingMarkConfirmation = false,
+            recoveryCompleted = false,
+            audioAwaitingCustody = true,
+            unresolvedAudioInterruption = true,
         )
-        assertFalse(notAwaiting.status.awaitingMarkConfirmation)
+        assertFalse(snapshot.status.recoveryCompleted)
+        assertTrue(snapshot.status.audioAwaitingCustody)
+        assertTrue(snapshot.status.unresolvedAudioInterruption)
     }
 
     private fun flagsFor(plStatus: HarnessPlStatus): Pair<Boolean, Boolean> {
@@ -97,6 +104,9 @@ class PhoneStatusSnapshotTest {
             backlog = HarnessBacklogStatus(plStatus, 0, emptyList()),
             registered = emptyList(),
             awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            unresolvedAudioInterruption = false,
         )
         return snapshot.status.paired to snapshot.status.online
     }

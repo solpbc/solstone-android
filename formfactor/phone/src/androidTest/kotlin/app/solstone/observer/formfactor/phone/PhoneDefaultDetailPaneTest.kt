@@ -78,7 +78,7 @@ class PhoneDefaultDetailPaneTest {
         var connections = 0
 
         setWideContent(
-            status = PhoneStatusModel(false, false, 0, false, false),
+            status = PhoneStatusModel(false, false, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
             detailStatus = PhoneDefaultDetailStatus.Unpaired,
             onConnectJournal = { connections += 1 },
         )
@@ -150,7 +150,7 @@ class PhoneDefaultDetailPaneTest {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
                 PhoneObserverScreen(
                     loadState = loadedSources(),
-                    status = PhoneStatusModel(true, true, 0, false, false),
+                    status = PhoneStatusModel(true, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
                     defaultDetailStatus = detailStatus,
                     onToggle = { _, _ -> },
                     onStartObserving = {},
@@ -245,6 +245,9 @@ private fun snapshot(
         pendingCount = pendingCount,
         hasContentPending = waiting.isNotEmpty(),
         awaitingMarkConfirmation = awaitingMarkConfirmation,
+        recoveryCompleted = true,
+        audioAwaitingCustody = false,
+        unresolvedAudioInterruption = false,
     ),
     waiting = waiting,
 )

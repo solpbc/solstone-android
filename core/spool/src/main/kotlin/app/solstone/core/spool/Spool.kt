@@ -27,6 +27,11 @@ interface PayloadBytesProvider {
     fun open(payload: SegmentPayload): InputStream
 
     fun release(payload: SegmentPayload) {}
+
+    fun discardUncommitted(payload: SegmentPayload): Boolean {
+        release(payload)
+        return true
+    }
 }
 
 data class SealResult(val manifest: BundleManifest, val directory: Path?, val state: SealState)
