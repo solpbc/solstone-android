@@ -73,7 +73,16 @@ class AndroidAacAdtsRemuxer : AacAdtsRemuxer {
                     bufferInfo.offset = 0
                     bufferInfo.size = sampleSize
                     bufferInfo.presentationTimeUs = sampleTimeUs
-                    bufferInfo.flags = sampleFlags
+                    // Extractor and codec share some numeric values for different meanings.
+                    // SAMPLE_FLAG_PARTIAL_FRAME is 4, which is BUFFER_FLAG_END_OF_STREAM.
+                    var codecFlags = 0
+                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                        codecFlags = codecFlags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+                    }
+                    if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
+                        codecFlags = codecFlags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+                    }
+                    bufferInfo.flags = codecFlags
 
                     muxer.writeSampleData(muxerTrackIndex, buffer, bufferInfo)
                     sampleCount++
