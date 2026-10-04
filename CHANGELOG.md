@@ -10,7 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- settings › your journal no longer shows a label. the mark is the journal's name, and TalkBack reads the mark when you open the journal.
+- settings › your journal no longer shows a label. your journal's mark is its name, and TalkBack reads it when you open your journal.
 
 ## [2.1.17] - 2026-10-03
 
