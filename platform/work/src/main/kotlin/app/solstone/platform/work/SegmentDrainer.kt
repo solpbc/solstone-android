@@ -69,6 +69,7 @@ internal fun drainSegments(
     log: (String, Throwable?) -> Unit,
     finisher: ConfirmedCopyFinisher,
     readStoredZone: (SegmentRow) -> StoredSegmentZone? = { null },
+    pairingCurrent: () -> Boolean = { true },
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -76,12 +77,17 @@ internal fun drainSegments(
     var halted = false
     var failedThisRun = false
     var lastErrorReason: String? = null
+    // The owner can unpair while this run drains. The pairing is checked again before every
+    // journal request that carries segment material, so a run stops at the journal the owner
+    // left instead of finishing its batch there. Nothing is marked: the rows wait, unbound, for
+    // the next journal the owner pairs and confirms.
+    var pairingLeft = false
     // A segment sealed while this run drains goes out in the same run: each pass re-reads what is
     // due, skipping what this run already took, until nothing new is due, a pass fails, or the cap
     // is spent. Sealing also asks for a sync, but that request is dropped while this one runs.
     val taken = mutableSetOf<String>()
     var dueRemaining = false
-    while (!halted && !failedThisRun) {
+    while (!halted && !failedThisRun && !pairingLeft) {
         val due = selectDrainSegments(store.segmentsForDrain(), now()).filter { it.id !in taken }
         if (due.isEmpty()) break
         val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
@@ -90,6 +96,10 @@ internal fun drainSegments(
         taken += selected.map { it.id }
 
         for ((day, daySegments) in selected.groupBy { it.day }) {
+            if (!pairingCurrent()) {
+                pairingLeft = true
+                break
+            }
             val manifests = daySegments.associateWith { segment ->
                 reconstructManifest(segment, store.filesBySegmentId(segment.id))
             }
@@ -114,6 +124,10 @@ internal fun drainSegments(
             val actions = planDayDrain(verdicts, daySegments).associateBy(::drainActionId)
 
             for (segment in daySegments) {
+                if (!pairingCurrent()) {
+                    pairingLeft = true
+                    break
+                }
                 val manifest = manifests.getValue(segment)
                 if (!claimForUpload(store, segment, log)) {
                     failedThisRun = true
@@ -200,17 +214,18 @@ internal fun drainSegments(
                 if (halted) break
             }
 
-            if (halted) break
+            if (halted || pairingLeft) break
         }
 
         if (dueRemaining) break
     }
 
     val pendingAfter = store.pendingCount(MAIN_STREAM)
-    val cleanDrain = !halted && !failedThisRun && pendingAfter == 0
+    val cleanDrain = !halted && !failedThisRun && !pairingLeft && pendingAfter == 0
     val workOutcome = when {
         halted -> SyncOutcome.FAILURE
         failedThisRun -> SyncOutcome.RETRY
+        pairingLeft -> SyncOutcome.RETRY
         dueRemaining -> SyncOutcome.RETRY
         else -> SyncOutcome.SUCCESS
     }

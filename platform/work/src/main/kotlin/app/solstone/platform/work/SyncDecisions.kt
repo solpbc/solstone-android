@@ -46,12 +46,21 @@ fun isRetryDue(
     }
 }
 
+/**
+ * How long a FAILED row waits before it is due again.
+ *
+ * An auth refusal (401/403) waits for nothing. It is the journal refusing this device's pairing,
+ * not this segment, so it must never stick to the row: the segment stays due, and it goes to
+ * whichever journal the device is paired with next. Asking the refusing journal again costs no
+ * more than any waiting segment does, because a run stops at its first auth refusal (the day's
+ * listing check meets it before any payload is sent).
+ */
 fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
     val exponent = (attemptCount - 1).coerceAtLeast(0)
     return when (decision) {
         RetryDecision.RETRY -> (RETRY_BACKOFF_BASE_MS shl exponent.coerceAtMost(4)).coerceAtMost(RETRY_BACKOFF_CAP_MS)
         RetryDecision.HARD_FAIL -> (HARD_FAIL_BACKOFF_BASE_MS shl exponent.coerceAtMost(2)).coerceAtMost(HARD_FAIL_BACKOFF_CAP_MS)
-        RetryDecision.STOP_AUTH -> Long.MAX_VALUE
+        RetryDecision.STOP_AUTH -> 0L
     }
 }
 

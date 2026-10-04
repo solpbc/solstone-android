@@ -144,10 +144,11 @@ fun nextSyncState(
    - a confirmed upload or `segment_removed` (including `segment_removed` mixed into an otherwise confirmed segment) removes the segment directory in that drain and clears `last_error`; a refused proof leaves the row uploading; `segment_removed` is removal, not a `FAILED` keep
    - `Retry` marks failed, records status/error, and makes the run retry later
    - `HardFail` marks failed and records terminal failure metadata
-   - `AuthHalt` marks failed, records metadata, sets `lastFailureAt`, and stops the whole drain
-8. Retry and hard failure are per-segment isolated; only auth halt and non-IO fatal errors stop the batch.
+   - `AuthHalt` marks failed, records metadata, sets `lastFailureAt`, and stops the whole drain. The row is due again on the next run (no backoff): a 401/403 is the journal refusing this device's pairing, not the segment, so the segment goes to whichever journal is paired and confirmed next. A run under a pairing that is still refused stops at its first request.
+   - before each day's reconcile and each segment, the drain re-checks that the pairing it started with is still current; if the owner unpaired or re-paired, it stops without touching the remaining rows and returns `Result.retry()`
+8. Retry and hard failure are per-segment isolated; only auth halt, a pairing change, and non-IO fatal errors stop the batch.
 9. After the drain, count pending main-stream rows, upsert `nextSyncState`, then return:
-   - `Result.retry()` if any retry occurred and no auth halt
+   - `Result.retry()` if any retry occurred, or the pairing changed, and no auth halt
    - `Result.failure()` on auth halt
    - `Result.success()` otherwise
 

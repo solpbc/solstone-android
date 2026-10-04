@@ -421,6 +421,10 @@ private fun sync(
                     )
                 },
                 allowsOwnerMaterial = allowsOwnerMaterial,
+                pairingCurrent = {
+                    stores.identityMutator.currentPairingGeneration() ==
+                        PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
+                },
             )
         }
 

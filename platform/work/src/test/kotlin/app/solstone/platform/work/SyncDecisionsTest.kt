@@ -59,7 +59,10 @@ class SyncDecisionsTest {
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 14 * MINUTE_MS, lastStatusCode = 500, now = now))
         assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 2 * HOUR_MS, lastStatusCode = 422, now = now))
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - HOUR_MS, lastStatusCode = 422, now = now))
-        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 10, lastAttemptAt = 0, lastStatusCode = 401, now = now))
+        // An auth refusal is about the pairing, not the segment: the row is due again at once,
+        // so the next journal the owner pairs gets it.
+        assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 10, lastAttemptAt = now, lastStatusCode = 401, lastError = "auth halted", now = now))
+        assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now, lastStatusCode = 403, lastError = "auth halted", now = now))
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = 500, lastError = "removed_in_journal", now = now))
         assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "removed_in_journal", now = now))
         assertFalse(isRetryDue(QueueState.UPLOADED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
@@ -78,7 +81,8 @@ class SyncDecisionsTest {
         assertEquals(4 * HOUR_MS, retryBackoffMs(2, RetryDecision.HARD_FAIL))
         assertEquals(6 * HOUR_MS, retryBackoffMs(3, RetryDecision.HARD_FAIL))
         assertEquals(6 * HOUR_MS, retryBackoffMs(99, RetryDecision.HARD_FAIL))
-        assertEquals(Long.MAX_VALUE, retryBackoffMs(1, RetryDecision.STOP_AUTH))
+        assertEquals(0L, retryBackoffMs(1, RetryDecision.STOP_AUTH))
+        assertEquals(0L, retryBackoffMs(99, RetryDecision.STOP_AUTH))
     }
 
     @Test

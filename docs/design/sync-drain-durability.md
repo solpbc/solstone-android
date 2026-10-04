@@ -74,8 +74,8 @@ Exact policy for sign-off:
 
 - `SEALED` is due.
 - `UPLOADING` is due; D7 makes it a crash-leftover recovery path.
-- `FAILED` is due only if the stored classification is retryable/hard-fail cadence and elapsed time satisfies backoff.
-- `STOP_AUTH` is not due.
+- `FAILED` is due once the elapsed time satisfies the backoff for its stored classification.
+- `STOP_AUTH` (401/403) is due again at once (backoff 0). It is the journal refusing this device's pairing, not the segment, so it must not strand the row: the segment goes to whichever journal is paired and confirmed next. Under a pairing that is still refused, the run stops at its first auth refusal (D4 `halted`), so this costs no more requests than any waiting `SEALED` row.
 - `RETRY` cadence: 15 min, 30 min, 1 h, 2 h, 4 h, capped at 4 h. Formula: `15min * 2^min(max(attemptCount - 1, 0), 4)`.
 - `HARD_FAIL` cadence: 2 h, 4 h, 6 h, capped at 6 h. Formula: `min(2h * 2^min(max(attemptCount - 1, 0), 2), 6h)`.
 - For stored rows, classify with `classify(lastStatusCode, ioError = lastStatusCode == null)`.
@@ -244,6 +244,8 @@ Catch sites to update for AC-12:
 | AC-10 re-seal does not regress queue row | `platform/persistence-room/src/androidTest/kotlin/app/solstone/platform/persistence/room/RoomQueueStoreInstrumentedTest.insertSegmentWithFiles_refreshesFilesWithoutReplacingExistingSegmentRow` | Instrumented persistence-room | Seed uploaded row with serverKey/attemptCount; reinsert sealed; assert row metadata preserved and files refreshed. |
 | AC-11 per-run cap | `SegmentDrainerTest.capLeavesRemainderPendingAndReturnsRetry` | JVM platform/work | Seed 51 due rows, cap 50; assert 50 attempted and outcome retry due pendingAfter. |
 | AC-12 every catch logs | `SegmentDrainerTest.logsClaimPayloadAndReconcileCatches` | JVM platform/work | Use log list fake. Worker-level `Log` catches are best verified by code review unless returnDefaultValues/Robolectric is added. |
+| AC-13 an auth refusal never strands a segment | `SegmentDrainerTest.anAuthRefusalLeavesTheSegmentDueForTheNextRun` and `FilePairingGraphSyncDurabilityTest.heldSegmentsGoToTheNextJournalAfterForgetPairAndConfirm` | JVM platform/work | A 401 during unpair leaves the row due; forget, pair another journal, confirm its mark: both held segments go to the new journal and nothing more to the old. |
+| AC-14 an unpair mid-run stops sending | `SegmentDrainerTest.anUnpairDuringTheDrainSendsNothingMoreToTheJournalLeft` and `FilePairingGraphSyncDurabilityTest.unpairDuringASyncSendsNothingMoreToTheJournalLeft` | JVM platform/work | `forget()` during the first upload; no further listing or upload reaches the old journal, and the remaining rows stay untouched. |
 
 ## Risks and Open Questions
 

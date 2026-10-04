@@ -98,6 +98,93 @@ class SegmentDrainerTest {
     }
 
     @Test
+    fun anUnpairDuringTheDrainSendsNothingMoreToTheJournalLeft() {
+        val fixture = TestFixture()
+        val (first, _) = fixture.createSegment("a", sealedAt = 1)
+        val (second, secondDir) = fixture.createSegment("b", sealedAt = 2)
+        val (otherDay, _) = fixture.createSegment("c", day = "20260618", sealedAt = 3)
+        var paired = true
+        var ingests = 0
+        val accept = acceptedIngest("srv")
+        val listed = mutableListOf<String>()
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day ->
+                listed += day
+                uploadAll(manifests, day)
+            },
+            ingest = { manifest, fileBytes ->
+                ingests += 1
+                // The owner unpairs while the first segment is in flight.
+                paired = false
+                accept(manifest, fileBytes)
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+            pairingCurrent = { paired },
+        )
+
+        assertEquals(1, ingests)
+        assertEquals(listOf(DAY), listed)
+        assertEquals(QueueState.EVICTED, fixture.store.row(first.id).state)
+        // What was still waiting is untouched: no attempt, no verdict, nothing tying it to the
+        // journal the owner left. It goes to the next journal the owner pairs and confirms.
+        listOf(second, otherDay).forEach { waiting ->
+            val row = fixture.store.row(waiting.id)
+            assertEquals(QueueState.SEALED, row.state)
+            assertEquals(0, row.attemptCount)
+            assertNull(row.lastStatusCode)
+            assertNull(row.lastError)
+        }
+        assertTrue(Files.exists(secondDir))
+        assertEquals(SyncOutcome.RETRY, report.workOutcome)
+        assertFalse(report.cleanDrain)
+        assertFalse(report.failedThisRun)
+        assertNull(fixture.store.syncState!!.lastFailureAt)
+        assertEquals(2, fixture.store.syncState!!.pendingCount)
+    }
+
+    @Test
+    fun anAuthRefusalLeavesTheSegmentDueForTheNextRun() {
+        val fixture = TestFixture()
+        val (seg, dir) = fixture.createSegment("a")
+
+        val refused = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = { _, _ -> listOf(IngestOutcome.Rejected(401, "unauthorized")) },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(SyncOutcome.FAILURE, refused.workOutcome)
+        assertEquals(QueueState.FAILED, fixture.store.row(seg.id).state)
+        assertEquals(1, fixture.store.syncState!!.pendingCount)
+
+        // The refusal was about the pairing, not the segment: the very next run, at the same
+        // instant, takes it again and a journal that accepts it gets it.
+        val accepted = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = acceptedIngest("srv-a"),
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, accepted.workOutcome)
+        assertEquals(QueueState.EVICTED, fixture.store.row(seg.id).state)
+        assertFalse(Files.exists(dir))
+        assertEquals(0, fixture.store.syncState!!.pendingCount)
+    }
+
+    @Test
     fun processedVerdictSkipsUploadAndMarksUploaded() {
         val fixture = TestFixture()
         val (seg, dir) = fixture.createSegment(
