@@ -89,7 +89,7 @@ private fun parse(text: String): ClientCredential? {
 
 private data class PemBlock(val type: String, val text: String)
 
-private val PEM_BLOCK_REGEX = Regex("-----BEGIN ([A-Z ]+)-----.*?-----END \\1-----\\n?", RegexOption.DOT_MATCHES_ALL)
+private val PEM_BLOCK_REGEX = Regex("-----BEGIN ([A-Z ]+)-----.*?-----END \\1-----(?:\\r\\n|\\n)?", RegexOption.DOT_MATCHES_ALL)
 
 internal fun setOwnerOnlyPermissions(file: File) {
     file.setReadable(false, false)
