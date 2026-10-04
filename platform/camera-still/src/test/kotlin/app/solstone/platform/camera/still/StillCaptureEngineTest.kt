@@ -194,10 +194,11 @@ class StillCaptureEngineTest {
 
         engine.start(sink)
         waitForEmissions(sink, 1)
+        // The worker emits the gap, then the diag, then reports not running; wait for each.
+        waitForDiag(diags, "capture event=engine-failed source=camera type=IllegalStateException message=camera died")
+        waitForStopped(engine)
 
-        assertFalse(engine.condition().running)
         assertEquals("engine_failed type=IllegalStateException message=camera died", sink.emissions.single().gaps.single().detail)
-        assertTrue("capture event=engine-failed source=camera type=IllegalStateException message=camera died" in diags)
     }
 
     @Test
@@ -212,8 +213,7 @@ class StillCaptureEngineTest {
 
         engine.start(ThrowingSink)
         waitForDiag(diags, "capture event=emit-failed source=camera type=RejectedExecutionException message=closed")
-
-        assertFalse(engine.condition().running)
+        waitForStopped(engine)
     }
 
     @Test
@@ -332,6 +332,14 @@ class StillCaptureEngineTest {
             Thread.sleep(5L)
         }
         throw AssertionError("expected $count emissions, got ${sink.emissions.size}")
+    }
+
+    private fun waitForStopped(engine: StillCaptureEngine) {
+        repeat(200) {
+            if (!engine.condition().running) return
+            Thread.sleep(5L)
+        }
+        throw AssertionError("engine still reports running")
     }
 
     private fun waitForDiag(lines: List<String>, expected: String) {
