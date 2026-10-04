@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- pairing your phone with your journal on windows could fail after the journal added the device. the app now keeps the pairing and lets you confirm your journal's mark.
 - forgetting your journal or unpairing this device in the middle of a sync could let your phone keep sending to the journal you just left. it now stops there once what was already on its way finishes, and anything still waiting goes to the journal you pair next.
 - a moment on its way to your journal when you unpaired could stay on your phone for good, and the waiting count never got back to zero, even after you paired again. it now goes to the journal you're paired with, or the one you pair next, once you've confirmed that journal's mark.
 
