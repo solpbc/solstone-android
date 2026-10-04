@@ -54,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.solstone.core.diagnostics.DiagEvent
@@ -63,6 +65,8 @@ import app.solstone.core.pl.browser.JournalBrowserLifecycle
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.observer.formfactor.phone.PhoneJournalMarkPill
+import app.solstone.observer.formfactor.phone.PhonePane
+import app.solstone.observer.formfactor.phone.spokenPaneTitle
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
@@ -94,7 +98,8 @@ internal fun JournalSheet(
         sheetState = sheetState,
         modifier = Modifier
             .padding(top = 72.dp)
-            .widthIn(max = 640.dp),
+            .widthIn(max = 640.dp)
+            .semantics { paneTitle = spokenPaneTitle(PhonePane.JOURNAL, presentation) },
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = null,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },

@@ -35,7 +35,6 @@ import app.solstone.core.identity.JournalMarkPresentation
 @Composable
 fun PhoneYourJournalPane(
     paired: Boolean = false,
-    facts: PhoneJournalFacts = PhoneJournalFacts(),
     presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     onConnectJournal: () -> Unit,
     onForgetJournal: () -> Unit = {},
@@ -66,8 +65,6 @@ fun PhoneYourJournalPane(
                 // ⛔ No connection / check-connection rows here. Status already shows
                 // `how your phone connects`; technical details already show `connection`
                 // and `check connection`.
-                PaneFactRow(label = "label", value = facts.label)
-                PaneRowDivider()
                 PaneNavRow(
                     label = "pair a new journal",
                     onClick = onConnectJournal,

@@ -3,6 +3,7 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceWish
 
@@ -54,9 +55,14 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
  * A surface's [PhoneSurface.paneTitle] is an internal identifier that tests match on; it is not
  * owner-facing text. Resolve the visible heading first so a pane is announced with the same words
  * it displays. Only deliberately unimplemented placeholder routes may expose an identifier.
+ * [PhonePane.JOURNAL] announces [journalMark]; the default is only the static catalog value (the
+ * generic mark). A live journal sheet passes the presentation it was given.
  */
-fun spokenPaneTitle(surface: PhoneSurface): String = when (surface) {
-    PhonePane.JOURNAL -> "your journal, not set up yet"
+fun spokenPaneTitle(
+    surface: PhoneSurface,
+    journalMark: JournalMarkPresentation = JournalMarkPresentation.Generic,
+): String = when (surface) {
+    PhonePane.JOURNAL -> journalMarkSpokenForm(journalMark)
     else -> headingText(surface) ?: placeholderPaneTitle(surface)
 }
 

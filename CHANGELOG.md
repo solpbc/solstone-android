@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- settings › your journal no longer shows a label. the mark is the journal's name, and opening the journal announces that mark.
+
 ## [2.1.17] - 2026-10-03
 
 ### Fixed

@@ -45,7 +45,6 @@ class PhoneOwnerFactsTest {
             status = null,
             intakeRunning = true,
         )
-        assertEquals("journal", facts.label)
         assertEquals("journal-ca", facts.fingerprint)
         // ⚠ Both routes live is not an unknown: it is the case the app knows most about.
         assertEquals("straight to your journal, or through the relay sol pbc runs", facts.location)
@@ -128,7 +127,6 @@ class PhoneOwnerFactsTest {
             "—",
             uncommitted.location,
         )
-        assertEquals("—", uncommitted.label)
     }
 
     @Test

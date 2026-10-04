@@ -93,6 +93,18 @@ object JournalMarkTokens {
     const val UNAVAILABLE_ACCESSIBLE_NAME = "your journal's mark, unavailable right now"
 }
 
+internal fun journalMarkSpokenForm(presentation: JournalMarkPresentation): String = when (presentation) {
+    is JournalMarkPresentation.Identified -> {
+        val mark = presentation.mark
+        val words = mark.words
+        check(words.size >= 2) { "an identified journal mark speaks two words" }
+        listOf(mark.icon1.colorName, mark.icon2.colorName, words[0], words[1]).joinToString(", ")
+    }
+    JournalMarkPresentation.Unavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
+    JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
+    JournalMarkPresentation.Generic -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
+}
+
 fun parseHexColor(hex: String, defaultColor: Color): Color {
     val trimmed = hex.trim().removePrefix("#")
     if (trimmed.length != 6) return defaultColor
@@ -384,17 +396,7 @@ fun JournalMarkCard(
     val word1 = mark?.words?.getOrNull(0) ?: if (isUnavailable) "mark" else "your"
     val word2 = mark?.words?.getOrNull(1) ?: if (isUnavailable) "unavailable" else "journal"
 
-    val accessibleName = when {
-        mark != null -> listOf(
-            mark.icon1.colorName,
-            mark.icon2.colorName,
-            mark.words.getOrNull(0),
-            mark.words.getOrNull(1),
-        ).filterNotNull().joinToString(", ")
-        isUnavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
-        presentation is JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
-        else -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
-    }
+    val accessibleName = journalMarkSpokenForm(presentation)
 
     Column(
         modifier = modifier

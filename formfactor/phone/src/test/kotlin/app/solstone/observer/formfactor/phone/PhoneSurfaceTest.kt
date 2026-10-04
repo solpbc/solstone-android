@@ -89,7 +89,7 @@ class PhoneSurfaceTest {
 
     @Test
     fun everySurfaceWithApprovedCopyIsAnnouncedWithIt() {
-        val announced = phoneSurfaces().filterNot { it == PhoneDeck }.associateWith(::spokenPaneTitle)
+        val announced = phoneSurfaces().filterNot { it == PhoneDeck }.associateWith { spokenPaneTitle(it) }
         val stillAnIdentifier = announced.filterValues { it.startsWith("surface_") || it.startsWith("pane_") }
         assertEquals(
             setOf(
@@ -104,7 +104,7 @@ class PhoneSurfaceTest {
 
     @Test
     fun announcedPaneNamesAreUnique() {
-        val announced = phoneSurfaces().filterNot { it == PhoneDeck }.map(::spokenPaneTitle) + greetingFor(5)
+        val announced = phoneSurfaces().filterNot { it == PhoneDeck }.map { spokenPaneTitle(it) } + greetingFor(5)
         assertTrue(announced.all { it.isNotBlank() })
         assertEquals(announced.size, announced.distinct().size)
     }

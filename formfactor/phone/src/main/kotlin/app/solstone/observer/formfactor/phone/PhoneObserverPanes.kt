@@ -221,7 +221,6 @@ private fun PhoneDetailContent(
         )
         PhoneRoute.YourJournal -> PhoneYourJournalPane(
             paired = journalPaired,
-            facts = journalFacts,
             presentation = journalMarkPresentation,
             onConnectJournal = onConnectJournal,
             onForgetJournal = onForgetJournal,

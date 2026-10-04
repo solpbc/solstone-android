@@ -61,17 +61,7 @@ fun PhoneJournalMarkPill(
         isUnavailable -> "mark" to "unavailable"
         else -> "your" to "journal"
     }
-    val accessibleName = when {
-        mark != null -> listOf(
-            mark.icon1.colorName,
-            mark.icon2.colorName,
-            mark.words.getOrNull(0),
-            mark.words.getOrNull(1),
-        ).filterNotNull().joinToString(", ")
-        isUnavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
-        presentation is JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
-        else -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
-    }
+    val accessibleName = journalMarkSpokenForm(presentation)
     // ⚠ `onClick` is nullable because the journal sheet's title is this same unit and must not be
     // a control: it names the surface the owner is already inside. ⛔ When it is inert it takes the
     // `heading` role instead of `Button`, and keeps ONE merged node carrying the mark's spoken form

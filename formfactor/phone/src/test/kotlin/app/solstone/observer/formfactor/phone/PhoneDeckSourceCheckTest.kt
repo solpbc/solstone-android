@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.identity.JournalMark
+import app.solstone.core.identity.JournalMarkIcon
+import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.model.SourceState
 import java.io.File
 import kotlin.test.Test
@@ -89,7 +92,34 @@ class PhoneDeckSourceCheckTest {
         assertEquals("camera", headingText(PhoneRoute.SourceDetail("camera")))
         assertNull(headingText(PhonePane.JOURNAL))
         assertNotEquals("journal", headingText(PhonePane.JOURNAL))
-        assertEquals("your journal, not set up yet", spokenPaneTitle(PhonePane.JOURNAL))
+
+        assertEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME, spokenPaneTitle(PhonePane.JOURNAL))
+        assertEquals(journalMarkSpokenForm(JournalMarkPresentation.Generic), spokenPaneTitle(PhonePane.JOURNAL))
+
+        val unavailableSpoken = spokenPaneTitle(PhonePane.JOURNAL, JournalMarkPresentation.Unavailable)
+        assertEquals(JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME, unavailableSpoken)
+        assertEquals(journalMarkSpokenForm(JournalMarkPresentation.Unavailable), unavailableSpoken)
+        assertNotEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME, unavailableSpoken)
+
+        val loadingSpoken = spokenPaneTitle(PhonePane.JOURNAL, JournalMarkPresentation.Loading)
+        assertEquals(JournalMarkTokens.LOADING_ACCESSIBLE_NAME, loadingSpoken)
+        assertEquals(journalMarkSpokenForm(JournalMarkPresentation.Loading), loadingSpoken)
+        assertNotEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME, loadingSpoken)
+
+        val mark = JournalMark(
+            icon1 = JournalMarkIcon(name = "circle", svg = "<path/>", colorName = "blue", colorHex = "#0000FF", rot = 0),
+            icon2 = JournalMarkIcon(name = "sun", svg = "<path/>", colorName = "gold", colorHex = "#FFD700", rot = 0),
+            words = listOf("river", "stone"),
+        )
+        val expected = listOf(mark.icon1.colorName, mark.icon2.colorName, mark.words[0], mark.words[1]).joinToString(", ")
+        val identifiedPresentation = JournalMarkPresentation.Identified(mark)
+        val identifiedSpoken = spokenPaneTitle(PhonePane.JOURNAL, identifiedPresentation)
+        assertEquals(expected, journalMarkSpokenForm(identifiedPresentation))
+        assertEquals(expected, identifiedSpoken)
+        assertFalse(identifiedSpoken.contains(mark.icon1.name))
+        assertFalse(identifiedSpoken.contains(mark.icon2.name))
+        assertEquals(4, expected.split(", ").size)
+
         assertNull(headingText(PhoneRoute.RouteA))
         assertNull(headingText(PhoneDeck))
     }

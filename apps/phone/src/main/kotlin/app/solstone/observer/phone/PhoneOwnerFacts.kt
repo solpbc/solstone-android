@@ -40,7 +40,6 @@ internal fun phoneJournalFacts(
     val committed = pairing as? PairingGraphSnapshot.Committed
     return PhoneJournalFacts(
         version = journalVersionDisplayText(status?.journalVersion),
-        label = committed?.home?.homeLabel ?: "—",
         // `direct` and `relay` are how the transport is named in code, not how a route is named
         // to the person taking it.
         location = when {
