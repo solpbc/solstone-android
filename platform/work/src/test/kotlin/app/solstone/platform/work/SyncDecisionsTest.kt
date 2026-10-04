@@ -50,6 +50,32 @@ class SyncDecisionsTest {
     }
 
     @Test
+    fun aBackOffHoldsOnlyAtTheJournalThatEarnedIt() {
+        val now = 10 * HOUR_MS
+        fun failed(id: String, home: String?, lastError: String? = "retry") = segment(
+            id,
+            MAIN_STREAM,
+            QueueState.FAILED,
+            attemptCount = 5,
+            lastAttemptAt = now,
+            lastStatusCode = 500,
+            lastError = lastError,
+            homeInstanceId = home,
+        )
+        val rows = listOf(
+            failed("here", "home-b"),
+            failed("left", "home-a"),
+            failed("unrecorded", null),
+            failed("removed", "home-a", lastError = "removed_in_journal"),
+        )
+
+        assertEquals(listOf("left", "unrecorded"), selectDrainSegments(rows, now, "home-b").map { it.id })
+        assertEquals(6, nextAttemptCount(rows[0], "home-b"))
+        assertEquals(1, nextAttemptCount(rows[1], "home-b"))
+        assertEquals(1, nextAttemptCount(rows[2], "home-b"))
+    }
+
+    @Test
     fun isRetryDueCoversStateAndBackoffPolicy() {
         val now = 10 * HOUR_MS
 
@@ -452,6 +478,8 @@ class SyncDecisionsTest {
         attemptCount: Int = 0,
         lastAttemptAt: Long? = null,
         lastStatusCode: Int? = null,
+        lastError: String? = null,
+        homeInstanceId: String? = null,
     ): SegmentRow =
         SegmentRow(
             id = id,
@@ -462,11 +490,12 @@ class SyncDecisionsTest {
             state = state,
             byteSize = 10,
             sealedAt = 100,
-            homeInstanceId = null,
+            homeInstanceId = homeInstanceId,
             observerHandle = null,
             attemptCount = attemptCount,
             lastStatusCode = lastStatusCode,
             lastAttemptAt = lastAttemptAt,
+            lastError = lastError,
         )
 
     private fun file(segmentId: String, sourceId: String, name: String, sha: String): SegmentFileRow =

@@ -296,8 +296,9 @@ internal const val JOURNAL_KEPT_ITS_RECORD =
 // ⚠ Three states, not two, and the third is not the one it first looks like. `forget()` clears
 // the identity, credential and endpoint and nothing else — ⛔ **it does not clear the spool or the
 // segment table**, and `segmentsForDrain` selects on `stream` + `state` alone (`home_instance_id`
-// is written null by both writers and read nowhere). So anything already taken in and not yet
-// delivered survives, and drains to whichever journal this phone pairs to next. The confirm
+// records only which journal a send attempt went to, so a back-off earned at one journal never
+// delays the next). So anything already taken in and not yet delivered survives, and drains to
+// whichever journal this phone pairs to next. The confirm
 // names that third population — anything still waiting — and says it goes to the journal you
 // pair next.
 internal const val FORGET_JOURNAL_BODY =

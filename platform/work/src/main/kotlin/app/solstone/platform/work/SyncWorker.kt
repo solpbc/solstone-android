@@ -320,7 +320,8 @@ private fun sync(
                 override fun segmentById(id: String): SegmentRow? = drainStore.segmentRow(id)
                 override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
                 override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = drainStore.filesBySegmentId(segmentId)
-                override fun recordAttempt(id: String, attempts: Int, at: Long): Int = drainStore.recordAttempt(id, attempts, at)
+                override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int =
+                    drainStore.recordAttempt(id, attempts, at, homeInstanceId)
                 override fun recordUploaded(id: String): Int = drainStore.recordUploaded(id)
                 override fun recordFailure(id: String, code: Int?, error: String?): Int = drainStore.recordFailure(id, code, error)
                 override fun upsertSyncState(row: SyncStateRow) = drainStore.upsertSyncState(row)
@@ -425,6 +426,7 @@ private fun sync(
                     stores.identityMutator.currentPairingGeneration() ==
                         PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
                 },
+                homeInstanceId = credentials.identity.instanceId,
             )
         }
 

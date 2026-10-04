@@ -27,6 +27,7 @@ internal fun <C> syncWithTransport(
     spoolDir: File? = null,
     allowsOwnerMaterial: Boolean,
     pairingCurrent: () -> Boolean = { true },
+    homeInstanceId: String? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)
@@ -96,6 +97,7 @@ internal fun <C> syncWithTransport(
                     finisher = finisher,
                     readStoredZone = { segment -> spoolDir?.let { readStoredZoneFor(it, segment) } },
                     pairingCurrent = pairingCurrent,
+                    homeInstanceId = homeInstanceId,
                 )
                 report.workOutcome
             }

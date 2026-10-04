@@ -49,8 +49,10 @@ abstract class SegmentDao {
     @Query("SELECT * FROM segment_file WHERE segment_id = :segmentId ORDER BY rowId ASC")
     abstract fun filesBySegmentId(segmentId: String): List<SegmentFileRow>
 
-    @Query("UPDATE segment SET attempt_count = :attempts, last_attempt_at = :at WHERE id = :id")
-    abstract fun recordAttempt(id: String, attempts: Int, at: Long): Int
+    // `home_instance_id` names the journal this attempt went to, so a later drain can tell a
+    // back-off earned at a journal the device has since left from one earned at its journal now.
+    @Query("UPDATE segment SET attempt_count = :attempts, last_attempt_at = :at, home_instance_id = :homeInstanceId WHERE id = :id")
+    abstract fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int
 
     @Query("UPDATE segment SET last_error = NULL WHERE id = :id")
     abstract fun recordUploaded(id: String): Int

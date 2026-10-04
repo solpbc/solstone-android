@@ -61,8 +61,8 @@ internal class FakeDrainStore(
         return next
     }
 
-    override fun recordAttempt(id: String, attempts: Int, at: Long): Int {
-        rows[id] = rows.getValue(id).copy(attemptCount = attempts, lastAttemptAt = at)
+    override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int {
+        rows[id] = rows.getValue(id).copy(attemptCount = attempts, lastAttemptAt = at, homeInstanceId = homeInstanceId)
         return 1
     }
 

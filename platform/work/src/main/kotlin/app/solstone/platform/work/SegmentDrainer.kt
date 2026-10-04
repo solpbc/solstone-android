@@ -39,7 +39,7 @@ interface DrainStore {
     fun segmentsForDrain(): List<SegmentRow>
     fun filesBySegmentId(id: String): List<SegmentFileRow>
     fun advanceState(id: String, event: QueueEvent): QueueState
-    fun recordAttempt(id: String, attempts: Int, at: Long): Int
+    fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int
     fun recordUploaded(id: String): Int
     fun recordFailure(id: String, code: Int?, error: String?): Int
     fun pendingCount(stream: String): Int
@@ -52,7 +52,8 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun segmentsForDrain(): List<SegmentRow> = dao.segmentsForDrain(MAIN_STREAM)
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = dao.filesBySegmentId(id)
     override fun advanceState(id: String, event: QueueEvent): QueueState = dao.advanceState(id, event)
-    override fun recordAttempt(id: String, attempts: Int, at: Long): Int = dao.recordAttempt(id, attempts, at)
+    override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int =
+        dao.recordAttempt(id, attempts, at, homeInstanceId)
     override fun recordUploaded(id: String): Int = dao.recordUploaded(id)
     override fun recordFailure(id: String, code: Int?, error: String?): Int = dao.recordFailure(id, code, error)
     override fun pendingCount(stream: String): Int = dao.pendingCount(stream)
@@ -70,6 +71,7 @@ internal fun drainSegments(
     finisher: ConfirmedCopyFinisher,
     readStoredZone: (SegmentRow) -> StoredSegmentZone? = { null },
     pairingCurrent: () -> Boolean = { true },
+    homeInstanceId: String? = null,
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -88,7 +90,7 @@ internal fun drainSegments(
     val taken = mutableSetOf<String>()
     var dueRemaining = false
     while (!halted && !failedThisRun && !pairingLeft) {
-        val due = selectDrainSegments(store.segmentsForDrain(), now()).filter { it.id !in taken }
+        val due = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId).filter { it.id !in taken }
         if (due.isEmpty()) break
         val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
         if (due.size > selected.size) dueRemaining = true
@@ -133,7 +135,7 @@ internal fun drainSegments(
                     failedThisRun = true
                     continue
                 }
-                store.recordAttempt(segment.id, segment.attemptCount + 1, now())
+                store.recordAttempt(segment.id, nextAttemptCount(segment, homeInstanceId), now(), homeInstanceId)
 
                 when (actions.getValue(segment.id)) {
                     is DrainAction.Skip -> {

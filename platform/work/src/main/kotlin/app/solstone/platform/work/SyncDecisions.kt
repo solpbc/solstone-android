@@ -64,11 +64,31 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
     }
 }
 
-fun selectDrainSegments(segments: List<SegmentRow>, now: Long): List<SegmentRow> =
+/**
+ * The rows a drain takes, while paired with the journal [homeInstanceId].
+ *
+ * A row's back-off belongs to the journal that earned it. Each attempt records the journal it
+ * went to, so a FAILED row whose last attempt went to any other journal (or to none this version
+ * recorded) is due at once: the journal the device is paired with now gets its own first try,
+ * and no journal the owner has left decides when it comes.
+ */
+fun selectDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> =
     segments.filter {
         it.stream == MAIN_STREAM &&
-            isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now)
+            (
+                isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
+                    failedAtAnotherJournal(it, homeInstanceId)
+                )
     }
+
+/** The attempt count a new attempt at [homeInstanceId] records: back-off starts over at a new journal. */
+fun nextAttemptCount(segment: SegmentRow, homeInstanceId: String?): Int =
+    if (segment.homeInstanceId == homeInstanceId) segment.attemptCount + 1 else 1
+
+private fun failedAtAnotherJournal(segment: SegmentRow, homeInstanceId: String?): Boolean =
+    segment.state == QueueState.FAILED &&
+        segment.lastError != "removed_in_journal" &&
+        segment.homeInstanceId != homeInstanceId
 
 fun reconstructManifest(
     segment: SegmentRow,

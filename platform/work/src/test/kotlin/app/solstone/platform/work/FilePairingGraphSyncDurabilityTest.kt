@@ -126,6 +126,14 @@ class FilePairingGraphSyncDurabilityTest {
         override fun close() {}
     }
 
+    /**
+     * Requests that carry segment material: a day's listing or an upload. The journal-version
+     * refresh a sync starts runs on its own thread and can still reach a journal after the run
+     * returns, so a count of every request races; it carries no segment material.
+     */
+    private fun RecordingClient.segmentMaterialRequests(): Int =
+        requests.count { it.path == INGEST_PATH || it.path.startsWith(SEGMENTS_PATH) }
+
     @Test
     fun realFilePairingGraphConfirmedSyncSendsAndEvictsSegments() {
         val root = temp.newFolder()
@@ -521,7 +529,7 @@ class FilePairingGraphSyncDurabilityTest {
         assertEquals(401, drainStore.row(heldId1).lastStatusCode)
         assertEquals(QueueState.SEALED, drainStore.row(heldId2).state)
         assertTrue(graph.forget() is GraphMutationResult.Cleared)
-        val requestsToA = journalA.requests.size
+        val requestsToA = journalA.segmentMaterialRequests()
 
         // Journal B, paired but its mark not yet confirmed: nothing goes to it.
         val installB = graph.installOrReplace(
@@ -547,7 +555,71 @@ class FilePairingGraphSyncDurabilityTest {
             .map { it.body!!.toString(Charsets.UTF_8) }
         assertTrue(sentToB.any { it.contains("a.bin") })
         assertTrue(sentToB.any { it.contains("b.bin") })
-        assertEquals(requestsToA, journalA.requests.size)
+        assertEquals(requestsToA, journalA.segmentMaterialRequests())
+    }
+
+    /**
+     * A back-off belongs to the journal that earned it. Segments a journal kept failing with
+     * server errors wait out their back-off there, but once the owner leaves that journal, pairs
+     * another and confirms its mark, they go to the new journal on its first sync, not hours later.
+     */
+    @Test
+    fun backOffEarnedAtTheJournalLeftDoesNotDelayTheNextJournal() {
+        val (graph, stores, confirmStore) = pairedStores()
+        val spoolDir = temp.newFolder()
+        val drainStore = twoHeldSegments(spoolDir)
+
+        val journalA = RecordingClient(refuseIngestWith = 500)
+        val journalB = RecordingClient()
+        val openClient: (SyncTransport, ClientCredential) -> PlHttpClient = { _, credential ->
+            if (credential.clientCertPem.contains("cert-2")) journalB else journalA
+        }
+
+        // Journal A fails both segments with a server error, so each backs off there.
+        runSync(stores, spoolDir, drainStore, openClient)
+        for (id in listOf(heldId1, heldId2)) {
+            val row = drainStore.row(id)
+            assertEquals(QueueState.FAILED, row.state)
+            assertEquals(500, row.lastStatusCode)
+            assertEquals(1, row.attemptCount)
+            assertEquals("home-1", row.homeInstanceId)
+        }
+        // While A is still the journal, its back-off holds: an immediate sync sends A nothing.
+        val ingestsToA = journalA.requests.count { it.path == INGEST_PATH }
+        assertEquals(2, ingestsToA)
+        runSync(stores, spoolDir, drainStore, openClient)
+        assertEquals(ingestsToA, journalA.requests.count { it.path == INGEST_PATH })
+        // Several more failures at A push the back-off toward its four-hour cap.
+        for (id in listOf(heldId1, heldId2)) {
+            drainStore.recordAttempt(id, 5, System.currentTimeMillis(), "home-1")
+        }
+
+        // Forget A, pair B: nothing goes to B before the owner confirms its mark.
+        assertTrue(graph.forget() is GraphMutationResult.Cleared)
+        val requestsToA = journalA.segmentMaterialRequests()
+        val installB = graph.installOrReplace(
+            testHome("sha256:cert-2", "home-2"),
+            testCred("key-2", "cert-2"),
+            DirectEndpoint("10.0.0.2", 7657),
+            true,
+        )
+        assertTrue(installB is GraphMutationResult.Applied)
+        assertEquals(SyncOutcome.SUCCESS, runSync(stores, spoolDir, drainStore, openClient))
+        assertFalse(journalB.requests.any { it.path == INGEST_PATH })
+
+        // Confirmed: B's first sync takes both segments, whatever A's back-off said.
+        assertTrue(confirmCurrentJournal(graph, confirmStore, "sha256:cert-2"))
+        assertEquals(SyncOutcome.SUCCESS, runSync(stores, spoolDir, drainStore, openClient))
+
+        assertEquals(QueueState.EVICTED, drainStore.row(heldId1).state)
+        assertEquals(QueueState.EVICTED, drainStore.row(heldId2).state)
+        assertEquals(0, drainStore.pendingCount(MAIN_STREAM))
+        val sentToB = journalB.requests
+            .filter { it.path == INGEST_PATH }
+            .map { it.body!!.toString(Charsets.UTF_8) }
+        assertTrue(sentToB.any { it.contains("a.bin") })
+        assertTrue(sentToB.any { it.contains("b.bin") })
+        assertEquals(requestsToA, journalA.segmentMaterialRequests())
     }
 
     /** An unpair while a sync is sending stops the sending at the journal the owner left. */

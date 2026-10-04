@@ -71,10 +71,10 @@ class ConfirmedSegmentIdentityTest {
             override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
             override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> =
                 files[segmentId].orEmpty()
-            override fun recordAttempt(id: String, attempts: Int, at: Long): Int {
+            override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int {
                 val idx = rows.indexOfFirst { it.id == id }
                 if (idx >= 0) {
-                    rows[idx] = rows[idx].copy(attemptCount = attempts, lastAttemptAt = at)
+                    rows[idx] = rows[idx].copy(attemptCount = attempts, lastAttemptAt = at, homeInstanceId = homeInstanceId)
                     return 1
                 }
                 return 0

@@ -78,6 +78,7 @@ Exact policy for sign-off:
 - `STOP_AUTH` (401/403) is due again at once (backoff 0). It is the journal refusing this device's pairing, not the segment, so it must not strand the row: the segment goes to whichever journal is paired and confirmed next. Under a pairing that is still refused, the run stops at its first auth refusal (D4 `halted`), so this costs no more requests than any waiting `SEALED` row.
 - `RETRY` cadence: 15 min, 30 min, 1 h, 2 h, 4 h, capped at 4 h. Formula: `15min * 2^min(max(attemptCount - 1, 0), 4)`.
 - `HARD_FAIL` cadence: 2 h, 4 h, 6 h, capped at 6 h. Formula: `min(2h * 2^min(max(attemptCount - 1, 0), 2), 6h)`.
+- A back-off belongs to the journal that earned it. Each attempt records the journal it went to (`home_instance_id`, the paired journal's instance id). A `FAILED` row whose last attempt went to a different journal, or predates that record, is due at once under the current pairing, and its next attempt counts from 1. Back-off earned at a journal the owner has left never delays the journal paired and confirmed now; at the same journal, the cadences above hold.
 - For stored rows, classify with `classify(lastStatusCode, ioError = lastStatusCode == null)`.
 
 Rationale: retryable failures recover quickly at first but stop waking frequently after repeated failures; hard failures are not terminal forever but move slowly enough to avoid tight loops after durable 4xx errors.
@@ -246,6 +247,7 @@ Catch sites to update for AC-12:
 | AC-12 every catch logs | `SegmentDrainerTest.logsClaimPayloadAndReconcileCatches` | JVM platform/work | Use log list fake. Worker-level `Log` catches are best verified by code review unless returnDefaultValues/Robolectric is added. |
 | AC-13 an auth refusal never strands a segment | `SegmentDrainerTest.anAuthRefusalLeavesTheSegmentDueForTheNextRun` and `FilePairingGraphSyncDurabilityTest.heldSegmentsGoToTheNextJournalAfterForgetPairAndConfirm` | JVM platform/work | A 401 during unpair leaves the row due; forget, pair another journal, confirm its mark: both held segments go to the new journal and nothing more to the old. |
 | AC-14 an unpair mid-run stops sending | `SegmentDrainerTest.anUnpairDuringTheDrainSendsNothingMoreToTheJournalLeft` and `FilePairingGraphSyncDurabilityTest.unpairDuringASyncSendsNothingMoreToTheJournalLeft` | JVM platform/work | `forget()` during the first upload; no further listing or upload reaches the old journal, and the remaining rows stay untouched. |
+| AC-15 a back-off does not follow the owner to the next journal | `SyncDecisionsTest.aBackOffHoldsOnlyAtTheJournalThatEarnedIt` and `FilePairingGraphSyncDurabilityTest.backOffEarnedAtTheJournalLeftDoesNotDelayTheNextJournal` | JVM platform/work | Journal A fails both segments with 500 and its back-off holds while A is paired; forget, pair B, confirm its mark: B's first sync takes both, and A receives nothing more. |
 
 ## Risks and Open Questions
 

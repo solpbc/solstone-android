@@ -425,7 +425,7 @@ class RoomSealedSegmentSinkTest {
         override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> =
             files.filter { it.segmentId == segmentId }
 
-        override fun recordAttempt(id: String, attempts: Int, at: Long): Int = 0
+        override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int = 0
 
         override fun recordUploaded(id: String): Int = 0
 

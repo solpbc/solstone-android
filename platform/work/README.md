@@ -138,7 +138,7 @@ fun nextSyncState(
 6. Group by day. For each day, build `SegmentReconciler(client)`, reconstruct manifests from DB rows, call `reconciler.diff(manifests, day)`, and record `dedupe_checked_at = now` for checked rows.
 7. For each segment:
    - `advanceState(id, START_UPLOAD)`
-   - increment attempt count and set `last_attempt_at`
+   - increment attempt count, set `last_attempt_at`, and record the journal the attempt goes to in `home_instance_id`. A back-off belongs to the journal that earned it: at a journal other than the one a FAILED row last went to, the row is due at once and its attempt count starts over at 1, so no journal the owner has left decides when the journal paired now gets it
    - if reconcile says upload is not needed, a proven listing removes the segment directory in that drain without POST; a refused proof leaves the row uploading
    - otherwise POST with `ObserverIngestClient`, mapping outcomes through the pure functions
    - a confirmed upload or `segment_removed` (including `segment_removed` mixed into an otherwise confirmed segment) removes the segment directory in that drain and clears `last_error`; a refused proof leaves the row uploading; `segment_removed` is removal, not a `FAILED` keep

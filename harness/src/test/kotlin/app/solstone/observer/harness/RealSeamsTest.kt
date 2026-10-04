@@ -578,7 +578,7 @@ class RealSeamsTest {
         override fun segmentById(id: String): SegmentRow? = null
         override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
         override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = emptyList()
-        override fun recordAttempt(id: String, attempts: Int, at: Long): Int = 0
+        override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int = 0
         override fun recordUploaded(id: String): Int = 0
         override fun recordFailure(id: String, code: Int?, error: String?): Int = 0
         override fun upsertSyncState(row: SyncStateRow) = Unit

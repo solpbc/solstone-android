@@ -244,9 +244,9 @@ class ConfirmedCopyFinisherTest {
         override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
         override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = emptyList()
 
-        override fun recordAttempt(id: String, attempts: Int, at: Long): Int {
+        override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int {
             val current = segments[id] ?: return 0
-            segments[id] = current.copy(attemptCount = attempts, lastAttemptAt = at)
+            segments[id] = current.copy(attemptCount = attempts, lastAttemptAt = at, homeInstanceId = homeInstanceId)
             return 1
         }
 
