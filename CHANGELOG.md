@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.19] - 2026-10-05
+
 ### Fixed
 
 - pairing your phone with your journal on windows could fail after the journal added the device. the app now keeps the pairing and lets you confirm your journal's mark.
