@@ -76,16 +76,22 @@ class SegmentReconciler(private val http: PlHttpClient) {
         }
     }
 
-    /** One physical response entry must prove the whole source group; keys and aliases are opaque. */
+    /**
+     * One physical response entry must prove the whole source group. An ordinary entry's key is its
+     * physical segment basename; a collision alias carries explicit `segment`/`stream` instead, and
+     * the alias itself is opaque. Equal bytes alone never identify a segment.
+     */
     private fun provesCompleteHeldCopy(
         localSegment: String,
         sourceId: String,
         localFiles: List<BundleFile>,
         remote: ServerSegment,
     ): Boolean {
-        if ((remote.segment != null || remote.stream != null) &&
-            (remote.segment != localSegment || remote.stream != sourceId)
-        ) return false
+        if (remote.segment == null) {
+            if (remote.key != localSegment) return false
+        } else if (remote.segment != localSegment || remote.stream != sourceId) {
+            return false
+        }
         val remoteFiles = remote.files
         if (localFiles.isEmpty() || localFiles.size != remoteFiles.size) return false
         if (localFiles.map(BundleFile::name).toSet().size != localFiles.size) return false

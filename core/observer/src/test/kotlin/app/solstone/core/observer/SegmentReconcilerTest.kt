@@ -203,7 +203,7 @@ class SegmentReconcilerTest {
     fun diffAllowsOneCompleteLegacyCandidateWithoutPhysicalCoordinates() {
         val local = manifest("093000_60", "audio.wav" to SHA_A)
         val listing = response(
-            segmentJson("opaque-alias", fileJson("audio.wav", SHA_A), originalKey = "unrelated"),
+            segmentJson("093000_60", fileJson("audio.wav", SHA_A), originalKey = "unrelated"),
         )
 
         assertEquals(
@@ -213,22 +213,29 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun diffDoesNotInferIdentityFromCanonicalOrOriginalKeys() {
+    fun diffDoesNotMatchEqualBytesUnderAnotherSegmentsKeyWithoutPhysicalCoordinates() {
+        val local = manifest("093100_60", "audio.wav" to SHA_A)
+        val listing = response(
+            segmentJson("093000_60", fileJson("audio.wav", SHA_A)),
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(local.key, true)),
+            SegmentReconciler(RecordingPlHttpClient(listing)).diff(listOf(local), "20260616"),
+        )
+    }
+
+    @Test
+    fun diffPrefersCanonicalKeyOverOriginalKey() {
         val http = RecordingPlHttpClient(
             response(
                 segmentJson("093000_60"),
-                segmentJson(
-                    "other",
-                    fileJson("audio.wav", SHA_A),
-                    originalKey = "093000_60",
-                    physicalSegment = "093000_60",
-                    stream = "source-0",
-                ),
+                segmentJson("other", fileJson("audio.wav", SHA_A), originalKey = "093000_60"),
             ),
         )
 
         assertEquals(
-            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
             SegmentReconciler(http).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
         )
     }

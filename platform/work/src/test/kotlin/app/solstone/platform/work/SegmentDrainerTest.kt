@@ -1713,6 +1713,37 @@ class SegmentDrainerTest {
     }
 
     @Test
+    fun equalByteSiblingListedUnderAnotherKeyStillUploadsBeforeTheRealFinisherRemovesIt() {
+        val fixture = TestFixture()
+        val audio = BundleFile("audio", "audio.wav", "a".repeat(64), 1, "audio/wav", 1, 2)
+        val (listed, listedDir) = fixture.createSegment("093000_60", files = listOf(audio))
+        val (unlisted, unlistedDir) = fixture.createSegment("093100_60", files = listOf(audio), sealedAt = 2)
+        val onlyListed = listing(
+            """{"key":"${listed.segment}","files":[{"name":"${audio.name}","size":${audio.byteSize},"sha256":"${audio.sha256}","status":"present"}]}""",
+        )
+        val uploadedSegments = mutableListOf<String>()
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(httpReturning(onlyListed)).diff(manifests, day) },
+            ingest = { manifest, bytes ->
+                uploadedSegments += manifest.key.segment
+                acceptedIngest("uploaded")(manifest, bytes)
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(listOf(unlisted.segment), uploadedSegments)
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+        assertTrue(report.cleanDrain)
+        assertEquals(QueueState.EVICTED, fixture.store.row(listed.id).state)
+        assertFalse(Files.exists(listedDir))
+        assertEquals(QueueState.EVICTED, fixture.store.row(unlisted.id).state)
+        assertFalse(Files.exists(unlistedDir))
+    }
+
+    @Test
     fun ordinaryUploadAndMixedSegmentRemovedCompletionReachTheRealFinisher() {
         val fixture = TestFixture()
         val (ordinary, ordinaryDir) = fixture.createSegment("ordinary")
