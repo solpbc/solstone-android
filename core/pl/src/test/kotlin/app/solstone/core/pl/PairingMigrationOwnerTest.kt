@@ -212,6 +212,50 @@ class PairingMigrationOwnerTest {
     }
 
     @Test
+    fun replayOfSubmittedReplacementStaysPendingWhenTargetIsGoneInsteadOfReopeningTheChoice() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        var puts = 0
+        val client = ScriptClient { method, path, _, _ ->
+            when (method to path) {
+                "GET" to "/app/network/api/clients" -> listResponse(listOf(clientRow(other, "Old phone")))
+                "PUT" to "/app/network/api/clients/self/migration" -> {
+                    puts++
+                    // First send: response lost. Replay: the journal no longer lists the target, which is
+                    // exactly what a committed replacement looks like from the outside.
+                    if (puts == 1) HttpResponse(503, emptyMap(), ByteArray(0))
+                    else HttpResponse(404, emptyMap(), "{\"reason_code\":\"paired_device_not_found\"}".toByteArray())
+                }
+                "GET" to "/app/network/api/clients/self/migration" -> state("none", null, null, null)
+                else -> error("unexpected request $method $path")
+            }
+        }
+        val owner = owner(publisher, store, client)
+        val generation = assertIs<PairingMigrationResult.Offer>(owner.currentOffer()).record.generation
+        val listing = assertIs<PairingMigrationResult.Listing>(owner.listClients(generation)).value
+        assertIs<PairingMigrationResult.Offer>(owner.selectTarget(listing, other))
+        val submitted = assertIs<PairingMigrationResult.Pending>(
+            owner.replaceSelected(listing, other, nativeConfirmed = true),
+        ).record
+        assertEquals(PairingMigrationStage.SUBMITTED_UNKNOWN, submitted.stage)
+
+        val replayed = assertIs<PairingMigrationResult.Pending>(owner.resume(generation))
+        assertEquals(PairingMigrationPendingReason.DECISION_UNKNOWN, replayed.reason)
+        assertEquals(PairingMigrationStage.SUBMITTED_UNKNOWN, replayed.record.stage)
+        assertEquals(submitted.operationId, replayed.record.operationId)
+        assertEquals(submitted.canonicalPutPayload, replayed.record.canonicalPutPayload)
+        assertEquals(other, replayed.record.selectedCid)
+        assertEquals(2, puts)
+
+        // The durable record is unchanged and a conflicting answer stays disabled.
+        val saved = assertIs<StoreInspectResult.Ready<PairingMigrationRecord>>(store.inspect()).value
+        assertEquals(submitted, saved)
+        assertIs<PairingMigrationResult.Pending>(owner.keepBoth(generation))
+        assertIs<PairingMigrationResult.Pending>(owner.listClients(generation))
+        assertEquals(2, puts)
+    }
+
+    @Test
     fun failedGetKeepsDecisionPendingWithoutReplayingPut() {
         val publisher = Publisher()
         val store = MemoryStore()

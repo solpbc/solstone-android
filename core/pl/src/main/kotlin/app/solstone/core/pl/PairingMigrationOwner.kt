@@ -234,9 +234,11 @@ class PairingMigrationOwner(
     fun resume(expected: PairingGeneration): PairingMigrationResult {
         val record = currentRecord(expected) ?: return PairingMigrationResult.Unavailable
         if (record.stage == PairingMigrationStage.READY_TO_SUBMIT) {
+            // READY_TO_SUBMIT is persisted before SUBMITTED_UNKNOWN, which is persisted before the
+            // request leaves; a record still here has never been sent, so this is its first send.
             val submitted = record.copy(stage = PairingMigrationStage.SUBMITTED_UNKNOWN)
             if (!persist(submitted)) return PairingMigrationResult.Unavailable
-            return sendPersisted(submitted)
+            return sendPersisted(submitted, firstSend = true)
         }
         if (record.stage != PairingMigrationStage.SUBMITTED_UNKNOWN) {
             return if (record.stage in TERMINAL_STAGES) PairingMigrationResult.Terminal(record, record.stage == PairingMigrationStage.TERMINAL_REFUSED)
@@ -246,7 +248,7 @@ class PairingMigrationOwner(
         if (!isCurrent(expected)) return PairingMigrationResult.StaleGeneration
         if (stateResult !is MigrationApiResult.Success) return PairingMigrationResult.Pending(record)
         if (!isCurrent(expected)) return PairingMigrationResult.StaleGeneration
-        return sendPersisted(record)
+        return sendPersisted(record, firstSend = false)
     }
 
     private fun submit(
@@ -269,10 +271,15 @@ class PairingMigrationOwner(
         if (!persist(ready)) return PairingMigrationResult.Unavailable
         val submitted = ready.copy(stage = PairingMigrationStage.SUBMITTED_UNKNOWN)
         if (!persist(submitted)) return PairingMigrationResult.Unavailable
-        return sendPersisted(submitted)
+        return sendPersisted(submitted, firstSend = true)
     }
 
-    private fun sendPersisted(record: PairingMigrationRecord): PairingMigrationResult {
+    /**
+     * [firstSend] is true only when this request has never left the device. A replay of an operation
+     * the journal may already have applied cannot reopen the picker on a missing target: the target
+     * may be missing precisely because this replacement retired it, so the outcome stays unknown.
+     */
+    private fun sendPersisted(record: PairingMigrationRecord, firstSend: Boolean): PairingMigrationResult {
         if (record.operationId == null || record.canonicalPutPayload == null || record.choice == null) {
             return PairingMigrationResult.Pending(record)
         }
@@ -298,6 +305,7 @@ class PairingMigrationOwner(
                 else PairingMigrationResult.Unavailable
             }
             is MigrationApiResult.TargetUnavailable -> {
+                if (!firstSend) return PairingMigrationResult.Pending(record)
                 val reopened = record.copy(
                     stage = PairingMigrationStage.SHOWN_DEFERRED,
                     selectedCid = null,
