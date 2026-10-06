@@ -23,6 +23,7 @@ import app.solstone.core.pl.PairingMigrationRecord
 import app.solstone.core.pl.PairingMigrationResult
 import app.solstone.core.pl.PairingMigrationStage
 import app.solstone.core.pl.TARGET_UNAVAILABLE_REASON
+import app.solstone.core.pl.canOpenDeviceChoice
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
 import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
 import app.solstone.platform.fgs.CaptureForegroundType
@@ -126,11 +127,7 @@ class GlassesHarnessUi(
     fun showMenu() {
         val migrationState = pairingMigrationOwner?.let { runCatching { it.currentOffer() }.getOrNull() }
         val deviceChoicePending = when (migrationState) {
-            is PairingMigrationResult.Offer -> migrationState.record.stage !in setOf(
-                PairingMigrationStage.TERMINAL_KEEP_BOTH,
-                PairingMigrationStage.TERMINAL_REPLACED,
-                PairingMigrationStage.TERMINAL_REFUSED,
-            )
+            is PairingMigrationResult.Offer -> migrationState.record.canOpenDeviceChoice()
             PairingMigrationResult.NoOffer -> false
             else -> pairingMigrationOwner != null
         }

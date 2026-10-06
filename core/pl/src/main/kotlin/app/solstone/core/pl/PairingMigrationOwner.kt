@@ -12,6 +12,8 @@ import app.solstone.core.identity.StoreInspectResult
 import java.io.Closeable
 import java.util.UUID
 
+private const val MIGRATION_PROTOCOL_UNSUPPORTED_REASON = "migration_protocol_unsupported"
+
 enum class PairingMigrationStage {
     OFFER_NOT_SHOWN,
     SHOWN_DEFERRED,
@@ -42,6 +44,13 @@ data class PairingMigrationRecord(
     val echoMismatch: Boolean = false,
     val refusalReason: String? = null,
 )
+
+fun PairingMigrationRecord.canOpenDeviceChoice(): Boolean = when (stage) {
+    PairingMigrationStage.TERMINAL_KEEP_BOTH,
+    PairingMigrationStage.TERMINAL_REPLACED -> false
+    PairingMigrationStage.TERMINAL_REFUSED -> refusalReason == MIGRATION_PROTOCOL_UNSUPPORTED_REASON
+    else -> true
+}
 
 interface PairingMigrationStore {
     fun inspect(): StoreInspectResult<PairingMigrationRecord>
@@ -191,7 +200,7 @@ class PairingMigrationOwner(
     fun retryUnsupported(expected: PairingGeneration): PairingMigrationResult {
         val record = currentRecord(expected) ?: return PairingMigrationResult.Unavailable
         if (record.stage != PairingMigrationStage.TERMINAL_REFUSED ||
-            record.refusalReason != "migration_protocol_unsupported"
+            record.refusalReason != MIGRATION_PROTOCOL_UNSUPPORTED_REASON
         ) return PairingMigrationResult.Pending(record)
         val reopened = record.copy(
             stage = PairingMigrationStage.SHOWN_DEFERRED,

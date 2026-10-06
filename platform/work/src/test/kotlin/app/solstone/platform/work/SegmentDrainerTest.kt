@@ -11,6 +11,7 @@ import app.solstone.core.model.WireKeys
 import app.solstone.core.observer.IngestDescriptors
 import app.solstone.core.observer.IngestFileDescriptor
 import app.solstone.core.observer.IngestOutcome
+import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.ReconcileAuthException
 import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
@@ -1612,6 +1613,65 @@ class SegmentDrainerTest {
             assertEquals(1, uploads)
             assertEquals(QueueState.FAILED, fixture.store.row(row.id).state)
             assertEquals("custody_missing", fixture.store.row(row.id).lastError)
+            assertTrue(Files.exists(dir))
+            assertTrue(Files.exists(dir.resolve(file.name)))
+        }
+    }
+
+    @Test
+    fun missingOrWrongTypedWrittenReceiptCannotConfirmOrRemoveLocalCopy() {
+        val receipts = listOf(
+            """{"status":"ok","segment":"accepted","file_descriptors":[{"submitted":"a.bin","size":1,"sha256":"${"a".repeat(64)}","disposition":"written"}]}""",
+            """{"status":"ok","segment":"accepted","file_descriptors":[{"submitted":"a.bin","written":7,"size":1,"sha256":"${"a".repeat(64)}","disposition":"written"}]}""",
+        )
+        receipts.forEach { receipt ->
+            val fixture = TestFixture()
+            val file = BundleFile("audio", "a.bin", "a".repeat(64), 1, "application/octet-stream", 1, 2)
+            val (row, dir) = fixture.createSegment("a", files = listOf(file))
+            val forceUpload = listing(
+                physicalItem(
+                    key = "opaque",
+                    originalKey = "untrusted-original-key",
+                    segment = row.segment,
+                    stream = file.sourceId,
+                    name = file.name,
+                    size = file.byteSize,
+                    sha = file.sha256,
+                    status = "missing",
+                ),
+            )
+            var posts = 0
+            val ingestClient = ObserverIngestClient(
+                object : PlHttpClient {
+                    override fun request(
+                        method: String,
+                        path: String,
+                        headers: Map<String, String>,
+                        body: ByteArray?,
+                        maxResponseBytes: Int,
+                    ): HttpResponse {
+                        assertEquals("POST", method)
+                        posts++
+                        return HttpResponse(200, emptyMap(), receipt.toByteArray())
+                    }
+                },
+            ) { "written-field-test" }
+
+            val report = drainSegments(
+                store = fixture.store,
+                reconcile = { manifests, day -> SegmentReconciler(httpReturning(forceUpload)).diff(manifests, day) },
+                ingest = { manifest, fileBytes -> ingestClient.ingest(manifest, fileBytes) },
+                readPayload = readBytes,
+                now = { NOW },
+                log = fixture.store::log,
+                finisher = fixture.finisher,
+            )
+
+            assertEquals(1, posts)
+            assertEquals(SyncOutcome.RETRY, report.workOutcome)
+            assertEquals(QueueState.FAILED, fixture.store.row(row.id).state)
+            assertEquals("custody_mismatch", fixture.store.row(row.id).lastError)
+            assertFalse(fixture.store.eventsFor(row.id).contains(QueueEvent.MARK_UPLOADED))
             assertTrue(Files.exists(dir))
             assertTrue(Files.exists(dir.resolve(file.name)))
         }

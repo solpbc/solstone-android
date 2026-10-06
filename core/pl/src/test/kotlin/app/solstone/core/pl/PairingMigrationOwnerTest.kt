@@ -28,6 +28,19 @@ class PairingMigrationOwnerTest {
     private val other = "sha256:${"b".repeat(64)}"
 
     @Test
+    fun deviceChoiceRemainsAvailableOnlyForUnsupportedRefusalAmongTerminalStages() {
+        val generation = (Publisher().current as PairingGraphSnapshot.Committed).pairing
+        fun record(stage: PairingMigrationStage, reason: String? = null) =
+            PairingMigrationRecord(generation, caller, stage, refusalReason = reason)
+
+        assertTrue(record(PairingMigrationStage.TERMINAL_REFUSED, "migration_protocol_unsupported").canOpenDeviceChoice())
+        assertFalse(record(PairingMigrationStage.TERMINAL_REFUSED, "migration_request_invalid").canOpenDeviceChoice())
+        assertFalse(record(PairingMigrationStage.TERMINAL_KEEP_BOTH).canOpenDeviceChoice())
+        assertFalse(record(PairingMigrationStage.TERMINAL_REPLACED).canOpenDeviceChoice())
+        assertTrue(record(PairingMigrationStage.SHOWN_DEFERRED).canOpenDeviceChoice())
+    }
+
+    @Test
     fun freshDirectCommitRecoveryClaimsOneModalAndDeferMakesNoRequest() {
         val publisher = Publisher(route = Route.DIRECT)
         val store = MemoryStore()

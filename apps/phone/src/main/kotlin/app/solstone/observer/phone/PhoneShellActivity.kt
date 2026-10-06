@@ -98,6 +98,7 @@ import app.solstone.core.pl.PairingMigrationPendingReason
 import app.solstone.core.pl.PairingMigrationRecord
 import app.solstone.core.pl.PairingMigrationResult
 import app.solstone.core.pl.PairingMigrationStage
+import app.solstone.core.pl.canOpenDeviceChoice
 import app.solstone.core.pl.MigrationClient
 import app.solstone.core.pl.TARGET_UNAVAILABLE_REASON
 import app.solstone.core.push.JournalNotificationRow
@@ -771,11 +772,7 @@ class PhoneShellActivity : ComponentActivity() {
                 onForgetJournal = { unpairFrom(false) },
                 onUnpairThisDevice = { unpairFrom(true) },
                 deviceChoicePending = journalConfirmed && (pairingSnapshot as? PairingGraphSnapshot.Committed)?.provenance == PairingProvenance.FRESH_LINK &&
-                    (migrationStoreUnavailable || migrationRecord?.stage !in setOf(
-                        PairingMigrationStage.TERMINAL_KEEP_BOTH,
-                        PairingMigrationStage.TERMINAL_REPLACED,
-                        PairingMigrationStage.TERMINAL_REFUSED,
-                    )),
+                    (migrationStoreUnavailable || migrationRecord?.canOpenDeviceChoice() != false),
                 onDeviceChoice = ::openDeviceChoice,
                 onOpenNotificationSettings = {
                     startActivity(

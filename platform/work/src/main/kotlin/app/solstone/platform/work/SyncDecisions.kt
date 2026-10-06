@@ -140,6 +140,7 @@ fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): Strin
             } else if (
                 descriptors.items.isEmpty() ||
                 descriptors.items.any { it.submitted == null } ||
+                descriptors.items.any { it.written == null } ||
                 descriptors.items.map { it.submitted }.distinct().size != descriptors.items.size ||
                 files.map { it.name }.distinct().size != files.size ||
                 descriptors.items.map { it.submitted }.toSet() != files.map { it.name }.toSet()
