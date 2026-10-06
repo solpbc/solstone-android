@@ -3,6 +3,7 @@
 
 package app.solstone.platform.identity.file
 
+import app.solstone.core.identity.PairingProvenance
 import java.io.File
 import java.security.MessageDigest
 
@@ -53,6 +54,8 @@ data class PairingCommitMarker(
     val priorIdentityChecksum: String? = null,
     val priorCredentialChecksum: String? = null,
     val priorEndpointChecksum: String? = null,
+    val pairingProvenance: PairingProvenance? = null,
+    val priorPairingProvenance: PairingProvenance? = null,
 ) {
     fun toSerializedString(): String = buildList {
         add("version\t1")
@@ -65,6 +68,7 @@ data class PairingCommitMarker(
         identityChecksum?.let { add("identityChecksum\t$it") }
         credentialChecksum?.let { add("credentialChecksum\t$it") }
         endpointChecksum?.let { add("endpointChecksum\t$it") }
+        pairingProvenance?.let { add("pairingProvenance\t${it.name}") }
         add("inFlightOp\t${inFlightOp.name}")
         add("inFlightStep\t${inFlightStep.name}")
         priorStatus?.let { add("priorStatus\t${it.name}") }
@@ -76,6 +80,7 @@ data class PairingCommitMarker(
         priorIdentityChecksum?.let { add("priorIdentityChecksum\t$it") }
         priorCredentialChecksum?.let { add("priorCredentialChecksum\t$it") }
         priorEndpointChecksum?.let { add("priorEndpointChecksum\t$it") }
+        priorPairingProvenance?.let { add("priorPairingProvenance\t${it.name}") }
     }.joinToString(separator = "\n", postfix = "\n")
 
     companion object {
@@ -101,13 +106,13 @@ data class PairingCommitMarker(
         }
 
         fun parse(text: String): PairingCommitMarker? {
-            val map = text.lineSequence()
-                .filter { it.isNotEmpty() }
-                .associate { line ->
-                    val parts = line.split('\t', limit = 2)
-                    parts[0] to parts.getOrElse(1) { "" }
-                }
+            val map = linkedMapOf<String, String>()
+            text.lineSequence().filter { it.isNotEmpty() }.forEach { line ->
+                val parts = line.split('\t', limit = 2)
+                if (parts.size != 2 || map.put(parts[0], parts[1]) != null) return null
+            }
             if (map["version"] != "1") return null
+            if (!FIELDS.containsAll(map.keys)) return null
             val status = try {
                 CommitMarkerStatus.valueOf(map["status"] ?: return null)
             } catch (_: IllegalArgumentException) {
@@ -116,37 +121,53 @@ data class PairingCommitMarker(
             val inFlightOp = try {
                 CommitInFlightOp.valueOf(map["inFlightOp"] ?: "NONE")
             } catch (_: IllegalArgumentException) {
-                CommitInFlightOp.NONE
+                return null
             }
             val inFlightStep = try {
                 CommitInFlightStep.valueOf(map["inFlightStep"] ?: "NONE")
             } catch (_: IllegalArgumentException) {
-                CommitInFlightStep.NONE
+                return null
             }
             val priorStatus = map["priorStatus"]?.let {
-                try { CommitMarkerStatus.valueOf(it) } catch (_: IllegalArgumentException) { null }
+                try { CommitMarkerStatus.valueOf(it) } catch (_: IllegalArgumentException) { return null }
+            }
+            fun boolean(name: String, default: Boolean = false): Boolean? =
+                map[name]?.toBooleanStrictOrNull() ?: if (name !in map) default else null
+            val hasDirectEndpoint = boolean("hasDirectEndpoint") ?: return null
+            val directAssociated = boolean("directAssociated") ?: return null
+            val hasRelayAccess = boolean("hasRelayAccess") ?: return null
+            val priorHasDirectEndpoint = boolean("priorHasDirectEndpoint") ?: return null
+            val priorDirectAssociated = boolean("priorDirectAssociated") ?: return null
+            val priorHasRelayAccess = boolean("priorHasRelayAccess") ?: return null
+            val pairingProvenance = map["pairingProvenance"]?.let {
+                try { PairingProvenance.valueOf(it) } catch (_: IllegalArgumentException) { return null }
+            }
+            val priorPairingProvenance = map["priorPairingProvenance"]?.let {
+                try { PairingProvenance.valueOf(it) } catch (_: IllegalArgumentException) { return null }
             }
             return PairingCommitMarker(
                 status = status,
                 instanceId = map["instanceId"],
                 clientCertSha256 = map["clientCertSha256"],
-                hasDirectEndpoint = map["hasDirectEndpoint"]?.toBooleanStrictOrNull() ?: false,
-                directAssociated = map["directAssociated"]?.toBooleanStrictOrNull() ?: false,
-                hasRelayAccess = map["hasRelayAccess"]?.toBooleanStrictOrNull() ?: false,
+                hasDirectEndpoint = hasDirectEndpoint,
+                directAssociated = directAssociated,
+                hasRelayAccess = hasRelayAccess,
                 identityChecksum = map["identityChecksum"],
                 credentialChecksum = map["credentialChecksum"],
                 endpointChecksum = map["endpointChecksum"],
+                pairingProvenance = pairingProvenance,
                 inFlightOp = inFlightOp,
                 inFlightStep = inFlightStep,
                 priorStatus = priorStatus,
                 priorInstanceId = map["priorInstanceId"],
                 priorClientCertSha256 = map["priorClientCertSha256"],
-                priorHasDirectEndpoint = map["priorHasDirectEndpoint"]?.toBooleanStrictOrNull() ?: false,
-                priorDirectAssociated = map["priorDirectAssociated"]?.toBooleanStrictOrNull() ?: false,
-                priorHasRelayAccess = map["priorHasRelayAccess"]?.toBooleanStrictOrNull() ?: false,
+                priorHasDirectEndpoint = priorHasDirectEndpoint,
+                priorDirectAssociated = priorDirectAssociated,
+                priorHasRelayAccess = priorHasRelayAccess,
                 priorIdentityChecksum = map["priorIdentityChecksum"],
                 priorCredentialChecksum = map["priorCredentialChecksum"],
                 priorEndpointChecksum = map["priorEndpointChecksum"],
+                priorPairingProvenance = priorPairingProvenance,
             )
         }
 
@@ -172,5 +193,13 @@ data class PairingCommitMarker(
             }
             return String(hexChars)
         }
+
+        private val FIELDS = setOf(
+            "version", "status", "instanceId", "clientCertSha256", "hasDirectEndpoint", "directAssociated",
+            "hasRelayAccess", "identityChecksum", "credentialChecksum", "endpointChecksum", "pairingProvenance",
+            "inFlightOp", "inFlightStep", "priorStatus", "priorInstanceId", "priorClientCertSha256",
+            "priorHasDirectEndpoint", "priorDirectAssociated", "priorHasRelayAccess", "priorIdentityChecksum",
+            "priorCredentialChecksum", "priorEndpointChecksum", "priorPairingProvenance",
+        )
     }
 }

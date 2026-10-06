@@ -1506,6 +1506,220 @@ class SegmentDrainerTest {
     }
 
     @Test
+    fun ambiguousPhysicalTwinsAndMissingOrMismatchedCustodyCannotFinishLocalCopy() {
+        val cases = listOf(
+            IngestDescriptors.Absent to "custody_missing",
+            IngestDescriptors.Listed(listOf(IngestFileDescriptor("a.bin", "a.bin", 1, "b".repeat(64), "written"))) to "custody_mismatch",
+            IngestDescriptors.Listed(listOf(IngestFileDescriptor("a.bin", "a.bin", 1, "a".repeat(64), "received_not_written"))) to "custody_not_written",
+        )
+        cases.forEach { (descriptors, expectedError) ->
+            val fixture = TestFixture()
+            val file = BundleFile("audio", "a.bin", "a".repeat(64), 1, "application/octet-stream", 1, 2)
+            val (row, dir) = fixture.createSegment("a", files = listOf(file))
+            val twins = listing(
+                physicalItem("local-key", "local-key", row.segment, "audio", "a.bin", 1, file.sha256, "present"),
+                physicalItem("opaque-alias", "local-key", row.segment, "audio", "a.bin", 1, file.sha256, "processed"),
+            )
+            var uploads = 0
+            val report = drainSegments(
+                store = fixture.store,
+                reconcile = { manifests, day -> SegmentReconciler(httpReturning(twins)).diff(manifests, day) },
+                ingest = { manifest, bytes ->
+                    uploads++
+                    manifest.files.forEach { bytes(it) }
+                    listOf(IngestOutcome.Accepted("accepted", descriptors))
+                },
+                readPayload = readBytes,
+                now = { NOW },
+                log = fixture.store::log,
+                finisher = fixture.finisher,
+            )
+            assertEquals(1, uploads)
+            assertEquals(QueueState.FAILED, fixture.store.row(row.id).state)
+            assertEquals(expectedError, fixture.store.row(row.id).lastError)
+            assertTrue(Files.exists(dir))
+            assertFalse(report.cleanDrain)
+        }
+    }
+
+    @Test
+    fun falseListingEvidenceForcesUploadAndCannotSubstituteForMissingPostCustody() {
+        val fixture = TestFixture()
+        val file = BundleFile("audio", "a.bin", "a".repeat(64), 1, "application/octet-stream", 1, 2)
+        val (row, dir) = fixture.createSegment("a", files = listOf(file))
+        val falseListing = listing(
+            physicalItem("alias", "requested", row.segment, "audio", "a.bin", 1, file.sha256, "missing"),
+        )
+        var uploads = 0
+        drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(httpReturning(falseListing)).diff(manifests, day) },
+            ingest = { manifest, bytes ->
+                uploads++
+                manifest.files.forEach { bytes(it) }
+                listOf(IngestOutcome.Accepted("accepted", IngestDescriptors.Absent))
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(1, uploads)
+        assertEquals(QueueState.FAILED, fixture.store.row(row.id).state)
+        assertEquals("custody_missing", fixture.store.row(row.id).lastError)
+        assertTrue(Files.exists(dir))
+    }
+
+    @Test
+    fun wrongPhysicalCoordinatesUploadAndMissingPostCustodyPreservesLocalCopy() {
+        val mismatches: List<(SegmentRow) -> Pair<String, String>> = listOf(
+            { row -> "${row.segment}-other" to "audio" },
+            { row -> row.segment to "photo" },
+        )
+        mismatches.forEach { mismatch ->
+            val fixture = TestFixture()
+            val file = BundleFile("audio", "a.bin", "a".repeat(64), 1, "application/octet-stream", 1, 2)
+            val (row, dir) = fixture.createSegment("a", files = listOf(file))
+            val (remoteSegment, remoteStream) = mismatch(row)
+            val falseListing = listing(
+                physicalItem(
+                    key = row.segment,
+                    originalKey = "untrusted-original-key",
+                    segment = remoteSegment,
+                    stream = remoteStream,
+                    name = file.name,
+                    size = file.byteSize,
+                    sha = file.sha256,
+                    status = "present",
+                ),
+            )
+            var uploads = 0
+
+            drainSegments(
+                store = fixture.store,
+                reconcile = { manifests, day -> SegmentReconciler(httpReturning(falseListing)).diff(manifests, day) },
+                ingest = { manifest, bytes ->
+                    uploads++
+                    manifest.files.forEach { bytes(it) }
+                    listOf(IngestOutcome.Accepted("accepted", IngestDescriptors.Absent))
+                },
+                readPayload = readBytes,
+                now = { NOW },
+                log = fixture.store::log,
+                finisher = fixture.finisher,
+            )
+
+            assertEquals(1, uploads)
+            assertEquals(QueueState.FAILED, fixture.store.row(row.id).state)
+            assertEquals("custody_missing", fixture.store.row(row.id).lastError)
+            assertTrue(Files.exists(dir))
+            assertTrue(Files.exists(dir.resolve(file.name)))
+        }
+    }
+
+    @Test
+    fun exactReceiptForEverySourceConfirmsSkipThroughRealFinisher() {
+        val fixture = TestFixture()
+        val audio = BundleFile("audio", "audio.wav", "a".repeat(64), 1, "audio/wav", 1, 2)
+        val photo = BundleFile("photo", "photo.jpg", "b".repeat(64), 1, "image/jpeg", 1, 2)
+        val (row, dir) = fixture.createSegment("a", files = listOf(audio, photo))
+        val client = object : PlHttpClient {
+            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse {
+                val item = when {
+                    path.endsWith("?source=audio") -> physicalItem(
+                        "segment~audio", row.segment, row.segment, "audio", audio.name, audio.byteSize, audio.sha256, "present",
+                    )
+                    path.endsWith("?source=photo") -> physicalItem(
+                        "segment~photo", row.segment, row.segment, "photo", photo.name, photo.byteSize, photo.sha256, "processed",
+                    )
+                    else -> error("source query required: $path")
+                }
+                return listing(item)
+            }
+        }
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(client).diff(manifests, day) },
+            ingest = { _, _ -> error("exact current custody should skip upload") },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+        assertTrue(report.cleanDrain)
+        assertEquals(QueueState.EVICTED, fixture.store.row(row.id).state)
+        assertFalse(Files.exists(dir))
+    }
+
+    @Test
+    fun ordinaryUploadAndMixedSegmentRemovedCompletionReachTheRealFinisher() {
+        val fixture = TestFixture()
+        val (ordinary, ordinaryDir) = fixture.createSegment("ordinary")
+        val emptyListing = listing()
+        val ordinaryReport = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(httpReturning(emptyListing)).diff(manifests, day) },
+            ingest = acceptedIngest("uploaded"),
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(SyncOutcome.SUCCESS, ordinaryReport.workOutcome)
+        assertEquals(QueueState.EVICTED, fixture.store.row(ordinary.id).state)
+        assertFalse(Files.exists(ordinaryDir))
+
+        val audio = BundleFile("audio", "audio.wav", "a".repeat(64), 1, "audio/wav", 1, 2)
+        val photo = BundleFile("photo", "photo.jpg", "b".repeat(64), 1, "image/jpeg", 1, 2)
+        val (mixed, mixedDir) = fixture.createSegment("mixed", files = listOf(audio, photo), sealedAt = 2)
+        val mixedReport = drainSegments(
+            store = fixture.store,
+            reconcile = { manifests, day -> SegmentReconciler(httpReturning(emptyListing)).diff(manifests, day) },
+            ingest = { manifest, bytes ->
+                manifest.files.forEach { bytes(it) }
+                listOf(
+                    IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""),
+                    IngestOutcome.Accepted(
+                        "uploaded",
+                        IngestDescriptors.Listed(listOf(IngestFileDescriptor(photo.name, photo.name, photo.byteSize, photo.sha256, "written"))),
+                    ),
+                )
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(SyncOutcome.SUCCESS, mixedReport.workOutcome)
+        assertTrue(mixedReport.cleanDrain)
+        assertEquals(QueueState.EVICTED, fixture.store.row(mixed.id).state)
+        assertFalse(Files.exists(mixedDir))
+    }
+
+    private fun httpReturning(response: HttpResponse) = object : PlHttpClient {
+        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse = response
+    }
+
+    private fun listing(vararg items: String): HttpResponse = HttpResponse(
+        200,
+        emptyMap(),
+        """{"items":[${items.joinToString(",")}],"total":${items.size},"protocol_version":3}""".toByteArray(),
+    )
+
+    private fun physicalItem(
+        key: String,
+        originalKey: String,
+        segment: String,
+        stream: String,
+        name: String,
+        size: Long,
+        sha: String,
+        status: String,
+    ): String =
+        """{"key":"$key","original_key":"$originalKey","segment":"$segment","stream":"$stream","files":[{"name":"$name","size":$size,"sha256":"$sha","status":"$status"}]}"""
+
+    @Test
     fun drainFinishesConfirmedCopySynchronously() {
         val fixture = TestFixture()
         val (seg, dir) = fixture.createSegment("a")

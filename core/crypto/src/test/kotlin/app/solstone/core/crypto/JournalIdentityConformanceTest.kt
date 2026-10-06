@@ -65,6 +65,24 @@ class JournalIdentityConformanceTest {
     }
 
     @Test
+    fun everyNormativeMirrorMatchesItsPinnedManifestDigest() {
+        val manifest = verifiedBundle().manifest
+        val sources = manifest.requiredList("generator_inputs")
+            .map { it.requiredMap() }
+            .filter { it.requiredString("role") == "normative_source_document" }
+        assertEquals(3, sources.size)
+        sources.forEach { source ->
+            val authorityPath = source.requiredString("path")
+            val mirroredPath = "conformance/proto-ref/${authorityPath.substringAfterLast('/')}"
+            assertEquals(
+                source.requiredString("sha256"),
+                sha256Hex(requiredResource(mirroredPath)),
+                "mirror digest for $authorityPath",
+            )
+        }
+    }
+
+    @Test
     fun deriveJidVectorsMatchExpectedOutcomes() {
         val corpus = loadVerifiedCorpus()
         // entry_digests are intentionally not verified: upstream authors them over definition.json
@@ -321,10 +339,10 @@ class JournalIdentityConformanceTest {
 
     private companion object {
         const val AUTHORITY_REPOSITORY = "https://github.com/solpbc/spl"
-        const val AUTHORITY_COMMIT = "4ad3adedec5c52ea73225af06f0e7b0fa6d86b60"
+        const val AUTHORITY_COMMIT = "30ca5a24bf87a30b44f2997d7604c42be3cffc3a"
         const val AUTHORITY_MANIFEST_PATH = "proto/definition/bundle/manifest.json"
-        const val AUTHORITY_MANIFEST_SHA256 = "a00344aac514a844794b49b6e1c88ec69ca17a48692449c301705f38e9919744"
-        const val BUNDLE_SEMVER = "8.0.2"
+        const val AUTHORITY_MANIFEST_SHA256 = "fbed84634f52f8aca1b1185f8b6d76b96a194b5108d665f59fb118c8d6c23cc7"
+        const val BUNDLE_SEMVER = "8.0.5"
         const val BUNDLE_SCHEMA_IDENTITY = "spl.pair-link-definition-bundle.schema.v1"
         const val ADOPTION_SCHEMA_VERSION = 1L
         const val CONSUMER_IDENTIFIER = "solpbc/solstone-android"

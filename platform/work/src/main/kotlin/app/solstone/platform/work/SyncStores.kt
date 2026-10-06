@@ -19,6 +19,7 @@ import app.solstone.core.identity.PersistenceIssue
 import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.pl.PairingMigrationOwner
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
@@ -33,7 +34,9 @@ import app.solstone.platform.identity.file.FileIdentityStore
 import app.solstone.platform.identity.file.FileJournalConfirmationStore
 import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
+import app.solstone.platform.identity.file.FilePairingMigrationStore
 import app.solstone.platform.identity.file.FilePairingGraph
+import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedLeaseClient
 import java.io.File
 
 data class SyncStores(
@@ -50,6 +53,7 @@ data class SyncStores(
     val journalIdentityCoordinator: JournalIdentityRefreshCoordinator,
     val journalConfirmationStore: JournalConfirmationStore,
     val pushRegistration: PushRegistrationCoordinator? = null,
+    val pairingMigrationOwner: PairingMigrationOwner? = null,
 ) {
     val pushDeliveryState: PushDeliveryState
         get() = pushRegistration?.deliveryState ?: PushDeliveryState.Off
@@ -185,6 +189,8 @@ private object SyncStoresHolder {
     @Volatile
     private var journalConfirmationStore: FileJournalConfirmationStore? = null
     @Volatile
+    private var pairingMigrationOwner: PairingMigrationOwner? = null
+    @Volatile
     private var pushCoordinator: PushRegistrationCoordinator? = null
     @Volatile
     private var pushAttempted = false
@@ -201,6 +207,15 @@ private object SyncStoresHolder {
         journalConfirmationStore ?: synchronized(this) {
             journalConfirmationStore ?: FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
                 .also { journalConfirmationStore = it }
+        }
+
+    fun getPairingMigrationOwner(publisher: PairingPublisher, file: File): PairingMigrationOwner =
+        pairingMigrationOwner ?: synchronized(this) {
+            pairingMigrationOwner ?: PairingMigrationOwner(
+                publisher = publisher,
+                store = FilePairingMigrationStore(file),
+                openClient = app.solstone.core.pl.PairingMigrationClientOpener { lease -> openAuthenticatedLeaseClient(lease) },
+            ).also { pairingMigrationOwner = it }
         }
 
     fun getPublisher(dir: File, protector: AndroidKeyStoreProtector): FilePairingGraph =
@@ -300,5 +315,6 @@ fun syncStores(context: Context): SyncStores {
         journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, graph),
         journalConfirmationStore = journalConfirmationStore,
         pushRegistration = pushCoordinator,
+        pairingMigrationOwner = SyncStoresHolder.getPairingMigrationOwner(graph, File(dir, "pairing_migration.json")),
     )
 }

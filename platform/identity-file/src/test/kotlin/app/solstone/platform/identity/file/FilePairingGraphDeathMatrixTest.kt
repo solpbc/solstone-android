@@ -8,6 +8,7 @@ import app.solstone.core.identity.DurableTxnStep
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.JournalConfirmation
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PairingProvenance
 import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
@@ -124,6 +125,113 @@ class FilePairingGraphDeathMatrixTest {
         assertEquals("home-1", snap.home.instanceId)
         assertTrue(snap.isDirectEligible)
         assertTrue(snap.isRelayEligible)
+    }
+
+    @Test
+    fun freshDirectAndRelayProvenanceSurvivesCommitBeforeCallbackProcessDeath() {
+        for (route in listOf("direct", "relay")) {
+            val dir = File(temp.root, route).apply { mkdirs() }
+            val identFile = File(dir, "identity.tsv")
+            val credFile = File(dir, "credential.pem")
+            val epFile = File(dir, "endpoint.txt")
+            val commitFile = File(dir, "pairing.commit")
+            val protector = SpySecretProtector()
+            val graph = FilePairingGraph(
+                identityFile = identFile,
+                credentialFile = credFile,
+                endpointFile = epFile,
+                commitMarkerFile = commitFile,
+                protector = protector,
+                stepHook = { step, _ ->
+                    if (step == DurableTxnStep.DURABLE_COMMIT_DECISION) error("process died before callback")
+                },
+            )
+            val direct = route == "direct"
+            val result = graph.installOrReplace(
+                home = testHome(),
+                credential = testCred(),
+                directEndpoint = if (direct) DirectEndpoint("10.0.0.1", 7657) else null,
+                isDirectAssociated = direct,
+                provenance = PairingProvenance.FRESH_LINK,
+            )
+            assertTrue(result is GraphMutationResult.Applied)
+            val recovered = FilePairingGraph(
+                identityFile = identFile,
+                credentialFile = credFile,
+                endpointFile = epFile,
+                commitMarkerFile = commitFile,
+                protector = protector,
+            ).currentSnapshot() as PairingGraphSnapshot.Committed
+            assertEquals(PairingProvenance.FRESH_LINK, recovered.provenance)
+            assertEquals(direct, recovered.isDirectEligible)
+            assertTrue(recovered.isRelayEligible)
+        }
+    }
+
+    @Test
+    fun missingProvenanceMetadataAdoptsSilentlyAsLegacyAndCorruptMetadataIsUncertain() {
+        val identFile = File(temp.root, "identity.tsv")
+        val credFile = File(temp.root, "credential.pem")
+        val epFile = File(temp.root, "endpoint.txt")
+        val commitFile = File(temp.root, "pairing.commit")
+        val protector = SpySecretProtector()
+        val graph = FilePairingGraph(identFile, credFile, epFile, commitFile, protector)
+        graph.installOrReplace(
+            home = testHome(),
+            credential = testCred(),
+            directEndpoint = DirectEndpoint("10.0.0.1", 7657),
+            isDirectAssociated = true,
+            provenance = PairingProvenance.FRESH_LINK,
+        )
+        commitFile.writeText(commitFile.readText().replace("pairingProvenance\tFRESH_LINK\n", ""))
+        val legacy = FilePairingGraph(identFile, credFile, epFile, commitFile, protector).currentSnapshot()
+        assertEquals(PairingProvenance.UNKNOWN_LEGACY, (legacy as PairingGraphSnapshot.Committed).provenance)
+
+        commitFile.writeText(commitFile.readText().replace("status\tCOMMITTED", "status\tCOMMITTED\npairingProvenance\tNOT_A_PROVENANCE"))
+        val corrupt = FilePairingGraph(identFile, credFile, epFile, commitFile, protector).currentSnapshot()
+        assertTrue(corrupt is PairingGraphSnapshot.Uncertain)
+    }
+
+    @Test
+    fun sameGenerationRouteUpdatePreservesFreshProvenanceAndReplacementRollbackRestoresPriorProvenance() {
+        val identFile = File(temp.root, "identity.tsv")
+        val credFile = File(temp.root, "credential.pem")
+        val epFile = File(temp.root, "endpoint.txt")
+        val commitFile = File(temp.root, "pairing.commit")
+        val protector = SpySecretProtector()
+        val graph = FilePairingGraph(identFile, credFile, epFile, commitFile, protector)
+        graph.installOrReplace(
+            home = testHome(),
+            credential = testCred(),
+            directEndpoint = DirectEndpoint("10.0.0.1", 7657),
+            isDirectAssociated = true,
+            provenance = PairingProvenance.FRESH_LINK,
+        )
+        val generation = (graph.currentSnapshot() as PairingGraphSnapshot.Committed).pairing
+        assertTrue(graph.updateRelayAccess(generation, "https://relay.example.invalid", "token-updated", "2030-02-01T00:00:00Z") is GraphMutationResult.Applied)
+        assertEquals(PairingProvenance.FRESH_LINK, (graph.currentSnapshot() as PairingGraphSnapshot.Committed).provenance)
+
+        val crashGraph = FilePairingGraph(
+            identFile,
+            credFile,
+            epFile,
+            commitFile,
+            protector,
+            stepHook = { step, op ->
+                if (op == "REPLACE" && step == DurableTxnStep.RENAME_REPLACE) error("crash before commit marker")
+            },
+        )
+        val replacement = crashGraph.installOrReplace(
+            home = testHome(id = "home-2", cert = "sha256:cert-2"),
+            credential = testCred("key-2", "cert-2"),
+            directEndpoint = null,
+            isDirectAssociated = false,
+            provenance = PairingProvenance.FRESH_LINK,
+        )
+        assertTrue(replacement is GraphMutationResult.PersistenceFailed)
+        val restored = FilePairingGraph(identFile, credFile, epFile, commitFile, protector).currentSnapshot()
+        assertEquals(generation, (restored as PairingGraphSnapshot.Committed).pairing)
+        assertEquals(PairingProvenance.FRESH_LINK, restored.provenance)
     }
 
     @Test

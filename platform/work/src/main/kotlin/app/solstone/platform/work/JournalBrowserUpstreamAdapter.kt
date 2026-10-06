@@ -89,7 +89,7 @@ class JournalBrowserUpstreamAdapter(
                 return PairingLease.Relay(snap, cred, origin, ident.instanceId, token)
             }
             override fun validateLease(lease: PairingLease): Boolean = true
-            override fun installOrReplace(home: app.solstone.core.model.PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun installOrReplace(home: app.solstone.core.model.PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean, provenance: app.solstone.core.identity.PairingProvenance) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
             override fun updateRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration, relayOrigin: String, deviceToken: String, expiresAt: String?) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
             override fun revokeRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
             override fun forget() = app.solstone.core.identity.GraphMutationResult.Conflict("compat")

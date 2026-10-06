@@ -15,6 +15,7 @@ import app.solstone.observer.formfactor.glasses.GlassesHarnessUi
 
 class MainActivity : Activity() {
     private lateinit var container: GlassesAppContainer
+    private lateinit var harnessUi: GlassesHarnessUi
     private var captureOwnerToken: Long = -1L
     private var captureStartedForOwner: Boolean = false
 
@@ -24,16 +25,18 @@ class MainActivity : Activity() {
             GlassesHarnessRuntime.runtime = it
         }
         container = runtime.container()
-        setContentView(
-            GlassesHarnessUi(
+        harnessUi = GlassesHarnessUi(
                 context = this,
                 controller = container.controller,
                 permissionRequester = { requestPermissions(requiredPermissions(), PERMISSION_REQUEST) },
                 asyncLoad = container.asyncLoad,
+                pairingMigrationOwner = container.pairingMigrationOwner,
+                onPairingCommitted = { runOnUiThread { if (!isFinishing) harnessUi.showDeviceChoice() } },
                 onEvidenceLoaded = { GlassesHarnessRuntime.hooks?.onEvidenceLoadComplete?.invoke() },
                 onSyncLoaded = { GlassesHarnessRuntime.hooks?.onSyncLoadComplete?.invoke() },
-            ).view(),
-        )
+            )
+        setContentView(harnessUi.view())
+        GlassesHarnessRuntime.onPairingCommitted = { runOnUiThread { if (!isFinishing) harnessUi.showDeviceChoice() } }
     }
 
     override fun onResume() {
@@ -61,6 +64,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        GlassesHarnessRuntime.onPairingCommitted = null
         super.onDestroy()
     }
 

@@ -96,7 +96,7 @@ class PhoneJournalMarkConfirmationComposeTest {
         override fun acquireDirectLease(): PairingLease.Direct? = error("unused")
         override fun acquireRelayLease(): PairingLease.Relay? = error("unused")
         override fun validateLease(lease: PairingLease): Boolean = error("unused")
-        override fun installOrReplace(home: PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean): GraphMutationResult = error("unused")
+        override fun installOrReplace(home: PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean, provenance: app.solstone.core.identity.PairingProvenance): GraphMutationResult = error("unused")
         override fun updateRelayAccess(expectedPairing: PairingGeneration, relayOrigin: String, deviceToken: String, expiresAt: String?): GraphMutationResult = error("unused")
         override fun revokeRelayAccess(expectedPairing: PairingGeneration): GraphMutationResult = error("unused")
         override fun forget(): GraphMutationResult = error("unused")

@@ -12,6 +12,8 @@ import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PairingProvenance
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.ByteDuplex
@@ -67,6 +69,7 @@ class DirectPairRelayAccessTest {
         val identStore = FakeIdentityStore()
         val endpStore = FakeEndpointStore()
         val bootstrapToken = v2Jwt("test-instance", 100, 2000000000)
+        val publisher = FakePairingPublisher(identStore, credStore, endpStore)
         val responseJson = pairResponseWithRelayAccess(
             relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"test-instance","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
         )
@@ -81,10 +84,12 @@ class DirectPairRelayAccessTest {
             localInterfaces = emptyList(),
             materialFactory = { DirectPairMaterial("KEY", leafPublicKey(), "CSR".toByteArray()) },
             statusProbe = { _, _ -> HttpResponse(200, emptyMap(), "ok".toByteArray()) },
+            publisher = publisher,
         )
 
         assertEquals(200, result.pairStatus)
         assertEquals(DirectPairConnectionMode.PAIRING, result.connectionMode)
+        assertEquals(PairingProvenance.FRESH_LINK, (publisher.currentSnapshot() as PairingGraphSnapshot.Committed).provenance)
         val home = assertNotNull(identStore.load())
         assertEquals("https://link.solstone.app", home.relayOrigin)
         assertEquals(bootstrapToken, home.deviceToken)

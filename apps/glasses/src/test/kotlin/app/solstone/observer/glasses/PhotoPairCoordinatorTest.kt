@@ -45,6 +45,7 @@ class PhotoPairCoordinatorTest {
 
         assertEquals(listOf(PAIR_A), f.pairCalls)
         assertEquals(1, f.unregisterCalls)
+        assertEquals(1, f.pairingCommittedCalls)
     }
 
     @Test
@@ -116,6 +117,7 @@ class PhotoPairCoordinatorTest {
 
         assertEquals(listOf(PAIR_A), f.pairCalls)
         assertEquals(1, f.unregisterCalls)
+        assertEquals(1, f.pairingCommittedCalls)
         assertEquals(listOf(1L, 1L), f.decodedIds)
     }
 
@@ -130,6 +132,7 @@ class PhotoPairCoordinatorTest {
 
         assertEquals(listOf(PAIR_A), f.pairCalls)
         assertEquals(1, f.unregisterCalls)
+        assertEquals(0, f.pairingCommittedCalls)
     }
 
     @Test
@@ -356,6 +359,7 @@ class PhotoPairCoordinatorTest {
         var refreshCueCalls = 0
         var failedCueCalls = 0
         var looksLikeCalls = 0
+        var pairingCommittedCalls = 0
         val terminalCues = mutableListOf<StatusCue>()
         val decodedIds = mutableListOf<Long>()
         val pairCalls = mutableListOf<String>()
@@ -398,6 +402,7 @@ class PhotoPairCoordinatorTest {
                 log = { logs += it },
                 isUsableNetworkPresent = { networkUsable },
                 nowSeconds = { nowSeconds },
+                onPairingCommitted = { pairingCommittedCalls += 1 },
             ),
         )
     }

@@ -50,6 +50,7 @@ import app.solstone.platform.persistence.room.occupiedDirSegments
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.power.OemGuidance
 import app.solstone.platform.power.OemGuidanceCatalog
+import app.solstone.platform.work.syncStores
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -77,6 +78,7 @@ interface GlassesRuntimeContainer {
 }
 
 class GlassesAppContainer(private val context: Context) : GlassesRuntimeContainer {
+    val pairingMigrationOwner = syncStores(context).pairingMigrationOwner
     val cameraLock = SingleHolderCameraLock()
     val captureAuthority = VisibleCaptureOwnerRegistry()
     private val captureSetup = createCaptureSetup(context, cameraLock)
@@ -188,6 +190,7 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
             },
             isUsableNetworkPresent = flavor.isUsableNetworkPresent,
             nowSeconds = ::nowSeconds,
+            onPairingCommitted = { mainHandler.post { GlassesHarnessRuntime.onPairingCommitted?.invoke() } },
         ),
     )
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
@@ -524,6 +527,7 @@ object GlassesHarnessRuntime {
     val container: GlassesRuntimeContainer?
         get() = runtime?.containerIfInitialized
     var hooks: GlassesRuntimeHooks? = null
+    @Volatile var onPairingCommitted: (() -> Unit)? = null
 }
 
 class GlassesRuntimeHooks {

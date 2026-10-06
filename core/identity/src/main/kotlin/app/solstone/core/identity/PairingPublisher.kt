@@ -7,6 +7,12 @@ import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 
+/** Durable origin of a pairing generation. Unknown is conservative for pre-marker installs. */
+enum class PairingProvenance {
+    FRESH_LINK,
+    UNKNOWN_LEGACY,
+}
+
 /**
  * Process-local monotonic revisions tracking three distinct mutation domains.
  * Revisions strictly increment and never roll back across A -> Absent -> A or A -> B -> A.
@@ -47,6 +53,7 @@ sealed interface PairingGraphSnapshot {
         val hasDirectEndpoint: Boolean,
         val directAssociated: Boolean,
         val relayLiveEligible: Boolean,
+        val provenance: PairingProvenance = PairingProvenance.UNKNOWN_LEGACY,
         /** The saved direct address, shown to the owner; null when none is saved. */
         val directEndpoint: DirectEndpoint? = null,
     ) : PairingGraphSnapshot {
@@ -167,6 +174,7 @@ interface PairingPublisher {
         credential: ClientCredential,
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
+        provenance: PairingProvenance = PairingProvenance.UNKNOWN_LEGACY,
     ): GraphMutationResult
 
     fun updateRelayAccess(

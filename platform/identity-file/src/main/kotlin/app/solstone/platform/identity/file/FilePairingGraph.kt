@@ -16,6 +16,7 @@ import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingLease
 import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingProvenance
 import app.solstone.core.identity.PersistenceIssue
 import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.identity.StoreInspectResult
@@ -123,6 +124,7 @@ class FilePairingGraph(
         credential: ClientCredential,
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
+        provenance: PairingProvenance,
     ): GraphMutationResult = synchronized(lock) {
         val op = if (currentSnapshotState is PairingGraphSnapshot.Committed) CommitInFlightOp.REPLACE else CommitInFlightOp.INSTALL
         val priorCommitted = currentSnapshotState as? PairingGraphSnapshot.Committed
@@ -147,6 +149,7 @@ class FilePairingGraph(
                 priorIdentityChecksum = if (identityBakFile.exists()) PairingCommitMarker.checksumOf(identityBakFile) else null,
                 priorCredentialChecksum = if (credentialBakFile.exists()) PairingCommitMarker.checksumOf(credentialBakFile) else null,
                 priorEndpointChecksum = if (endpointBakFile.exists()) PairingCommitMarker.checksumOf(endpointBakFile) else null,
+                priorPairingProvenance = priorCommitted?.provenance,
             )
             inFlightMarker = stagedMarker
             writeCommitMarker(stagedMarker)
@@ -199,6 +202,7 @@ class FilePairingGraph(
                 identityChecksum = PairingCommitMarker.checksumOf(identityFile),
                 credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
                 endpointChecksum = if (directEndpoint != null) PairingCommitMarker.checksumOf(endpointFile) else null,
+                pairingProvenance = provenance,
             )
             writeCommitMarker(commitMarker)
             durableDecision = true
@@ -220,6 +224,7 @@ class FilePairingGraph(
                 directAssociated = directEndpoint != null && isDirectAssociated,
                 relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
                 directEndpoint = directEndpoint,
+                provenance = provenance,
             )
             currentSnapshotState = newCommitted
             notifySubscribers(newCommitted)
@@ -329,6 +334,7 @@ class FilePairingGraph(
                 identityChecksum = PairingCommitMarker.checksumOf(identityFile),
                 credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
                 endpointChecksum = if (current.hasDirectEndpoint) PairingCommitMarker.checksumOf(endpointFile) else null,
+                pairingProvenance = current.provenance,
             )
             writeCommitMarker(marker)
             markerWritten = true
@@ -427,6 +433,7 @@ class FilePairingGraph(
                 identityChecksum = PairingCommitMarker.checksumOf(identityFile),
                 credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
                 endpointChecksum = if (current.hasDirectEndpoint) PairingCommitMarker.checksumOf(endpointFile) else null,
+                pairingProvenance = current.provenance,
             )
             writeCommitMarker(marker)
             markerWritten = true
@@ -482,6 +489,7 @@ class FilePairingGraph(
                 priorIdentityChecksum = if (identityBakFile.exists()) PairingCommitMarker.checksumOf(identityBakFile) else null,
                 priorCredentialChecksum = if (credentialBakFile.exists()) PairingCommitMarker.checksumOf(credentialBakFile) else null,
                 priorEndpointChecksum = if (endpointBakFile.exists()) PairingCommitMarker.checksumOf(endpointBakFile) else null,
+                priorPairingProvenance = priorCommitted?.provenance,
             )
             writeCommitMarker(inFlightMarker)
             stepHook?.onStep(DurableTxnStep.STAGING_WRITE, CommitInFlightOp.FORGET.name)
@@ -668,6 +676,7 @@ class FilePairingGraph(
                 identityChecksum = PairingCommitMarker.checksumOf(identityFile),
                 credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
                 endpointChecksum = PairingCommitMarker.checksumOf(endpointFile),
+                pairingProvenance = current.provenance,
             )
             writeCommitMarker(marker)
             markerWritten = true
@@ -777,6 +786,7 @@ class FilePairingGraph(
             directAssociated = marker.directAssociated,
             relayLiveEligible = marker.hasRelayAccess,
             directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
+            provenance = marker.pairingProvenance ?: PairingProvenance.UNKNOWN_LEGACY,
         )
     }
 
@@ -819,6 +829,7 @@ class FilePairingGraph(
             identityChecksum = PairingCommitMarker.checksumOf(identityFile),
             credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
             endpointChecksum = if (epPresent) PairingCommitMarker.checksumOf(endpointFile) else null,
+            pairingProvenance = PairingProvenance.UNKNOWN_LEGACY,
         )
         writeCommitMarker(marker)
 
@@ -830,6 +841,7 @@ class FilePairingGraph(
             directAssociated = false,
             relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
             directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
+            provenance = PairingProvenance.UNKNOWN_LEGACY,
         )
     }
 
@@ -898,6 +910,7 @@ class FilePairingGraph(
                 identityChecksum = marker.priorIdentityChecksum,
                 credentialChecksum = marker.priorCredentialChecksum,
                 endpointChecksum = marker.priorEndpointChecksum,
+                pairingProvenance = marker.priorPairingProvenance ?: PairingProvenance.UNKNOWN_LEGACY,
             )
             writeCommitMarker(priorMarker)
             cleanBackupAndStagingFiles()

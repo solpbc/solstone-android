@@ -88,6 +88,7 @@ class JournalIdentityRefreshCoordinatorTest {
             credential: ClientCredential,
             directEndpoint: app.solstone.core.model.DirectEndpoint?,
             isDirectAssociated: Boolean,
+            provenance: app.solstone.core.identity.PairingProvenance,
         ): GraphMutationResult = GraphMutationResult.Conflict("unused")
 
         override fun updateRelayAccess(

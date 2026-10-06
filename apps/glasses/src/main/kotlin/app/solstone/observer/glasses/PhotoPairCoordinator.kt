@@ -25,6 +25,7 @@ data class PhotoPairSeams(
     val log: (String) -> Unit,
     val isUsableNetworkPresent: () -> Boolean,
     val nowSeconds: () -> Long,
+    val onPairingCommitted: () -> Unit = {},
 )
 
 /**
@@ -98,6 +99,7 @@ class PhotoPairCoordinator(private val seams: PhotoPairSeams) {
                 -> {
                     attemptedLinks += decoded
                     seams.unregisterWatcher()
+                    if (decidePhotoPair(outcome) == PhotoPairOutcome.PAIRED) seams.onPairingCommitted()
                     return
                 }
                 PhotoPairOutcome.RECONNECTING -> {

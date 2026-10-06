@@ -4,7 +4,7 @@ How a mobile device first becomes able to dial a particular home solstone throug
 
 The end state of a successful pairing:
 
-- The mobile device holds a **client cert** signed by the home's local CA, with the matching private key in the platform keychain. The **iOS** client stores it with `kSecAttrAccessibleAfterFirstUnlock` — **deliberately backup-migratable** (a researched UX choice so pairing survives a device restore/migration). The **macOS** client stores it in the Data Protection keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (device-bound). Both are `AfterFirstUnlock` so background delivery keeps working while the device is locked.
+- The device holds a **client cert** signed by the home's local CA, with its matching private key protected by the platform's credential store. Pairing carries with protected app-data migration wherever that platform permits it. A moved pairing obtains a fresh key through the existing authenticated connection before ordinary delivery resumes; the owner chooses whether this continues the original device or adds another device. See [key storage and device migration](#key-storage-and-device-migration).
 - The home holds the device's cert **fingerprint** in `authorized_clients.json`, alongside the device label and pair date.
 - When relay access is available, the mobile holds an instance capability delivered by the home, or a compatible legacy device token. Successful direct pairing does not require relay access.
 - Future connections authenticate at the data plane with the TLS client certificate. Relay connections also present their admission capability to the rendezvous.
@@ -21,7 +21,7 @@ v1 supports a LAN-direct pairing form and an off-LAN **relay-addressed** pairing
 
 ## actors
 
-- **home** — the python `spl.pair` server inside solstone, plus the local CA. Generates the QR. Signs the CSR. Updates `authorized_clients.json`.
+- **home** — the native Rust pairing handler inside solstone, plus the local CA. Generates the QR. Signs the CSR. Updates `authorized_clients.json`.
 - **convey** — the home's HTTPS UI. Surfaces the "Pair a phone" button and displays the QR.
 - **mobile** — the solstone iOS app. Scans the QR. Generates an on-device keypair. Posts the CSR. Stores the resulting cert and device token in Keychain.
 - **spl-relay** — Cloudflare-hosted relay. Issues instance capabilities to the configured home; legacy clients enroll separately after pairing. Does not see the inner encrypted pairing exchange. Legacy enrollment sends a signed fingerprint attestation separately.
@@ -43,7 +43,7 @@ Step by step. Times are typical, not specified — the only enforced TTL is the 
 
 ### 1. owner taps "Pair a phone" in convey
 
-Convey calls into the local `spl.pair` HTTPS server (loopback, port chosen at solstone startup). The pair server:
+Convey calls the journal's native Rust pairing handler. The pair server:
 
 - For direct (LAN) form: generates a 128-bit (16-byte) random **nonce**.
 - For relay form: generates the pair-window nonce specified in [`pair-window.md`](pair-window.md).
@@ -107,7 +107,7 @@ The rest of this ceremony describes the direct LAN completion path (identical fo
 
 Owner-visible strings (per spec):
 
-- `LITERAL: "Scan this code with sol on your phone over the same wi-fi or your own vpn."`
+- `LITERAL: "Scan this code with solstone mobile on your phone over the same wi-fi or your own vpn."`
 - `LITERAL: "This code expires in 5 minutes and only works once."`
 
 ### 3. mobile scans
@@ -140,10 +140,10 @@ The `0x04` and `0x05` forms currently encode IPv4 only. The IPv6 row pins addres
 
 ### 4. mobile generates an on-device keypair
 
-In the platform keychain (see the end-state note above for accessibility — iOS `AfterFirstUnlock`, macOS `AfterFirstUnlockThisDeviceOnly`):
+Using the platform's protected credential store, as specified below:
 
 - **Algorithm:** ECDSA-P256 (matches the home CA's signature algorithm).
-- The private key never leaves the device; the public key is encoded into a **CSR** along with a device label (default: the iOS device name; owner-editable).
+- The private key is not sent to the journal or relay. The public key is encoded into a **CSR** along with a device label (default: the iOS device name; owner-editable). Protected platform migration may carry the private key to a new device, which then replaces it with a fresh key before ordinary delivery.
 
 ### 5. mobile posts the CSR to the pair URL
 
@@ -170,7 +170,7 @@ The pair server checks the nonce:
 - Exists in the in-memory table → continue.
 - Not yet used → mark `used = true` immediately (single-use enforcement, before any further work).
 - `expires_at > now` → continue.
-- Otherwise → 410 Gone, no body. The mobile sees `LITERAL: "This pairing code has expired. Generate a new one on your solstone."`.
+- Otherwise → 410 Gone, no body. The mobile sees `LITERAL: "This pairing code has expired. Generate a new one on your journal."`.
 
 If the nonce passes, the home signs the CSR with the local CA → a mobile **client cert** with:
 
@@ -200,12 +200,14 @@ Response body:
   "client_cert": "<PEM>",
   "ca_chain": ["<home CA PEM>"],
   "instance_id": "<home_instance_id>",
-  "home_label": "<owner-named home, e.g. 'living room mac'>",
+  "home_label": "<the journal's mark words, e.g. 'afoot·unfixed'>",
   "home_attestation": "<compact JWS, ES256>"
 }
 ```
 
 `home_attestation` is a short-lived JWT signed by the local CA private key and scoped to this particular pair ceremony. Shape, claims, and validation are specified in [`tokens.md`](tokens.md) §"POST /enroll/device". Legacy clients forward it verbatim to `/enroll/device` in step 8; the home never stores it and never signs a second one for the same device without a fresh pair ceremony.
+
+`home_label` is retained for compatibility and carries the two words of the journal's mark. It is not a name: a client never displays it as one, because the journal's mark (derived from `instance_id`) is its only identity. Nor is it the mark an owner compares at pairing, which a client takes from the journal's key, never from this field.
 
 The mobile stores `client_cert`, the matching private key (already in Keychain from step 4), and `ca_chain` (used to validate the home's TLS server cert during everyday tunnel use). It also stores `instance_id` — this is the address it will dial through `spl-relay`.
 
@@ -230,7 +232,7 @@ The successful encrypted pair response includes an additive `relay_access` objec
 
 Existing required pair-response fields remain present. Direct pairing may omit `relay_access` when unavailable; it must never be null. No capability acquisition is awaited after the pair is committed. Existing clients ignore the added object.
 
-The authenticated access API returns the same ready object, or `{ "protocol_version": 2, "status": "not_configured" }` without relay contact when disabled, or a bounded 503 when configured access is unavailable. Only currently authorized linked clients can call it. Pairing peers cannot. Clients validate the paired instance, allowed relay origin, explicit version, decoded v2 claims and matching usable expiry before replacing their cache. Optional failures preserve usable access; an authenticated `not_configured` clears it. Asynchronous writes must belong to the current pairing/configuration generation.
+The authenticated access API returns the same ready object, or `{ "protocol_version": 2, "status": "not_configured" }` without relay contact when disabled, or a bounded 503 when configured access is unavailable. Only currently authorized linked clients can call it. Pairing peers cannot. Clients validate the paired instance, allowed relay origin, explicit version, decoded v2 claims and matching usable expiry before replacing their cache. Optional failures preserve usable access; an authenticated `not_configured` clears it. Asynchronous writes to this relay-access cache must belong to the current pairing/configuration generation. That rule covers the cache only, not application data still awaiting delivery, which is not bound to any pairing ([`session.md`](session.md) § 7).
 
 New clients pairing off-LAN with an older home may use `/enroll/device` with its attestation and `protocol_version: 2`. An older relay may return unversioned legacy credentials; that is compatible access, not a completed v2 upgrade. New direct pairing to an older home remains locally usable until the home provides the access API; it does not silently enroll the device with the relay.
 
@@ -246,6 +248,8 @@ Revoking a device is a one-step operation **on the home, not on `spl-relay`.**
 4. The next dial from the revoked device opens the tunnel WS through `spl-relay` (rendezvous still works — the device token is still valid), but the home refuses the client cert inside the TLS handshake. Which alert it sends, and what the mobile shows the owner, are specified in [`session.md`](session.md) § 7.
 
 This is the authoritative revocation point. The device token at `spl-relay` may remain valid; it confers no data access without the TLS handshake succeeding. v1 does not propagate revocation to `spl-relay`. Instance capabilities deliberately do not provide a per-device relay revocation mechanism.
+
+Revocation ends the device's credential, not its data. What the device does with application data still awaiting delivery is specified in [`session.md`](session.md) § 7.
 
 The TLS-layer rejection is **not** an app-layer post-handshake drop. The prototype found (notes §8 + §11.3, meaning sol pbc's internal engineering notes, which are not published — ⚠ **not** this document's own step 8) that app-layer fingerprint checks produce silent disconnects with no clean error semantics, so the check runs inside the handshake, where a refusal has an alert to travel on and the mobile can tell one refusal from another.
 
@@ -266,6 +270,20 @@ The mobile generates its own keypair so that the home (and `spl-relay`) never po
 Off-LAN pairing is the `0x06` home-opened pairing window specified in [`pair-window.md`](pair-window.md). It lets a phone pair from anywhere without putting `instance_id` in the pair link; the relay routes by `RK` and learns `instance_id` only from the home's service token.
 
 The blind-by-construction posture is preserved: `spl-relay` sees `instance_id` and `RK`, but never `S`, the home-side nonce, the CSR, the client cert, or pairing payload. LAN pairing remains the shortest trust-on-first-use path when the phone is near the home; relay-addressed pairing exists for the off-LAN posture.
+
+## key storage and device migration
+
+The iOS client uses backup-migratable `kSecAttrAccessibleAfterFirstUnlock` storage for its pairing. The macOS client uses protected storage carried by Migration Assistant or Time Machine, with access restricted to the signed application. Its hardware-local move marker remains device-bound. A copied Linux or tmux home carries its owner-only pairing files. Windows uses its protected credential store; a copy that the platform cannot decrypt returns to the unpaired path without discarding queued material. Android's pairing key does not carry in backups, so it pairs anew.
+
+Clients keep a migrated baseline beside a hardware-local marker. An existing install without a baseline adopts one silently on upgrade. A reinstall on the same hardware retains the pairing and follows the existing reinstall notice. When a prior baseline no longer matches the local marker, the client generates a fresh P-256 key, persists the issuance operation, and requests a new certificate over its existing authenticated connection. It verifies the same journal identity and adopts the new credential durably before allowing ordinary delivery. A retry of the same issuance operation returns the same certificate; it does not mint another device. Pending operation secrets belong to the current hardware and cannot become a shared key when copied again.
+
+The journal records the authenticated old-to-new credential provenance and initially keeps both devices authorized. A client with a UI asks once whether this is the same device or a new device. Choosing the same device transfers the original name and stream continuity, preserves accepted history, and retires the original credential and push registrations. Choosing a new device keeps both working. While the question remains unanswered, both remain authorized. Clients without a UI keep both.
+
+When a pairing cannot carry, the newly paired client with a UI offers an explicit choice of which existing device, if any, it replaces. Replacement always uses authenticated provenance or the owner's exact device selection. A matching name never establishes identity. Queued material, journal-mark confirmation and settings carry; notification keys are regenerated and registered under the adopted credential.
+
+An install restored before the move marker existed may already share a key with its original device. The first upgrade cannot identify that historical clone from the new marker alone. Forgetting and pairing one of those devices establishes a separate credential.
+
+These storage requirements concern device credentials. The journal CA's storage remains specified in [the local CA](#the-local-ca).
 
 ## related
 

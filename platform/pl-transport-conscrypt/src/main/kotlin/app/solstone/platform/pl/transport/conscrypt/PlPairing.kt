@@ -23,6 +23,7 @@ import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingLease
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DialDecision
@@ -385,6 +386,7 @@ internal fun persistOrReturnDirectPairResult(
             credential = credential,
             directEndpoint = endpoint,
             isDirectAssociated = false,
+            provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
         )
     }
     if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
@@ -458,6 +460,20 @@ fun openAuthenticatedClient(
             directDialObserver,
         ),
     )
+
+/** Open through the already committed direct or relay lease selected by the pairing graph. */
+fun openAuthenticatedLeaseClient(lease: PairingLease): ConscryptPlHttpClient = when (lease) {
+    is PairingLease.Direct -> openAuthenticatedClient(
+        DirectEndpoint(lease.endpoint.host, lease.endpoint.port),
+        lease.credential,
+    )
+    is PairingLease.Relay -> openRelaySyncClient(
+        lease.relayOrigin,
+        lease.instanceId,
+        lease.deviceToken,
+        lease.credential,
+    )
+}
 
 internal data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
 

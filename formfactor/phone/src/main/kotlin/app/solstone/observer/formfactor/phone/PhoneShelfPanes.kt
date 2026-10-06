@@ -135,6 +135,8 @@ fun PhoneThisDevicePane(
     onOpenProblemReports: () -> Unit,
     paired: Boolean,
     onUnpair: () -> Unit,
+    deviceChoicePending: Boolean = false,
+    onDeviceChoice: () -> Unit = {},
     mutationFailed: Boolean = false,
     journalKeptItsRecord: Boolean = false,
     modifier: Modifier = Modifier,
@@ -180,6 +182,10 @@ fun PhoneThisDevicePane(
             PaneNavRow(label = "event log", onClick = onOpenEventLog)
             PaneRowDivider()
             PaneNavRow(label = "problem reports", onClick = onOpenProblemReports)
+            if (paired && deviceChoicePending) {
+                PaneRowDivider()
+                PaneNavRow(label = "device choice", value = "not answered", onClick = onDeviceChoice)
+            }
             if (paired) {
                 PaneRowDivider()
                 PaneNavRow(label = "unpair", onClick = { confirmingUnpair = true })

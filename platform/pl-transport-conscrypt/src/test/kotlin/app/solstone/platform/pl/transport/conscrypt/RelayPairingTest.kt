@@ -34,6 +34,7 @@ import java.util.Base64
 import javax.security.auth.x500.X500Principal
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PairingProvenance
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
@@ -93,6 +94,7 @@ class RelayPairingTest {
             stores.credentialStore,
             stores.identityStore,
             endpointStore = stores.endpointStore,
+            publisher = stores.publisher,
         )
 
         assertEquals(200, result.pairStatus)
@@ -100,6 +102,10 @@ class RelayPairingTest {
         assertEquals("relay-home", result.homeLabel)
         assertEquals("link.solstone.app", result.relayHost)
         assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
+        assertEquals(
+            PairingProvenance.FRESH_LINK,
+            (stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed).provenance,
+        )
         assertEquals(0, poster.enrollBodies.size)
         assertTrue(session.closed)
 
@@ -125,6 +131,7 @@ class RelayPairingTest {
             stores.credentialStore,
             stores.identityStore,
             endpointStore = stores.endpointStore,
+            publisher = stores.publisher,
         )
 
         assertEquals(200, result.pairStatus)
@@ -132,6 +139,10 @@ class RelayPairingTest {
         assertEquals("relay-home", result.homeLabel)
         assertEquals("link.solstone.app", result.relayHost)
         assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
+        assertEquals(
+            PairingProvenance.FRESH_LINK,
+            (stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed).provenance,
+        )
         assertEquals("/app/network/pair?token=0123456789abcdef", session.requests.single().path)
         val pairBody = parseJson(session.requests.single().body!!.toString(Charsets.UTF_8)) as Map<*, *>
         assertEquals("glasses", pairBody["device_label"])

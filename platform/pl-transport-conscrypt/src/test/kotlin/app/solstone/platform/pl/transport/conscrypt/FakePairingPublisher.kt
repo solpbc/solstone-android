@@ -12,6 +12,7 @@ import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingLease
 import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingProvenance
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.identity.JournalConfirmation
@@ -46,6 +47,7 @@ class FakePairingPublisher(
     private var pRev = 1L
     private var dRev = 1L
     private var rRev = 1L
+    private var pairingProvenance = PairingProvenance.UNKNOWN_LEGACY
 
     override fun currentSnapshot(): PairingGraphSnapshot {
         val home = identityStore.load() ?: return PairingGraphSnapshot.Absent(seq.incrementAndGet())
@@ -57,6 +59,7 @@ class FakePairingPublisher(
             hasDirectEndpoint = ep != null,
             directAssociated = ep != null,
             relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
+            provenance = pairingProvenance,
         )
     }
 
@@ -67,6 +70,7 @@ class FakePairingPublisher(
         credential: ClientCredential,
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
+        provenance: app.solstone.core.identity.PairingProvenance,
     ): GraphMutationResult {
         if (failPublication) {
             return GraphMutationResult.PersistenceFailed(java.io.IOException("simulated publisher failure"))
@@ -74,6 +78,7 @@ class FakePairingPublisher(
         val oldHome = identityStore.load()
         val oldCred = credentialStore.load()
         val oldEp = endpointStore?.load()
+        val oldProvenance = pairingProvenance
         try {
             credentialStore.save(credential)
             identityStore.save(home)
@@ -82,6 +87,7 @@ class FakePairingPublisher(
             } else {
                 endpointStore?.clear()
             }
+            pairingProvenance = provenance
             pRev++
             dRev++
             rRev++
@@ -95,6 +101,7 @@ class FakePairingPublisher(
             if (oldCred != null) credentialStore.save(oldCred) else credentialStore.clear()
             if (oldHome != null) identityStore.save(oldHome) else identityStore.clear()
             if (oldEp != null) endpointStore?.save(oldEp) else endpointStore?.clear()
+            pairingProvenance = oldProvenance
             return GraphMutationResult.PersistenceFailed(e)
         }
     }
@@ -137,6 +144,7 @@ class FakePairingPublisher(
         credentialStore.clear()
         identityStore.clear()
         endpointStore?.clear()
+        pairingProvenance = PairingProvenance.UNKNOWN_LEGACY
         return GraphMutationResult.Cleared(PairingGraphSnapshot.Absent(seq.incrementAndGet()))
     }
 

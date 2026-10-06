@@ -98,6 +98,8 @@ fun PhoneObserverScreen(
     onCheckConnection: () -> Unit = {},
     onForgetJournal: () -> Unit = {},
     onUnpairThisDevice: () -> Unit = onForgetJournal,
+    deviceChoicePending: Boolean = false,
+    onDeviceChoice: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
     onSendTestNotification: () -> Unit = {},
     onReportProblem: () -> Unit = {},
@@ -106,6 +108,7 @@ fun PhoneObserverScreen(
     aboutBlock: String? = null,
     onAboutOpened: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
+    technicalDetailsRequest: Long = 0,
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
@@ -151,6 +154,8 @@ fun PhoneObserverScreen(
         onCheckConnection = onCheckConnection,
         onForgetJournal = onForgetJournal,
         onUnpairThisDevice = onUnpairThisDevice,
+        deviceChoicePending = deviceChoicePending,
+        onDeviceChoice = onDeviceChoice,
         onOpenNotificationSettings = onOpenNotificationSettings,
         onSendTestNotification = onSendTestNotification,
         onReportProblem = onReportProblem,
@@ -159,6 +164,7 @@ fun PhoneObserverScreen(
         aboutBlock = aboutBlock,
         onAboutOpened = onAboutOpened,
         onManageLocalStorage = onManageLocalStorage,
+        technicalDetailsRequest = technicalDetailsRequest,
         modifier = modifier,
         initial = initial,
         initialShelfOpen = initialShelfOpen,
@@ -212,6 +218,8 @@ internal fun PhoneObserverScreen(
     onCheckConnection: () -> Unit = {},
     onForgetJournal: () -> Unit = {},
     onUnpairThisDevice: () -> Unit = onForgetJournal,
+    deviceChoicePending: Boolean = false,
+    onDeviceChoice: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
     onSendTestNotification: () -> Unit = {},
     onReportProblem: () -> Unit = {},
@@ -220,6 +228,7 @@ internal fun PhoneObserverScreen(
     aboutBlock: String? = null,
     onAboutOpened: () -> Unit = {},
     onManageLocalStorage: () -> Unit = {},
+    technicalDetailsRequest: Long = 0,
     modifier: Modifier = Modifier,
     initial: PhoneRouteStack = PhoneRouteStack.Empty,
     initialShelfOpen: Boolean = false,
@@ -234,6 +243,11 @@ internal fun PhoneObserverScreen(
             .let { if (initialStatusOpen) it.open(PhonePane.STATUS) else it },
     )
     var detailStack by rememberPhoneRouteStack(initial)
+    LaunchedEffect(technicalDetailsRequest) {
+        if (technicalDetailsRequest > 0) {
+            detailStack = detailStack.pushInDetail(PhoneRoute.TechnicalDetails)
+        }
+    }
     val drawerState = rememberDrawerState(
         if (initialShelfOpen) DrawerValue.Open else DrawerValue.Closed,
     )
@@ -499,6 +513,8 @@ internal fun PhoneObserverScreen(
                                 onCheckConnection = onCheckConnection,
                                 onForgetJournal = onForgetJournal,
                                 onUnpairThisDevice = onUnpairThisDevice,
+                                deviceChoicePending = deviceChoicePending,
+                                onDeviceChoice = onDeviceChoice,
                                 onOpenNotificationSettings = onOpenNotificationSettings,
                                 onSendTestNotification = onSendTestNotification,
                                 onReportProblem = onReportProblem,
@@ -580,6 +596,8 @@ internal fun PhoneObserverScreen(
                     onCheckConnection = onCheckConnection,
                     onForgetJournal = onForgetJournal,
                     onUnpairThisDevice = onUnpairThisDevice,
+                    deviceChoicePending = deviceChoicePending,
+                    onDeviceChoice = onDeviceChoice,
                     onOpenNotificationSettings = onOpenNotificationSettings,
                     onSendTestNotification = onSendTestNotification,
                     onReportProblem = onReportProblem,

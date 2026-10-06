@@ -51,10 +51,6 @@ class SegmentReconciler(private val http: PlHttpClient) {
                 require(segments.map(ServerSegment::key).toSet().size == segments.size) {
                     "segments response has duplicate keys"
                 }
-                val originalKeys = segments.mapNotNull(ServerSegment::originalKey)
-                require(originalKeys.toSet().size == originalKeys.size) {
-                    "segments response has duplicate original keys"
-                }
                 segments
             } catch (e: Exception) {
                 throw ReconcileUnavailableException(200, e)
@@ -65,39 +61,56 @@ class SegmentReconciler(private val http: PlHttpClient) {
     }
 
     fun diff(localManifests: List<BundleManifest>, day: String): List<ReconcileVerdict> {
-        val remoteBySource = localManifests.flatMap { it.files }.map { it.sourceId }.distinct().associateWith { source ->
-            val remote = fetch(day, source)
-            remote.associateBy { it.key } to remote.filter { it.originalKey != null }
-                .associateBy { requireNotNull(it.originalKey) }
-        }
+        val remoteBySource = localManifests.flatMap { it.files }.map { it.sourceId }.distinct()
+            .associateWith { source -> fetch(day, source) }
         return localManifests.map { manifest ->
             ReconcileVerdict(
                 key = manifest.key,
-                needsUpload = !manifest.files.all { local ->
-                    val (byKey, byOriginalKey) = remoteBySource.getValue(local.sourceId)
-                    val remoteFiles = (byKey[manifest.key.segment] ?: byOriginalKey[manifest.key.segment])
-                        ?.files.orEmpty()
-                    isProvenHeld(local, remoteFiles)
+                needsUpload = manifest.files.isEmpty() || !manifest.files.groupBy(BundleFile::sourceId).all { (source, localFiles) ->
+                    val matches = remoteBySource.getValue(source).count { remote ->
+                        provesCompleteHeldCopy(manifest.key.segment, source, localFiles, remote)
+                    }
+                    matches == 1
                 },
             )
         }
     }
 
-    private fun isProvenHeld(local: BundleFile, remoteFiles: List<ServerFile>): Boolean =
-        remoteFiles.any { remote ->
-            (remote.submittedName ?: remote.name) == local.name &&
+    /** One physical response entry must prove the whole source group; keys and aliases are opaque. */
+    private fun provesCompleteHeldCopy(
+        localSegment: String,
+        sourceId: String,
+        localFiles: List<BundleFile>,
+        remote: ServerSegment,
+    ): Boolean {
+        if ((remote.segment != null || remote.stream != null) &&
+            (remote.segment != localSegment || remote.stream != sourceId)
+        ) return false
+        val remoteFiles = remote.files
+        if (localFiles.isEmpty() || localFiles.size != remoteFiles.size) return false
+        if (localFiles.map(BundleFile::name).toSet().size != localFiles.size) return false
+        if (remoteFiles.map { it.submittedName ?: it.name }.toSet().size != remoteFiles.size) return false
+        val remoteBySubmittedName = remoteFiles.associateBy { it.submittedName ?: it.name }
+        return localFiles.all { local ->
+            val remote = remoteBySubmittedName[local.name] ?: return@all false
+            (remote.submittedName == null || remote.submittedName == local.name) &&
                 remote.size == local.byteSize &&
-                remote.sha256.isNotEmpty() &&
                 remote.sha256.equals(local.sha256, ignoreCase = true) &&
                 remote.status in HELD_STATUSES
         }
+    }
 
     private fun segment(value: Any?): ServerSegment {
         val segment = value as? Map<*, *> ?: throw IllegalArgumentException("segment item must be an object")
+        val physicalSegment = optionalNonBlankString(segment, "segment")
+        val stream = optionalNonBlankString(segment, "stream")
+        require((physicalSegment == null) == (stream == null)) { "segments/stream physical pair is partial" }
         return ServerSegment(
             key = requiredNonBlankString(segment, "key"),
             files = segmentFiles(segment),
             originalKey = optionalNonBlankString(segment, "original_key"),
+            segment = physicalSegment,
+            stream = stream,
         )
     }
 
@@ -172,6 +185,8 @@ data class ServerSegment(
     val key: String,
     val files: List<ServerFile>,
     val originalKey: String? = null,
+    val segment: String? = null,
+    val stream: String? = null,
 )
 
 data class ReconcileVerdict(val key: SegmentKey, val needsUpload: Boolean)

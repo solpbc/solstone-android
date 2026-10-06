@@ -372,7 +372,13 @@ fun pairOverRelay(
         )
         val res = activePublisher.withMutationBoundary {
             settleBeforeInstall(confirmation)
-            activePublisher.installOrReplace(home, credential, firstAdmitted, isDirectAssociated = false)
+            activePublisher.installOrReplace(
+                home,
+                credential,
+                firstAdmitted,
+                isDirectAssociated = false,
+                provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
+            )
         }
         if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
             if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {
@@ -416,7 +422,13 @@ fun pairOverRelay(
     )
     val res = activePublisher.withMutationBoundary {
         settleBeforeInstall(confirmation)
-        activePublisher.installOrReplace(homeInitial, credential, firstAdmitted, isDirectAssociated = false)
+        activePublisher.installOrReplace(
+            homeInitial,
+            credential,
+            firstAdmitted,
+            isDirectAssociated = false,
+            provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
+        )
     }
     if (res !is app.solstone.core.identity.GraphMutationResult.Applied) {
         if (res is app.solstone.core.identity.GraphMutationResult.PersistenceFailed) {

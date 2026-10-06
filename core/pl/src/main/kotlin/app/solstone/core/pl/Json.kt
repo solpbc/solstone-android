@@ -90,6 +90,7 @@ private class JsonParser(private val text: String) {
                 throw IllegalArgumentException("expected JSON object key at $index")
             }
             val key = readString()
+            require(!out.containsKey(key)) { "duplicate JSON object key: $key" }
             skipWhitespace()
             expect(':')
             out[key] = readValue()

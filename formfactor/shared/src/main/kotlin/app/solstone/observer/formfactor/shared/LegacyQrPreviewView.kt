@@ -32,6 +32,7 @@ class LegacyQrPreviewView(
     context: Context,
     private val controller: HarnessController,
     threadLabel: String,
+    private val onPairingCommitted: () -> Unit = {},
     private val status: (String) -> Unit,
 ) : SurfaceView(context), SurfaceHolder.Callback, Camera.PreviewCallback {
     private val reader = MultiFormatReader()
@@ -128,6 +129,7 @@ class LegacyQrPreviewView(
             report(pairStatusText(outcome))
             if (outcome.isSuccessfulPair()) {
                 releaseCamera()
+                post { onPairingCommitted() }
             }
         }
     }

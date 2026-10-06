@@ -144,10 +144,16 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun diffUsesOriginalKeyWhenCanonicalKeyIsAbsent() {
+    fun diffUsesCompletePhysicalEvidenceWhenCanonicalKeyIsAbsent() {
         val http = RecordingPlHttpClient(
             response(
-                segmentJson("server-key", fileJson("audio.wav", SHA_A), originalKey = "093000_60"),
+                segmentJson(
+                    "server-key",
+                    fileJson("audio.wav", SHA_A),
+                    originalKey = "093000_60",
+                    physicalSegment = "093000_60",
+                    stream = "source-0",
+                ),
             ),
         )
 
@@ -158,18 +164,109 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun diffPrefersCanonicalKeyOverOriginalKey() {
-        val http = RecordingPlHttpClient(
-            response(
-                segmentJson("093000_60"),
-                segmentJson("other", fileJson("audio.wav", SHA_A), originalKey = "093000_60"),
+    fun diffDoesNotUseCompleteFilesFromAnotherPhysicalSegment() {
+        val local = manifest("093000_60", "audio.wav" to SHA_A).withSource("audio")
+        val listing = response(
+            segmentJson(
+                "opaque-alias",
+                fileJson("audio.wav", SHA_A),
+                physicalSegment = "094000_60",
+                stream = "audio",
             ),
         )
 
         assertEquals(
-            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), true)),
+            listOf(ReconcileVerdict(local.key, true)),
+            SegmentReconciler(RecordingPlHttpClient(listing)).diff(listOf(local), "20260616"),
+        )
+    }
+
+    @Test
+    fun diffDoesNotUseCompleteFilesFromAnotherPhysicalStream() {
+        val local = manifest("093000_60", "audio.wav" to SHA_A).withSource("audio")
+        val listing = response(
+            segmentJson(
+                "opaque-alias",
+                fileJson("audio.wav", SHA_A),
+                physicalSegment = "093000_60",
+                stream = "photo",
+            ),
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(local.key, true)),
+            SegmentReconciler(RecordingPlHttpClient(listing)).diff(listOf(local), "20260616"),
+        )
+    }
+
+    @Test
+    fun diffAllowsOneCompleteLegacyCandidateWithoutPhysicalCoordinates() {
+        val local = manifest("093000_60", "audio.wav" to SHA_A)
+        val listing = response(
+            segmentJson("opaque-alias", fileJson("audio.wav", SHA_A), originalKey = "unrelated"),
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(local.key, false)),
+            SegmentReconciler(RecordingPlHttpClient(listing)).diff(listOf(local), "20260616"),
+        )
+    }
+
+    @Test
+    fun diffDoesNotInferIdentityFromCanonicalOrOriginalKeys() {
+        val http = RecordingPlHttpClient(
+            response(
+                segmentJson("093000_60"),
+                segmentJson(
+                    "other",
+                    fileJson("audio.wav", SHA_A),
+                    originalKey = "093000_60",
+                    physicalSegment = "093000_60",
+                    stream = "source-0",
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(ReconcileVerdict(SegmentKey("20260616", "093000_60"), false)),
             SegmentReconciler(http).diff(listOf(manifest("093000_60", "audio.wav" to SHA_A)), "20260616"),
         )
+    }
+
+    @Test
+    fun equalBytePhysicalTwinsRemainAmbiguousEvenWhenAnAliasEqualsLocalKey() {
+        val local = manifest("local-key", "audio.wav" to SHA_A).withSource("audio")
+        val http = RecordingPlHttpClient(
+            response(
+                segmentJson(
+                    "local-key",
+                    fileJson("audio.wav", SHA_A),
+                    originalKey = "opaque-original",
+                    physicalSegment = "local-key",
+                    stream = "audio",
+                ),
+                segmentJson(
+                    "opaque-alias",
+                    fileJson("audio.wav", SHA_A),
+                    originalKey = "local-key",
+                    physicalSegment = "local-key",
+                    stream = "audio",
+                ),
+            ),
+        )
+        assertEquals(listOf(ReconcileVerdict(local.key, true)), SegmentReconciler(http).diff(listOf(local), "20260616"))
+    }
+
+    @Test
+    fun evidenceFromDifferentSourcesCannotBeUnionedIntoOnePhysicalCandidate() {
+        val local = manifest("same", "audio.wav" to SHA_A, "photo.jpg" to SHA_B).let { manifest ->
+            manifest.copy(files = manifest.files.mapIndexed { index, file -> file.copy(sourceId = if (index == 0) "audio" else "photo") })
+        }
+        val http = object : PlHttpClient {
+            override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse =
+                response(segmentJson("same", fileJson("audio.wav", SHA_A), fileJson("photo.jpg", SHA_B)))
+        }
+        assertEquals(listOf(ReconcileVerdict(local.key, true)), SegmentReconciler(http).diff(listOf(local), "20260616"))
     }
 
     @Test
@@ -203,21 +300,42 @@ class SegmentReconcilerTest {
     }
 
     @Test
-    fun fetchRejectsDuplicateKeysAndOriginalKeys() {
+    fun fetchRejectsDuplicateListingKeysButPreservesRepeatedOriginalKeys() {
+        assertFailsWith<ReconcileUnavailableException> {
+            SegmentReconciler(
+                RecordingPlHttpClient(
+                    response(
+                        """{"key":"alias","observed":true,"files":[${fileJson("audio.wav", SHA_A)}]}""",
+                        """{"key":"alias","observed":true,"files":[${fileJson("photo.jpg", SHA_B)}]}""",
+                    ),
+                ),
+            ).fetch("20260616")
+        }
+        val repeated = SegmentReconciler(
+            RecordingPlHttpClient(
+                response(
+                    """{"key":"alias-a","original_key":"local","observed":true,"segment":"seg-a","stream":"audio","files":[${fileJson("audio.wav", SHA_A)}]}""",
+                    """{"key":"alias-b","original_key":"local","observed":true,"segment":"seg-b","stream":"photo","files":[${fileJson("photo.jpg", SHA_B)}]}""",
+                ),
+            ),
+        ).fetch("20260616")
+        assertEquals(2, repeated.size)
+        assertEquals(listOf("alias-a", "alias-b"), repeated.map { it.key })
+    }
+
+    @Test
+    fun parserRejectsMalformedPhysicalPairsAndFalseTotals() {
         listOf(
-            response(
-                """{"key":"seg","observed":true,"files":[${fileJson("audio.wav", SHA_A)}]}""",
-                """{"key":"seg","observed":true,"files":[${fileJson("photo.jpg", SHA_B)}]}""",
-            ),
-            response(
-                """{"key":"server-a","original_key":"local","observed":true,"files":[${fileJson("audio.wav", SHA_A)}]}""",
-                """{"key":"server-b","original_key":"local","observed":true,"files":[${fileJson("photo.jpg", SHA_B)}]}""",
-            ),
-        ).forEach { response ->
+            """{"key":"alias","segment":"segment-only","files":[]}""",
+            """{"key":"alias","stream":"stream-only","files":[]}""",
+            """{"key":"alias","segment":" ","stream":"audio","files":[]}""",
+        ).forEach { item ->
             assertFailsWith<ReconcileUnavailableException> {
-                SegmentReconciler(RecordingPlHttpClient(response)).fetch("20260616")
+                SegmentReconciler(RecordingPlHttpClient(response(item))).fetch("20260616")
             }
         }
+        val falseTotal = HttpResponse(200, emptyMap(), """{"items":[],"total":1,"protocol_version":3}""".toByteArray())
+        assertFailsWith<ReconcileUnavailableException> { SegmentReconciler(RecordingPlHttpClient(falseTotal)).fetch("20260616") }
     }
 
     @Test
@@ -325,9 +443,13 @@ class SegmentReconcilerTest {
         vararg files: String,
         observed: Boolean = true,
         originalKey: String? = null,
+        physicalSegment: String? = null,
+        stream: String? = null,
     ): String {
+        require((physicalSegment == null) == (stream == null))
         val originalKeyJson = originalKey?.let { ",\"original_key\":\"$it\"" }.orEmpty()
-        return """{"key":"$key"$originalKeyJson,"observed":$observed,"files":[${files.joinToString(",")}]}"""
+        val physicalJson = if (physicalSegment == null) "" else ",\"segment\":\"$physicalSegment\",\"stream\":\"$stream\""
+        return """{"key":"$key"$originalKeyJson$physicalJson,"observed":$observed,"files":[${files.joinToString(",")}]}"""
     }
 
     private fun manifest(segment: String, vararg files: Pair<String, String>): BundleManifest = BundleManifest(
@@ -337,6 +459,9 @@ class SegmentReconcilerTest {
         },
         gaps = emptyList(),
     )
+
+    private fun BundleManifest.withSource(sourceId: String): BundleManifest =
+        copy(files = files.map { it.copy(sourceId = sourceId) })
 
     private companion object {
         val SHA_A = "a".repeat(64)
