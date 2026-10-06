@@ -1,4 +1,6 @@
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.tasks.Delete
+import org.gradle.api.tasks.testing.Test
 import java.io.File
 
 plugins {
@@ -9,6 +11,22 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.21" apply false
     id("org.jetbrains.kotlin.jvm") version "2.2.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
+}
+
+subprojects {
+    tasks.withType<Test>().all {
+        val fixtureDirectory = temporaryDir.resolve("fixtures")
+        val cleanup = tasks.register<Delete>("${name}CleanupTemp") {
+            delete(fixtureDirectory)
+        }
+        systemProperty("java.io.tmpdir", fixtureDirectory.absolutePath)
+        doFirst {
+            check(fixtureDirectory.mkdirs() || fixtureDirectory.isDirectory) {
+                "Cannot create test temporary directory: $fixtureDirectory"
+            }
+        }
+        finalizedBy(cleanup)
+    }
 }
 
 fun deniedPrivacyCoordinate(group: String, name: String): String? {
