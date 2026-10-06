@@ -15,6 +15,8 @@ import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.MigrationSurface
+import app.solstone.observer.harness.migrationCopy
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
 import app.solstone.core.pl.PairingMigrationOwner
@@ -29,83 +31,6 @@ import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
 import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 
-private enum class GlassesMigrationSurface {
-    OFFER,
-    PREPARING,
-    PICKER,
-    PICKER_EMPTY,
-    CONFIRM,
-    DECIDING,
-    CHECKING,
-    OFFLINE,
-    UNSUPPORTED,
-    STORAGE,
-    LIST_UNAVAILABLE,
-    TARGET_UNAVAILABLE,
-    REFUSED,
-    KEY_REFUSED,
-}
-
-private data class GlassesMigrationCopy(val title: String, val body: String? = null, val action: String? = null)
-
-private fun glassesMigrationCopy(surface: GlassesMigrationSurface, selectedLabel: String? = null): GlassesMigrationCopy = when (surface) {
-    GlassesMigrationSurface.OFFER -> GlassesMigrationCopy(
-        "is this replacing one of your devices?",
-        "you can keep both, or choose a device for this one to replace.",
-    )
-    GlassesMigrationSurface.PREPARING -> GlassesMigrationCopy(
-        "getting this device ready",
-        "anything waiting to send stays on this device until it's ready.",
-    )
-    GlassesMigrationSurface.PICKER -> GlassesMigrationCopy("choose a device")
-    GlassesMigrationSurface.PICKER_EMPTY -> GlassesMigrationCopy("choose a device", "no other paired devices")
-    GlassesMigrationSurface.CONFIRM -> GlassesMigrationCopy(
-        selectedLabel?.takeIf(String::isNotBlank)?.let { "replace \"$it\"?" } ?: "replace the selected device?",
-        "this device continues its name and history. the selected device will lose access to your journal.",
-    )
-    GlassesMigrationSurface.DECIDING -> GlassesMigrationCopy("saving your choice")
-    GlassesMigrationSurface.CHECKING -> GlassesMigrationCopy(
-        "checking your choice",
-        "your journal hasn't confirmed the result yet.",
-        "check again",
-    )
-    GlassesMigrationSurface.OFFLINE -> GlassesMigrationCopy(
-        "can't reach your journal",
-        "anything waiting to send stays on this device. try again when your journal is reachable.",
-        "try again",
-    )
-    GlassesMigrationSurface.UNSUPPORTED -> GlassesMigrationCopy(
-        "journal update needed",
-        "your journal doesn't support this move yet. anything waiting to send stays on this device. update your journal, then try again.",
-        "try again",
-    )
-    GlassesMigrationSurface.STORAGE -> GlassesMigrationCopy(
-        "saved connection unavailable",
-        "this device couldn't read its saved connection. anything waiting to send hasn't been removed.",
-        "technical details",
-    )
-    GlassesMigrationSurface.LIST_UNAVAILABLE -> GlassesMigrationCopy(
-        "devices unavailable",
-        "couldn't load the devices in your journal. try again when your journal is reachable.",
-        "try again",
-    )
-    GlassesMigrationSurface.TARGET_UNAVAILABLE -> GlassesMigrationCopy(
-        "device no longer available",
-        "that device is no longer listed in your journal. choose another device, or keep both.",
-        "choose a device",
-    )
-    GlassesMigrationSurface.REFUSED -> GlassesMigrationCopy(
-        "choice needs attention",
-        "your journal couldn't apply this choice. your current connection still works.",
-        "technical details",
-    )
-    GlassesMigrationSurface.KEY_REFUSED -> GlassesMigrationCopy(
-        "pair again",
-        "this device couldn't open its saved connection to your journal. anything waiting to send is still here. pair again to reconnect.",
-        "pair again",
-    )
-}
-
 class GlassesHarnessUi(
     private val context: Context,
     private val controller: HarnessController,
@@ -118,19 +43,36 @@ class GlassesHarnessUi(
 ) {
     private val container = FrameLayout(context).apply { applySystemBarInsetPadding() }
     private var migrationProgressDialog: android.app.AlertDialog? = null
+    private var deviceChoicePending = false
+    private var menuShown = false
 
     fun view(): View {
         showMenu()
         return container
     }
 
+    /** Renders from the last known device-choice state, then refreshes that state off the main thread. */
     fun showMenu() {
-        val migrationState = pairingMigrationOwner?.let { runCatching { it.currentOffer() }.getOrNull() }
-        val deviceChoicePending = when (migrationState) {
-            is PairingMigrationResult.Offer -> migrationState.record.canOpenDeviceChoice()
-            PairingMigrationResult.NoOffer -> false
-            else -> pairingMigrationOwner != null
+        renderMenu()
+        val owner = pairingMigrationOwner ?: return
+        asyncLoad.load({ owner.currentOffer() }) { state ->
+            val pending = when (state) {
+                LoadState.Loading -> return@load
+                is LoadState.Failed -> true
+                is LoadState.Loaded -> when (val result = state.value) {
+                    is PairingMigrationResult.Offer -> result.record.canOpenDeviceChoice()
+                    PairingMigrationResult.NoOffer -> false
+                    else -> true
+                }
+            }
+            if (pending != deviceChoicePending) {
+                deviceChoicePending = pending
+                if (menuShown) renderMenu()
+            }
         }
+    }
+
+    private fun renderMenu() {
         setScreen {
             button("Permissions") { showPermissions() }
             button("Scan pair QR") { showScanPairQr() }
@@ -142,6 +84,7 @@ class GlassesHarnessUi(
             button("Status + queue/sync") { showStatusQueueSync() }
             button("Evidence + export") { showEvidenceExport() }
         }
+        menuShown = true
     }
 
     fun showDeviceChoice() {
@@ -172,7 +115,7 @@ class GlassesHarnessUi(
                             }
                             PairingMigrationStage.READY_TO_SUBMIT,
                             PairingMigrationStage.SUBMITTED_UNKNOWN -> {
-                                showMigrationProgress(GlassesMigrationSurface.CHECKING)
+                                showMigrationProgress(MigrationSurface.CHECKING)
                                 asyncLoad.load({ owner.resume(record.generation) }) { resumed ->
                                     val value = (resumed as? LoadState.Loaded)?.value
                                     showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -204,10 +147,10 @@ class GlassesHarnessUi(
             return
         }
         val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle(glassesMigrationCopy(GlassesMigrationSurface.OFFER).title)
-            .setMessage(glassesMigrationCopy(GlassesMigrationSurface.OFFER).body)
+            .setTitle(migrationCopy(MigrationSurface.OFFER).title)
+            .setMessage(migrationCopy(MigrationSurface.OFFER).body)
             .setPositiveButton("keep both") { _, _ ->
-                showMigrationProgress(GlassesMigrationSurface.DECIDING)
+                showMigrationProgress(MigrationSurface.DECIDING)
                 asyncLoad.load({ owner.keepBoth(record.generation) }) { result ->
                     val value = (result as? LoadState.Loaded)?.value
                     showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -225,7 +168,7 @@ class GlassesHarnessUi(
     }
 
     private fun showTargetUnavailable(owner: PairingMigrationOwner, generation: app.solstone.core.identity.PairingGeneration) {
-        val copy = glassesMigrationCopy(GlassesMigrationSurface.TARGET_UNAVAILABLE)
+        val copy = migrationCopy(MigrationSurface.TARGET_UNAVAILABLE)
         android.app.AlertDialog.Builder(context)
             .setTitle(copy.title)
             .setMessage(copy.body)
@@ -238,7 +181,7 @@ class GlassesHarnessUi(
 
     private fun showDeviceChoiceListing(owner: PairingMigrationOwner, listing: app.solstone.core.pl.PairingMigrationListing) {
         if (listing.clients.isEmpty()) {
-            val copy = glassesMigrationCopy(GlassesMigrationSurface.PICKER_EMPTY)
+            val copy = migrationCopy(MigrationSurface.PICKER_EMPTY)
             android.app.AlertDialog.Builder(context)
                 .setTitle(copy.title)
                 .setMessage(copy.body)
@@ -249,10 +192,10 @@ class GlassesHarnessUi(
             return
         }
         android.app.AlertDialog.Builder(context)
-            .setTitle(glassesMigrationCopy(GlassesMigrationSurface.PICKER).title)
+            .setTitle(migrationCopy(MigrationSurface.PICKER).title)
             .setItems(listing.clients.map { it.displayLabel }.toTypedArray()) { _, index ->
                 val client = listing.clients[index]
-                showMigrationProgress(GlassesMigrationSurface.PREPARING)
+                showMigrationProgress(MigrationSurface.PREPARING)
                 asyncLoad.load({ owner.selectTarget(listing, client.cid) }) { selection ->
                     if ((selection as? LoadState.Loaded)?.value is PairingMigrationResult.Offer) {
                         showConfirmReplacement(owner, listing, client)
@@ -268,7 +211,7 @@ class GlassesHarnessUi(
     }
 
     private fun requestMigrationListing(owner: PairingMigrationOwner, generation: app.solstone.core.identity.PairingGeneration) {
-        showMigrationProgress(GlassesMigrationSurface.PREPARING)
+        showMigrationProgress(MigrationSurface.PREPARING)
         asyncLoad.load({ owner.listClients(generation) }) { result ->
             val value = (result as? LoadState.Loaded)?.value
             showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -276,7 +219,7 @@ class GlassesHarnessUi(
     }
 
     private fun submitKeepBoth(owner: PairingMigrationOwner, generation: app.solstone.core.identity.PairingGeneration) {
-        showMigrationProgress(GlassesMigrationSurface.DECIDING)
+        showMigrationProgress(MigrationSurface.DECIDING)
         asyncLoad.load({ owner.keepBoth(generation) }) { result ->
             val value = (result as? LoadState.Loaded)?.value
             showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -289,12 +232,12 @@ class GlassesHarnessUi(
         client: app.solstone.core.pl.MigrationClient,
     ) {
         dismissMigrationProgress()
-        val copy = glassesMigrationCopy(GlassesMigrationSurface.CONFIRM, client.displayLabel)
+        val copy = migrationCopy(MigrationSurface.CONFIRM, client.displayLabel)
         android.app.AlertDialog.Builder(context)
             .setTitle(copy.title)
             .setMessage(copy.body)
             .setPositiveButton("replace device") { _, _ ->
-                showMigrationProgress(GlassesMigrationSurface.DECIDING)
+                showMigrationProgress(MigrationSurface.DECIDING)
                 asyncLoad.load({ owner.replaceSelected(listing, client.cid, nativeConfirmed = true) }) { result ->
                     val value = (result as? LoadState.Loaded)?.value
                     showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -305,8 +248,8 @@ class GlassesHarnessUi(
             .show()
     }
 
-    private fun showMigrationProgress(surface: GlassesMigrationSurface) {
-        val copy = glassesMigrationCopy(surface)
+    private fun showMigrationProgress(surface: MigrationSurface) {
+        val copy = migrationCopy(surface)
         val builder = android.app.AlertDialog.Builder(context).setTitle(copy.title)
         copy.body?.let(builder::setMessage)
         migrationProgressDialog?.dismiss()
@@ -314,11 +257,11 @@ class GlassesHarnessUi(
     }
 
     private fun showMigrationStatus(
-        surface: GlassesMigrationSurface,
+        surface: MigrationSurface,
         onAction: (() -> Unit)? = null,
         onCancel: (() -> Unit)? = null,
     ) {
-        val copy = glassesMigrationCopy(surface)
+        val copy = migrationCopy(surface)
         val builder = android.app.AlertDialog.Builder(context).setTitle(copy.title)
         copy.body?.let(builder::setMessage)
         if (copy.action != null && onAction != null) {
@@ -329,14 +272,14 @@ class GlassesHarnessUi(
 
     private fun showRefusal(owner: PairingMigrationOwner, record: PairingMigrationRecord) {
         if (record.refusalReason == "migration_protocol_unsupported") {
-            showMigrationStatus(GlassesMigrationSurface.UNSUPPORTED, onAction = {
+            showMigrationStatus(MigrationSurface.UNSUPPORTED, onAction = {
                 asyncLoad.load({ owner.retryUnsupported(record.generation) }) { result ->
                     val value = (result as? LoadState.Loaded)?.value
                     showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
                 }
             })
         } else {
-            showMigrationStatus(GlassesMigrationSurface.REFUSED, onAction = ::showPlStatusProbe)
+            showMigrationStatus(MigrationSurface.REFUSED, onAction = ::showPlStatusProbe)
         }
     }
 
@@ -348,7 +291,7 @@ class GlassesHarnessUi(
             PairingMigrationResult.InvalidSelection,
             PairingMigrationResult.ConfirmationRequired -> showMenu()
             PairingMigrationResult.Unavailable -> showMigrationStatus(
-                GlassesMigrationSurface.STORAGE,
+                MigrationSurface.STORAGE,
                 onAction = ::showPlStatusProbe,
             )
             is PairingMigrationResult.Offer -> showDeviceChoiceOptions(owner, result.record)
@@ -359,9 +302,9 @@ class GlassesHarnessUi(
             }
             is PairingMigrationResult.Pending -> when (result.reason) {
                 PairingMigrationPendingReason.DECISION_UNKNOWN -> showMigrationStatus(
-                    GlassesMigrationSurface.CHECKING,
+                    MigrationSurface.CHECKING,
                     onAction = {
-                        showMigrationProgress(GlassesMigrationSurface.CHECKING)
+                        showMigrationProgress(MigrationSurface.CHECKING)
                         asyncLoad.load({ owner.resume(result.record.generation) }) { resumed ->
                             val value = (resumed as? LoadState.Loaded)?.value
                             showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
@@ -370,17 +313,17 @@ class GlassesHarnessUi(
                     onCancel = { asyncLoad.load({ owner.defer(result.record.generation) }) { } },
                 )
                 PairingMigrationPendingReason.LIST_OFFLINE -> showMigrationStatus(
-                    GlassesMigrationSurface.OFFLINE,
+                    MigrationSurface.OFFLINE,
                     onAction = { requestMigrationListing(owner, result.record.generation) },
                     onCancel = { asyncLoad.load({ owner.defer(result.record.generation) }) { } },
                 )
                 PairingMigrationPendingReason.LIST_UNAVAILABLE -> showMigrationStatus(
-                    GlassesMigrationSurface.LIST_UNAVAILABLE,
+                    MigrationSurface.LIST_UNAVAILABLE,
                     onAction = { requestMigrationListing(owner, result.record.generation) },
                     onCancel = { asyncLoad.load({ owner.defer(result.record.generation) }) { } },
                 )
                 PairingMigrationPendingReason.SAVED_CONNECTION_REFUSED -> showMigrationStatus(
-                    GlassesMigrationSurface.KEY_REFUSED,
+                    MigrationSurface.KEY_REFUSED,
                     onAction = ::showScanPairQr,
                 )
             }
@@ -557,6 +500,7 @@ class GlassesHarnessUi(
     }
 
     private fun setScreen(build: LinearLayout.() -> Unit) {
+        menuShown = false
         container.removeAllViews()
         container.addView(scroll(build))
     }

@@ -53,6 +53,8 @@ import app.solstone.observer.formfactor.phone.rememberPhoneAboutBlock
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.LoadState
+import app.solstone.observer.harness.MigrationSurface
+import app.solstone.observer.harness.migrationCopy
 import app.solstone.observer.harness.ObserverStartMode
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.FileSourceWishStore
@@ -115,23 +117,6 @@ import org.unifiedpush.android.connector.UnifiedPush
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-private enum class PhoneMigrationSurface {
-    OFFER,
-    PREPARING,
-    PICKER,
-    PICKER_EMPTY,
-    CONFIRM,
-    DECIDING,
-    CHECKING,
-    OFFLINE,
-    UNSUPPORTED,
-    STORAGE,
-    LIST_UNAVAILABLE,
-    TARGET_UNAVAILABLE,
-    REFUSED,
-    KEY_REFUSED,
-}
-
 internal enum class PhoneDeviceChoiceRecoveryAction {
     SHOW_CURRENT,
     REFRESH_CLIENTS,
@@ -143,66 +128,6 @@ internal fun phoneDeviceChoiceRecoveryAction(stage: PairingMigrationStage?): Pho
     PairingMigrationStage.READY_TO_SUBMIT,
     PairingMigrationStage.SUBMITTED_UNKNOWN -> PhoneDeviceChoiceRecoveryAction.RESUME_DECISION
     else -> PhoneDeviceChoiceRecoveryAction.SHOW_CURRENT
-}
-
-private data class PhoneMigrationCopy(val title: String, val body: String? = null, val action: String? = null)
-
-private fun phoneMigrationCopy(surface: PhoneMigrationSurface, selectedLabel: String?): PhoneMigrationCopy = when (surface) {
-    PhoneMigrationSurface.OFFER -> PhoneMigrationCopy(
-        "is this replacing one of your devices?",
-        "you can keep both, or choose a device for this one to replace.",
-    )
-    PhoneMigrationSurface.PREPARING -> PhoneMigrationCopy(
-        "getting this device ready",
-        "anything waiting to send stays on this device until it's ready.",
-    )
-    PhoneMigrationSurface.PICKER -> PhoneMigrationCopy("choose a device")
-    PhoneMigrationSurface.PICKER_EMPTY -> PhoneMigrationCopy("choose a device", "no other paired devices")
-    PhoneMigrationSurface.CONFIRM -> PhoneMigrationCopy(
-        selectedLabel?.takeIf(String::isNotBlank)?.let { "replace \"$it\"?" } ?: "replace the selected device?",
-        "this device continues its name and history. the selected device will lose access to your journal.",
-    )
-    PhoneMigrationSurface.DECIDING -> PhoneMigrationCopy("saving your choice")
-    PhoneMigrationSurface.CHECKING -> PhoneMigrationCopy(
-        "checking your choice",
-        "your journal hasn't confirmed the result yet.",
-        "check again",
-    )
-    PhoneMigrationSurface.OFFLINE -> PhoneMigrationCopy(
-        "can't reach your journal",
-        "anything waiting to send stays on this device. try again when your journal is reachable.",
-        "try again",
-    )
-    PhoneMigrationSurface.UNSUPPORTED -> PhoneMigrationCopy(
-        "journal update needed",
-        "your journal doesn't support this move yet. anything waiting to send stays on this device. update your journal, then try again.",
-        "try again",
-    )
-    PhoneMigrationSurface.STORAGE -> PhoneMigrationCopy(
-        "saved connection unavailable",
-        "this device couldn't read its saved connection. anything waiting to send hasn't been removed.",
-        "technical details",
-    )
-    PhoneMigrationSurface.LIST_UNAVAILABLE -> PhoneMigrationCopy(
-        "devices unavailable",
-        "couldn't load the devices in your journal. try again when your journal is reachable.",
-        "try again",
-    )
-    PhoneMigrationSurface.TARGET_UNAVAILABLE -> PhoneMigrationCopy(
-        "device no longer available",
-        "that device is no longer listed in your journal. choose another device, or keep both.",
-        "choose a device",
-    )
-    PhoneMigrationSurface.REFUSED -> PhoneMigrationCopy(
-        "choice needs attention",
-        "your journal couldn't apply this choice. your current connection still works.",
-        "technical details",
-    )
-    PhoneMigrationSurface.KEY_REFUSED -> PhoneMigrationCopy(
-        "pair again",
-        "this device couldn't open its saved connection to your journal. anything waiting to send is still here. pair again to reconnect.",
-        "pair again",
-    )
 }
 
 class PhoneShellActivity : ComponentActivity() {
@@ -372,7 +297,7 @@ class PhoneShellActivity : ComponentActivity() {
             var migrationSelected by remember { mutableStateOf<MigrationClient?>(null) }
             var migrationDialogOpen by remember { mutableStateOf(false) }
             var migrationBusy by remember { mutableStateOf(false) }
-            var migrationSurface by remember { mutableStateOf(PhoneMigrationSurface.OFFER) }
+            var migrationSurface by remember { mutableStateOf(MigrationSurface.OFFER) }
             var migrationStoreUnavailable by remember { mutableStateOf(false) }
             var technicalDetailsRequest by remember { mutableStateOf(0L) }
             val migrationOwner = stores.pairingMigrationOwner
@@ -388,12 +313,12 @@ class PhoneShellActivity : ComponentActivity() {
                     is PairingMigrationResult.Offer -> {
                         migrationRecord = result.record
                         migrationSurface = when {
-                            result.record.refusalReason == TARGET_UNAVAILABLE_REASON -> PhoneMigrationSurface.TARGET_UNAVAILABLE
-                            result.record.stage == PairingMigrationStage.AWAITING_SELECTION -> PhoneMigrationSurface.CONFIRM
+                            result.record.refusalReason == TARGET_UNAVAILABLE_REASON -> MigrationSurface.TARGET_UNAVAILABLE
+                            result.record.stage == PairingMigrationStage.AWAITING_SELECTION -> MigrationSurface.CONFIRM
                             result.record.stage == PairingMigrationStage.TERMINAL_REFUSED &&
-                                result.record.refusalReason == "migration_protocol_unsupported" -> PhoneMigrationSurface.UNSUPPORTED
-                            result.record.stage == PairingMigrationStage.TERMINAL_REFUSED -> PhoneMigrationSurface.REFUSED
-                            else -> PhoneMigrationSurface.OFFER
+                                result.record.refusalReason == "migration_protocol_unsupported" -> MigrationSurface.UNSUPPORTED
+                            result.record.stage == PairingMigrationStage.TERMINAL_REFUSED -> MigrationSurface.REFUSED
+                            else -> MigrationSurface.OFFER
                         }
                         if (result.record.stage in setOf(
                                 PairingMigrationStage.TERMINAL_KEEP_BOTH,
@@ -411,27 +336,27 @@ class PhoneShellActivity : ComponentActivity() {
                             refusalReason = null,
                         )
                         migrationSurface = if (result.value.clients.isEmpty()) {
-                            PhoneMigrationSurface.PICKER_EMPTY
+                            MigrationSurface.PICKER_EMPTY
                         } else {
-                            PhoneMigrationSurface.PICKER
+                            MigrationSurface.PICKER
                         }
                     }
                     is PairingMigrationResult.Pending -> {
                         migrationRecord = result.record
                         migrationSurface = when (result.reason) {
-                            PairingMigrationPendingReason.DECISION_UNKNOWN -> PhoneMigrationSurface.CHECKING
-                            PairingMigrationPendingReason.LIST_OFFLINE -> PhoneMigrationSurface.OFFLINE
-                            PairingMigrationPendingReason.LIST_UNAVAILABLE -> PhoneMigrationSurface.LIST_UNAVAILABLE
-                            PairingMigrationPendingReason.SAVED_CONNECTION_REFUSED -> PhoneMigrationSurface.KEY_REFUSED
+                            PairingMigrationPendingReason.DECISION_UNKNOWN -> MigrationSurface.CHECKING
+                            PairingMigrationPendingReason.LIST_OFFLINE -> MigrationSurface.OFFLINE
+                            PairingMigrationPendingReason.LIST_UNAVAILABLE -> MigrationSurface.LIST_UNAVAILABLE
+                            PairingMigrationPendingReason.SAVED_CONNECTION_REFUSED -> MigrationSurface.KEY_REFUSED
                         }
                     }
                     is PairingMigrationResult.Terminal -> {
                         migrationRecord = result.record
                         if (result.record.stage == PairingMigrationStage.TERMINAL_REFUSED) {
                             migrationSurface = if (result.record.refusalReason == "migration_protocol_unsupported") {
-                                PhoneMigrationSurface.UNSUPPORTED
+                                MigrationSurface.UNSUPPORTED
                             } else {
-                                PhoneMigrationSurface.REFUSED
+                                MigrationSurface.REFUSED
                             }
                         } else {
                             migrationDialogOpen = false
@@ -445,27 +370,27 @@ class PhoneShellActivity : ComponentActivity() {
                     }
                     PairingMigrationResult.Unavailable -> {
                         migrationStoreUnavailable = true
-                        migrationSurface = PhoneMigrationSurface.STORAGE
+                        migrationSurface = MigrationSurface.STORAGE
                     }
                     PairingMigrationResult.InvalidSelection -> {
                         migrationListing = null
                         migrationSelected = null
-                        migrationSurface = PhoneMigrationSurface.OFFER
+                        migrationSurface = MigrationSurface.OFFER
                     }
                     PairingMigrationResult.ConfirmationRequired -> {
                         migrationSelected = null
-                        migrationSurface = PhoneMigrationSurface.OFFER
+                        migrationSurface = MigrationSurface.OFFER
                     }
                 }
             }
 
             fun performMigration(
-                progress: PhoneMigrationSurface,
+                progress: MigrationSurface,
                 action: (PairingMigrationOwner) -> PairingMigrationResult,
             ) {
                 val owner = migrationOwner ?: run {
                     migrationStoreUnavailable = true
-                    migrationSurface = PhoneMigrationSurface.STORAGE
+                    migrationSurface = MigrationSurface.STORAGE
                     return
                 }
                 migrationSurface = progress
@@ -481,7 +406,7 @@ class PhoneShellActivity : ComponentActivity() {
                 val expected = migrationRecord?.generation ?: (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
                 migrationDialogOpen = false
                 migrationSelected = null
-                if (expected != null) performMigration(PhoneMigrationSurface.OFFER) { it.defer(expected) }
+                if (expected != null) performMigration(MigrationSurface.OFFER) { it.defer(expected) }
             }
 
             fun openDeviceChoice() {
@@ -514,7 +439,7 @@ class PhoneShellActivity : ComponentActivity() {
                             migrationDialogOpen = true
                             migrationListing = null
                             migrationSelected = null
-                            migrationSurface = PhoneMigrationSurface.PREPARING
+                            migrationSurface = MigrationSurface.PREPARING
                             val refreshed = withContext(Dispatchers.IO) {
                                 runCatching { owner.listClients(awaitingSelection.generation) }
                                     .getOrElse { PairingMigrationResult.Unavailable }
@@ -525,7 +450,7 @@ class PhoneShellActivity : ComponentActivity() {
                         PhoneDeviceChoiceRecoveryAction.RESUME_DECISION -> {
                             val decision = checkNotNull(record)
                             migrationDialogOpen = true
-                            migrationSurface = PhoneMigrationSurface.CHECKING
+                            migrationSurface = MigrationSurface.CHECKING
                             val resumed = withContext(Dispatchers.IO) {
                                 runCatching { owner.resume(decision.generation) }.getOrElse { PairingMigrationResult.Unavailable }
                             }
@@ -869,7 +794,7 @@ class PhoneShellActivity : ComponentActivity() {
                 PairingMigrationStage.AWAITING_SELECTION,
             )
             if (migrationDialogOpen) {
-                val copy = phoneMigrationCopy(migrationSurface, migrationSelected?.displayLabel)
+                val copy = migrationCopy(migrationSurface, migrationSelected?.displayLabel)
                 val expected = migrationRecord?.generation
                     ?: (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
                 AlertDialog(
@@ -879,108 +804,108 @@ class PhoneShellActivity : ComponentActivity() {
                         Column {
                             copy.body?.let { Text(it) }
                             if (!migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface == PhoneMigrationSurface.OFFER && migrationNeedsAnswer
+                                migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer
                             ) {
                                 TextButton(onClick = {
                                     val generation = expected ?: return@TextButton
                                     migrationListing = null
-                                    performMigration(PhoneMigrationSurface.PREPARING) { it.listClients(generation) }
+                                    performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
                                 }) { Text("choose a device") }
                             }
                             if (!migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface in setOf(PhoneMigrationSurface.PICKER, PhoneMigrationSurface.PICKER_EMPTY)
+                                migrationSurface in setOf(MigrationSurface.PICKER, MigrationSurface.PICKER_EMPTY)
                             ) {
                                 migrationListing?.clients.orEmpty().forEach { client ->
                                     TextButton(onClick = {
                                         val listing = migrationListing ?: return@TextButton
                                         migrationSelected = client
-                                        performMigration(PhoneMigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
+                                        performMigration(MigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
                                     }) { Text(client.displayLabel) }
                                 }
                             }
-                            if (migrationSurface == PhoneMigrationSurface.TARGET_UNAVAILABLE &&
+                            if (migrationSurface == MigrationSurface.TARGET_UNAVAILABLE &&
                                 !migrationBusy && !migrationStoreUnavailable
                             ) {
                                 TextButton(onClick = {
                                     val generation = expected ?: return@TextButton
-                                    performMigration(PhoneMigrationSurface.PREPARING) { it.listClients(generation) }
+                                    performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
                                 }) { Text("choose a device") }
                             }
                         }
                     },
                     confirmButton = {
                         when {
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.OFFER && migrationNeedsAnswer ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
-                                        performMigration(PhoneMigrationSurface.DECIDING) { it.keepBoth(generation) }
+                                        performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
                                     }
                                 }) { Text("keep both") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.PICKER ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER ->
                                 TextButton(onClick = ::deferMigration) { Text("cancel") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.PICKER_EMPTY ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER_EMPTY ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
-                                        performMigration(PhoneMigrationSurface.DECIDING) { it.keepBoth(generation) }
+                                        performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
                                     }
                                 }) { Text("keep both") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.CONFIRM ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CONFIRM ->
                                 TextButton(onClick = {
                                     val listing = migrationListing
                                     val selected = migrationSelected
                                     if (listing != null && selected != null) {
                                         migrationSelected = null
-                                        performMigration(PhoneMigrationSurface.DECIDING) {
+                                        performMigration(MigrationSurface.DECIDING) {
                                             it.replaceSelected(listing, selected.cid, nativeConfirmed = true)
                                         }
                                     }
                                 }) { Text("replace device") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.CHECKING ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CHECKING ->
                                 TextButton(onClick = {
                                     migrationRecord?.let { record ->
-                                        performMigration(PhoneMigrationSurface.CHECKING) { it.resume(record.generation) }
+                                        performMigration(MigrationSurface.CHECKING) { it.resume(record.generation) }
                                     }
                                 }) { Text("check again") }
                             !migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface in setOf(PhoneMigrationSurface.OFFLINE, PhoneMigrationSurface.LIST_UNAVAILABLE) ->
+                                migrationSurface in setOf(MigrationSurface.OFFLINE, MigrationSurface.LIST_UNAVAILABLE) ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
-                                        performMigration(PhoneMigrationSurface.PREPARING) { it.listClients(generation) }
+                                        performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
                                     }
                                 }) { Text("try again") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.UNSUPPORTED ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.UNSUPPORTED ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
-                                        performMigration(PhoneMigrationSurface.PREPARING) { it.retryUnsupported(generation) }
+                                        performMigration(MigrationSurface.PREPARING) { it.retryUnsupported(generation) }
                                     }
                                 }) { Text("try again") }
-                            !migrationBusy && migrationSurface in setOf(PhoneMigrationSurface.STORAGE, PhoneMigrationSurface.REFUSED) ->
+                            !migrationBusy && migrationSurface in setOf(MigrationSurface.STORAGE, MigrationSurface.REFUSED) ->
                                 TextButton(onClick = {
                                     migrationDialogOpen = false
                                     technicalDetailsRequest += 1
                                 }) { Text("technical details") }
-                            !migrationBusy && migrationSurface == PhoneMigrationSurface.KEY_REFUSED ->
+                            !migrationBusy && migrationSurface == MigrationSurface.KEY_REFUSED ->
                                 TextButton(onClick = {
                                     migrationDialogOpen = false
                                     openPairingScanner()
                                 }) { Text("pair again") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.TARGET_UNAVAILABLE ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
                                 TextButton(onClick = {
-                                    expected?.let { generation -> performMigration(PhoneMigrationSurface.DECIDING) { it.keepBoth(generation) } }
+                                    expected?.let { generation -> performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) } }
                                 }) { Text("keep both") }
                         }
                     },
                     dismissButton = {
                         when {
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.OFFER && migrationNeedsAnswer ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
                                 TextButton(onClick = ::deferMigration) { Text("not now") }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface in setOf(
-                                PhoneMigrationSurface.PICKER,
-                                PhoneMigrationSurface.PICKER_EMPTY,
-                                PhoneMigrationSurface.CONFIRM,
-                                PhoneMigrationSurface.PREPARING,
+                                MigrationSurface.PICKER,
+                                MigrationSurface.PICKER_EMPTY,
+                                MigrationSurface.CONFIRM,
+                                MigrationSurface.PREPARING,
                             ) -> TextButton(onClick = ::deferMigration) { Text("cancel") }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == PhoneMigrationSurface.TARGET_UNAVAILABLE ->
+                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
                                 TextButton(onClick = ::deferMigration) { Text("not now") }
                         }
                     },
