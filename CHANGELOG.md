@@ -12,6 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- the question about replacing a device is now skipped when your journal lists no other paired device. it still appears when another device is listed.
+
 - while a new pairing waits for you to confirm your journal's mark, the home screen and settings › your journal show "your journal" instead of that mark. they used to show the mark before you'd confirmed it.
 
 ## [2.1.20] - 2026-10-07
