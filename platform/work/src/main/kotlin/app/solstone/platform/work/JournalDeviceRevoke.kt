@@ -12,7 +12,7 @@ import app.solstone.platform.pl.transport.conscrypt.ConscryptPlHttpClient
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 
-/** What the journal side of an unpair did, so the owner can be told which half happened. */
+/** What the journal side of an unpair did. The owner is not told when the journal cannot be reached. */
 enum class JournalRevokeOutcome {
     /** The journal no longer has a record of this device. */
     REMOVED,
@@ -27,7 +27,7 @@ enum class JournalRevokeOutcome {
  * ⚠ Order matters and is not incidental: the credential this call authenticates with is the one
  * `forget()` is about to delete, so the journal half has to happen first or it cannot happen at
  * all. ⛔ And it must never block the local half — an owner who has lost their journal for good
- * still gets to unpair; they are told the journal kept its record rather than refused.
+ * still gets to unpair. The owner is not told when the journal cannot be reached.
  *
  * The identifier is this device's own client-certificate digest, which is what the journal keys
  * its record by: the pairing handshake already refuses unless both sides agree on it, so asking

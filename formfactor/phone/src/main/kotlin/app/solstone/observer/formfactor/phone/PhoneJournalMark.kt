@@ -576,7 +576,7 @@ internal fun isPairingConfirmationEnabled(
 fun PairingSuccessMark(
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit = {},
-    onMismatch: () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
+    onMismatch: suspend () -> PairingMismatchResult = { PairingMismatchResult.Disconnected },
     onYes: ((PairingGeneration) -> Boolean)? = null,
     requestMark: (() -> Long?)? = null,
     currentPairing: () -> PairingGeneration? = { null },
@@ -799,11 +799,7 @@ fun PairingSuccessMark(
                 textAlign = TextAlign.Center,
             )
             PairingConfirmation.Mismatched -> Text(
-                if (mismatchResult == PairingMismatchResult.JournalUnreached) {
-                    "this phone is no longer connected. your journal may still have this phone listed."
-                } else {
-                    "this phone is no longer connected to that journal."
-                },
+                "this phone is no longer connected to that journal.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = bodyColor,
                 textAlign = TextAlign.Center,
@@ -825,7 +821,7 @@ fun PairingSuccessMark(
     }
 }
 
-enum class PairingMismatchResult { Disconnected, JournalUnreached, LocalFailure }
+enum class PairingMismatchResult { Disconnected, LocalFailure }
 
 private enum class PairingConfirmation { Waiting, Confirmed, Removing, Mismatched, Failed }
 
@@ -833,7 +829,7 @@ fun createPhonePairingMarkView(
     context: Context,
     coordinator: JournalIdentityRefreshCoordinator?,
     onConfirmed: () -> Unit,
-    onMismatch: () -> PairingMismatchResult,
+    onMismatch: suspend () -> PairingMismatchResult,
     onYes: ((PairingGeneration) -> Boolean)? = null,
     requestMark: (() -> Long?)? = null,
     currentPairing: () -> PairingGeneration? = { null },

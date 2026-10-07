@@ -39,7 +39,6 @@ fun PhoneYourJournalPane(
     onConnectJournal: () -> Unit,
     onForgetJournal: () -> Unit = {},
     mutationFailed: Boolean = false,
-    journalKeptItsRecord: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var confirmingForget by remember { mutableStateOf(false) }
@@ -91,7 +90,6 @@ fun PhoneYourJournalPane(
         // Driving both panes off one flag named the other pane's action for something the owner
         // never pressed.
         if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
-        if (journalKeptItsRecord) PaneNote(JOURNAL_KEPT_ITS_RECORD)
         // The subject register: the solstone app takes in what you share with it, and
         // the verb carries its object. `what this phone takes in` made the hardware the
         // perceiving subject and dropped the object -- never-list rule 1.
@@ -138,7 +136,6 @@ fun PhoneThisDevicePane(
     deviceChoicePending: Boolean = false,
     onDeviceChoice: () -> Unit = {},
     mutationFailed: Boolean = false,
-    journalKeptItsRecord: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -160,7 +157,6 @@ fun PhoneThisDevicePane(
         // The row, the dialog and the button in this pane all say `unpair`; the failure note
         // is the same action and says it too.
         if (mutationFailed) PaneNote("couldn't unpair this device. try again.")
-        if (journalKeptItsRecord) PaneNote(JOURNAL_KEPT_ITS_RECORD)
         PaneSectionTitle("settings")
         PaneCard {
             PaneSwitchRow(
@@ -289,15 +285,6 @@ const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
  */
 fun checkConnectionUnreached(address: String?): String =
     address?.takeIf(String::isNotBlank)?.let { "couldn't reach your journal at $it" } ?: CHECK_CONNECTION_UNREACHED
-
-// Unpairing asks the journal to drop this device too, and the journal is not always reachable
-// when it is asked. Saying nothing would leave the owner believing both halves happened.
-// ⚠ Names the PLACE, ⛔ not the control. The journal renders one removal control per row and
-// which one depends on delivery history: a device that never delivered gets `forget this device`
-// and a device that has gets `unpair`. Naming either is wrong for half the owners who see this.
-internal const val JOURNAL_KEPT_ITS_RECORD =
-    "your journal still lists this device. open your journal, find it under network, and " +
-        "remove it there."
 
 // ⚠ Three states, not two, and the third is not the one it first looks like. `forget()` clears
 // the identity, credential and endpoint and nothing else — ⛔ **it does not clear the spool or the

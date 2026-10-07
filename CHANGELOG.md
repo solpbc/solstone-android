@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - the camera's tile and its page now say that while it's on, the solstone app takes a photo from your rear camera every minute and adds it to your journal. its page tells you this before you turn it on.
 
+### Changed
+
+- forgetting your journal, unpairing your phone, or stopping a pairing at the mark check no longer warns you that your journal may still list your phone. your phone tells your journal when it can, and forgets the journal either way.
+
 ### Fixed
 
 - when a source is off and a journal is paired, its page now reads "intake is off. turn it on any time." when you've paused it, it reads "you paused this. resume to start intake again." before, it said it wasn't sending to your journal, even while what it had taken in before you turned it off was still going into your journal.

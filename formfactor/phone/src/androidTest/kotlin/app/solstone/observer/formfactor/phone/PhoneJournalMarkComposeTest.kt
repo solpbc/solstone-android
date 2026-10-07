@@ -290,7 +290,7 @@ class PhoneJournalMarkComposeTest {
                 PairingSuccessMark(
                     coordinator = null,
                     onConfirmed = { confirmed += 1 },
-                    onMismatch = { mismatched += 1; PairingMismatchResult.JournalUnreached },
+                    onMismatch = { mismatched += 1; PairingMismatchResult.Disconnected },
                 )
             }
         }
@@ -305,9 +305,6 @@ class PhoneJournalMarkComposeTest {
 
         assertEquals(1, mismatched)
         assertEquals(1, confirmed)
-        composeRule.onNodeWithText(
-            "this phone is no longer connected. your journal may still have this phone listed.",
-        ).assertExists()
     }
 
     @Test

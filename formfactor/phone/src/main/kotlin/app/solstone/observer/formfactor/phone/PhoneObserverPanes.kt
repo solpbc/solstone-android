@@ -58,7 +58,6 @@ internal fun PhoneDetailPane(
     problemReports: List<String>,
     journalMutationFailed: Boolean,
     journalMutationFromThisDevice: Boolean = false,
-    journalKeptItsRecord: Boolean = false,
     notificationTestFailed: Boolean,
     onHapticsChanged: (Boolean) -> Unit,
     onCheckConnection: () -> Unit,
@@ -116,7 +115,6 @@ internal fun PhoneDetailPane(
             problemReports = problemReports,
             journalMutationFailed = journalMutationFailed,
             journalMutationFromThisDevice = journalMutationFromThisDevice,
-            journalKeptItsRecord = journalKeptItsRecord,
             notificationTestFailed = notificationTestFailed,
             onHapticsChanged = onHapticsChanged,
             onCheckConnection = onCheckConnection,
@@ -174,7 +172,6 @@ private fun PhoneDetailContent(
     problemReports: List<String>,
     journalMutationFailed: Boolean,
     journalMutationFromThisDevice: Boolean = false,
-    journalKeptItsRecord: Boolean = false,
     notificationTestFailed: Boolean,
     onHapticsChanged: (Boolean) -> Unit,
     onCheckConnection: () -> Unit,
@@ -231,7 +228,6 @@ private fun PhoneDetailContent(
             onConnectJournal = onConnectJournal,
             onForgetJournal = onForgetJournal,
             mutationFailed = journalMutationFailed && !journalMutationFromThisDevice,
-            journalKeptItsRecord = journalKeptItsRecord,
             modifier = modifier,
         )
         PhoneRoute.ThisDevice -> PhoneThisDevicePane(
@@ -246,7 +242,6 @@ private fun PhoneDetailContent(
             deviceChoicePending = deviceChoicePending,
             onDeviceChoice = onDeviceChoice,
             mutationFailed = journalMutationFailed && journalMutationFromThisDevice,
-            journalKeptItsRecord = journalKeptItsRecord,
             modifier = modifier,
         )
         PhoneRoute.TechnicalDetails -> PhoneTechnicalDetailsPane(

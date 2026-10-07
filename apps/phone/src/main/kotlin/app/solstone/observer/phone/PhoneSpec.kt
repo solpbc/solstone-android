@@ -13,12 +13,12 @@ import app.solstone.observer.formfactor.shared.QrBackend
 import app.solstone.observer.scaffold.FormFactorSpec
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.PairingGraphSnapshot
-import app.solstone.platform.work.JournalRevokeOutcome
 import app.solstone.platform.work.confirmCurrentJournal
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.platform.work.syncStores
+import kotlinx.coroutines.Dispatchers
 
 import app.solstone.core.identity.PairingLease
 import app.solstone.core.pl.DirectEndpoint as PlDirectEndpoint
@@ -84,14 +84,15 @@ val phoneSpec = FormFactorSpec(
                 }
             },
             onMismatch = {
-                val revoke = revokeThisDeviceOnJournal(stores.publisher)
-                if (stores.publisher.forget() is GraphMutationResult.Cleared) {
+                val cleared = leaveJournal(
+                    dispatcher = Dispatchers.IO,
+                    revoke = { revokeThisDeviceOnJournal(stores.publisher) },
+                    forget = stores.publisher::forget,
+                    log = PhoneDiagLog::appendRaw,
+                ) is GraphMutationResult.Cleared
+                if (cleared) {
                     forgetPushAfterCleared(stores)
-                    if (revoke == JournalRevokeOutcome.UNREACHED) {
-                        PairingMismatchResult.JournalUnreached
-                    } else {
-                        PairingMismatchResult.Disconnected
-                    }
+                    PairingMismatchResult.Disconnected
                 } else {
                     PairingMismatchResult.LocalFailure
                 }

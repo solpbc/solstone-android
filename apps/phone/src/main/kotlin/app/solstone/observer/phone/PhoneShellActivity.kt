@@ -74,7 +74,6 @@ import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_REACHED
 import app.solstone.observer.formfactor.phone.PhoneTheme
 import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_RUNNING
 import app.solstone.observer.formfactor.phone.checkConnectionUnreached
-import app.solstone.platform.work.JournalRevokeOutcome
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.observer.harness.HarnessPlStatus
 import androidx.compose.runtime.rememberCoroutineScope
@@ -297,7 +296,6 @@ class PhoneShellActivity : ComponentActivity() {
             val shellScope = rememberCoroutineScope()
             var journalMutationFailed by remember { mutableStateOf(false) }
             var journalMutationFromThisDevice by remember { mutableStateOf(false) }
-            var journalKeptItsRecord by remember { mutableStateOf(false) }
             var migrationRecord by remember { mutableStateOf<PairingMigrationRecord?>(null) }
             var migrationListing by remember { mutableStateOf<PairingMigrationListing?>(null) }
             var migrationSelected by remember { mutableStateOf<MigrationClient?>(null) }
@@ -554,24 +552,22 @@ class PhoneShellActivity : ComponentActivity() {
             val unpairFrom: (Boolean) -> Unit = { fromThisDevice ->
                 journalMutationFailed = false
                 journalMutationFromThisDevice = fromThisDevice
-                journalKeptItsRecord = false
                 PhoneDiagLog.appendRaw("kind=unpair")
                 shellScope.launch {
                     // 🔴 The journal half runs FIRST and on its own thread: it authenticates with
                     // the very credential `forget()` is about to delete. It never blocks the local
-                    // half — an owner who has lost their journal still unpairs, and is told the
-                    // journal kept its record rather than refused.
-                    val revoke = withContext(Dispatchers.IO) {
-                        revokeThisDeviceOnJournal(stores.publisher)
-                    }
-                    PhoneDiagLog.appendRaw("kind=unpair revoke=${revoke.name.lowercase()}")
-                    journalKeptItsRecord = revoke == JournalRevokeOutcome.UNREACHED
-                    if (stores.publisher.forget() is GraphMutationResult.Cleared) {
+                    // half. The owner is not told when the journal cannot be reached.
+                    val cleared = leaveJournal(
+                        dispatcher = Dispatchers.IO,
+                        revoke = { revokeThisDeviceOnJournal(stores.publisher) },
+                        forget = stores.publisher::forget,
+                        log = PhoneDiagLog::appendRaw,
+                    ) is GraphMutationResult.Cleared
+                    if (cleared) {
                         forgetPushAfterCleared(stores)
                         statusViewModel.refresh()
                     } else {
                         journalMutationFailed = true
-                        journalKeptItsRecord = false
                     }
                 }
             }
@@ -626,9 +622,6 @@ class PhoneShellActivity : ComponentActivity() {
                     snapshot.home.clientCertFingerprint,
                 )
                 if (pairingSnapshot !is PairingGraphSnapshot.Committed) journalOpen = false
-                // The note is about the journal this device just left. Once another pairing commits,
-                // "your journal" names the new one, and the note would read as being about it.
-                if (pairingSnapshot is PairingGraphSnapshot.Committed) journalKeptItsRecord = false
                 val fresh = snapshot as? PairingGraphSnapshot.Committed
                 val owner = migrationOwner
                 if (fresh == null || !journalConfirmed || owner == null) {
@@ -795,7 +788,6 @@ class PhoneShellActivity : ComponentActivity() {
                 problemReports = problemReports.map { it.savedAt },
                 journalMutationFailed = journalMutationFailed,
                 journalMutationFromThisDevice = journalMutationFromThisDevice,
-                journalKeptItsRecord = journalKeptItsRecord,
                 notificationTestFailed = notificationTestFailed,
                 showWelcome = shouldShowWelcome(
                     wishes = wishStoreState,
