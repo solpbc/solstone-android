@@ -61,7 +61,7 @@ internal fun phoneJournalFacts(
         // This is the journal trust anchor, not this phone's client-certificate fingerprint.
         fingerprint = committed?.home?.caChainFingerprint ?: "—",
         // ⚠ The same two words the ongoing notification uses. `running` here against `on` in the
-        // shade gave one founder-ruled state word two vocabularies on one device.
+        // shade gave one state word two vocabularies on one device.
         intake = if (intakeRunning) "on" else "off",
         address = committed?.directEndpoint?.let { displayAddress(it.host, it.port) } ?: "—",
         check = check,

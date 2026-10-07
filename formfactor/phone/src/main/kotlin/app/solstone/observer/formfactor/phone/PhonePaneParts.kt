@@ -320,9 +320,8 @@ internal const val SOURCE_URL = "https://github.com/solpbc/solstone-android"
  *
  * ⚠ `solpbc.org`, not `solstone.app`, and that is settled rather than convenient:
  * `solpbc.org/privacy` is the policy the org publishes and the URL registered as the
- * store-submission privacy URL (`clo/matters.md` matter 16, discharged 2026-08-28).
- * `solstone.app/privacy` 404s by design — the founder ruled 2026-07-04 that a scoped notice
- * gets its own URL only when the flagship policy cannot carry the disclosure, and here it can.
+ * store-submission privacy URL.
+ * `solstone.app/privacy` 404s by design: the flagship policy carries this app's disclosure.
  * ⛔ Do not mint a second privacy page for this app.
  *
  * One function, so the shelf footer and the about pane's row cannot drift to two URLs.

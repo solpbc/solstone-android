@@ -263,7 +263,7 @@ class ObserverAppContainer(
      * in three *different* places. A different failure set each run is contention, not a broken
      * assertion.
      *
-     * ⚠ The work itself is what the founder-ruled grant-is-an-expression rule owes an owner who
+     * ⚠ Reconcile capture permissions for an owner who
      * allowed a capture permission in system Settings: no in-app callback fires for that, so
      * returning here is the only place it can be observed.
      */
