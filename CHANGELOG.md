@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - the camera's tile and its page now say that while it's on, the solstone app takes a photo from your rear camera every minute and adds it to your journal. its page tells you this before you turn it on.
 
+### Fixed
+
+- while a new pairing waits for you to confirm your journal's mark, the home screen and settings › your journal show "your journal" instead of that mark. they used to show the mark before you'd confirmed it.
+
 ## [2.1.20] - 2026-10-07
 
 ### Added
