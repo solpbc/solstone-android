@@ -40,13 +40,11 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
  * grid's rows wildly unequal — the same shape as the iOS defect, where the vocabulary
  * was in the code and the tile never rendered it.
  *
- * ⛔ **`ON` deliberately has no sub-line here, and that is not an omission.** § 5.1
- * gives `ON` "the source's own active sub-line", and of the three sources this app
- * ships: iOS's audio active subtext is the word `on`, which restates the state word
- * above it (the "off / off" defect the iOS pass fixed); `camera`'s sub-line is
- * explicitly **blocked** by § 5.2 pending a real cadence measurement on hardware; and
- * `location` has no approved active line on any platform. Inventing three would be
- * authoring platform-local copy for a slot the contract owns.
+ * `ON` gives "the source's own active sub-line" ([sourceActiveLine]), and only camera has one.
+ * iOS's audio active subtext is the word `on`, which restates the state word above it (the
+ * "off / off" defect the iOS pass fixed), and `location` has no approved active line on any
+ * platform. ⛔ Do not author one for either here: that is platform-local copy for a slot the
+ * contract owns.
  */
 fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status.state) {
     SourceState.OFF ->
@@ -62,8 +60,27 @@ fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status
             // § 5.1's locked honest-unknown line. A source that reaches
             // `needs attention` with no diagnosis still owes the owner a sentence.
             ?: "the reason it couldn't reach your journal isn't clear."
-    SourceState.ON -> null
+    SourceState.ON -> sourceActiveLine(status.sourceId)
     // § 5.1 gives this state the source's own setup line, and no Android source supplies one,
     // so none renders. ⛔ Do not author one here.
     SourceState.READY_TO_SET_UP -> null
+}
+
+/**
+ * What a source does while it is on, in the owner's words — `mobile-shell.md` § 5.2.
+ *
+ * Camera only. Its capture is unattended and leaves no trace on screen, so the owner is told what
+ * it takes, from which camera and how often. The sentence opens with "while this is on" so it
+ * stays true in every state, which is why the source page also shows it under its switch, before
+ * the owner turns the camera on.
+ *
+ * 🔴 `every minute` is `StillCaptureEngine.STILL_EVERY_MS` (`platform/camera-still`) said in
+ * words, and it was measured on hardware (backgrounded, screen off) before it was
+ * written. A change to that constant is a change to this sentence: neither moves alone.
+ */
+fun sourceActiveLine(sourceId: String): String? = when (sourceId) {
+    "camera" ->
+        "while this is on, the solstone app takes a photo from your rear camera every minute " +
+            "and adds it to your journal."
+    else -> null
 }

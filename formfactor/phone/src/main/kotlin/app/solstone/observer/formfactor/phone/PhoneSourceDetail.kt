@@ -246,7 +246,9 @@ private fun SourceDetailTemplate(
             modifier = Modifier.padding(start = 10.dp),
         )
     }
-    if (subLine != null && subLine != rule.diagnosis) {
+    val activeLine = sourceActiveLine(status.sourceId)
+    // The active line is said once on this page, under the switch, so it is not repeated here.
+    if (subLine != null && subLine != rule.diagnosis && subLine != activeLine) {
         Text(
             text = subLine,
             style = MaterialTheme.typography.bodyMedium,
@@ -312,6 +314,8 @@ private fun SourceDetailTemplate(
                 }
             }
         }
+        // In every state, so the owner reads what turning it on does before they do.
+        activeLine?.let { PaneNote(it, modifier = Modifier.testTag(ACTIVE_LINE_TEST_TAG)) }
     }
     // The facts. ⛔ Not the label and not the state word — both are already on screen. The only
     // thing this block adds is § 5.1's intent-vs-state split, so ⛔ do not collapse the two rows to
@@ -417,3 +421,4 @@ internal const val ACTION_TEST_TAG = "sourceDetailAction"
 internal const val FACTS_TEST_TAG = "sourceDetailFacts"
 internal const val HOME_TILE_CONTROL_TEST_TAG = "sourceDetailHomeTile"
 internal const val SOURCE_SWITCH_TEST_TAG = "sourceDetailSwitch"
+internal const val ACTIVE_LINE_TEST_TAG = "sourceDetailActiveLine"

@@ -218,6 +218,10 @@ class StillCaptureEngine(
     companion object {
         const val SOURCE_ID = "camera"
         const val MEDIA_TYPE = "image/jpeg"
+        /**
+         * The owner is told this cadence in words: the camera's line on the phone says "every
+         * minute" (`sourceActiveLine` in `formfactor/phone`). Change one and you change the other.
+         */
         const val STILL_EVERY_MS = 60_000L
         const val JOIN_TIMEOUT_MS = 5_000L
         const val WORKER_THREAD_NAME = "solstone-camera-source"
