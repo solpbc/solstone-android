@@ -67,7 +67,7 @@ fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status
 }
 
 /**
- * What a source does while it is on, in the owner's words — `mobile-shell.md` § 5.2.
+ * What a source does while it is on, in the owner's words.
  *
  * Camera only. Its capture is unattended and leaves no trace on screen, so the owner is told what
  * it takes, from which camera and how often. The sentence opens with "while this is on" so it
