@@ -67,7 +67,6 @@ import app.solstone.observer.formfactor.phone.MarkConfirmationRoute
 import app.solstone.observer.formfactor.phone.manualMarkConfirmationRoute
 import app.solstone.core.diagnostics.DiagnosticLogRead
 import app.solstone.platform.work.forgetPushAfterCleared
-import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingProvenance
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -572,11 +571,12 @@ class PhoneShellActivity : ComponentActivity() {
                 }
             }
             val currentPairing = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
-            val currentMarkPresentation = if (currentPairing != null && markGeneration != currentPairing) {
-                JournalMarkPresentation.Loading
-            } else {
-                markPresentation
-            }
+            val currentMarkPresentation = shellMarkPresentation(
+                currentPairing = currentPairing,
+                markGeneration = markGeneration,
+                journalConfirmed = journalConfirmed,
+                markPresentation = markPresentation,
+            )
             val journalFacts = phoneJournalFacts(
                 pairing = pairingSnapshot,
                 status = snapshot?.status,
