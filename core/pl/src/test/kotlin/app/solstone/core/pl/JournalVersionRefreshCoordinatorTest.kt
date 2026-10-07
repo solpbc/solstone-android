@@ -87,7 +87,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
         assertEquals("1.2.3", reading.version)
@@ -125,7 +125,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(0, putCalled.get())
         assertEquals("Home Journal", coordinator.currentReading("jid-1", "sha256:ca1").name)
@@ -171,7 +171,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(2, getCount.get())
         assertEquals(2, putCount.get())
@@ -200,7 +200,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
         assertEquals("0.9.5", reading.version)
@@ -286,7 +286,7 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
 
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
     }
 
     @Test
@@ -313,7 +313,7 @@ class JournalVersionRefreshCoordinatorTest {
         assertEquals(JournalVersionFreshness.LAST_KNOWN, reading.freshness)
 
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
     }
 
     @Test
@@ -344,7 +344,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         val body = capturedPutBody
         org.junit.Assert.assertNotNull(body)
@@ -379,7 +379,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(0, putCalls.get())
         assertEquals("3.2.1", coordinator.currentReading("jid-1", "sha256:ca1").version)
@@ -431,7 +431,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         Thread.sleep(200)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(0, putCalls.get())
         assertNull(store.savedRecord)
@@ -464,7 +464,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         saved.await(3, TimeUnit.SECONDS)
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(64 * 1024, clientUsed?.lastMaxResponseBytes)
         val reading = coordinator.currentReading("jid-1", "sha256:ca1")
@@ -480,13 +480,12 @@ class JournalVersionRefreshCoordinatorTest {
         val aboutStarted = CountDownLatch(1)
         val allowAbout = CountDownLatch(1)
         val savedTwice = CountDownLatch(2)
-        val metadataSaved = CountDownLatch(1)
+        val metadataFinished = CountDownLatch(1)
         val aboutWasBlockedAtMetadataSave = AtomicInteger(0)
         val metadataWasSaved = AtomicInteger(0)
         store.onSave = {
             if (metadataWasSaved.getAndIncrement() == 0) {
                 if (aboutStarted.count == 0L && allowAbout.count == 1L) aboutWasBlockedAtMetadataSave.incrementAndGet()
-                metadataSaved.countDown()
             }
             savedTwice.countDown()
         }
@@ -516,13 +515,14 @@ class JournalVersionRefreshCoordinatorTest {
                             else -> HttpResponse(404, emptyMap(), ByteArray(0))
                         }
                     },
+                    onClose = { metadataFinished.countDown() },
                 )
             }
 
             assertTrue(metadataStarted.await(3, TimeUnit.SECONDS))
             assertTrue(aboutStarted.await(3, TimeUnit.SECONDS))
             allowMetadata.countDown()
-            assertTrue(metadataSaved.await(3, TimeUnit.SECONDS))
+            assertTrue(metadataFinished.await(3, TimeUnit.SECONDS))
             assertEquals(2, openCount.get())
             assertEquals("2.0.0", store.savedRecord?.version)
             assertEquals(100L, store.savedRecord?.versionSeenAt)
@@ -532,6 +532,8 @@ class JournalVersionRefreshCoordinatorTest {
 
             allowAbout.countDown()
             assertTrue(savedTwice.await(3, TimeUnit.SECONDS))
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
             assertEquals("ubuntu", store.savedRecord?.os)
             assertEquals("24.04", store.savedRecord?.osVersion)
             assertEquals("x86_64", store.savedRecord?.arch)
@@ -560,6 +562,7 @@ class JournalVersionRefreshCoordinatorTest {
         val metadataStarted = CountDownLatch(1)
         val allowMetadata = CountDownLatch(1)
         val aboutFinished = CountDownLatch(1)
+        val refreshFinished = CountDownLatch(2)
 
         try {
             coordinator.onUsableConnection("jid-1", "sha256:ca1") {
@@ -571,9 +574,13 @@ class JournalVersionRefreshCoordinatorTest {
                                 awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
                                 HttpResponse(200, emptyMap(), clientsSelfJson("1.2.3").toByteArray())
                             }
-                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("v1.2.3").toByteArray()).also { aboutFinished.countDown() }
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("v1.2.3").toByteArray())
                             else -> HttpResponse(404, emptyMap(), ByteArray(0))
                         }
+                    },
+                    onClose = {
+                        aboutFinished.countDown()
+                        refreshFinished.countDown()
                     },
                 )
             }
@@ -585,6 +592,7 @@ class JournalVersionRefreshCoordinatorTest {
 
             allowMetadata.countDown()
             assertTrue(savedTwice.await(3, TimeUnit.SECONDS))
+            assertTrue(refreshFinished.await(3, TimeUnit.SECONDS))
             assertEquals("ubuntu", store.savedRecord?.os)
             assertEquals("24.04", store.savedRecord?.osVersion)
             assertEquals("x86_64", store.savedRecord?.arch)
@@ -611,6 +619,7 @@ class JournalVersionRefreshCoordinatorTest {
         val metadataStarted = CountDownLatch(1)
         val allowMetadata = CountDownLatch(1)
         val aboutFinished = CountDownLatch(1)
+        val refreshFinished = CountDownLatch(2)
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
 
@@ -624,9 +633,13 @@ class JournalVersionRefreshCoordinatorTest {
                                 awaitUninterruptibly(allowMetadata, 5, TimeUnit.SECONDS)
                                 HttpResponse(200, emptyMap(), clientsSelfJson("2.0.0").toByteArray())
                             }
-                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("1.2.3").toByteArray()).also { aboutFinished.countDown() }
+                            "/api/system/about" -> HttpResponse(200, emptyMap(), aboutJson("1.2.3").toByteArray())
                             else -> HttpResponse(404, emptyMap(), ByteArray(0))
                         }
+                    },
+                    onClose = {
+                        aboutFinished.countDown()
+                        refreshFinished.countDown()
                     },
                 )
             }
@@ -635,6 +648,7 @@ class JournalVersionRefreshCoordinatorTest {
             assertEquals(initial, store.savedRecord)
             allowMetadata.countDown()
             assertTrue(saved.await(3, TimeUnit.SECONDS))
+            assertTrue(refreshFinished.await(3, TimeUnit.SECONDS))
             assertEquals("2.0.0", store.savedRecord?.version)
             assertNull(store.savedRecord?.os)
             assertNull(store.savedRecord?.osVersion)
@@ -653,10 +667,11 @@ class JournalVersionRefreshCoordinatorTest {
         val sameExecutor = Executors.newCachedThreadPool()
         val sameCoordinator = JournalVersionRefreshCoordinator(sameStore, sameExecutor, clock = { 40L })
         val sameSaved = CountDownLatch(1)
+        val sameRefreshFinished = CountDownLatch(2)
         sameStore.onSave = { sameSaved.countDown() }
         try {
             sameCoordinator.onUsableConnection("jid-1", "sha256:ca1") {
-                RoutingFakeClient { _, path, _ ->
+                RoutingFakeClient(onClose = { sameRefreshFinished.countDown() }) { _, path, _ ->
                     when (path) {
                         "/app/network/api/clients/self" -> HttpResponse(200, emptyMap(), clientsSelfJson("v1.2.3").toByteArray())
                         "/api/system/about" -> HttpResponse(404, emptyMap(), ByteArray(0))
@@ -665,6 +680,7 @@ class JournalVersionRefreshCoordinatorTest {
                 }
             }
             assertTrue(sameSaved.await(3, TimeUnit.SECONDS))
+            assertTrue(sameRefreshFinished.await(3, TimeUnit.SECONDS))
             assertEquals("v1.2.3", sameStore.savedRecord?.version)
             assertEquals("old-os", sameStore.savedRecord?.os)
             assertEquals(20L, sameStore.savedRecord?.hostFactsAt)
@@ -730,7 +746,7 @@ class JournalVersionRefreshCoordinatorTest {
         val aboutStarted = CountDownLatch(1)
         val timeoutInterrupted = CountDownLatch(1)
         val releaseAbout = CountDownLatch(1)
-        val aboutClosed = CountDownLatch(1)
+        val metadataFinished = CountDownLatch(1)
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
 
@@ -753,17 +769,19 @@ class JournalVersionRefreshCoordinatorTest {
                             else -> HttpResponse(404, emptyMap(), ByteArray(0))
                         }
                     },
-                    onClose = { aboutClosed.countDown() },
+                    onClose = { metadataFinished.countDown() },
                 )
             }
             assertTrue(saved.await(3, TimeUnit.SECONDS))
             assertTrue(aboutStarted.await(3, TimeUnit.SECONDS))
             assertTrue(timeoutInterrupted.await(3, TimeUnit.SECONDS))
+            assertTrue(metadataFinished.await(3, TimeUnit.SECONDS))
             assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
             assertNull(store.savedRecord?.os)
 
             releaseAbout.countDown()
-            assertTrue(aboutClosed.await(3, TimeUnit.SECONDS))
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
             assertNull(store.savedRecord?.os)
             assertEquals(JournalVersionFreshness.CURRENT, coordinator.currentReading("jid-1", "sha256:ca1").freshness)
         } finally {
@@ -803,6 +821,8 @@ class JournalVersionRefreshCoordinatorTest {
             assertNull(identityStore.savedRecord)
             releaseIdentityAbout.countDown()
             assertTrue(identityAboutClosed.await(3, TimeUnit.SECONDS))
+            identityExecutor.shutdown()
+            assertTrue(identityExecutor.awaitTermination(3, TimeUnit.SECONDS))
             assertNull(identityStore.savedRecord)
         } finally {
             releaseIdentityAbout.countDown()
@@ -1038,7 +1058,7 @@ class JournalVersionRefreshCoordinatorTest {
 
         assertTrue(saved.await(3, TimeUnit.SECONDS))
         executor.shutdown()
-        executor.awaitTermination(3, TimeUnit.SECONDS)
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
 
         assertEquals(1, putCalls.get())
         assertEquals("Pixel 8 New", localDesc.name)
