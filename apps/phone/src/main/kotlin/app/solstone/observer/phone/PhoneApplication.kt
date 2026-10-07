@@ -7,6 +7,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import java.util.concurrent.CopyOnWriteArraySet
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.model.ReasonCode
@@ -87,6 +88,13 @@ class PhoneApplication : ObserverApplication(
 
     internal fun removeStatusListener(listener: (HarnessBacklogStatus) -> Unit) {
         statusListeners -= listener
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // The widget fits its lines to the text scale and bold-text setting, so a change to either
+        // re-fits it; the host would otherwise redraw the old line set at the new size.
+        if (::widgetCoordinator.isInitialized) widgetCoordinator.updateAll()
     }
 
     override fun onCreate() {

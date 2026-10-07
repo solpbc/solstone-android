@@ -16,10 +16,16 @@ sealed interface PhoneWidgetStartOutcome {
     data class Refused(val reason: ReasonCode) : PhoneWidgetStartOutcome
 }
 
+/**
+ * The widget's colour roles. [ACTIVE] and [ATTENTION] are the ones a model selects between: no fault
+ * or a fault. [ACTIVE] draws the switch when on, in the shell's switch accent; [ATTENTION] inks the
+ * header when something needs the owner. [INACTIVE] is the switch when off, ink with no accent.
+ */
 enum class PhoneObserverWidgetColorRole {
     SURFACE,
     CONTENT,
     ACTIVE,
+    INACTIVE,
     ATTENTION,
 }
 

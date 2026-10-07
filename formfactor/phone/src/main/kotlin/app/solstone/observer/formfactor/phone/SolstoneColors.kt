@@ -70,6 +70,12 @@ object SolstoneColors {
     /** One step above [darkSurface]: a raised container, a bright surface. */
     val darkSurfaceRaised = Color(0xFF2B2721)
 
+    /**
+     * The warm faint ink on a dark ground (the design tokens' ink-faint, dark appearance). The
+     * widget's switch when off: on a dark ground the accent is white, so off cannot be white too.
+     */
+    val inkFaintOnDark = Color(0xFFB0A699)
+
     /** Light error / onErrorContainer. Error cannot be brand orange. */
     val errorRed = Color(0xFFB3261E)
 
@@ -156,6 +162,7 @@ object SolstoneColors {
             darkGround,
             darkSurface,
             darkSurfaceRaised,
+            inkFaintOnDark,
             errorRed,
             errorPink,
             errorContainerLight,

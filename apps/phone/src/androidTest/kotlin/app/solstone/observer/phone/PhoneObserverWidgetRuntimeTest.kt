@@ -16,6 +16,7 @@ import androidx.glance.layout.HeightModifier
 import androidx.glance.layout.PaddingModifier
 import androidx.glance.layout.WidthModifier
 import androidx.glance.text.Text
+import androidx.glance.testing.unit.hasContentDescriptionEqualTo
 import androidx.glance.testing.unit.hasText
 import androidx.glance.unit.ColorProvider
 import androidx.glance.unit.Dimension
@@ -102,7 +103,7 @@ class PhoneObserverWidgetRuntimeTest {
             provideComposable { PhoneObserverWidgetContent(offModel()) }
             awaitIdle()
 
-            onNode(hasText(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
+            onNode(hasContentDescriptionEqualTo(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
                 .assertIsNotChecked()
             onNode(hasText("off")).assertExists()
         }
@@ -113,7 +114,7 @@ class PhoneObserverWidgetRuntimeTest {
         provideComposable { PhoneObserverWidgetContent(startModel()) }
         awaitIdle()
 
-        onNode(hasText(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
+        onNode(hasContentDescriptionEqualTo(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
             .assertIsNotChecked()
     }
 
@@ -132,7 +133,7 @@ class PhoneObserverWidgetRuntimeTest {
             provideComposable { PhoneObserverWidgetContent(application.widgetModel()) }
             awaitIdle()
 
-            onNode(hasText(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID))).assertIsChecked()
+            onNode(hasContentDescriptionEqualTo(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID))).assertIsChecked()
         }
 
         assertEquals(
@@ -151,7 +152,7 @@ class PhoneObserverWidgetRuntimeTest {
             provideComposable { PhoneObserverWidgetContent(application.widgetModel()) }
             awaitIdle()
 
-            onNode(hasText(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID))).assertIsNotChecked()
+            onNode(hasContentDescriptionEqualTo(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID))).assertIsNotChecked()
             onNode(hasText("off")).assertExists()
         }
     }
@@ -164,7 +165,7 @@ class PhoneObserverWidgetRuntimeTest {
             provideComposable { PhoneObserverWidgetContent(application.widgetModel()) }
             awaitIdle()
 
-            onNode(hasText(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
+            onNode(hasContentDescriptionEqualTo(sourceLabel(PHONE_WIDGET_AUDIO_SOURCE_ID)))
                 .assertIsNotChecked()
         }
 
