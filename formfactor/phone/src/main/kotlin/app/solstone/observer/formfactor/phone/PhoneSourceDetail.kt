@@ -73,7 +73,7 @@ fun sourceDetailRule(reason: ReasonCode): SourceDetailRule = SourceDetailRule(
  * The rule for a source, where the **state** can carry an action the reason cannot.
  *
  * 🔴 `PAUSED` has reason `NONE`, so the reason table offers nothing — and § 5.1's sub-line for it
- * *promises* a way back: **"you paused this. resume to start sending again."** Until this existed,
+ * *promises* a way back: **"you paused this. resume to start intake again."** Until this existed,
  * an owner who pressed `stop intake` reached a screen that said to resume and had no control to do
  * it with; the only route back was toggling the source off and on again. ⛔ A state word that
  * names an action the screen does not offer is worse than no sub-line at all.

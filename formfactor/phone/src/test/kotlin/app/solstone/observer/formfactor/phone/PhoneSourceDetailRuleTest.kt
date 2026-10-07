@@ -19,7 +19,7 @@ class PhoneSourceDetailRuleTest {
     /**
      * 🔴 **`paused` promised a way back and the screen offered none.**
      *
-     * § 5.1's sub-line for `PAUSED` is *"you paused this. resume to start sending again."* — and
+     * § 5.1's sub-line for `PAUSED` is *"you paused this. resume to start intake again."* — and
      * the action table keys on the REASON, which for `PAUSED` is `NONE`. So an owner who pressed
      * `stop intake` reached a screen telling them to resume with no control to do it with; the only
      * route back was toggling the source off and on again. ⛔ A state word that names an action the
