@@ -22,5 +22,9 @@ class PhoneDeviceChoiceRecoveryTest {
             PhoneDeviceChoiceRecoveryAction.SHOW_CURRENT,
             phoneDeviceChoiceRecoveryAction(PairingMigrationStage.SHOWN_DEFERRED),
         )
+        assertEquals(
+            PhoneDeviceChoiceRecoveryAction.HIDE,
+            phoneDeviceChoiceRecoveryAction(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT),
+        )
     }
 }

@@ -105,4 +105,55 @@ class FilePairingMigrationStoreTest {
         )
         assertTrue(runCatching { store.save(submitted) }.isFailure)
     }
+
+    @Test
+    fun skippedRecordRoundTripsWithExactKeysAndNullRequestFields() {
+        val file = File(temp.root, "pairing_migration.json")
+        val cid = "sha256:${"a".repeat(64)}"
+        val store = FilePairingMigrationStore(file)
+        val record = PairingMigrationRecord(
+            generation = PairingGeneration("journal-1", cid),
+            callerCid = cid,
+            stage = PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT,
+        )
+        store.save(record)
+        assertEquals(record, assertIs<StoreInspectResult.Ready<PairingMigrationRecord>>(store.inspect()).value)
+
+        val parsed = parseJson(file.readText()) as Map<*, *>
+        val expectedKeys = setOf(
+            "version",
+            "instance_id",
+            "client_cert_fingerprint",
+            "caller_cid",
+            "stage",
+            "request_sequence",
+            "selected_cid",
+            "choice",
+            "operation_id",
+            "canonical_put_payload",
+            "echo_mismatch",
+            "refusal_reason",
+        )
+        assertEquals(expectedKeys, parsed.keys)
+
+        // OFFER_NOT_SHOWN still reads
+        val unseen = record.copy(stage = PairingMigrationStage.OFFER_NOT_SHOWN)
+        store.save(unseen)
+        assertEquals(unseen, assertIs<StoreInspectResult.Ready<PairingMigrationRecord>>(store.inspect()).value)
+
+        // Unknown stage string is unreadable
+        val root = parseJson(file.readText()) as MutableMap<*, *>
+        @Suppress("UNCHECKED_CAST")
+        (root as MutableMap<String, Any?>)["stage"] = "UNKNOWN_STAGE"
+        file.writeText(toJson(root))
+        assertIs<StoreInspectResult.Unreadable>(store.inspect())
+
+        // Skipped with choice is unreadable
+        store.save(record)
+        val withChoice = parseJson(file.readText()) as MutableMap<*, *>
+        @Suppress("UNCHECKED_CAST")
+        (withChoice as MutableMap<String, Any?>)["choice"] = "KEEP_BOTH"
+        file.writeText(toJson(withChoice))
+        assertIs<StoreInspectResult.Unreadable>(store.inspect())
+    }
 }

@@ -24,6 +24,7 @@ enum class PairingMigrationStage {
     TERMINAL_KEEP_BOTH,
     TERMINAL_REPLACED,
     TERMINAL_REFUSED,
+    SKIPPED_NO_OTHER_CLIENT,
 }
 
 enum class PairingMigrationChoice(val wire: String) {
@@ -47,7 +48,8 @@ data class PairingMigrationRecord(
 
 fun PairingMigrationRecord.canOpenDeviceChoice(): Boolean = when (stage) {
     PairingMigrationStage.TERMINAL_KEEP_BOTH,
-    PairingMigrationStage.TERMINAL_REPLACED -> false
+    PairingMigrationStage.TERMINAL_REPLACED,
+    PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT -> false
     PairingMigrationStage.TERMINAL_REFUSED -> refusalReason == MIGRATION_PROTOCOL_UNSUPPORTED_REASON
     else -> true
 }
@@ -90,6 +92,14 @@ sealed interface PairingMigrationResult {
     data object ConfirmationRequired : PairingMigrationResult
 }
 
+sealed interface InitialClientDecision {
+    data class Skipped(val record: PairingMigrationRecord) : InitialClientDecision
+    data class OthersPresent(val record: PairingMigrationRecord) : InitialClientDecision
+    data object PreflightFailed : InitialClientDecision
+    data object StaleGeneration : InitialClientDecision
+    data class NotUnseen(val result: PairingMigrationResult) : InitialClientDecision
+}
+
 /**
  * Small owner for the post-pair device choice. It never creates credentials: each request obtains
  * an existing authenticated lease from PairingPublisher and fences the result to its generation.
@@ -101,6 +111,9 @@ class PairingMigrationOwner(
     private val newOperationId: () -> String = { UUID.randomUUID().toString() },
 ) {
     private var activeListing: PairingMigrationListing? = null
+
+    fun currentPairing(): PairingGeneration? =
+        (publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
 
     @Synchronized
     fun currentOffer(): PairingMigrationResult {
@@ -131,12 +144,80 @@ class PairingMigrationOwner(
     @Synchronized
     fun defer(expected: PairingGeneration): PairingMigrationResult {
         val record = currentRecord(expected) ?: return PairingMigrationResult.Unavailable
+        if (record.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT) return PairingMigrationResult.Offer(record)
         if (record.stage in TERMINAL_STAGES) return PairingMigrationResult.Terminal(record, record.stage == PairingMigrationStage.TERMINAL_REFUSED)
         if (record.stage == PairingMigrationStage.READY_TO_SUBMIT || record.stage == PairingMigrationStage.SUBMITTED_UNKNOWN) {
             return PairingMigrationResult.Pending(record)
         }
         val deferred = record.copy(stage = PairingMigrationStage.SHOWN_DEFERRED, selectedCid = null)
         return if (persist(deferred)) PairingMigrationResult.Offer(deferred) else PairingMigrationResult.Unavailable
+    }
+
+    @Synchronized
+    fun decideInitialClients(expected: PairingGeneration): InitialClientDecision {
+        val snapshot = publisher.currentSnapshot()
+        if (snapshot !is PairingGraphSnapshot.Committed || snapshot.pairing != expected) {
+            return InitialClientDecision.StaleGeneration
+        }
+        if (snapshot.provenance != PairingProvenance.FRESH_LINK) {
+            return InitialClientDecision.NotUnseen(PairingMigrationResult.NoOffer)
+        }
+        val record = currentRecord(expected) ?: return InitialClientDecision.NotUnseen(PairingMigrationResult.Unavailable)
+        if (record.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT) {
+            return InitialClientDecision.Skipped(record)
+        }
+        if (record.stage != PairingMigrationStage.OFFER_NOT_SHOWN) {
+            return InitialClientDecision.NotUnseen(PairingMigrationResult.Offer(record))
+        }
+        val result = withCurrentClient(expected) { client -> getMigrationClients(client) }
+        if (!isCurrent(expected)) {
+            return InitialClientDecision.StaleGeneration
+        }
+        if (result !is MigrationApiResult.Success) {
+            return InitialClientDecision.PreflightFailed
+        }
+        val others = result.value.filterNot { it.cid == expected.clientCertFingerprint }
+        if (others.isNotEmpty()) {
+            return InitialClientDecision.OthersPresent(record)
+        }
+        return try {
+            publisher.withMutationBoundary {
+                if (!isCurrent(expected)) {
+                    InitialClientDecision.StaleGeneration
+                } else {
+                    val stored = when (val inspected = store.inspect()) {
+                        is StoreInspectResult.Ready -> inspected.value
+                        else -> null
+                    }
+                    if (stored == null || stored.generation != expected || stored.callerCid != expected.clientCertFingerprint) {
+                        InitialClientDecision.StaleGeneration
+                    } else if (stored.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT) {
+                        InitialClientDecision.Skipped(stored)
+                    } else if (stored.stage != PairingMigrationStage.OFFER_NOT_SHOWN) {
+                        InitialClientDecision.NotUnseen(PairingMigrationResult.Offer(stored))
+                    } else {
+                        val skipped = stored.copy(
+                            stage = PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT,
+                            selectedCid = null,
+                            choice = null,
+                            operationId = null,
+                            canonicalPutPayload = null,
+                            echoMismatch = false,
+                            refusalReason = null,
+                        )
+                        store.save(skipped)
+                        val rechecked = (store.inspect() as? StoreInspectResult.Ready)?.value
+                        if (rechecked == skipped) {
+                            InitialClientDecision.Skipped(skipped)
+                        } else {
+                            InitialClientDecision.PreflightFailed
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            InitialClientDecision.PreflightFailed
+        }
     }
 
     @Synchronized

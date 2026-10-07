@@ -96,6 +96,7 @@ import app.solstone.platform.work.syncStores
 import app.solstone.core.pl.PairingMigrationListing
 import app.solstone.core.pl.PairingMigrationOwner
 import app.solstone.core.pl.PairingMigrationPendingReason
+import app.solstone.core.pl.InitialClientDecision
 import app.solstone.core.pl.PairingMigrationRecord
 import app.solstone.core.pl.PairingMigrationResult
 import app.solstone.core.pl.PairingMigrationStage
@@ -111,6 +112,10 @@ import app.solstone.core.push.JournalPushPickerAction
 import app.solstone.core.push.JournalPushRepairAction
 import app.solstone.core.push.JournalPushRepairMemory
 import app.solstone.core.push.PushDeliveryState
+import app.solstone.observer.harness.PhoneFreshPairPlan
+import app.solstone.observer.harness.freshPairResultIsCurrent
+import app.solstone.observer.harness.phoneDeviceChoicePending
+import app.solstone.observer.harness.planPhoneFreshPair
 import app.solstone.observer.formfactor.phone.PhoneJournalNotificationRow
 import org.unifiedpush.android.connector.UnifiedPush
 import java.util.concurrent.ExecutorService
@@ -120,9 +125,11 @@ internal enum class PhoneDeviceChoiceRecoveryAction {
     SHOW_CURRENT,
     REFRESH_CLIENTS,
     RESUME_DECISION,
+    HIDE,
 }
 
 internal fun phoneDeviceChoiceRecoveryAction(stage: PairingMigrationStage?): PhoneDeviceChoiceRecoveryAction = when (stage) {
+    PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT -> PhoneDeviceChoiceRecoveryAction.HIDE
     PairingMigrationStage.AWAITING_SELECTION -> PhoneDeviceChoiceRecoveryAction.REFRESH_CLIENTS
     PairingMigrationStage.READY_TO_SUBMIT,
     PairingMigrationStage.SUBMITTED_UNKNOWN -> PhoneDeviceChoiceRecoveryAction.RESUME_DECISION
@@ -298,6 +305,7 @@ class PhoneShellActivity : ComponentActivity() {
             var migrationBusy by remember { mutableStateOf(false) }
             var migrationSurface by remember { mutableStateOf(MigrationSurface.OFFER) }
             var migrationStoreUnavailable by remember { mutableStateOf(false) }
+            var migrationInventorySettled by remember { mutableStateOf(false) }
             var technicalDetailsRequest by remember { mutableStateOf(0L) }
             val migrationOwner = stores.pairingMigrationOwner
 
@@ -322,6 +330,7 @@ class PhoneShellActivity : ComponentActivity() {
                         if (result.record.stage in setOf(
                                 PairingMigrationStage.TERMINAL_KEEP_BOTH,
                                 PairingMigrationStage.TERMINAL_REPLACED,
+                                PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT,
                             )
                         ) migrationDialogOpen = false
                     }
@@ -417,22 +426,90 @@ class PhoneShellActivity : ComponentActivity() {
                     return
                 }
                 migrationBusy = true
+                val started = owner.currentPairing()
                 shellScope.launch {
                     var current = withContext(Dispatchers.IO) {
                         runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
                     }
+                    if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                        migrationBusy = false
+                        return@launch
+                    }
                     val unseen = (current as? PairingMigrationResult.Offer)?.record
                     if (unseen?.stage == PairingMigrationStage.OFFER_NOT_SHOWN) {
-                        withContext(Dispatchers.IO) { owner.claimInitialPresentation(unseen.generation) }
-                        current = withContext(Dispatchers.IO) {
-                            runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
+                        if (journalConfirmed) {
+                            val decision = withContext(Dispatchers.IO) {
+                                runCatching { owner.decideInitialClients(unseen.generation) }
+                                    .getOrElse { InitialClientDecision.PreflightFailed }
+                            }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                migrationBusy = false
+                                return@launch
+                            }
+                            when (val plan = planPhoneFreshPair(journalConfirmed = true, decision)) {
+                                PhoneFreshPairPlan.DoNothing,
+                                PhoneFreshPairPlan.Drop -> {
+                                    migrationBusy = false
+                                    return@launch
+                                }
+                                is PhoneFreshPairPlan.ApplySkip -> {
+                                    migrationBusy = false
+                                    migrationDialogOpen = false
+                                    migrationInventorySettled = true
+                                    publishMigration(PairingMigrationResult.Offer(plan.record))
+                                    return@launch
+                                }
+                                PhoneFreshPairPlan.ClaimAndShow -> {
+                                    val claimed = withContext(Dispatchers.IO) {
+                                        runCatching { owner.claimInitialPresentation(unseen.generation) }.getOrElse { false }
+                                    }
+                                    if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                        migrationBusy = false
+                                        return@launch
+                                    }
+                                    current = withContext(Dispatchers.IO) {
+                                        runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
+                                    }
+                                    if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                        migrationBusy = false
+                                        return@launch
+                                    }
+                                    migrationBusy = false
+                                    migrationInventorySettled = true
+                                    publishMigration(current)
+                                    if (claimed) migrationDialogOpen = true
+                                    return@launch
+                                }
+                                is PhoneFreshPairPlan.FollowExisting -> {
+                                    current = plan.result
+                                }
+                            }
+                        } else {
+                            withContext(Dispatchers.IO) { owner.claimInitialPresentation(unseen.generation) }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                migrationBusy = false
+                                return@launch
+                            }
+                            current = withContext(Dispatchers.IO) {
+                                runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
+                            }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                migrationBusy = false
+                                return@launch
+                            }
+                            val stillUnseen = (current as? PairingMigrationResult.Offer)?.record?.stage ==
+                                PairingMigrationStage.OFFER_NOT_SHOWN
+                            if (stillUnseen) current = PairingMigrationResult.Unavailable
                         }
-                        val stillUnseen = (current as? PairingMigrationResult.Offer)?.record?.stage ==
-                            PairingMigrationStage.OFFER_NOT_SHOWN
-                        if (stillUnseen) current = PairingMigrationResult.Unavailable
                     }
                     val record = (current as? PairingMigrationResult.Offer)?.record
                     when (phoneDeviceChoiceRecoveryAction(record?.stage)) {
+                        PhoneDeviceChoiceRecoveryAction.HIDE -> {
+                            migrationBusy = false
+                            migrationDialogOpen = false
+                            migrationInventorySettled = true
+                            publishMigration(current)
+                        }
                         PhoneDeviceChoiceRecoveryAction.REFRESH_CLIENTS -> {
                             val awaitingSelection = checkNotNull(record)
                             migrationDialogOpen = true
@@ -443,6 +520,10 @@ class PhoneShellActivity : ComponentActivity() {
                                 runCatching { owner.listClients(awaitingSelection.generation) }
                                     .getOrElse { PairingMigrationResult.Unavailable }
                             }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                migrationBusy = false
+                                return@launch
+                            }
                             migrationBusy = false
                             publishMigration(refreshed)
                         }
@@ -452,6 +533,10 @@ class PhoneShellActivity : ComponentActivity() {
                             migrationSurface = MigrationSurface.CHECKING
                             val resumed = withContext(Dispatchers.IO) {
                                 runCatching { owner.resume(decision.generation) }.getOrElse { PairingMigrationResult.Unavailable }
+                            }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                migrationBusy = false
+                                return@launch
                             }
                             migrationBusy = false
                             publishMigration(resumed)
@@ -551,22 +636,72 @@ class PhoneShellActivity : ComponentActivity() {
                     migrationListing = null
                     migrationSelected = null
                     migrationStoreUnavailable = false
+                    migrationInventorySettled = false
                 } else {
-                    val offered = withContext(Dispatchers.IO) { runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable } }
-                    publishMigration(offered)
+                    val started = owner.currentPairing()
+                    val offered = withContext(Dispatchers.IO) {
+                        runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
+                    }
+                    if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
                     val record = (offered as? PairingMigrationResult.Offer)?.record
                     if (record?.stage == PairingMigrationStage.OFFER_NOT_SHOWN) {
-                        val claimed = withContext(Dispatchers.IO) { owner.claimInitialPresentation(record.generation) }
-                        if (claimed) {
-                            val shown = withContext(Dispatchers.IO) { runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable } }
-                            publishMigration(shown)
-                            migrationDialogOpen = true
+                        migrationInventorySettled = false
+                        migrationDialogOpen = false
+                        val decision = withContext(Dispatchers.IO) {
+                            runCatching { owner.decideInitialClients(record.generation) }
+                                .getOrElse { InitialClientDecision.PreflightFailed }
                         }
-                    } else if (record?.stage == PairingMigrationStage.READY_TO_SUBMIT ||
-                        record?.stage == PairingMigrationStage.SUBMITTED_UNKNOWN
-                    ) {
-                        val resumed = withContext(Dispatchers.IO) { runCatching { owner.resume(record.generation) }.getOrElse { PairingMigrationResult.Unavailable } }
-                        publishMigration(resumed)
+                        if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
+                        when (val plan = planPhoneFreshPair(journalConfirmed = true, decision)) {
+                            PhoneFreshPairPlan.DoNothing,
+                            PhoneFreshPairPlan.Drop -> return@LaunchedEffect
+                            is PhoneFreshPairPlan.ApplySkip -> {
+                                publishMigration(PairingMigrationResult.Offer(plan.record))
+                                migrationDialogOpen = false
+                                migrationInventorySettled = true
+                            }
+                            PhoneFreshPairPlan.ClaimAndShow -> {
+                                val claimed = withContext(Dispatchers.IO) {
+                                    runCatching { owner.claimInitialPresentation(record.generation) }.getOrElse { false }
+                                }
+                                if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
+                                val shown = withContext(Dispatchers.IO) {
+                                    runCatching { owner.currentOffer() }.getOrElse { PairingMigrationResult.Unavailable }
+                                }
+                                if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
+                                publishMigration(shown)
+                                if (claimed) {
+                                    migrationDialogOpen = true
+                                }
+                                migrationInventorySettled = true
+                            }
+                            is PhoneFreshPairPlan.FollowExisting -> {
+                                publishMigration(plan.result)
+                                val currentRec = (plan.result as? PairingMigrationResult.Offer)?.record
+                                if (currentRec?.stage == PairingMigrationStage.READY_TO_SUBMIT ||
+                                    currentRec?.stage == PairingMigrationStage.SUBMITTED_UNKNOWN
+                                ) {
+                                    val resumed = withContext(Dispatchers.IO) {
+                                        runCatching { owner.resume(currentRec.generation) }.getOrElse { PairingMigrationResult.Unavailable }
+                                    }
+                                    if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
+                                    publishMigration(resumed)
+                                }
+                                migrationInventorySettled = true
+                            }
+                        }
+                    } else {
+                        publishMigration(offered)
+                        if (record?.stage == PairingMigrationStage.READY_TO_SUBMIT ||
+                            record?.stage == PairingMigrationStage.SUBMITTED_UNKNOWN
+                        ) {
+                            val resumed = withContext(Dispatchers.IO) {
+                                runCatching { owner.resume(record.generation) }.getOrElse { PairingMigrationResult.Unavailable }
+                            }
+                            if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@LaunchedEffect
+                            publishMigration(resumed)
+                        }
+                        migrationInventorySettled = true
                     }
                 }
             }
@@ -696,8 +831,13 @@ class PhoneShellActivity : ComponentActivity() {
                 },
                 onForgetJournal = { unpairFrom(false) },
                 onUnpairThisDevice = { unpairFrom(true) },
-                deviceChoicePending = journalConfirmed && (pairingSnapshot as? PairingGraphSnapshot.Committed)?.provenance == PairingProvenance.FRESH_LINK &&
-                    (migrationStoreUnavailable || migrationRecord?.canOpenDeviceChoice() != false),
+                deviceChoicePending = phoneDeviceChoicePending(
+                    journalConfirmed = journalConfirmed,
+                    provenance = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.provenance,
+                    migrationInventorySettled = migrationInventorySettled,
+                    migrationStoreUnavailable = migrationStoreUnavailable,
+                    migrationRecord = migrationRecord,
+                ),
                 onDeviceChoice = ::openDeviceChoice,
                 onOpenNotificationSettings = {
                     startActivity(

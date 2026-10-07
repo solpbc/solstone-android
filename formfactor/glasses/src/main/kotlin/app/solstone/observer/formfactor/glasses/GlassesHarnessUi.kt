@@ -19,6 +19,7 @@ import app.solstone.observer.harness.MigrationSurface
 import app.solstone.observer.harness.migrationCopy
 import app.solstone.observer.harness.plStatusText
 import app.solstone.observer.harness.syncNowMessage
+import app.solstone.core.pl.InitialClientDecision
 import app.solstone.core.pl.PairingMigrationOwner
 import app.solstone.core.pl.PairingMigrationPendingReason
 import app.solstone.core.pl.PairingMigrationRecord
@@ -28,6 +29,11 @@ import app.solstone.core.pl.TARGET_UNAVAILABLE_REASON
 import app.solstone.core.pl.canOpenDeviceChoice
 import app.solstone.observer.formfactor.shared.LegacyQrPreviewView
 import app.solstone.observer.formfactor.shared.applySystemBarInsetPadding
+import app.solstone.observer.harness.GlassesFreshPairChoicePlan
+import app.solstone.observer.harness.GlassesFreshPairMenuPlan
+import app.solstone.observer.harness.freshPairResultIsCurrent
+import app.solstone.observer.harness.planGlassesFreshPairChoice
+import app.solstone.observer.harness.planGlassesFreshPairMenu
 import app.solstone.platform.fgs.CaptureForegroundType
 import app.solstone.platform.fgs.satisfiableCaptureForegroundTypes
 
@@ -55,14 +61,25 @@ class GlassesHarnessUi(
     fun showMenu() {
         renderMenu()
         val owner = pairingMigrationOwner ?: return
-        asyncLoad.load({ owner.currentOffer() }) { state ->
+        val started = owner.currentPairing()
+        asyncLoad.load({
+            val offer = owner.currentOffer()
+            val record = (offer as? PairingMigrationResult.Offer)?.record
+            if (record?.stage == PairingMigrationStage.OFFER_NOT_SHOWN) {
+                owner.decideInitialClients(record.generation)
+            } else {
+                InitialClientDecision.NotUnseen(offer)
+            }
+        }) { state ->
+            if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@load
             val pending = when (state) {
                 LoadState.Loading -> return@load
                 is LoadState.Failed -> true
-                is LoadState.Loaded -> when (val result = state.value) {
-                    is PairingMigrationResult.Offer -> result.record.canOpenDeviceChoice()
-                    PairingMigrationResult.NoOffer -> false
-                    else -> true
+                is LoadState.Loaded -> {
+                    when (val plan = planGlassesFreshPairMenu(state.value)) {
+                        GlassesFreshPairMenuPlan.Drop -> return@load
+                        is GlassesFreshPairMenuPlan.SetPending -> plan.pending
+                    }
                 }
             }
             if (pending != deviceChoicePending) {
@@ -89,49 +106,89 @@ class GlassesHarnessUi(
 
     fun showDeviceChoice() {
         val owner = pairingMigrationOwner ?: return
-        asyncLoad.load({ owner.currentOffer() }) { state ->
+        val started = owner.currentPairing()
+        asyncLoad.load({
+            val offer = owner.currentOffer()
+            val record = (offer as? PairingMigrationResult.Offer)?.record
+            val decision = if (record?.stage == PairingMigrationStage.OFFER_NOT_SHOWN) {
+                owner.decideInitialClients(record.generation)
+            } else {
+                InitialClientDecision.NotUnseen(offer)
+            }
+            Pair(record?.generation, decision)
+        }) { state ->
+            if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@load
             when (state) {
                 LoadState.Loading -> Unit
                 is LoadState.Failed -> showMigrationResult(owner, PairingMigrationResult.Unavailable)
-                is LoadState.Loaded -> when (val result = state.value) {
-                    is PairingMigrationResult.Offer -> {
-                        val record = result.record
-                        when (record.stage) {
-                            PairingMigrationStage.OFFER_NOT_SHOWN -> {
-                                asyncLoad.load({
-                                    owner.claimInitialPresentation(record.generation)
-                                    when (val claimed = owner.currentOffer()) {
-                                        is PairingMigrationResult.Offer -> if (claimed.record.stage != PairingMigrationStage.OFFER_NOT_SHOWN) {
-                                            claimed
-                                        } else {
-                                            PairingMigrationResult.Unavailable
-                                        }
-                                        else -> claimed
+                is LoadState.Loaded -> {
+                    val (unseenGen, decision) = state.value
+                    when (val plan = planGlassesFreshPairChoice(decision)) {
+                        GlassesFreshPairChoicePlan.ReturnToMenu -> {
+                            deviceChoicePending = false
+                            showMenu()
+                        }
+                        GlassesFreshPairChoicePlan.Drop -> return@load
+                        GlassesFreshPairChoicePlan.ClaimAndShow -> {
+                            val claimGen = (decision as? InitialClientDecision.OthersPresent)?.record?.generation
+                                ?: (decision as? InitialClientDecision.PreflightFailed)?.let { unseenGen }
+                                ?: return@load
+                            asyncLoad.load({
+                                owner.claimInitialPresentation(claimGen)
+                                when (val claimed = owner.currentOffer()) {
+                                    is PairingMigrationResult.Offer -> if (claimed.record.stage != PairingMigrationStage.OFFER_NOT_SHOWN) {
+                                        claimed
+                                    } else {
+                                        PairingMigrationResult.Unavailable
                                     }
-                                }) { claimed ->
-                                    val value = (claimed as? LoadState.Loaded)?.value
-                                    showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
+                                    else -> claimed
                                 }
+                            }) { claimed ->
+                                if (!freshPairResultIsCurrent(started, owner.currentPairing())) return@load
+                                val value = (claimed as? LoadState.Loaded)?.value
+                                showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
                             }
-                            PairingMigrationStage.READY_TO_SUBMIT,
-                            PairingMigrationStage.SUBMITTED_UNKNOWN -> {
-                                showMigrationProgress(MigrationSurface.CHECKING)
-                                asyncLoad.load({ owner.resume(record.generation) }) { resumed ->
-                                    val value = (resumed as? LoadState.Loaded)?.value
-                                    showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
+                        }
+                        is GlassesFreshPairChoicePlan.FollowExisting -> {
+                            when (val result = plan.result) {
+                                is PairingMigrationResult.Offer -> {
+                                    val record = result.record
+                                    when (record.stage) {
+                                        PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT -> {
+                                            deviceChoicePending = false
+                                            showMenu()
+                                        }
+                                        PairingMigrationStage.READY_TO_SUBMIT,
+                                        PairingMigrationStage.SUBMITTED_UNKNOWN -> {
+                                            showMigrationProgress(MigrationSurface.CHECKING)
+                                            asyncLoad.load({ owner.resume(record.generation) }) { resumed ->
+                                                if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                                                    dismissMigrationProgress()
+                                                    return@load
+                                                }
+                                                val value = (resumed as? LoadState.Loaded)?.value
+                                                showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
+                                            }
+                                        }
+                                        PairingMigrationStage.AWAITING_SELECTION -> requestMigrationListing(owner, record.generation)
+                                        else -> showDeviceChoiceOptions(owner, record)
+                                    }
                                 }
+                                else -> showMigrationResult(owner, result)
                             }
-                            PairingMigrationStage.AWAITING_SELECTION -> requestMigrationListing(owner, record.generation)
-                            else -> showDeviceChoiceOptions(owner, record)
                         }
                     }
-                    else -> showMigrationResult(owner, result)
                 }
             }
         }
     }
 
     private fun showDeviceChoiceOptions(owner: PairingMigrationOwner, record: PairingMigrationRecord) {
+        if (record.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT) {
+            deviceChoicePending = false
+            showMenu()
+            return
+        }
         if (record.stage == PairingMigrationStage.TERMINAL_KEEP_BOTH ||
             record.stage == PairingMigrationStage.TERMINAL_REPLACED
         ) {
@@ -211,8 +268,13 @@ class GlassesHarnessUi(
     }
 
     private fun requestMigrationListing(owner: PairingMigrationOwner, generation: app.solstone.core.identity.PairingGeneration) {
+        val started = owner.currentPairing()
         showMigrationProgress(MigrationSurface.PREPARING)
         asyncLoad.load({ owner.listClients(generation) }) { result ->
+            if (!freshPairResultIsCurrent(started, owner.currentPairing())) {
+                dismissMigrationProgress()
+                return@load
+            }
             val value = (result as? LoadState.Loaded)?.value
             showMigrationResult(owner, value ?: PairingMigrationResult.Unavailable)
         }

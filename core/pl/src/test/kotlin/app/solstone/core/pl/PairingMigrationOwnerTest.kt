@@ -16,6 +16,10 @@ import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -636,6 +640,270 @@ class PairingMigrationOwnerTest {
         switchedOwner = owner(publisher, switchedStore, switchingClient)
         val current = assertIs<PairingMigrationResult.Offer>(switchedOwner.currentOffer()).record.generation
         assertIs<PairingMigrationResult.StaleGeneration>(switchedOwner.listClients(current))
+    }
+
+    @Test
+    fun soleDeviceSkipPersistsSkippedStageWithoutMigrationPut() {
+        // Case 1: Empty clients array
+        val publisher1 = Publisher()
+        val store1 = MemoryStore()
+        val client1 = ScriptClient { method, path, _, _ ->
+            when (method to path) {
+                "GET" to "/app/network/api/clients" -> listResponse(emptyList())
+                else -> HttpResponse(500, emptyMap(), ByteArray(0))
+            }
+        }
+        val owner1 = owner(publisher1, store1, client1)
+        val gen1 = (publisher1.current as PairingGraphSnapshot.Committed).pairing
+        val skipped1 = assertIs<InitialClientDecision.Skipped>(owner1.decideInitialClients(gen1)).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, skipped1.stage)
+        assertNull(skipped1.choice)
+        assertNull(skipped1.selectedCid)
+        assertNull(skipped1.operationId)
+        assertNull(skipped1.canonicalPutPayload)
+        assertNull(skipped1.refusalReason)
+        assertFalse(skipped1.echoMismatch)
+        assertEquals(1, client1.requests.size)
+        assertEquals(Request("GET", "/app/network/api/clients", null), client1.requests.first())
+        assertFalse(skipped1.canOpenDeviceChoice())
+
+        // defer does not change stage
+        val deferred = assertIs<PairingMigrationResult.Offer>(owner1.defer(gen1)).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, deferred.stage)
+
+        // keepBoth and resume do not PUT
+        assertIs<PairingMigrationResult.Pending>(owner1.keepBoth(gen1))
+        val resumed = assertIs<PairingMigrationResult.Offer>(owner1.resume(gen1)).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, resumed.stage)
+        assertEquals(1, client1.requests.size)
+
+        // New owner on the same store: currentOffer is skipped, decideInitialClients returns Skipped with 0 new GETs
+        val newOwner1 = owner(publisher1, store1, client1)
+        val currentOffer = assertIs<PairingMigrationResult.Offer>(newOwner1.currentOffer()).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, currentOffer.stage)
+        assertIs<InitialClientDecision.Skipped>(newOwner1.decideInitialClients(gen1))
+        assertEquals(1, client1.requests.size)
+
+        // Case 2: Only this client-cert fingerprint in clients list
+        val publisher2 = Publisher()
+        val store2 = MemoryStore()
+        val client2 = ScriptClient { method, path, _, _ ->
+            when (method to path) {
+                "GET" to "/app/network/api/clients" -> listResponse(listOf(clientRow(caller, "This Device")))
+                else -> HttpResponse(500, emptyMap(), ByteArray(0))
+            }
+        }
+        val owner2 = owner(publisher2, store2, client2)
+        val gen2 = (publisher2.current as PairingGraphSnapshot.Committed).pairing
+        val skipped2 = assertIs<InitialClientDecision.Skipped>(owner2.decideInitialClients(gen2)).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, skipped2.stage)
+        assertEquals(1, client2.requests.size)
+    }
+
+    @Test
+    fun directAndRelayLeaseEmptySuccessBothSkip() {
+        val directPublisher = Publisher(route = Route.DIRECT)
+        val directStore = MemoryStore()
+        val directClient = ScriptClient { _, _, _, _ -> listResponse(emptyList()) }
+        val directOwner = owner(directPublisher, directStore, directClient)
+        val directGen = (directPublisher.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.Skipped>(directOwner.decideInitialClients(directGen))
+
+        val relayPublisher = Publisher(route = Route.RELAY)
+        val relayStore = MemoryStore()
+        val relayClient = ScriptClient { _, _, _, _ -> listResponse(emptyList()) }
+        val relayOwner = owner(relayPublisher, relayStore, relayClient)
+        val relayGen = (relayPublisher.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.Skipped>(relayOwner.decideInitialClients(relayGen))
+    }
+
+    @Test
+    fun distinctCidWithMatchingDisplayLabelDoesNotSkip() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        val client = ScriptClient { _, _, _, _ -> listResponse(listOf(clientRow(other, "Journal"))) }
+        val owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+        val decision = assertIs<InitialClientDecision.OthersPresent>(owner.decideInitialClients(gen))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, decision.record.stage)
+        assertEquals(1, client.requests.size)
+        assertTrue(client.requests.none { it.method == "PUT" })
+    }
+
+    @Test
+    fun preflightFailureLeavesOfferNotShownAndDoesNotPut() {
+        // Non-200
+        val pub1 = Publisher()
+        val store1 = MemoryStore()
+        val client1 = ScriptClient { _, _, _, _ -> HttpResponse(500, emptyMap(), ByteArray(0)) }
+        val owner1 = owner(pub1, store1, client1)
+        val gen1 = (pub1.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.PreflightFailed>(owner1.decideInitialClients(gen1))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, store1.value?.stage)
+        assertTrue(client1.requests.none { it.method == "PUT" })
+
+        // Malformed 200
+        val pub2 = Publisher()
+        val store2 = MemoryStore()
+        val client2 = ScriptClient { _, _, _, _ -> HttpResponse(200, emptyMap(), "not json".toByteArray()) }
+        val owner2 = owner(pub2, store2, client2)
+        val gen2 = (pub2.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.PreflightFailed>(owner2.decideInitialClients(gen2))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, store2.value?.stage)
+
+        // Route.NONE (no lease)
+        val pub3 = Publisher(route = Route.NONE)
+        val store3 = MemoryStore()
+        val client3 = ScriptClient()
+        val owner3 = owner(pub3, store3, client3)
+        val gen3 = (pub3.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.PreflightFailed>(owner3.decideInitialClients(gen3))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, store3.value?.stage)
+
+        // After claimInitialPresentation, second decide does not GET
+        val pub4 = Publisher()
+        val store4 = MemoryStore()
+        val client4 = ScriptClient { _, _, _, _ -> HttpResponse(503, emptyMap(), ByteArray(0)) }
+        val owner4 = owner(pub4, store4, client4)
+        val gen4 = (pub4.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.PreflightFailed>(owner4.decideInitialClients(gen4))
+        assertEquals(1, client4.requests.size)
+        assertTrue(owner4.claimInitialPresentation(gen4))
+        val notUnseen = assertIs<InitialClientDecision.NotUnseen>(owner4.decideInitialClients(gen4))
+        assertEquals(PairingMigrationStage.SHOWN_DEFERRED, (notUnseen.result as PairingMigrationResult.Offer).record.stage)
+        assertEquals(1, client4.requests.size)
+    }
+
+    @Test
+    fun preflightSaveFailureLeavesOfferNotShown() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        store.failStage = PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT
+        val client = ScriptClient { _, _, _, _ -> listResponse(emptyList()) }
+        val owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+        assertIs<InitialClientDecision.PreflightFailed>(owner.decideInitialClients(gen))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, store.value?.stage)
+    }
+
+    @Test
+    fun unknownLegacyDecideDoesNotCreateRecordAndDoesNotGet() {
+        val publisher = Publisher(provenance = PairingProvenance.UNKNOWN_LEGACY)
+        val store = MemoryStore()
+        val client = ScriptClient()
+        val owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+        val decision = assertIs<InitialClientDecision.NotUnseen>(owner.decideInitialClients(gen))
+        assertIs<PairingMigrationResult.NoOffer>(decision.result)
+        assertNull(store.value)
+        assertEquals(0, client.requests.size)
+    }
+
+    @Test
+    fun blockingGenerationFencePreventsSkipAndFencesStaleGeneration() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        val enteredLatch = CountDownLatch(1)
+        val releaseLatch = CountDownLatch(1)
+        val client = ScriptClient { _, _, _, _ ->
+            enteredLatch.countDown()
+            releaseLatch.await(5, TimeUnit.SECONDS)
+            listResponse(emptyList())
+        }
+        val owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+
+        val decisionRef = AtomicReference<InitialClientDecision>()
+        val thread = thread {
+            decisionRef.set(owner.decideInitialClients(gen))
+        }
+
+        assertTrue(enteredLatch.await(5, TimeUnit.SECONDS))
+        publisher.unpair()
+        publisher.switchGeneration()
+        releaseLatch.countDown()
+        thread.join(5000)
+
+        assertIs<InitialClientDecision.StaleGeneration>(decisionRef.get())
+        assertFalse(store.value?.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT)
+
+        val newGen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+        assertEquals("inst-2", newGen.instanceId)
+        val skipped = assertIs<InitialClientDecision.Skipped>(owner.decideInitialClients(newGen)).record
+        assertEquals(PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT, skipped.stage)
+        assertEquals("inst-2", skipped.generation.instanceId)
+        assertEquals(newGen, skipped.generation)
+        assertEquals(2, client.requests.size)
+        assertTrue(client.requests.none { it.method == "PUT" })
+    }
+
+    @Test
+    fun concurrentDecideInitialClientsSharesSingleGet() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        val enteredLatch = CountDownLatch(1)
+        val releaseLatch = CountDownLatch(1)
+        val secondThreadStarted = CountDownLatch(1)
+        val decision2 = AtomicReference<InitialClientDecision>()
+        var thread2: Thread? = null
+        lateinit var owner: PairingMigrationOwner
+        val client = ScriptClient { _, _, _, _ ->
+            enteredLatch.countDown()
+            thread2 = thread {
+                secondThreadStarted.countDown()
+                decision2.set(owner.decideInitialClients((publisher.current as PairingGraphSnapshot.Committed).pairing))
+            }
+            secondThreadStarted.await(5, TimeUnit.SECONDS)
+            releaseLatch.await(5, TimeUnit.SECONDS)
+            listResponse(emptyList())
+        }
+        owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+
+        val decision1 = AtomicReference<InitialClientDecision>()
+        val thread1 = thread {
+            decision1.set(owner.decideInitialClients(gen))
+        }
+        assertTrue(enteredLatch.await(5, TimeUnit.SECONDS))
+        releaseLatch.countDown()
+
+        thread1.join(5000)
+        thread2?.join(5000)
+
+        assertIs<InitialClientDecision.Skipped>(decision1.get())
+        assertIs<InitialClientDecision.Skipped>(decision2.get())
+        assertEquals(1, client.requests.size)
+
+        // Sequential second call
+        assertIs<InitialClientDecision.Skipped>(owner.decideInitialClients(gen))
+        assertEquals(1, client.requests.size)
+    }
+
+    @Test
+    fun initialOthersPresentWithSubsequentEmptyListingCannotSelectAndRemainsPickerEmpty() {
+        val publisher = Publisher()
+        val store = MemoryStore()
+        var returnEmptyList = false
+        val client = ScriptClient { method, path, _, _ ->
+            when (method to path) {
+                "GET" to "/app/network/api/clients" -> if (returnEmptyList) listResponse(emptyList()) else listResponse(listOf(clientRow(other, "Device 2")))
+                else -> HttpResponse(500, emptyMap(), ByteArray(0))
+            }
+        }
+        val owner = owner(publisher, store, client)
+        val gen = (publisher.current as PairingGraphSnapshot.Committed).pairing
+
+        val initialDecision = assertIs<InitialClientDecision.OthersPresent>(owner.decideInitialClients(gen))
+        assertEquals(PairingMigrationStage.OFFER_NOT_SHOWN, initialDecision.record.stage)
+        assertTrue(owner.claimInitialPresentation(gen))
+
+        returnEmptyList = true
+        val listingResult = assertIs<PairingMigrationResult.Listing>(owner.listClients(gen))
+        assertTrue(listingResult.value.clients.isEmpty())
+
+        val selectionResult = owner.selectTarget(listingResult.value, other)
+        assertIs<PairingMigrationResult.InvalidSelection>(selectionResult)
+        assertFalse(store.value?.stage == PairingMigrationStage.SKIPPED_NO_OTHER_CLIENT)
     }
 
     private enum class Route { DIRECT, RELAY, NONE }
