@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.20] - 2026-10-07
+
+### Added
+
+- after you pair your phone with a journal and confirm its mark, the app asks whether this phone is replacing one of your devices. you can keep both, or choose the device it replaces: your phone then carries on that device's name and history in your journal, and the device you chose can no longer reach your journal. if you close the question without answering, settings › this device shows "device choice" until you do.
+
 ## [2.1.19] - 2026-10-05
 
 ### Fixed
