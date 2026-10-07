@@ -1,6 +1,6 @@
 # Security
 
-Report security issues to `security@solpbc.org`.
+Report security issues to `support@solstone.app`.
 
 Please include:
 
