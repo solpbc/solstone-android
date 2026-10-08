@@ -103,6 +103,9 @@ class JournalBrowserUpstreamAdapter(
     )
 
     override fun open(): JournalBrowserUpstream = try {
+        if (publisher.acquireDirectLeases().isEmpty() && publisher.acquireRelayLease() == null) {
+            throw JournalBrowserIdentityException()
+        }
         app.solstone.core.pl.openPairingClient(publisher) { lease ->
             val upstream = when (lease) {
                 is PairingLease.Direct -> directClientOpener(DirectEndpoint(lease.endpoint.host, lease.endpoint.port), lease.credential)
