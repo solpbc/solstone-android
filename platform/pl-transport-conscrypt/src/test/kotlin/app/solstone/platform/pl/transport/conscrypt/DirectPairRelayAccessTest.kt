@@ -56,6 +56,9 @@ class DirectPairRelayAccessTest {
                 attempts += endpoint
                 CertlessSession(app.solstone.core.pl.MuxSession(responseDuplex(200, response)), true)
             },
+            localInterfaces = emptyList(),
+            materialFactory = { DirectPairMaterial("KEY", leafPublicKey(), "CSR".toByteArray()) },
+            statusProbe = { _, _ -> HttpResponse(200, emptyMap(), "ok".toByteArray()) },
         )
         assertEquals(listOf(first), attempts)
         assertEquals(listOf(first, second, advertised), (publisher.currentSnapshot() as PairingGraphSnapshot.Committed).directEndpoints)
@@ -69,7 +72,7 @@ class DirectPairRelayAccessTest {
                 override fun close() = Unit
             }
         }.close()
-        assertEquals(listOf(first, second), dialed)
+        assertEquals<List<app.solstone.core.model.DirectEndpoint>>(listOf(first, second), dialed)
     }
 
     @Test
