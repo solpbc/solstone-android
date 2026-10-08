@@ -185,7 +185,7 @@ class FilePairingGraphFailureInvariantTest {
     }
 
     @Test
-    fun failedRollbackReportsUncertainInsteadOfPaired() {
+    fun failedRollbackReportsUncertainAndRestartRecoversBackedAssociation() {
         for (operation in listOf("revoke", "associate")) {
             val fixture = Fixture()
             fixture.seed()
@@ -200,7 +200,16 @@ class FilePairingGraphFailureInvariantTest {
             })
             mutate(graph, operation)
             assertTrue(graph.currentSnapshot() is PairingGraphSnapshot.Uncertain, operation)
-            assertEquals(durableState(graph), durableState(fixture.graph()), operation)
+            if (operation == "associate") {
+                // Association now stages complete backups before any live write. A new
+                // process with a working writer can recover even after rollback failed.
+                val restarted = fixture.graph()
+                assertTrue(restarted.currentSnapshot() is PairingGraphSnapshot.Committed)
+                assertEquals(home, (restarted.currentSnapshot() as PairingGraphSnapshot.Committed).home)
+                assertEquals(endpoint, restarted.acquireDirectLease()?.endpoint)
+            } else {
+                assertEquals(durableState(graph), durableState(fixture.graph()), operation)
+            }
         }
     }
 
