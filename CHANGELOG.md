@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.21] - 2026-10-08
+
 ### Added
 
 - the camera's tile and its page now say that while it's on, the solstone app takes a photo from your rear camera every minute and adds it to your journal. its page tells you this before you turn it on.
@@ -17,11 +19,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - when a source is off and a journal is paired, its page now reads "intake is off. turn it on any time." when you've paused it, it reads "you paused this. resume to start intake again." before, it said it wasn't sending to your journal, even while what it had taken in before you turned it off was still going into your journal.
-
-- the home-screen widget no longer cuts off its text at its usual size or with large text. it shows only the lines that fit, whole, and whatever needs you is the last to go. tapping its text now opens the app. its switch now uses the app's colors, and you can tell when it's off.
-
+- the home-screen widget now fits its text to the space available, at its usual size or with large text. tapping its text now opens the app. its switch now uses the app's colors, and you can tell when it's off.
 - the question about replacing a device is now skipped when your journal lists no other paired device. it still appears when another device is listed.
-
 - while a new pairing waits for you to confirm your journal's mark, the home screen and settings › your journal show "your journal" instead of that mark. they used to show the mark before you'd confirmed it.
 
 ## [2.1.20] - 2026-10-07
