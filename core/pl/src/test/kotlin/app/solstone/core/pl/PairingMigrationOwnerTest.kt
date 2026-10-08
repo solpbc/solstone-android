@@ -976,6 +976,10 @@ class PairingMigrationOwnerTest {
     ) : PlHttpClient {
         val requests = mutableListOf<Request>()
         override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse {
+            // Connection metadata is independent of the migration request transcript.
+            if (method == "GET" && path == "/app/network/local-endpoints") {
+                return HttpResponse(200, emptyMap(), "{\"v\":1,\"endpoints\":[]}".toByteArray())
+            }
             requests += Request(method, path, body?.copyOf())
             return handler(method, path, headers, body)
         }

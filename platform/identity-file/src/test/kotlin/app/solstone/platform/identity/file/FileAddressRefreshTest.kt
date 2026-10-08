@@ -34,7 +34,7 @@ class FileAddressRefreshTest {
         assertIs<GraphMutationResult.Applied>(graph.installOrReplace(home, credential, endpoints.firstOrNull(), associated, PairingProvenance.FRESH_LINK, endpoints))
     }
     // Envelope and field names are the journal's local-endpoints API contract.
-    private fun body(endpoints: List<DirectEndpoint>) = """{"v":1,"endpoints":[${endpoints.joinToString(",") { """{"ip":"${it.host}","port":${it.port},"scope":"lan"}""" }}],"ttl_s":3600,"generated_at":"2026-10-08T23:00:00Z"}"""
+    private fun body(endpoints: List<DirectEndpoint>) = """{"v":2,"endpoints":[${endpoints.joinToString(",") { """{"ip":"${it.host}","port":${it.port},"scope":"lan"}""" }}],"ttl_s":3600,"generated_at":"2026-10-08T23:00:00Z"}"""
     private class Client(private val response: () -> HttpResponse) : PlHttpClient, Closeable {
         val paths = mutableListOf<String>()
         var closed = false
@@ -54,6 +54,18 @@ class FileAddressRefreshTest {
         assertEquals("token-2", snapshot(graph()).home.deviceToken)
     }
 
+    @Test fun olderOrMissingVersionNeverReplacesTheSet() {
+        val graph = graph(); install(graph)
+        val rejectedBodies = listOf("1", "0", "null", "\"2\"", "2.5").map { body(listOf(c)).replace("\"v\":2", "\"v\":$it") } + body(listOf(c)).replace("\"v\":2,", "")
+        for (responseBody in rejectedBodies) {
+            val client = Client { HttpResponse(200, emptyMap(), responseBody.toByteArray()) }
+            assertFalse(refreshDirectEndpoints(client, graph, snapshot(graph), b, log = {}))
+            assertEquals(listOf(a, b), snapshot(graph()).directEndpoints)
+        }
+        assertTrue(refreshDirectEndpoints(client(listOf(c)), graph, snapshot(graph), b))
+        assertEquals(listOf(c, b), snapshot(graph()).directEndpoints)
+    }
+
     @Test fun deliveringAddressIsKeptAfterTheAdvertisedList() {
         val graph = graph(); install(graph)
         assertTrue(refreshDirectEndpoints(client(listOf(c)), graph, snapshot(graph), b))
@@ -62,7 +74,7 @@ class FileAddressRefreshTest {
 
     @Test fun emptyTransportErrorNon200AndPartialMalformedLeaveLastGoodSet() {
         val graph = graph(); install(graph)
-        val clients = listOf(client(emptyList()), Client { throw java.io.IOException("offline") }, Client { HttpResponse(503, emptyMap(), body(listOf(c)).toByteArray()) }, Client { HttpResponse(200, emptyMap(), """{"v":1,"endpoints":[{"ip":"10.0.0.3","port":7657,"scope":"lan"},{"ip":"bad","scope":"vpn"}],"ttl_s":3600,"generated_at":"2026-10-08T23:00:00Z"}""".toByteArray()) })
+        val clients = listOf(client(emptyList()), Client { throw java.io.IOException("offline") }, Client { HttpResponse(503, emptyMap(), body(listOf(c)).toByteArray()) }, Client { HttpResponse(200, emptyMap(), """{"v":2,"endpoints":[{"ip":"10.0.0.3","port":7657,"scope":"lan"},{"ip":"bad","scope":"vpn"}],"ttl_s":3600,"generated_at":"2026-10-08T23:00:00Z"}""".toByteArray()) })
         for (client in clients) {
             assertFalse(refreshDirectEndpoints(client, graph, snapshot(graph), b, log = {}))
             assertEquals(listOf(a, b), snapshot(graph()).directEndpoints)

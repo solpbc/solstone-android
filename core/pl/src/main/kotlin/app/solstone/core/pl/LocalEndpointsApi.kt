@@ -21,7 +21,8 @@ private fun parseAdvertisedEndpoint(entry: Map<*, *>): DirectEndpoint {
 
 fun parseLocalEndpoints(body: String): List<DirectEndpoint> {
     val root = parseJson(body) as? Map<*, *> ?: error("invalid endpoint response")
-    require((root["v"] as? Number)?.toDouble() == 1.0)
+    val version = (root["v"] as? Number)?.toDouble() ?: 0.0
+    require(version.isFinite() && version >= 2.0 && version % 1.0 == 0.0)
     val endpoints = root["endpoints"] as? List<*> ?: error("missing endpoints")
     return endpoints.map {
         val entry = it as? Map<*, *> ?: error("invalid endpoint")
