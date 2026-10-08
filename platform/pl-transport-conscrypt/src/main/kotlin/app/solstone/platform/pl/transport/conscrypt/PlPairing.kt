@@ -111,9 +111,12 @@ internal fun generateDirectPairMaterial(deviceLabel: String): DirectPairMaterial
     return DirectPairMaterial(privateKeyPem, keyPair.public.encoded, body)
 }
 
-private fun probeDirectStatus(endpoint: DirectEndpoint, credential: ClientCredential): HttpResponse =
+private fun probeDirectStatus(endpoint: DirectEndpoint, credential: ClientCredential, publisher: PairingPublisher?): HttpResponse =
     openAuthenticatedClient(endpoint, credential).use { client ->
-        client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+        val response = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0))
+        val snapshot = publisher?.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+        if (publisher != null && snapshot != null) app.solstone.core.pl.refreshDirectEndpoints(client, publisher, snapshot, endpoint)
+        response
     }
 
 fun pairAndProbe(
@@ -148,6 +151,7 @@ fun pairAndProbe(
     publisher = publisher,
     onDialOutcome = onDialOutcome,
     confirmation = confirmation,
+    statusProbe = { ep, cred -> probeDirectStatus(ep, cred, publisher) },
 )
 
 internal fun pairAndProbe(
@@ -159,7 +163,7 @@ internal fun pairAndProbe(
     sessionOpener: (DirectEndpoint, ByteArray) -> CertlessSession,
     localInterfaces: List<LocalIPv4Interface>,
     materialFactory: (String) -> DirectPairMaterial = ::generateDirectPairMaterial,
-    statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = ::probeDirectStatus,
+    statusProbe: (DirectEndpoint, ClientCredential) -> HttpResponse = { ep, cred -> probeDirectStatus(ep, cred, null) },
     journalVersionStore: JournalVersionStore? = null,
     coordinator: JournalVersionRefreshCoordinator? = null,
     mutator: IdentityMutator? = null,
@@ -258,6 +262,7 @@ internal fun pairAndProbe(
                     home = home,
                     credential = credential,
                     endpoint = endpoint,
+                    knownEndpoints = (ordered + app.solstone.core.pl.advertisedDirectEndpoints(resp.localEndpoints)).distinct(),
                     handshakePinned = pinned,
                     pairStatus = pairHttp.status,
                     credentialStore = credentialStore,
@@ -322,6 +327,7 @@ internal fun persistOrReturnDirectPairResult(
     journalIdentityCoordinator: JournalIdentityRefreshCoordinator? = null,
     publisher: app.solstone.core.identity.PairingPublisher? = null,
     confirmation: JournalConfirmationStore? = null,
+    knownEndpoints: List<DirectEndpoint> = listOf(endpoint),
 ): PairProbeResult {
     val activePublisher = requireNotNull(publisher) { "PairingPublisher is required" }
     val prior = (activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.home
@@ -345,17 +351,19 @@ internal fun persistOrReturnDirectPairResult(
                 throw IOException("pairing graph update failed")
             }
         }
-        val targetEndpoint = endpointStore.load() ?: endpoint
+        val current = activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+        if (current != null) activePublisher.replaceDirectEndpoints(current, knownEndpoints)
+        val targetEndpoint = endpoint
         val retainedCredential = credentialStore.load()
         if (retainedCredential != null) {
             coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
-                openAuthenticatedClient(targetEndpoint, retainedCredential)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint), targetEndpoint) { openAuthenticatedClient(targetEndpoint, retainedCredential) }
             }
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
-                openAuthenticatedClient(targetEndpoint, retainedCredential)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint), targetEndpoint) { openAuthenticatedClient(targetEndpoint, retainedCredential) }
             }
             journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
-                openAuthenticatedClient(targetEndpoint, retainedCredential)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint), targetEndpoint) { openAuthenticatedClient(targetEndpoint, retainedCredential) }
             }
         }
         return PairProbeResult(
@@ -385,6 +393,7 @@ internal fun persistOrReturnDirectPairResult(
             home = home,
             credential = credential,
             directEndpoint = endpoint,
+            directEndpoints = knownEndpoints,
             isDirectAssociated = false,
             provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
         )
@@ -418,13 +427,13 @@ internal fun persistOrReturnDirectPairResult(
         )
         if (!associated) throw IOException("direct route association failed")
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openAuthenticatedClient(endpoint, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openAuthenticatedClient(endpoint, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
         }
         journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
-            openAuthenticatedClient(endpoint, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
         }
     }
     return PairProbeResult(

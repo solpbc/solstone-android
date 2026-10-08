@@ -19,6 +19,7 @@ enum class CommitInFlightOp {
     INSTALL,
     REPLACE,
     ACCESS_UPDATE,
+    ADDRESS_UPDATE,
     REVOKE_ACCESS,
     FORGET,
 }

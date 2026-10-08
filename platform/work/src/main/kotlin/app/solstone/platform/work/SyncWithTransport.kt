@@ -23,7 +23,7 @@ internal fun <C> syncWithTransport(
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
     finisher: ConfirmedCopyFinisher,
-    onUsableConnection: (() -> Unit)? = null,
+    onUsableConnection: ((PlHttpClient) -> Unit)? = null,
     spoolDir: File? = null,
     allowsOwnerMaterial: Boolean,
     pairingCurrent: () -> Boolean = { true },
@@ -71,7 +71,7 @@ internal fun <C> syncWithTransport(
             }
         }
         if (status == 200) {
-            onUsableConnection?.invoke()
+            onUsableConnection?.invoke(client)
         }
         when (decideReachability(paired = true, reachable = status == 200)) {
             ReachabilityVerdict.SKIP -> SyncOutcome.FAILURE

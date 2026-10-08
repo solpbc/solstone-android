@@ -299,6 +299,9 @@ fun pairOverRelay(
         prior.state == IdentityState.PAIRED
 
     if (isSameCert) {
+        val current = activePublisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+        val endpoints = app.solstone.core.pl.advertisedDirectEndpoints(pairResponse.localEndpoints)
+        if (current != null && endpoints.isNotEmpty()) activePublisher.replaceDirectEndpoints(current, endpoints)
         if (relayAccessDecoded != null) {
             val res = activePublisher.updateRelayAccess(
                 expectedPairing = app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint),
@@ -320,13 +323,13 @@ fun pairOverRelay(
         val curToken = currentHome?.deviceToken
         if (cred != null && curToken != null && curOrigin != null) {
             coordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
-                openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred) }
             }
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
-                openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred) }
             }
             journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
-                openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred)
+                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred) }
             }
         }
         return RelayPairResult(
@@ -352,11 +355,8 @@ fun pairOverRelay(
         RelayPairConnectionMode.PAIRING
     }
 
-    val firstAdmitted = pairResponse.localEndpoints.firstNotNullOfOrNull { ep ->
-        val ip = ep["ip"] as? String ?: return@firstNotNullOfOrNull null
-        val port = (ep["port"] as? Number)?.toInt() ?: 0
-        supportedDirectDialEndpoint(ip, port)
-    }
+    val admitted = app.solstone.core.pl.advertisedDirectEndpoints(pairResponse.localEndpoints)
+    val firstAdmitted = admitted.firstOrNull()
 
     if (relayAccessDecoded != null) {
         val home = PairedHome(
@@ -375,8 +375,9 @@ fun pairOverRelay(
             activePublisher.installOrReplace(
                 home,
                 credential,
-                firstAdmitted,
-                isDirectAssociated = false,
+                admitted.firstOrNull(),
+                isDirectAssociated = admitted.isNotEmpty(),
+                directEndpoints = admitted,
                 provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
             )
         }
@@ -388,13 +389,13 @@ fun pairOverRelay(
         }
 
         coordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
         }
         journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
-            openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential)
+            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
         }
 
         return RelayPairResult(
@@ -425,8 +426,9 @@ fun pairOverRelay(
         activePublisher.installOrReplace(
             homeInitial,
             credential,
-            firstAdmitted,
-            isDirectAssociated = false,
+            admitted.firstOrNull(),
+            isDirectAssociated = admitted.isNotEmpty(),
+            directEndpoints = admitted,
             provenance = app.solstone.core.identity.PairingProvenance.FRESH_LINK,
         )
     }
@@ -493,13 +495,13 @@ fun pairOverRelay(
                     }
 
                     coordinator?.onUsableConnection(updatedHome.instanceId, updatedHome.caChainFingerprint, updatedHome.clientCertFingerprint) {
-                        openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
+                        app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
                     }
                     relayAccessCoordinator?.onUsableConnection(updatedHome.instanceId, updatedHome.caChainFingerprint, updatedHome.clientCertFingerprint) {
-                        openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
+                        app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
                     }
                     journalIdentityCoordinator?.onUsableConnection(updatedHome.instanceId) {
-                        openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential)
+                        app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
                     }
                 }
             }

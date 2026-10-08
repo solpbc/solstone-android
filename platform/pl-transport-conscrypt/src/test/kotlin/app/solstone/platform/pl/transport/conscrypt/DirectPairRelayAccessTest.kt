@@ -36,6 +36,43 @@ import kotlin.test.assertNull
 
 class DirectPairRelayAccessTest {
     @Test
+    fun firstWinningPairRetainsSecondCandidateAndAdvertisedAddressesForFallback() {
+        val credentials = FakeCredentialStore()
+        val identity = FakeIdentityStore()
+        val endpoints = FakeEndpointStore()
+        val publisher = FakePairingPublisher(identity, credentials, endpoints)
+        val first = DirectEndpoint("10.0.0.2", 7657)
+        val second = DirectEndpoint("10.0.0.3", 7657)
+        val advertised = DirectEndpoint("journal.example.test", 7657)
+        val attempts = mutableListOf<DirectEndpoint>()
+        val response = pairResponseWithRelayAccess().replace(
+            "\"home_attestation\"", "\"local_endpoints\":[{\"ip\":\"journal.example.test\",\"port\":7657,\"scope\":\"lan\"}],\"home_attestation\"",
+        )
+        pairAndProbe(
+            pairLink = validPairLink(listOf(byteArrayOf(10, 0, 0, 2), byteArrayOf(10, 0, 0, 3))),
+            deviceLabel = "phone", credentialStore = credentials, identityStore = identity,
+            endpointStore = endpoints, publisher = publisher,
+            sessionOpener = { endpoint, _ ->
+                attempts += endpoint
+                CertlessSession(app.solstone.core.pl.MuxSession(responseDuplex(200, response)), true)
+            },
+        )
+        assertEquals(listOf(first), attempts)
+        assertEquals(listOf(first, second, advertised), (publisher.currentSnapshot() as PairingGraphSnapshot.Committed).directEndpoints)
+        val dialed = mutableListOf<app.solstone.core.model.DirectEndpoint>()
+        app.solstone.core.pl.openPairingClient(publisher) { lease ->
+            val direct = lease as app.solstone.core.identity.PairingLease.Direct
+            dialed += direct.endpoint
+            if (direct.endpoint == first) throw java.net.ConnectException("gone")
+            object : app.solstone.core.pl.PlHttpClient, java.io.Closeable {
+                override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int) = HttpResponse(503, emptyMap(), ByteArray(0))
+                override fun close() = Unit
+            }
+        }.close()
+        assertEquals(listOf(first, second), dialed)
+    }
+
+    @Test
     fun failedPublicationStopsBeforeStatusAndRestoresUnpairedCredentialState() {
         val credentials = FakeCredentialStore()
         val identity = FakeIdentityStore()
@@ -297,18 +334,17 @@ class DirectPairRelayAccessTest {
     private fun leafPublicKey(): ByteArray =
         certificateFromPem(PAIR_TEST_LEAF_PEM).publicKey.encoded
 
-    private fun validPairLink(): String {
+    private fun validPairLink(ips: List<ByteArray> = listOf(byteArrayOf(10, 0, 0, 2))): String {
         val caPrefix = sha256(app.solstone.core.crypto.pemToDer(PAIR_TEST_CA_PEM, "CERTIFICATE")).copyOf(16)
-        val ip = byteArrayOf(10, 0, 0, 2)
-        val bytes = ByteArray(37 + 4)
+        val bytes = ByteArray(37 + 4 * ips.size)
         bytes[0] = 0x05
         bytes[1] = 0x01
-        bytes[2] = 1
+        bytes[2] = ips.size.toByte()
         bytes[3] = (7657 shr 8).toByte()
         bytes[4] = (7657 and 0xff).toByte()
-        ip.copyInto(bytes, 5)
-        ByteArray(16) { 0x01 }.copyInto(bytes, 9)
-        caPrefix.copyInto(bytes, 25)
+        ips.forEachIndexed { index, ip -> ip.copyInto(bytes, 5 + 4 * index) }
+        ByteArray(16) { 0x01 }.copyInto(bytes, 5 + 4 * ips.size)
+        caPrefix.copyInto(bytes, 21 + 4 * ips.size)
         return "https://go.solstone.app/p#${encodeCrockford(bytes)}"
     }
 

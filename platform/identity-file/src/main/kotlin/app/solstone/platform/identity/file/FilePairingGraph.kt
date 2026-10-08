@@ -100,6 +100,13 @@ class FilePairingGraph(
         return PairingLease.Direct(snap, cred, ep)
     }
 
+    override fun acquireDirectLeases(): List<PairingLease.Direct> = synchronized(lock) {
+        val snap = currentSnapshotState as? PairingGraphSnapshot.Committed ?: return emptyList()
+        if (snap.home.state != app.solstone.core.model.IdentityState.PAIRED) return emptyList()
+        val cred = credentialStore.load() ?: return emptyList()
+        snap.directEndpoints.map { PairingLease.Direct(snap, cred, it) }
+    }
+
     override fun acquireRelayLease(): PairingLease.Relay? {
         val snap = currentSnapshotState as? PairingGraphSnapshot.Committed ?: return null
         if (!snap.isRelayEligible) return null
@@ -114,7 +121,7 @@ class FilePairingGraph(
         if (snap.pairing != lease.snapshot.pairing) return false
         if (snap.revisions.pairingRevision != lease.snapshot.revisions.pairingRevision) return false
         return when (lease) {
-            is PairingLease.Direct -> snap.isDirectEligible && snap.revisions.directRouteRevision == lease.snapshot.revisions.directRouteRevision
+            is PairingLease.Direct -> snap.hasDirectEndpoint && snap.home.state == app.solstone.core.model.IdentityState.PAIRED && snap.revisions.directRouteRevision == lease.snapshot.revisions.directRouteRevision
             is PairingLease.Relay -> snap.isRelayEligible && snap.revisions.relayAccessRevision == lease.snapshot.revisions.relayAccessRevision
         }
     }
@@ -125,12 +132,41 @@ class FilePairingGraph(
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
         provenance: PairingProvenance,
+        directEndpoints: List<DirectEndpoint>,
     ): GraphMutationResult = synchronized(lock) {
-        val op = if (currentSnapshotState is PairingGraphSnapshot.Committed) CommitInFlightOp.REPLACE else CommitInFlightOp.INSTALL
+        installLocked(home, credential, directEndpoints.distinct(), isDirectAssociated, provenance, replacePairing = true)
+    }
+
+    override fun replaceDirectEndpoints(
+        expected: PairingGraphSnapshot.Committed,
+        endpoints: List<DirectEndpoint>,
+    ): GraphMutationResult = synchronized(lock) {
+        val current = currentSnapshotState as? PairingGraphSnapshot.Committed
+            ?: return GraphMutationResult.Conflict("No committed pairing")
+        if (current.pairing != expected.pairing || current.revisions.pairingRevision != expected.revisions.pairingRevision || current.revisions.directRouteRevision != expected.revisions.directRouteRevision) {
+            return GraphMutationResult.Conflict("Pairing changed")
+        }
+        if (endpoints.isEmpty()) return GraphMutationResult.Conflict("Empty address set")
+        val ordered = endpoints.distinct()
+        if (current.directEndpoints == ordered && current.directAssociated) return GraphMutationResult.Applied(current)
+        val credential = credentialStore.load() ?: return GraphMutationResult.Conflict("Missing credential")
+        installLocked(current.home, credential, ordered, true, current.provenance, replacePairing = false)
+    }
+
+    private fun installLocked(
+        home: PairedHome,
+        credential: ClientCredential,
+        directEndpoints: List<DirectEndpoint>,
+        isDirectAssociated: Boolean,
+        provenance: PairingProvenance,
+        replacePairing: Boolean,
+    ): GraphMutationResult {
+        val directEndpoint = directEndpoints.firstOrNull()
+        val op = if (!replacePairing) CommitInFlightOp.ADDRESS_UPDATE else if (currentSnapshotState is PairingGraphSnapshot.Committed) CommitInFlightOp.REPLACE else CommitInFlightOp.INSTALL
         val priorCommitted = currentSnapshotState as? PairingGraphSnapshot.Committed
         var inFlightMarker: PairingCommitMarker? = null
         var durableDecision = false
-        try {
+        return try {
             // Step 1: STAGING_WRITE - backup prior files and write IN_FLIGHT marker
             if (identityFile.exists()) fileWriter.write(identityBakFile, identityFile.readBytes())
             if (credentialFile.exists()) fileWriter.write(credentialBakFile, credentialFile.readBytes())
@@ -159,7 +195,7 @@ class FilePairingGraph(
             credentialStore.save(credential)
             identityStore.save(home)
             if (directEndpoint != null) {
-                endpointStore.save(app.solstone.core.pl.DirectEndpoint(directEndpoint.host, directEndpoint.port))
+                endpointStore.saveAll(directEndpoints)
             } else {
                 endpointStore.clear()
             }
@@ -171,12 +207,12 @@ class FilePairingGraph(
             // Step 4: READ_BACK
             val identInspect = identityStore.inspect()
             val credInspect = credentialStore.inspect()
-            val epInspect = endpointStore.inspect()
+            val epInspect = endpointStore.inspectAll()
 
             val identOk = identInspect is StoreInspectResult.Ready && identInspect.value == home
             val credOk = credInspect is StoreInspectResult.Ready && credInspect.value == credential
             val epOk = if (directEndpoint != null) {
-                epInspect is StoreInspectResult.Ready && epInspect.value == directEndpoint
+                epInspect is StoreInspectResult.Ready && epInspect.value == directEndpoints
             } else {
                 epInspect is StoreInspectResult.Missing
             }
@@ -212,9 +248,9 @@ class FilePairingGraph(
             cleanBackupAndStagingFiles()
             stepHook?.onStep(DurableTxnStep.CLEANUP, op.name)
 
-            pairingRev++
-            if (directEndpoint != null && isDirectAssociated) directRev++
-            relayRev++
+            if (replacePairing) pairingRev++
+            directRev++
+            if (replacePairing) relayRev++
 
             val newCommitted = PairingGraphSnapshot.Committed(
                 sequenceNumber = sequenceGen.incrementAndGet(),
@@ -224,6 +260,7 @@ class FilePairingGraph(
                 directAssociated = directEndpoint != null && isDirectAssociated,
                 relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
                 directEndpoint = directEndpoint,
+                directEndpoints = directEndpoints,
                 provenance = provenance,
             )
             currentSnapshotState = newCommitted
@@ -239,9 +276,9 @@ class FilePairingGraph(
             } else {
                 val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
                 if (recovered is PairingGraphSnapshot.Committed) {
-                    pairingRev++
-                    if (recovered.directAssociated) directRev++
-                    relayRev++
+                    if (replacePairing) pairingRev++
+                    directRev++
+                    if (replacePairing) relayRev++
                     val committed = recovered.copy(revisions = GraphRevisions(pairingRev, directRev, relayRev))
                     currentSnapshotState = committed
                     cleanBackupAndStagingFiles()
@@ -658,61 +695,11 @@ class FilePairingGraph(
         }
         if (!proven) return false
 
-        var priorEndpoint: ByteArray? = null
-        var endpointSaved = false
-        var markerWritten = false
-        try {
-            priorEndpoint = if (endpointFile.exists()) endpointFile.readBytes() else null
-            endpointStore.save(app.solstone.core.pl.DirectEndpoint(endpoint.host, endpoint.port))
-            endpointSaved = true
-            check(endpointStore.load() == endpoint) { "Direct endpoint readback failed" }
-            val marker = PairingCommitMarker(
-                status = CommitMarkerStatus.COMMITTED,
-                instanceId = current.home.instanceId,
-                clientCertSha256 = current.home.clientCertFingerprint,
-                hasDirectEndpoint = true,
-                directAssociated = true,
-                hasRelayAccess = current.home.relayOrigin != null && current.home.deviceToken != null,
-                identityChecksum = PairingCommitMarker.checksumOf(identityFile),
-                credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
-                endpointChecksum = PairingCommitMarker.checksumOf(endpointFile),
-                pairingProvenance = current.provenance,
-            )
-            writeCommitMarker(marker)
-            markerWritten = true
-            directRev++
-            val updated = current.copy(
-                sequenceNumber = sequenceGen.incrementAndGet(),
-                revisions = GraphRevisions(pairingRev, directRev, relayRev),
-                hasDirectEndpoint = true,
-                directAssociated = true,
-                directEndpoint = endpoint,
-            )
-            currentSnapshotState = updated
-            notifySubscribers(updated)
-            return true
-        } catch (_: Exception) {
-            if (markerWritten) return true
-            if (endpointSaved) {
-                try {
-                    val bytes = priorEndpoint
-                    if (bytes == null) {
-                        check(!endpointFile.exists() || endpointFile.delete()) { "Endpoint rollback failed" }
-                    } else {
-                        fileWriter.write(endpointFile, bytes)
-                    }
-                } catch (_: Exception) {
-                    // Reflect the actual bytes if rollback also fails.
-                    val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
-                        ?: PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
-                    currentSnapshotState = if (recovered is PairingGraphSnapshot.Committed) {
-                        recovered.copy(revisions = current.revisions, relayLiveEligible = current.relayLiveEligible)
-                    } else recovered
-                    notifySubscribers(currentSnapshotState)
-                }
-            }
-            return false
-        }
+        if (current.directAssociated && endpoint in current.directEndpoints) return true
+        val credential = credentialStore.load() ?: return false
+        val endpoints = current.directEndpoints.ifEmpty { listOf(endpoint) }
+        val result = installLocked(current.home, credential, endpoints, true, current.provenance, replacePairing = false)
+        result is GraphMutationResult.Applied
     }
 
     private fun recoverOrAdoptLocked(): PairingGraphSnapshot {
@@ -753,7 +740,7 @@ class FilePairingGraph(
     private fun loadCommittedFromMarker(marker: PairingCommitMarker): PairingGraphSnapshot {
         val identInspect = identityStore.inspect()
         val credInspect = credentialStore.inspect()
-        val epInspect = endpointStore.inspect()
+        val epInspect = endpointStore.inspectAll()
 
         if (identInspect !is StoreInspectResult.Ready || credInspect !is StoreInspectResult.Ready) {
             return PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
@@ -785,7 +772,8 @@ class FilePairingGraph(
             hasDirectEndpoint = epPresent,
             directAssociated = marker.directAssociated,
             relayLiveEligible = marker.hasRelayAccess,
-            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
+            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value?.firstOrNull(),
+            directEndpoints = (epInspect as? StoreInspectResult.Ready)?.value.orEmpty(),
             provenance = marker.pairingProvenance ?: PairingProvenance.UNKNOWN_LEGACY,
         )
     }
@@ -793,7 +781,7 @@ class FilePairingGraph(
     private fun adoptLegacyLocked(): PairingGraphSnapshot {
         val identInspect = identityStore.inspect()
         val credInspect = credentialStore.inspect()
-        val epInspect = endpointStore.inspect()
+        val epInspect = endpointStore.inspectAll()
 
         if (identInspect is StoreInspectResult.Missing && credInspect is StoreInspectResult.Missing && epInspect is StoreInspectResult.Missing) {
             writeCommitMarker(PairingCommitMarker.absent())
@@ -840,7 +828,8 @@ class FilePairingGraph(
             hasDirectEndpoint = epPresent,
             directAssociated = false,
             relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
-            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value,
+            directEndpoint = (epInspect as? StoreInspectResult.Ready)?.value?.firstOrNull(),
+            directEndpoints = (epInspect as? StoreInspectResult.Ready)?.value.orEmpty(),
             provenance = PairingProvenance.UNKNOWN_LEGACY,
         )
     }

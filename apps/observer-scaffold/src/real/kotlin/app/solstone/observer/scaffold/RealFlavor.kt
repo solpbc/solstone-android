@@ -79,6 +79,7 @@ fun buildObserverFlavor(
         mutator = stores.identityMutator,
         localDescriptionProvider = { currentPhoneDeviceDescription(context) },
         dialEvents = DialDiagnostics.events,
+        publisher = stores.publisher,
     )
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,

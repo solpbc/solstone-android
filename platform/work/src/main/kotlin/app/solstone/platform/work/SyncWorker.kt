@@ -395,7 +395,21 @@ private fun sync(
                 host = deviceLabel,
                 now = System::currentTimeMillis,
                 log = { message, throwable -> workerLog("w", message, throwable) },
-                onUsableConnection = {
+                onUsableConnection = { connectedClient ->
+                    credentials.pairingSnapshot?.let { expected ->
+                        app.solstone.core.pl.refreshDirectEndpoints(
+                            connectedClient, stores.publisher, expected,
+                            (selectedTransport as? SyncTransport.Direct)?.endpoint,
+                            log = { workerLog("w", it, null) },
+                        )
+                    }
+                    stores.publisher.withMutationBoundary {
+                        val current = stores.publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+                        val expected = credentials.pairingSnapshot
+                        if (selectedTransport is SyncTransport.Direct && current != null && expected != null && current.pairing == expected.pairing && current.revisions.pairingRevision == expected.revisions.pairingRevision && !current.directAssociated) {
+                            stores.publisher.associateDirectIfProven(current.pairing, selectedTransport.endpoint) { true }
+                        }
+                    }
                     val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
                     if (currentTransport == null) {
                         if (allowsOwnerMaterial) {
@@ -412,10 +426,13 @@ private fun sync(
                         localDescriptionProvider = localDescriptionProvider
                             ?: { context?.let { currentPhoneDeviceDescription(it) } ?: throw IllegalStateException("localDescriptionProvider or Context required for sync") },
                         openClient = {
-                            if (customOpenClient != null) {
-                                customOpenClient(currentTransport, credentials.credential)
-                            } else {
-                                openSyncClient(currentTransport, credentials.credential)
+                            app.solstone.core.pl.openAddressRefreshingClient(
+                                stores.publisher,
+                                PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint),
+                                (currentTransport as? SyncTransport.Direct)?.endpoint,
+                            ) {
+                                if (customOpenClient != null) customOpenClient(currentTransport, credentials.credential)
+                                else openSyncClient(currentTransport, credentials.credential)
                             }
                         },
                         allowsOwnerMaterial = allowsOwnerMaterial,
@@ -431,7 +448,14 @@ private fun sync(
         }
 
         var outcome = when (val transport = credentials.transport) {
-            is SyncTransport.Direct -> syncTransport(transport)
+            is SyncTransport.Direct -> {
+                var attempted = SyncOutcome.RETRY
+                for (endpoint in credentials.directCandidates) {
+                    attempted = syncTransport(SyncTransport.Direct(endpoint))
+                    if (attempted != SyncOutcome.RETRY) break
+                }
+                attempted
+            }
             is SyncTransport.Relay -> {
                 val maintained = maintainRelayToken(
                     identity = credentials.identity,

@@ -949,7 +949,8 @@ class PairingMigrationOwnerTest {
         }
         override fun validateLease(lease: PairingLease): Boolean =
             (current as? PairingGraphSnapshot.Committed)?.pairing == lease.snapshot.pairing
-        override fun installOrReplace(home: PairedHome, credential: ClientCredential, directEndpoint: DirectEndpoint?, isDirectAssociated: Boolean, provenance: PairingProvenance): GraphMutationResult = error("unused")
+        override fun installOrReplace(home: PairedHome, credential: ClientCredential, directEndpoint: DirectEndpoint?, isDirectAssociated: Boolean, provenance: PairingProvenance, directEndpoints: List<app.solstone.core.model.DirectEndpoint>): GraphMutationResult = error("unused")
+        override fun replaceDirectEndpoints(expected: app.solstone.core.identity.PairingGraphSnapshot.Committed, endpoints: List<app.solstone.core.model.DirectEndpoint>) = app.solstone.core.identity.GraphMutationResult.Conflict("unsupported")
         override fun updateRelayAccess(expectedPairing: PairingGeneration, relayOrigin: String, deviceToken: String, expiresAt: String?): GraphMutationResult = error("unused")
         override fun revokeRelayAccess(expectedPairing: PairingGeneration): GraphMutationResult = error("unused")
         override fun forget(): GraphMutationResult {

@@ -89,8 +89,10 @@ class JournalIdentityRefreshCoordinatorTest {
             directEndpoint: app.solstone.core.model.DirectEndpoint?,
             isDirectAssociated: Boolean,
             provenance: app.solstone.core.identity.PairingProvenance,
-        ): GraphMutationResult = GraphMutationResult.Conflict("unused")
+        directEndpoints: List<app.solstone.core.model.DirectEndpoint>,
+    ): GraphMutationResult = GraphMutationResult.Conflict("unused")
 
+        override fun replaceDirectEndpoints(expected: app.solstone.core.identity.PairingGraphSnapshot.Committed, endpoints: List<app.solstone.core.model.DirectEndpoint>) = app.solstone.core.identity.GraphMutationResult.Conflict("unsupported")
         override fun updateRelayAccess(
             expectedPairing: PairingGeneration,
             relayOrigin: String,

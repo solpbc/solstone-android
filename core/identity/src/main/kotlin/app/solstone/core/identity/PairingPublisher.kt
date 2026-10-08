@@ -56,6 +56,7 @@ sealed interface PairingGraphSnapshot {
         val provenance: PairingProvenance = PairingProvenance.UNKNOWN_LEGACY,
         /** The saved direct address, shown to the owner; null when none is saved. */
         val directEndpoint: DirectEndpoint? = null,
+        val directEndpoints: List<DirectEndpoint> = listOfNotNull(directEndpoint),
     ) : PairingGraphSnapshot {
         val pairing: PairingGeneration
             get() = PairingGeneration(home.instanceId, home.clientCertFingerprint)
@@ -166,6 +167,10 @@ interface PairingPublisher {
     fun <T> withMutationBoundary(block: () -> T): T
 
     fun acquireDirectLease(): PairingLease.Direct?
+    fun acquireDirectLeases(): List<PairingLease.Direct> {
+        val first = acquireDirectLease() ?: return emptyList()
+        return first.snapshot.directEndpoints.ifEmpty { listOf(first.endpoint) }.map { first.copy(endpoint = it) }
+    }
     fun acquireRelayLease(): PairingLease.Relay?
     fun validateLease(lease: PairingLease): Boolean
 
@@ -175,6 +180,12 @@ interface PairingPublisher {
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
         provenance: PairingProvenance = PairingProvenance.UNKNOWN_LEGACY,
+        directEndpoints: List<DirectEndpoint> = listOfNotNull(directEndpoint),
+    ): GraphMutationResult
+
+    fun replaceDirectEndpoints(
+        expected: PairingGraphSnapshot.Committed,
+        endpoints: List<DirectEndpoint>,
     ): GraphMutationResult
 
     fun updateRelayAccess(

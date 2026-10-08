@@ -480,10 +480,11 @@ class PairingMigrationOwner(
         block: (PlHttpClient) -> T,
     ): T? {
         if (!isCurrent(generation)) return null
-        val lease = publisher.acquireDirectLease() ?: publisher.acquireRelayLease() ?: return null
-        if (lease.snapshot.pairing != generation) return null
         val client = try {
-            openClient.open(lease)
+            openPairingClient(publisher) { lease ->
+                if (lease.snapshot.pairing != generation) throw java.io.IOException("pairing changed")
+                MigrationClient(openClient.open(lease))
+            }
         } catch (_: Exception) {
             return null
         }
@@ -494,6 +495,10 @@ class PairingMigrationOwner(
         } finally {
             (client as? Closeable)?.let { runCatching { it.close() } }
         }
+    }
+
+    private class MigrationClient(private val client: PlHttpClient) : PlHttpClient by client, Closeable {
+        override fun close() { (client as? Closeable)?.close() }
     }
 
     private fun ensureRecord(snapshot: PairingGraphSnapshot.Committed): PairingMigrationRecord? = try {

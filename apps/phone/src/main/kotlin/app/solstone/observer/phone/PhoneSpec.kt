@@ -63,17 +63,8 @@ val phoneSpec = FormFactorSpec(
             requestMark = {
                 val asked = (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
                 if (asked != null) {
-                    val direct = stores.publisher.acquireDirectLease()
-                    val relay = if (direct == null) stores.publisher.acquireRelayLease() else null
-                    val opener: (() -> app.solstone.core.pl.PlHttpClient)? = when {
-                        direct != null -> {
-                            { openAuthenticatedClient(PlDirectEndpoint(direct.endpoint.host, direct.endpoint.port), direct.credential) }
-                        }
-                        relay != null -> {
-                            val r = relay as PairingLease.Relay
-                            { openRelaySyncClient(r.relayOrigin, r.instanceId, r.deviceToken, r.credential) }
-                        }
-                        else -> null
+                    val opener: () -> app.solstone.core.pl.PlHttpClient = {
+                        app.solstone.core.pl.openPairingClient(stores.publisher, { lease -> app.solstone.platform.pl.transport.conscrypt.openAuthenticatedLeaseClient(lease) })
                     }
                     stores.journalIdentityCoordinator.onMarkRequested(
                         pairingMatches = { (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing == asked },

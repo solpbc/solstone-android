@@ -52,6 +52,7 @@ class JournalBrowserUpstreamAdapter(
                     home = ident,
                     hasDirectEndpoint = hasEp,
                     directAssociated = hasEp,
+                    directEndpoints = endpointStore.loadAll(),
                     relayLiveEligible = mutator.isRelayLiveEligible(),
                 )
             }
@@ -68,6 +69,7 @@ class JournalBrowserUpstreamAdapter(
                     home = ident,
                     hasDirectEndpoint = true,
                     directAssociated = true,
+                    directEndpoints = endpointStore.loadAll(),
                     relayLiveEligible = mutator.isRelayLiveEligible(),
                 )
                 return PairingLease.Direct(snap, cred, ep)
@@ -89,7 +91,8 @@ class JournalBrowserUpstreamAdapter(
                 return PairingLease.Relay(snap, cred, origin, ident.instanceId, token)
             }
             override fun validateLease(lease: PairingLease): Boolean = true
-            override fun installOrReplace(home: app.solstone.core.model.PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean, provenance: app.solstone.core.identity.PairingProvenance) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun installOrReplace(home: app.solstone.core.model.PairedHome, credential: ClientCredential, directEndpoint: app.solstone.core.model.DirectEndpoint?, isDirectAssociated: Boolean, provenance: app.solstone.core.identity.PairingProvenance, directEndpoints: List<app.solstone.core.model.DirectEndpoint>) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
+            override fun replaceDirectEndpoints(expected: app.solstone.core.identity.PairingGraphSnapshot.Committed, endpoints: List<app.solstone.core.model.DirectEndpoint>) = app.solstone.core.identity.GraphMutationResult.Conflict("unsupported")
             override fun updateRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration, relayOrigin: String, deviceToken: String, expiresAt: String?) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
             override fun revokeRelayAccess(expectedPairing: app.solstone.core.identity.PairingGeneration) = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
             override fun forget() = app.solstone.core.identity.GraphMutationResult.Conflict("compat")
@@ -99,42 +102,26 @@ class JournalBrowserUpstreamAdapter(
         relayClientOpener = relayClientOpener,
     )
 
-    override fun open(): JournalBrowserUpstream {
-        val directLease = publisher.acquireDirectLease()
-        if (directLease != null) {
-            if (!publisher.validateLease(directLease)) throw JournalBrowserIdentityException()
-            return try {
-                val opened = directClientOpener(app.solstone.core.pl.DirectEndpoint(directLease.endpoint.host, directLease.endpoint.port), directLease.credential)
-                if (!publisher.validateLease(directLease)) {
-                    runCatching { opened.close() }
-                    throw JournalBrowserIdentityException()
-                }
-                opened
-            } catch (t: Throwable) {
-                if (isTrustRefusal(t) || classifyOpenerFailure(t) == OpenerFailureKind.TRUST_REFUSAL) {
-                    throw JournalBrowserIdentityException()
-                }
-                throw t
+    override fun open(): JournalBrowserUpstream = try {
+        app.solstone.core.pl.openPairingClient(publisher) { lease ->
+            val upstream = when (lease) {
+                is PairingLease.Direct -> directClientOpener(DirectEndpoint(lease.endpoint.host, lease.endpoint.port), lease.credential)
+                is PairingLease.Relay -> relayClientOpener(lease.relayOrigin, lease.instanceId, lease.deviceToken, lease.credential)
             }
+            RefreshableUpstream(upstream)
+        }.upstream
+    } catch (t: Throwable) {
+        if (isTrustRefusal(t)) throw JournalBrowserIdentityException()
+        throw t
+    }
+
+    private class RefreshableUpstream(val upstream: JournalBrowserUpstream) : app.solstone.core.pl.PlHttpClient, java.io.Closeable {
+        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): app.solstone.core.pl.HttpResponse {
+            val response = upstream.request(method, path, headers, body)
+            require(response.body.size <= maxResponseBytes) { "address response too large" }
+            return app.solstone.core.pl.HttpResponse(response.status, response.headers.toMap(), response.body)
         }
-        val relayLease = publisher.acquireRelayLease()
-        if (relayLease != null) {
-            if (!publisher.validateLease(relayLease)) throw JournalBrowserIdentityException()
-            return try {
-                val opened = relayClientOpener(relayLease.relayOrigin, relayLease.instanceId, relayLease.deviceToken, relayLease.credential)
-                if (!publisher.validateLease(relayLease)) {
-                    runCatching { opened.close() }
-                    throw JournalBrowserIdentityException()
-                }
-                opened
-            } catch (t: Throwable) {
-                if (isTrustRefusal(t) || classifyOpenerFailure(t) == OpenerFailureKind.TRUST_REFUSAL) {
-                    throw JournalBrowserIdentityException()
-                }
-                throw t
-            }
-        }
-        throw JournalBrowserIdentityException()
+        override fun close() = upstream.close()
     }
 
     fun isAccessStillCurrent(): Boolean {

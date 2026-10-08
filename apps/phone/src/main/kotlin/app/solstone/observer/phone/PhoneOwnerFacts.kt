@@ -63,7 +63,7 @@ internal fun phoneJournalFacts(
         // ⚠ The same two words the ongoing notification uses. `running` here against `on` in the
         // shade gave one state word two vocabularies on one device.
         intake = if (intakeRunning) "on" else "off",
-        address = committed?.directEndpoint?.let { displayAddress(it.host, it.port) } ?: "—",
+        address = committed?.directEndpoints?.takeIf { it.isNotEmpty() }?.joinToString("\n") { displayAddress(it.host, it.port) } ?: "—",
         check = check,
     )
 }

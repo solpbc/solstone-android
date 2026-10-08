@@ -41,23 +41,22 @@ fun revokeThisDeviceOnJournal(
         openRelaySyncClient(lease.relayOrigin, lease.instanceId, lease.deviceToken, lease.credential)
     },
 ): JournalRevokeOutcome {
-    val direct = publisher.acquireDirectLease()
-    val relay = if (direct == null) publisher.acquireRelayLease() else null
-    val cid = direct?.snapshot?.home?.clientCertFingerprint
-        ?: relay?.snapshot?.home?.clientCertFingerprint
+    val snapshot = publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
         ?: return JournalRevokeOutcome.UNREACHED
     var client: ConscryptPlHttpClient? = null
     return try {
-        val opened = when {
-            direct != null -> openDirect(
-                DirectEndpoint(direct.endpoint.host, direct.endpoint.port),
-                direct.credential,
-            )
-            else -> openRelay(relay as PairingLease.Relay)
+        val opened = app.solstone.core.pl.openPairingClient(publisher) { lease ->
+            when (lease) {
+                is PairingLease.Direct -> openDirect(DirectEndpoint(lease.endpoint.host, lease.endpoint.port), lease.credential)
+                is PairingLease.Relay -> openRelay(lease)
+            }
         }
         client = opened
-        when (revokeClient(opened, cid)) {
-            // Already gone is the state the owner asked for, so it is not a failure to report.
+        val current = publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+        if (current?.pairing != snapshot.pairing || current.revisions.pairingRevision != snapshot.revisions.pairingRevision) {
+            return JournalRevokeOutcome.UNREACHED
+        }
+        when (revokeClient(opened, snapshot.home.clientCertFingerprint)) {
             ClientRevokeResult.Removed, ClientRevokeResult.NotFound -> JournalRevokeOutcome.REMOVED
             is ClientRevokeResult.Failure -> JournalRevokeOutcome.UNREACHED
         }

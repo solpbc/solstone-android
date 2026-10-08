@@ -27,6 +27,8 @@ sealed interface SyncCredentials {
         val transport: SyncTransport,
         val credential: ClientCredential,
         val identity: PairedHome,
+        val directCandidates: List<DirectEndpoint> = (transport as? SyncTransport.Direct)?.let { listOf(it.endpoint) }.orEmpty(),
+        val pairingSnapshot: PairingGraphSnapshot.Committed? = null,
     ) : SyncCredentials
 
     data class NeedsRepair(val reason: String) : SyncCredentials
@@ -63,12 +65,14 @@ fun recoverSyncCredentials(
     publisher: PairingPublisher,
 ): SyncCredentials {
 
-    val directLease = publisher.acquireDirectLease()
+    val directLease = publisher.acquireDirectLeases().firstOrNull()
     if (directLease != null) {
         return SyncCredentials.Ready(
             transport = SyncTransport.Direct(app.solstone.core.pl.DirectEndpoint(directLease.endpoint.host, directLease.endpoint.port)),
             credential = directLease.credential,
             identity = directLease.snapshot.home,
+            directCandidates = directLease.snapshot.directEndpoints.ifEmpty { listOf(directLease.endpoint) }.map { DirectEndpoint(it.host, it.port) },
+            pairingSnapshot = directLease.snapshot,
         )
     }
     val relayLease = publisher.acquireRelayLease()
@@ -77,6 +81,7 @@ fun recoverSyncCredentials(
             transport = SyncTransport.Relay(relayLease.relayOrigin, relayLease.instanceId, relayLease.deviceToken),
             credential = relayLease.credential,
             identity = relayLease.snapshot.home,
+            pairingSnapshot = relayLease.snapshot,
         )
     }
     return when (val snap = publisher.currentSnapshot()) {

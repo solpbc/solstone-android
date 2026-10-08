@@ -183,6 +183,7 @@ class RealPlStatusProbe(
     private val localDescriptionProvider: (() -> ClientReportedDescription)? = null,
     private val openTransport: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     private val dialEvents: DialEventLog? = null,
+    private val publisher: app.solstone.core.identity.PairingPublisher? = null,
 ) : PlStatusProbe {
     private var wasReachable: Boolean? = null
 
@@ -214,6 +215,7 @@ class RealPlStatusProbe(
             Triple(credentialStore.load(), identityStore.load(), null)
         }
         val (credential, identity, access) = initial
+        val pairingSnapshot = publisher?.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
         if (credential == null && identity == null && endpointStore.load() == null) {
             handleReachabilityTransition(false, null, null)
             return HarnessPlStatus.NotPaired
@@ -252,6 +254,15 @@ class RealPlStatusProbe(
                 val client = recordDial(dialEvents, t) { openClientFor(t, credential) }
                 try {
                     val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+                    if (publisher != null && pairingSnapshot != null && status == 200) {
+                        app.solstone.core.pl.refreshDirectEndpoints(client, publisher, pairingSnapshot, (t as? SyncTransport.Direct)?.endpoint)
+                        publisher.withMutationBoundary {
+                            val current = publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+                            if (t is SyncTransport.Direct && current?.pairing == pairingSnapshot.pairing && current.revisions.pairingRevision == pairingSnapshot.revisions.pairingRevision && !current.directAssociated) {
+                                publisher.associateDirectIfProven(current.pairing, t.endpoint) { true }
+                            }
+                        }
+                    }
                     status to null
                 } finally {
                     (client as? java.io.Closeable)?.close()
@@ -263,6 +274,16 @@ class RealPlStatusProbe(
 
         var (status, failure) = tryTransport(transport)
         var usedTransport = transport
+        if (status == null && transport is SyncTransport.Direct && failure?.let(::classifyOpenerFailure) == OpenerFailureKind.AVAILABILITY) {
+            for (endpoint in endpointStore.loadAll().drop(1)) {
+                val candidate = SyncTransport.Direct(endpoint)
+                val result = tryTransport(candidate)
+                status = result.first
+                failure = result.second
+                usedTransport = candidate
+                if (status != null || failure?.let(::classifyOpenerFailure) != OpenerFailureKind.AVAILABILITY) break
+            }
+        }
 
         // If direct probe encounters availability error and relay is live-eligible, retry once with relay
         if (status == null && failure != null && transport is SyncTransport.Direct && relayLiveEligible) {
@@ -295,7 +316,10 @@ class RealPlStatusProbe(
                     app.solstone.platform.work.currentOptionalTransport(usedTransport, identity, mutator)
                         ?: throw java.io.IOException("missing identity")
                 } else usedTransport
-                openClientFor(currentTransport, credential)
+                if (publisher != null) app.solstone.core.pl.openAddressRefreshingClient(
+                    publisher, PairingGeneration(identity.instanceId, identity.clientCertFingerprint),
+                    (currentTransport as? SyncTransport.Direct)?.endpoint,
+                ) { openClientFor(currentTransport, credential) } else openClientFor(currentTransport, credential)
             }
             return HarnessPlStatus.Reachable(status)
         } else {

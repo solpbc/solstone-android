@@ -8,6 +8,7 @@ import app.solstone.core.identity.StoreInspectResult
 interface EndpointStore {
     fun save(endpoint: DirectEndpoint)
     fun load(): DirectEndpoint?
+    fun loadAll(): List<DirectEndpoint> = listOfNotNull(load())
     fun clear()
     fun inspect(): StoreInspectResult<DirectEndpoint> =
         load()?.let { StoreInspectResult.Ready(it) } ?: StoreInspectResult.Missing

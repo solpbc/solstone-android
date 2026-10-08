@@ -44,6 +44,7 @@ class FakePairingPublisher(
     private val failPublication: Boolean = false,
 ) : PairingPublisher {
     private val seq = AtomicLong(0)
+    private var addresses: List<DirectEndpoint> = emptyList()
     private var pRev = 1L
     private var dRev = 1L
     private var rRev = 1L
@@ -60,6 +61,8 @@ class FakePairingPublisher(
             directAssociated = ep != null,
             relayLiveEligible = home.relayOrigin != null && home.deviceToken != null,
             provenance = pairingProvenance,
+            directEndpoint = addresses.firstOrNull() ?: ep,
+            directEndpoints = addresses.ifEmpty { listOfNotNull(ep) },
         )
     }
 
@@ -71,6 +74,7 @@ class FakePairingPublisher(
         directEndpoint: DirectEndpoint?,
         isDirectAssociated: Boolean,
         provenance: app.solstone.core.identity.PairingProvenance,
+        directEndpoints: List<app.solstone.core.model.DirectEndpoint>,
     ): GraphMutationResult {
         if (failPublication) {
             return GraphMutationResult.PersistenceFailed(java.io.IOException("simulated publisher failure"))
@@ -87,6 +91,7 @@ class FakePairingPublisher(
             } else {
                 endpointStore?.clear()
             }
+            addresses = directEndpoints.toList()
             pairingProvenance = provenance
             pRev++
             dRev++
@@ -106,6 +111,14 @@ class FakePairingPublisher(
         }
     }
 
+    override fun replaceDirectEndpoints(expected: PairingGraphSnapshot.Committed, endpoints: List<DirectEndpoint>): GraphMutationResult {
+        val current = currentSnapshot() as? PairingGraphSnapshot.Committed ?: return GraphMutationResult.Conflict("missing pairing")
+        if (expected.pairing != current.pairing || expected.revisions.pairingRevision != current.revisions.pairingRevision || expected.revisions.directRouteRevision != current.revisions.directRouteRevision || endpoints.isEmpty()) return GraphMutationResult.Conflict("changed")
+        addresses = endpoints.toList()
+        endpoints.first().let { endpointStore?.save(app.solstone.core.pl.DirectEndpoint(it.host, it.port)) }
+        dRev++
+        return GraphMutationResult.Applied(currentSnapshot() as PairingGraphSnapshot.Committed)
+    }
     override fun updateRelayAccess(
         expectedPairing: PairingGeneration,
         relayOrigin: String,
@@ -145,12 +158,14 @@ class FakePairingPublisher(
         identityStore.clear()
         endpointStore?.clear()
         pairingProvenance = PairingProvenance.UNKNOWN_LEGACY
+        addresses = emptyList()
         return GraphMutationResult.Cleared(PairingGraphSnapshot.Absent(seq.incrementAndGet()))
     }
 
     override fun associateDirectIfProven(expectedPairing: PairingGeneration, endpoint: DirectEndpoint, proof: () -> Boolean): Boolean {
         if (!proof()) return false
-        endpointStore?.save(app.solstone.core.pl.DirectEndpoint(endpoint.host, endpoint.port))
+        if (addresses.isEmpty()) addresses = listOf(endpoint)
+        addresses.first().let { endpointStore?.save(app.solstone.core.pl.DirectEndpoint(it.host, it.port)) }
         dRev++
         return true
     }
