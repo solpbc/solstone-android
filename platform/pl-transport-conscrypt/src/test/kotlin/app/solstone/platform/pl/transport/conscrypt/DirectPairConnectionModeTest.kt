@@ -71,7 +71,7 @@ class DirectPairConnectionModeTest {
         assertEquals(0, statusCalls)
         assertEquals(existing, stores.identityStore.load())
         assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
-        assertEquals(DirectEndpoint("10.0.0.9", 7657), stores.endpointStore.load())
+        assertEquals(DirectEndpoint("10.0.0.2", 7657), stores.endpointStore.load())
     }
 
     @Test
