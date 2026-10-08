@@ -14,7 +14,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- forgetting your journal, unpairing your phone, or stopping a pairing at the mark check no longer warns you that your journal may still list your phone. your phone tells your journal when it can, and forgets the journal either way.
+- forgetting your journal, unpairing your phone, or stopping a pairing when the app asks you to confirm your journal's mark no longer warns you that your journal may still list your phone. if your phone can reach your journal right then, it tells it, and it forgets the journal either way.
 
 ### Fixed
 
