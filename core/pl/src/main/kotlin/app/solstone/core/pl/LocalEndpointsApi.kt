@@ -39,7 +39,8 @@ fun refreshDirectEndpoints(
     deliveringAddress: app.solstone.core.model.DirectEndpoint? = null,
     log: (String) -> Unit = { System.err.println(it) },
 ): Boolean {
-    if (deliveringAddress?.host in setOf("127.0.0.1", "::1", "localhost")) return false
+    val loopbackHosts = setOf("127.0.0.1", "::1", "localhost")
+    if (expected.directEndpoints.isNotEmpty() && expected.directEndpoints.all { it.host in loopbackHosts }) return false
     return try {
         val response = client.request("GET", "/app/network/local-endpoints", emptyMap(), null, maxResponseBytes = 64 * 1024)
         if (response.status != 200) {

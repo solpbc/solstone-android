@@ -131,6 +131,15 @@ class FileAddressRefreshTest {
         assertEquals(listOf(loopback), snapshot(graph()).directEndpoints)
     }
 
+    @Test fun mixedLoopbackAndRemoteSetStillRefreshes() {
+        val graph = graph(); val loopback = DirectEndpoint("127.0.0.1", 7657)
+        install(graph, listOf(loopback, a))
+        val connected = client(listOf(c))
+        assertTrue(refreshDirectEndpoints(connected, graph, snapshot(graph), loopback))
+        assertEquals(listOf(c, loopback), snapshot(graph()).directEndpoints)
+        assertEquals(listOf("/app/network/local-endpoints"), connected.paths)
+    }
+
     private class Crash : Error()
     @Test fun deathBeforeCommitRestoresOldSetAndAfterCommitKeepsNewSet() {
         for (step in listOf(DurableTxnStep.STAGING_WRITE, DurableTxnStep.RENAME_REPLACE, DurableTxnStep.READ_BACK, DurableTxnStep.DURABLE_COMMIT_DECISION)) {
