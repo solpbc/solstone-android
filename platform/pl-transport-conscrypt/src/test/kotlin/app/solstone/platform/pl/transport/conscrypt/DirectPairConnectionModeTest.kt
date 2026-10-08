@@ -46,7 +46,7 @@ class DirectPairConnectionModeTest {
     }
 
     @Test
-    fun samePairedInstanceReturnsAlreadyConnectedWithoutOverwritingStores() {
+    fun samePairedInstanceReturnsAdmittedAddressWithoutOverwritingIdentity() {
         val existing = home(instanceId = "same", label = "Existing")
         val stores = Stores(existing, endpoint = DirectEndpoint("10.0.0.9", 7657), credential = credential("old"))
         var statusCalls = 0
@@ -67,7 +67,7 @@ class DirectPairConnectionModeTest {
         )
 
         assertEquals(DirectPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
-        assertEquals(DirectEndpoint("10.0.0.9", 7657), result.endpoint)
+        assertEquals(DirectEndpoint("10.0.0.2", 7657), result.endpoint)
         assertEquals(0, statusCalls)
         assertEquals(existing, stores.identityStore.load())
         assertEquals("old", stores.credentialStore.load()?.privateKeyPem)
