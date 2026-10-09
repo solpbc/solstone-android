@@ -33,6 +33,19 @@ class SupportReportTest {
     }
 
     @Test
+    fun savedReportKeepsTheCompleteAddressSetWithoutChangingTheSupportUrl() {
+        val addresses = "journal.example.test:7657\n[2001:db8::1]:8765\n192.168.4.2:7657"
+        val saved = supportReportFields("2.1.21", "30", "16", "on", "android app", addresses)
+        val fields = saved.split('&').associate { part ->
+            val (key, value) = part.split('=', limit = 2)
+            URLDecoder.decode(key, Charsets.UTF_8.name()) to URLDecoder.decode(value, Charsets.UTF_8.name())
+        }
+        assertEquals(addresses, fields["addresses"])
+        assertFalse(supportReportUrl("2.1.21", "30", "16", "on", "android app").contains("addresses="))
+        assertFalse(supportReportFields(null, null, null, "", "android app", " ").contains("addresses="))
+    }
+
+    @Test
     fun optionalFieldsAreOmittedAndStateIsBounded() {
         val url = supportReportUrl("1", "2", "", "é".repeat(501), "android app\njournal unknown")
         assertFalse(url.contains("os_version="))

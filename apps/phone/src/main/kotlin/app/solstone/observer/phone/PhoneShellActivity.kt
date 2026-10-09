@@ -866,6 +866,7 @@ class PhoneShellActivity : ComponentActivity() {
                         osVersion = facts.osVersion,
                         state = supportState(phoneDefaultDetailStatusOf(statusState)),
                         about = aboutBlock,
+                        addresses = journalFacts.address.takeUnless { it == "—" },
                     )
                     runCatching { problemReportStore.save(body) }
                         .onSuccess { problemReports = it }

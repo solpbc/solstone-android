@@ -227,7 +227,7 @@ fun PhoneTechnicalDetailsPane(
             // below carries the same ground with real events in it.
             PaneFactRow(label = "fingerprint", value = facts.fingerprint)
             PaneRowDivider()
-            // The one saved address this phone dials straight to the journal.
+            // The saved addresses this phone tries before the relay.
             PaneFactRow(label = "address", value = facts.address)
             PaneRowDivider()
             PaneNavRow(label = "check connection", subLine = facts.check, onClick = onCheckConnection)

@@ -19,6 +19,7 @@ fun supportReportFields(
     osVersion: String?,
     state: String,
     about: String,
+    addresses: String? = null,
 ): String {
     val fields = buildList {
         add("report" to "v1")
@@ -29,6 +30,7 @@ fun supportReportFields(
         osVersion?.takeIf(String::isNotBlank)?.let { add("os_version" to it.take(120)) }
         state.takeIf(String::isNotEmpty)?.let { add("state" to it.take(500)) }
         add("about" to about)
+        addresses?.takeIf(String::isNotBlank)?.let { add("addresses" to it) }
     }
     return fields.joinToString("&") { (key, value) ->
         "${formEncode(key)}=${formEncode(value)}"
