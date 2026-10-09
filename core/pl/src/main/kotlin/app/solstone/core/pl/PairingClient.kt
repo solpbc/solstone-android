@@ -18,7 +18,7 @@ fun <T> openPairingClient(
     val candidates = publisher.acquireDirectLeases() + listOfNotNull(publisher.acquireRelayLease())
     var last: IOException? = null
     for (lease in candidates) {
-        if (!publisher.validateLease(lease)) throw IOException("pairing changed")
+        if (!leaseStillAuthorized(publisher, lease)) throw IOException("pairing changed")
         val client = try {
             opener(lease)
         } catch (e: IOException) {
@@ -27,7 +27,7 @@ fun <T> openPairingClient(
             continue
         }
         try {
-            if (!publisher.validateLease(lease)) throw IOException("pairing changed")
+            if (!leaseStillAuthorized(publisher, lease)) throw IOException("pairing changed")
             if (lease is PairingLease.Direct && !lease.snapshot.directAssociated) {
                 if (!publisher.associateDirectIfProven(lease.snapshot.pairing, lease.endpoint) { true }) {
                     throw IOException("direct route association failed")
@@ -40,7 +40,10 @@ fun <T> openPairingClient(
             }
             refreshDirectEndpoints(client, publisher, current, (lease as? PairingLease.Direct)?.endpoint)
             val after = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed
-            if (after == null || after.pairing != current.pairing || after.revisions.pairingRevision != current.revisions.pairingRevision) {
+            if (after == null || after.pairing != current.pairing ||
+                after.revisions.pairingRevision != current.revisions.pairingRevision ||
+                (lease is PairingLease.Relay && !leaseStillAuthorized(publisher, lease))
+            ) {
                 throw IOException("pairing changed")
             }
             return client
@@ -50,6 +53,17 @@ fun <T> openPairingClient(
         }
     }
     throw last ?: IOException("missing endpoint and relay credentials")
+}
+
+/** Relay expiry metadata can renew during dialing without changing authorization. */
+private fun leaseStillAuthorized(publisher: PairingPublisher, lease: PairingLease): Boolean {
+    if (lease !is PairingLease.Relay) return publisher.validateLease(lease)
+    val current = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed ?: return false
+    return current.pairing == lease.snapshot.pairing &&
+        current.revisions.pairingRevision == lease.snapshot.revisions.pairingRevision &&
+        current.isRelayEligible &&
+        current.home.relayOrigin == lease.relayOrigin &&
+        current.home.deviceToken == lease.deviceToken
 }
 
 fun isPairingTrustRefusal(t: Throwable): Boolean {

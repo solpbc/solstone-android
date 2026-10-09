@@ -140,6 +140,54 @@ class FileAddressRefreshTest {
         assertEquals(listOf("/app/network/local-endpoints"), connected.paths)
     }
 
+    @Test fun relayExpiryRenewalDuringDialKeepsAuthenticatedConnection() {
+        val graph = graph(); install(graph, emptyList())
+        val connected = client(emptyList())
+        val opened = openPairingClient(graph) { lease ->
+            val relay = assertIs<PairingLease.Relay>(lease)
+            assertIs<GraphMutationResult.Applied>(graph.updateRelayAccess(
+                relay.snapshot.pairing, relay.relayOrigin, relay.deviceToken, "2031-01-01T00:00:00Z",
+            ))
+            connected
+        }
+        assertSame(connected, opened)
+        assertFalse(connected.closed)
+        assertEquals(200, connected.request("GET", "/app/network/api/identity", emptyMap(), null).status)
+        assertEquals(listOf("/app/network/local-endpoints", "/app/network/api/identity"), connected.paths)
+        connected.close()
+    }
+
+    @Test fun changedRelayTokenDuringDialClosesTheOldConnection() {
+        val graph = graph(); install(graph, emptyList())
+        val connected = client(emptyList())
+        assertFailsWith<java.io.IOException> {
+            openPairingClient(graph) { lease ->
+                val relay = assertIs<PairingLease.Relay>(lease)
+                assertIs<GraphMutationResult.Applied>(graph.updateRelayAccess(
+                    relay.snapshot.pairing, relay.relayOrigin, "token-2", null,
+                ))
+                connected
+            }
+        }
+        assertTrue(connected.closed)
+        assertTrue(connected.paths.isEmpty())
+    }
+
+    @Test fun replacedPairingDuringRelayDialClosesTheOldConnection() {
+        val graph = graph(); install(graph, emptyList())
+        val connected = client(emptyList())
+        assertFailsWith<java.io.IOException> {
+            openPairingClient(graph) { lease ->
+                assertIs<PairingLease.Relay>(lease)
+                assertIs<GraphMutationResult.Cleared>(graph.forget())
+                install(graph, emptyList())
+                connected
+            }
+        }
+        assertTrue(connected.closed)
+        assertTrue(connected.paths.isEmpty())
+    }
+
     private class Crash : Error()
     @Test fun deathBeforeCommitRestoresOldSetAndAfterCommitKeepsNewSet() {
         for (step in listOf(DurableTxnStep.STAGING_WRITE, DurableTxnStep.RENAME_REPLACE, DurableTxnStep.READ_BACK, DurableTxnStep.DURABLE_COMMIT_DECISION)) {
