@@ -38,14 +38,25 @@ fi
 # written list named. Product Kotlin is the honest boundary.
 gated_re='^(apps|formfactor|platform|core|harness|testing)/.*\.(kt|kts)$|/schemas/.*\.json$'
 
-base=""
+base="${DEVICE_GATE_BASE:-}"
 for candidate in origin/main main HEAD~1; do
+  [ -n "$base" ] && break
   if git rev-parse --verify --quiet "$candidate" >/dev/null 2>&1; then
     base=$(git merge-base "$candidate" HEAD 2>/dev/null) && [ -n "$base" ] && break
   fi
 done
 if [ -z "$base" ]; then
   echo "device gate: cannot tell from here — no base revision to diff against."
+  exit 0
+fi
+
+# 🔴 Once a change is pushed, the merge base with origin/main IS HEAD, so the diff is empty and
+# "not owed" would be a confident wrong answer for a change that owed both gates.
+if [ -z "${DEVICE_GATE_BASE:-}" ] && [ "$base" = "$(git rev-parse HEAD)" ] \
+  && [ -z "$(git status --porcelain --untracked-files=normal)" ]; then
+  echo "device gate: cannot tell from here — HEAD is already on origin/main, so there is no"
+  echo "             local change to read. Name the revision before the change:"
+  echo "             DEVICE_GATE_BASE=<rev> sh tools/gate/device-gate-owed.sh"
   exit 0
 fi
 
