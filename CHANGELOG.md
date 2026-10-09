@@ -6,9 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.22] - 2026-10-09
+
 ### Fixed
 
-- your phone now remembers all of your journal's addresses and refreshes them when it connects, so it can find your journal at a new address without pairing again.
+- when you pair, your phone now saves every address your journal offers, and tries each one in turn when it connects. with journal 2.0.38 or later, it also saves your journal's current addresses each time it connects, so it can reach your journal at them later without pairing again.
 
 ## [2.1.21] - 2026-10-08
 
