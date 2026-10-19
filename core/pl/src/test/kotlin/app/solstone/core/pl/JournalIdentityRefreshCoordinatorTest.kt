@@ -272,6 +272,10 @@ class JournalIdentityRefreshCoordinatorTest {
 
         val saved = CountDownLatch(1)
         store.onSave = { saved.countDown() }
+        val generic = CountDownLatch(1)
+        coordinator.addListener {
+            if (it is JournalMarkPresentation.Generic) generic.countDown()
+        }
 
         val client = RoutingFakeClient { _, _ ->
             HttpResponse(200, emptyMap(), """{"committed":false,"instance_id":null,"mark":null}""".toByteArray())
@@ -286,6 +290,8 @@ class JournalIdentityRefreshCoordinatorTest {
         assertTrue(saved.await(5, TimeUnit.SECONDS))
         val record = assertNotNull(store.savedRecord)
         assertNull(record.mark)
+        // Same ordering as the identified case: the save lands before the presentation is published.
+        assertTrue(generic.await(5, TimeUnit.SECONDS))
         assertIs<JournalMarkPresentation.Generic>(coordinator.currentPresentation())
 
         coordinator.close()
