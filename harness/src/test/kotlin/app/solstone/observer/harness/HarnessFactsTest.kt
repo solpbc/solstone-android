@@ -61,6 +61,35 @@ class HarnessFactsTest {
     }
 
     @Test
+    fun aPairingMissingItsCredentialOrRouteNeedsAttentionWhileANeverPairedOneIsOn() {
+        fun diagnostics(credential: Boolean, endpoint: Boolean, relay: Boolean, identity: IdentityState?) =
+            assembleDiagnostics(
+                HarnessFactInputs(
+                    desiredOn = true,
+                    engineRunning = true,
+                    permissionStatus = grantedPermissions(),
+                    fgsHeartbeatFresh = true,
+                    providerEmitting = true,
+                    storageOk = true,
+                    credentialPresent = credential,
+                    endpointPresent = endpoint,
+                    relayOriginPresent = relay,
+                    identityState = identity,
+                    silenced = SilencedFact.NOT_SILENCED,
+                ),
+            )
+        val neverPaired = diagnostics(credential = false, endpoint = false, relay = false, identity = null)
+        assertEquals(SourceState.ON to ReasonCode.NONE, neverPaired.state to neverPaired.reason)
+
+        listOf(
+            diagnostics(credential = false, endpoint = true, relay = false, identity = IdentityState.PAIRED),
+            diagnostics(credential = true, endpoint = false, relay = false, identity = IdentityState.PAIRED),
+        ).forEach { broken ->
+            assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, broken.state to broken.reason)
+        }
+    }
+
+    @Test
     fun sourceConditionsAggregateAndReachDiagnosticsWithoutMergingFreshness() {
         val unknown = sourceRuntimeSnapshotOf(
             engineRunning = true,

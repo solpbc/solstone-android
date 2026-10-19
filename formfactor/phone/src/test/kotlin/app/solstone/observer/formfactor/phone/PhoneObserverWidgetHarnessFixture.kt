@@ -40,7 +40,10 @@ import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.PermissionStatus
 import app.solstone.platform.fgs.PermissionStatusReader
 
-internal class PhoneObserverWidgetHarnessFixture {
+internal class PhoneObserverWidgetHarnessFixture(
+    credentialPresent: Boolean = true,
+    identityState: IdentityState? = IdentityState.PAIRED,
+) {
     private val audio = MutableSourceEngine()
     private val location = MutableSourceEngine()
     private var sourceSnapshot = SourceRuntimeSnapshot(
@@ -62,8 +65,8 @@ internal class PhoneObserverWidgetHarnessFixture {
         evidenceReader = EmptyEvidenceReader,
         bundleExport = BundleExport { HarnessExportResult("", "", 0) },
         endpointStore = PairedEndpointStore,
-        credentialStore = PairedCredentialStore,
-        identityStore = PairedIdentityStore,
+        credentialStore = PairedCredentialStore(credentialPresent),
+        identityStore = PairedIdentityStore(identityState),
         sourceSnapshot = { sourceSnapshot },
         deviceLabel = "phone",
         visibleCaptureAuthority = VisibleCaptureAuthority { true },
@@ -173,18 +176,18 @@ internal class PhoneObserverWidgetHarnessFixture {
         override fun clear() = Unit
     }
 
-    private data object PairedCredentialStore : ClientCredentialStore {
-        private val credential = ClientCredential("private", "cert", listOf("ca"))
+    private class PairedCredentialStore(present: Boolean) : ClientCredentialStore {
+        private val credential = ClientCredential("private", "cert", listOf("ca")).takeIf { present }
 
         override fun save(credential: ClientCredential) = Unit
 
-        override fun load(): ClientCredential = credential
+        override fun load(): ClientCredential? = credential
 
         override fun clear() = Unit
     }
 
-    private data object PairedIdentityStore : IdentityStore {
-        private val home = PairedHome(
+    private class PairedIdentityStore(state: IdentityState?) : IdentityStore {
+        private val home = if (state == null) null else PairedHome(
             instanceId = "home",
             homeLabel = "home",
             relayOrigin = null,
@@ -193,12 +196,12 @@ internal class PhoneObserverWidgetHarnessFixture {
             observerHandle = "phone",
             deviceToken = null,
             expiresAt = null,
-            state = IdentityState.PAIRED,
+            state = state,
         )
 
         override fun save(home: PairedHome) = Unit
 
-        override fun load(): PairedHome = home
+        override fun load(): PairedHome? = home
 
         override fun clear() = Unit
     }

@@ -100,6 +100,7 @@ class DiagnosticsTest {
         val faults = mapOf(
             "permission" to healthy().copy(permissionGranted = false),
             "auth revoked" to healthy().copy(pairing = PairingFact.REVOKED),
+            "pairing incomplete" to healthy().copy(pairing = PairingFact.INCOMPLETE),
             "persistence" to healthy().copy(identityPersistenceOk = false),
             "storage" to healthy().copy(storageOk = false),
             "service killed" to healthy().copy(fgsHeartbeatFresh = false),
@@ -172,6 +173,17 @@ class DiagnosticsTest {
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(unpairedBase.copy(permissionGranted = false)))
         assertEquals(SourceState.OFF to ReasonCode.NONE, reduce(unpairedBase.copy(desiredOn = false)))
         assertEquals(SourceState.READY_TO_SET_UP to ReasonCode.NONE, reduce(unpairedBase.copy(wishExpressed = false)))
+
+        // A pairing whose credential or route is missing is a fault, placed after storage and
+        // before a silent provider.
+        val incompleteBase = healthy().copy(pairing = PairingFact.INCOMPLETE)
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(incompleteBase))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL, reduce(incompleteBase.copy(storageOk = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(incompleteBase.copy(providerEmitting = false)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(incompleteBase.copy(paused = true)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.PERMISSION_REVOKED, reduce(incompleteBase.copy(permissionGranted = false)))
+        assertEquals(SourceState.OFF to ReasonCode.NONE, reduce(incompleteBase.copy(desiredOn = false)))
+        assertEquals(SourceState.READY_TO_SET_UP to ReasonCode.NONE, reduce(incompleteBase.copy(wishExpressed = false)))
     }
 
     @Test
@@ -261,6 +273,10 @@ class DiagnosticsTest {
             SourceState.SETTING_UP to ReasonCode.NONE,
             reduce(neverStarted.copy(pairing = PairingFact.UNPAIRED)),
         )
+        assertEquals(
+            SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED,
+            reduce(neverStarted.copy(pairing = PairingFact.INCOMPLETE)),
+        )
         // Control: the same stale heartbeat WITH start evidence is still a kill.
         assertEquals(
             SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED,
@@ -349,69 +365,39 @@ class DiagnosticsTest {
     @Test
     fun reduceMapsPairingFacts() {
         assertEquals(SourceState.ON to ReasonCode.NONE, reduce(healthy().copy(pairing = PairingFact.UNPAIRED)))
+        assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED, reduce(healthy().copy(pairing = PairingFact.INCOMPLETE)))
         assertEquals(SourceState.NEEDS_ATTENTION to ReasonCode.AUTH_REVOKED, reduce(healthy().copy(pairing = PairingFact.REVOKED)))
     }
 
     @Test
     fun pairingFactOfClassifiesEachCombination() {
-        assertEquals(
-            PairingFact.UNPAIRED,
-            pairingFactOf(credentialPresent = false, endpointPresent = false, relayOriginPresent = false, identityState = null),
-        )
-        assertEquals(
-            PairingFact.REVOKED,
-            pairingFactOf(
-                credentialPresent = true,
-                endpointPresent = false,
-                relayOriginPresent = true,
-                identityState = IdentityState.REVOKED,
-            ),
-        )
-        assertEquals(
-            PairingFact.PAIRED,
-            pairingFactOf(
-                credentialPresent = true,
-                endpointPresent = true,
-                relayOriginPresent = false,
-                identityState = IdentityState.PAIRED,
-            ),
-        )
-        assertEquals(
-            PairingFact.PAIRED,
-            pairingFactOf(
-                credentialPresent = true,
-                endpointPresent = false,
-                relayOriginPresent = true,
-                identityState = IdentityState.PAIRED,
-            ),
-        )
-        assertEquals(
-            PairingFact.UNPAIRED,
-            pairingFactOf(
-                credentialPresent = true,
-                endpointPresent = false,
-                relayOriginPresent = false,
-                identityState = IdentityState.PAIRED,
-            ),
-        )
-        assertEquals(
-            PairingFact.UNPAIRED,
-            pairingFactOf(
-                credentialPresent = false,
-                endpointPresent = true,
-                relayOriginPresent = false,
-                identityState = IdentityState.PAIRED,
-            ),
-        )
-        assertEquals(
-            PairingFact.UNPAIRED,
-            pairingFactOf(
-                credentialPresent = false,
-                endpointPresent = false,
-                relayOriginPresent = false,
-                identityState = IdentityState.UNPAIRED,
-            ),
-        )
+        val bools = listOf(false, true)
+        for (credential in bools) for (endpoint in bools) for (relay in bools) {
+            val usable = credential && (endpoint || relay)
+            val expected = mapOf(
+                null to PairingFact.UNPAIRED,
+                IdentityState.UNPAIRED to PairingFact.UNPAIRED,
+                IdentityState.REVOKED to PairingFact.REVOKED,
+                IdentityState.PAIRED to if (usable) PairingFact.PAIRED else PairingFact.INCOMPLETE,
+            )
+            expected.forEach { (identity, fact) ->
+                assertEquals(
+                    fact,
+                    pairingFactOf(
+                        credentialPresent = credential,
+                        endpointPresent = endpoint,
+                        relayOriginPresent = relay,
+                        identityState = identity,
+                    ),
+                    "identity=$identity credential=$credential endpoint=$endpoint relay=$relay",
+                )
+            }
+        }
+        // Spot checks that do not lean on the rule above.
+        assertEquals(PairingFact.PAIRED, pairingFactOf(true, false, true, IdentityState.PAIRED))
+        assertEquals(PairingFact.INCOMPLETE, pairingFactOf(true, false, false, IdentityState.PAIRED))
+        assertEquals(PairingFact.INCOMPLETE, pairingFactOf(false, true, true, IdentityState.PAIRED))
+        assertEquals(PairingFact.UNPAIRED, pairingFactOf(true, true, true, null))
     }
 
     private fun healthy() = SourceFacts(

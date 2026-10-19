@@ -8,7 +8,16 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceState
 
-enum class PairingFact { UNPAIRED, PAIRED, REVOKED }
+/**
+ * What this device's pairing can do right now.
+ *
+ * ⚠ [UNPAIRED] and [INCOMPLETE] are both "not paired" to anything that only asks whether it can
+ * send, and every such check compares against [PAIRED]. They differ for the reducer: a device that
+ * was never paired is not at fault (what it takes in waits on it until a journal is connected), but
+ * one whose identity says paired while the credential or every route to the journal is missing is
+ * broken, and must not read as healthy.
+ */
+enum class PairingFact { UNPAIRED, INCOMPLETE, PAIRED, REVOKED }
 
 fun pairingFactOf(
     credentialPresent: Boolean,
@@ -19,6 +28,7 @@ fun pairingFactOf(
     when {
         identityState == IdentityState.REVOKED -> PairingFact.REVOKED
         identityState == IdentityState.PAIRED && credentialPresent && (endpointPresent || relayOriginPresent) -> PairingFact.PAIRED
+        identityState == IdentityState.PAIRED -> PairingFact.INCOMPLETE
         else -> PairingFact.UNPAIRED
     }
 
@@ -80,6 +90,9 @@ fun reduce(f: SourceFacts): Pair<SourceState, ReasonCode> =
             SourceState.NEEDS_ATTENTION to ReasonCode.SERVICE_KILLED
         !f.identityPersistenceOk -> SourceState.NEEDS_ATTENTION to ReasonCode.PERSISTENCE_FAILED
         !f.storageOk -> SourceState.NEEDS_ATTENTION to ReasonCode.STORAGE_FULL
+        // ⚠ INCOMPLETE only. A never-paired device is not at fault, so [PairingFact.UNPAIRED] falls
+        // through and reads `on` while what it takes in waits for a journal.
+        f.desiredOn && f.pairing == PairingFact.INCOMPLETE -> SourceState.NEEDS_ATTENTION to ReasonCode.UNPAIRED
         f.desiredOn && f.engineStartIssued && !f.providerEmitting ->
             SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT
         f.desiredOn && f.conditionNeedsAttention -> SourceState.NEEDS_ATTENTION to ReasonCode.PROVIDER_SILENT

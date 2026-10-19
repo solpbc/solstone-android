@@ -201,6 +201,29 @@ class PhoneObserverWidgetModelTest {
     }
 
     @Test
+    fun aPairingMissingItsCredentialNeedsAttentionOnTheWidgetWhileANeverPairedPhoneDoesNot() {
+        val halfPaired = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture(credentialPresent = false)
+                .snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertTrue(halfPaired.needsAttention)
+        assertEquals(ReasonCode.UNPAIRED, halfPaired.reason)
+        assertFalse(halfPaired.audioChecked)
+
+        val neverPaired = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture(credentialPresent = false, identityState = null)
+                .snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status(),
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertFalse(neverPaired.needsAttention)
+        assertEquals(ReasonCode.NONE, neverPaired.reason)
+        assertTrue(neverPaired.audioChecked)
+    }
+
+    @Test
     fun awaitingMarkConfirmationPresentsInWidget() {
         val trueStatus = status(awaitingMarkConfirmation = true)
         val falseStatus = status(awaitingMarkConfirmation = false)
