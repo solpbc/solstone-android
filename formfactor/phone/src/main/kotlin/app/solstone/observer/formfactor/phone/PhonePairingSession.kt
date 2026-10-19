@@ -26,6 +26,12 @@ sealed interface PhonePairingSession {
         val stagedCanonical: String,
         val generation: Long,
         val mismatchFailure: Boolean,
+        /**
+         * The owner said the mark doesn't match and this phone has disconnected. The mark view stays
+         * up to say so and to offer the scanner; nothing is held any more, so a new link or a scan is
+         * welcome here, as it is from [Entry].
+         */
+        val disconnected: Boolean = false,
     ) : PhonePairingSession
 }
 
@@ -79,8 +85,20 @@ fun reducePhonePairing(state: PhonePairingState, event: PhonePairingEvent): Phon
                     ),
                     detachPreview = true,
                 )
-                is PhonePairingSession.Attempting,
-                is PhonePairingSession.Held -> PhonePairingStep(state)
+                is PhonePairingSession.Held -> if (session.disconnected) {
+                    PhonePairingStep(
+                        state = state.copy(
+                            session = PhonePairingSession.Entry(
+                                stagedCanonical = event.acceptance.canonicalHttps,
+                                invalidSubmit = false,
+                                outcome = null,
+                            ),
+                        ),
+                    )
+                } else {
+                    PhonePairingStep(state)
+                }
+                is PhonePairingSession.Attempting -> PhonePairingStep(state)
             }
             PairLinkAcceptance.Rejected -> when (session) {
                 is PhonePairingSession.Closed -> PhonePairingStep(
@@ -101,9 +119,21 @@ fun reducePhonePairing(state: PhonePairingState, event: PhonePairingEvent): Phon
                         ),
                     ),
                 )
-                is PhonePairingSession.Scanning -> PhonePairingStep(state)
-                is PhonePairingSession.Attempting,
-                is PhonePairingSession.Held -> PhonePairingStep(state)
+                is PhonePairingSession.Held -> if (session.disconnected) {
+                    PhonePairingStep(
+                        state = state.copy(
+                            session = PhonePairingSession.Entry(
+                                stagedCanonical = null,
+                                invalidSubmit = true,
+                                outcome = null,
+                            ),
+                        ),
+                    )
+                } else {
+                    PhonePairingStep(state)
+                }
+                is PhonePairingSession.Scanning,
+                is PhonePairingSession.Attempting -> PhonePairingStep(state)
             }
         }
         PhonePairingEvent.OpenScan -> when (session) {
@@ -113,9 +143,15 @@ fun reducePhonePairing(state: PhonePairingState, event: PhonePairingEvent): Phon
             is PhonePairingSession.Entry -> PhonePairingStep(
                 state = state.copy(session = PhonePairingSession.Scanning(stagedCanonical = session.stagedCanonical)),
             )
+            is PhonePairingSession.Held -> if (session.disconnected) {
+                PhonePairingStep(
+                    state = state.copy(session = PhonePairingSession.Scanning(stagedCanonical = null)),
+                )
+            } else {
+                PhonePairingStep(state)
+            }
             is PhonePairingSession.Scanning,
-            is PhonePairingSession.Attempting,
-            is PhonePairingSession.Held -> PhonePairingStep(state)
+            is PhonePairingSession.Attempting -> PhonePairingStep(state)
         }
         PhonePairingEvent.CloseScan -> when (session) {
             is PhonePairingSession.Scanning -> PhonePairingStep(
@@ -211,11 +247,7 @@ fun reducePhonePairing(state: PhonePairingState, event: PhonePairingEvent): Phon
                 if (event.cleared) {
                     PhonePairingStep(
                         state = state.copy(
-                            session = PhonePairingSession.Entry(
-                                stagedCanonical = null,
-                                invalidSubmit = false,
-                                outcome = null,
-                            ),
+                            session = session.copy(mismatchFailure = false, disconnected = true),
                         ),
                     )
                 } else {

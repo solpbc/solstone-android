@@ -461,6 +461,11 @@ internal sealed class PairingPromptShape {
 internal const val PAIRING_CONNECTING_TAG = "pairingConnecting"
 internal const val PAIRING_CONTINUE_ANYWAY_TAG = "pairingContinueAnyway"
 internal const val PAIRING_CANCEL_PAIRING_TAG = "pairingCancelPairing"
+internal const val PAIRING_YES_TAG = "pairingYes"
+internal const val PAIRING_NO_MATCH_TAG = "pairingNoMatch"
+internal const val PAIRING_TRY_AGAIN_TAG = "pairingTryAgain"
+internal const val PAIRING_SCAN_AGAIN_TAG = "pairingScanAgain"
+internal const val PAIRING_GET_HELP_TAG = "pairingGetHelp"
 
 internal fun pairingPromptRequestsMark(
     coordinator: JournalIdentityRefreshCoordinator?,
@@ -582,6 +587,9 @@ fun PairingSuccessMark(
     requestMark: (() -> Long?)? = null,
     currentPairing: () -> PairingGeneration? = { null },
     onHelp: () -> Unit = {},
+    // The scanner, for after a mismatch has already disconnected this phone. `null` where this view
+    // has no scanner to open, and then no `scan again` is offered.
+    onScanAgain: (() -> Unit)? = null,
     cleanupInProgress: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -780,12 +788,12 @@ fun PairingSuccessMark(
                         Button(
                             onClick = onConfirmClick,
                             enabled = shape.primaryEnabled,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_YES_TAG),
                         ) { Text("yes, this is my journal") }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = onDropClick,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_NO_MATCH_TAG),
                         ) { Text("that doesn't match") }
                     }
                 }
@@ -802,12 +810,34 @@ fun PairingSuccessMark(
                 color = bodyColor,
                 textAlign = TextAlign.Center,
             )
-            PairingConfirmation.Mismatched -> Text(
-                "this phone is no longer connected to that journal.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = bodyColor,
-                textAlign = TextAlign.Center,
-            )
+            // ⚠ The only states that offer `scan again` and `get help`. Under the question they were a
+            // third and fourth button, and `scan again` there disconnected exactly as `that doesn't
+            // match` does. Here the pairing is already gone, so `scan again` opens the scanner and
+            // never disconnects a second time.
+            PairingConfirmation.Mismatched -> {
+                Text(
+                    "this phone is no longer connected to that journal.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = bodyColor,
+                    textAlign = TextAlign.Center,
+                )
+                if (onScanAgain != null) {
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = onScanAgain,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag(PAIRING_SCAN_AGAIN_TAG),
+                    ) {
+                        Text("scan again")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                GetHelpButton(onHelp)
+            }
+            // The pairing is still in place, so scanning again cannot help; a retry that keeps
+            // failing still leaves the owner a way to ask.
             PairingConfirmation.Failed -> {
                 Text(
                     "couldn't disconnect this phone. try again.",
@@ -818,31 +848,25 @@ fun PairingSuccessMark(
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = { confirmation = PairingConfirmation.Waiting },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_TRY_AGAIN_TAG),
                 ) { Text("try again") }
+                Spacer(Modifier.height(8.dp))
+                GetHelpButton(onHelp)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onDropClick,
-            enabled = !cleanupInProgress && confirmation != PairingConfirmation.Removing,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("pairingScanAgain"),
-        ) {
-            Text("scan again")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onHelp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("pairingGetHelp"),
-        ) {
-            Text("get help")
-        }
+    }
+}
+
+@Composable
+private fun GetHelpButton(onHelp: () -> Unit) {
+    OutlinedButton(
+        onClick = onHelp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .testTag(PAIRING_GET_HELP_TAG),
+    ) {
+        Text("get help")
     }
 }
 

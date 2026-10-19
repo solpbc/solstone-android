@@ -124,7 +124,10 @@ class PhonePairingActionRuntimeTest {
             release.complete(Unit)
         }
         assertTrue(withTimeout(10_000) { pending.await() })
-        withContext(Dispatchers.Main) { assertTrue(model.pairingState.session is PhonePairingSession.Entry) }
+        withContext(Dispatchers.Main) {
+            val session = model.pairingState.session
+            assertTrue(session is PhonePairingSession.Held && session.disconnected)
+        }
     }
 
     @Test fun delayedConfirmationCompletionCannotDismissLaterHeldJournal() = runBlocking {

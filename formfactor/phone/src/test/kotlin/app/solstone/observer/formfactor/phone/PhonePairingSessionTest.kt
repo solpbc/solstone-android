@@ -240,18 +240,45 @@ class PhonePairingSessionTest {
     }
 
     @Test
-    fun mismatchFinishedClearedReturnsToEntry() {
+    fun mismatchFinishedClearedKeepsTheMarkViewUpAsDisconnected() {
         val held = PhonePairingState(
             session = PhonePairingSession.Held(canonical, 1L, mismatchFailure = false),
             generation = 1L,
         )
         val step = reducePhonePairing(held, PhonePairingEvent.MismatchFinished(1L, cleared = true))
         val session = step.state.session
-        assertTrue(session is PhonePairingSession.Entry)
-        assertNull(session.stagedCanonical)
-        assertFalse(session.invalidSubmit)
-        assertNull(session.outcome)
+        assertTrue(session is PhonePairingSession.Held)
+        assertTrue(session.disconnected)
+        assertFalse(session.mismatchFailure)
         assertEquals(1L, step.state.generation)
+        assertNull(step.dial)
+        assertFalse(step.returnToShell)
+    }
+
+    @Test
+    fun scanAgainAfterADisconnectOpensTheScannerButNotWhilePairingIsHeld() {
+        val stillHeld = PhonePairingState(
+            session = PhonePairingSession.Held(canonical, 1L, mismatchFailure = false),
+            generation = 1L,
+        )
+        assertEquals(stillHeld, reducePhonePairing(stillHeld, PhonePairingEvent.OpenScan).state)
+
+        val disconnected = reducePhonePairing(stillHeld, PhonePairingEvent.MismatchFinished(1L, cleared = true)).state
+        val step = reducePhonePairing(disconnected, PhonePairingEvent.OpenScan)
+        assertEquals(PhonePairingSession.Scanning(stagedCanonical = null), step.state.session)
+        assertNull(step.dial)
+    }
+
+    @Test
+    fun aLinkArrivingAfterADisconnectIsStagedAsFromEntry() {
+        val disconnected = PhonePairingState(
+            session = PhonePairingSession.Held(canonical, 1L, mismatchFailure = false, disconnected = true),
+            generation = 1L,
+        )
+        val staged = reducePhonePairing(disconnected, PhonePairingEvent.Submit(accepted))
+        assertEquals(PhonePairingSession.Entry(canonical, invalidSubmit = false, outcome = null), staged.state.session)
+        val rejected = reducePhonePairing(disconnected, PhonePairingEvent.Submit(PairLinkAcceptance.Rejected))
+        assertEquals(PhonePairingSession.Entry(null, invalidSubmit = true, outcome = null), rejected.state.session)
     }
 
     @Test

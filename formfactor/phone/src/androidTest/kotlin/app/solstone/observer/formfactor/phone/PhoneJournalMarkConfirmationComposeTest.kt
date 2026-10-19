@@ -639,4 +639,176 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         coordinator.close()
     }
+
+    private val answerTags = listOf(
+        PAIRING_YES_TAG,
+        PAIRING_NO_MATCH_TAG,
+        PAIRING_CONTINUE_ANYWAY_TAG,
+        PAIRING_CANCEL_PAIRING_TAG,
+        PAIRING_TRY_AGAIN_TAG,
+        PAIRING_SCAN_AGAIN_TAG,
+        PAIRING_GET_HELP_TAG,
+    )
+
+    private fun assertOnlyButtons(vararg shown: String) {
+        composeRule.waitForIdle()
+        answerTags.forEach { tag ->
+            if (tag in shown) {
+                composeRule.onNodeWithTag(tag).assertExists()
+            } else {
+                composeRule.onNodeWithTag(tag).assertDoesNotExist()
+            }
+        }
+    }
+
+    private fun identifiedCoordinator(): JournalIdentityRefreshCoordinator {
+        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = sampleMark, pairing = pairingP)
+        return JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(StoreInspectResult.Ready(record)),
+            publisher = StubPublisher(committedSnapshot(pairingP)),
+        )
+    }
+
+    @Test
+    fun theMatchQuestionOffersOnlyItsTwoAnswers() {
+        val coordinator = identifiedCoordinator()
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(coordinator = coordinator, currentPairing = { pairingP }, onScanAgain = {})
+            }
+        }
+        assertOnlyButtons(PAIRING_YES_TAG, PAIRING_NO_MATCH_TAG)
+        coordinator.close()
+    }
+
+    @Test
+    fun anUnverifiedMarkOffersOnlyContinueAndCancel() {
+        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = null, pairing = pairingP)
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(StoreInspectResult.Ready(record)),
+            publisher = StubPublisher(committedSnapshot(pairingP)),
+        )
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(coordinator = coordinator, currentPairing = { pairingP }, onScanAgain = {})
+            }
+        }
+        assertOnlyButtons(PAIRING_CONTINUE_ANYWAY_TAG, PAIRING_CANCEL_PAIRING_TAG)
+        coordinator.close()
+    }
+
+    @Test
+    fun connectingOffersNoButtons() {
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(StoreInspectResult.Missing),
+            publisher = StubPublisher(committedSnapshot(pairingP)),
+        )
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    requestMark = { null },
+                    onScanAgain = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
+        assertOnlyButtons()
+        coordinator.close()
+    }
+
+    @Test
+    fun aConfirmedPairingOffersNoButtons() {
+        val coordinator = identifiedCoordinator()
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = { true },
+                    onScanAgain = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag(PAIRING_YES_TAG).performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag(PAIRING_YES_TAG).fetchSemanticsNodes().isEmpty() }
+        assertOnlyButtons()
+        coordinator.close()
+    }
+
+    @Test
+    fun afterAMismatchScanAgainOpensTheScannerWithoutDisconnectingTwice() {
+        val coordinator = identifiedCoordinator()
+        val mismatches = AtomicInteger(0)
+        val scans = AtomicInteger(0)
+        val helps = AtomicInteger(0)
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onMismatch = {
+                        mismatches.incrementAndGet()
+                        PairingMismatchResult.Disconnected
+                    },
+                    onHelp = { helps.incrementAndGet() },
+                    onScanAgain = { scans.incrementAndGet() },
+                )
+            }
+        }
+        composeRule.onNodeWithTag(PAIRING_NO_MATCH_TAG).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_SCAN_AGAIN_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertOnlyButtons(PAIRING_SCAN_AGAIN_TAG, PAIRING_GET_HELP_TAG)
+
+        composeRule.onNodeWithTag(PAIRING_SCAN_AGAIN_TAG).performClick()
+        composeRule.onNodeWithTag(PAIRING_GET_HELP_TAG).performClick()
+        composeRule.waitForIdle()
+        assertEquals(1, mismatches.get())
+        assertEquals(1, scans.get())
+        assertEquals(1, helps.get())
+        coordinator.close()
+    }
+
+    @Test
+    fun afterAMismatchWithNoScannerToOpenOnlyGetHelpIsOffered() {
+        val coordinator = identifiedCoordinator()
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(coordinator = coordinator, currentPairing = { pairingP })
+            }
+        }
+        composeRule.onNodeWithTag(PAIRING_NO_MATCH_TAG).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_GET_HELP_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertOnlyButtons(PAIRING_GET_HELP_TAG)
+        coordinator.close()
+    }
+
+    @Test
+    fun aDisconnectThatFailedOffersTryAgainAndGetHelpButNotScanAgain() {
+        val coordinator = identifiedCoordinator()
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onMismatch = { PairingMismatchResult.LocalFailure },
+                    onScanAgain = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag(PAIRING_NO_MATCH_TAG).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_TRY_AGAIN_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertOnlyButtons(PAIRING_TRY_AGAIN_TAG, PAIRING_GET_HELP_TAG)
+
+        composeRule.onNodeWithTag(PAIRING_TRY_AGAIN_TAG).performClick()
+        assertOnlyButtons(PAIRING_YES_TAG, PAIRING_NO_MATCH_TAG)
+        coordinator.close()
+    }
 }

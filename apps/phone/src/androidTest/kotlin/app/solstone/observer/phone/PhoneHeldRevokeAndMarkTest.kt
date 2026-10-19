@@ -130,11 +130,11 @@ class PhoneHeldRevokeAndMarkTest {
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingScanAgain")).fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isNotEmpty()
             }
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingScanAgain")).fetchSemanticsNodes().isEmpty()
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isEmpty()
             }
             val stores = syncStores(context)
             assertTrue(awaitingMarkConfirmation(JournalConfirmationPolicy.consults, stores.publisher.currentSnapshot(), stores.journalConfirmationStore))
@@ -164,11 +164,11 @@ class PhoneHeldRevokeAndMarkTest {
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use {
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingScanAgain")).fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isNotEmpty()
             }
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingScanAgain")).fetchSemanticsNodes().isEmpty()
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isEmpty()
             }
             val stores = syncStores(context)
             assertTrue(awaitingMarkConfirmation(JournalConfirmationPolicy.consults, stores.publisher.currentSnapshot(), stores.journalConfirmationStore))

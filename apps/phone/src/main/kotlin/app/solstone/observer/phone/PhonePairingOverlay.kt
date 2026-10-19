@@ -122,7 +122,8 @@ internal fun PhonePairingOverlay(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(rememberScrollState())
+                        .testTag("pairingHeld"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     PairingSuccessMark(
@@ -147,6 +148,7 @@ internal fun PhonePairingOverlay(
                         onHelp = {
                             context.openUrl(SUPPORT_SITE_URL)
                         },
+                        onScanAgain = { dispatch(PhonePairingEvent.OpenScan) },
                     )
                 }
             }

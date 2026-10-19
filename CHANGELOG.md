@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- while pairing, the mark check now shows only its two answers. "scan again" and "get help" appear after you say the mark doesn't match, and "scan again" opens the scanner. if this phone's pairing is missing what it needs to reach your journal, the home-screen widget shows "needs attention" again rather than "on".
+
 ## [2.1.26] - 2026-10-18
 
 ### Changed
