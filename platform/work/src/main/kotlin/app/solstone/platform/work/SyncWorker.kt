@@ -346,7 +346,6 @@ private fun sync(
                 }
                 override fun deleteFilesBySegmentId(segmentId: String): Int = 0
                 override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-                override fun deleteFilesBySource(sourceId: String): Int = 0
             },
             log = { message -> workerLog("w", message, null) },
         )

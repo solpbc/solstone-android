@@ -1307,7 +1307,6 @@ class SegmentDrainerTest {
             }
             override fun deleteFilesBySegmentId(segmentId: String): Int = 0
             override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-            override fun deleteFilesBySource(sourceId: String): Int = 0
         }
         val removedDirectories = mutableListOf<Path>()
         var removalCalls = 0
@@ -1900,7 +1899,6 @@ class SegmentDrainerTest {
             }
             override fun deleteFilesBySegmentId(segmentId: String): Int = 0
             override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-            override fun deleteFilesBySource(sourceId: String): Int = 0
         }
         val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
 

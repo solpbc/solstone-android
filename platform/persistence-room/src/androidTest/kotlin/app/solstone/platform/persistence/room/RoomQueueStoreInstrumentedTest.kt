@@ -168,27 +168,6 @@ class RoomQueueStoreInstrumentedTest {
     }
 
     @Test
-    fun deleteSource_removesOnlyTargetSourceFilesAndKeepsSegment() {
-        // One 5-minute segment carrying files from two distinct sources.
-        dao.insertSegmentWithFiles(
-            segment("m", QueueState.SEALED, sealedAt = 100),
-            listOf(
-                file("m", "audio", "sha-audio", name = "audio.m4a"),
-                file("m", "camera", "sha-camera", name = "camera.jpg"),
-            ),
-        )
-
-        val result = store.deleteSource("camera")
-
-        assertEquals("camera", result.sourceId)
-        assertEquals(1, result.deletedFileRows)
-        assertTrue("camera files removed", dao.duplicateBySha256("sha-camera").isEmpty())
-        assertEquals("audio files survive", 1, dao.duplicateBySha256("sha-audio").size)
-        // The segment row itself survives a per-source delete.
-        assertEquals(1, dao.segmentsByDay(DAY).filter { it.id == "m" }.size)
-    }
-
-    @Test
     fun fileBackedDatabase_survivesCloseAndReopen() {
         val name = "reboot-survival-queue.db"
         deleteDatabaseFiles(name)

@@ -124,7 +124,6 @@ class ConfirmedSegmentIdentityTest {
                 segmentIds.forEach { files.remove(it) }
                 return segmentIds.size
             }
-            override fun deleteFilesBySource(sourceId: String): Int = 0
         }
 
         val store = RoomDrainStore(dao)

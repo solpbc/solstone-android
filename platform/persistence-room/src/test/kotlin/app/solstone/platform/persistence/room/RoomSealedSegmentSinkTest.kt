@@ -451,9 +451,6 @@ class RoomSealedSegmentSinkTest {
         override fun advanceState(id: String, event: QueueEvent): QueueState =
             segmentById(id)?.state ?: throw NoSuchElementException(id)
 
-        override fun deleteSource(sourceId: String): app.solstone.core.queue.SourceDeleteResult =
-            app.solstone.core.queue.SourceDeleteResult(sourceId, 0)
-
         override fun segmentState(id: String): QueueState? =
             segmentById(id)?.state
 
@@ -468,12 +465,6 @@ class RoomSealedSegmentSinkTest {
         override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int {
             val before = files.size
             files.removeAll { it.segmentId in segmentIds }
-            return before - files.size
-        }
-
-        override fun deleteFilesBySource(sourceId: String): Int {
-            val before = files.size
-            files.removeAll { it.sourceId == sourceId }
             return before - files.size
         }
     }

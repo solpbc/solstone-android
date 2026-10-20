@@ -589,7 +589,6 @@ class RealSeamsTest {
         override fun updateState(id: String, state: QueueState): Int = 0
         override fun deleteFilesBySegmentId(segmentId: String): Int = 0
         override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-        override fun deleteFilesBySource(sourceId: String): Int = 0
     }
 
     private class TestJournalVersionStore : JournalVersionStore {

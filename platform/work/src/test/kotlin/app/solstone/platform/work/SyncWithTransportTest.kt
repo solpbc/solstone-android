@@ -339,7 +339,6 @@ class SyncWithTransportTest {
             }
             override fun deleteFilesBySegmentId(segmentId: String): Int = 0
             override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-            override fun deleteFilesBySource(sourceId: String): Int = 0
         }
         val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
         val client = RecordingPlHttpClient(statusOk(), uploadRequiredSegments(), ingestAccepted())
@@ -435,7 +434,6 @@ class SyncWithTransportTest {
             }
             override fun deleteFilesBySegmentId(segmentId: String): Int = 0
             override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int = 0
-            override fun deleteFilesBySource(sourceId: String): Int = 0
         }
         val finisher = ConfirmedCopyFinisher(spoolRoot = spool, dao = dao)
         val client = RecordingPlHttpClient(*responses.toTypedArray())

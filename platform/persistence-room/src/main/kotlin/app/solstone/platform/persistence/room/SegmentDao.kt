@@ -10,7 +10,6 @@ import androidx.room.Query
 import androidx.room.Transaction
 import app.solstone.core.model.QueueState
 import app.solstone.core.queue.QueueEvent
-import app.solstone.core.queue.SourceDeleteResult
 import app.solstone.core.queue.transition
 
 @Dao
@@ -92,10 +91,6 @@ abstract class SegmentDao {
         return true
     }
 
-    @Transaction
-    open fun deleteSource(sourceId: String): SourceDeleteResult =
-        SourceDeleteResult(sourceId, deleteFilesBySource(sourceId))
-
     @Query("SELECT state FROM segment WHERE id = :id")
     abstract fun segmentState(id: String): QueueState?
 
@@ -107,7 +102,4 @@ abstract class SegmentDao {
 
     @Query("DELETE FROM segment_file WHERE segment_id IN (:segmentIds)")
     protected abstract fun deleteFilesBySegmentIds(segmentIds: List<String>): Int
-
-    @Query("DELETE FROM segment_file WHERE source_id = :sourceId")
-    protected abstract fun deleteFilesBySource(sourceId: String): Int
 }

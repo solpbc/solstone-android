@@ -6,14 +6,10 @@ package app.solstone.platform.persistence.room
 import app.solstone.core.model.QueueState
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.queue.QueueStore
-import app.solstone.core.queue.SourceDeleteResult
 
 class RoomQueueStore(private val dao: SegmentDao) : QueueStore {
     constructor(database: SolstonePersistenceDatabase) : this(database.segmentDao())
 
     override fun advance(segmentId: String, event: QueueEvent): QueueState =
         dao.advanceState(segmentId, event)
-
-    override fun deleteSource(sourceId: String): SourceDeleteResult =
-        dao.deleteSource(sourceId)
 }
