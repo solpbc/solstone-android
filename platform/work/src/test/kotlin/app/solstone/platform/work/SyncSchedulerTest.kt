@@ -32,6 +32,18 @@ class SyncSchedulerTest {
     private fun info(state: WorkInfo.State) = WorkInfo(UUID.randomUUID(), state, emptySet())
 
     @Test
+    fun aFollowUpRunsAfterARunningOneAndIsNeverDroppedOrDoubled() {
+        // A follow-up asked for while one runs goes after it; a waiting one already covers it.
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, SyncScheduler.followUpWorkPolicy(listOf(info(WorkInfo.State.RUNNING))))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, SyncScheduler.followUpWorkPolicy(null))
+        assertEquals(ExistingWorkPolicy.KEEP, SyncScheduler.followUpWorkPolicy(listOf(info(WorkInfo.State.ENQUEUED))))
+        assertEquals(ExistingWorkPolicy.KEEP, SyncScheduler.followUpWorkPolicy(listOf(info(WorkInfo.State.RUNNING), info(WorkInfo.State.BLOCKED))))
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.followUpWorkPolicy(listOf(info(WorkInfo.State.SUCCEEDED))))
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.followUpWorkPolicy(emptyList()))
+        kotlin.test.assertNotEquals(SyncScheduler.NOW_WORK_NAME, SyncScheduler.FOLLOW_UP_WORK_NAME)
+    }
+
+    @Test
     fun streamInputCarriesStreamType() {
         assertEquals("glasses", SyncScheduler.streamInputData("glasses").getString(SyncScheduler.STREAM_TYPE_KEY))
     }

@@ -20,6 +20,7 @@ object SyncScheduler {
     const val PERIODIC_WORK_NAME = "solstone-sync-periodic"
     const val NOW_WORK_NAME = "solstone-sync-now"
     const val AFTER_CONFIRM_WORK_NAME = "solstone-sync-after-confirm"
+    const val FOLLOW_UP_WORK_NAME = "solstone-sync-follow-up"
     const val STREAM_TYPE_KEY = "stream_type"
     internal val PERIODIC_WORK_POLICY = ExistingPeriodicWorkPolicy.UPDATE
     internal val AFTER_CONFIRM_WORK_POLICY = ExistingWorkPolicy.REPLACE
@@ -63,6 +64,41 @@ object SyncScheduler {
             .build()
         workManager.enqueueUniqueWork(AFTER_CONFIRM_WORK_NAME, AFTER_CONFIRM_WORK_POLICY, request)
     }
+
+    /**
+     * Make sure a sync runs after the current one, for work the current one could not reach: an
+     * import shared while it was running, or more imports than one run takes.
+     *
+     * It has its own unique name, so a running "now" sync cannot swallow it the way KEEP drops
+     * a request made during a run.
+     */
+    fun enqueueFollowUp(context: Context, streamType: String) {
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(networkConstraints())
+            .setInputData(streamInputData(streamType))
+            .build()
+        val existing = workManager.getWorkInfosForUniqueWork(FOLLOW_UP_WORK_NAME)
+        existing.addListener(
+            {
+                val policy = followUpWorkPolicy(runCatching { existing.get() }.getOrNull())
+                workManager.enqueueUniqueWork(FOLLOW_UP_WORK_NAME, policy, request)
+            },
+            Runnable::run,
+        )
+    }
+
+    /**
+     * One waiting follow-up is enough, so a waiting one is kept. A running one is appended to,
+     * so the new follow-up runs after it rather than being dropped. Otherwise it is replaced.
+     */
+    internal fun followUpWorkPolicy(existing: List<WorkInfo>?): ExistingWorkPolicy =
+        when {
+            existing == null -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            existing.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED } -> ExistingWorkPolicy.KEEP
+            existing.any { it.state == WorkInfo.State.RUNNING } -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            else -> ExistingWorkPolicy.REPLACE
+        }
 
     /**
      * A request replaces a sync that is only waiting, and never one that is running.
