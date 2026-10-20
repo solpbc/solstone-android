@@ -30,6 +30,7 @@ internal fun <C> syncWithTransport(
     homeInstanceId: String? = null,
     onRefused: () -> Unit = {},
     onAuthorized: () -> Unit = {},
+    importStage: ((PlHttpClient, () -> Boolean) -> ImportStageResult)? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)
@@ -90,6 +91,16 @@ internal fun <C> syncWithTransport(
                 if (!allowsOwnerMaterial) {
                     return@use SyncOutcome.SUCCESS
                 }
+                // Imports go first: the owner shared them on purpose, and there are few.
+                val imports = importStage?.invoke(c, pairingCurrent)
+                when (imports) {
+                    ImportStageResult.AUTH_STOP -> {
+                        onRefused()
+                        return@use SyncOutcome.FAILURE
+                    }
+                    ImportStageResult.PAIRING_LEFT -> return@use SyncOutcome.RETRY
+                    else -> Unit
+                }
                 val report = drainSegments(
                     store = store,
                     reconcile = SegmentReconciler(c)::diff,
@@ -110,7 +121,11 @@ internal fun <C> syncWithTransport(
                     homeInstanceId = homeInstanceId,
                 )
                 if (report.halted) onRefused()
-                report.workOutcome
+                if (imports == ImportStageResult.RETRY && report.workOutcome == SyncOutcome.SUCCESS) {
+                    SyncOutcome.RETRY
+                } else {
+                    report.workOutcome
+                }
             }
         }
     }

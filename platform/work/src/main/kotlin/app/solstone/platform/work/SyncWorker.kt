@@ -18,6 +18,8 @@ import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.spool.parseManifest
+import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
@@ -303,6 +305,7 @@ private fun sync(
     drainStore: DrainStore? = null,
     customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    customImportStore: ImportCustodyStore? = null,
 ): SyncOutcome {
     val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
     var shouldCloseDb = false
@@ -361,6 +364,13 @@ private fun sync(
         )
         RoomDrainStore(db.segmentDao()) to f
     }
+    val importStore = customImportStore
+        ?: if (drainStore == null && context != null) {
+            ImportCustodyStore(importStoreRoot(context).toPath(), (persistenceDb ?: dbToClose)!!.importDao())
+        } else {
+            null
+        }
+    val importRun = ImportRun()
     val poster = defaultHttpsPoster()
     try {
         val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
@@ -447,6 +457,22 @@ private fun sync(
                         PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
                 },
                 homeInstanceId = credentials.identity.instanceId,
+                importStage = importStore?.let { importCustody ->
+                    { connected, pairingNow ->
+                        val record = stores.journalVersionStore.load()
+                        deliverImports(
+                            http = connected,
+                            store = importCustody,
+                            run = importRun,
+                            instanceId = credentials.identity.instanceId,
+                            journalVersion = record?.version.orEmpty(),
+                            gate = importVersionGate(record, credentials.identity.instanceId, credentials.identity.caChainFingerprint),
+                            pairingCurrent = pairingNow,
+                            now = System::currentTimeMillis,
+                            log = { message, throwable -> workerLog("w", message, throwable) },
+                        )
+                    }
+                },
             )
         }
 
@@ -520,11 +546,28 @@ private fun sync(
         workerLog("e", "sync failed", e)
         return SyncOutcome.FAILURE
     } finally {
+        if (importStore != null) {
+            runCatching {
+                recordImportRetries(importStore, importRun, credentials.identity.instanceId, System.currentTimeMillis())
+                // A clean import stage that left eligible items (the cap, or one shared after the
+                // stage read the queue) asks for a run after this one. A run that retried, was
+                // refused, or never reached the stage leaves that to its own retry.
+                val record = stores.journalVersionStore.load()
+                if (importRun.stageClean && context != null &&
+                    importStore.eligible(credentials.identity.instanceId, record?.version.orEmpty(), System.currentTimeMillis(), 1).isNotEmpty()
+                ) {
+                    SyncScheduler.enqueueFollowUp(context, MAIN_STREAM)
+                }
+            }.onFailure { workerLog("w", "import run bookkeeping failed", it) }
+        }
         if (shouldCloseDb) {
             dbToClose?.close()
         }
     }
 }
+
+/** Where owner-shared imports are kept on the device. */
+fun importStoreRoot(context: Context): File = File(context.filesDir, "import")
 
 private fun openSyncClient(transport: SyncTransport, credential: ClientCredential) =
     when (transport) {
