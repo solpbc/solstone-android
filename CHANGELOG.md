@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- you can now send photos, PDFs, audio and text to your journal: share them from another app, or pick photos and files in import. when you share, nothing is saved until you tap "add to your journal". what you add stays on this device until your journal has it, and import shows what's still here and why. your journal needs version 2.0.52 or later to bring them in. thanks to @dvanduzer for the plan this follows.
+
 ## [2.1.27] - 2026-10-19
 
 ### Changed
