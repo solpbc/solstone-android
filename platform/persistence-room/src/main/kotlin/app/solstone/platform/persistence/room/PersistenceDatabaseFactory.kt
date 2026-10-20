@@ -66,10 +66,21 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `import_item` (`id` TEXT NOT NULL, `payload_kind` TEXT NOT NULL, `display_name` TEXT NOT NULL, `mime` TEXT NOT NULL, `byte_size` INTEGER NOT NULL, `state` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `progress_path` TEXT, `progress_at` INTEGER, `progress_instance_id` TEXT, `backoff_instance_id` TEXT, `attempt_count` INTEGER NOT NULL, `next_attempt_at` INTEGER, `attention_error` TEXT, `attention_reason_code` TEXT, `attention_kind` TEXT, `attention_instance_id` TEXT, `attention_journal_version` TEXT, PRIMARY KEY(`id`))
+            """.trimIndent(),
+        )
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .build()
+

@@ -15,13 +15,15 @@ import app.solstone.core.model.QueueState
         SegmentFileRow::class,
         EventRow::class,
         SyncStateRow::class,
+        ImportItemRow::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)
 abstract class SolstonePersistenceDatabase : RoomDatabase() {
     abstract fun segmentDao(): SegmentDao
+    abstract fun importDao(): ImportDao
 }
 
 class QueueStateConverters {

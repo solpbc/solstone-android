@@ -8,6 +8,7 @@ import app.solstone.core.model.IdentityState
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverForegroundService.ObserverServiceRehydrator
 import app.solstone.platform.fgs.captureForegroundTypesFromTokens
+import app.solstone.platform.persistence.room.startImportCustodyRecover
 import app.solstone.platform.work.JournalConfirmationGrandfather
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.syncStores
@@ -24,6 +25,7 @@ open class ObserverApplication(
         ObserverForegroundService.declaredCaptureForegroundTypes =
             captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes)
         val stores = syncStores(applicationContext)
+        startImportCustodyRecover(applicationContext)
         JournalConfirmationGrandfather.grandfather(stores.publisher, stores.journalConfirmationStore)
         SyncScheduler.enqueuePeriodic(applicationContext, spec.stream)
         if (stores.identityMutator.current()?.state == IdentityState.PAIRED) {

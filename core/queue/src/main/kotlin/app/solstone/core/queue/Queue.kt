@@ -33,3 +33,20 @@ fun classify(httpStatus: Int?, ioError: Boolean): RetryDecision =
         httpStatus in 400..499 -> RetryDecision.HARD_FAIL
         else -> RetryDecision.HARD_FAIL
     }
+
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 60L * MINUTE_MS
+private const val RETRY_BACKOFF_BASE_MS = 15L * MINUTE_MS
+private const val RETRY_BACKOFF_CAP_MS = 4L * HOUR_MS
+private const val HARD_FAIL_BACKOFF_BASE_MS = 2L * HOUR_MS
+private const val HARD_FAIL_BACKOFF_CAP_MS = 6L * HOUR_MS
+
+fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
+    val exponent = (attemptCount - 1).coerceAtLeast(0)
+    return when (decision) {
+        RetryDecision.RETRY -> (RETRY_BACKOFF_BASE_MS shl exponent.coerceAtMost(4)).coerceAtMost(RETRY_BACKOFF_CAP_MS)
+        RetryDecision.HARD_FAIL -> (HARD_FAIL_BACKOFF_BASE_MS shl exponent.coerceAtMost(2)).coerceAtMost(HARD_FAIL_BACKOFF_CAP_MS)
+        RetryDecision.STOP_AUTH -> 0L
+    }
+}
+

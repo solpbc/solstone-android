@@ -19,13 +19,6 @@ import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 
-private const val MINUTE_MS = 60_000L
-private const val HOUR_MS = 60L * MINUTE_MS
-private const val RETRY_BACKOFF_BASE_MS = 15L * MINUTE_MS
-private const val RETRY_BACKOFF_CAP_MS = 4L * HOUR_MS
-private const val HARD_FAIL_BACKOFF_BASE_MS = 2L * HOUR_MS
-private const val HARD_FAIL_BACKOFF_CAP_MS = 6L * HOUR_MS
-
 fun isRetryDue(
     state: QueueState,
     attemptCount: Int,
@@ -55,14 +48,9 @@ fun isRetryDue(
  * more than any waiting segment does, because a run stops at its first auth refusal (the day's
  * listing check meets it before any payload is sent).
  */
-fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
-    val exponent = (attemptCount - 1).coerceAtLeast(0)
-    return when (decision) {
-        RetryDecision.RETRY -> (RETRY_BACKOFF_BASE_MS shl exponent.coerceAtMost(4)).coerceAtMost(RETRY_BACKOFF_CAP_MS)
-        RetryDecision.HARD_FAIL -> (HARD_FAIL_BACKOFF_BASE_MS shl exponent.coerceAtMost(2)).coerceAtMost(HARD_FAIL_BACKOFF_CAP_MS)
-        RetryDecision.STOP_AUTH -> 0L
-    }
-}
+fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long =
+    app.solstone.core.queue.retryBackoffMs(attemptCount, decision)
+
 
 /**
  * The rows a drain takes, while paired with the journal [homeInstanceId].
