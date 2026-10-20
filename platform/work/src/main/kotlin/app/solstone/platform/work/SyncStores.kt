@@ -12,6 +12,8 @@ import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.IdentityStore
 import app.solstone.core.identity.JournalMarkStore
 import app.solstone.core.identity.JournalVersionStore
+import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.identity.JournalVersionRecord
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingPublisher
@@ -247,9 +249,12 @@ private object SyncStoresHolder {
             mutator ?: PublisherIdentityMutatorAdapter(publisher).also { mutator = it }
         }
 
-    fun getJvCoordinator(store: JournalVersionStore): JournalVersionRefreshCoordinator =
+    fun getJvCoordinator(
+        store: JournalVersionStore,
+        onVersionChanged: (JournalVersionRecord) -> Unit = {},
+    ): JournalVersionRefreshCoordinator =
         jvCoordinator ?: synchronized(this) {
-            jvCoordinator ?: JournalVersionRefreshCoordinator(store).also { jvCoordinator = it }
+            jvCoordinator ?: JournalVersionRefreshCoordinator(store, onVersionChanged = onVersionChanged).also { jvCoordinator = it }
         }
 
     fun getRaCoordinator(mutator: IdentityMutator): RelayAccessRefreshCoordinator =
@@ -320,7 +325,11 @@ fun syncStores(context: Context): SyncStores {
         identityStore = identityStore,
         identityMutator = mutator,
         journalVersionStore = journalVersionStore,
-        journalVersionCoordinator = SyncStoresHolder.getJvCoordinator(journalVersionStore),
+        // A new journal version can release imports held for an older one: ask for a run after
+        // the current one, which a running sync can't swallow.
+        journalVersionCoordinator = SyncStoresHolder.getJvCoordinator(journalVersionStore) {
+            SyncScheduler.enqueueFollowUp(context.applicationContext, MAIN_STREAM)
+        },
         relayAccessCoordinator = SyncStoresHolder.getRaCoordinator(mutator),
         journalMarkStore = journalMarkStore,
         journalIdentityCoordinator = SyncStoresHolder.getJiCoordinator(journalMarkStore, graph),

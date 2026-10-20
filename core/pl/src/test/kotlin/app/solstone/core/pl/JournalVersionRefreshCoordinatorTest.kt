@@ -59,6 +59,43 @@ class JournalVersionRefreshCoordinatorTest {
     }
 
     @Test
+    fun aChangedVersionIsReportedOnceAndARepeatedOneNot() {
+        val store = FakeStore()
+        val executor = Executors.newCachedThreadPool()
+        val changes = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val reported = CountDownLatch(3)
+        val coordinator = JournalVersionRefreshCoordinator(store, executor, onVersionChanged = {
+            changes += "${it.instanceId}@${it.version}"
+            reported.countDown()
+        })
+        fun see(instance: String, version: String) {
+            val saved = CountDownLatch(1)
+            store.onSave = { saved.countDown() }
+            coordinator.onUsableConnection(instance, "sha256:ca1", "sha256:cert1") {
+                RoutingFakeClient { method, path, _ ->
+                    if (method == "GET" && path == "/app/network/api/clients/self") {
+                        HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"J","version":"$version"},"reported":{"name":null,"platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
+                    } else {
+                        HttpResponse(404, emptyMap(), ByteArray(0))
+                    }
+                }
+            }
+            assertTrue(saved.await(3, TimeUnit.SECONDS))
+        }
+        see("jid-1", "2.0.51")
+        // Seeing the same version again, with or without its leading v, saves it and reports nothing.
+        see("jid-1", "2.0.51")
+        see("jid-1", "v2.0.51")
+        see("jid-1", "2.0.52")
+        see("jid-2", "2.0.52")
+        // The report follows the save on the job's own thread.
+        assertTrue(reported.await(3, TimeUnit.SECONDS))
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+        assertEquals(listOf("jid-1@2.0.51", "jid-1@2.0.52", "jid-2@2.0.52"), changes.toList())
+    }
+
+    @Test
     fun successfulClientsSelfGetAndPutPersistsNameAndVersion() {
         val store = FakeStore()
         val saved = CountDownLatch(1)

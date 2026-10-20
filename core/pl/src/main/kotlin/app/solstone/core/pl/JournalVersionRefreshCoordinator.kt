@@ -47,6 +47,11 @@ class JournalVersionRefreshCoordinator(
     },
     boundMillis: Long = 15_000L,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Called when a journal's recorded version changes (or is first recorded), never when the
+     * same version is seen again, so work waiting on the version can be asked for once.
+     */
+    private val onVersionChanged: (JournalVersionRecord) -> Unit = {},
 ) : Closeable {
     private val job = CoalescingBoundedJob<MetadataSnapshot>(
         name = "journal-version-refresh",
@@ -183,7 +188,7 @@ class JournalVersionRefreshCoordinator(
             it.instanceId == snap.instanceId && it.caChainFingerprint == snap.caChainFingerprint
         }
         val sameVersion = existing != null && stripVersion(existing.version) == stripVersion(version)
-        store.save(
+        val record =
             JournalVersionRecord(
                 instanceId = snap.instanceId,
                 caChainFingerprint = snap.caChainFingerprint,
@@ -195,8 +200,9 @@ class JournalVersionRefreshCoordinator(
                 build = existing?.takeIf { sameVersion }?.build,
                 versionSeenAt = clock(),
                 hostFactsAt = existing?.takeIf { sameVersion }?.hostFactsAt,
-            ),
-        )
+            )
+        store.save(record)
+        if (!sameVersion) runCatching { onVersionChanged(record) }
         freshForLatestGeneration = true
         acceptedMetadataGeneration = gen
         applyPendingAbout(gen)
