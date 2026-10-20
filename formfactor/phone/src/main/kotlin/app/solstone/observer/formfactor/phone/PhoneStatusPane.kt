@@ -67,6 +67,7 @@ fun PhoneStatusPane(
     onConnectJournal: () -> Unit = {},
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
     onOpenTechnicalDetails: () -> Unit = {},
+    onOpenImport: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
@@ -126,6 +127,7 @@ fun PhoneStatusPane(
                         onConfirmMark = onConfirmMark,
                         journalFacts = journalFacts,
                         onOpenTechnicalDetails = onOpenTechnicalDetails,
+                        onOpenImport = onOpenImport,
                     )
                 } else {
                     PaneLead("not paired")
@@ -136,7 +138,7 @@ fun PhoneStatusPane(
                     ) {
                         Text("connect a journal")
                     }
-                    PhoneStatusWaitingRows(waiting, onOpenSource)
+                    PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
                 }
             }
         }
@@ -151,6 +153,7 @@ internal fun PhonePairedStatusContent(
     onConfirmMark: () -> Unit,
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
     onOpenTechnicalDetails: () -> Unit = {},
+    onOpenImport: (() -> Unit)? = null,
 ) {
     PhonePairedStatusSummary(model, onConfirmMark)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
@@ -162,7 +165,7 @@ internal fun PhonePairedStatusContent(
     ) {
         Text("technical details")
     }
-    PhoneStatusWaitingRows(waiting, onOpenSource)
+    PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
 }
 
 @Composable
@@ -194,8 +197,11 @@ private fun PhonePairedStatusSummary(
     }
 
     val markLine = "waiting for you to confirm your journal's mark"
+    val importsNeedYou = LocalPhoneImport.current.state.recent.needsOwner
     when (summary.lead) {
-        PairedStatusLead.CAUGHT_UP -> PaneLead("all caught up")
+        // Imports that need the owner aren't in the count, so it can read zero while they
+        // wait; that is never "all caught up".
+        PairedStatusLead.CAUGHT_UP -> if (importsNeedYou) PaneLead("imports need you") else PaneLead("all caught up")
         PairedStatusLead.COUNT -> PaneCount(model.pendingCount)
         PairedStatusLead.MARK_LINE -> PaneLead(markLine)
     }
@@ -204,7 +210,7 @@ private fun PhonePairedStatusSummary(
     }
     if (summary.subLine) {
         val subText = when (statusPillKind(model)) {
-            StatusPillKind.CONNECTED -> "everything is in your journal"
+            StatusPillKind.CONNECTED -> if (importsNeedYou) "open import to see why" else "everything is in your journal"
             StatusPillKind.SYNCING -> "syncing to your journal…"
             StatusPillKind.OFFLINE -> "on this device"
             StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
@@ -231,9 +237,38 @@ private fun PhonePairedStatusSummary(
 private fun PhoneStatusWaitingRows(
     waiting: List<SourceStatus>,
     onOpenSource: (String) -> Unit,
+    onOpenImport: (() -> Unit)? = null,
 ) {
-    if (waiting.isEmpty()) return
+    val imports = LocalPhoneImport.current.state
+    if (waiting.isEmpty() && imports.rows.isEmpty()) return
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
+    // Imports still on this device get one row of their own, saying why they wait, and it opens
+    // the import pane: the count includes them, so a row has to account for them.
+    if (imports.rows.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .then(if (onOpenImport != null) Modifier.clickable { onOpenImport() } else Modifier)
+                .testTag("waitingRow-import"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(text = "import", style = MaterialTheme.typography.bodyLarge)
+                Text(text = recentText(imports.recent), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+            }
+            // A chevron only where the row really opens the import pane.
+            if (onOpenImport != null) {
+                Icon(
+                    painter = painterResource(R.drawable.phone_chevron_right),
+                    contentDescription = null,
+                    tint = shellSecondaryInk,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
     // § 2.2: per-source breakdowns live one level down, here. Every
     // waiting row opens that source, so status is a way in.
     waiting.forEach { status ->

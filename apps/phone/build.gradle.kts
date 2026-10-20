@@ -260,6 +260,8 @@ dependencies {
     implementation(project(":platform:identity-file"))
     implementation(project(":platform:pl-transport-conscrypt"))
     implementation(project(":platform:work"))
+    implementation(project(":platform:persistence-room"))
+    implementation(project(":core:observer"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
     implementation("androidx.activity:activity-compose:1.12.4")

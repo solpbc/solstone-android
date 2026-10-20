@@ -8,7 +8,6 @@ import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
-import app.solstone.core.sources.ImportSourceHandler
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
@@ -66,28 +65,6 @@ class FakeContinuousSource(
             silenced = SilencedFact.NOT_SILENCED,
         )
 }
-
-class FakeImportSource(private val emissions: List<SourceEmission>) : ImportSourceHandler {
-    override fun importNow(): List<SourceEmission> = emissions
-}
-
-fun fakeImportEmission(
-    sourceId: String,
-    name: String,
-    captureStartEpochMs: Long,
-    captureEndEpochMs: Long,
-    stream: String = sourceId,
-): SourceEmission =
-    SourceEmission(
-        sourceId = sourceId,
-        stream = stream,
-        sourceKind = SourceKind.IMPORTER,
-        captureStartEpochMs = captureStartEpochMs,
-        captureEndEpochMs = captureEndEpochMs,
-        payloadRefs = listOf(PayloadRef(name, "application/octet-stream", fakePayloadBytes(sourceId, name, 0, 16).size.toLong(), null)),
-        metadata = emptyMap(),
-        gaps = emptyList(),
-    )
 
 fun payloadName(sourceId: String, index: Int): String = "$sourceId-frame-$index.pcm"
 

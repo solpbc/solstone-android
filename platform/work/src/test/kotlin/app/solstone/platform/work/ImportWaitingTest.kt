@@ -21,8 +21,8 @@ class ImportWaitingTest {
         // Unpaired outranks every other input, an unknown version included.
         assertEquals(ImportWaitingReason.UNPAIRED, reason(paired = false, incomplete = true, awaiting = true, refused = true, gate = ImportVersionGate.UNKNOWN, sending = true))
         assertEquals(ImportWaitingReason.AWAITING_CONFIRMATION, reason(awaiting = true, refused = true, gate = ImportVersionGate.TOO_OLD, sending = true))
-        assertEquals(ImportWaitingReason.PAIRING_NEEDS_ATTENTION, reason(refused = true, gate = ImportVersionGate.UNKNOWN, sending = true))
-        assertEquals(ImportWaitingReason.PAIRING_NEEDS_ATTENTION, reason(incomplete = true, gate = ImportVersionGate.TOO_OLD))
+        assertEquals(ImportWaitingReason.PAIRING_REFUSED, reason(incomplete = true, refused = true, gate = ImportVersionGate.UNKNOWN, sending = true))
+        assertEquals(ImportWaitingReason.PAIRING_INCOMPLETE, reason(incomplete = true, gate = ImportVersionGate.TOO_OLD))
         assertEquals(ImportWaitingReason.CHECKING_JOURNAL, reason(gate = ImportVersionGate.UNKNOWN, sending = true))
         assertEquals(ImportWaitingReason.JOURNAL_TOO_OLD, reason(gate = ImportVersionGate.TOO_OLD, sending = true))
         assertEquals(ImportWaitingReason.SENDING, reason(sending = true))

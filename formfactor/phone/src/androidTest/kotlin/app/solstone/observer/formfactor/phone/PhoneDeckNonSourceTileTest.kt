@@ -123,29 +123,15 @@ class PhoneDeckNonSourceTileTest {
     }
 
     @Test
-    fun importPaneShowsApprovedRows() {
+    fun importPanePickersAreActionsAndTheRecentLineIsNot() {
         setScreen(initial = PhoneRoute.Import)
 
-        assertTileTexts("importRow-photos", listOf("photos", "not available"))
-        assertTileTexts("importRow-files", listOf("files", "not available"))
-        assertTileTexts("importRow-recentlyImported", listOf("recently imported", "nothing to show"))
-    }
-
-    @Test
-    fun importPaneRowsAreInformationalRatherThanActions() {
-        setScreen(initial = PhoneRoute.Import)
-
-        listOf("importRow-photos", "importRow-files", "importRow-recentlyImported").forEach { tag ->
+        listOf("importRow-photos", "importRow-files").forEach { tag ->
             val node = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
-            assertFalse("$tag is actionable", node.config.getOrNull(SemanticsActions.OnClick) != null)
+            assertTrue("$tag is not actionable", node.config.getOrNull(SemanticsActions.OnClick) != null)
         }
-    }
-
-    @Test
-    fun unavailableImportPaneDoesNotClaimJournalReceipt() {
-        setScreen(initial = PhoneRoute.Import)
-
-        composeRule.onNodeWithText("in your journal", substring = true).assertDoesNotExist()
+        val recent = composeRule.onNodeWithTag("importRow-recent", useUnmergedTree = true).fetchSemanticsNode()
+        assertFalse("the recent line is actionable", recent.config.getOrNull(SemanticsActions.OnClick) != null)
     }
 
     @Test

@@ -148,9 +148,17 @@ internal fun realImportBacklog(
         val refused = identity != null && (stores.pairingRefusalStore?.refusedFor(
             app.solstone.core.identity.PairingGeneration(identity.instanceId, identity.clientCertFingerprint),
         ) ?: false)
+        // An item another journal refused is going again here, so it counts as waiting and can
+        // still shrink; only attention this journal gave, or a missing copy, needs the owner. A
+        // journal too old to take imports holds every waiting one until the owner updates it, so
+        // those can't shrink on their own either and never read as syncing.
+        val elsewhere = app.solstone.platform.persistence.room.ImportAttentionScope.ELSEWHERE
+        val moving = items.count { it.state == "pending" || it.scope == elsewhere }
+        val needOwner = items.count { it.state == "attention" && it.scope != elsewhere }
+        val held = gate == app.solstone.platform.work.ImportVersionGate.TOO_OLD
         app.solstone.observer.harness.HarnessImportBacklog(
-            pendingCount = items.count { it.state == "pending" },
-            attentionCount = items.count { it.state == "attention" },
+            pendingCount = if (held) 0 else moving,
+            attentionCount = needOwner + if (held) moving else 0,
             pairingIncomplete = pairingFact() == app.solstone.core.diagnostics.PairingFact.INCOMPLETE,
             refused = refused,
             gate = gate,

@@ -17,6 +17,7 @@ app.solstone.observer.phone.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 
 === exported="true" components ===
 activity: app.solstone.observer.phone.PhoneShellActivity [permission: (none)]
+activity: app.solstone.observer.phone.ShareToJournalActivity [permission: (none)]
 receiver: androidx.profileinstaller.ProfileInstallReceiver [permission: android.permission.DUMP]
 receiver: androidx.work.impl.diagnostics.DiagnosticsReceiver [permission: android.permission.DUMP]
 receiver: app.solstone.observer.phone.PhoneObserverWidgetReceiver [permission: (none)]

@@ -95,26 +95,6 @@ class ObserverPipelineTest {
         assertEquals(listOf(gap), sealed.gaps)
     }
 
-    @Test
-    fun importSourcePreservesOriginalEventTimeThroughSegmentAndSpool() {
-        val receiptEpochMs = BASE_CAPTURE_EPOCH_MS + 1_000_000L
-        val captureStart = receiptEpochMs - 600_000L
-        val captureEnd = captureStart + 10_000L
-        val import = FakeImportSource(listOf(fakeImportEmission("import-a", "calendar-item.bin", captureStart, captureEnd)))
-        val segmenter = Segmenter(ZoneId.of("UTC"))
-        val writer = CountingSpoolWriter()
-        val provider = payloadProvider { payload -> ByteArrayInputStream(bytesForPayload(payload)) }
-
-        val segment = import.importNow().flatMap { segmenter.feed(it).sealed } + segmenter.flush().sealed
-        assertEquals(1, segment.size)
-        writer.seal(segment.single(), provider)
-
-        val file = writer.manifests.single().files.single()
-        assertEquals(captureStart, file.captureStartEpochMs)
-        assertEquals(captureEnd, file.captureEndEpochMs)
-        assertTrue(file.captureStartEpochMs < receiptEpochMs)
-    }
-
     private fun runFilePipeline(base: Path): PipelineSnapshot {
         val segmenter = Segmenter(ZoneId.of("UTC"))
         val source = FakeContinuousSource(

@@ -94,6 +94,24 @@ fun intakeName(displayName: String?, mime: String, convertedToJpeg: Boolean = fa
     return if (hasExtension) base else "$base.$wanted"
 }
 
+/**
+ * What shared text is called, on this device and in the journal: its first words, so an owner can
+ * tell one note from another. Text with no words is called `text`.
+ */
+fun intakeTextName(text: String, maxChars: Int = 40): String {
+    val words = text.split(Regex("\\s+")).map { word -> word.filter { it.isLetterOrDigit() || it in "-'" } }.filter { it.isNotEmpty() }
+    val name = StringBuilder()
+    for (word in words) {
+        val next = if (name.isEmpty()) word else " $word"
+        if (name.length + next.length > maxChars) {
+            if (name.isEmpty()) name.append(word.take(maxChars))
+            break
+        }
+        name.append(next)
+    }
+    return name.toString().ifEmpty { "text" }
+}
+
 /** The most an import may be: the journal's limit for one file. */
 const val INTAKE_MAX_BYTES: Long = 4L * 1024 * 1024 * 1024
 

@@ -70,4 +70,12 @@ class ImportIntakeRulesTest {
         assertEquals(4L * 1024 * 1024 * 1024, INTAKE_MAX_BYTES)
         kotlin.test.assertTrue(INTAKE_MIN_FREE_BYTES >= 256L * 1024 * 1024)
     }
+
+    @Test
+    fun sharedTextIsNamedByItsFirstWords() {
+        assertEquals("call the dentist about Tuesday", intakeTextName("  call the dentist\nabout Tuesday!  "))
+        assertEquals("one two", intakeTextName("one two three", maxChars = 7))
+        assertEquals("abcdefghij", intakeTextName("abcdefghijklmnop", maxChars = 10))
+        assertEquals("text", intakeTextName("  ... !!  "))
+    }
 }

@@ -8,8 +8,11 @@ enum class ImportWaitingReason {
     UNPAIRED,
     AWAITING_CONFIRMATION,
 
-    /** The pairing is incomplete, or the journal refused it. */
-    PAIRING_NEEDS_ATTENTION,
+    /** The journal refused this device's pairing, or revoked it. Only pairing again fixes it. */
+    PAIRING_REFUSED,
+
+    /** This device's pairing says paired but its credential or every route to the journal is missing. */
+    PAIRING_INCOMPLETE,
 
     /** No version recorded for this journal yet. */
     CHECKING_JOURNAL,
@@ -38,7 +41,8 @@ fun importWaitingReason(
     when {
         !paired -> ImportWaitingReason.UNPAIRED
         awaitingConfirmation -> ImportWaitingReason.AWAITING_CONFIRMATION
-        pairingIncomplete || refused -> ImportWaitingReason.PAIRING_NEEDS_ATTENTION
+        refused -> ImportWaitingReason.PAIRING_REFUSED
+        pairingIncomplete -> ImportWaitingReason.PAIRING_INCOMPLETE
         gate == ImportVersionGate.UNKNOWN -> ImportWaitingReason.CHECKING_JOURNAL
         gate == ImportVersionGate.TOO_OLD -> ImportWaitingReason.JOURNAL_TOO_OLD
         sending -> ImportWaitingReason.SENDING

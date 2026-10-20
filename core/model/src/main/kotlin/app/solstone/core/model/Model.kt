@@ -3,7 +3,7 @@
 
 package app.solstone.core.model
 
-enum class SourceKind { OBSERVER, IMPORTER, BOTH }
+enum class SourceKind { OBSERVER }
 enum class SourceGroup { EXPERIENCING_ALONGSIDE, BRINGING_IN }
 enum class SourceState { OFF, READY_TO_SET_UP, SETTING_UP, ON, PAUSED, NEEDS_ATTENTION }
 enum class SilencedFact { NOT_SILENCED, SILENCED, UNKNOWN }

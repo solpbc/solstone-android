@@ -22,6 +22,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import app.solstone.observer.formfactor.phone.ScreenToggleAction
+import app.solstone.observer.formfactor.phone.LocalPhoneImport
+import app.solstone.observer.formfactor.phone.PhoneImportActions
+import app.solstone.observer.formfactor.phone.PhoneImportBinding
 import app.solstone.observer.formfactor.phone.screenToggleRoute
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -174,6 +177,66 @@ class PhoneShellActivity : ComponentActivity() {
     private var pushDeliveryUnsubscribe: (() -> Unit)? = null
     @Volatile private var pushFactsStopped = false
     private var repairMemory = JournalPushRepairMemory()
+    private var importBinding by mutableStateOf(PhoneImportBinding())
+    private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
+    private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
+    private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> takePicked(uris) }
+    private val importActions by lazy {
+        PhoneImportActions(
+            onPickPhotos = {
+                pickPhotos.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onPickFiles = { pickFiles.launch(arrayOf("application/pdf", "audio/*", "text/plain")) },
+            onRemove = { id ->
+                importWork.execute {
+                    val change = ImportIntake.get(this).store.remove(id)
+                    importChangeText(change)?.let(::showImportNotice)
+                    refreshImports()
+                }
+            },
+            onRetry = { id ->
+                importWork.execute {
+                    val change = ImportIntake.get(this).store.retry(id)
+                    if (change == app.solstone.platform.persistence.room.ImportChange.DONE) {
+                        app.solstone.platform.work.SyncScheduler.enqueueFollowUp(this, app.solstone.core.sources.MAIN_STREAM)
+                    }
+                    importChangeText(change)?.let(::showImportNotice)
+                    refreshImports()
+                }
+            },
+            onDismissInterrupted = {
+                ImportIntake.get(this).dismissInterrupted()
+                refreshImports()
+            },
+            onIntakeSeen = {
+                ImportIntake.get(this).consumeFinished()
+                refreshImports()
+            },
+        )
+    }
+
+    private fun showImportNotice(text: String) {
+        runOnUiThread { android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT).show() }
+    }
+
+    /** Picking is the owner's own act, so picked items go straight to intake. */
+    private fun takePicked(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
+        val items = uris.map { contentResolver.intakeItemFor(it) }
+        ImportIntake.get(this).submit(items) { refreshImports() }
+        refreshImports()
+    }
+
+    private fun refreshImports() {
+        if (!::container.isInitialized) return
+        importWork.execute {
+            val state = runCatching {
+                readImportPane(ImportIntake.get(this), stores, container.controller.pairingFact(), phoneAwaitingMarkConfirmation(this))
+            }.getOrNull() ?: return@execute
+            runOnUiThread { importBinding = PhoneImportBinding(state, importActions) }
+        }
+    }
+
     private val screenConsentLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -338,6 +401,12 @@ class PhoneShellActivity : ComponentActivity() {
         ).get(SourcesViewModel::class.java)
         statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
         setContent {
+            LaunchedEffect(Unit) {
+                while (true) {
+                    refreshImports()
+                    kotlinx.coroutines.delay(2_000)
+                }
+            }
             val statusState = statusViewModel.statusState
             val snapshot = (statusState as? LoadState.Loaded)?.value
             var pairingSnapshot by remember { mutableStateOf(displayedSnapshot()) }
@@ -796,6 +865,7 @@ class PhoneShellActivity : ComponentActivity() {
                 aboutFacts, snapshot?.status?.journalVersion, aboutSnapshotEpoch,
             )
             Box(Modifier.fillMaxSize()) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalPhoneImport provides importBinding) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
@@ -987,6 +1057,7 @@ class PhoneShellActivity : ComponentActivity() {
                 captureWidthDp = capture.windowWidthDp,
                 technicalDetailsRequest = technicalDetailsRequest,
             )
+            }
             if (pairingOpen) {
                 PhoneTheme {
                 PhonePairingOverlay(

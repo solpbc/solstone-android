@@ -56,11 +56,11 @@ appId: app.solstone.observer.phone
     point: "50%,88%"
 - assertVisible: "import"
 
-# --- import: three availability rows, none of them pretending to be tappable. ---
+# --- import: the photo and file pickers, and the recent line. ---
 - tapOn: "import"
 - assertVisible: "photos"
 - assertVisible: "files"
-- assertVisible: "recently imported"
+- assertVisible: "recent"
 - takeScreenshot: artifacts/hitl/import
 - pressKey: Back
 - assertVisible: "add more"

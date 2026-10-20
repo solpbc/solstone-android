@@ -227,7 +227,7 @@ private fun PhoneDetailContent(
             modifier = modifier,
         )
         PhoneRoute.Licences -> PhoneLicencesPane(modifier = modifier)
-        PhoneRoute.Import -> PhoneImportPane(modifier = modifier)
+        PhoneRoute.Import -> LocalPhoneImport.current.let { PhoneImportPane(modifier = modifier, state = it.state, actions = it.actions) }
         PhoneRoute.AddMore -> PhoneAddMorePane(
             onOpenSource = onOpenSource,
             isOnHome = isOnHome,

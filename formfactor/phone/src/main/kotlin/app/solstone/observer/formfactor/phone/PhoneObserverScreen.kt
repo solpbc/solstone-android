@@ -383,6 +383,10 @@ internal fun PhoneObserverScreen(
                                 paneStates = paneStates.close(PhonePane.STATUS)
                                 detailStack = detailStack.showInDetail(PhoneRoute.TechnicalDetails)
                             },
+                            onOpenImport = {
+                                paneStates = paneStates.close(PhonePane.STATUS)
+                                detailStack = detailStack.showInDetail(PhoneRoute.Import)
+                            },
                         )
                     }
                 }

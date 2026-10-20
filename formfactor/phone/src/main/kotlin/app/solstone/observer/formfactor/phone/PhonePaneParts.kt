@@ -277,39 +277,6 @@ internal fun PaneNote(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/**
- * A row for something the product does not offer here yet.
- *
- * ⛔ Deliberately **non-interactive** — no click semantics, no chevron, no list-item
- * affordance. The import pane established this treatment (`photos` / `not available`)
- * for exactly this reason: directing an owner to tap a row that cannot do anything is
- * worse than saying plainly that it is not there.
- */
-@Composable
-internal fun PaneUnavailableRow(
-    label: String,
-    subLine: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = ShellMetrics.rowMinHeight)
-            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 10.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = shellSecondaryInk,
-        )
-        Text(
-            text = subLine,
-            style = MaterialTheme.typography.bodySmall,
-            color = shellSecondaryInk,
-        )
-    }
-}
-
 const val SUPPORT_SITE_URL = "https://support.solstone.app"
 internal const val SUPPORT_EMAIL = "support@solstone.app"
 internal const val PRIVACY_URL = "https://solpbc.org/privacy"

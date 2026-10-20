@@ -49,10 +49,6 @@ interface SealWindowHoldClient {
     fun bindSealWindowHold(hold: SealWindowHold)
 }
 
-interface ImportSourceHandler {
-    fun importNow(): List<SourceEmission>
-}
-
 data class SourceCondition(
     val desiredOn: Boolean,
     val running: Boolean,

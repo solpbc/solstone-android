@@ -19,4 +19,12 @@
     <style name="PhoneShellTheme" parent="@style/ObserverTheme">
         <item name="android:windowBackground">@color/shell_surface_cream</item>
     </style>
+
+    <!-- The share sheet floats over the sharing app; its card is drawn by the app. -->
+    <style name="ShareToJournalTheme" parent="@android:style/Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+    </style>
 </resources>

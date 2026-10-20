@@ -43,7 +43,7 @@ sealed interface MobileImportOutcome {
 private const val SAVE_PATH = "/app/import/api/save"
 private const val START_PATH = "/app/import/api/start"
 private const val IMPORTED_VIA = "mobile_share"
-private const val GENERIC_REFUSAL = "The journal refused the import."
+private const val GENERIC_REFUSAL = "your journal couldn't accept this."
 private const val HEX_DIGITS = "0123456789abcdef"
 
 class MobileImportClient(private val http: PlHttpClient) {

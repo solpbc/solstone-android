@@ -49,6 +49,32 @@
                     android:path="/p" />
             </intent-filter>
         </activity>
+        <!-- A share to solstone. It runs in the sharing app's task, and nothing is copied until
+             the owner taps to add it, because any app can address it without the chooser. -->
+        <activity
+            android:name=".ShareToJournalActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="add to your journal"
+            android:theme="@style/ShareToJournalTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <service
             android:name="app.solstone.platform.fgs.ObserverForegroundService"
             android:exported="false"
