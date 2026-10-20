@@ -10,7 +10,12 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 sealed interface OpenEnvelopeResult {
-    data class Opened(val title: String, val body: String, val open: String?) : OpenEnvelopeResult
+    data class Opened(
+        val title: String,
+        val body: String,
+        val open: String?,
+        val presentation: Any? = null,
+    ) : OpenEnvelopeResult
     data object BadKey : OpenEnvelopeResult
     data object BadLength : OpenEnvelopeResult
     data object BadVersion : OpenEnvelopeResult
@@ -72,6 +77,7 @@ fun openEnvelope(key: ByteArray, envelope: ByteArray): OpenEnvelopeResult {
     val title = root["title"] as? String ?: return OpenEnvelopeResult.BadPlaintext
     val body = root["body"] as? String ?: return OpenEnvelopeResult.BadPlaintext
     val open = root["open"] as? String
+    val presentation = root["presentation"]
 
-    return OpenEnvelopeResult.Opened(title = title, body = body, open = open)
+    return OpenEnvelopeResult.Opened(title = title, body = body, open = open, presentation = presentation)
 }

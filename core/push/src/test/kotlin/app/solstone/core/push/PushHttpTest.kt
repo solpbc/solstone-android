@@ -221,4 +221,54 @@ class PushHttpTest {
         assertFalse(isAcceptableEndpoint("https://example.com "))
         assertFalse(isAcceptableEndpoint(""))
     }
+
+    @Test
+    fun registerPushOptedInSendsHeader() {
+        val client = FakePlHttpClient { _, _, _, _ ->
+            HttpResponse(200, emptyMap(), ByteArray(0))
+        }
+        val key = ByteArray(32) { 0 }
+        val endpoint = "https://ntfy.sh/upAbC123?up=1"
+        val result = registerPush(client, endpoint, "p", "a", key, pushPresentation = true)
+        assertIs<RegisterPushResult.Registered>(result)
+
+        val req = client.requests.single()
+        assertEquals("POST", req.method)
+        assertEquals("1", req.headers[PUSH_PRESENTATION_HEADER])
+        assertEquals("application/json", req.headers["Content-Type"])
+        assertEquals("application/json", req.headers["Accept"])
+    }
+
+    @Test
+    fun registerPushDefaultOmitsHeader() {
+        val client = FakePlHttpClient { _, _, _, _ ->
+            HttpResponse(200, emptyMap(), ByteArray(0))
+        }
+        val key = ByteArray(32) { 0 }
+        val endpoint = "https://ntfy.sh/upAbC123?up=1"
+        val result = registerPush(client, endpoint, "p", "a", key)
+        assertIs<RegisterPushResult.Registered>(result)
+
+        val req = client.requests.single()
+        assertEquals("POST", req.method)
+        assertFalse(req.headers.containsKey(PUSH_PRESENTATION_HEADER))
+    }
+
+    @Test
+    fun deleteAndVapidOmitPresentationHeader() {
+        val client = FakePlHttpClient { _, _, _, _ ->
+            HttpResponse(204, emptyMap(), ByteArray(0))
+        }
+        deletePushRegistration(client, "https://ntfy.sh/ep")
+        val deleteReq = client.requests.single()
+        assertFalse(deleteReq.headers.containsKey(PUSH_PRESENTATION_HEADER))
+
+        client.requests.clear()
+        client.handler = { _, _, _, _ ->
+            HttpResponse(404, emptyMap(), ByteArray(0))
+        }
+        fetchVapidKey(client)
+        val vapidReq = client.requests.single()
+        assertFalse(vapidReq.headers.containsKey(PUSH_PRESENTATION_HEADER))
+    }
 }

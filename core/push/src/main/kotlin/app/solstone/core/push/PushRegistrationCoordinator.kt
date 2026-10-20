@@ -47,6 +47,7 @@ class PushRegistrationCoordinator(
     },
     boundMillis: Long = 15_000L,
     private val afterPass: () -> Unit = {},
+    private val pushPresentation: Boolean = false,
 ) : Closeable {
     private val lock = Any()
     private val stateFile = File(directory, PushRegistrationFile.FILE_NAME)
@@ -432,6 +433,7 @@ class PushRegistrationCoordinator(
                                 p256dh = endpointToPost.p256dh,
                                 auth = endpointToPost.auth,
                                 pushKey = pushKey,
+                                pushPresentation = pushPresentation,
                             )
 
                             if (snap.pairingNow() != G) {
