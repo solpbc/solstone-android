@@ -1,0 +1,11 @@
+{
+  "authority_repository": "https://github.com/solpbc/solstone-journal",
+  "authority_commit": "d4405f11b0748b067caa273be6a9d8a317757ca5",
+  "contract": "mobile-import-v1",
+  "files": [
+    { "path": "contracts/mobile-import/v1.schema.json", "sha256": "87797f056dda7e4175f9d9d6ead715af6f8ddf7292372b32b5e64d78e59968b0" },
+    { "path": "contracts/mobile-import/v1.vectors.json", "sha256": "1d0df120047a96f847e67631ee22eed659f48a999103c340f8ceb0f073cc6b65" }
+  ],
+  "resources": ["v1.schema.json", "v1.vectors.json"],
+  "owner": "app.solstone.core.observer.MobileImportClient"
+}
