@@ -3,10 +3,10 @@
   "adoption_schema_version": 1,
   "consumer_identifier": "solpbc/solstone-android",
   "authority_repository": "https://github.com/solpbc/spl",
-  "authority_commit": "30ca5a24bf87a30b44f2997d7604c42be3cffc3a",
-  "bundle_semver": "8.0.5",
+  "authority_commit": "6f6559150b118716761342c650b7cb525b533c06",
+  "bundle_semver": "8.0.6",
   "authority_manifest_path": "proto/definition/bundle/manifest.json",
-  "authority_manifest_sha256": "fbed84634f52f8aca1b1185f8b6d76b96a194b5108d665f59fb118c8d6c23cc7",
+  "authority_manifest_sha256": "714a55f4c305937acae6862cbd890a05da9407503d348a0b5f5690e77d350084",
   "bundle_files": [
     {
       "path": "definition.json",
@@ -27,7 +27,12 @@
   ],
   "conformance": {
     "test": "core/crypto/src/test/kotlin/app/solstone/core/crypto/JournalIdentityConformanceTest.kt",
-    "bound_operations": ["parse_pair_link", "derive_jid", "decode_crockford", "derive_relay_key"],
+    "bound_operations": [
+      "parse_pair_link",
+      "derive_jid",
+      "decode_crockford",
+      "derive_relay_key"
+    ],
     "not_implemented": []
   }
 }
