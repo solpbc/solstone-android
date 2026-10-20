@@ -333,6 +333,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithText("yes, this is my journal").performClick()
         composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
 
         assertEquals("sha256:cert-a", confirmStore.confirmedFingerprint)
         assertTrue(confirmedCalled)
@@ -364,6 +365,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
         composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
 
         assertTrue(onYesCalled)
         assertTrue(confirmedCalled)
@@ -395,6 +397,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithText("yes, this is my journal").performClick()
         composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
 
         assertTrue(onYesCalled)
         assertTrue(confirmedCalled)
@@ -434,6 +437,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
         composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
         composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
 
         assertTrue(onYesCalled)
         assertEquals(0, mismatchCount)
