@@ -362,6 +362,7 @@ class JournalBrowserDefaultRouteRelayHostTest {
     fun relayThreeMegabyteUploadWithPingPongBeforeWindow() {
         val serverSocket = fixture.createServerSslServerSocket(0, needClientAuth = false).apply { soTimeout = 15000 }
         val serverDone = CountDownLatch(1)
+        val clientFinished = CountDownLatch(1)
         val peerError = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
         val totalBytes = 3 * 1024 * 1024L // 3145728
 
@@ -457,6 +458,7 @@ class JournalBrowserDefaultRouteRelayHostTest {
                     val resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".toByteArray(Charsets.US_ASCII)
                     muxOut.write(encodeFrame(1, FLAG_DATA or FLAG_CLOSE, resp))
                     muxOut.flush()
+                    assertTrue(clientFinished.await(15, TimeUnit.SECONDS))
                 } finally {
                     sslSocket.close()
                 }
@@ -477,18 +479,21 @@ class JournalBrowserDefaultRouteRelayHostTest {
                 credential = fixture.credential,
             )
 
-            val resp = client.requestStreaming(
-                method = "POST",
-                path = "/relay-upload",
-                headers = emptyMap(),
-                body = body,
-            )
+            try {
+                val resp = client.requestStreaming(
+                    method = "POST",
+                    path = "/relay-upload",
+                    headers = emptyMap(),
+                    body = body,
+                )
 
-            assertEquals(200, resp.status)
-            assertEquals("OK", resp.bodyText())
-            assertEquals(1, bodyCloseCount.get())
-
-            client.close()
+                assertEquals(200, resp.status)
+                assertEquals("OK", resp.bodyText())
+                assertEquals(1, bodyCloseCount.get())
+            } finally {
+                client.close()
+                clientFinished.countDown()
+            }
             assertTrue(serverDone.await(15, TimeUnit.SECONDS))
             peerError.get()?.let { throw it }
         }
