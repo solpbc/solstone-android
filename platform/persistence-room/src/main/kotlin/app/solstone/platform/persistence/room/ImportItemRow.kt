@@ -17,7 +17,7 @@ data class ImportItemRow(
     val state: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "progress_path") val progressPath: String?,
-    @ColumnInfo(name = "progress_at") val progressAt: Long?,
+    @ColumnInfo(name = "progress_timestamp") val progressTimestamp: String?,
     @ColumnInfo(name = "progress_instance_id") val progressInstanceId: String?,
     @ColumnInfo(name = "backoff_instance_id") val backoffInstanceId: String?,
     @ColumnInfo(name = "attempt_count") val attemptCount: Int,
@@ -27,4 +27,12 @@ data class ImportItemRow(
     @ColumnInfo(name = "attention_kind") val attentionKind: String?,
     @ColumnInfo(name = "attention_instance_id") val attentionInstanceId: String?,
     @ColumnInfo(name = "attention_journal_version") val attentionJournalVersion: String?,
+)
+
+/** When an import last reached a journal, and which journal: one row, id 0. */
+@Entity(tableName = "import_delivery")
+data class ImportDeliveryRow(
+    @PrimaryKey val id: Int = 0,
+    @ColumnInfo(name = "last_delivered_at") val lastDeliveredAt: Long,
+    @ColumnInfo(name = "instance_id") val instanceId: String,
 )

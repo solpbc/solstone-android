@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "6f579e81934121ec505212f0ba7490f0",
+    "identityHash": "c89dea9cd00313bc4ea38141cd3a1206",
     "entities": [
       {
         "tableName": "segment",
@@ -255,7 +255,7 @@
       },
       {
         "tableName": "import_item",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `payload_kind` TEXT NOT NULL, `display_name` TEXT NOT NULL, `mime` TEXT NOT NULL, `byte_size` INTEGER NOT NULL, `state` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `progress_path` TEXT, `progress_at` INTEGER, `progress_instance_id` TEXT, `backoff_instance_id` TEXT, `attempt_count` INTEGER NOT NULL, `next_attempt_at` INTEGER, `attention_error` TEXT, `attention_reason_code` TEXT, `attention_kind` TEXT, `attention_instance_id` TEXT, `attention_journal_version` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `payload_kind` TEXT NOT NULL, `display_name` TEXT NOT NULL, `mime` TEXT NOT NULL, `byte_size` INTEGER NOT NULL, `state` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `progress_path` TEXT, `progress_timestamp` TEXT, `progress_instance_id` TEXT, `backoff_instance_id` TEXT, `attempt_count` INTEGER NOT NULL, `next_attempt_at` INTEGER, `attention_error` TEXT, `attention_reason_code` TEXT, `attention_kind` TEXT, `attention_instance_id` TEXT, `attention_journal_version` TEXT, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -306,9 +306,9 @@
             "notNull": false
           },
           {
-            "fieldPath": "progressAt",
-            "columnName": "progress_at",
-            "affinity": "INTEGER",
+            "fieldPath": "progressTimestamp",
+            "columnName": "progress_timestamp",
+            "affinity": "TEXT",
             "notNull": false
           },
           {
@@ -374,12 +374,44 @@
         },
         "indices": [],
         "foreignKeys": []
+      },
+      {
+        "tableName": "import_delivery",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `last_delivered_at` INTEGER NOT NULL, `instance_id` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastDeliveredAt",
+            "columnName": "last_delivered_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instanceId",
+            "columnName": "instance_id",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
       }
     ],
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6f579e81934121ec505212f0ba7490f0')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c89dea9cd00313bc4ea38141cd3a1206')"
     ]
   }
 }

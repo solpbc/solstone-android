@@ -162,7 +162,7 @@ class ImportCustodyStoreInstrumentedTest {
                 val idS = store.begin("file")!!
                 val sizeS = writePayload(rootDir, idS, "saved".toByteArray())
                 assertTrue(store.publish(idS, "saved", "text/plain", sizeS))
-                assertTrue(store.markSaved(idS, "/path/p", 999L, "A"))
+                assertTrue(store.markSaved(idS, "/path/p", "20261019_101500", "A"))
 
                 // 4. Local attention item
                 val idL = store.begin("file")!!

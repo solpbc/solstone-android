@@ -5,6 +5,7 @@ package app.solstone.platform.persistence.room
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 
@@ -24,4 +25,11 @@ interface ImportDao {
 
     @Query("SELECT * FROM import_item ORDER BY created_at ASC, id ASC")
     fun all(): List<ImportItemRow>
+
+    /** The single delivery record is replaced in place; it is not an import row. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun putDelivery(row: ImportDeliveryRow)
+
+    @Query("SELECT * FROM import_delivery WHERE id = 0")
+    fun delivery(): ImportDeliveryRow?
 }

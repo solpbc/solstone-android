@@ -53,6 +53,14 @@ class ImportCustodyStoreTest {
 
         override fun all(): List<ImportItemRow> =
             rows.values.sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
+
+        var delivery: ImportDeliveryRow? = null
+
+        override fun putDelivery(row: ImportDeliveryRow) {
+            delivery = row
+        }
+
+        override fun delivery(): ImportDeliveryRow? = delivery
     }
 
     private fun withTempDir(block: (Path) -> Unit) {
@@ -347,12 +355,12 @@ class ImportCustodyStoreTest {
         val idSaved = store.begin("file")!!
         val sizeSaved = writePayload(root, idSaved)
         assertTrue(store.publish(idSaved, "saved-file", "text/plain", sizeSaved))
-        assertTrue(store.markSaved(idSaved, "/progress/path", 12345L, "A"))
+        assertTrue(store.markSaved(idSaved, "/progress/path", "20261019_101500", "A"))
 
         val candA = store.eligible("A", "2.0.52", now, 10).first { it.id == idSaved }
         assertNotNull(candA.progress)
         assertEquals("/progress/path", candA.progress.path)
-        assertEquals(12345L, candA.progress.timestamp)
+        assertEquals("20261019_101500", candA.progress.timestamp)
 
         val candB = store.eligible("B", "2.0.52", now, 10).first { it.id == idSaved }
         assertNull(candB.progress)
@@ -399,7 +407,7 @@ class ImportCustodyStoreTest {
         val idJournal = store.begin("file")!!
         val sizeJ = writePayload(root, idJournal)
         assertTrue(store.publish(idJournal, "journal-att", "text/plain", sizeJ))
-        assertTrue(store.markSaved(idJournal, "/tmp/p", 999L, "A"))
+        assertTrue(store.markSaved(idJournal, "/tmp/p", "20261019_101500", "A"))
         assertTrue(store.markRetry(idJournal, "A", 1000L))
         assertTrue(store.markAttention(idJournal, "err", "reason", "warn", "A", "2.0.52"))
 
@@ -466,7 +474,7 @@ class ImportCustodyStoreTest {
         assertTrue(store.markDelivered(idP))
         val rowD = dao.byId(idP)!!
         assertEquals("delivered", rowD.state)
-        assertFalse(store.markSaved(idP, "/p", 1L, "A"))
+        assertFalse(store.markSaved(idP, "/p", "20261019_101500", "A"))
         assertEquals(rowD, dao.byId(idP))
     }
 
@@ -638,6 +646,120 @@ class ImportCustodyStoreTest {
         assertNotNull(daoA.byId(idA))
     }
 
+    private fun published(store: ImportCustodyStore, root: Path): String {
+        val id = store.begin("file")!!
+        assertTrue(store.publish(id, "doc-$id", "application/pdf", writePayload(root, id)))
+        return id
+    }
+
+    @Test
+    fun anItemInAnExchangeCannotBeRemovedOrRetriedUntilTheExchangeEnds() = withTempDir { root ->
+        val store = ImportCustodyStore(root = root, dao = InMemoryImportDao())
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.52"))
+        assertTrue(store.isInFlight(id))
+        assertEquals(ImportChange.IN_FLIGHT, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportChange.IN_FLIGHT, store.remove(id))
+        assertEquals(ImportChange.IN_FLIGHT, store.retry(id))
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")))
+        store.endExchange(id)
+        assertFalse(store.isInFlight(id))
+        assertEquals(ImportChange.DONE, store.remove(id))
+        assertFalse(Files.exists(root.resolve(id)))
+        assertEquals(ImportChange.GONE, store.remove(id))
+    }
+
+    @Test
+    fun deliveryEndsTheExchangeAndRecordsWhichJournalHasIt() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 5_000L })
+        val id = published(store, root)
+        assertNull(store.lastDelivery())
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportChange.DONE, store.recordSaved(id, "/imports/x/doc.pdf", "20261019_101500", "A"))
+        assertTrue(store.isInFlight(id), "saving keeps the exchange open for its start")
+        assertEquals(ImportChange.DONE, store.recordDelivered(id, "A"))
+        assertFalse(store.isInFlight(id))
+        assertEquals(ImportLastDelivery(5_000L, "A"), store.lastDelivery())
+        assertEquals(ImportChange.DELIVERED, store.remove(id))
+        assertEquals(ImportChange.DELIVERED, store.retry(id))
+        store.finish()
+        assertEquals(ImportChange.GONE, store.remove(id))
+    }
+
+    @Test
+    fun aVanishedItemIsGoneForEveryRecordAndNothingIsCreated() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao)
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.52"))
+        dao.rows.remove(id)
+        assertEquals(ImportChange.GONE, store.recordSaved(id, "/p", "20261019_101500", "A"))
+        assertEquals(ImportChange.GONE, store.recordDelivered(id, "A"))
+        assertEquals(ImportChange.GONE, store.recordAttention(id, "refused", "import_conflict", null, "A", "2.0.52"))
+        assertEquals(ImportChange.GONE, store.beginExchange(id, "A", "2.0.52"))
+        assertFalse(store.markRetry(id, "A", 1L))
+        assertNull(dao.byId(id))
+        assertFalse(store.isInFlight(id))
+    }
+
+    @Test
+    fun attentionFromAnotherJournalOrVersionGoesAgainButNotFromThisOne() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao)
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportChange.DONE, store.recordAttention(id, "too large", "multipart_part_too_large", null, "A", "2.0.52"))
+        assertEquals(ImportAttentionScope.HERE, store.items("A", "2.0.52").single().scope)
+        assertEquals(ImportChange.REFUSED, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportAttentionScope.ELSEWHERE, store.items("A", "2.0.53").single().scope)
+        assertEquals(ImportAttentionScope.ELSEWHERE, store.items("B", "2.0.52").single().scope)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "B", "2.0.52"))
+        assertEquals("pending", dao.byId(id)!!.state)
+        assertTrue(store.items("B", "2.0.52").single().inFlight)
+    }
+
+    @Test
+    fun aMissingCopyIsLocalAndCanOnlyBeRemoved() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao)
+        val id = published(store, root)
+        root.resolve(id).toFile().deleteRecursively()
+        store.recover()
+        val item = store.items("A", "2.0.52").single()
+        assertEquals(ImportAttentionScope.LOCAL, item.scope)
+        assertEquals(ImportChange.REFUSED, store.retry(id))
+        assertEquals(ImportChange.REFUSED, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportChange.DONE, store.remove(id))
+    }
+
+    @Test
+    fun anInterruptedRemovalLeavesOnlyBytesWhichRecoveryReaps() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        var failRemove = true
+        val real = NioImportDirectoryRemover()
+        val store = ImportCustodyStore(root = root, dao = dao, remover = { dir -> if (failRemove) false else real.remove(dir) })
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.remove(id))
+        assertNull(dao.byId(id))
+        assertTrue(Files.exists(root.resolve(id)))
+        failRemove = false
+        store.recover()
+        assertFalse(Files.exists(root.resolve(id)))
+        assertTrue(store.items("A", "2.0.52").isEmpty(), "no missing-copy item appears for a removed one")
+    }
+
+    @Test
+    fun savedProgressIsReported() = withTempDir { root ->
+        val store = ImportCustodyStore(root = root, dao = InMemoryImportDao())
+        val id = published(store, root)
+        assertFalse(store.items("A", "2.0.52").single().hasSavedProgress)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.52"))
+        assertEquals(ImportChange.DONE, store.recordSaved(id, "/p", "20261019_101500", "A"))
+        store.endExchange(id)
+        assertTrue(store.items("A", "2.0.52").single().hasSavedProgress)
+    }
+
     private fun createRow(
         id: String,
         state: String = "pending",
@@ -652,7 +774,7 @@ class ImportCustodyStoreTest {
             state = state,
             createdAt = createdAt,
             progressPath = null,
-            progressAt = null,
+            progressTimestamp = null,
             progressInstanceId = null,
             backoffInstanceId = null,
             attemptCount = 0,

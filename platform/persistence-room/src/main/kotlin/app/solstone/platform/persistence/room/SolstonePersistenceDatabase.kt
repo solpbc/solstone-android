@@ -16,6 +16,7 @@ import app.solstone.core.model.QueueState
         EventRow::class,
         SyncStateRow::class,
         ImportItemRow::class,
+        ImportDeliveryRow::class,
     ],
     version = 5,
     exportSchema = true,

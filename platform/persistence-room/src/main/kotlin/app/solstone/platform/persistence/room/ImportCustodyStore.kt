@@ -15,7 +15,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
-data class ImportProgress(val path: String, val timestamp: Long)
+data class ImportProgress(val path: String, val timestamp: String)
 data class ImportBackoff(val attemptCount: Int, val nextAttemptAt: Long)
 data class ImportCandidate(val id: String, val progress: ImportProgress?)
 data class ImportHeldItem(
@@ -31,6 +31,52 @@ data class ImportCustodyStatus(
     val attentionCount: Int,
     val attention: List<ImportAttentionFact>,
 )
+/** What a request to change one item did. */
+enum class ImportChange {
+    DONE,
+
+    /** The item is in the middle of a journal exchange; nothing was changed. */
+    IN_FLIGHT,
+
+    /** The journal already has it; nothing was changed. */
+    DELIVERED,
+
+    /** The item isn't in a state this change applies to. */
+    REFUSED,
+
+    /** No such item: it was removed, or finished and deleted after delivery. */
+    GONE,
+}
+
+/** Where an item's attention verdict came from, for what the owner is shown. */
+enum class ImportAttentionScope {
+    /** No verdict. */
+    NONE,
+
+    /** The journal it would go to now refused it, at its current version. */
+    HERE,
+
+    /** Another journal, or an older version of this one, refused it; it is going again. */
+    ELSEWHERE,
+
+    /** The copy on this device is missing. */
+    LOCAL,
+}
+
+data class ImportListItem(
+    val id: String,
+    val displayName: String,
+    val state: String,
+    val error: String?,
+    val reasonCode: String?,
+    val kind: String?,
+    val scope: ImportAttentionScope,
+    val inFlight: Boolean,
+    val hasSavedProgress: Boolean,
+)
+
+data class ImportLastDelivery(val at: Long, val instanceId: String)
+
 data class ImportItemDescriptor(
     val id: String,
     val payloadKind: String,
@@ -70,6 +116,12 @@ internal object ImportRootLock {
 }
 
 private val kindMap = ConcurrentHashMap<String, String>()
+
+/**
+ * Items in the middle of a journal exchange, in process memory: the sync worker and the screens
+ * run in one process, and a process death ends every exchange, so nothing is persisted.
+ */
+private val inFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
 private fun kindKey(root: Path, id: String): String {
     val canonical = ImportRootLock.canonicalKey(root)
@@ -145,7 +197,7 @@ class ImportCustodyStore(
                     state = "pending",
                     createdAt = clock(),
                     progressPath = null,
-                    progressAt = null,
+                    progressTimestamp = null,
                     progressInstanceId = null,
                     backoffInstanceId = null,
                     attemptCount = 0,
@@ -261,7 +313,7 @@ class ImportCustodyStore(
                             attentionInstanceId = null,
                             attentionJournalVersion = null,
                             progressPath = null,
-                            progressAt = null,
+                            progressTimestamp = null,
                             progressInstanceId = null,
                             backoffInstanceId = null,
                             attemptCount = 0,
@@ -276,14 +328,14 @@ class ImportCustodyStore(
             }
         }
 
-    fun markSaved(id: String, path: String, timestamp: Long, instance: String): Boolean {
+    fun markSaved(id: String, path: String, timestamp: String, instance: String): Boolean {
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
         val isPending = row.state == "pending"
         val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
         if (!isPending && !isJournalAttention) return false
         val updated = row.copy(
             progressPath = path,
-            progressAt = timestamp,
+            progressTimestamp = timestamp,
             progressInstanceId = instance,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
@@ -343,7 +395,7 @@ class ImportCustodyStore(
         val updated = row.copy(
             state = "pending",
             progressPath = null,
-            progressAt = null,
+            progressTimestamp = null,
             progressInstanceId = null,
             backoffInstanceId = null,
             attemptCount = 0,
@@ -383,8 +435,8 @@ class ImportCustodyStore(
             }
 
             if (isEligible) {
-                val progress = if (row.progressInstanceId == instance && row.progressPath != null && row.progressAt != null) {
-                    ImportProgress(row.progressPath, row.progressAt)
+                val progress = if (row.progressInstanceId == instance && row.progressPath != null && row.progressTimestamp != null) {
+                    ImportProgress(row.progressPath, row.progressTimestamp)
                 } else {
                     null
                 }
@@ -400,8 +452,8 @@ class ImportCustodyStore(
             .filter { it.state != "delivered" }
             .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
         return rows.map { row ->
-            val progress = if (row.progressInstanceId == instance && row.progressPath != null && row.progressAt != null) {
-                ImportProgress(row.progressPath, row.progressAt)
+            val progress = if (row.progressInstanceId == instance && row.progressPath != null && row.progressTimestamp != null) {
+                ImportProgress(row.progressPath, row.progressTimestamp)
             } else {
                 null
             }
@@ -425,6 +477,143 @@ class ImportCustodyStore(
         }
         return ImportCustodyStatus(pendingCount, attentionCount, attentionFacts)
     }
+
+    /**
+     * Mark [id] as in a journal exchange with [instance], under the store lock. An item whose
+     * attention came from another journal or an older journal version goes back to pending,
+     * since it is now being sent again. Returns [ImportChange.DONE] only when the exchange may go.
+     */
+    fun beginExchange(id: String, instance: String, journalVersion: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            val key = kindKey(root, id)
+            if (key in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state == "delivered") return@withLock ImportChange.DELIVERED
+            val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
+            when {
+                row.state == "pending" -> Unit
+                isJournalAttention && (row.attentionInstanceId != instance || row.attentionJournalVersion != journalVersion) -> {
+                    val reopened = row.copy(
+                        state = "pending",
+                        attentionError = null,
+                        attentionReasonCode = null,
+                        attentionKind = null,
+                        attentionInstanceId = null,
+                        attentionJournalVersion = null,
+                    )
+                    if ((try { dao.update(reopened) } catch (_: Exception) { 0 }) == 0) return@withLock ImportChange.REFUSED
+                }
+                else -> return@withLock ImportChange.REFUSED
+            }
+            inFlight.add(key)
+            ImportChange.DONE
+        }
+
+    /**
+     * Record that the journal staged [id], keeping the exchange open for its start. Under the store
+     * lock, so nothing can land between the answer and the record.
+     */
+    fun recordSaved(id: String, path: String, timestamp: String, instance: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            if (try { dao.byId(id) } catch (_: Exception) { null } == null) {
+                inFlight.remove(kindKey(root, id))
+                return@withLock ImportChange.GONE
+            }
+            if (markSaved(id, path, timestamp, instance)) ImportChange.DONE else ImportChange.REFUSED
+        }
+
+    /**
+     * Record that [id] reached the journal at [instance] and end its exchange, in one hold of the
+     * store lock. The delivery record follows the item's own state; if it alone fails, the item is
+     * still delivered.
+     */
+    fun recordDelivered(id: String, instance: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            try {
+                if (try { dao.byId(id) } catch (_: Exception) { null } == null) return@withLock ImportChange.GONE
+                if (!markDelivered(id)) return@withLock ImportChange.REFUSED
+                runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = clock(), instanceId = instance)) }
+                ImportChange.DONE
+            } finally {
+                inFlight.remove(kindKey(root, id))
+            }
+        }
+
+    /** Record the journal's refusal of [id] and end its exchange, in one hold of the store lock. */
+    fun recordAttention(id: String, error: String, reasonCode: String, kind: String?, instance: String, journalVersion: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            try {
+                if (try { dao.byId(id) } catch (_: Exception) { null } == null) return@withLock ImportChange.GONE
+                if (markAttention(id, error, reasonCode, kind, instance, journalVersion)) ImportChange.DONE else ImportChange.REFUSED
+            } finally {
+                inFlight.remove(kindKey(root, id))
+            }
+        }
+
+    /** End [id]'s exchange without recording anything (a retry, a pairing change, an error). */
+    fun endExchange(id: String) {
+        ImportRootLock.withLock(root) { inFlight.remove(kindKey(root, id)) }
+    }
+
+    /** Whether [id] is in a journal exchange now. */
+    fun isInFlight(id: String): Boolean = kindKey(root, id) in inFlight
+
+    /**
+     * Remove [id] from this device: its row first, then its bytes, so an interrupted removal
+     * leaves only a directory without a row, which [recover] reaps. Refused for an item in an
+     * exchange or one the journal already has.
+     */
+    fun remove(id: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock ImportChange.GONE
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state == "delivered") return@withLock ImportChange.DELIVERED
+            val deleted = try { dao.delete(id) } catch (_: Exception) { 0 }
+            if (deleted == 0) return@withLock ImportChange.REFUSED
+            remover.remove(root.resolve(id))
+            ImportChange.DONE
+        }
+
+    /** The owner's retry of an item the journal refused; refused while it is in an exchange. */
+    fun retry(id: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state == "delivered") return@withLock ImportChange.DELIVERED
+            if (resetAttention(id)) ImportChange.DONE else ImportChange.REFUSED
+        }
+
+    /** Every item still on this device, oldest first, with where its attention came from. */
+    fun items(instance: String?, journalVersion: String?): List<ImportListItem> {
+        val rows = try { dao.all() } catch (_: Exception) { emptyList() }
+            .filter { it.state != "delivered" }
+            .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
+        return rows.map { row ->
+            val journalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
+            val scope = when {
+                row.state != "attention" -> ImportAttentionScope.NONE
+                !journalAttention -> ImportAttentionScope.LOCAL
+                row.attentionInstanceId == instance && row.attentionJournalVersion == journalVersion -> ImportAttentionScope.HERE
+                else -> ImportAttentionScope.ELSEWHERE
+            }
+            ImportListItem(
+                id = row.id,
+                displayName = row.displayName,
+                state = row.state,
+                error = row.attentionError,
+                reasonCode = row.attentionReasonCode,
+                kind = row.attentionKind,
+                scope = scope,
+                inFlight = kindKey(root, row.id) in inFlight,
+                hasSavedProgress = row.progressPath != null && row.progressTimestamp != null,
+            )
+        }
+    }
+
+    /** When an import last reached a journal, and which journal; null when none has. */
+    fun lastDelivery(): ImportLastDelivery? =
+        (try { dao.delivery() } catch (_: Exception) { null })?.let { ImportLastDelivery(it.lastDeliveredAt, it.instanceId) }
 
     fun item(id: String): ImportItemDescriptor? {
         if (isUnsafeId(id)) return null
