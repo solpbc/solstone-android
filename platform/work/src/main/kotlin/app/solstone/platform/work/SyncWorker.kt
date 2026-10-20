@@ -375,8 +375,11 @@ private fun sync(
             if (!pairingMatches || !relayMatches || !accessStillCurrent) {
                 return@transportAttempt if (allowsOwnerMaterial) SyncOutcome.RETRY else SyncOutcome.SUCCESS
             }
+            val runPairing = PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
             syncWithTransport(
                 transport = selectedTransport,
+                onRefused = { stores.pairingRefusalStore?.markRefused(runPairing) },
+                onAuthorized = { stores.pairingRefusalStore?.markAuthorized(runPairing) },
                 openClient = {
                     if (customOpenClient != null) {
                         toCloseableClient(customOpenClient(selectedTransport, credentials.credential))

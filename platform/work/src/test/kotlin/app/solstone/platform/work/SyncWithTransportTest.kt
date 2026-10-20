@@ -33,6 +33,79 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SyncWithTransportTest {
+    private class Signals {
+        var refused = 0
+        var authorized = 0
+    }
+
+    private fun signalsFor(openClient: () -> RecordingPlHttpClient, allowsOwnerMaterial: Boolean = false): Pair<SyncOutcome, Signals> {
+        val signals = Signals()
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { openClient() },
+            store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a")))),
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+            finisher = dummyFinisher(),
+            allowsOwnerMaterial = allowsOwnerMaterial,
+            onRefused = { signals.refused++ },
+            onAuthorized = { signals.authorized++ },
+        )
+        return outcome to signals
+    }
+
+    @Test
+    fun aStatusProbe401Or403MarksThePairingRefused() {
+        listOf(401, 403).forEach { status ->
+            val (outcome, signals) = signalsFor({ RecordingPlHttpClient(HttpResponse(status, emptyMap(), ByteArray(0))) })
+            assertEquals(SyncOutcome.RETRY, outcome)
+            assertEquals(1, signals.refused)
+            assertEquals(0, signals.authorized)
+        }
+    }
+
+    @Test
+    fun anAcceptedStatusProbeMarksThePairingAuthorized() {
+        val (_, signals) = signalsFor({ RecordingPlHttpClient(statusOk()) })
+        assertEquals(1, signals.authorized)
+        assertEquals(0, signals.refused)
+    }
+
+    @Test
+    fun aTrustRefusalMarksThePairingRefusedAndAnUnreachableJournalSaysNothing() {
+        val (trust, trustSignals) = signalsFor({ throw javax.net.ssl.SSLPeerUnverifiedException("bad cert") })
+        assertEquals(SyncOutcome.FAILURE, trust)
+        assertEquals(1, trustSignals.refused)
+
+        val (offline, offlineSignals) = signalsFor({ throw java.net.ConnectException("connection refused") })
+        assertEquals(SyncOutcome.RETRY, offline)
+        assertEquals(0, offlineSignals.refused)
+        assertEquals(0, offlineSignals.authorized)
+
+        val (busy, busySignals) = signalsFor({ RecordingPlHttpClient(HttpResponse(503, emptyMap(), ByteArray(0))) })
+        assertEquals(SyncOutcome.RETRY, busy)
+        assertEquals(0, busySignals.refused)
+        assertEquals(0, busySignals.authorized)
+    }
+
+    @Test
+    fun aSendRefusedForAuthMarksThePairingRefused() {
+        val (outcome, signals) = signalsFor(
+            {
+                RecordingPlHttpClient(
+                    statusOk(),
+                    uploadRequiredSegments(),
+                    HttpResponse(403, emptyMap(), "not authorized".toByteArray()),
+                )
+            },
+            allowsOwnerMaterial = true,
+        )
+        assertEquals(SyncOutcome.FAILURE, outcome)
+        assertEquals(1, signals.refused)
+    }
+
     @Test
     fun pairedTransportDrainsWithoutLegacyRegistrationHealthOrObserverHandleHeader() {
         transports.forEach { transport ->

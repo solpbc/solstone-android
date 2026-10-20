@@ -29,6 +29,8 @@ data class DrainReport(
     val cleanDrain: Boolean,
     val failedThisRun: Boolean,
     val lastErrorReason: String?,
+    /** The drain stopped because the journal refused this pairing (401/403). */
+    val halted: Boolean = false,
 )
 
 fun advanceLastSuccess(prior: Long?, cleanDrain: Boolean, now: Long): Long? =
@@ -233,7 +235,7 @@ internal fun drainSegments(
     }
     val lastSuccessAt = advanceLastSuccess(priorLastSuccessAt, cleanDrain, now())
     store.upsertSyncState(nextSyncState(pendingAfter, lastSuccessAt, lastFailureAt))
-    return DrainReport(workOutcome, cleanDrain, failedThisRun, lastErrorReason)
+    return DrainReport(workOutcome, cleanDrain, failedThisRun, lastErrorReason, halted = halted)
 }
 
 private fun drainActionId(action: DrainAction): String =

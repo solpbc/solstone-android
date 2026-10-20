@@ -28,6 +28,8 @@ internal fun <C> syncWithTransport(
     allowsOwnerMaterial: Boolean,
     pairingCurrent: () -> Boolean = { true },
     homeInstanceId: String? = null,
+    onRefused: () -> Unit = {},
+    onAuthorized: () -> Unit = {},
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val client = try {
         openClient(transport)
@@ -37,6 +39,7 @@ internal fun <C> syncWithTransport(
         when (classifyOpenerFailure(t)) {
             OpenerFailureKind.TRUST_REFUSAL -> {
                 log("trust refusal opening client", t)
+                onRefused()
                 return SyncOutcome.FAILURE
             }
             OpenerFailureKind.AVAILABILITY -> {
@@ -58,6 +61,7 @@ internal fun <C> syncWithTransport(
             when (classifyOpenerFailure(t)) {
                 OpenerFailureKind.TRUST_REFUSAL -> {
                     log("trust refusal on status probe", t)
+                    onRefused()
                     return@use SyncOutcome.FAILURE
                 }
                 OpenerFailureKind.AVAILABILITY -> {
@@ -69,6 +73,12 @@ internal fun <C> syncWithTransport(
                     return@use SyncOutcome.FAILURE
                 }
             }
+        }
+        // The journal answered: 200 says this pairing is accepted, 401/403 that it is refused.
+        // Any other answer, or none, says nothing about the pairing either way.
+        when (status) {
+            200 -> onAuthorized()
+            401, 403 -> onRefused()
         }
         if (status == 200) {
             onUsableConnection?.invoke(client)
@@ -99,6 +109,7 @@ internal fun <C> syncWithTransport(
                     pairingCurrent = pairingCurrent,
                     homeInstanceId = homeInstanceId,
                 )
+                if (report.halted) onRefused()
                 report.workOutcome
             }
         }

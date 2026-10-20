@@ -15,6 +15,7 @@ import app.solstone.core.identity.JournalVersionStore
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.PairingRefusalStore
 import app.solstone.core.identity.PersistenceIssue
 import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.model.PairedHome
@@ -32,6 +33,7 @@ import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
 import app.solstone.platform.identity.file.FileJournalConfirmationStore
+import app.solstone.platform.identity.file.FilePairingRefusalStore
 import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
 import app.solstone.platform.identity.file.FilePairingMigrationStore
@@ -54,6 +56,7 @@ data class SyncStores(
     val journalConfirmationStore: JournalConfirmationStore,
     val pushRegistration: PushRegistrationCoordinator? = null,
     val pairingMigrationOwner: PairingMigrationOwner? = null,
+    val pairingRefusalStore: PairingRefusalStore? = null,
 ) {
     val pushDeliveryState: PushDeliveryState
         get() = pushRegistration?.deliveryState ?: PushDeliveryState.Off
@@ -189,6 +192,8 @@ private object SyncStoresHolder {
     @Volatile
     private var journalConfirmationStore: FileJournalConfirmationStore? = null
     @Volatile
+    private var pairingRefusalStore: FilePairingRefusalStore? = null
+    @Volatile
     private var pairingMigrationOwner: PairingMigrationOwner? = null
     @Volatile
     private var pushCoordinator: PushRegistrationCoordinator? = null
@@ -207,6 +212,12 @@ private object SyncStoresHolder {
         journalConfirmationStore ?: synchronized(this) {
             journalConfirmationStore ?: FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
                 .also { journalConfirmationStore = it }
+        }
+
+    fun getPairingRefusalStore(dir: File): FilePairingRefusalStore =
+        pairingRefusalStore ?: synchronized(this) {
+            pairingRefusalStore ?: FilePairingRefusalStore(File(dir, "pairing_refusal.json"))
+                .also { pairingRefusalStore = it }
         }
 
     fun getPairingMigrationOwner(publisher: PairingPublisher, file: File): PairingMigrationOwner =
@@ -316,5 +327,6 @@ fun syncStores(context: Context): SyncStores {
         journalConfirmationStore = journalConfirmationStore,
         pushRegistration = pushCoordinator,
         pairingMigrationOwner = SyncStoresHolder.getPairingMigrationOwner(graph, File(dir, "pairing_migration.json")),
+        pairingRefusalStore = SyncStoresHolder.getPairingRefusalStore(dir),
     )
 }
