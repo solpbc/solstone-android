@@ -12,6 +12,7 @@ import java.util.Locale
 
 fun interface BrowserRequestBodySource {
     fun readChunk(target: ByteArray, offset: Int, length: Int): Int
+    val contentLength: Long? get() = null
 }
 
 interface BrowserResponseSink {
@@ -29,21 +30,26 @@ fun formatStreamingHttpRequest(
     hasBody: Boolean,
     contentLength: Long? = null,
 ): ByteArray {
+    if (hasBody && (contentLength == null || contentLength < 0)) {
+        throw IOException("Streaming request body requires exact non-negative content length")
+    }
+
     val out = ByteArrayOutputStream()
     val writer = out.bufferedWriter(Charsets.US_ASCII)
     writer.write("$method $path HTTP/1.1\r\n")
 
     var hasHost = false
     var hasConnection = false
-    var hasContentLength = false
-    var hasTransferEncoding = false
 
     for ((key, value) in headers) {
+        if (key.equals("content-length", ignoreCase = true) ||
+            key.equals("transfer-encoding", ignoreCase = true)
+        ) {
+            continue
+        }
         val lower = key.lowercase(Locale.ROOT)
         if (lower == "host") hasHost = true
         if (lower == "connection") hasConnection = true
-        if (lower == "content-length") hasContentLength = true
-        if (lower == "transfer-encoding") hasTransferEncoding = true
         writer.write("$key: $value\r\n")
     }
 
@@ -53,12 +59,8 @@ fun formatStreamingHttpRequest(
     if (!hasConnection) {
         writer.write("Connection: close\r\n")
     }
-    if (hasBody && !hasContentLength && !hasTransferEncoding) {
-        if (contentLength != null) {
-            writer.write("Content-Length: $contentLength\r\n")
-        } else {
-            writer.write("Transfer-Encoding: chunked\r\n")
-        }
+    if (hasBody) {
+        writer.write("Content-Length: $contentLength\r\n")
     }
     writer.write("\r\n")
     writer.flush()

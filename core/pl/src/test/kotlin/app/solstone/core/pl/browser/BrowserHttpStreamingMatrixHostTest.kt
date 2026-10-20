@@ -318,4 +318,227 @@ class BrowserHttpStreamingMatrixHostTest {
             // expected
         }
     }
+
+    @Test
+    fun anyTransferEncodingReturns411LengthRequiredAndUpstreamNotCalled() {
+        var upstreamCalled = false
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
+                    override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
+                        upstreamCalled = true
+                        fail("Upstream should not be called")
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = {},
+        )
+        val origin = session.start()
+        val uri = URI(origin.url)
+
+        // Case 1: Transfer-Encoding: chunked
+        var socket = Socket("127.0.0.1", uri.port)
+        var out = socket.getOutputStream()
+        var `in` = socket.getInputStream()
+        out.write("POST / HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        var resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("411 Length Required"))
+        assertFalse(upstreamCalled)
+        socket.close()
+
+        // Case 2: TrAnSfEr-EnCoDiNg: identity
+        socket = Socket("127.0.0.1", uri.port)
+        out = socket.getOutputStream()
+        `in` = socket.getInputStream()
+        out.write("POST / HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nTrAnSfEr-EnCoDiNg: identity\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("411 Length Required"))
+        assertFalse(upstreamCalled)
+        socket.close()
+
+        session.stop()
+    }
+
+    @Test
+    fun invalidExpectWinsOverTransferEncodingReturning417() {
+        var upstreamCalled = false
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
+                    override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
+                        upstreamCalled = true
+                        fail("Upstream should not be called")
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = {},
+        )
+        val origin = session.start()
+        val uri = URI(origin.url)
+
+        val socket = Socket("127.0.0.1", uri.port)
+        val out = socket.getOutputStream()
+        val `in` = socket.getInputStream()
+        out.write("POST / HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nExpect: 200-ok\r\nTransfer-Encoding: chunked\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        val resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("417 Expectation Failed"))
+        assertFalse(resp.contains("411"))
+        assertFalse(upstreamCalled)
+        socket.close()
+
+        session.stop()
+    }
+
+    @Test
+    fun neitherContentLengthNorTransferEncodingCallsUpstreamBodiless() {
+        var upstreamCalled = false
+        var upstreamHeaders: List<Pair<String, String>> = emptyList()
+        var receivedSource: BrowserRequestBodySource? = null
+
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
+                    override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
+                        upstreamCalled = true
+                        upstreamHeaders = headers
+                        receivedSource = bodySource
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Length" to "2"))
+                        responseSink.onBodyChunk("ok".toByteArray(Charsets.US_ASCII), 0, 2)
+                        responseSink.onComplete()
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = {},
+        )
+        val origin = session.start()
+        val uri = URI(origin.url)
+
+        val socket = Socket("127.0.0.1", uri.port)
+        val out = socket.getOutputStream()
+        val `in` = socket.getInputStream()
+        out.write("GET /hello HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        val resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("200 OK"))
+        assertTrue(upstreamCalled)
+        assertEquals(null, receivedSource)
+        assertFalse(upstreamHeaders.any { it.first.equals("content-length", ignoreCase = true) })
+        assertFalse(upstreamHeaders.any { it.first.equals("transfer-encoding", ignoreCase = true) })
+        socket.close()
+
+        session.stop()
+    }
+
+    @Test
+    fun contentLengthZeroAndNonNumericAreBodiless() {
+        var upstreamCalls = 0
+        var receivedSource: BrowserRequestBodySource? = null
+
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
+                    override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
+                        upstreamCalls++
+                        receivedSource = bodySource
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Length" to "2"))
+                        responseSink.onBodyChunk("ok".toByteArray(Charsets.US_ASCII), 0, 2)
+                        responseSink.onComplete()
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = {},
+        )
+        val origin = session.start()
+        val uri = URI(origin.url)
+
+        // Content-Length: 0
+        var socket = Socket("127.0.0.1", uri.port)
+        var out = socket.getOutputStream()
+        var `in` = socket.getInputStream()
+        out.write("POST /zero HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nContent-Length: 0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        var resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("200 OK"))
+        assertEquals(1, upstreamCalls)
+        assertEquals(null, receivedSource)
+        socket.close()
+
+        // Content-Length: non-numeric
+        socket = Socket("127.0.0.1", uri.port)
+        out = socket.getOutputStream()
+        `in` = socket.getInputStream()
+        out.write("POST /invalid-cl HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nContent-Length: not-a-number\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("200 OK"))
+        assertEquals(2, upstreamCalls)
+        assertEquals(null, receivedSource)
+        socket.close()
+
+        session.stop()
+    }
+
+    @Test
+    fun contentLengthPositiveUpstreamsSourceWithMatchingContentLength() {
+        var upstreamCalled = false
+        var upstreamContentLength: Long? = null
+
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
+                    override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
+                        upstreamCalled = true
+                        upstreamContentLength = bodySource?.contentLength
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Length" to "2"))
+                        responseSink.onBodyChunk("ok".toByteArray(Charsets.US_ASCII), 0, 2)
+                        responseSink.onComplete()
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = {},
+        )
+        val origin = session.start()
+        val uri = URI(origin.url)
+
+        val socket = Socket("127.0.0.1", uri.port)
+        val out = socket.getOutputStream()
+        val `in` = socket.getInputStream()
+        out.write("POST /five HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nContent-Length: 5\r\n\r\nhello".toByteArray(Charsets.US_ASCII))
+        out.flush()
+        val resp = String(`in`.readBytes(), Charsets.US_ASCII)
+        assertTrue(resp.contains("200 OK"))
+        assertTrue(upstreamCalled)
+        assertEquals(5L, upstreamContentLength)
+        socket.close()
+
+        session.stop()
+    }
 }

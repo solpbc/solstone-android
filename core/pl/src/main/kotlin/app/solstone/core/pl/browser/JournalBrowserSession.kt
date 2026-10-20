@@ -176,8 +176,6 @@ class JournalBrowserSession(
     // Concurrency controls
     private val activeClientSemaphore = Semaphore(MAX_ACTIVE_CLIENTS, true)
     private val responseBudgetSemaphore = Semaphore(RESPONSE_BUDGET_SLOTS, true) // 2 slots of 16 MiB = 32 MiB
-    private val requestBudgetLock = ReentrantLock()
-    private var allocatedRequestBodyBytes = 0
 
     private val inFlightConnections = AtomicInteger(0)
 
@@ -516,7 +514,6 @@ class JournalBrowserSession(
             return
         }
 
-        var acquiredRequestBudget = 0
         var acquiredResponseBudget = false
         try {
             // Verify pairing generation and access snapshot before upstream work
@@ -535,7 +532,7 @@ class JournalBrowserSession(
                 return
             }
 
-            // Expect: 100-continue handling after all 4 admission gates (FIFO, active-client, body budget, response slot)
+            // Expect: 100-continue handling after all admission gates (FIFO, active-client, response slot)
             val expectHeaders = headers.filter { it.first.equals("expect", ignoreCase = true) }
             var browserSinkAcceptedBytes = false
 
@@ -552,42 +549,45 @@ class JournalBrowserSession(
                 browserSinkAcceptedBytes = true
             }
 
+            // Reject any Transfer-Encoding with 411 Length Required
+            if (headers.any { it.first.equals("transfer-encoding", ignoreCase = true) }) {
+                sendErrorAndClose(client, outputStream, 411, "Length Required")
+                return
+            }
+
             // Request body source streaming
             val contentLengthHeader = headers.firstOrNull { it.first.equals("content-length", ignoreCase = true) }?.second
-            val transferEncodingHeader = headers.firstOrNull { it.first.equals("transfer-encoding", ignoreCase = true) }?.second
             val contentLength = contentLengthHeader?.toLongOrNull() ?: 0L
-            val isChunked = transferEncodingHeader?.contains("chunked", ignoreCase = true) == true
-            val hasBody = (contentLength > 0L) || isChunked
+            val hasBody = contentLength > 0L
 
             val bodySource: BrowserRequestBodySource? = if (hasBody) {
                 var alreadyReadRemaining = allHeaderBytes.size - headerEnd
                 var alreadyReadOffset = headerEnd
                 var bodyBytesReadSoFar = 0L
-                BrowserRequestBodySource { target, offset, length ->
-                    if (!isChunked && contentLength > 0L && bodyBytesReadSoFar >= contentLength) {
-                        return@BrowserRequestBodySource -1
-                    }
-                    if (alreadyReadRemaining > 0) {
-                        val toCopy = minOf(length, alreadyReadRemaining)
-                        System.arraycopy(allHeaderBytes, alreadyReadOffset, target, offset, toCopy)
-                        alreadyReadOffset += toCopy
-                        alreadyReadRemaining -= toCopy
-                        bodyBytesReadSoFar += toCopy
-                        toCopy
-                    } else {
-                        val maxToRead = if (!isChunked && contentLength > 0L) {
-                            minOf(length.toLong(), contentLength - bodyBytesReadSoFar).toInt()
-                        } else {
-                            length
+                object : BrowserRequestBodySource {
+                    override val contentLength: Long = contentLength
+
+                    override fun readChunk(target: ByteArray, offset: Int, length: Int): Int {
+                        if (bodyBytesReadSoFar >= contentLength) {
+                            return -1
                         }
-                        if (maxToRead <= 0) {
-                            -1
+                        if (alreadyReadRemaining > 0) {
+                            val toCopy = minOf(length.toLong(), alreadyReadRemaining.toLong(), contentLength - bodyBytesReadSoFar).toInt()
+                            System.arraycopy(allHeaderBytes, alreadyReadOffset, target, offset, toCopy)
+                            alreadyReadOffset += toCopy
+                            alreadyReadRemaining -= toCopy
+                            bodyBytesReadSoFar += toCopy
+                            return toCopy
                         } else {
+                            val maxToRead = minOf(length.toLong(), contentLength - bodyBytesReadSoFar).toInt()
+                            if (maxToRead <= 0) {
+                                return -1
+                            }
                             val read = inputStream.read(target, offset, maxToRead)
                             if (read > 0) {
                                 bodyBytesReadSoFar += read
                             }
-                            read
+                            return read
                         }
                     }
                 }
@@ -765,9 +765,6 @@ class JournalBrowserSession(
             if (acquiredResponseBudget) {
                 responseBudgetSemaphore.release()
             }
-            if (acquiredRequestBudget > 0) {
-                releaseRequestBodyBudget(acquiredRequestBudget)
-            }
             activeClientSemaphore.release()
         }
     }
@@ -779,19 +776,6 @@ class JournalBrowserSession(
         val expectedWithPort = "$expectedToken.localhost:$boundPort"
         val expectedNoPort = "$expectedToken.localhost"
         return trimmed == expectedWithPort || trimmed == expectedNoPort
-    }
-
-    private fun acquireRequestBodyBudget(bytes: Int): Boolean = requestBudgetLock.withLock {
-        if (allocatedRequestBodyBytes + bytes > MAX_GLOBAL_REQUEST_BUDGET_BYTES) {
-            false
-        } else {
-            allocatedRequestBodyBytes += bytes
-            true
-        }
-    }
-
-    private fun releaseRequestBodyBudget(bytes: Int) = requestBudgetLock.withLock {
-        allocatedRequestBodyBytes = maxOf(0, allocatedRequestBodyBytes - bytes)
     }
 
     private fun findHeaderEnd(bytes: ByteArray): Int {
@@ -956,8 +940,6 @@ class JournalBrowserSession(
         const val MAX_FIFO_WAITERS = 8
         const val RESPONSE_BUDGET_SLOTS = 2 // 2 x 16 MiB = 32 MiB
         const val MAX_UPSTREAM_CLIENTS = 4
-        const val MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024 // 8 MiB
-        const val MAX_GLOBAL_REQUEST_BUDGET_BYTES = 16 * 1024 * 1024 // 16 MiB
         const val MAX_REQUEST_LINE_BYTES = 8 * 1024 // 8 KiB
         const val MAX_REQUEST_HEADERS_BYTES = 64 * 1024 // 64 KiB
         const val MAX_REQUEST_HEADERS_COUNT = 100

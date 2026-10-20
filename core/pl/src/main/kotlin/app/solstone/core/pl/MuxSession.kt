@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.Locale
 
 import app.solstone.core.pl.browser.BrowserHttpResponse
 import app.solstone.core.pl.browser.BrowserRequestBodySource
@@ -14,12 +15,6 @@ import app.solstone.core.pl.browser.BrowserResponseSink
 import app.solstone.core.pl.browser.ProgressiveBrowserResponseParser
 import app.solstone.core.pl.browser.formatStreamingHttpRequest
 import app.solstone.core.pl.browser.parseBrowserHttpResponse
-
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.locks.ReentrantLock
-import java.util.concurrent.TimeUnit
-import kotlin.concurrent.withLock
 
 class MuxSession(
     private val duplex: ByteDuplex,
@@ -71,62 +66,348 @@ class MuxSession(
             responseSink.onError(ex)
             throw ex
         }
+        val cl = bodySource?.contentLength
+        if (bodySource != null && (cl == null || cl < 0)) {
+            val ex = IOException("Streaming request body requires exact non-negative content length")
+            responseSink.onError(ex)
+            throw ex
+        }
+        val progressiveParser = ProgressiveBrowserResponseParser(
+            responseSink,
+            isHeadRequest = method.equals("HEAD", ignoreCase = true),
+        )
+        val consumer = object : StreamingResponseConsumer<Unit> {
+            override fun onData(payload: ByteArray, offset: Int, length: Int) {
+                progressiveParser.feed(payload, offset, length)
+            }
+
+            override fun onMuxClose(successful: Boolean) {
+                progressiveParser.onMuxClose(successful = true)
+            }
+        }
+        try {
+            executeStreamingExchange(
+                method = method,
+                path = path,
+                headers = headers,
+                contentLength = cl,
+                readChunk = bodySource?.let { src -> { buf, off, len -> src.readChunk(buf, off, len) } },
+                maxResponseBytes = null,
+                consumer = consumer,
+            )
+        } catch (e: Exception) {
+            responseSink.onError(e)
+            throw e
+        }
+    }
+
+    fun requestStreaming(
+        method: String,
+        path: String,
+        headers: List<Pair<String, String>>,
+        contentLength: Long,
+        readChunk: (ByteArray, Int, Int) -> Int,
+        maxResponseBytes: Int = MAX_RESPONSE_BYTES,
+    ): HttpResponse {
+        if (poisoned) {
+            throw IOException(SESSION_UNUSABLE)
+        }
+        if (contentLength < 0) {
+            throw IOException("Streaming request body requires exact non-negative content length")
+        }
+        val consumer = StreamingHttpResponseAssembler(maxResponseBytes)
+        return executeStreamingExchange(
+            method = method,
+            path = path,
+            headers = headers,
+            contentLength = contentLength,
+            readChunk = readChunk,
+            maxResponseBytes = maxResponseBytes,
+            consumer = consumer,
+        )
+    }
+
+    private interface StreamingResponseConsumer<T> {
+        fun onData(payload: ByteArray, offset: Int, length: Int)
+        fun onMuxClose(successful: Boolean): T
+    }
+
+    private class StreamingHttpResponseAssembler(
+        private val maxResponseBytes: Int,
+    ) : StreamingResponseConsumer<HttpResponse> {
+        private enum class State {
+            READING_HEADERS,
+            READING_BODY,
+        }
+
+        private var state = State.READING_HEADERS
+        private val rawHeaderStream = ByteArrayOutputStream()
+        private val bodyStream = ByteArrayOutputStream()
+
+        private var status: Int = 0
+        private var headers = LinkedHashMap<String, String>()
+        private var expectedContentLength: Long? = null
+
+        override fun onData(payload: ByteArray, offset: Int, length: Int) {
+            if (length <= 0) return
+
+            var pos = offset
+            val end = offset + length
+
+            while (pos < end) {
+                when (state) {
+                    State.READING_HEADERS -> {
+                        rawHeaderStream.write(payload[pos].toInt())
+                        pos++
+                        while (state == State.READING_HEADERS) {
+                            val bytes = rawHeaderStream.toByteArray()
+                            val split = findHeaderEnd(bytes)
+                            if (split < 0) break
+
+                            val headerText = String(bytes, 0, split, Charsets.ISO_8859_1)
+                            val remainingBytes = bytes.copyOfRange(split + 4, bytes.size)
+                            rawHeaderStream.reset()
+
+                            parseHeaders(headerText)
+
+                            if (status in 100..199) {
+                                if (remainingBytes.isNotEmpty()) {
+                                    rawHeaderStream.write(remainingBytes)
+                                }
+                                state = State.READING_HEADERS
+                            } else {
+                                state = State.READING_BODY
+                                if (remainingBytes.isNotEmpty()) {
+                                    appendBody(remainingBytes, 0, remainingBytes.size)
+                                }
+                            }
+                        }
+                    }
+                    State.READING_BODY -> {
+                        val remainingInChunk = end - pos
+                        appendBody(payload, pos, remainingInChunk)
+                        pos = end
+                    }
+                }
+            }
+        }
+
+        private fun appendBody(bytes: ByteArray, offset: Int, length: Int) {
+            if (length <= 0) return
+            if (bodyStream.size() + length > maxResponseBytes) {
+                throw IOException("PL response body exceeded maxResponseBytes ($maxResponseBytes)")
+            }
+            bodyStream.write(bytes, offset, length)
+            expectedContentLength?.let { cl ->
+                if (bodyStream.size().toLong() > cl) {
+                    throw IOException("PL response body exceeded Content-Length ($cl)")
+                }
+            }
+        }
+
+        private fun parseHeaders(headerText: String) {
+            val lines = headerText.split("\r\n")
+            if (lines.isEmpty()) throw IOException("Empty HTTP response")
+            val statusLine = lines[0]
+            val statusParts = statusLine.split(" ", limit = 3)
+            if (statusParts.size < 2) throw IOException("Bad HTTP status line: $statusLine")
+            val parsedStatus = statusParts[1].toIntOrNull() ?: throw IOException("Invalid status code in: $statusLine")
+            status = parsedStatus
+
+            if (status in 100..199) {
+                return
+            }
+
+            var contentLengthCount = 0
+            var transferEncoding: String? = null
+            var contentLengthVal: String? = null
+            val parsedHeaders = LinkedHashMap<String, String>()
+
+            for (i in 1 until lines.size) {
+                val line = lines[i]
+                if (line.isEmpty()) continue
+                val colon = line.indexOf(':')
+                if (colon <= 0) continue
+                val name = line.substring(0, colon).trim().lowercase(Locale.US)
+                val value = line.substring(colon + 1).trim()
+                if (name == "content-length") {
+                    contentLengthCount++
+                    contentLengthVal = value
+                }
+                if (name == "transfer-encoding") {
+                    transferEncoding = value.lowercase(Locale.US)
+                }
+                parsedHeaders[name] = value
+            }
+
+            if (contentLengthCount > 1) {
+                throw IOException("Multiple Content-Length headers in HTTP response")
+            }
+            if (transferEncoding != null && transferEncoding.contains("chunked")) {
+                throw IOException("Chunked Transfer-Encoding is not supported")
+            }
+
+            if (contentLengthVal != null) {
+                val cl = contentLengthVal.toLongOrNull() ?: throw IOException("Invalid Content-Length: $contentLengthVal")
+                if (cl < 0) throw IOException("Negative Content-Length: $cl")
+                expectedContentLength = cl
+            }
+
+            headers = parsedHeaders
+        }
+
+        private fun findHeaderEnd(bytes: ByteArray): Int {
+            for (i in 0 until bytes.size - 3) {
+                if (bytes[i] == '\r'.code.toByte() &&
+                    bytes[i + 1] == '\n'.code.toByte() &&
+                    bytes[i + 2] == '\r'.code.toByte() &&
+                    bytes[i + 3] == '\n'.code.toByte()
+                ) {
+                    return i
+                }
+            }
+            return -1
+        }
+
+        override fun onMuxClose(successful: Boolean): HttpResponse {
+            if (state == State.READING_HEADERS) {
+                throw IOException("PL stream ended with unfinished response head")
+            }
+            expectedContentLength?.let { cl ->
+                if (bodyStream.size().toLong() != cl) {
+                    throw IOException("Premature response body termination: expected $cl bytes, received ${bodyStream.size()}")
+                }
+            }
+            return HttpResponse(status, headers, bodyStream.toByteArray())
+        }
+    }
+
+    private fun <T> executeStreamingExchange(
+        method: String,
+        path: String,
+        headers: List<Pair<String, String>>,
+        contentLength: Long?,
+        readChunk: ((ByteArray, Int, Int) -> Int)?,
+        maxResponseBytes: Int?,
+        consumer: StreamingResponseConsumer<T>,
+    ): T {
         val streamId = dialer.allocate()
         notifyObserver { it.onStreamOpened(streamId) }
         var successful = false
-        val progressiveParser = ProgressiveBrowserResponseParser(responseSink, isHeadRequest = method.equals("HEAD", ignoreCase = true))
-
-        val sendCreditLock = ReentrantLock()
-        val sendCreditCond = sendCreditLock.newCondition()
-        var sendWindow = initialReceiveWindow.toLong()
-        val senderDone = AtomicBoolean(false)
-        val senderError = AtomicReference<Throwable?>(null)
-
+        var requestClosed = false
         try {
             val reqHeaderBytes = formatStreamingHttpRequest(
                 method = method,
                 path = path,
                 headers = headers,
-                hasBody = bodySource != null,
+                hasBody = contentLength != null,
+                contentLength = contentLength,
             )
             writeFrame(streamId, FLAG_OPEN or FLAG_DATA, reqHeaderBytes)
 
-            val senderThread = Thread({
-                try {
-                    if (bodySource != null) {
-                        val chunkBuf = ByteArray(MAX_DATA_CHUNK_BYTES)
-                        while (!poisoned) {
-                            val read = bodySource.readChunk(chunkBuf, 0, chunkBuf.size)
-                            if (read < 0) break
-                            if (read > 0) {
-                                sendCreditLock.withLock {
-                                    while (!poisoned && sendWindow < read) {
-                                        sendCreditCond.await(1000, TimeUnit.MILLISECONDS)
-                                    }
-                                    sendWindow -= read
-                                }
-                                writeFrame(streamId, FLAG_DATA, chunkBuf.copyOf(read))
-                            }
-                        }
-                    }
-                    writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
-                } catch (t: Throwable) {
-                    senderError.set(t)
-                } finally {
-                    sendCreditLock.withLock {
-                        senderDone.set(true)
-                        sendCreditCond.signalAll()
-                    }
-                }
-            }, "MuxSender-$streamId")
-            senderThread.isDaemon = true
-            senderThread.start()
+            var produced = 0L
+            var sent = 0L
+            var eosConfirmed = false
 
+            if (contentLength == null) {
+                writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+                requestClosed = true
+            }
+
+            var sendCredit = INITIAL_SEND_WINDOW.toLong()
             val receive = ReceiveCredit(initialReceiveWindow)
             var cumulativeBytes = 0L
             var isPreOpen = true
+            val unsent = ByteArrayOutputStream(MAX_DATA_CHUNK_BYTES)
 
             while (true) {
+                while (unsent.size() > 0 && sendCredit > 0) {
+                    val hasFinalByte = (contentLength != null && produced == contentLength)
+                    if (hasFinalByte && !eosConfirmed) {
+                        break
+                    }
+                    val count = minOf(MAX_DATA_CHUNK_BYTES.toLong(), unsent.size().toLong(), sendCredit).toInt()
+                    val all = unsent.toByteArray()
+                    val chunk = if (count == all.size) all else all.copyOfRange(0, count)
+                    writeFrame(streamId, FLAG_DATA, chunk)
+                    sendCredit -= count
+                    sent += count
+                    unsent.reset()
+                    if (count < all.size) {
+                        unsent.write(all, count, all.size - count)
+                    }
+                }
+
+                if (contentLength != null && eosConfirmed && unsent.size() == 0 && !requestClosed) {
+                    writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+                    requestClosed = true
+                }
+
+                if (contentLength == 0L && !eosConfirmed) {
+                    val eosBuf = ByteArray(64)
+                    val read = try {
+                        readChunk!!(eosBuf, 0, eosBuf.size)
+                    } catch (t: Throwable) {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                        throw if (t is IOException) t else IOException("Streaming source read threw", t)
+                    }
+                    if (read < 0) {
+                        eosConfirmed = true
+                        writeFrame(streamId, FLAG_CLOSE, ByteArray(0))
+                        requestClosed = true
+                    } else if (read > 0) {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                        throw IOException("Streaming source produced bytes for zero-length body")
+                    }
+                }
+
+                if (contentLength != null && !requestClosed && produced < contentLength && sendCredit > 0 && unsent.size() < MAX_DATA_CHUNK_BYTES) {
+                    val toRead = minOf((MAX_DATA_CHUNK_BYTES - unsent.size()).toLong(), contentLength - produced, sendCredit).toInt()
+                    val readBuf = ByteArray(toRead)
+                    val read = try {
+                        readChunk!!(readBuf, 0, toRead)
+                    } catch (t: Throwable) {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                        throw if (t is IOException) t else IOException("Streaming source read threw", t)
+                    }
+                    if (read < 0) {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                        throw IOException("Streaming source ended prematurely: produced $produced bytes, expected $contentLength")
+                    } else if (read > toRead) {
+                        writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                        throw IOException("Streaming source read more bytes than requested")
+                    } else if (read > 0) {
+                        unsent.write(readBuf, 0, read)
+                        produced += read
+                    }
+                }
+
+                if (contentLength != null && produced == contentLength && !eosConfirmed) {
+                    while (produced == contentLength && !eosConfirmed) {
+                        val eosBuf = ByteArray(64)
+                        val eosRead = try {
+                            readChunk!!(eosBuf, 0, eosBuf.size)
+                        } catch (t: Throwable) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                            throw if (t is IOException) t else IOException("Streaming source read threw on EOS check", t)
+                        }
+                        if (eosRead > 0) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                            throw IOException("Streaming source produced more bytes than declared contentLength: $contentLength")
+                        } else if (eosRead < 0) {
+                            eosConfirmed = true
+                            break
+                        }
+                    }
+                }
+
+                if ((unsent.size() > 0 && sendCredit > 0 && (eosConfirmed || (contentLength != null && produced < contentLength))) ||
+                    (contentLength != null && !requestClosed && produced < contentLength && sendCredit > 0 && unsent.size() < MAX_DATA_CHUNK_BYTES) ||
+                    (contentLength != null && eosConfirmed && unsent.size() == 0 && !requestClosed)
+                ) {
+                    continue
+                }
+
                 val frame = readFrame()
                 val classification = MuxClassifier.classify(
                     streamId = frame.streamId,
@@ -137,18 +418,27 @@ class MuxSession(
                     isPreOpen = isPreOpen,
                 )
                 when (classification) {
-                    MuxClassification.SESSION_TERMINAL_RESERVED,
-                    MuxClassification.SESSION_TERMINAL_OVERSIZED,
-                    MuxClassification.SESSION_TERMINAL_MALFORMED_CONTROL,
-                    MuxClassification.SESSION_TERMINAL_NEGATIVE_ID,
+                    MuxClassification.SESSION_TERMINAL_RESERVED -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: reserved flag")
+                    }
+                    MuxClassification.SESSION_TERMINAL_OVERSIZED -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: advertised payload too large")
+                    }
+                    MuxClassification.SESSION_TERMINAL_MALFORMED_CONTROL -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: malformed control frame")
+                    }
+                    MuxClassification.SESSION_TERMINAL_NEGATIVE_ID -> {
+                        markPoisoned()
+                        throw IOException("PL protocol error: negative stream ID")
+                    }
                     MuxClassification.SESSION_TERMINAL_MALFORMED_SHAPE,
                     MuxClassification.SESSION_TERMINAL_ZERO_MASK_NONZERO_PAYLOAD,
                     MuxClassification.SESSION_TERMINAL_FUTURE_LOCAL -> {
                         markPoisoned()
-                        sendCreditLock.withLock { sendCreditCond.signalAll() }
-                        val ex = IOException("PL protocol error")
-                        responseSink.onError(ex)
-                        throw ex
+                        throw IOException("PL protocol error")
                     }
                     MuxClassification.CONTROL_PING -> {
                         writeFrame(0, FLAG_PONG, frame.payload)
@@ -165,22 +455,16 @@ class MuxSession(
                     }
                     MuxClassification.ACTIVE_INVALID_FLAGS -> {
                         writeFrame(streamId, FLAG_RESET, byteArrayOf(0x01))
-                        sendCreditLock.withLock { sendCreditCond.signalAll() }
-                        val ex = IOException("PL protocol error: invalid flags")
-                        responseSink.onError(ex)
-                        throw ex
+                        throw IOException("PL protocol error: invalid flags")
                     }
                     MuxClassification.ACTIVE_RESET -> {
-                        sendCreditLock.withLock { sendCreditCond.signalAll() }
-                        val ex = IOException("PL stream reset: " + resetReason(frame.payload))
-                        responseSink.onError(ex)
-                        throw ex
+                        throw IOException("PL stream reset: " + resetReason(frame.payload))
                     }
                     MuxClassification.ACTIVE_WINDOW -> {
-                        val credit = decodeWindowCredit(frame.payload)
-                        sendCreditLock.withLock {
-                            sendWindow += credit
-                            sendCreditCond.signalAll()
+                        sendCredit += decodeWindowCredit(frame.payload).toLong() and 0xffffffffL
+                        if (sendCredit > Int.MAX_VALUE) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
+                            throw IOException("PL send window overflow")
                         }
                         continue
                     }
@@ -191,41 +475,53 @@ class MuxSession(
                         if (size > 0) {
                             if (!receive.debit(size)) {
                                 writeFrame(streamId, FLAG_RESET, byteArrayOf(0x02))
-                                val ex = IOException("PL receive window exceeded")
-                                responseSink.onError(ex)
-                                throw ex
+                                throw IOException("PL receive window exceeded")
                             }
                             cumulativeBytes += size
                             notifyObserver { it.onResponseDataConsumed(streamId, size, cumulativeBytes.toInt()) }
-                            progressiveParser.feed(frame.payload, 0, size)
-                            // ⛔ No credit back on the frame that ends the stream. Framing § late
-                            // frames on unknown ids: a WINDOW for a forgotten id asserts the sender
-                            // believes the stream is live, so the peer must answer it with a RESET
-                            // and count a protocol error. Every request that ended on a payload-
-                            // carrying CLOSE was drawing one.
+                            try {
+                                consumer.onData(frame.payload, 0, size)
+                            } catch (e: Exception) {
+                                if (!isPoisoned) writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                                throw if (e is IOException) e else IOException("Consumer onData failed", e)
+                            }
                             if (!closesStream) {
                                 receive.grant()?.let { writeFrame(streamId, FLAG_WINDOW, encodeWindowCredit(it)) }
                             }
                         }
                         if (closesStream) {
+                            if (!requestClosed) {
+                                writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                                requestClosed = true
+                            }
+                            val result = try {
+                                consumer.onMuxClose(successful = true)
+                            } catch (e: Exception) {
+                                if (!isPoisoned) writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                                throw if (e is IOException) e else IOException("Consumer onMuxClose failed", e)
+                            }
                             successful = true
-                            progressiveParser.onMuxClose(successful = true)
-                            return
+                            return result
                         }
                     }
                     MuxClassification.ACTIVE_CLOSE -> {
                         isPreOpen = false
+                        if (!requestClosed) {
+                            writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                            requestClosed = true
+                        }
+                        val result = try {
+                            consumer.onMuxClose(successful = true)
+                        } catch (e: Exception) {
+                            if (!isPoisoned) writeFrame(streamId, FLAG_RESET, byteArrayOf(0x05))
+                            throw if (e is IOException) e else IOException("Consumer onMuxClose failed", e)
+                        }
                         successful = true
-                        progressiveParser.onMuxClose(successful = true)
-                        return
+                        return result
                     }
                 }
             }
-        } catch (e: Exception) {
-            responseSink.onError(e)
-            throw e
         } finally {
-            sendCreditLock.withLock { sendCreditCond.signalAll() }
             notifyObserver { it.onStreamTerminated(streamId, successful) }
         }
     }

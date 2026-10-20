@@ -39,6 +39,32 @@ class ConscryptPlHttpClient internal constructor(private val session: MuxSession
         return session.requestBrowser(method, path, headers, body, maxResponseBytes)
     }
 
+    override fun requestStreaming(
+        method: String,
+        path: String,
+        headers: Map<String, String>,
+        body: app.solstone.core.pl.StreamingBody,
+        maxResponseBytes: Int,
+    ): HttpResponse {
+        val outbound = LinkedHashMap(headers)
+        if (outbound.keys.none { it.equals("accept", ignoreCase = true) }) {
+            outbound["accept"] = "application/json"
+        }
+        try {
+            if (session.isPoisoned) throw java.io.IOException(app.solstone.core.pl.SESSION_UNUSABLE)
+            return session.requestStreaming(
+                method = method,
+                path = path,
+                headers = outbound.map { it.key to it.value },
+                contentLength = body.contentLength,
+                readChunk = body::readChunk,
+                maxResponseBytes = maxResponseBytes,
+            )
+        } finally {
+            body.close()
+        }
+    }
+
     fun requestStreaming(
         method: String,
         path: String,

@@ -279,9 +279,9 @@ class SyncWorker(
     }
 }
 
-private interface CloseablePlHttpClient : PlHttpClient, java.io.Closeable
+internal interface CloseablePlHttpClient : PlHttpClient, java.io.Closeable
 
-private class CloseablePlHttpClientAdapter(private val delegate: PlHttpClient) : CloseablePlHttpClient, PlHttpClient by delegate {
+internal class CloseablePlHttpClientAdapter(private val delegate: PlHttpClient) : CloseablePlHttpClient, PlHttpClient by delegate {
     override fun close() {
         if (delegate is java.io.Closeable) {
             delegate.close()
@@ -289,7 +289,7 @@ private class CloseablePlHttpClientAdapter(private val delegate: PlHttpClient) :
     }
 }
 
-private fun toCloseableClient(client: PlHttpClient): CloseablePlHttpClient =
+internal fun toCloseableClient(client: PlHttpClient): CloseablePlHttpClient =
     if (client is CloseablePlHttpClient) client else CloseablePlHttpClientAdapter(client)
 
 private fun sync(
