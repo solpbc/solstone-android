@@ -80,8 +80,8 @@ android {
         applicationId = "app.solstone.observer.phone"
         minSdk = 26
         targetSdk = 36
-        versionCode = 35
-        versionName = "2.1.26"
+        versionCode = 36
+        versionName = "2.1.27"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

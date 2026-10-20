@@ -6,9 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.27] - 2026-10-19
+
+### Changed
+
+- "set one up", and the install link you can send yourself, now open the steps for starting a new journal.
+
 ### Fixed
 
-- while pairing, the mark check now shows only its two answers. "scan again" and "get help" appear after you say the mark doesn't match, and "scan again" opens the scanner. if this phone's pairing is missing what it needs to reach your journal, the home-screen widget shows "needs attention" again rather than "on".
+- while pairing, the mark check now shows only its two answers. "scan again" and "get help" appear after you say the mark doesn't match, and "scan again" opens the scanner.
+- if this phone's pairing is missing what it needs to reach your journal, the home-screen widget shows "needs attention" again rather than "on".
 - when you open your journal in the app, changes you save there now reach your journal. before, saving a change there didn't go through.
 
 ## [2.1.26] - 2026-10-18
