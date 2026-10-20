@@ -116,10 +116,47 @@ fun buildObserverFlavor(
         plStatus = controller::routinePlStatus,
         identityStore = stores.identityStore,
         coordinator = stores.journalVersionCoordinator,
+        imports = realImportBacklog(context, database, stores, controller::pairingFact),
     )
     return SharedObserverFlavor(
         controller = controller,
         opportunisticSync = opportunisticSync,
         backlogStatus = backlogStatus,
     )
+}
+
+/** What the app shows about owner-shared imports, read from the import store and the pairing. */
+internal fun realImportBacklog(
+    context: Context,
+    database: SolstonePersistenceDatabase,
+    stores: app.solstone.platform.work.SyncStores,
+    pairingFact: () -> app.solstone.core.diagnostics.PairingFact,
+): () -> app.solstone.observer.harness.HarnessImportBacklog {
+    val store = app.solstone.platform.persistence.room.ImportCustodyStore(
+        app.solstone.platform.work.importStoreRoot(context).toPath(),
+        database.importDao(),
+    )
+    return {
+        val identity = stores.identityStore.load()
+        val record = stores.journalVersionStore.load()
+        val gate = if (identity == null) {
+            app.solstone.platform.work.ImportVersionGate.UNKNOWN
+        } else {
+            app.solstone.platform.work.importVersionGate(record, identity.instanceId, identity.caChainFingerprint)
+        }
+        val items = store.items(identity?.instanceId, record?.version)
+        val refused = identity != null && (stores.pairingRefusalStore?.refusedFor(
+            app.solstone.core.identity.PairingGeneration(identity.instanceId, identity.clientCertFingerprint),
+        ) ?: false)
+        app.solstone.observer.harness.HarnessImportBacklog(
+            pendingCount = items.count { it.state == "pending" },
+            attentionCount = items.count { it.state == "attention" },
+            pairingIncomplete = pairingFact() == app.solstone.core.diagnostics.PairingFact.INCOMPLETE,
+            refused = refused,
+            gate = gate,
+            sending = items.any { it.inFlight },
+            lastDelivery = store.lastDelivery(),
+            currentInstanceId = identity?.instanceId,
+        )
+    }
 }

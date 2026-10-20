@@ -463,6 +463,7 @@ class RealBacklogStatusReader(
     private val plStatus: () -> HarnessPlStatus,
     private val identityStore: IdentityStore? = null,
     private val coordinator: JournalVersionRefreshCoordinator? = null,
+    private val imports: (() -> HarnessImportBacklog)? = null,
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
         val status = plStatus()
@@ -472,11 +473,13 @@ class RealBacklogStatusReader(
         } else {
             null
         }
+        val importBacklog = imports?.let { runCatching(it).getOrNull() }
         return HarnessBacklogStatus(
             plStatus = status,
-            pendingCount = dao.pendingCount(MAIN_STREAM),
+            pendingCount = dao.pendingCount(MAIN_STREAM) + (importBacklog?.pendingCount ?: 0),
             pendingSourceIds = dao.pendingSourceIds(MAIN_STREAM),
             journalVersion = journalVersion,
+            imports = importBacklog,
         )
     }
 }

@@ -71,6 +71,22 @@ data class HarnessBacklogStatus(
     val pendingCount: Int,
     val pendingSourceIds: List<String>,
     val journalVersion: JournalVersionReading? = null,
+    val imports: HarnessImportBacklog? = null,
+)
+
+/**
+ * Owner-shared imports still on this device. [pendingCount] can shrink on its own and counts in
+ * the waiting total; [attentionCount] can't (each needs the owner) and is never counted there.
+ */
+data class HarnessImportBacklog(
+    val pendingCount: Int,
+    val attentionCount: Int,
+    val pairingIncomplete: Boolean,
+    val refused: Boolean,
+    val gate: app.solstone.platform.work.ImportVersionGate,
+    val sending: Boolean,
+    val lastDelivery: app.solstone.platform.persistence.room.ImportLastDelivery?,
+    val currentInstanceId: String?,
 )
 
 data class HarnessExportResult(
