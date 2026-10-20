@@ -90,7 +90,12 @@ class PushRegistrationCoordinatorTest {
         val requests = mutableListOf<RequestRecord>()
         var onPath: ((path: String, body: ByteArray?) -> Unit)? = null
 
-        data class RequestRecord(val method: String, val path: String, val bodyText: String?)
+        data class RequestRecord(
+            val method: String,
+            val path: String,
+            val bodyText: String?,
+            val headers: Map<String, String> = emptyMap(),
+        )
 
         override fun request(
             method: String,
@@ -100,7 +105,7 @@ class PushRegistrationCoordinatorTest {
             maxResponseBytes: Int,
         ): HttpResponse {
             val bodyText = body?.toString(Charsets.UTF_8)
-            requests += RequestRecord(method, path, bodyText)
+            requests += RequestRecord(method, path, bodyText, headers)
             onPath?.invoke(path, body)
 
             return when {
@@ -2322,5 +2327,86 @@ class PushRegistrationCoordinatorTest {
         val state = PushRegistrationFile.read(stateFile) { logs += it }
         assertEquals(PushRegistrationState.Empty, state)
         assertTrue(logs.contains("kind=push reason=state_unreadable"))
+    }
+
+    @Test
+    fun pushPresentationHeaderOptInAndDefault() {
+        val tempDir = Files.createTempDirectory("optIn").toFile()
+        val port = TestDistributorPort()
+        val client = TestPlHttpClient()
+        val pushKeys = TestPushKeys()
+        val gen = PairingGeneration("inst-1", "sha256:cert1")
+        var passLatch = CountDownLatch(1)
+        val coordinator = PushRegistrationCoordinator(
+            directory = ownerOnIn(tempDir),
+            port = port,
+            enabled = true,
+            pushKeys = pushKeys,
+            pairingNow = { gen },
+            clock = { 1000L },
+            log = {},
+            enqueue = {},
+            afterPass = { passLatch.countDown() },
+            pushPresentation = true,
+        )
+        port.onRegister = { _ ->
+            coordinator.onNewEndpoint("https://push.example/ep1", "pubKey1", "auth1")
+        }
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        client.requests.clear()
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+
+        val post = client.requests.single { it.method == "POST" }
+        assertEquals("1", post.headers[PUSH_PRESENTATION_HEADER])
+        val parsedPost = parseJson(post.bodyText!!) as Map<*, *>
+        assertEquals("android", parsedPost["platform"])
+        assertEquals("https://push.example/ep1", parsedPost["endpoint"])
+        assertEquals("pubKey1", parsedPost["p256dh"])
+        assertEquals("auth1", parsedPost["auth"])
+
+        // Delete pass does not send header
+        client.requests.clear()
+        coordinator.setOwnerOn(false)
+        passLatch = CountDownLatch(1)
+        coordinator.onUsableConnection(gen, { client })
+        assertTrue(passLatch.await(3, TimeUnit.SECONDS))
+        val deleteReq = client.requests.firstOrNull { it.method == "DELETE" }
+        if (deleteReq != null) {
+            assertFalse(deleteReq.headers.containsKey(PUSH_PRESENTATION_HEADER))
+        }
+
+        // Default coordinator omits header
+        val defaultDir = Files.createTempDirectory("defaultHeader").toFile()
+        val defaultPort = TestDistributorPort()
+        val defaultClient = TestPlHttpClient()
+        var defaultLatch = CountDownLatch(1)
+        val defaultCoordinator = PushRegistrationCoordinator(
+            directory = ownerOnIn(defaultDir),
+            port = defaultPort,
+            enabled = true,
+            pushKeys = pushKeys,
+            pairingNow = { gen },
+            clock = { 1000L },
+            log = {},
+            enqueue = {},
+            afterPass = { defaultLatch.countDown() },
+        )
+        defaultPort.onRegister = { _ ->
+            defaultCoordinator.onNewEndpoint("https://push.example/ep2", "pubKey2", "auth2")
+        }
+        defaultCoordinator.onUsableConnection(gen, { defaultClient })
+        assertTrue(defaultLatch.await(3, TimeUnit.SECONDS))
+
+        defaultClient.requests.clear()
+        defaultLatch = CountDownLatch(1)
+        defaultCoordinator.onUsableConnection(gen, { defaultClient })
+        assertTrue(defaultLatch.await(3, TimeUnit.SECONDS))
+
+        val defaultPost = defaultClient.requests.single { it.method == "POST" }
+        assertFalse(defaultPost.headers.containsKey(PUSH_PRESENTATION_HEADER))
     }
 }

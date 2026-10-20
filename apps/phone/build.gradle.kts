@@ -85,6 +85,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    sourceSets {
+        named("main") {
+            assets.srcDir(rootProject.file("contracts/push-i18n/production"))
+        }
+        named("androidTest") {
+            assets.srcDir(rootProject.file("contracts/push-i18n/cases"))
+        }
+    }
+
     signingConfigs {
         // Release signing via the Play upload keystore, ingested from the
         // environment (never hard-coded). Configured only when the keystore env
@@ -233,6 +242,79 @@ tasks.register("verifyJournalWebHostContractAsset") {
             }
             val actual = zip.getInputStream(entry).use { it.readBytes() }
             check(actual.contentEquals(source)) { "journal web host contract asset mismatch in $apk" }
+        }
+    }
+}
+
+tasks.register("checkPushPresentationPackaging") {
+    group = "verification"
+    description = "Verifies push presentation assets and absence of test/en-GB strings in realDebug APK."
+    dependsOn("assembleRealDebug")
+    doLast {
+        val apk = layout.buildDirectory
+            .file("outputs/apk/real/debug/phone-real-debug.apk")
+            .get()
+            .asFile
+        if (!apk.exists()) {
+            throw GradleException("phone-real-debug.apk not found at ${apk.absolutePath}")
+        }
+
+        ZipFile(apk).use { zip ->
+            val entries = zip.entries().asSequence().map { it.name }.toList()
+            if (entries.none { it == "assets/ir.json" }) {
+                throw GradleException("assets/ir.json is missing in ${apk.name}")
+            }
+            val forbidden = entries.filter {
+                it.contains("en-GB.ftl") || it.contains("en-rGB") || it.contains("values-en-rGB") ||
+                    it.contains("translations/") || it.endsWith(".ftl")
+            }
+            if (forbidden.isNotEmpty()) {
+                throw GradleException("Forbidden push localization entries found in ${apk.name}: $forbidden")
+            }
+        }
+
+        val sdkDir = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.sdkDirectory
+            ?: System.getenv("ANDROID_HOME")?.let { File(it) }
+            ?: System.getenv("ANDROID_SDK_ROOT")?.let { File(it) }
+            ?: throw GradleException("No Android SDK found: set ANDROID_HOME or sdk.dir in local.properties")
+        val buildToolsDir = File(sdkDir, "build-tools")
+        val aaptBinary = buildToolsDir.listFiles()
+            ?.sortedByDescending { it.name }
+            ?.map { File(it, "aapt2") }
+            ?.firstOrNull { it.canExecute() }
+            ?: buildToolsDir.listFiles()
+                ?.sortedByDescending { it.name }
+                ?.map { File(it, "aapt") }
+                ?.firstOrNull { it.canExecute() }
+            ?: throw GradleException("aapt/aapt2 binary not found under ${buildToolsDir.absolutePath}")
+
+        fun runDump(subcommand: String): String {
+            val cmd = listOf(aaptBinary.absolutePath, "dump", subcommand, apk.absolutePath)
+            val process = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val exitCode = process.waitFor()
+            if (exitCode != 0) {
+                throw GradleException("Failed to run ${aaptBinary.name} dump $subcommand (exit $exitCode): $output")
+            }
+            return output
+        }
+
+        val resourceDump = runDump("resources")
+        val stringDump = runDump("strings")
+
+        if (stringDump.contains("[test]") || resourceDump.contains("[test]")) {
+            throw GradleException("Found forbidden '[test]' in ${apk.name} resources")
+        }
+
+        val pushDump = resourceDump.split("resource ").filter { it.contains("m70757368") }.joinToString("\n")
+        if (pushDump.isEmpty()) {
+            throw GradleException("No push presentation resources (m70757368...) found in ${apk.name}")
+        }
+        if (pushDump.contains("en-rGB") || pushDump.contains("en-GB")) {
+            throw GradleException("Found forbidden 'en-rGB' in push presentation resources of ${apk.name}")
+        }
+        if (!pushDump.contains("en-rUS")) {
+            throw GradleException("Expected 'en-rUS' configuration missing from push presentation resources of ${apk.name}")
         }
     }
 }

@@ -30,6 +30,7 @@ class PushMessageHandler(
     private val notifier: PushNotifier,
     private val log: (String) -> Unit,
     private val drawId: () -> Int = ::defaultNotificationIdDraw,
+    private val present: (title: String, body: String, presentation: Any?) -> Pair<String, String> = { title, body, _ -> title to body },
 ) {
     companion object {
         const val FALLBACK_TITLE = "solstone"
@@ -75,7 +76,12 @@ class PushMessageHandler(
 
         when (envelopeResult) {
             is OpenEnvelopeResult.Opened -> {
-                notifier.post(id, envelopeResult.title, envelopeResult.body, envelopeResult.open)
+                val shown = try {
+                    present(envelopeResult.title, envelopeResult.body, envelopeResult.presentation)
+                } catch (_: Throwable) {
+                    envelopeResult.title to envelopeResult.body
+                }
+                notifier.post(id, shown.first, shown.second, envelopeResult.open)
             }
             OpenEnvelopeResult.BadKey,
             OpenEnvelopeResult.BadLength,

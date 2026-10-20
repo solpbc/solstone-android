@@ -107,6 +107,7 @@ class PhoneApplication : ObserverApplication(
             enabled = BuildConfig.PUSH_REGISTRATION,
             log = { line -> PhoneDiagLog.appendRaw(line) },
             enqueue = { SyncScheduler.enqueueNow(this, phoneSpec.stream) },
+            pushPresentation = true,
         )
         super.onCreate()
         ObserverForegroundService.captureWishTypes = {

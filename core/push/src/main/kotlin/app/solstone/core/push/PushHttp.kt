@@ -66,19 +66,32 @@ fun fetchVapidKey(client: PlHttpClient): VapidKeyResult = try {
     VapidKeyResult.Failed(null, e.message)
 }
 
+const val PUSH_PRESENTATION_HEADER = "X-Solstone-Push-Presentation"
+const val PUSH_PRESENTATION_VALUE = "1"
+
 fun registerPush(
     client: PlHttpClient,
     endpoint: String,
     p256dh: String,
     auth: String,
     pushKey: ByteArray,
+    pushPresentation: Boolean = false,
 ): RegisterPushResult = try {
     val pushKeyStr = Base64.getUrlEncoder().withoutPadding().encodeToString(pushKey)
     val bodyJson = "{\"platform\":\"android\",\"endpoint\":\"${escapeJson(endpoint)}\",\"p256dh\":\"${escapeJson(p256dh)}\",\"auth\":\"${escapeJson(auth)}\",\"push_key\":\"${escapeJson(pushKeyStr)}\"}"
+    val headers = if (pushPresentation) {
+        mapOf(
+            "Content-Type" to "application/json",
+            "Accept" to "application/json",
+            PUSH_PRESENTATION_HEADER to PUSH_PRESENTATION_VALUE,
+        )
+    } else {
+        mapOf("Content-Type" to "application/json", "Accept" to "application/json")
+    }
     val response = client.request(
         method = "POST",
         path = "/api/push/register",
-        headers = mapOf("Content-Type" to "application/json", "Accept" to "application/json"),
+        headers = headers,
         body = bodyJson.toByteArray(Charsets.UTF_8),
     )
     when (response.status) {

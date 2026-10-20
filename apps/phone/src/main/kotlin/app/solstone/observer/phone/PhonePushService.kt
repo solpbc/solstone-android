@@ -5,6 +5,7 @@ package app.solstone.observer.phone
 
 import app.solstone.core.push.PushEventSerial
 import app.solstone.core.push.PushMessageHandler
+import app.solstone.core.push.parsePushCatalog
 import app.solstone.platform.work.syncStores
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.INSTANCE_DEFAULT
@@ -17,11 +18,22 @@ class PhonePushService : PushService() {
     private val serial: PushEventSerial? by lazy {
         val stores = syncStores(applicationContext)
         val coordinator = stores.pushRegistration ?: return@lazy null
+        val presentFn: (String, String, Any?) -> Pair<String, String> = try {
+            val irJson = applicationContext.assets.open("ir.json").bufferedReader().use { it.readText() }
+            val catalog = parsePushCatalog(irJson)
+            val renderer = PushPresentationRenderer(applicationContext, catalog)
+            renderer::renderPresentation
+        } catch (_: Throwable) {
+            PhoneDiagLog.appendRaw("kind=push reason=presentation_unavailable")
+            val fallbackPresent: (String, String, Any?) -> Pair<String, String> = { title, body, _ -> title to body }
+            fallbackPresent
+        }
         val handler = PushMessageHandler(
             pushKeys = stores.pushKeys,
             pairingNow = { stores.identityMutator.currentPairingGeneration() },
             notifier = coordinator.guardNotifier(JournalPushPoster(applicationContext)),
             log = { PhoneDiagLog.appendRaw(it) },
+            present = presentFn,
         )
         PushEventSerial(coordinator, handler)
     }

@@ -161,6 +161,7 @@ private data class PushInstallConfig(
     val enabled: Boolean,
     val log: (String) -> Unit,
     val enqueue: () -> Unit,
+    val pushPresentation: Boolean = false,
 )
 
 fun installPushRegistration(
@@ -168,8 +169,9 @@ fun installPushRegistration(
     enabled: Boolean,
     log: (String) -> Unit,
     enqueue: () -> Unit,
+    pushPresentation: Boolean = false,
 ) {
-    SyncStoresHolder.setPushInstall(PushInstallConfig(port, enabled, log, enqueue))
+    SyncStoresHolder.setPushInstall(PushInstallConfig(port, enabled, log, enqueue, pushPresentation))
 }
 
 fun forgetPushAfterCleared(stores: SyncStores) {
@@ -296,6 +298,7 @@ private object SyncStoresHolder {
                             pairingNow = { mutator.currentPairingGeneration() },
                             log = config.log,
                             enqueue = config.enqueue,
+                            pushPresentation = config.pushPresentation,
                         ).also { pushCoordinator = it }
                     } else {
                         null

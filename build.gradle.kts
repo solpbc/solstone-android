@@ -2280,6 +2280,11 @@ tasks.register<Exec>("verifyJournalWebHostContractPin") {
     commandLine("python3", "tools/gate/verify-journal-web-host-contract.py")
 }
 
+tasks.register<Exec>("verifyPushI18nLock") {
+    workingDir = rootDir
+    commandLine("python3", "tools/gate/verify-push-i18n-lock.py")
+}
+
 tasks.named("check") {
     dependsOn(
         "androidApiSurfaceGuardSelfTest",
@@ -2305,6 +2310,7 @@ tasks.named("check") {
         "checkPairingPublisherArchitectureGuard",
         "pairingPublisherGuardSelfTest",
         "verifyJournalWebHostContractPin",
+        "verifyPushI18nLock",
     )
 }
 
