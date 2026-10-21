@@ -236,6 +236,8 @@ private object SyncStoresHolder {
             handshakeGuard ?: HandshakeGuard(
                 tracker = HandshakeRefusalTracker(
                     store = FileRefusalRecordStore(File(dir, "handshake_refusal.json")),
+                    wallMillis = System::currentTimeMillis,
+                    monotonicMillis = refusalSpacingClock,
                     report = { message, error -> workerLog("w", message, error) },
                 ),
                 publisher = publisher,
@@ -327,6 +329,13 @@ private object SyncStoresHolder {
             }
         }
 }
+
+/**
+ * The clock that spaces counted refusals within a process. It must keep running while the phone
+ * sleeps: `System.nanoTime` stops in deep sleep, so a cached process would see refusals hours
+ * apart as seconds apart and the seventh refusal's stop would drift by however long it slept.
+ */
+internal val refusalSpacingClock: () -> Long = android.os.SystemClock::elapsedRealtime
 
 fun plStoreDir(context: Context): File = File(context.filesDir, "pl")
 

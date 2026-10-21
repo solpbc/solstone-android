@@ -39,7 +39,9 @@ interface RefusalRecordStore {
  * with the classified failure otherwise. Only acceptance clears the count, and nothing but a new
  * pairing clears a stop.
  *
- * Within this process the spacing between counted refusals runs on [monotonicMillis]; across
+ * Within this process the spacing between counted refusals runs on [monotonicMillis], which must
+ * keep counting while the device sleeps (on Android, `SystemClock.elapsedRealtime`, not
+ * `System.nanoTime`, which stops in deep sleep and would stretch the bound in a cached process); across
  * processes it runs on the persisted [wallMillis] time, and a stored time later than now (the clock
  * moved back) lets the next refusal count. When the record cannot be read, an access denied still
  * stops in this process and every outcome is kept, in order, to be replayed against the record on
@@ -48,8 +50,8 @@ interface RefusalRecordStore {
  */
 class HandshakeRefusalTracker(
     private val store: RefusalRecordStore,
-    private val wallMillis: () -> Long = System::currentTimeMillis,
-    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val wallMillis: () -> Long,
+    private val monotonicMillis: () -> Long,
     private val report: (String, Throwable?) -> Unit = { _, _ -> },
 ) {
     private sealed interface Event {

@@ -90,7 +90,7 @@ class ProbeRefusalStopTest {
             graph.installOrReplace(home("sha256:cert-1"), credential("cert-1"), DirectEndpoint("10.0.0.1", 7657), true)
         }
         val guard = HandshakeGuard(
-            HandshakeRefusalTracker(FileRefusalRecordStore(File(temp.root, "handshake_refusal.json"))),
+            HandshakeRefusalTracker(FileRefusalRecordStore(File(temp.root, "handshake_refusal.json")), System::currentTimeMillis, { 0L }),
             graph,
         )
         val probe = RealPlStatusProbe(
