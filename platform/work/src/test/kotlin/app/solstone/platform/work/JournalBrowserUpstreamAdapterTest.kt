@@ -39,12 +39,12 @@ class JournalBrowserUpstreamAdapterTest {
             credentialStore = credentialStore,
             identityStore = identityStore,
             mutator = mutator,
-            directClientOpener = { ep, cred ->
+            directClientOpener = { ep, cred, _ ->
                 directOpened = true
                 assertEquals(endpoint, ep)
                 FakeJournalBrowserUpstream()
             },
-            relayClientOpener = { origin, inst, tok, cred ->
+            relayClientOpener = { origin, inst, tok, cred, _ ->
                 relayOpened = true
                 FakeJournalBrowserUpstream()
             },
@@ -73,11 +73,11 @@ class JournalBrowserUpstreamAdapterTest {
             credentialStore = credentialStore,
             identityStore = identityStore,
             mutator = mutator,
-            directClientOpener = { _, _ ->
+            directClientOpener = { _, _, _ ->
                 directOpened = true
                 FakeJournalBrowserUpstream()
             },
-            relayClientOpener = { origin, inst, tok, cred ->
+            relayClientOpener = { origin, inst, tok, cred, _ ->
                 relayOpened = true
                 assertEquals("https://relay.example", origin)
                 assertEquals("home", inst)
@@ -106,8 +106,8 @@ class JournalBrowserUpstreamAdapterTest {
             credentialStore = credentialStore,
             identityStore = identityStore,
             mutator = mutator,
-            directClientOpener = { _, _ -> FakeJournalBrowserUpstream() },
-            relayClientOpener = { _, _, _, _ -> FakeJournalBrowserUpstream() },
+            directClientOpener = { _, _, _ -> FakeJournalBrowserUpstream() },
+            relayClientOpener = { _, _, _, _, _ -> FakeJournalBrowserUpstream() },
         )
 
         assertFailsWith<JournalBrowserIdentityException> {
@@ -116,27 +116,39 @@ class JournalBrowserUpstreamAdapterTest {
         assertEquals(false, adapter.isAccessStillCurrent())
     }
 
+    // Inverted from the old rule, under which any TLS exception routed the browser to pairing
+    // repair. A TLS failure at a saved address is not the journal's verdict: the open moves on to
+    // the relay, and never reads as an identity failure. Falsified by the old classifier.
     @Test
-    fun mapsTrustRefusalToIdentityException() {
+    fun aTlsFailureAtTheSavedAddressIsNotAnIdentityFailureAndTheRelayIsTried() {
         val endpoint = DirectEndpoint("192.0.2.1", 7657)
-        val endpointStore = FakeEndpointStore(endpoint)
-        val credentialStore = FakeCredentialStore(credential())
-        val initialIdentity = identity(state = IdentityState.PAIRED)
-        val identityStore = FakeIdentityStore(initialIdentity)
-        val mutator = FileIdentityMutator(identityStore)
-
+        val identityStore = FakeIdentityStore(identity(state = IdentityState.PAIRED, relayOrigin = "https://relay.example", deviceToken = "tok"))
+        var relayOpened = false
         val adapter = JournalBrowserUpstreamAdapter(
-            endpointStore = endpointStore,
-            credentialStore = credentialStore,
+            endpointStore = FakeEndpointStore(endpoint),
+            credentialStore = FakeCredentialStore(credential()),
             identityStore = identityStore,
-            mutator = mutator,
-            directClientOpener = { _, _ -> throw SSLException("Certificate verification failed") },
-            relayClientOpener = { _, _, _, _ -> FakeJournalBrowserUpstream() },
+            mutator = FileIdentityMutator(identityStore),
+            directClientOpener = { _, _, _ -> throw SSLException("Certificate verification failed") },
+            relayClientOpener = { _, _, _, _, _ ->
+                relayOpened = true
+                FakeJournalBrowserUpstream()
+            },
         )
 
-        assertFailsWith<JournalBrowserIdentityException> {
-            adapter.open()
-        }
+        adapter.open().close()
+        assertTrue(relayOpened)
+
+        val directOnly = JournalBrowserUpstreamAdapter(
+            endpointStore = FakeEndpointStore(endpoint),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = FakeIdentityStore(identity(state = IdentityState.PAIRED)),
+            mutator = FileIdentityMutator(FakeIdentityStore(identity(state = IdentityState.PAIRED))),
+            directClientOpener = { _, _, _ -> throw SSLException("Certificate verification failed") },
+            relayClientOpener = { _, _, _, _, _ -> FakeJournalBrowserUpstream() },
+        )
+        val failure = assertFailsWith<java.io.IOException> { directOnly.open() }
+        assertTrue(failure !is JournalBrowserIdentityException)
     }
 
     private class FakeJournalBrowserUpstream : JournalBrowserUpstream {

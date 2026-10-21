@@ -1096,7 +1096,7 @@ class PhoneShellActivity : ComponentActivity() {
                             ?: LiveJournalSheetSession(
                                 JournalBrowserSession(
                                     publisher = stores.publisher,
-                                    upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher),
+                                    upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher, stores.handshakeGuard),
                                     diag = { PhoneDiagLog.emit(it) },
                                 ),
                             )

@@ -36,6 +36,9 @@ import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
 import app.solstone.platform.identity.file.FileJournalConfirmationStore
 import app.solstone.platform.identity.file.FilePairingRefusalStore
+import app.solstone.platform.identity.file.FileRefusalRecordStore
+import app.solstone.core.pl.HandshakeGuard
+import app.solstone.core.pl.HandshakeRefusalTracker
 import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
 import app.solstone.platform.identity.file.FilePairingMigrationStore
@@ -59,6 +62,8 @@ data class SyncStores(
     val pushRegistration: PushRegistrationCoordinator? = null,
     val pairingMigrationOwner: PairingMigrationOwner? = null,
     val pairingRefusalStore: PairingRefusalStore? = null,
+    /** The handshake-refusal rule shared by sync, the status probe and the journal browser. */
+    val handshakeGuard: HandshakeGuard? = null,
 ) {
     val pushDeliveryState: PushDeliveryState
         get() = pushRegistration?.deliveryState ?: PushDeliveryState.Off
@@ -198,6 +203,8 @@ private object SyncStoresHolder {
     @Volatile
     private var pairingRefusalStore: FilePairingRefusalStore? = null
     @Volatile
+    private var handshakeGuard: HandshakeGuard? = null
+    @Volatile
     private var pairingMigrationOwner: PairingMigrationOwner? = null
     @Volatile
     private var pushCoordinator: PushRegistrationCoordinator? = null
@@ -222,6 +229,19 @@ private object SyncStoresHolder {
         pairingRefusalStore ?: synchronized(this) {
             pairingRefusalStore ?: FilePairingRefusalStore(File(dir, "pairing_refusal.json"))
                 .also { pairingRefusalStore = it }
+        }
+
+    fun getHandshakeGuard(dir: File, publisher: PairingPublisher, refusalStore: PairingRefusalStore): HandshakeGuard =
+        handshakeGuard ?: synchronized(this) {
+            handshakeGuard ?: HandshakeGuard(
+                tracker = HandshakeRefusalTracker(
+                    store = FileRefusalRecordStore(File(dir, "handshake_refusal.json")),
+                    report = { message, error -> workerLog("w", message, error) },
+                ),
+                publisher = publisher,
+                refusalStore = refusalStore,
+                log = { message, error -> workerLog("w", message, error) },
+            ).also { handshakeGuard = it }
         }
 
     fun getPairingMigrationOwner(publisher: PairingPublisher, file: File): PairingMigrationOwner =
@@ -340,5 +360,6 @@ fun syncStores(context: Context): SyncStores {
         pushRegistration = pushCoordinator,
         pairingMigrationOwner = SyncStoresHolder.getPairingMigrationOwner(graph, File(dir, "pairing_migration.json")),
         pairingRefusalStore = SyncStoresHolder.getPairingRefusalStore(dir),
+        handshakeGuard = SyncStoresHolder.getHandshakeGuard(dir, graph, SyncStoresHolder.getPairingRefusalStore(dir)),
     )
 }

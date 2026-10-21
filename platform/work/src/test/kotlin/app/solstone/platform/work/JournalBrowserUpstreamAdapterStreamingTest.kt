@@ -128,7 +128,7 @@ class JournalBrowserUpstreamAdapterStreamingTest {
             credentialStore = FakeCredentialStore(credential()),
             identityStore = identStore,
             mutator = mut,
-            directClientOpener = { _, _ ->
+            directClientOpener = { _, _, _ ->
                 fakeDirectCalled = true
                 object : JournalBrowserUpstream {
                     override val isPoisoned: Boolean get() = false

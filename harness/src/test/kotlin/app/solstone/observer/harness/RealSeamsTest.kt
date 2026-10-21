@@ -264,8 +264,60 @@ class RealSeamsTest {
         assertEquals(HarnessPlStatus.Reachable(200), probe.probe())
     }
 
+    // Inverted from the old rule, under which any TLS exception at the saved address kept the probe
+    // off the relay. That failure is not the journal's verdict, so the relay is still tried in the
+    // same check. Falsified by the old classifier.
     @Test
-    fun directTrustRefusalDoesNotOpenRelay() {
+    fun aDirectTlsFailureThatIsNotAVerdictStillReachesTheRelay() {
+        val (probe, opened) = probeWith(liveEligible = true) { transport ->
+            when (transport) {
+                is app.solstone.platform.work.SyncTransport.Direct -> throw javax.net.ssl.SSLPeerUnverifiedException("peer not verified")
+                is app.solstone.platform.work.SyncTransport.Relay -> answering(200)
+            }
+        }
+        assertEquals(HarnessPlStatus.Reachable(200), probe.probe())
+        kotlin.test.assertTrue(opened.any { it is app.solstone.platform.work.SyncTransport.Relay })
+    }
+
+    // The journal's refusal at the saved address decides the check: the relay is not dialled for it.
+    // Falsified by trying the relay after a verdict, which would count the refusal twice or hide it.
+    @Test
+    fun aDirectRefusalDecidesTheCheckAndTheRelayIsNotDialled() {
+        val (probe, opened) = probeWith(liveEligible = true) { transport ->
+            when (transport) {
+                is app.solstone.platform.work.SyncTransport.Direct -> refusing(app.solstone.core.pl.HandshakeFailure.TLS_REFUSED, 80)
+                is app.solstone.platform.work.SyncTransport.Relay -> answering(200)
+            }
+        }
+        kotlin.test.assertIs<HarnessPlStatus.PairedButUnreachable>(probe.probe())
+        assertEquals(listOf<Any>(app.solstone.platform.work.SyncTransport.Direct(DirectEndpoint("192.0.2.1", 7657))), opened)
+    }
+
+    // A different journal at the saved address: the check reaches the relay in the same run and the
+    // sighting is recorded with the address it answered at. Falsified by an unknown journal that
+    // ends the check, or a sighting lost once the relay answered.
+    @Test
+    fun aDirectUnknownJournalReachesTheRelayAndRecordsTheSighting() {
+        val lines = mutableListOf<String>()
+        val (probe, opened) = probeWith(liveEligible = true, dialEvents = app.solstone.core.pl.DialEventLog { lines += it }) { transport ->
+            when (transport) {
+                is app.solstone.platform.work.SyncTransport.Direct -> throw app.solstone.core.pl.UnknownJournalException("192.0.2.1:7657", "claimed-journal-id")
+                is app.solstone.platform.work.SyncTransport.Relay -> answering(200)
+            }
+        }
+        assertEquals(HarnessPlStatus.Reachable(200), probe.probe())
+        kotlin.test.assertTrue(opened.any { it is app.solstone.platform.work.SyncTransport.Relay })
+        kotlin.test.assertTrue(
+            lines.contains("kind=dial host=192.0.2.1 port=7657 outcome=unknown-journal claimed-journal=claimed-journal-id"),
+            "$lines",
+        )
+    }
+
+    private fun probeWith(
+        liveEligible: Boolean,
+        dialEvents: app.solstone.core.pl.DialEventLog? = null,
+        open: (app.solstone.platform.work.SyncTransport) -> PlHttpClient,
+    ): Pair<RealPlStatusProbe, List<app.solstone.platform.work.SyncTransport>> {
         val endpointStore = TestEndpointStore().apply { save(DirectEndpoint("192.0.2.1", 7657)) }
         val credentialStore = TestCredentialStore().apply { save(ClientCredential("priv", "cert", listOf("ca"))) }
         val home = PairedHome(
@@ -279,39 +331,29 @@ class RealSeamsTest {
             expiresAt = null,
             state = IdentityState.PAIRED,
         )
-        val identityStore = TestIdentityStore().apply { save(home) }
-        val mutator = TestMutator(home, liveEligible = true)
-        var relayOpened = false
-
+        val opened = mutableListOf<app.solstone.platform.work.SyncTransport>()
         val probe = RealPlStatusProbe(
             endpointStore = endpointStore,
             credentialStore = credentialStore,
-            identityStore = identityStore,
-            mutator = mutator,
+            identityStore = TestIdentityStore().apply { save(home) },
+            mutator = TestMutator(home, liveEligible = liveEligible),
             openTransport = { transport, _ ->
-                when (transport) {
-                    is app.solstone.platform.work.SyncTransport.Direct -> {
-                        throw javax.net.ssl.SSLPeerUnverifiedException("peer not verified")
-                    }
-                    is app.solstone.platform.work.SyncTransport.Relay -> {
-                        relayOpened = true
-                        object : PlHttpClient {
-                            override fun request(
-                                method: String,
-                                path: String,
-                                headers: Map<String, String>,
-                                body: ByteArray?,
-                                maxResponseBytes: Int,
-                            ): HttpResponse = HttpResponse(200, emptyMap(), ByteArray(0))
-                        }
-                    }
-                }
+                opened += transport
+                open(transport)
             },
+            dialEvents = dialEvents,
         )
+        return probe to opened
+    }
 
-        val result = probe.probe()
-        kotlin.test.assertIs<HarnessPlStatus.PairedButUnreachable>(result)
-        kotlin.test.assertFalse(relayOpened)
+    private fun answering(status: Int) = object : PlHttpClient {
+        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse =
+            HttpResponse(status, emptyMap(), ByteArray(0))
+    }
+
+    private fun refusing(failure: app.solstone.core.pl.HandshakeFailure, code: Int) = object : PlHttpClient {
+        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse =
+            throw app.solstone.core.pl.JournalRefusalException(failure, code)
     }
 
     @Test

@@ -80,6 +80,7 @@ fun buildObserverFlavor(
         localDescriptionProvider = { currentPhoneDeviceDescription(context) },
         dialEvents = DialDiagnostics.events,
         publisher = stores.publisher,
+        handshakeGuard = stores.handshakeGuard,
     )
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,

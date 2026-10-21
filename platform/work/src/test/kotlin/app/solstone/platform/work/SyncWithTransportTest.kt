@@ -73,11 +73,14 @@ class SyncWithTransportTest {
         assertEquals(0, signals.refused)
     }
 
+    // Inverted from the old rule, under which any TLS exception marked the pairing refused. Only a
+    // stop marks it now, and a TLS failure that is not the journal's verdict (here, a peer that
+    // never proved itself) is unreachable: retried, never refused. Falsified by the old classifier.
     @Test
-    fun aTrustRefusalMarksThePairingRefusedAndAnUnreachableJournalSaysNothing() {
-        val (trust, trustSignals) = signalsFor({ throw javax.net.ssl.SSLPeerUnverifiedException("bad cert") })
-        assertEquals(SyncOutcome.FAILURE, trust)
-        assertEquals(1, trustSignals.refused)
+    fun aTlsFailureThatIsNotAVerdictRetriesAndAnUnreachableJournalSaysNothing() {
+        val (tls, tlsSignals) = signalsFor({ throw javax.net.ssl.SSLPeerUnverifiedException("bad cert") })
+        assertEquals(SyncOutcome.RETRY, tls)
+        assertEquals(0, tlsSignals.refused)
 
         val (offline, offlineSignals) = signalsFor({ throw java.net.ConnectException("connection refused") })
         assertEquals(SyncOutcome.RETRY, offline)
@@ -88,6 +91,43 @@ class SyncWithTransportTest {
         assertEquals(SyncOutcome.RETRY, busy)
         assertEquals(0, busySignals.refused)
         assertEquals(0, busySignals.authorized)
+    }
+
+    // The journal's refusal on the status probe decides the attempt but marks nothing below a stop:
+    // the TLS path marks the device refused only when the credential stops, which the attempt's
+    // guard records. Falsified by marking on any refusal (46 would read as refused).
+    @Test
+    fun aRefusalBelowTheStopRetriesWithoutMarkingThePairingRefused() {
+        for ((failure, code) in listOf(
+            app.solstone.core.pl.HandshakeFailure.TLS_CERTIFICATE_UNKNOWN to 46,
+            app.solstone.core.pl.HandshakeFailure.TLS_REFUSED to 80,
+        )) {
+            val attempt = app.solstone.core.pl.JournalAttempt.untracked(app.solstone.core.identity.PairingGeneration("home", "sha256:client"))
+            val signals = Signals()
+            val outcome = syncWithTransport(
+                transport = DIRECT,
+                openClient = {
+                    object : app.solstone.core.pl.PlHttpClient, java.io.Closeable {
+                        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse =
+                            throw app.solstone.core.pl.JournalRefusalException(failure, code)
+                        override fun close() = Unit
+                    }
+                },
+                store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a")))),
+                readPayload = { _, _ -> byteArrayOf(1) },
+                host = "test-device",
+                now = { NOW },
+                log = { _, _ -> },
+                finisher = dummyFinisher(),
+                allowsOwnerMaterial = true,
+                onRefused = { signals.refused++ },
+                onAuthorized = { signals.authorized++ },
+                attempt = attempt,
+            )
+            assertEquals(SyncOutcome.RETRY, outcome, "$failure")
+            assertTrue(attempt.decided)
+            assertEquals(0, signals.refused, "$failure")
+        }
     }
 
     @Test
@@ -210,7 +250,7 @@ class SyncWithTransportTest {
     }
 
     @Test
-    fun openerTrustRefusalReturnsFailureWhileAvailabilityReturnsRetry() {
+    fun anOpenerTlsFailureIsUnreachableAndRetriesLikeAvailability() {
         val store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a"))))
 
         val trustOutcome = syncWithTransport(
@@ -224,7 +264,9 @@ class SyncWithTransportTest {
             finisher = dummyFinisher(),
             allowsOwnerMaterial = true,
         )
-        assertEquals(SyncOutcome.FAILURE, trustOutcome)
+        // Inverted: the opener's TLS failure happens before this client confirmed the journal, so
+        // it is not a verdict. Falsified by the old classifier, which failed the run as refused.
+        assertEquals(SyncOutcome.RETRY, trustOutcome)
 
         val availOutcome = syncWithTransport(
             transport = DIRECT,

@@ -45,9 +45,11 @@ import app.solstone.platform.pl.transport.conscrypt.defaultRelayPairDialer
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe as conscryptPairAndProbe
 import app.solstone.platform.pl.transport.conscrypt.pairOverRelay as conscryptPairOverRelay
 import app.solstone.core.identity.PairingPublisher
-import app.solstone.platform.work.OpenerFailureKind
+import app.solstone.core.pl.HandshakeGuard
+import app.solstone.core.pl.JournalAttempt
+import app.solstone.core.pl.JournalVerdictListener
+import app.solstone.core.pl.unknownJournalIn
 import app.solstone.platform.work.SyncTransport
-import app.solstone.platform.work.classifyOpenerFailure
 import app.solstone.platform.work.dialAddress
 import app.solstone.platform.work.recordDial
 import app.solstone.core.pl.displayAddress
@@ -184,16 +186,22 @@ class RealPlStatusProbe(
     private val openTransport: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     private val dialEvents: DialEventLog? = null,
     private val publisher: app.solstone.core.identity.PairingPublisher? = null,
+    private val handshakeGuard: HandshakeGuard? = null,
 ) : PlStatusProbe {
     private var wasReachable: Boolean? = null
 
-    private fun openClientFor(t: SyncTransport, credential: ClientCredential): PlHttpClient =
+    private fun openClientFor(
+        t: SyncTransport,
+        credential: ClientCredential,
+        verdictListener: JournalVerdictListener? = null,
+    ): PlHttpClient =
         openTransport?.invoke(t, credential) ?: when (t) {
             is SyncTransport.Direct -> openAuthenticatedClient(
                 t.endpoint,
                 credential,
                 streamObserver,
                 directDialObserver,
+                verdictListener,
             )
             is SyncTransport.Relay -> openRelaySyncClient(
                 t.relayOrigin,
@@ -202,6 +210,7 @@ class RealPlStatusProbe(
                 credential,
                 streamObserver,
                 dialObserver,
+                verdictListener,
             )
         }
 
@@ -239,6 +248,15 @@ class RealPlStatusProbe(
             return HarnessPlStatus.PairedButUnreachable(if (identity.relayOrigin != null) "missing device token" else "missing endpoint")
         }
 
+        val pairing = PairingGeneration(identity.instanceId, identity.clientCertFingerprint)
+        if (handshakeGuard?.stopped(pairing) == true) {
+            // The journal stopped accepting this credential: nothing dials it until a re-pair.
+            handleReachabilityTransition(false, null, null)
+            return HarnessPlStatus.PairedButUnreachable("identity not paired")
+        }
+        // One attempt across every leg: each saved address, then the relay.
+        val attempt = handshakeGuard?.begin(pairing) ?: JournalAttempt.untracked(pairing)
+
         // The first address actually dialed, so a failed check can name it. Stays null when the
         // check stopped before any dial.
         var dialedAddress: String? = null
@@ -251,9 +269,11 @@ class RealPlStatusProbe(
                 if (dialedAddress == null) {
                     dialedAddress = t.dialAddress()?.let { displayAddress(it.host, it.port) }
                 }
-                val client = recordDial(dialEvents, t) { openClientFor(t, credential) }
+                val client = recordDial(dialEvents, t) { openClientFor(t, credential, attempt) }
                 try {
                     val status = client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)).status
+                    // Any HTTP answer is the journal's acceptance at the TLS layer.
+                    attempt.answered()
                     if (publisher != null && pairingSnapshot != null && status == 200) {
                         app.solstone.core.pl.refreshDirectEndpoints(client, publisher, pairingSnapshot, (t as? SyncTransport.Direct)?.endpoint)
                         publisher.withMutationBoundary {
@@ -268,42 +288,46 @@ class RealPlStatusProbe(
                     (client as? java.io.Closeable)?.close()
                 }
             } catch (e: Throwable) {
+                attempt.legFailed(e)
                 null to e
             }
         }
 
+        // A leg moves on only when it ended without a verdict: unreachable, or a peer that is not
+        // the paired journal. The first verdict on any leg decides the check.
+        fun nextLeg(failure: Throwable?): Boolean =
+            failure != null && !attempt.decided && (failure is java.io.IOException || unknownJournalIn(failure) != null)
+
         var (status, failure) = tryTransport(transport)
         var usedTransport = transport
-        if (status == null && transport is SyncTransport.Direct && failure?.let(::classifyOpenerFailure) == OpenerFailureKind.AVAILABILITY) {
+        if (status == null && transport is SyncTransport.Direct && nextLeg(failure)) {
             for (endpoint in endpointStore.loadAll().drop(1)) {
                 val candidate = SyncTransport.Direct(endpoint)
                 val result = tryTransport(candidate)
                 status = result.first
                 failure = result.second
                 usedTransport = candidate
-                if (status != null || failure?.let(::classifyOpenerFailure) != OpenerFailureKind.AVAILABILITY) break
+                if (status != null || !nextLeg(failure)) break
             }
         }
 
-        // If direct probe encounters availability error and relay is live-eligible, retry once with relay
-        if (status == null && failure != null && transport is SyncTransport.Direct && relayLiveEligible) {
-            val failureKind = classifyOpenerFailure(failure)
-            if (failureKind == OpenerFailureKind.AVAILABILITY) {
-                val relayOrigin = identity.relayOrigin
-                val deviceToken = identity.deviceToken
-                if (relayOrigin != null && deviceToken != null) {
-                    val relayTransport = SyncTransport.Relay(relayOrigin, identity.instanceId, deviceToken)
-                    val (relayStatus, relayFailure) = tryTransport(relayTransport)
-                    if (relayStatus != null) {
-                        status = relayStatus
-                        failure = null
-                        usedTransport = relayTransport
-                    } else {
-                        failure = relayFailure
-                    }
+        // Every direct leg ended without a verdict: try the relay once, when it is live-eligible.
+        if (status == null && transport is SyncTransport.Direct && relayLiveEligible && nextLeg(failure)) {
+            val relayOrigin = identity.relayOrigin
+            val deviceToken = identity.deviceToken
+            if (relayOrigin != null && deviceToken != null) {
+                val relayTransport = SyncTransport.Relay(relayOrigin, identity.instanceId, deviceToken)
+                val (relayStatus, relayFailure) = tryTransport(relayTransport)
+                if (relayStatus != null) {
+                    status = relayStatus
+                    failure = null
+                    usedTransport = relayTransport
+                } else {
+                    failure = relayFailure
                 }
             }
         }
+        attempt.finish()
 
         if (mutator != null && !transportAccessStillCurrent(usedTransport, identity, access, mutator)) {
             handleReachabilityTransition(false, null, null)

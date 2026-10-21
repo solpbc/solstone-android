@@ -122,32 +122,6 @@ fun recoverSyncCredentials(
     return SyncCredentials.Ready(transport, credential, identity)
 }
 
-enum class OpenerFailureKind {
-    TRUST_REFUSAL,
-    AVAILABILITY,
-    NONE,
-}
-
-fun isTrustRefusal(t: Throwable): Boolean {
-    var curr: Throwable? = t
-    while (curr != null) {
-        if (curr is javax.net.ssl.SSLException ||
-            curr is java.security.cert.CertificateException ||
-            curr is app.solstone.core.crypto.CaPinException
-        ) {
-            return true
-        }
-        curr = curr.cause
-    }
-    return false
-}
-
-fun classifyOpenerFailure(t: Throwable): OpenerFailureKind = when {
-    isTrustRefusal(t) -> OpenerFailureKind.TRUST_REFUSAL
-    t is java.io.IOException -> OpenerFailureKind.AVAILABILITY
-    else -> OpenerFailureKind.NONE
-}
-
 fun currentOptionalTransport(
     selected: SyncTransport,
     identity: PairedHome,

@@ -14,6 +14,8 @@ import app.solstone.core.pl.ClientReportedDescription
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.JournalAttempt
+import app.solstone.core.pl.JournalVerdictListener
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
@@ -371,6 +373,16 @@ private fun sync(
         }
     val importRun = ImportRun()
     val poster = defaultHttpsPoster()
+    val attemptPairing = PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
+    val guard = stores.handshakeGuard
+    if (guard != null && guard.stopped(attemptPairing)) {
+        // The journal stopped accepting this credential: nothing dials it again until a re-pair.
+        workerLog("w", "credential stopped; not dialling until a new pairing", null)
+        if (shouldCloseDb) dbToClose?.close()
+        return SyncOutcome.FAILURE
+    }
+    // One attempt across every leg of this run: each saved address, then the relay.
+    val attempt = guard?.begin(attemptPairing) ?: JournalAttempt.untracked(attemptPairing)
     try {
         val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
             val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
@@ -389,16 +401,17 @@ private fun sync(
                 transport = selectedTransport,
                 onRefused = { stores.pairingRefusalStore?.markRefused(runPairing) },
                 onAuthorized = { stores.pairingRefusalStore?.markAuthorized(runPairing) },
+                attempt = attempt,
                 openClient = {
-                    if (customOpenClient != null) {
-                        toCloseableClient(customOpenClient(selectedTransport, credentials.credential))
-                    } else {
-                        toCloseableClient(
-                            recordDial(DialDiagnostics.events, selectedTransport) {
-                                openSyncClient(selectedTransport, credentials.credential)
+                    toCloseableClient(
+                        recordDial(DialDiagnostics.events, selectedTransport) {
+                            if (customOpenClient != null) {
+                                customOpenClient(selectedTransport, credentials.credential)
+                            } else {
+                                openSyncClient(selectedTransport, credentials.credential, attempt)
                             }
-                        )
-                    }
+                        },
+                    )
                 },
                 store = store,
                 finisher = finisher,
@@ -480,7 +493,8 @@ private fun sync(
                 var attempted = SyncOutcome.RETRY
                 for (endpoint in credentials.directCandidates) {
                     attempted = syncTransport(SyncTransport.Direct(endpoint))
-                    if (attempted != SyncOutcome.RETRY) break
+                    // The first verdict on any leg decides the attempt; no further leg is dialled.
+                    if (attempted != SyncOutcome.RETRY || attempt.decided) break
                 }
                 attempted
             }
@@ -506,7 +520,9 @@ private fun sync(
             }
         }
 
-        if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct) {
+        // Every direct leg ended without a verdict (unreachable, or a peer that is not the paired
+        // journal): the relay is still tried in this run.
+        if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct && !attempt.decided) {
             val relayTransport = relayFallbackTransport(
                 identity = credentials.identity,
                 relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
@@ -533,6 +549,7 @@ private fun sync(
 
         return outcome
     } catch (e: RelayDialWaitingException) {
+        attempt.legFailed(e)
         workerLog("i", "home offline, waiting; will retry", e)
         return SyncOutcome.RETRY
     } catch (e: RelayWebSocketClosedException) {
@@ -545,6 +562,7 @@ private fun sync(
         workerLog("e", "sync failed", e)
         return SyncOutcome.FAILURE
     } finally {
+        attempt.finish()
         if (importStore != null) {
             runCatching {
                 recordImportRetries(importStore, importRun, credentials.identity.instanceId, System.currentTimeMillis())
@@ -568,14 +586,19 @@ private fun sync(
 /** Where owner-shared imports are kept on the device. */
 fun importStoreRoot(context: Context): File = File(context.filesDir, "import")
 
-private fun openSyncClient(transport: SyncTransport, credential: ClientCredential) =
+private fun openSyncClient(
+    transport: SyncTransport,
+    credential: ClientCredential,
+    verdictListener: JournalVerdictListener? = null,
+) =
     when (transport) {
-        is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential)
+        is SyncTransport.Direct -> openAuthenticatedClient(transport.endpoint, credential, verdictListener = verdictListener)
         is SyncTransport.Relay -> openRelaySyncClient(
             transport.relayOrigin,
             transport.instanceId,
             transport.deviceToken,
             credential,
+            verdictListener = verdictListener,
         )
     }
 
