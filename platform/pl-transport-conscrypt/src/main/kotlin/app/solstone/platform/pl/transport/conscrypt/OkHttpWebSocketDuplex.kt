@@ -7,6 +7,7 @@ import app.solstone.core.pl.ByteDuplex
 import app.solstone.core.pl.LedgerCategory
 import app.solstone.core.pl.LiveRoot
 import app.solstone.core.pl.MemoryLedger
+import app.solstone.core.pl.RelayTransportFailure
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -27,13 +28,17 @@ internal interface BinaryWebSocket {
 }
 
 class RelayWebSocketClosedException(val code: Int, val reason: String) :
-    IOException("relay websocket closed: $code $reason")
+    IOException("relay websocket closed: $code $reason"), RelayTransportFailure
+
+/** The relay's own connection failed: the outer WebSocket, or the TLS it runs on. Never a verdict. */
+class RelayTransportFailedException(message: String, cause: Throwable? = null) :
+    IOException(message, cause), RelayTransportFailure
 
 class RelayDialWaitingException(waitingTimeoutMillis: Long) :
     IOException("relay dial waiting: home offline (no inner data within ${waitingTimeoutMillis}ms)")
 
 class RelayPairWindowUnavailableException(val statusCode: Int, cause: Throwable? = null) :
-    IOException("relay pairing window unavailable (HTTP $statusCode)", cause)
+    IOException("relay pairing window unavailable (HTTP $statusCode)", cause), RelayTransportFailure
 
 class OkHttpWebSocketDuplex internal constructor(
     socket: BinaryWebSocket,
@@ -113,6 +118,21 @@ class OkHttpWebSocketDuplex internal constructor(
             inboundClosed = true
             lock.notifyAll()
         }
+    }
+
+    /**
+     * The relay's connection failed with [cause] (and the upgrade's HTTP [status], if it got one).
+     * Whatever caused it, an alert on the relay's own TLS included, the failure is the relay's, so
+     * it is raised as a [RelayTransportFailure] the alert classifier never reads into.
+     */
+    internal fun failFromWebSocket(cause: Throwable, status: Int?) {
+        fail(
+            if (status != null) {
+                RelayPairWindowUnavailableException(status, cause)
+            } else {
+                RelayTransportFailedException("WebSocket failed", cause)
+            },
+        )
     }
 
     internal fun failureOrNull(): IOException? =
@@ -271,13 +291,7 @@ class OkHttpWebSocketDuplex internal constructor(
                     }
 
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                        duplex.fail(
-                            if (response != null) {
-                                RelayPairWindowUnavailableException(response.code, t)
-                            } else {
-                                IOException("WebSocket failed", t)
-                            },
-                        )
+                        duplex.failFromWebSocket(t, response?.code)
                         opened.countDown()
                     }
                 },

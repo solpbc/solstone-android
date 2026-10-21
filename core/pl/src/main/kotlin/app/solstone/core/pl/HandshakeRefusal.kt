@@ -87,6 +87,13 @@ class UnknownJournalException(
     cause: Throwable? = null,
 ) : IOException("peer is not the paired journal", cause)
 
+/**
+ * A failure of the relay's own connection: the outer WebSocket and the TLS it runs on. It is never
+ * the journal's verdict, whatever caused it, so the alert classifier never reads past it. An alert
+ * on the relay's outer TLS (a captive portal, a proxy) is the journal unreachable.
+ */
+interface RelayTransportFailure
+
 /** Told what the journal said inside one connection's verdict window. */
 interface JournalVerdictListener {
     /** The journal sent its first application byte: it accepted this device. */
@@ -131,10 +138,11 @@ data class ReceivedTlsAlert(val code: Int?)
  * alert as library error reason `1000 + code`, packed into the `error:XXXXXXXX:SSL routines:` code,
  * and names known ones `TLSV1_ALERT_*` / `SSLV3_ALERT_*`. JSSE (the host JVM) says
  * `Received fatal alert: <name>`, or `Unknown alert description (<code>)` for an unassigned code.
- * Only [SSLException]s are read, so a relay's close reason can never pose as an alert.
+ * Only [SSLException]s are read, so a relay's close reason can never pose as an alert, and the
+ * chain is not followed past a [RelayTransportFailure], so the relay's own TLS never can either.
  */
 fun receivedTlsAlert(failure: Throwable): ReceivedTlsAlert? {
-    causeChain(failure).filterIsInstance<SSLException>().forEach { ssl ->
+    causeChain(failure).takeWhile { it !is RelayTransportFailure }.filterIsInstance<SSLException>().forEach { ssl ->
         val message = ssl.message ?: return@forEach
         BORINGSSL_PACKED.findAll(message).forEach { match ->
             val packed = match.groupValues[1].toLong(16)
@@ -158,16 +166,20 @@ fun receivedTlsAlert(failure: Throwable): ReceivedTlsAlert? {
 }
 
 /**
- * The refusal a received alert inside the verdict window means. Any received fatal alert is a
+ * The refusal a received alert inside the verdict window means, or [HandshakeFailure.UNREACHABLE]
+ * for a close_notify. Any other received fatal alert is a
  * refusal: 49 and 46 have their own meaning and every other code, unassigned or unnamed ones
  * included, is counted. ⛔ Do not narrow this to known codes.
  */
 fun refusalForAlert(alert: ReceivedTlsAlert): HandshakeFailure = when (alert.code) {
+    // close_notify (0), even sent at fatal level, is a clean close: EOF, not a refusal.
+    ALERT_CLOSE_NOTIFY -> HandshakeFailure.UNREACHABLE
     ALERT_ACCESS_DENIED -> HandshakeFailure.TLS_ACCESS_DENIED
     ALERT_CERTIFICATE_UNKNOWN -> HandshakeFailure.TLS_CERTIFICATE_UNKNOWN
     else -> HandshakeFailure.TLS_REFUSED
 }
 
+const val ALERT_CLOSE_NOTIFY: Int = 0
 const val ALERT_ACCESS_DENIED: Int = 49
 const val ALERT_CERTIFICATE_UNKNOWN: Int = 46
 

@@ -57,6 +57,9 @@ class ChosenAlertTlsServer(
 
         /** Completes the handshake, then resets the TCP connection. */
         data object ResetAfterHandshake : Ending
+
+        /** Completes the handshake, then sends nothing until the client lets go. */
+        data object HoldAfterHandshake : Ending
     }
 
     private val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))

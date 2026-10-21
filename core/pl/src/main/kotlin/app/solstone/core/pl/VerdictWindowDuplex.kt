@@ -66,7 +66,9 @@ class VerdictWindowDuplex(
         if (existing != null) return existing
         if (settled) return failure
         val alert = receivedTlsAlert(failure) ?: return failure
-        val classified = JournalRefusalException(refusalForAlert(alert), alert.code, failure)
+        val verdict = refusalForAlert(alert)
+        if (verdict == HandshakeFailure.UNREACHABLE) return failure
+        val classified = JournalRefusalException(verdict, alert.code, failure)
         val first = synchronized(lock) {
             if (settled) false else {
                 settled = true

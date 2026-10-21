@@ -239,6 +239,78 @@ class JournalRefusalHandshakeHostTest {
         assertIs<RelayWebSocketClosedException>(result.error)
     }
 
+    // The relay's outer connection fails with a TLS alert (49) after the inner handshake and before
+    // the journal's first byte. That is the relay's failure, never the journal's verdict: no count,
+    // no stop. Falsified by chaining the outer cause into a plain IOException the alert classifier
+    // walks into (as onFailure did), which read it as access denied and wrote the revoked state.
+    @Test
+    fun anOuterRelayTlsAlertInsideTheInnerVerdictWindowIsUnreachable() {
+        var now = 1_000_000_000L
+        val tracker = HandshakeRefusalTracker(MemoryRecords(), wallMillis = { now }, monotonicMillis = { now })
+        val credential = "sha256:client"
+        val server = journal()
+        val done = server.serveOnce(ChosenAlertTlsServer.Ending.HoldAfterHandshake)
+        val socket = Socket(InetAddress.getByName("127.0.0.1"), server.port)
+        val out = socket.getOutputStream()
+        val duplex = OkHttpWebSocketDuplex(
+            object : BinaryWebSocket {
+                override fun send(bytes: okio.ByteString): Boolean =
+                    runCatching { out.write(bytes.toByteArray()); out.flush() }.isSuccess
+
+                override fun close(code: Int, reason: String?) {
+                    socket.close()
+                }
+            },
+        )
+        thread(isDaemon = true) {
+            val buffer = ByteArray(16 * 1024)
+            runCatching {
+                val input = socket.getInputStream()
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    duplex.receive(buffer.copyOf(n).toByteString())
+                }
+            }
+        }
+        val heard = RecordingVerdicts()
+        val listener = object : JournalVerdictListener {
+            override fun onAccepted() {
+                heard.onAccepted()
+                tracker.accepted(credential)
+            }
+
+            override fun onRefused(refusal: JournalRefusalException) {
+                heard.onRefused(refusal)
+                tracker.failed(credential, refusal.failure)
+            }
+        }
+        val relay = openRelayClient(
+            host = "127.0.0.1",
+            port = 443,
+            tunnelOpener = TunnelOpener { duplex },
+            tlsMode = RelayTlsMode.Authenticated(pki.credential),
+            verdictListener = listener,
+        )
+        // The inner handshake is done; now the relay's own TLS fails with an alert.
+        duplex.failFromWebSocket(
+            javax.net.ssl.SSLHandshakeException(
+                "Read error: ssl=0x7a: Failure in SSL library, usually a protocol error\n" +
+                    "error:10000419:SSL routines:OPENSSL_internal:TLSV1_ALERT_ACCESS_DENIED",
+            ),
+            null,
+        )
+        val failure = runCatching { relay.client.request("GET", "/app/network/api/status", emptyMap(), ByteArray(0)) }.exceptionOrNull()
+        relay.close()
+        socket.close()
+        ChosenAlertTlsServer.await(done)
+
+        assertEquals(HandshakeFailure.UNREACHABLE, app.solstone.core.pl.handshakeFailureOf(assertNotNull(failure)), "$failure")
+        assertTrue(heard.heard.isEmpty(), "${heard.heard}")
+        assertEquals(0, tracker.current(credential)?.refusals ?: 0)
+        assertNull(tracker.stop(credential))
+    }
+
     private fun throughRelayBridge(closeCode: Int): DialResult {
         val server = journal(finishAfterEnding = true)
         val done = server.serveOnce(ChosenAlertTlsServer.Ending.AlertAfterClientFinished(80))

@@ -66,6 +66,38 @@ class VerdictWindowDuplexTest {
         }
     }
 
+    // A close_notify sent at fatal level is a clean close, so EOF. Falsified by counting code 0 like
+    // any other received alert: a journal closing cleanly would walk the device toward a stop.
+    @Test
+    fun aFatalCloseNotifyIsUnreachableNotARefusal() {
+        assertEquals(HandshakeFailure.UNREACHABLE, refusalForAlert(ReceivedTlsAlert(0)))
+        for (close in listOf(
+            SSLException("Received fatal alert: close_notify"),
+            boringssl(0x100003e8, "SSLV3_ALERT_CLOSE_NOTIFY"),
+        )) {
+            val heard = Heard()
+            val window = VerdictWindowDuplex(ScriptedDuplex(reads = listOf(Read.Fail(close))), heard)
+            val failure = assertFailsWith<SSLException> { window.input.read(ByteArray(8)) }
+            assertSame(close, failure)
+            assertEquals(HandshakeFailure.UNREACHABLE, handshakeFailureOf(failure))
+            assertTrue(heard.events.isEmpty(), "${close.message}")
+        }
+    }
+
+    // The relay's own connection failing is never the journal's verdict, even when an alert on the
+    // relay's outer TLS caused it. Falsified by walking the cause chain through it: an outer 49 from
+    // a captive portal would unpair the device.
+    @Test
+    fun anAlertBehindARelayTransportFailureIsNotRead() {
+        class OuterRelayFailure(cause: Throwable) : IOException("WebSocket failed", cause), RelayTransportFailure
+        val outer = OuterRelayFailure(SSLHandshakeException("Received fatal alert: access_denied"))
+        assertNull(receivedTlsAlert(outer))
+        val heard = Heard()
+        val window = VerdictWindowDuplex(ScriptedDuplex(reads = listOf(Read.Fail(outer))), heard)
+        assertSame(outer, assertFailsWith<IOException> { window.input.read(ByteArray(8)) })
+        assertTrue(heard.events.isEmpty())
+    }
+
     // Falsified by a window that never closes: an alert after the journal answered would be named
     // a refusal of this device.
     @Test
