@@ -4,6 +4,8 @@
 package app.solstone.core.crypto
 
 import app.solstone.core.pl.DirectPairLink
+import app.solstone.core.pl.PairLinkRefusal
+import app.solstone.core.pl.PairLinkRefusedException
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.pl.decodeCrockford32
 import app.solstone.core.pl.parsePairLink
@@ -179,12 +181,16 @@ class JournalIdentityConformanceTest {
         }
         val parsed = try {
             parsePairLink(link)
-        } catch (error: IllegalArgumentException) {
-            return if (expected.requiredString("result") == "error") {
-                null
-            } else {
-                "$id expected " + expected.requiredString("result") + ", got " + error::class.simpleName + ": " + error.message
+        } catch (error: PairLinkRefusedException) {
+            if (expected.requiredString("result") != "error") {
+                return "$id expected " + expected.requiredString("result") + ", got refusal " + error.refusal
             }
+            // Every field the vector's error carries, compared with the parser's typed refusal.
+            val expectedError = expected.requiredMap("error")
+            val actualError = refusalFields(error.refusal)
+            return if (actualError == expectedError) null else "$id refusal expected $expectedError, got $actualError"
+        } catch (error: IllegalArgumentException) {
+            return "$id expected " + expected.requiredString("result") + ", got an untyped " + error::class.simpleName
         }
         if (expected.requiredString("result") == "error") {
             return "$id expected refusal, got " + parsed::class.simpleName
@@ -216,6 +222,21 @@ class JournalIdentityConformanceTest {
             }
             else -> "$id has an unrecognized expected result"
         }
+    }
+
+    // One corpus `error.kind` per typed refusal. Falsified by a parser that reports the right kind
+    // with the wrong detail (a truncation's lengths, the refused address or tag): the field
+    // comparison above fails, where an "it threw" check would pass.
+    private fun refusalFields(refusal: PairLinkRefusal): Map<String, Any?> = when (refusal) {
+        is PairLinkRefusal.Truncated -> mapOf("kind" to "truncated", "expected" to refusal.expected.toLong(), "got" to refusal.got.toLong())
+        is PairLinkRefusal.DisallowedDirectIpv4 -> mapOf("kind" to "disallowed_direct_ipv4", "address" to refusal.address)
+        is PairLinkRefusal.InvalidCandidateCount -> mapOf("kind" to "invalid_candidate_count", "count" to refusal.count.toLong())
+        is PairLinkRefusal.UnsupportedAddressType -> mapOf("kind" to "unsupported_address_type", "address_type" to refusal.addressType.toLong())
+        PairLinkRefusal.BadRelayOrigin -> mapOf("kind" to "bad_relay_origin")
+        is PairLinkRefusal.UnknownCaFpTag -> mapOf("kind" to "unknown_ca_fp_tag", "tag" to refusal.tag.toLong())
+        // Refusals the corpus does not exercise: any vector that expects one of these fails.
+        is PairLinkRefusal.LengthMismatch -> mapOf("kind" to "length_mismatch", "expected" to refusal.expected.toLong(), "got" to refusal.got.toLong())
+        is PairLinkRefusal.UnsupportedVersion -> mapOf("kind" to "unsupported_version", "version" to refusal.version.toLong())
     }
 
     private fun pairLinkFromBlob(bytes: ByteArray): String {
