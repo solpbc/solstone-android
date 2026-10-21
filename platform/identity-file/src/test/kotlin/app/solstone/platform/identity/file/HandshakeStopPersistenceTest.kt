@@ -158,6 +158,40 @@ class HandshakeStopPersistenceTest {
         assertEquals(IdentityState.REVOKED, (graph().currentSnapshot() as PairingGraphSnapshot.Committed).home.state)
     }
 
+    // A reader on another thread, here the browser's upstream, asks for the stop while the refusal
+    // that causes it is still being recorded. It must wait and see the stop, so the refusal routes
+    // to pairing repair. Falsified by recording the verdict before the stop under separate steps:
+    // the reader saw the attempt decided with no stop yet.
+    @Test
+    fun aStopIsVisibleToAConcurrentReaderOnceTheVerdictIsRecorded() {
+        val graph = graph()
+        install(graph, "sha256:cert-1")
+        val writing = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val file = FileRefusalRecordStore(recordFile())
+        val slow = object : app.solstone.core.pl.RefusalRecordStore {
+            override fun read() = file.read()
+            override fun write(record: RefusalRecord) {
+                writing.countDown()
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS)
+                file.write(record)
+            }
+        }
+        val guard = HandshakeGuard(HandshakeRefusalTracker(slow, { t0 }, { t0 }), graph)
+        val attempt = guard.begin(PairingGeneration("home-1", "sha256:cert-1"))
+        val refusing = Thread { attempt.onRefused(JournalRefusalException(HandshakeFailure.TLS_ACCESS_DENIED, 49)) }
+        refusing.start()
+        assertTrue(writing.await(10, java.util.concurrent.TimeUnit.SECONDS))
+
+        val seen = java.util.concurrent.CompletableFuture.supplyAsync { attempt.stop to attempt.legFailed(java.io.IOException("session unusable")) }
+        Thread.sleep(200)
+        release.countDown()
+        refusing.join(10_000)
+        val (stop, outcome) = seen.get(10, java.util.concurrent.TimeUnit.SECONDS)
+        assertEquals(HandshakeStop.TLS_ACCESS_DENIED, stop)
+        assertEquals(app.solstone.core.pl.LegOutcome.STOPPED, outcome)
+    }
+
     private fun graph() = FilePairingGraph(
         identityFile = File(temp.root, "identity.tsv"),
         credentialFile = File(temp.root, "credential.pem"),

@@ -91,22 +91,24 @@ class JournalAttempt internal constructor(
     val pairing: PairingGeneration,
     private val guard: HandshakeGuard?,
 ) : JournalVerdictListener {
+    // Every verdict is recorded under this lock, the tracker and the stop included, so a reader on
+    // another thread never sees the attempt decided before the stop that verdict produced.
     private val lock = Any()
+    private var refusalValue: HandshakeFailure? = null
+    private var decidedValue = false
+    private var stopValue: HandshakeStop? = null
 
     /** The verdict that decided this attempt, if any: null for acceptance. */
-    @Volatile
-    var refusal: HandshakeFailure? = null
-        private set
+    val refusal: HandshakeFailure?
+        get() = synchronized(lock) { refusalValue }
 
     /** Whether a verdict decided this attempt. */
-    @Volatile
-    var decided: Boolean = false
-        private set
+    val decided: Boolean
+        get() = synchronized(lock) { decidedValue }
 
-    /** The stop this attempt's verdict produced, if any. */
-    @Volatile
-    var stop: HandshakeStop? = null
-        private set
+    /** The stop this attempt's verdict produced, if any; waits for a verdict being recorded. */
+    val stop: HandshakeStop?
+        get() = synchronized(lock) { stopValue }
 
     private var noVerdict: HandshakeFailure? = null
     private val sightingsList = ArrayList<UnknownJournalException>()
@@ -127,13 +129,11 @@ class JournalAttempt internal constructor(
 
     /** The journal answered on this attempt (any HTTP answer, 401 and 403 included). */
     fun answered() {
-        val first = synchronized(lock) {
-            if (decided) false else {
-                decided = true
-                true
-            }
+        synchronized(lock) {
+            if (decidedValue) return
+            guard?.accepted(pairing)
+            decidedValue = true
         }
-        if (first) guard?.accepted(pairing)
     }
 
     /**
@@ -145,9 +145,9 @@ class JournalAttempt internal constructor(
             decide(refusal.failure)
             return if (stop != null) LegOutcome.STOPPED else LegOutcome.DECIDED
         }
-        if (decided) return if (stop != null) LegOutcome.STOPPED else LegOutcome.DECIDED
         val unknown = unknownJournalIn(failure)
         synchronized(lock) {
+            if (decidedValue) return if (stopValue != null) LegOutcome.STOPPED else LegOutcome.DECIDED
             if (unknown != null) {
                 sightingsList += unknown
                 noVerdict = HandshakeFailure.UNKNOWN_JOURNAL
@@ -160,20 +160,17 @@ class JournalAttempt internal constructor(
 
     /** Close the attempt: one that never reached a verdict is fed to the tracker, which ignores it. */
     fun finish() {
-        if (decided) return
-        val outcome = synchronized(lock) { noVerdict } ?: return
+        val outcome = synchronized(lock) { if (decidedValue) null else noVerdict } ?: return
         guard?.failed(pairing, outcome)
     }
 
     private fun decide(failure: HandshakeFailure) {
-        val first = synchronized(lock) {
-            if (decided) false else {
-                decided = true
-                refusal = failure
-                true
-            }
+        synchronized(lock) {
+            if (decidedValue) return
+            stopValue = guard?.failed(pairing, failure)
+            refusalValue = failure
+            decidedValue = true
         }
-        if (first) stop = guard?.failed(pairing, failure)
     }
 
     companion object {
