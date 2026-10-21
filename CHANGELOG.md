@@ -6,9 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.28] - 2026-10-20
+
 ### Added
 
 - you can now send photos, PDFs, audio and text to your journal: share them from another app, or pick photos and files in import. when you share, nothing is saved until you tap "add to your journal". what you add stays on this device until your journal has it, and import shows what's still here and why. your journal needs version 2.0.52 or later to bring them in. thanks to @dvanduzer for the plan this follows.
+
+### Fixed
+
+- a brief problem on your journal's side no longer sends you to pair again.
+- if something other than your journal answers at one of its saved addresses, the phone now goes on to its other ways of reaching your journal in the same try.
+- the phone now shows your journal as connected only when your journal has accepted it.
+- if your journal keeps refusing this phone, the phone now stops trying to reach it until you pair again.
 
 ## [2.1.27] - 2026-10-19
 
