@@ -82,7 +82,8 @@ class ImportDeliveryTest {
         version: String = "2.0.52",
         gate: ImportVersionGate = ImportVersionGate.SUPPORTED,
         pairingCurrent: () -> Boolean = { true },
-    ): ImportStageResult = deliverImports(journal, store, run, instance, version, gate, pairingCurrent, { 2_000L }, { _, _ -> })
+        diag: (String) -> Unit = {},
+    ): ImportStageResult = deliverImports(journal, store, run, instance, version, gate, pairingCurrent, { 2_000L }, { _, _ -> }, diag)
 
     @Test
     fun aSharedFileIsSavedThenStartedAndItsCopyRemovedOnlyAfter() {
@@ -122,6 +123,27 @@ class ImportDeliveryTest {
         assertEquals(ImportStageResult.CLEAN, deliverImports(later, store, ImportRun(), "A", "2.0.52", ImportVersionGate.SUPPORTED, { true }, { Long.MAX_VALUE / 2 }, { _, _ -> }))
         assertEquals(listOf(start), later.paths)
         assertNull(dao.byId(id))
+    }
+
+    @Test
+    fun everyRetryTellsTheOwnersEventLogWhichStepAndWhy() {
+        setUp()
+        val id = share("private name.pdf")
+        val lines = mutableListOf<String>()
+        fun runAfterBackoff(journal: PlHttpClient) =
+            deliverImports(journal, store, ImportRun(), "A", "2.0.52", ImportVersionGate.SUPPORTED, { true }, { Long.MAX_VALUE / 2 }, { _, _ -> }, { lines += it })
+
+        assertEquals(ImportStageResult.RETRY, deliver(Journal(json(503, "{}")), diag = { lines += it }))
+        assertEquals(ImportStageResult.RETRY, runAfterBackoff(Journal(saved(), SocketTimeoutException("read timed out"))))
+        assertEquals(ImportStageResult.CLEAN, runAfterBackoff(Journal(started())))
+        assertEquals(
+            listOf(
+                "kind=import id=$id step=save outcome=retry cause=http-503",
+                "kind=import id=$id step=start outcome=retry cause=io-SocketTimeoutException",
+            ),
+            lines,
+        )
+        assertTrue(lines.none { "private" in it })
     }
 
     @Test

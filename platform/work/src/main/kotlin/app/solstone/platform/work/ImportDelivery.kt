@@ -60,6 +60,9 @@ internal enum class ImportStageResult {
  * each answer is recorded and the exchange ended under the store lock. An answer from the journal
  * a request went to counts even if the owner re-paired meanwhile: that journal has the item, the
  * same rule segments follow. A save answer that arrives after a re-pair sends no start.
+ *
+ * Every item left to retry writes one line to [diag], the owner's event log, naming the step and
+ * why: a retry costs the owner a back-off, so its cause is never silent.
  */
 internal fun deliverImports(
     http: PlHttpClient,
@@ -71,6 +74,7 @@ internal fun deliverImports(
     pairingCurrent: () -> Boolean,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
+    diag: (String) -> Unit = {},
     client: (PlHttpClient) -> MobileImportClient = ::MobileImportClient,
 ): ImportStageResult {
     if (gate != ImportVersionGate.SUPPORTED) return ImportStageResult.HELD
@@ -92,10 +96,15 @@ internal fun deliverImports(
             if (store.beginExchange(candidate.id, instanceId, journalVersion) != ImportChange.DONE) continue
             run.selected.add(candidate.id)
             run.retried.remove(candidate.id)
+            val retried = { stage: String, cause: String ->
+                runCatching { diag(importRetryLine(candidate.id, stage, cause)) }
+                Unit
+            }
             val step = try {
-                deliverOne(wire, store, candidate.id, candidate.progress?.let { it.path to it.timestamp }, instanceId, journalVersion, pairingCurrent)
+                deliverOne(wire, store, candidate.id, candidate.progress?.let { it.path to it.timestamp }, instanceId, journalVersion, pairingCurrent, retried)
             } catch (t: Throwable) {
                 log("import ${candidate.id} failed; retry", t)
+                retried("exchange", "threw-" + t.javaClass.simpleName.ifEmpty { "Throwable" })
                 ItemStep.RETRY
             } finally {
                 store.endExchange(candidate.id)
@@ -134,6 +143,10 @@ internal fun recordImportRetries(store: ImportCustodyStore, run: ImportRun, inst
     }
 }
 
+/** One owner event-log line for an import left to retry. The id is the device's own random one. */
+internal fun importRetryLine(id: String, stage: String, cause: String): String =
+    "kind=import id=$id step=$stage outcome=retry cause=$cause"
+
 private enum class ItemStep { DONE, RETRY, AUTH_STOP, PAIRING_LEFT }
 
 private fun deliverOne(
@@ -144,6 +157,7 @@ private fun deliverOne(
     instanceId: String,
     journalVersion: String,
     pairingCurrent: () -> Boolean,
+    retried: (stage: String, cause: String) -> Unit,
 ): ItemStep {
     var progress = saved
     if (progress == null) {
@@ -154,11 +168,11 @@ private fun deliverOne(
                 if (store.recordSaved(id, outcome.path, outcome.timestamp, instanceId) == ImportChange.GONE) return ItemStep.DONE
                 progress = outcome.path to outcome.timestamp
             }
-            else -> return settle(store, id, outcome, instanceId, journalVersion)
+            else -> return settle(store, id, outcome, instanceId, journalVersion) { retried("save", it) }
         }
     }
     if (!pairingCurrent()) return ItemStep.PAIRING_LEFT
-    return settle(store, id, wire.start(progress.first, progress.second), instanceId, journalVersion)
+    return settle(store, id, wire.start(progress.first, progress.second), instanceId, journalVersion) { retried("start", it) }
 }
 
 private fun settle(
@@ -167,6 +181,7 @@ private fun settle(
     outcome: MobileImportOutcome,
     instanceId: String,
     journalVersion: String,
+    retried: (cause: String) -> Unit,
 ): ItemStep =
     when (outcome) {
         MobileImportOutcome.Delivered -> {
@@ -178,10 +193,16 @@ private fun settle(
             ItemStep.DONE
         }
         MobileImportOutcome.AuthStop -> ItemStep.AUTH_STOP
-        MobileImportOutcome.Retry -> ItemStep.RETRY
+        is MobileImportOutcome.Retry -> {
+            retried(outcome.cause)
+            ItemStep.RETRY
+        }
         // A save answer is handled by the caller; at start it means the journal answered
         // something else, so try again later rather than guess.
-        is MobileImportOutcome.Saved -> ItemStep.RETRY
+        is MobileImportOutcome.Saved -> {
+            retried("answer-saved")
+            ItemStep.RETRY
+        }
     }
 
 private fun save(wire: MobileImportClient, descriptor: ImportItemDescriptor): MobileImportOutcome {

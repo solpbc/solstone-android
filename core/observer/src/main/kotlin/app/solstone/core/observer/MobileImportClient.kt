@@ -36,7 +36,12 @@ sealed interface MobileImportOutcome {
     data class Saved(val path: String, val timestamp: String) : MobileImportOutcome
     data object Delivered : MobileImportOutcome
     data object AuthStop : MobileImportOutcome
-    data object Retry : MobileImportOutcome
+    /**
+     * Try again later. [cause] says why, as the owner's event log writes it: `io-<exception
+     * class>`, `http-<status>`, `unreadable-answer`, or `answer-<the journal's status word>`
+     * (`answer-incomplete` when the word was right and a field was missing).
+     */
+    data class Retry(val cause: String) : MobileImportOutcome
     data class NeedsAttention(val error: String, val reasonCode: String?, val kind: String?) : MobileImportOutcome
 }
 
@@ -62,8 +67,8 @@ class MobileImportClient(private val http: PlHttpClient) {
                 httpStatus = response.status,
                 body = response.body,
             )
-        } catch (_: IOException) {
-            MobileImportOutcome.Retry
+        } catch (e: IOException) {
+            MobileImportOutcome.Retry(ioCause(e))
         } finally {
             body.close()
         }
@@ -84,8 +89,8 @@ class MobileImportClient(private val http: PlHttpClient) {
                 httpStatus = response.status,
                 body = response.body,
             )
-        } catch (_: IOException) {
-            MobileImportOutcome.Retry
+        } catch (e: IOException) {
+            MobileImportOutcome.Retry(ioCause(e))
         }
     }
 
@@ -314,14 +319,14 @@ internal fun classifyMobileImportResponse(
         return MobileImportOutcome.AuthStop
     }
     if (httpStatus in 500..599) {
-        return MobileImportOutcome.Retry
+        return MobileImportOutcome.Retry("http-$httpStatus")
     }
     if (httpStatus == 200) {
         val root = try {
             parseJson(body.toString(Charsets.UTF_8)) as? Map<*, *>
         } catch (_: IllegalArgumentException) {
             null
-        } ?: return MobileImportOutcome.Retry
+        } ?: return MobileImportOutcome.Retry("unreadable-answer")
 
         return when (operation) {
             MobileImportOperation.SAVE -> {
@@ -331,7 +336,7 @@ internal fun classifyMobileImportResponse(
                 if (status == "staged" && path != null && path.isNotEmpty() && timestamp != null && timestamp.isNotEmpty()) {
                     MobileImportOutcome.Saved(path, timestamp)
                 } else {
-                    MobileImportOutcome.Retry
+                    MobileImportOutcome.Retry(unexpectedAnswer(status, "staged"))
                 }
             }
             MobileImportOperation.START -> {
@@ -341,13 +346,13 @@ internal fun classifyMobileImportResponse(
                 if (status == "ok" && taskId != null && taskId.isNotEmpty() && importId != null && importId.isNotEmpty()) {
                     MobileImportOutcome.Delivered
                 } else {
-                    MobileImportOutcome.Retry
+                    MobileImportOutcome.Retry(unexpectedAnswer(status, "ok"))
                 }
             }
         }
     }
     if (httpStatus in 200..299) {
-        return MobileImportOutcome.Retry
+        return MobileImportOutcome.Retry("http-$httpStatus")
     }
 
     val root = try {
@@ -368,4 +373,13 @@ internal fun classifyMobileImportResponse(
     }
 
     return MobileImportOutcome.NeedsAttention(GENERIC_REFUSAL, null, null)
+}
+
+private fun ioCause(e: IOException): String = "io-" + e.javaClass.simpleName.ifEmpty { "IOException" }
+
+/** A 200 that isn't the answer this step needs. Only a plain-token status word is repeated. */
+private fun unexpectedAnswer(status: String?, expected: String): String = when {
+    status == expected -> "answer-incomplete"
+    status != null && status.length in 1..32 && status.all { it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-' } -> "answer-$status"
+    else -> "answer-unknown"
 }

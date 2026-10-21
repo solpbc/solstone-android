@@ -482,6 +482,7 @@ private fun sync(
                             pairingCurrent = pairingNow,
                             now = System::currentTimeMillis,
                             log = { message, throwable -> workerLog("w", message, throwable) },
+                            diag = { line -> SyncWorker.syncDiag?.invoke(line) },
                         )
                     }
                 },

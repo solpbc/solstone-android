@@ -302,7 +302,7 @@ class MobileImportClientTest {
             for (op in listOf(MobileImportOperation.SAVE, MobileImportOperation.START)) {
                 val outcome = classifyMobileImportResponse(op, status, bodyBytes)
                 when (status) {
-                    500, 503 -> assertEquals(MobileImportOutcome.Retry, outcome, "Status $status should retry for $op")
+                    500, 503 -> assertEquals(MobileImportOutcome.Retry("http-$status"), outcome, "Status $status should retry for $op")
                     else -> assertEquals(
                         MobileImportOutcome.NeedsAttention("refusal from the journal", reasonCode, null),
                         outcome,
@@ -537,22 +537,22 @@ class MobileImportClientTest {
     @Test
     fun behaviour7_classifierRetryBranches() {
         // empty 200 body
-        assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.SAVE, 200, ByteArray(0)))
-        assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.START, 200, ByteArray(0)))
+        assertEquals(MobileImportOutcome.Retry("unreadable-answer"), classifyMobileImportResponse(MobileImportOperation.SAVE, 200, ByteArray(0)))
+        assertEquals(MobileImportOutcome.Retry("unreadable-answer"), classifyMobileImportResponse(MobileImportOperation.START, 200, ByteArray(0)))
 
         // 200 object with no status
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("answer-unknown"),
             classifyMobileImportResponse(MobileImportOperation.SAVE, 200, "{\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8)),
         )
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("answer-unknown"),
             classifyMobileImportResponse(MobileImportOperation.START, 200, "{\"task_id\":\"t\",\"import_id\":\"i\"}".toByteArray(Charsets.UTF_8)),
         )
 
         // 200 status "held"
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("answer-held"),
             classifyMobileImportResponse(MobileImportOperation.SAVE, 200, "{\"status\":\"held\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8)),
         )
 
@@ -568,7 +568,7 @@ class MobileImportClientTest {
             "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":456}",
         )
         for (jsonStr in saveMissing) {
-            assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.SAVE, 200, jsonStr.toByteArray(Charsets.UTF_8)))
+            assertEquals(MobileImportOutcome.Retry("answer-incomplete"), classifyMobileImportResponse(MobileImportOperation.SAVE, 200, jsonStr.toByteArray(Charsets.UTF_8)))
         }
 
         val startMissing = listOf(
@@ -582,30 +582,30 @@ class MobileImportClientTest {
             "{\"status\":\"ok\",\"task_id\":\"t\",\"import_id\":456}",
         )
         for (jsonStr in startMissing) {
-            assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.START, 200, jsonStr.toByteArray(Charsets.UTF_8)))
+            assertEquals(MobileImportOutcome.Retry("answer-incomplete"), classifyMobileImportResponse(MobileImportOperation.START, 200, jsonStr.toByteArray(Charsets.UTF_8)))
         }
 
         // SAVE given start-shaped 200
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("answer-ok"),
             classifyMobileImportResponse(MobileImportOperation.SAVE, 200, "{\"status\":\"ok\",\"task_id\":\"t\",\"import_id\":\"i\"}".toByteArray(Charsets.UTF_8)),
         )
 
         // START given save-shaped 200
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("answer-staged"),
             classifyMobileImportResponse(MobileImportOperation.START, 200, "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8)),
         )
 
         // HTTP 201 with valid staged body on SAVE
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("http-201"),
             classifyMobileImportResponse(MobileImportOperation.SAVE, 201, "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8)),
         )
 
         // HTTP 201 with valid ok body on START
         assertEquals(
-            MobileImportOutcome.Retry,
+            MobileImportOutcome.Retry("http-201"),
             classifyMobileImportResponse(MobileImportOperation.START, 201, "{\"status\":\"ok\",\"task_id\":\"t\",\"import_id\":\"i\"}".toByteArray(Charsets.UTF_8)),
         )
 
@@ -634,8 +634,8 @@ class MobileImportClientTest {
 
         // 500 and 503 are Retry
         val errBody = "{\"error\":\"down\",\"reason_code\":\"import_metadata_failed\"}".toByteArray(Charsets.UTF_8)
-        assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.SAVE, 500, errBody))
-        assertEquals(MobileImportOutcome.Retry, classifyMobileImportResponse(MobileImportOperation.START, 503, errBody))
+        assertEquals(MobileImportOutcome.Retry("http-500"), classifyMobileImportResponse(MobileImportOperation.SAVE, 500, errBody))
+        assertEquals(MobileImportOutcome.Retry("http-503"), classifyMobileImportResponse(MobileImportOperation.START, 503, errBody))
 
         // 400 with kind already_imported and reason_code other is NeedsAttention
         val otherReasonBody = "{\"error\":\"custom\",\"reason_code\":\"other\",\"kind\":\"already_imported\"}".toByteArray(Charsets.UTF_8)
@@ -721,7 +721,7 @@ class MobileImportClientTest {
         http.streamingHandler = {
             HttpResponse(500, emptyMap(), "server error".toByteArray(Charsets.UTF_8))
         }
-        assertEquals(MobileImportOutcome.Retry, client.save(textItem))
+        assertEquals(MobileImportOutcome.Retry("http-500"), client.save(textItem))
         assertEquals(1, http.streamed.size)
         assertTrue(http.buffered.isEmpty())
 
@@ -729,7 +729,7 @@ class MobileImportClientTest {
         http.buffered.clear()
         http.streamed.clear()
         http.response = HttpResponse(500, emptyMap(), "server error".toByteArray(Charsets.UTF_8))
-        assertEquals(MobileImportOutcome.Retry, client.start("/p", "ts"))
+        assertEquals(MobileImportOutcome.Retry("http-500"), client.start("/p", "ts"))
         assertEquals(1, http.buffered.size)
         assertTrue(http.streamed.isEmpty())
     }
@@ -824,7 +824,7 @@ class MobileImportClientTest {
 
         // requestStreaming throws IOException -> save returns Retry
         http.streamingHandler = { throw IOException("connection failed") }
-        assertEquals(MobileImportOutcome.Retry, client.save(MobileImportText("id", "txt")))
+        assertEquals(MobileImportOutcome.Retry("io-IOException"), client.save(MobileImportText("id", "txt")))
 
         // request throws SocketTimeoutException -> start returns Retry
         http.response = HttpResponse(200, emptyMap(), ByteArray(0)) // dummy, will throw instead
@@ -838,7 +838,7 @@ class MobileImportClientTest {
             ): HttpResponse = throw SocketTimeoutException("timed out")
         }
         val timeoutClient = MobileImportClient(throwingHttpClient)
-        assertEquals(MobileImportOutcome.Retry, timeoutClient.start("/p", "ts"))
+        assertEquals(MobileImportOutcome.Retry("io-SocketTimeoutException"), timeoutClient.start("/p", "ts"))
 
         // request throws IllegalStateException -> start throws IllegalStateException
         val iseHttpClient = object : PlHttpClient {
