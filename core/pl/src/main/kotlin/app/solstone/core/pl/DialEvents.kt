@@ -24,6 +24,12 @@ enum class DialOutcome(val key: String) {
     /** Anything else that stopped the connection. Never a timeout. */
     FAILED("failed"),
 
+    /**
+     * A peer answered whose certificate does not chain to the paired journal's CA: a different
+     * journal at a saved address, or this journal after its CA changed.
+     */
+    UNKNOWN_JOURNAL("unknown-journal"),
+
     /** The address answered and proved itself. Logged only when it is a change. */
     CONNECTED("connected"),
 }
@@ -32,6 +38,7 @@ enum class DialOutcome(val key: String) {
 fun classifyDialFailure(failure: Throwable): DialOutcome {
     val chain = generateSequence(failure) { it.cause }.take(16).toList()
     return when {
+        chain.any { it is UnknownJournalException } -> DialOutcome.UNKNOWN_JOURNAL
         chain.any {
             it is SocketTimeoutException || it is NoRouteToHostException || it is UnknownHostException
         } -> DialOutcome.NO_ANSWER
@@ -58,6 +65,9 @@ fun displayAddress(host: String, port: Int): String {
 fun formatDialEvent(host: String, port: Int, outcome: DialOutcome): String =
     "kind=dial host=${host.filterNot(Char::isWhitespace)} port=$port outcome=${outcome.key}"
 
+private fun isJournalIdText(text: String): Boolean =
+    text.length in 1..64 && text.all { it.isLetterOrDigit() || it == '-' }
+
 /**
  * Writes dial events to the diagnostic log: every failure, and a success only when it is a change
  * (the first one, one after a failure, or one at a different address). A healthy sync that dials
@@ -83,6 +93,24 @@ class DialEventLog(private val emit: (String) -> Unit) {
     }
 
     fun recordFailure(host: String, port: Int, failure: Throwable) {
-        record(host, port, classifyDialFailure(failure))
+        val unknown = unknownJournalIn(failure)
+        if (unknown != null) {
+            recordUnknownJournal(host, port, unknown.claimedJournalId)
+        } else {
+            record(host, port, classifyDialFailure(failure))
+        }
+    }
+
+    /**
+     * A peer that is not the paired journal answered at [host]:[port]. [claimedJournalId] is only
+     * what that peer presented, and is written as a claim: `claimed-journal=<id>`, or `none`.
+     */
+    fun recordUnknownJournal(host: String, port: Int, claimedJournalId: String?) {
+        val line = synchronized(lock) {
+            lastConnected = null
+            formatDialEvent(host, port, DialOutcome.UNKNOWN_JOURNAL) +
+                " claimed-journal=" + (claimedJournalId?.takeIf(::isJournalIdText) ?: "none")
+        }
+        runCatching { emit(line) }
     }
 }

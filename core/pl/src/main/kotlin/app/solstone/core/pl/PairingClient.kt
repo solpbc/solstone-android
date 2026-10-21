@@ -10,9 +10,15 @@ import java.io.Closeable
 import java.io.IOException
 import javax.net.ssl.SSLException
 
-/** Open each saved address in order, then relay, authenticating each attempt. */
+/**
+ * Open each saved address in order, then relay, authenticating each attempt.
+ *
+ * [nextLegAfter] decides whether a failed open moves on to the next lease; by default a TLS
+ * failure ends the walk.
+ */
 fun <T> openPairingClient(
     publisher: PairingPublisher,
+    nextLegAfter: (IOException) -> Boolean = { !isPairingTrustRefusal(it) },
     opener: (PairingLease) -> T,
 ): T where T : PlHttpClient, T : Closeable {
     val candidates = publisher.acquireDirectLeases() + listOfNotNull(publisher.acquireRelayLease())
@@ -22,7 +28,7 @@ fun <T> openPairingClient(
         val client = try {
             opener(lease)
         } catch (e: IOException) {
-            if (isPairingTrustRefusal(e)) throw e
+            if (!nextLegAfter(e)) throw e
             last = e
             continue
         }

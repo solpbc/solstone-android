@@ -55,4 +55,27 @@ class DialEventsTest {
             lines,
         )
     }
+
+    // Outcome 5: an unknown journal is written through the dial log, its journal ID labelled as a
+    // claim. Falsified by logging it as "not-verified" (the owner-facing notice could not tell it
+    // from a TLS failure) or by writing the peer's claim as if it were proven.
+    @Test
+    fun anUnknownJournalIsLoggedWithItsClaim() {
+        val lines = mutableListOf<String>()
+        val log = DialEventLog { lines += it }
+        val id = "0b6c3d5e-1f2a-8b3c-9d4e-5f6a7b8c9d0e"
+        log.recordFailure("192.168.1.20", 7657, IOException("dial", UnknownJournalException("192.168.1.20:7657", id)))
+        log.recordFailure("link.solstone.app", 443, UnknownJournalException(null, null))
+        log.recordUnknownJournal("192.168.1.21", 7657, "not a journal id; rm -rf")
+
+        assertEquals(DialOutcome.UNKNOWN_JOURNAL, classifyDialFailure(UnknownJournalException(null, null)))
+        assertEquals(
+            listOf(
+                "kind=dial host=192.168.1.20 port=7657 outcome=unknown-journal claimed-journal=$id",
+                "kind=dial host=link.solstone.app port=443 outcome=unknown-journal claimed-journal=none",
+                "kind=dial host=192.168.1.21 port=7657 outcome=unknown-journal claimed-journal=none",
+            ),
+            lines,
+        )
+    }
 }

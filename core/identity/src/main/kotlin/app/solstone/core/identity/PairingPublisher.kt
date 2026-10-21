@@ -201,6 +201,16 @@ interface PairingPublisher {
 
     fun forget(): GraphMutationResult
 
+    /**
+     * Record that the journal stopped accepting [expectedPairing]: its identity becomes
+     * [IdentityState.REVOKED], which blocks every dial until a new pairing. Applied only while
+     * [expectedPairing] is still the committed pairing. Every other writer derives its result from
+     * the committed home under the same boundary, so none can write the paired state back; only a
+     * new pairing replaces it. Credential, addresses and relay access are kept as they are.
+     */
+    fun revokePairing(expectedPairing: PairingGeneration): GraphMutationResult =
+        GraphMutationResult.Conflict("unsupported")
+
     fun associateDirectIfProven(
         expectedPairing: PairingGeneration,
         endpoint: DirectEndpoint,

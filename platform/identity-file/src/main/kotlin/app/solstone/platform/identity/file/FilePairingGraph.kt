@@ -22,6 +22,7 @@ import app.solstone.core.identity.PushKeyAccess
 import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
+import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
@@ -491,6 +492,90 @@ class FilePairingGraph(
                     cleanBackupAndStagingFiles()
                     notifySubscribers(stripped)
                     return GraphMutationResult.Applied(stripped)
+                }
+            }
+            if (markerWritten || !restoreRelayAccessBackup(backupWritten)) {
+                val uncertain = PairingGraphSnapshot.Uncertain(
+                    sequenceNumber = sequenceGen.incrementAndGet(),
+                    reason = PersistenceIssue.PERSISTENCE_FAILED,
+                )
+                currentSnapshotState = uncertain
+                notifySubscribers(uncertain)
+            }
+            GraphMutationResult.PersistenceFailed(e)
+        }
+    }
+
+    override fun revokePairing(expectedPairing: PairingGeneration): GraphMutationResult = synchronized(lock) {
+        val current = currentSnapshotState as? PairingGraphSnapshot.Committed
+            ?: return GraphMutationResult.Conflict("No committed pairing")
+        if (current.pairing != expectedPairing) {
+            return GraphMutationResult.Conflict("Pairing mismatch")
+        }
+        if (current.home.state == IdentityState.REVOKED) return GraphMutationResult.Applied(current)
+
+        val revokedHome = current.home.copy(state = IdentityState.REVOKED)
+        var backupWritten = false
+        var markerWritten = false
+        try {
+            if (identityFile.exists()) {
+                fileWriter.write(identityBakFile, identityFile.readBytes())
+                backupWritten = true
+            }
+            identityStore.save(revokedHome)
+            val inspect = identityStore.inspect()
+            if (inspect !is StoreInspectResult.Ready || inspect.value != revokedHome) {
+                if (!restoreRelayAccessBackup(backupWritten)) {
+                    val uncertain = PairingGraphSnapshot.Uncertain(
+                        sequenceNumber = sequenceGen.incrementAndGet(),
+                        reason = PersistenceIssue.PERSISTENCE_FAILED,
+                    )
+                    currentSnapshotState = uncertain
+                    notifySubscribers(uncertain)
+                }
+                return GraphMutationResult.PersistenceFailed(IllegalStateException("Revoked state readback failed"))
+            }
+            writeCommitMarker(
+                PairingCommitMarker(
+                    status = CommitMarkerStatus.COMMITTED,
+                    instanceId = revokedHome.instanceId,
+                    clientCertSha256 = revokedHome.clientCertFingerprint,
+                    hasDirectEndpoint = current.hasDirectEndpoint,
+                    directAssociated = current.directAssociated,
+                    hasRelayAccess = revokedHome.relayOrigin != null && revokedHome.deviceToken != null,
+                    identityChecksum = PairingCommitMarker.checksumOf(identityFile),
+                    credentialChecksum = PairingCommitMarker.checksumOf(credentialFile),
+                    endpointChecksum = if (current.hasDirectEndpoint) PairingCommitMarker.checksumOf(endpointFile) else null,
+                    pairingProvenance = current.provenance,
+                ),
+            )
+            markerWritten = true
+            cleanBackupAndStagingFiles()
+
+            // Every lease and every snapshot taken before the stop is obsolete.
+            pairingRev++
+            directRev++
+            relayRev++
+            val revoked = current.copy(
+                sequenceNumber = sequenceGen.incrementAndGet(),
+                revisions = GraphRevisions(pairingRev, directRev, relayRev),
+                home = revokedHome,
+            )
+            currentSnapshotState = revoked
+            notifySubscribers(revoked)
+            GraphMutationResult.Applied(revoked)
+        } catch (e: Exception) {
+            if (markerWritten) {
+                val recovered = PairingCommitMarker.parse(commitMarkerFile)?.let(::loadCommittedFromMarker)
+                if (recovered is PairingGraphSnapshot.Committed) {
+                    pairingRev++
+                    directRev++
+                    relayRev++
+                    val committed = recovered.copy(revisions = GraphRevisions(pairingRev, directRev, relayRev))
+                    currentSnapshotState = committed
+                    cleanBackupAndStagingFiles()
+                    notifySubscribers(committed)
+                    return GraphMutationResult.Applied(committed)
                 }
             }
             if (markerWritten || !restoreRelayAccessBackup(backupWritten)) {
