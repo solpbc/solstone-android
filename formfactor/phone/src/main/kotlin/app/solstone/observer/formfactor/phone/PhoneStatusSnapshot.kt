@@ -25,10 +25,12 @@ fun phoneStatusSnapshotOf(
     unresolvedOtherInterruption: Boolean = false,
     unresolvedUnknownRecovery: Boolean = false,
 ): PhoneStatusSnapshot {
-    val (paired, online) = when (backlog.plStatus) {
+    val (paired, online) = when (val plStatus = backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
         is HarnessPlStatus.PairedButUnreachable -> true to false
-        is HarnessPlStatus.Reachable -> true to true
+        // Online only after a successful check. A refused or unauthorized answer (401, 403) means
+        // the journal answered but did not accept this device, which is not connected.
+        is HarnessPlStatus.Reachable -> true to (plStatus.status == 200)
     }
     val registeredById = registered.associateBy { it.sourceId }
     val pendingIds = backlog.pendingSourceIds.toSet()

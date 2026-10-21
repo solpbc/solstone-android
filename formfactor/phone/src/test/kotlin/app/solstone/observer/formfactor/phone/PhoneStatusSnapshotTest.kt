@@ -22,6 +22,15 @@ class PhoneStatusSnapshotTest {
         assertEquals(true to true, flagsFor(HarnessPlStatus.Reachable(200)))
     }
 
+    // Online only after a successful check. Falsified by reading any HTTP answer as connected: a
+    // journal answering 401 or 403 has not accepted this device.
+    @Test
+    fun aRefusedOrUnauthorizedAnswerIsPairedButNotOnline() {
+        assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(401)))
+        assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(403)))
+        assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(503)))
+    }
+
     @Test
     fun usesRegisteredOrderThenSortedOrphans() {
         val audio = source("audio", SourceWish.On, SourceState.ON)
