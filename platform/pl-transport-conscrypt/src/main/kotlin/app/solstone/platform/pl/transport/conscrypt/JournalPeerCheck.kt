@@ -7,11 +7,9 @@ import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.jidFromSpkiDer
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.pl.UnknownJournalException
-import java.net.Socket
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
-import javax.net.ssl.SSLEngine
-import javax.net.ssl.X509ExtendedTrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * One authenticated dial's check of the peer against the paired journal's CA, inside the handshake
@@ -26,10 +24,10 @@ import javax.net.ssl.X509ExtendedTrustManager
  *
  * Use one instance per handshake.
  */
-internal class JournalPeerCheck(credential: ClientCredential) : X509ExtendedTrustManager() {
+internal class JournalPeerCheck(credential: ClientCredential) : X509TrustManager {
     private val pinned: List<X509Certificate> = credential.caChainPem.map(::certificateFromPem)
-    private val platform: X509ExtendedTrustManager = trustManagersFor(credential)
-        .filterIsInstance<X509ExtendedTrustManager>()
+    private val platform: X509TrustManager = trustManagersFor(credential)
+        .filterIsInstance<X509TrustManager>()
         .firstOrNull()
         ?: throw IllegalStateException("no X509 trust manager for the paired journal's CA")
 
@@ -72,29 +70,11 @@ internal class JournalPeerCheck(credential: ClientCredential) : X509ExtendedTrus
     private fun signedBy(cert: X509Certificate, issuer: X509Certificate): Boolean =
         runCatching { cert.verify(issuer.publicKey) }.isSuccess
 
-    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?, socket: Socket?) {
-        requireThePairedJournal(chain)
-        platform.checkServerTrusted(chain, authType, socket)
-        verified = true
-    }
-
-    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?, engine: SSLEngine?) {
-        requireThePairedJournal(chain)
-        platform.checkServerTrusted(chain, authType, engine)
-        verified = true
-    }
-
     override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {
         requireThePairedJournal(chain)
         platform.checkServerTrusted(chain, authType)
         verified = true
     }
-
-    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?, socket: Socket?) =
-        throw CertificateException("client certificates are not accepted here")
-
-    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?, engine: SSLEngine?) =
-        throw CertificateException("client certificates are not accepted here")
 
     override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) =
         throw CertificateException("client certificates are not accepted here")
