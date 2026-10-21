@@ -51,8 +51,11 @@ fun certlessFactory(): SSLSocketFactory {
 }
 
 fun authenticatedFactory(credential: ClientCredential): SSLSocketFactory {
-    return authenticatedContext(credential).socketFactory
+    return authenticatedContext(credential, JournalPeerCheck(credential)).socketFactory
 }
+
+internal fun authenticatedFactory(credential: ClientCredential, check: JournalPeerCheck): SSLSocketFactory =
+    authenticatedContext(credential, check).socketFactory
 
 fun certlessEngine(host: String, port: Int): SSLEngine {
     val engine = certlessContext().createSSLEngine(host, port)
@@ -60,8 +63,11 @@ fun certlessEngine(host: String, port: Int): SSLEngine {
     return engine
 }
 
-fun authenticatedEngine(credential: ClientCredential, host: String, port: Int): SSLEngine {
-    val engine = authenticatedContext(credential).createSSLEngine(host, port)
+fun authenticatedEngine(credential: ClientCredential, host: String, port: Int): SSLEngine =
+    authenticatedEngine(credential, JournalPeerCheck(credential), host, port)
+
+internal fun authenticatedEngine(credential: ClientCredential, check: JournalPeerCheck, host: String, port: Int): SSLEngine {
+    val engine = authenticatedContext(credential, check).createSSLEngine(host, port)
     configureClientEngine(engine)
     return engine
 }
@@ -72,9 +78,11 @@ private fun certlessContext(): SSLContext {
     return context
 }
 
-private fun authenticatedContext(credential: ClientCredential): SSLContext {
+// A fresh context per dial: no session cache, so no resumed session can skip the journal's check
+// of this device's certificate, and the peer check below belongs to exactly one handshake.
+private fun authenticatedContext(credential: ClientCredential, check: JournalPeerCheck): SSLContext {
     val context = newTlsContext()
-    context.init(CredentialCodec.keyManagers(credential), trustManagersFor(credential), SecureRandom())
+    context.init(CredentialCodec.keyManagers(credential), arrayOf<TrustManager>(check), SecureRandom())
     return context
 }
 
@@ -83,7 +91,7 @@ private fun configureClientEngine(engine: SSLEngine) {
     engine.enabledProtocols = requireTls13(engine.supportedProtocols)
 }
 
-private fun trustManagersFor(credential: ClientCredential): Array<TrustManager> {
+internal fun trustManagersFor(credential: ClientCredential): Array<TrustManager> {
     val keys = KeyStore.getInstance(KeyStore.getDefaultType())
     keys.load(null, null)
     credential.caChainPem.forEachIndexed { index, pem ->

@@ -48,6 +48,7 @@ import app.solstone.core.pl.classifyPairResponseStatus
 import app.solstone.core.pl.orderCandidatesBySubnet
 import app.solstone.core.pl.parseDirectPairLink
 import app.solstone.core.pl.parseRelayAccessMap
+import app.solstone.core.pl.VerdictWindowDuplex
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetSocketAddress
@@ -460,6 +461,7 @@ fun openAuthenticatedClient(
     credential: ClientCredential,
     streamObserver: PlStreamObserver? = null,
     directDialObserver: DirectDialObserver? = null,
+    verdictListener: app.solstone.core.pl.JournalVerdictListener? = null,
 ): ConscryptPlHttpClient =
     ConscryptPlHttpClient(
         openAuthenticatedSession(
@@ -467,6 +469,7 @@ fun openAuthenticatedClient(
             credential,
             streamObserver,
             directDialObserver,
+            verdictListener,
         ),
     )
 
@@ -506,22 +509,35 @@ private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: B
     }
 }
 
+/**
+ * The handshake checks the journal's certificate against the pinned CA before this client's
+ * Finished. Once it completes, the journal's verdict on this device is still to come, so the
+ * session reads through a [VerdictWindowDuplex] that names a refusal and tells [verdictListener].
+ */
 private fun openAuthenticatedSession(
     endpoint: DirectEndpoint,
     credential: ClientCredential,
     streamObserver: PlStreamObserver?,
     directDialObserver: DirectDialObserver?,
+    verdictListener: app.solstone.core.pl.JournalVerdictListener?,
 ): MuxSession {
+    val check = JournalPeerCheck(credential)
     val socket = connectedSslSocket(
-        authenticatedFactory(credential),
+        authenticatedFactory(credential, check),
         endpoint.host,
         endpoint.port,
         directDialObserver,
     )
     try {
         configureSocket(socket)
-        socket.startHandshake()
-        return MuxSession(SocketByteDuplex(socket), streamObserver)
+        try {
+            socket.startHandshake()
+        } catch (e: Exception) {
+            throw check.explain(e, app.solstone.core.pl.displayAddress(endpoint.host, endpoint.port))
+        }
+        val raw = SocketByteDuplex(socket)
+        val duplex = if (check.verified) VerdictWindowDuplex(raw, verdictListener) else raw
+        return MuxSession(duplex, streamObserver)
     } catch (e: Exception) {
         socket.close()
         throw e

@@ -5,6 +5,8 @@ package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.pl.ByteDuplex
+import app.solstone.core.pl.JournalVerdictListener
+import app.solstone.core.pl.VerdictWindowDuplex
 import app.solstone.core.pl.MuxSession
 import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayDialObserver
@@ -38,16 +40,26 @@ fun openRelayClient(
     tlsMode: RelayTlsMode,
     streamObserver: PlStreamObserver? = null,
     dialObserver: RelayDialObserver? = null,
+    verdictListener: JournalVerdictListener? = null,
 ): RelayPlClient {
     notifyDialObserver(dialObserver, host, port)
     val raw = tunnelOpener.open()
     try {
+        // Only the authenticated tunnel reaches a journal that judges this device. The certless
+        // pairing ceremony checks its pin after the handshake, so no verdict window opens there.
+        val check = (tlsMode as? RelayTlsMode.Authenticated)?.let { JournalPeerCheck(it.credential) }
         val engine = when (tlsMode) {
             RelayTlsMode.Certless -> certlessEngine(host, port)
-            is RelayTlsMode.Authenticated -> authenticatedEngine(tlsMode.credential, host, port)
+            is RelayTlsMode.Authenticated -> authenticatedEngine(tlsMode.credential, requireNotNull(check), host, port)
         }
-        val tls = TlsEngineDuplex(engine, raw)
-        val client = ConscryptPlHttpClient(MuxSession(tls, streamObserver))
+        val tls = try {
+            TlsEngineDuplex(engine, raw)
+        } catch (e: Exception) {
+            // Through the relay a peer that is not the journal answered at no address of its own.
+            throw check?.explain(e, null) ?: e
+        }
+        val duplex = if (check?.verified == true) VerdictWindowDuplex(tls, verdictListener) else tls
+        val client = ConscryptPlHttpClient(MuxSession(duplex, streamObserver))
         return RelayPlClient(client, tls.peerLeafCertificateDer, tls.peerCertificateChainDer)
     } catch (e: Exception) {
         raw.close()

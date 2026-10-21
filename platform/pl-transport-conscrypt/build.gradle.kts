@@ -27,6 +27,12 @@ android {
         }
     }
 
+    // The chosen-alert TLS server and its certificates serve both the host and the device suites.
+    sourceSets {
+        getByName("test").java.srcDir("src/testShared/kotlin")
+        getByName("androidTest").java.srcDir("src/testShared/kotlin")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -47,6 +53,12 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+    // Test-only: a TLS 1.3 server that can send a chosen fatal alert, which JSSE and Conscrypt
+    // servers cannot. Never part of the shipped app.
+    testImplementation("org.bouncycastle:bctls-jdk15to18:1.85")
+    testImplementation("org.bouncycastle:bcpkix-jdk15to18:1.85")
+    testImplementation("org.bouncycastle:bcprov-jdk15to18:1.85.1")
+    testImplementation("org.bouncycastle:bcutil-jdk15to18:1.85.1")
 
     // Live on-device driver (VPE-direct validation): wires this transport to the
     // observer client + a file-backed credential store. Skips itself (JUnit Assume)
@@ -59,4 +71,8 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("org.bouncycastle:bctls-jdk15to18:1.85")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk15to18:1.85")
+    androidTestImplementation("org.bouncycastle:bcprov-jdk15to18:1.85.1")
+    androidTestImplementation("org.bouncycastle:bcutil-jdk15to18:1.85.1")
 }

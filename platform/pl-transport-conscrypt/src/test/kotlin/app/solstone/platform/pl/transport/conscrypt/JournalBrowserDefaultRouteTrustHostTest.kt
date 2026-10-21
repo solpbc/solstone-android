@@ -10,6 +10,11 @@ import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
+import app.solstone.core.crypto.jidFromCaPem
+import app.solstone.core.pl.HandshakeFailure
+import app.solstone.core.pl.UnknownJournalException
+import app.solstone.core.pl.handshakeFailureOf
+import kotlin.test.assertIs
 import java.io.IOException
 import java.net.Socket
 import javax.net.ssl.SSLContext
@@ -73,13 +78,20 @@ class JournalBrowserDefaultRouteTrustHostTest {
         serverThread.start()
 
         try {
-            assertFailsWith<IOException> {
+            // A journal whose certificate the pinned CA never signed is not a refusal of this
+            // device: it is an unknown journal at that address, which never counts and never
+            // stops. Falsified by the old classifier, which named any SSLException a trust refusal.
+            val failure = assertFailsWith<IOException> {
                 val client = openAuthenticatedClient(
                     DirectEndpoint("127.0.0.1", serverPort),
                     fixture.wrongCredential,
                 )
                 client.request("GET", "/test", emptyMap(), null)
             }
+            assertEquals(HandshakeFailure.UNKNOWN_JOURNAL, handshakeFailureOf(failure))
+            val unknown = assertIs<UnknownJournalException>(failure)
+            assertEquals("127.0.0.1:$serverPort", unknown.address)
+            assertEquals(jidFromCaPem(fixture.caCertPem), unknown.claimedJournalId)
         } finally {
             serverSocket.close()
             serverThread.join(1000)
@@ -113,7 +125,10 @@ class JournalBrowserDefaultRouteTrustHostTest {
 
         fixture.withClientTrustDefault {
             try {
-                assertFailsWith<IOException> {
+                // The relay's outer connection failed before any inner TLS began. That is the
+                // journal unreachable, never a refusal. Falsified by counting any SSLException
+                // in the cause chain, a captive portal's included.
+                val failure = assertFailsWith<IOException> {
                     val client = openRelaySyncClient(
                         relayOrigin = "https://127.0.0.1:$serverPort",
                         instanceId = "inst",
@@ -122,6 +137,7 @@ class JournalBrowserDefaultRouteTrustHostTest {
                     )
                     client.request("GET", "/test", emptyMap(), null)
                 }
+                assertEquals(HandshakeFailure.UNREACHABLE, handshakeFailureOf(failure))
             } finally {
                 serverSocket.close()
                 serverThread.join(1000)
