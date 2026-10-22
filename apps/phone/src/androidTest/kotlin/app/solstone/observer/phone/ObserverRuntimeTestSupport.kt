@@ -22,6 +22,7 @@ import org.junit.Assert.fail
 internal const val TEST_DATABASE_NAME = "solstone-persistence.db"
 
 internal fun resetObserverRuntime() {
+    app.solstone.platform.calendar.CalendarRuntimes.current?.close()
     val runtime = ObserverHarnessRuntime.runtime
     runtime?.closeForTest()
     val appRuntime = (ApplicationProvider.getApplicationContext<Context>() as ObserverApplication).runtime

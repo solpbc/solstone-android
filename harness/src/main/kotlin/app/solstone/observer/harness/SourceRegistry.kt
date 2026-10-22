@@ -157,7 +157,7 @@ class SourceRegistry(
         // resolved `Off` apart from an `Off` the owner chose.
         registrations.forEach { wishes[it.sourceId] = persisted[it.sourceId] ?: SourceWish.Off }
         bound = registrations.map(::BoundSource)
-        engines = bound
+        engines = bound.filterNot { it.registration.runsWithoutObserver }
         controller.sourcesReader = this
         backfillAlreadyRunningSources()
     }

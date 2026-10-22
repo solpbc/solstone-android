@@ -875,6 +875,27 @@ class ExpressedWishStoreTest {
         assertEquals(SourceWish.On, registry.snapshot().sources.single().wish)
     }
 
+    @Test
+    fun independentCalendarDoesNotMakeTheObserverRunningOrJoinItsPipeline() {
+        val f = fixture(permissionStatus = grantedPermissions(), snapshot = notRunning())
+        val audio = FakeSourceEngine(conditionValue = running().copy(running = false))
+        val calendar = FakeSourceEngine(conditionValue = running())
+        val registry = SourceRegistry(f.controller,
+            listOf(reg("audio", CaptureForegroundType.MICROPHONE).copy(engine = audio),
+                calendarRegistration().copy(engine = calendar)),
+            MainPoster { it() },
+            InMemorySourceWishStore(mapOf("audio" to SourceWish.On, "calendar" to SourceWish.On)))
+        fun observerSnapshot() = sourceRuntimeSnapshotFromEngines(registry.engines,
+            providerEmitting = false, storageOk = true, engineStartIssued = false)
+        assertFalse(observerSnapshot().engineRunning)
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        assertEquals(1, audio.startCalls)
+        assertEquals(0, calendar.startCalls)
+        audio.conditionValue = running()
+        assertTrue(observerSnapshot().engineRunning)
+        assertEquals(SourceState.ON, registry.snapshot().sources.single { it.sourceId == "calendar" }.state)
+    }
+
     private fun calendarRegistration() = SourceRegistration(
         sourceId = "calendar",
         engine = FakeSourceEngine(conditionValue = running()),
