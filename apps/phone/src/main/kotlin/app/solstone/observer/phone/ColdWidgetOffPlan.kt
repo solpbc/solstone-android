@@ -4,6 +4,7 @@
 package app.solstone.observer.phone
 
 import app.solstone.core.model.ReasonCode
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.WishSaveOutcome
 import app.solstone.observer.harness.WishStoreState
@@ -106,7 +107,7 @@ fun performAudioOff(
     )
 
     if (plan.endSession) {
-        val stoppedOk = recordOwnerStopped()
+        val stoppedOk = wishesNow[CALENDAR_STREAM] == SourceWish.On || recordOwnerStopped()
         val desiredOk = commitDesiredOff()
         stop(true)
         if (!stoppedOk || !desiredOk) {

@@ -18,6 +18,39 @@ import kotlin.test.assertTrue
 
 class AudioOffTurnTest {
     @Test
+    fun audioOffKeepsCalendarIntakeIndependentInWarmAndColdPathsButSaveFailureStillStops() {
+        for (warm in listOf(false, true)) for (committed in listOf(false, true)) {
+            val before = mapOf("audio" to SourceWish.On, "calendar" to SourceWish.On)
+            val after = before + ("audio" to SourceWish.Off)
+            val outcome = if (committed) WishSaveOutcome.Committed else WishSaveOutcome.OriginalIntact
+            var globalStops = 0
+            var observerStops = 0
+            var stoppedSession: Boolean? = null
+            var saved: Map<String, SourceWish>? = null
+            val registryCommit: (() -> AudioOffCommit)? = if (warm) {
+                { AudioOffCommit(outcome, if (committed) after else before) }
+            } else null
+            performAudioOff(
+                registrationIds = listOf("audio"),
+                readStore = { WishStoreState.Loaded(before) },
+                saveResolved = { saved = it; outcome },
+                commitThroughRegistry = registryCommit,
+                microphoneGranted = true, cameraGranted = false, locationGranted = false,
+                declared = setOf(CaptureForegroundType.MICROPHONE), serviceHeld = true,
+                narrowRunningMask = { error("no observer capture type remains") },
+                stop = { stoppedSession = it },
+                recordOwnerStopped = { globalStops++; true },
+                commitDesiredOff = { observerStops++; true },
+                publishNotice = { assertFalse(committed) }, clearNotice = { assertTrue(committed) },
+            )
+            assertEquals(true, stoppedSession)
+            assertEquals(1, observerStops)
+            assertEquals(if (committed) 0 else 1, globalStops)
+            if (!warm) assertEquals(after, saved)
+        }
+    }
+
+    @Test
     fun audioOffWithNoLiveServicePreservesTheRemainingLocationWish() {
         var saved: Map<String, SourceWish>? = null
         var cleared = false
