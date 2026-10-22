@@ -1340,7 +1340,7 @@ class SegmentDrainerTest {
             override fun insertEvents(events: List<EventRow>) = Unit
             override fun segmentsByState(state: QueueState): List<SegmentRow> =
                 store.allRows().filter { it.state == state }
-            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain()
+            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain().filter { it.stream == stream }
             override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
             override fun segmentById(id: String): SegmentRow? = store.rowOrNull(id)
             override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
@@ -1939,7 +1939,7 @@ class SegmentDrainerTest {
             override fun insertEvents(events: List<EventRow>) = Unit
             override fun segmentsByState(state: QueueState): List<SegmentRow> =
                 store.segmentsForDrain().filter { it.state == state }
-            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain()
+            override fun segmentsForDrain(stream: String): List<SegmentRow> = store.segmentsForDrain().filter { it.stream == stream }
             override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
             override fun segmentById(id: String): SegmentRow? = store.rowOrNull(id)
             override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()

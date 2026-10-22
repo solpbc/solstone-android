@@ -335,14 +335,16 @@ class SyncWithTransportTest {
 
     @Test
     fun aJournalWithoutCalendarNotesSkipsThoseFilesAndStillDrainsObserverFiles() {
-        val main = segment("main")
-        val calendar = segment("cal").copy(stream = CALENDAR_STREAM, sealedAt = 2)
+        val mainId = "$WORK_TEST_DAY/$MAIN_STREAM/a"
+        val calendarId = "$WORK_TEST_DAY/$CALENDAR_STREAM/cal"
+        val main = segment(mainId).copy(segment = "a", dirSegment = "a")
+        val calendar = segment(calendarId).copy(stream = CALENDAR_STREAM, segment = "cal", dirSegment = "cal", sealedAt = 2)
         val store = FakeDrainStore(
             main,
             calendar,
             files = mapOf(
-                "main" to listOf(file("main").copy(name = "a.bin", sha256 = "sha-a")),
-                "cal" to listOf(file("cal").copy(sourceId = CALENDAR_STREAM, name = "note.ndjson")),
+                mainId to listOf(file(mainId).copy(name = "a.bin", sha256 = "sha-a")),
+                calendarId to listOf(file(calendarId).copy(sourceId = CALENDAR_STREAM, name = "note.ndjson")),
             ),
         )
         val updates = mutableListOf<Boolean>()
@@ -360,18 +362,47 @@ class SyncWithTransportTest {
             readPayload = { _, _ -> byteArrayOf(1) },
             host = "test-device",
             now = { NOW },
-            log = { _, _ -> },
+            log = store::log,
             finisher = dummyFinisher(),
             allowsOwnerMaterial = true,
             onCalendarCapability = { updates += it },
         )
 
-        assertEquals(SyncOutcome.SUCCESS, outcome)
+        assertEquals(SyncOutcome.SUCCESS, outcome, store.logs.joinToString())
         assertEquals(listOf(false), updates)
-        assertEquals(QueueState.SEALED, store.row("cal").state)
-        assertEquals(QueueState.UPLOADED, store.row("main").state)
+        assertEquals(QueueState.SEALED, store.row(calendarId).state)
+        assertEquals(QueueState.UPLOADED, store.row(mainId).state)
         assertTrue(client.requests.any { it.method == "POST" && it.path == INGEST_PATH })
         assertTrue(client.requests.none { it.body?.decodeToString()?.contains("note.ndjson") == true })
+    }
+
+    @Test
+    fun aCalendarSealedDuringAnOrdinaryDrainWaitsForItsOwnCapabilityCheck() {
+        val mainId = "$WORK_TEST_DAY/$MAIN_STREAM/a"
+        val calendarId = "$WORK_TEST_DAY/$CALENDAR_STREAM/cal"
+        val store = FakeDrainStore(segment(mainId).copy(segment = "a", dirSegment = "a"),
+            files = mapOf(mainId to listOf(file(mainId).copy(name = "a.bin", sha256 = "sha-a"))))
+        val client = RecordingPlHttpClient(statusOk(), uploadRequiredSegments(), ingestAccepted())
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { client },
+            store = store,
+            readPayload = { _, _ ->
+                store.add(segment(calendarId).copy(stream = CALENDAR_STREAM, segment = "cal", dirSegment = "cal"),
+                    listOf(file(calendarId).copy(sourceId = CALENDAR_STREAM, name = "note.ndjson")))
+                byteArrayOf(1)
+            },
+            host = "test-device",
+            now = { NOW },
+            log = store::log,
+            finisher = dummyFinisher(),
+            allowsOwnerMaterial = true,
+        )
+        assertEquals(SyncOutcome.SUCCESS, outcome, store.logs.joinToString())
+        assertEquals(QueueState.UPLOADED, store.row(mainId).state)
+        assertEquals(QueueState.SEALED, store.row(calendarId).state)
+        assertTrue(client.requests.none { it.body?.decodeToString()?.contains("note.ndjson") == true })
+        assertTrue(client.requests.none { it.path == "/api/system/status" })
     }
 
     @Test

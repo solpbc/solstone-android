@@ -88,7 +88,7 @@ internal fun <C> syncWithTransport(
                 }
                 val dueNow = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId)
                 val postCalendar = if (dueNow.none { it.stream == CALENDAR_STREAM }) {
-                    true
+                    false
                 } else {
                     val read = try {
                         fetchCalendarCapability(c)

@@ -338,7 +338,7 @@ class SyncDecisionsTest {
     }
 
     @Test
-    fun calendarNoteInvalidNeedsAttentionAndSegmentRemovedStaysJournalRemoved() {
+    fun calendarNoteInvalidNeedsAttentionAndSegmentRemovedIsTerminal() {
         val manifest = BundleManifest(
             SegmentKey("20261019", "094000_300"),
             listOf(BundleFile(CALENDAR_STREAM, "note.ndjson", "sha-c", 4, "application/x-ndjson", 1, 2)),
@@ -357,7 +357,7 @@ class SyncDecisionsTest {
             resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(422, """{"reason_code":"calendar_note_invalid"}"""))),
         )
         assertEquals(
-            SegmentSyncResult.JournalRemoved(500),
+            SegmentSyncResult.Uploaded,
             resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(500, """{"reason_code":"segment_removed"}"""))),
         )
         assertEquals(

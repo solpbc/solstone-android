@@ -394,7 +394,7 @@ class PhoneApplication : ObserverApplication(
                 container.persistenceDatabase().segmentDao().segmentsForDrain(CALENDAR_STREAM)
                     .any { it.lastError == "calendar_note_invalid" }
             },
-            onSealed = { SyncScheduler.enqueueNow(this, phoneSpec.stream) },
+            onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
             onChanged = { container.sources.refreshSubscribers() },
         )
         CalendarRuntimes.current?.onProcessStart()
