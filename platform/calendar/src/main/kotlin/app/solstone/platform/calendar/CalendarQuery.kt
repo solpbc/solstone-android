@@ -141,18 +141,20 @@ class CalendarReader(private val surface: CalendarQuerySurface) {
             else Instant.parse(it).toEpochMilli()
         }
         val exceptions = if (target == null) emptyList() else rows.filter { it.exception && it.originalInstanceEpochMs == target }
-        val matched = if (exceptions.isNotEmpty()) {
-            // A cancellation exception wins over a master that could otherwise recreate it.
-            seen(exceptions)
-        } else if (target == null) {
+        val matched = if (target == null) {
             seen(rows)
         } else {
-            val masters = rows.filter { !it.exception && !it.cancelled }
-            if (masters.isEmpty()) emptyList() else {
-                val read = read(target - 86_400_000L, target + 86_400_000L, selected, namespace, cancelled)
+            // An exception replaces only its own calendar's occurrence. Other holders
+            // may still contain the original instance outside the routine read window.
+            val exceptionalHolders = exceptions.map { it.calendarId }.toSet()
+            val masters = rows.filter { !it.exception && !it.cancelled && it.calendarId !in exceptionalHolders }
+            val expanded = if (masters.isEmpty()) emptyList() else {
+                val holders = masters.map { it.calendarId }.toSet()
+                val read = read(target - 86_400_000L, target + 86_400_000L, holders, namespace, cancelled)
                 if (read !is CalendarScan.Ok) throw QueryFailed()
                 seen(read.instances)
             }
+            seen(exceptions) + expanded
         }
         if (cancelled()) throw ScanCancelled()
         MoveLookup(true, matched.isNotEmpty(), seenAll = matched)

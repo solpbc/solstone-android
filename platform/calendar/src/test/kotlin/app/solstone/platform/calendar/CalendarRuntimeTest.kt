@@ -194,6 +194,51 @@ class CalendarRuntimeTest {
         assertTrue(cancelledCursor.closed)
     }
 
+    @Test
+    fun cancelledOccurrenceDoesNotHideAnotherCalendarHolder() {
+        val target = Instant.parse("2025-10-23T10:00:00Z").toEpochMilli()
+        for (cancelA in listOf(false, true)) {
+            for (includeB in listOf(false, true)) {
+                val selected = if (includeB) setOf(1L, 2L) else setOf(1L)
+                fun master(id: Long, calendar: Long) = mapOf(
+                    CALENDAR_COL_ID to id, CALENDAR_COL_CALENDAR_ID to calendar,
+                    CALENDAR_COL_UID to "series", "dtstart" to target,
+                    "dtend" to target + 3_600_000L, CALENDAR_COL_RRULE to "FREQ=DAILY",
+                )
+                val rows = listOf(master(10, 1), master(20, 2)) + if (cancelA) listOf(
+                    mapOf(CALENDAR_COL_ID to 11L, CALENDAR_COL_CALENDAR_ID to 1L,
+                        CALENDAR_COL_UID to "series", CALENDAR_COL_ORIGINAL_ID to 10L,
+                        CALENDAR_COL_ORIGINAL_INSTANCE to target, "dtstart" to target,
+                        CALENDAR_COL_STATUS to CALENDAR_STATUS_CANCELED),
+                ) else emptyList()
+                val reader = CalendarReader(object : CalendarQuerySurface {
+                    override fun query(query: CalendarQuery): CalendarCursor = when (query.target) {
+                        CalendarQueryTarget.CALENDARS -> MapCursor(listOf(
+                            mapOf(CALENDAR_COL_ID to 1L, CALENDAR_COL_DISPLAY_NAME to "A"),
+                            mapOf(CALENDAR_COL_ID to 2L, CALENDAR_COL_DISPLAY_NAME to "B"),
+                        ))
+                        CalendarQueryTarget.EVENTS -> if (query.projection.contentEquals(arrayOf(CALENDAR_COL_UID))) {
+                            MapCursor(listOf(mapOf(CALENDAR_COL_UID to "series")))
+                        } else MapCursor(rows.filter { it[CALENDAR_COL_CALENDAR_ID] in selected })
+                        CalendarQueryTarget.INSTANCES -> MapCursor(if (includeB) listOf(
+                            mapOf(CALENDAR_COL_EVENT_ID to 20L, CALENDAR_COL_CALENDAR_ID to 2L,
+                                CALENDAR_COL_UID to "series", CALENDAR_COL_BEGIN to target,
+                                CALENDAR_COL_END to target + 3_600_000L, CALENDAR_COL_RRULE to "FREQ=DAILY"),
+                        ) else emptyList())
+                        CalendarQueryTarget.ATTENDEES -> MapCursor(emptyList())
+                    }
+                })
+                val identity = CalendarIdentityRecord("series", "2025-10-23T10:00:00Z",
+                    holders = selected, winningHolder = 1L, providerEventIds = setOf(10, 20))
+                val lookup = reader.lookup(identity, selected, "namespace", ZoneOffset.UTC)
+                assertTrue(lookup.readable)
+                assertEquals(includeB, lookup.stillPresent,
+                    "cancellation in A must preserve B, and canceled-only must remain absent")
+                assertEquals(if (includeB) setOf(2L) else emptySet(), lookup.seenAll.map { it.calendarId }.toSet())
+            }
+        }
+    }
+
     private class Harness {
         var wish = false
         val enabledCalls = mutableListOf<Boolean>()
