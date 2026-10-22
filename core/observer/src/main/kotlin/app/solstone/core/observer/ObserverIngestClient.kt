@@ -9,6 +9,7 @@ import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
+import app.solstone.core.sources.CALENDAR_STREAM
 import java.io.ByteArrayOutputStream
 
 class ObserverIngestClient(
@@ -24,21 +25,24 @@ class ObserverIngestClient(
         require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
         val outcomes = mutableListOf<IngestOutcome>()
         for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
-            val sourceManifest = manifest.copy(files = files)
-            val boundary = boundaryProvider()
-            val body = buildMultipartBody(boundary, sourceManifest, sourceId, fileBytes, host, platform)
-            val outcome = http.request(
-                method = "POST",
-                path = INGEST_PATH,
-                headers = mapOf(
-                    "Content-Type" to "multipart/form-data; boundary=$boundary",
-                    PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
-                ),
-                body = body,
-            ).toIngestOutcome()
-            outcomes += outcome
-            if (outcome is IngestOutcome.Rejected && (outcome.status == 401 || outcome.status == 403)) {
-                return outcomes
+            val batches = if (sourceId == CALENDAR_STREAM) files.map { listOf(it) } else listOf(files)
+            for (batch in batches) {
+                val sourceManifest = manifest.copy(files = batch)
+                val boundary = boundaryProvider()
+                val body = buildMultipartBody(boundary, sourceManifest, sourceId, fileBytes, host, platform)
+                val outcome = http.request(
+                    method = "POST",
+                    path = INGEST_PATH,
+                    headers = mapOf(
+                        "Content-Type" to "multipart/form-data; boundary=$boundary",
+                        PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
+                    ),
+                    body = body,
+                ).toIngestOutcome()
+                outcomes += outcome
+                if (outcome is IngestOutcome.Rejected && (outcome.status == 401 || outcome.status == 403)) {
+                    return outcomes
+                }
             }
         }
         return outcomes

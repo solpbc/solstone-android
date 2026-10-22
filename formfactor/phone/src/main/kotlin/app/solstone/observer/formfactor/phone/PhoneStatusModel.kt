@@ -27,6 +27,7 @@ data class PhoneStatusModel(
     val unresolvedUnknownRecovery: Boolean = false,
     val wrist: WristShare = WristShare.Unknown,
     val journalVersion: JournalVersionReading? = null,
+    val calendarHeldForJournal: Boolean = false,
 )
 
 data class PhoneJournalFacts(

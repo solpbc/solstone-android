@@ -291,6 +291,7 @@ private fun PhoneDetailContent(
             journalDeliveredBy = journalDeliveredBy,
             modifier = modifier,
         )
+        PhoneRoute.CalendarSetup -> PhoneCalendarPane(modifier = modifier)
         PhoneRoute.Help -> PhoneHelpPane(
             reading = journalVersion,
             status = defaultDetailStatus,
@@ -309,7 +310,7 @@ private fun PhoneDetailContent(
                     .semantics { paneTitle = spokenPaneTitle(top) },
             )
         }
-        is PhoneRoute.SourceDetail -> Box(
+        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier) else Box(
             modifier
                 .fillMaxSize()
                 .semantics { paneTitle = spokenPaneTitle(top) },

@@ -15,6 +15,7 @@ import app.solstone.core.pl.HttpResponse
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.wireKeys
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.spool.serializeManifest
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
@@ -301,6 +302,76 @@ class SyncWithTransportTest {
         assertEquals(SyncOutcome.SUCCESS, outcome)
         assertEquals(listOf("GET /app/network/api/status"), client.requests.map { "${it.method} ${it.path}" })
         assertEquals(QueueState.SEALED, store.row("a").state)
+    }
+
+    @Test
+    fun aFailedCapabilityReadSkipsCalendarAndDoesNotOverwrite() {
+        val calendar = segment("cal").copy(stream = CALENDAR_STREAM)
+        val store = FakeDrainStore(calendar, files = mapOf("cal" to listOf(file("cal"))))
+        val updates = mutableListOf<Boolean>()
+        val client = RecordingPlHttpClient(statusOk(), HttpResponse(503, emptyMap(), ByteArray(0)))
+
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { client },
+            store = store,
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+            finisher = dummyFinisher(),
+            allowsOwnerMaterial = true,
+            onCalendarCapability = { updates += it },
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, outcome)
+        assertTrue(updates.isEmpty())
+        assertEquals(QueueState.SEALED, store.row("cal").state)
+        assertEquals(
+            listOf("GET /app/network/api/status", "GET /api/system/status"),
+            client.requests.map { "${it.method} ${it.path}" },
+        )
+    }
+
+    @Test
+    fun aJournalWithoutCalendarNotesSkipsThoseFilesAndStillDrainsObserverFiles() {
+        val main = segment("main")
+        val calendar = segment("cal").copy(stream = CALENDAR_STREAM, sealedAt = 2)
+        val store = FakeDrainStore(
+            main,
+            calendar,
+            files = mapOf(
+                "main" to listOf(file("main").copy(name = "a.bin", sha256 = "sha-a")),
+                "cal" to listOf(file("cal").copy(sourceId = CALENDAR_STREAM, name = "note.ndjson")),
+            ),
+        )
+        val updates = mutableListOf<Boolean>()
+        val client = RecordingPlHttpClient(
+            statusOk(),
+            HttpResponse(200, emptyMap(), """{"capabilities":["segments"]}""".toByteArray()),
+            uploadRequiredSegments(),
+            ingestAccepted(),
+        )
+
+        val outcome = syncWithTransport(
+            transport = DIRECT,
+            openClient = { client },
+            store = store,
+            readPayload = { _, _ -> byteArrayOf(1) },
+            host = "test-device",
+            now = { NOW },
+            log = { _, _ -> },
+            finisher = dummyFinisher(),
+            allowsOwnerMaterial = true,
+            onCalendarCapability = { updates += it },
+        )
+
+        assertEquals(SyncOutcome.SUCCESS, outcome)
+        assertEquals(listOf(false), updates)
+        assertEquals(QueueState.SEALED, store.row("cal").state)
+        assertEquals(QueueState.UPLOADED, store.row("main").state)
+        assertTrue(client.requests.any { it.method == "POST" && it.path == INGEST_PATH })
+        assertTrue(client.requests.none { it.body?.decodeToString()?.contains("note.ndjson") == true })
     }
 
     @Test

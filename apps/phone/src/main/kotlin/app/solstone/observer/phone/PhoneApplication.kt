@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import java.util.concurrent.CopyOnWriteArraySet
 import app.solstone.core.diagnostics.DiagEvent
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
@@ -45,6 +46,8 @@ import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotification
 import app.solstone.observer.formfactor.phone.derivePhoneIntakeNotificationCatching
 import app.solstone.observer.formfactor.phone.encodePhoneRoute
 
+import app.solstone.platform.calendar.CalendarRuntimes
+import app.solstone.platform.calendar.CalendarSession
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.installPushRegistration
 
@@ -64,7 +67,12 @@ class PhoneApplication : ObserverApplication(
             ),
         )
     },
-) {
+), app.solstone.platform.calendar.CalendarWorkerHost {
+    override fun calendarSessionForWork(): CalendarSession? {
+        runtime.container()
+        return CalendarRuntimes.current
+    }
+
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
     private lateinit var widgetStartOutcomes: PhoneWidgetStartOutcomeStore
     private lateinit var audioOffNotices: PhoneAudioOffNoticeStore
@@ -293,7 +301,9 @@ class PhoneApplication : ObserverApplication(
         )
 
         if (plan.endSession) {
-            if (ownerTurnedSourceOff) {
+            if (ownerTurnedSourceOff && container.sources.snapshot().sources.none {
+                    it.sourceId == CALENDAR_STREAM && it.wish == SourceWish.On
+                }) {
                 OwnerStoppedStore(this).recordStopped()
             }
             SharedPreferencesDesiredObservingStore(this).commitDesiredOff()
@@ -309,6 +319,7 @@ class PhoneApplication : ObserverApplication(
             }
             container.sources.stopEnginesOutside(plan.types)
         }
+        CalendarRuntimes.current?.onResume()
     }
 
     private fun handlePhoneResume(container: ObserverAppContainer) {
@@ -317,26 +328,31 @@ class PhoneApplication : ObserverApplication(
         val awaiting = requestStore.readAwaiting()
         var grantCalledEnsureObserving = false
         if (awaiting != null) {
-            val required = container.sources.requiredPermissions(awaiting.sourceId)
-            val granted = required.isNotEmpty() && required.all {
-                checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
-            }
-            if (granted) {
-                container.sources.setWish(awaiting.sourceId, SourceWish.On)
-                OwnerStoppedStore(this).clear()
-                container.controller.ensureObserving()
-                if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
-                    ObserverForegroundService.refreshRunningCaptureTypes(this)
-                }
-                grantCalledEnsureObserving = true
+            if (awaiting.sourceId == CALENDAR_STREAM) {
+                // Resume must not write calendar On or Off. The setup pane owns that wish.
                 requestStore.clearAwaiting()
             } else {
-                when (denialWishWrite(awaiting.priorWish)) {
-                    DenialWishWrite.RemoveEntry -> container.sources.clearExpressedWish(awaiting.sourceId)
-                    DenialWishWrite.KeepOff -> container.sources.setWish(awaiting.sourceId, SourceWish.Off)
-                    DenialWishWrite.KeepOn -> Unit
+                val required = container.sources.requiredPermissions(awaiting.sourceId)
+                val granted = required.isNotEmpty() && required.all {
+                    checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
                 }
-                requestStore.clearAwaiting()
+                if (granted) {
+                    container.sources.setWish(awaiting.sourceId, SourceWish.On)
+                    OwnerStoppedStore(this).clear()
+                    container.controller.ensureObserving()
+                    if (ObserverForegroundService.heldCaptureForegroundTypes != null) {
+                        ObserverForegroundService.refreshRunningCaptureTypes(this)
+                    }
+                    grantCalledEnsureObserving = true
+                    requestStore.clearAwaiting()
+                } else {
+                    when (denialWishWrite(awaiting.priorWish)) {
+                        DenialWishWrite.RemoveEntry -> container.sources.clearExpressedWish(awaiting.sourceId)
+                        DenialWishWrite.KeepOff -> container.sources.setWish(awaiting.sourceId, SourceWish.Off)
+                        DenialWishWrite.KeepOn -> Unit
+                    }
+                    requestStore.clearAwaiting()
+                }
             }
         }
         if (!grantCalledEnsureObserving) {
@@ -348,8 +364,40 @@ class PhoneApplication : ObserverApplication(
         // ⚠ Recorded BEFORE the stop, so a process death between the two cannot lose the owner's
         // decision and leave resume free to restart intake.
         OwnerStoppedStore(this).recordStopped()
+        CalendarRuntimes.current?.onOwnerStopped()
         ObserverForegroundService.clearScreenConsent()
         runtime.containerIfInitialized?.controller?.stop()
+    }
+
+    private fun startCalendarSession(container: ObserverAppContainer) {
+        if (CalendarRuntimes.current != null) return
+        container.calendarNeedsAttention = {
+            CalendarRuntimes.current?.ui?.let { it.readFailed || it.needsAttention } == true
+        }
+        CalendarSession(
+            context = this,
+            database = container.persistenceDatabase(),
+            spoolDir = container.spoolDirectory(),
+            permission = {
+                checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+            },
+            wishOn = {
+                !OwnerStoppedStore(this).ownerStopped() && container.sources.snapshot().sources.any { it.sourceId == CALENDAR_STREAM && it.wish == SourceWish.On }
+            },
+            setEnabled = { on ->
+                val result = container.sources.setWish(CALENDAR_STREAM, if (on) SourceWish.On else SourceWish.Off)
+                val accepted = result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
+                if (accepted && on) OwnerStoppedStore(this).clear()
+                accepted
+            },
+            needsAttention = {
+                container.persistenceDatabase().segmentDao().segmentsForDrain(CALENDAR_STREAM)
+                    .any { it.lastError == "calendar_note_invalid" }
+            },
+            onSealed = { SyncScheduler.enqueueNow(this, phoneSpec.stream) },
+            onChanged = { container.sources.refreshSubscribers() },
+        )
+        CalendarRuntimes.current?.onProcessStart()
     }
 
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
@@ -362,6 +410,7 @@ class PhoneApplication : ObserverApplication(
             app.ownerStoppedProvider = { stopped.ownerStopped() }
             app.onScreenOwnerStart = { stopped.clear() }
             app.phoneResumeHandler = { handlePhoneResume(app) }
+            startCalendarSession(app)
         }
         container.controller.onEffectiveCaptureEmpty = {
             applyEffectiveCapture(ownerTurnedSourceOff = false)

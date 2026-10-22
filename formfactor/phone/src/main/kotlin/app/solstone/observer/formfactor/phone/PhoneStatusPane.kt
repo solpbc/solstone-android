@@ -201,7 +201,11 @@ private fun PhonePairedStatusSummary(
     when (summary.lead) {
         // Imports that need the owner aren't in the count, so it can read zero while they
         // wait; that is never "all caught up".
-        PairedStatusLead.CAUGHT_UP -> if (importsNeedYou) PaneLead("imports need you") else PaneLead("all caught up")
+        PairedStatusLead.CAUGHT_UP -> when {
+            importsNeedYou -> PaneLead("imports need you")
+            model.calendarHeldForJournal -> PaneLead("journal needs an update")
+            else -> PaneLead("all caught up")
+        }
         PairedStatusLead.COUNT -> PaneCount(model.pendingCount)
         PairedStatusLead.MARK_LINE -> PaneLead(markLine)
     }
@@ -210,7 +214,11 @@ private fun PhonePairedStatusSummary(
     }
     if (summary.subLine) {
         val subText = when (statusPillKind(model)) {
-            StatusPillKind.CONNECTED -> if (importsNeedYou) "open import to see why" else "everything is in your journal"
+            StatusPillKind.CONNECTED -> when {
+                importsNeedYou -> "open import to see why"
+                model.calendarHeldForJournal -> "calendar notes stay on this phone until your journal can take them."
+                else -> "everything is in your journal"
+            }
             StatusPillKind.SYNCING -> "syncing to your journal…"
             StatusPillKind.OFFLINE -> "on this device"
             StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
@@ -219,6 +227,10 @@ private fun PhonePairedStatusSummary(
         if (subText.isNotEmpty()) {
             PaneSubLine(subText)
         }
+    }
+    if (model.calendarHeldForJournal && statusPillKind(model) != StatusPillKind.CONNECTED) {
+        PaneLead("journal needs an update")
+        PaneSubLine("calendar notes stay on this phone until your journal can take them.")
     }
     custody.forEach { line ->
         PaneSubLine(line)

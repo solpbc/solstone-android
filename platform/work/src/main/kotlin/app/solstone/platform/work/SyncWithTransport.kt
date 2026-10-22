@@ -14,10 +14,13 @@ import java.io.Closeable
 import java.io.File
 import java.io.IOException
 import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.pl.CalendarCapabilityRead
 import app.solstone.core.pl.JournalAttempt
 import app.solstone.core.pl.LegOutcome
+import app.solstone.core.pl.fetchCalendarCapability
 import app.solstone.core.pl.journalRefusalIn
 import app.solstone.core.pl.unknownJournalIn
+import app.solstone.core.sources.CALENDAR_STREAM
 
 internal fun <C> syncWithTransport(
     transport: SyncTransport,
@@ -37,6 +40,7 @@ internal fun <C> syncWithTransport(
     onAuthorized: () -> Unit = {},
     importStage: ((PlHttpClient, () -> Boolean) -> ImportStageResult)? = null,
     attempt: JournalAttempt? = null,
+    onCalendarCapability: ((Boolean) -> Unit)? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val legs = attempt ?: JournalAttempt.untracked(PairingGeneration("", ""))
     val client = try {
@@ -82,6 +86,25 @@ internal fun <C> syncWithTransport(
                     ImportStageResult.PAIRING_LEFT -> return@use SyncOutcome.RETRY
                     else -> Unit
                 }
+                val dueNow = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId)
+                val postCalendar = if (dueNow.none { it.stream == CALENDAR_STREAM }) {
+                    true
+                } else {
+                    val read = try {
+                        fetchCalendarCapability(c)
+                    } catch (e: RelayWebSocketClosedException) {
+                        throw e
+                    } catch (_: Throwable) {
+                        CalendarCapabilityRead.Failed
+                    }
+                    when (read) {
+                        is CalendarCapabilityRead.Parsed -> {
+                            onCalendarCapability?.invoke(read.calendarNotes)
+                            read.calendarNotes
+                        }
+                        CalendarCapabilityRead.Failed -> false
+                    }
+                }
                 val report = drainSegments(
                     store = store,
                     reconcile = SegmentReconciler(c)::diff,
@@ -100,6 +123,7 @@ internal fun <C> syncWithTransport(
                     readStoredZone = { segment -> spoolDir?.let { readStoredZoneFor(it, segment) } },
                     pairingCurrent = pairingCurrent,
                     homeInstanceId = homeInstanceId,
+                    postCalendar = postCalendar,
                 )
                 if (report.halted) onRefused()
                 if (imports == ImportStageResult.RETRY && report.workOutcome == SyncOutcome.SUCCESS) {

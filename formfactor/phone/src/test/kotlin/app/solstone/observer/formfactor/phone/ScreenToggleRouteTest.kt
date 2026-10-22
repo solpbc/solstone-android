@@ -19,6 +19,18 @@ class ScreenToggleRouteTest {
     }
 
     @Test
+    fun calendarOnOpensSetupFromTheDeckAndFromDetail() {
+        assertEquals(ScreenToggleAction.OpenCalendarSetup, screenToggleRoute("calendar", SourceWish.On, fromDetail = false))
+        assertEquals(ScreenToggleAction.OpenCalendarSetup, screenToggleRoute("calendar", SourceWish.On, fromDetail = true))
+    }
+
+    @Test
+    fun calendarOffTurnsOffFromTheDeckAndFromDetail() {
+        assertEquals(ScreenToggleAction.TurnOffCalendar, screenToggleRoute("calendar", SourceWish.Off, fromDetail = false))
+        assertEquals(ScreenToggleAction.TurnOffCalendar, screenToggleRoute("calendar", SourceWish.Off, fromDetail = true))
+    }
+
+    @Test
     fun screenOnFromDeckOpensDetailWithoutConsentPicker() {
         assertEquals(ScreenToggleAction.OpenDetail, screenToggleRoute("screen", SourceWish.On, fromDetail = false))
     }

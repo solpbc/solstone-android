@@ -11,6 +11,7 @@ import app.solstone.core.observer.ReconcileAuthException
 import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.JournalCachePathRefusal
@@ -51,7 +52,9 @@ interface DrainStore {
 
 class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun syncState(): SyncStateRow? = dao.syncState()
-    override fun segmentsForDrain(): List<SegmentRow> = dao.segmentsForDrain(MAIN_STREAM)
+    override fun segmentsForDrain(): List<SegmentRow> =
+        (dao.segmentsForDrain(MAIN_STREAM) + dao.segmentsForDrain(CALENDAR_STREAM))
+            .sortedWith(compareBy({ it.sealedAt }, { it.id }))
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = dao.filesBySegmentId(id)
     override fun advanceState(id: String, event: QueueEvent): QueueState = dao.advanceState(id, event)
     override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int =
@@ -74,6 +77,7 @@ internal fun drainSegments(
     readStoredZone: (SegmentRow) -> StoredSegmentZone? = { null },
     pairingCurrent: () -> Boolean = { true },
     homeInstanceId: String? = null,
+    postCalendar: Boolean = true,
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -92,7 +96,9 @@ internal fun drainSegments(
     val taken = mutableSetOf<String>()
     var dueRemaining = false
     while (!halted && !failedThisRun && !pairingLeft) {
-        val due = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId).filter { it.id !in taken }
+        val due = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId)
+            .filter { it.id !in taken }
+            .filter { postCalendar || it.stream != CALENDAR_STREAM }
         if (due.isEmpty()) break
         val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
         if (due.size > selected.size) dueRemaining = true
@@ -211,6 +217,10 @@ internal fun drainSegments(
                                 lastFailureAt = now()
                                 lastErrorReason = "auth halted (${result.status})"
                             }
+                            is SegmentSyncResult.NeedsAttention -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, null, result.error)
+                            }
                         }
                     }
                 }
@@ -224,7 +234,7 @@ internal fun drainSegments(
         if (dueRemaining) break
     }
 
-    val pendingAfter = store.pendingCount(MAIN_STREAM)
+    val pendingAfter = store.pendingCount(MAIN_STREAM) + store.pendingCount(CALENDAR_STREAM)
     val cleanDrain = !halted && !failedThisRun && !pairingLeft && pendingAfter == 0
     val workOutcome = when {
         halted -> SyncOutcome.FAILURE

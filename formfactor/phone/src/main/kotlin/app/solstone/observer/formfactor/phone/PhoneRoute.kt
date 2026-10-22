@@ -90,6 +90,11 @@ sealed interface PhoneRoute : PhoneSurface {
         override val paneTitle: String get() = "surface_help"
         override val headingKey: String get() = "heading.help"
     }
+
+    data object CalendarSetup : PhoneRoute {
+        override val paneTitle: String get() = "surface_calendar_setup"
+        override val headingKey: String get() = "heading.calendar"
+    }
 }
 
 fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
@@ -110,6 +115,7 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.ProblemReports -> "problem-reports"
     PhoneRoute.Notifications -> "notifications"
     PhoneRoute.Help -> "help"
+    PhoneRoute.CalendarSetup -> "calendar-setup"
 }
 
 fun decodePhoneRoute(key: String): PhoneRoute? {
@@ -134,6 +140,7 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
         "problem-reports" -> PhoneRoute.ProblemReports
         "notifications" -> PhoneRoute.Notifications
         "help" -> PhoneRoute.Help
+        "calendar-setup" -> PhoneRoute.CalendarSetup
         else -> null
     }
 }

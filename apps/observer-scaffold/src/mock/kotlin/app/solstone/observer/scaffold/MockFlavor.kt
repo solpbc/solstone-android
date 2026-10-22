@@ -123,6 +123,9 @@ fun buildObserverFlavor(
         plStatus = controller::probePlStatus,
         identityStore = identityStore,
         coordinator = coordinator,
+        calendarCapability = { instanceId, caFingerprint ->
+            database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
+        },
     )
     return SharedObserverFlavor(
         controller = controller,

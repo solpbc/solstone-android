@@ -118,6 +118,10 @@ fun buildObserverFlavor(
         identityStore = stores.identityStore,
         coordinator = stores.journalVersionCoordinator,
         imports = realImportBacklog(context, database, stores, controller::pairingFact),
+        calendarCapability = { instanceId, caFingerprint ->
+            database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
+        },
+        pendingCalendarImports = { database.calendarDao().pendingImportCount() },
     )
     return SharedObserverFlavor(
         controller = controller,

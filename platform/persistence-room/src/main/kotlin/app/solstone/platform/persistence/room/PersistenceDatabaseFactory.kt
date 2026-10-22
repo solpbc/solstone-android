@@ -81,11 +81,35 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `calendar_preview` (`generation` INTEGER NOT NULL, `identity_key` TEXT NOT NULL, `calendar_id` INTEGER NOT NULL, `start_epoch_ms` INTEGER NOT NULL, `provider_event_ids` TEXT NOT NULL, `body` TEXT NOT NULL, PRIMARY KEY(`generation`, `identity_key`, `calendar_id`))")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_settings` (`id` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `count_generation` INTEGER NOT NULL, `consent_token` INTEGER NOT NULL, `confirmed_generation` INTEGER, `history_kind` TEXT NOT NULL, `confirmed_history_kind` TEXT, `lower_bound_epoch_day` INTEGER, `confirmed_lower_bound_epoch_day` INTEGER, `fallback_namespace` TEXT NOT NULL, `last_success_at` INTEGER, `import_slice_cursor` INTEGER, `import_done` INTEGER NOT NULL, `import_total` INTEGER, `import_completed` INTEGER NOT NULL, `last_read_failed` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_calendar` (`provider_id` INTEGER NOT NULL, `display_name` TEXT NOT NULL, `owner_account` TEXT, `account_type` TEXT, `selected` INTEGER NOT NULL, `confirmed` INTEGER NOT NULL, `visible` INTEGER NOT NULL, PRIMARY KEY(`provider_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_count` (`generation` INTEGER NOT NULL, `selection_fingerprint` TEXT NOT NULL, `span` TEXT NOT NULL, `count` INTEGER NOT NULL, `status` TEXT NOT NULL, `per_calendar` TEXT NOT NULL, `import_cursor` INTEGER, PRIMARY KEY(`generation`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_identity` (`event` TEXT NOT NULL, `occurrence` TEXT NOT NULL, `published_fingerprint` TEXT, `published_changed_at` TEXT, `published_changed_at_epoch_ms` INTEGER, `pending_fingerprint` TEXT, `pending_changed_at` TEXT, `pending_changed_at_epoch_ms` INTEGER, `pending_canonical` TEXT, `pending_intent_id` TEXT, `last_title` TEXT, `last_calendar` TEXT, `holders` TEXT NOT NULL, `winning_holder` INTEGER, `name_holder` INTEGER, `miss_count` INTEGER NOT NULL, `first_miss_at` INTEGER, `last_change` TEXT, `touched_at` INTEGER, `last_start_epoch_ms` INTEGER, `provider_event_ids` TEXT NOT NULL, PRIMARY KEY(`event`, `occurrence`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_intent` (`id` TEXT NOT NULL, `day` TEXT NOT NULL, `segment` TEXT NOT NULL, `body` TEXT NOT NULL, `sealed` INTEGER NOT NULL, `identity_keys` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `calendar_capability` (`instance_id` TEXT NOT NULL, `ca_fingerprint` TEXT NOT NULL, `calendar_notes` INTEGER NOT NULL, `observed_at` INTEGER NOT NULL, PRIMARY KEY(`instance_id`, `ca_fingerprint`))",
+        )
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .build()
 

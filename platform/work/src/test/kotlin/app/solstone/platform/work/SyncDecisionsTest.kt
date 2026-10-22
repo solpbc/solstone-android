@@ -12,6 +12,7 @@ import app.solstone.core.observer.IngestFileDescriptor
 import app.solstone.core.observer.IngestOutcome
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.RetryDecision
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -31,6 +32,7 @@ class SyncDecisionsTest {
             segment("main-sealed", MAIN_STREAM, QueueState.SEALED),
             segment("observer-location", MAIN_STREAM, QueueState.SEALED),
             segment("import-sealed", "import.share", QueueState.SEALED),
+            segment("calendar-sealed", CALENDAR_STREAM, QueueState.SEALED),
             segment("main-uploading", MAIN_STREAM, QueueState.UPLOADING),
             segment("main-failed-due", MAIN_STREAM, QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = 500),
             segment(
@@ -44,7 +46,7 @@ class SyncDecisionsTest {
         )
 
         assertEquals(
-            listOf("main-sealed", "observer-location", "main-uploading", "main-failed-due"),
+            listOf("main-sealed", "observer-location", "calendar-sealed", "main-uploading", "main-failed-due"),
             selectDrainSegments(rows, now).map { it.id },
         )
     }
@@ -90,6 +92,8 @@ class SyncDecisionsTest {
         assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 10, lastAttemptAt = now, lastStatusCode = 401, lastError = "auth halted", now = now))
         assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now, lastStatusCode = 403, lastError = "auth halted", now = now))
         assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = 500, lastError = "removed_in_journal", now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = null, lastError = "calendar_note_invalid", now = now))
+        assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "calendar_note_invalid", now = now))
         assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "removed_in_journal", now = now))
         assertFalse(isRetryDue(QueueState.UPLOADED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
     }
@@ -331,6 +335,60 @@ class SyncDecisionsTest {
         assertEquals(SegmentSyncResult.HardFail(404, "hard failure"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(404, ""))))
         assertEquals(SegmentSyncResult.HardFail(400, "hard failure"), resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(400, ""))))
         assertEquals(SegmentSyncResult.Retry(null, "retry"), resolveIoError())
+    }
+
+    @Test
+    fun calendarNoteInvalidNeedsAttentionAndSegmentRemovedStaysJournalRemoved() {
+        val manifest = BundleManifest(
+            SegmentKey("20261019", "094000_300"),
+            listOf(BundleFile(CALENDAR_STREAM, "note.ndjson", "sha-c", 4, "application/x-ndjson", 1, 2)),
+            emptyList(),
+        )
+        assertEquals(
+            SegmentSyncResult.NeedsAttention("calendar_note_invalid"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Failed("calendar_note_invalid"))),
+        )
+        assertEquals(
+            SegmentSyncResult.NeedsAttention("calendar_note_invalid"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(422, """{"detail":"calendar_note_invalid"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.NeedsAttention("calendar_note_invalid"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(422, """{"reason_code":"calendar_note_invalid"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.JournalRemoved(500),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(500, """{"reason_code":"segment_removed"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.HardFail(422, "hard failure"),
+            resolveIngestOutcomes(
+                manifest,
+                listOf(IngestOutcome.Rejected(422, """{"detail":"calendar_note_invalid","reason_code":"other"}""")),
+            ),
+        )
+    }
+
+    @Test
+    fun aCalendarStreamArgumentKeepsCalendarFiles() {
+        val rows = listOf(
+            segment("main-row", MAIN_STREAM, QueueState.SEALED),
+            segment("cal-row", CALENDAR_STREAM, QueueState.SEALED),
+            segment("held", CALENDAR_STREAM, QueueState.FAILED, lastError = "calendar_note_invalid"),
+            segment("gone", CALENDAR_STREAM, QueueState.FAILED, lastError = "removed_in_journal"),
+        )
+        val files = mapOf(
+            "main-row" to listOf(file("main-row", "audio", "a.bin", "sha-a")),
+            "cal-row" to listOf(file("cal-row", CALENDAR_STREAM, "note.ndjson", "sha-c")),
+            "held" to listOf(file("held", CALENDAR_STREAM, "held.ndjson", "sha-h")),
+            "gone" to listOf(file("gone", CALENDAR_STREAM, "gone.ndjson", "sha-g")),
+        )
+        assertEquals(listOf("cal-row", "held", "gone"), segmentsForStream(rows, CALENDAR_STREAM).map { it.id })
+        assertEquals(listOf("main-row"), segmentsForStream(rows, MAIN_STREAM).map { it.id })
+        assertEquals(
+            listOf(CALENDAR_STREAM),
+            drainablePendingSourceIds(rows, CALENDAR_STREAM) { id -> files.getValue(id) },
+        )
     }
 
     @Test

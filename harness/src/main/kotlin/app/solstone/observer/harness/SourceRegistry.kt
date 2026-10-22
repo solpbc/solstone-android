@@ -145,7 +145,7 @@ class SourceRegistry(
                 // early while [storeUnreadable] — so unreadable bytes are never overwritten by a
                 // guess, only by an owner.
                 storeUnreadable = true
-                registrations.filter { it.sourceId != "screen" }.forEach {
+                registrations.filter { it.sourceId != "screen" && it.sourceId != "calendar" }.forEach {
                     expressed.add(it.sourceId)
                     persisted[it.sourceId] = SourceWish.On
                 }
@@ -460,11 +460,20 @@ class SourceRegistry(
             val (wish, isExpressed) = synchronized(lock) {
                 wishes.getValue(sourceId) to (sourceId in expressed)
             }
-            val facts = if (wish == SourceWish.Off) {
-                offFacts().copy(forcedReason = registration.reasonWhenOff?.invoke())
+            val selectedFacts = if (wish == SourceWish.Off) {
+                val off = offFacts()
+                if (registration.runsWithoutObserver) off else off.copy(forcedReason = registration.reasonWhenOff?.invoke())
+            } else if (registration.runsWithoutObserver) {
+                sourceFacts(globalFacts, permissionStatus).copy(
+                    engineStartIssued = true,
+                    foregroundTypeHeld = true,
+                    startRefused = false,
+                    forcedReason = registration.reasonWhenOff?.invoke(),
+                )
             } else {
                 sourceFacts(globalFacts, permissionStatus)
-            }.copy(
+            }
+            val facts = selectedFacts.copy(
                 wishExpressed = isExpressed,
                 permissionRequestInFlight = permissionRequestFor == sourceId,
             )

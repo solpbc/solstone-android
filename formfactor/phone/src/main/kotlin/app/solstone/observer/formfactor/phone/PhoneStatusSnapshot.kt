@@ -55,6 +55,7 @@ fun phoneStatusSnapshotOf(
             unresolvedOtherInterruption = unresolvedOtherInterruption,
             unresolvedUnknownRecovery = unresolvedUnknownRecovery,
             journalVersion = backlog.journalVersion,
+            calendarHeldForJournal = backlog.calendarHeldForJournal,
         ),
         waiting = waiting,
     )

@@ -19,6 +19,7 @@ import app.solstone.core.observer.SegmentReconciler
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.queue.QueueEvent
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.DirectoryRemovalResult
@@ -40,6 +41,72 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SegmentDrainerTest {
+    @Test
+    fun holdingCalendarLeavesItSealedWhileObserverFilesDrain() {
+        val fixture = TestFixture()
+        val (calendar, _) = fixture.createSegment("cal", stream = CALENDAR_STREAM, sealedAt = 1)
+        val (main, _) = fixture.createSegment("main", sealedAt = 2)
+        var calendarIngests = 0
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = { manifest, fileBytes ->
+                if (manifest.files.any { it.sourceId == CALENDAR_STREAM }) calendarIngests++
+                acceptedIngest("srv")(manifest, fileBytes)
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+            postCalendar = false,
+        )
+
+        assertEquals(0, calendarIngests)
+        assertEquals(QueueState.SEALED, fixture.store.row(calendar.id).state)
+        assertEquals(QueueState.EVICTED, fixture.store.row(main.id).state)
+        assertFalse(report.cleanDrain)
+        assertFalse(report.failedThisRun)
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+        assertTrue((fixture.store.syncState?.pendingCount ?: 0) > 0)
+    }
+
+    @Test
+    fun calendarNoteInvalidStaysPutAndOtherSegmentsContinue() {
+        val fixture = TestFixture()
+        val (calendar, _) = fixture.createSegment(
+            "cal",
+            stream = CALENDAR_STREAM,
+            files = listOf(BundleFile(CALENDAR_STREAM, "note.ndjson", "sha-cal", 1, "application/x-ndjson", 1, 2)),
+            sealedAt = 1,
+        )
+        val (main, _) = fixture.createSegment("main", sealedAt = 2)
+
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = { manifest, fileBytes ->
+                if (manifest.files.any { it.sourceId == CALENDAR_STREAM }) {
+                    manifest.files.forEach { fileBytes(it) }
+                    listOf(IngestOutcome.Failed("calendar_note_invalid"))
+                } else {
+                    acceptedIngest("srv")(manifest, fileBytes)
+                }
+            },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+
+        assertEquals(QueueState.FAILED, fixture.store.row(calendar.id).state)
+        assertEquals("calendar_note_invalid", fixture.store.row(calendar.id).lastError)
+        assertNull(fixture.store.row(calendar.id).lastStatusCode)
+        assertEquals(QueueState.EVICTED, fixture.store.row(main.id).state)
+        assertFalse(report.failedThisRun)
+        assertFalse(fixture.store.eventsFor(calendar.id).contains(QueueEvent.FINISH))
+    }
+
     @Test
     fun drainsSealedUploadAndPersistsCleanSuccess() {
         val fixture = TestFixture()

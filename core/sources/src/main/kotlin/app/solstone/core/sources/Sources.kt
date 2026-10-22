@@ -25,6 +25,7 @@ const val MAIN_STREAM = "observer"
 const val PHONE_STREAM = "phone"
 const val WATCH_STREAM = "watch"
 const val GLASSES_STREAM = "glasses"
+const val CALENDAR_STREAM = "calendar"
 
 data class PayloadRef(val name: String, val mediaType: String, val byteSize: Long, val sha256: String?)
 

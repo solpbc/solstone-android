@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- calendar is a new source. while it's on, the solstone app takes in events this phone can read, including notes, places, invitees, holidays, and birthdays, and they go into your journal. you choose which calendars and how far back before anything is sent. android may delay the background checks. with an older journal, those notes stay on this phone until your journal can take them.
+
 ## [2.1.29] - 2026-10-21
 
 ### Changed

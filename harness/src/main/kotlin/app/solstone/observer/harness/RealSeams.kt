@@ -31,6 +31,7 @@ import app.solstone.core.pl.PlStreamObserver
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.RelayPairLink
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
@@ -470,7 +471,7 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
             )
         }
 
-    override fun pendingCount(): Int = dao.pendingCount(MAIN_STREAM)
+    override fun pendingCount(): Int = dao.pendingCount(MAIN_STREAM) + dao.pendingCount(CALENDAR_STREAM)
 
     override fun syncState(): HarnessSyncState {
         val row = dao.syncState()
@@ -488,6 +489,8 @@ class RealBacklogStatusReader(
     private val identityStore: IdentityStore? = null,
     private val coordinator: JournalVersionRefreshCoordinator? = null,
     private val imports: (() -> HarnessImportBacklog)? = null,
+    private val calendarCapability: (String, String) -> Int? = { _, _ -> null },
+    private val pendingCalendarImports: () -> Int = { 0 },
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
         val status = plStatus()
@@ -498,12 +501,17 @@ class RealBacklogStatusReader(
             null
         }
         val importBacklog = imports?.let { runCatching(it).getOrNull() }
+        val calendarPending = dao.pendingCount(CALENDAR_STREAM) + pendingCalendarImports()
+        val calendarHeldForJournal = identity != null &&
+            calendarCapability(identity.instanceId, identity.caChainFingerprint) == 0 &&
+            calendarPending > 0
         return HarnessBacklogStatus(
             plStatus = status,
-            pendingCount = dao.pendingCount(MAIN_STREAM) + (importBacklog?.pendingCount ?: 0),
-            pendingSourceIds = dao.pendingSourceIds(MAIN_STREAM),
+            pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + (importBacklog?.pendingCount ?: 0),
+            pendingSourceIds = (dao.pendingSourceIds(MAIN_STREAM) + dao.pendingSourceIds(CALENDAR_STREAM) + if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()).distinct(),
             journalVersion = journalVersion,
             imports = importBacklog,
+            calendarHeldForJournal = calendarHeldForJournal,
         )
     }
 }

@@ -35,4 +35,5 @@ fun phoneSurfaces(): List<PhoneSurface> = listOf(
     PhoneRoute.ProblemReports,
     PhoneRoute.Notifications,
     PhoneRoute.Help,
+    PhoneRoute.CalendarSetup,
 )

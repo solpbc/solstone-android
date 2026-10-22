@@ -14,6 +14,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.pl.parseJson
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
+import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -27,7 +28,7 @@ fun isRetryDue(
     lastError: String? = null,
     now: Long,
 ): Boolean {
-    if (lastError == "removed_in_journal") return false
+    if (lastError == "removed_in_journal" || lastError == "calendar_note_invalid") return false
     return when (state) {
         QueueState.SEALED,
         QueueState.UPLOADING -> true
@@ -62,7 +63,7 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long =
  */
 fun selectDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> =
     segments.filter {
-        it.stream == MAIN_STREAM &&
+        (it.stream == MAIN_STREAM || it.stream == CALENDAR_STREAM) &&
             (
                 isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
                     failedAtAnotherJournal(it, homeInstanceId)
@@ -76,6 +77,7 @@ fun nextAttemptCount(segment: SegmentRow, homeInstanceId: String?): Int =
 private fun failedAtAnotherJournal(segment: SegmentRow, homeInstanceId: String?): Boolean =
     segment.state == QueueState.FAILED &&
         segment.lastError != "removed_in_journal" &&
+        segment.lastError != "calendar_note_invalid" &&
         segment.homeInstanceId != homeInstanceId
 
 fun reconstructManifest(
@@ -116,6 +118,7 @@ sealed interface SegmentSyncResult {
     data class HardFail(val status: Int, val error: String = "hard failure") : SegmentSyncResult
     data class AuthHalt(val status: Int) : SegmentSyncResult
     data class JournalRemoved(val status: Int) : SegmentSyncResult
+    data class NeedsAttention(val error: String) : SegmentSyncResult
 }
 
 fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): String? =
@@ -148,11 +151,13 @@ fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): Strin
     }
 
 fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome>): SegmentSyncResult {
-    val sourceGroups = manifest.files.groupBy(BundleFile::sourceId).values.toList()
+    val batches = manifest.files.groupBy(BundleFile::sourceId).flatMap { (sourceId, files) ->
+        if (sourceId == CALENDAR_STREAM) files.map { listOf(it) } else listOf(files)
+    }
     val results = mutableListOf<SegmentSyncResult>()
-    for (i in sourceGroups.indices) {
+    for (i in batches.indices) {
         if (i < outcomes.size) {
-            val single = resolveSingleOutcome(sourceGroups[i], outcomes[i])
+            val single = resolveSingleOutcome(batches[i], outcomes[i])
             results += single
             if (single is SegmentSyncResult.AuthHalt) {
                 break
@@ -173,7 +178,12 @@ private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome
         is IngestOutcome.Accepted -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Collision -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Duplicate -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
-        is IngestOutcome.Failed -> SegmentSyncResult.HardFail(200, "hard failure")
+        is IngestOutcome.Failed ->
+            if (outcome.detail == "calendar_note_invalid") {
+                SegmentSyncResult.NeedsAttention("calendar_note_invalid")
+            } else {
+                SegmentSyncResult.HardFail(200, "hard failure")
+            }
         is IngestOutcome.UnknownStatus,
         is IngestOutcome.MalformedResponse -> SegmentSyncResult.Retry(null, "retry")
         is IngestOutcome.Rejected -> resolveRejected(outcome.status, outcome.body)
@@ -188,15 +198,16 @@ private fun String.toCustodyResult(): SegmentSyncResult =
     }
 
 private fun resolveRejected(status: Int, body: String): SegmentSyncResult {
-    if (status == 500) {
-        try {
-            val root = parseJson(body) as? Map<*, *>
-            if (root?.get("reason_code") == "segment_removed") {
-                return SegmentSyncResult.JournalRemoved(500)
-            }
-        } catch (_: Exception) {
-            // non-JSON
-        }
+    val root = try {
+        parseJson(body) as? Map<*, *>
+    } catch (_: Exception) {
+        null
+    }
+    if (status == 500 && root?.get("reason_code") == "segment_removed") {
+        return SegmentSyncResult.JournalRemoved(500)
+    }
+    if (root != null && calendarNoteInvalid(root)) {
+        return SegmentSyncResult.NeedsAttention("calendar_note_invalid")
     }
     return when (classify(status, ioError = false)) {
         RetryDecision.STOP_AUTH -> SegmentSyncResult.AuthHalt(status)
@@ -211,12 +222,34 @@ private fun SegmentSyncResult.severityRank(): Int =
         is SegmentSyncResult.HardFail -> 1
         is SegmentSyncResult.Retry -> 2
         is SegmentSyncResult.JournalRemoved -> 3
-        SegmentSyncResult.Uploaded -> 4
+        is SegmentSyncResult.NeedsAttention -> 4
+        SegmentSyncResult.Uploaded -> 5
     }
+
+private fun calendarNoteInvalid(root: Map<*, *>): Boolean {
+    val fields = listOf("detail", "reason_code").mapNotNull { key ->
+        if (!root.containsKey(key)) null else root[key]
+    }
+    return fields.isNotEmpty() && fields.all { it == "calendar_note_invalid" }
+}
 
 fun resolveIoError(): SegmentSyncResult = SegmentSyncResult.Retry(null, "retry")
 
 fun haltsDrain(result: SegmentSyncResult): Boolean = result is SegmentSyncResult.AuthHalt
+
+/** A calendar stream argument keeps calendar rows. Other streams do not see them. */
+fun segmentsForStream(rows: List<SegmentRow>, stream: String): List<SegmentRow> =
+    rows.filter { it.stream == stream }
+
+/** Pending source ids for one stream, including calendar files that are not `removed_in_journal`. */
+fun drainablePendingSourceIds(
+    rows: List<SegmentRow>,
+    stream: String,
+    files: (String) -> List<SegmentFileRow>,
+): List<String> =
+    rows.filter { it.stream == stream && it.lastError != "removed_in_journal" }
+        .flatMap { row -> files(row.id).map { it.sourceId } }
+        .distinct()
 
 fun nextSyncState(
     pendingCount: Int,

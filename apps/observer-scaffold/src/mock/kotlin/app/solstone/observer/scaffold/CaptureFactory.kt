@@ -10,6 +10,8 @@ import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.camera.still.CameraLock
 import app.solstone.platform.fgs.CaptureForegroundType
+import app.solstone.platform.power.FileUsableSpaceProvider
+import app.solstone.platform.power.StorageStatus
 import app.solstone.testing.FakeContinuousSource
 import app.solstone.testing.fakePayloadBytes
 import java.io.ByteArrayInputStream
@@ -29,6 +31,8 @@ fun createCaptureSetup(
     context: Context,
     cameraLock: CameraLock,
     registerScreenSource: Boolean = false,
+    registerCalendarSource: Boolean = false,
+    calendarNeedsAttention: () -> Boolean = { false },
 ): CaptureSetup {
     val audio = FakeContinuousSource(
         sourceId = "audio",
@@ -50,6 +54,8 @@ fun createCaptureSetup(
         "audio" to (audio to { p: app.solstone.platform.fgs.PermissionStatus -> p.microphoneGranted }),
         "location" to (location to { p: app.solstone.platform.fgs.PermissionStatus -> p.locationGranted }),
     )
+    val calendarStorage = StorageStatus(FileUsableSpaceProvider(context.filesDir), 50L * 1024L * 1024L)
+    val calendar = if (registerCalendarSource) InertCalendarEngine(calendarStorage::isStorageOk, calendarNeedsAttention) else null
     return CaptureSetup(
         registrations = captureSourceIdentities().map { identity ->
             val (engine, permCheck) = engines.getValue(identity.sourceId)
@@ -59,7 +65,21 @@ fun createCaptureSetup(
                 requiredPermissionsGranted = permCheck,
                 captureForegroundType = identity.captureForegroundType,
             )
-        },
+        } + listOfNotNull(
+            calendar?.let { engine ->
+                SourceRegistration(
+                    sourceId = "calendar",
+                    engine = engine,
+                    requiredPermissionsGranted = {
+                        context.checkSelfPermission(android.Manifest.permission.READ_CALENDAR) ==
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    },
+                    captureForegroundType = null,
+                    reasonWhenOff = engine::reasonWhenOff,
+                    runsWithoutObserver = true,
+                )
+            },
+        ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =
                 ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))

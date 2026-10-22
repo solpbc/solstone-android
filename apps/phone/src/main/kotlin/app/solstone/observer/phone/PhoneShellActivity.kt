@@ -3,6 +3,13 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.platform.calendar.CalendarRuntimes
+import app.solstone.platform.calendar.CalendarUiState
+import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
+import app.solstone.observer.formfactor.phone.PhoneCalendarPaneState
+import app.solstone.observer.formfactor.phone.PhoneCalendarRow
+import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
+
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -178,6 +185,7 @@ class PhoneShellActivity : ComponentActivity() {
     @Volatile private var pushFactsStopped = false
     private var repairMemory = JournalPushRepairMemory()
     private var importBinding by mutableStateOf(PhoneImportBinding())
+    private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
     private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
     private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> takePicked(uris) }
@@ -358,6 +366,7 @@ class PhoneShellActivity : ComponentActivity() {
             ObserverHarnessRuntime.runtime = it
         }
         container = runtime.container()
+        attachCalendarUi()
         stores = syncStores(applicationContext)
         pairingViewModel = ViewModelProvider(this)[PhonePairingViewModel::class.java]
         hasCameraPermission = hasCamera()
@@ -865,7 +874,25 @@ class PhoneShellActivity : ComponentActivity() {
                 aboutFacts, snapshot?.status?.journalVersion, aboutSnapshotEpoch,
             )
             Box(Modifier.fillMaxSize()) {
-            androidx.compose.runtime.CompositionLocalProvider(LocalPhoneImport provides importBinding) {
+            val calendarSession = CalendarRuntimes.current
+            val calendarBinding = PhoneCalendarBinding(
+                state = calendarPaneState,
+                heldForJournal = snapshot?.status?.calendarHeldForJournal == true,
+                onHistory = { kind -> calendarSession?.setHistory(kind) },
+                onSelected = { id, selected -> calendarSession?.setSelected(id, selected) },
+                onPrimary = { calendarSession?.primary() },
+                onAbandon = { calendarSession?.abandon() },
+                onRequestPermission = { requestCalendarPermission() },
+                onOpened = { calendarSession?.refreshPreview() },
+                onRetry = { calendarSession?.runCheck(); calendarSession?.refreshPreview() },
+                onTurnOff = { calendarSession?.turnOff() },
+                onOpenSettings = { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:$packageName"))) },
+            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalPhoneImport provides importBinding,
+                LocalPhoneCalendar provides calendarBinding,
+            ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
@@ -893,6 +920,14 @@ class PhoneShellActivity : ComponentActivity() {
                             ObserverForegroundService.screenSessionStopper?.invoke()
                             ObserverForegroundService.refreshRunningCaptureTypes(this@PhoneShellActivity)
                             (application as? PhoneApplication)?.applyEffectiveCapture(ownerTurnedSourceOff = true)
+                            wishStoreState = wishStore.read()
+                        }
+                        ScreenToggleAction.OpenCalendarSetup -> {
+                            incomingDetail = ((incomingDetail?.first ?: 0L) + 1L) to PhoneRoute.CalendarSetup
+                        }
+                        ScreenToggleAction.TurnOffCalendar -> {
+                            CalendarRuntimes.current?.turnOff()
+                            sourcesViewModel.refresh()
                             wishStoreState = wishStore.read()
                         }
                     }
@@ -1637,11 +1672,53 @@ class PhoneShellActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         (application as? PhoneApplication)?.addStatusListener(statusListener)
+        attachCalendarUi()
     }
+
+    private fun requestCalendarPermission() {
+        requestPermissions(arrayOf(android.Manifest.permission.READ_CALENDAR), CALENDAR_PERMISSION_REQUEST)
+    }
+
+    private fun attachCalendarUi() {
+        val session = CalendarRuntimes.current ?: return
+        fun publish() {
+            calendarPaneState = session.ui.toPane()
+        }
+        publish()
+        session.setOnChanged { mainHandler.post { publish() } }
+    }
+
+    private fun CalendarUiState.toPane() =
+        PhoneCalendarPaneState(
+            permissionGranted = permissionGranted,
+            rows = rows.map {
+                PhoneCalendarRow(
+                    id = it.id,
+                    name = it.name,
+                    selected = it.selected,
+                    count = it.count,
+                )
+            },
+            history = history,
+            countValue = countValue,
+            confirmEnabled = confirmEnabled,
+            importing = importing,
+            importCompleted = importCompleted,
+            importTotal = importTotal,
+            lastSuccessAt = lastSuccessAt,
+            readFailed = readFailed,
+            needsAttention = needsAttention,
+            emptyCalendars = emptyCalendars,
+            countStatus = countStatus,
+            spanLabel = spanLabel,
+            resume = resume,
+            enabled = enabled,
+        )
 
     override fun onStop() {
         super.onStop()
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
+        CalendarRuntimes.current?.setOnChanged {}
         connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return
@@ -1655,6 +1732,12 @@ class PhoneShellActivity : ComponentActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CALENDAR_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            CalendarRuntimes.current?.onPermissionResult(granted)
+            if (::sourcesViewModel.isInitialized) sourcesViewModel.refresh()
+            return
+        }
         if (requestCode == CAMERA_FOR_SCAN_REQUEST) {
             pairingViewModel.cameraAsk = CameraAsk.Answered
             container.controller.onPermissionsRequested()
@@ -1752,6 +1835,7 @@ class PhoneShellActivity : ComponentActivity() {
         // The embedded distributor delivers through Google Play services.
         const val EMBEDDED_DISTRIBUTOR_LABEL = "Google Play services"
         const val NOTIFICATIONS_REQUEST = 11
+        const val CALENDAR_PERMISSION_REQUEST = 13
         const val RECOVERY_POLL_INTERVAL_MS = 50L
 
         /** Route key from [decodePhoneRoute] — e.g. `import`, `add-more`, `sd/audio`. */

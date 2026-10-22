@@ -74,9 +74,18 @@ class ObserverAppContainer(
 ) : ObserverRuntimeContainer {
     override val cameraLock = SingleHolderCameraLock()
     override val captureAuthority = VisibleCaptureOwnerRegistry()
-    internal val captureSetup = createCaptureSetup(context, cameraLock, spec.registerScreenSource)
+    @Volatile var calendarNeedsAttention: () -> Boolean = { false }
+    internal val captureSetup = createCaptureSetup(
+        context,
+        cameraLock,
+        spec.registerScreenSource,
+        spec.registerCalendarSource,
+        { calendarNeedsAttention() },
+    )
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
+    fun persistenceDatabase(): SolstonePersistenceDatabase = database
+    fun spoolDirectory(): java.nio.file.Path = spoolDir
     private val finisher = ConfirmedCopyFinisher(
         spoolRoot = spoolDir,
         dao = database.segmentDao(),
@@ -162,7 +171,14 @@ class ObserverAppContainer(
 
     override val controller: HarnessController = flavor.controller
     override val backlogStatus: BacklogStatusReader =
-        flavor.backlogStatus ?: RealBacklogStatusReader(database.segmentDao(), controller::routinePlStatus)
+        flavor.backlogStatus ?: RealBacklogStatusReader(
+            database.segmentDao(),
+            controller::routinePlStatus,
+            calendarCapability = { instanceId, caFingerprint ->
+                database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
+            },
+            pendingCalendarImports = { database.calendarDao().pendingImportCount() },
+        )
     override val sources = SourceRegistry(
         controller = controller,
         registrations = captureSetup.registrations,

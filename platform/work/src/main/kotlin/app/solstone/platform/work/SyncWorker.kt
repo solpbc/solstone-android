@@ -312,6 +312,7 @@ private fun sync(
     val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
     var shouldCloseDb = false
     var dbToClose: SolstonePersistenceDatabase? = null
+    var capabilityDb: SolstonePersistenceDatabase? = null
     val (store, finisher) = if (drainStore != null) {
         val f = ConfirmedCopyFinisher(
             spoolRoot = spoolDir.toPath(),
@@ -320,7 +321,8 @@ private fun sync(
                 override fun insertFiles(files: List<SegmentFileRow>) = Unit
                 override fun insertEvents(events: List<EventRow>) = Unit
                 override fun segmentsByState(state: QueueState): List<SegmentRow> = emptyList()
-                override fun segmentsForDrain(stream: String): List<SegmentRow> = drainStore.segmentsForDrain()
+                override fun segmentsForDrain(stream: String): List<SegmentRow> =
+                    segmentsForStream(drainStore.segmentsForDrain(), stream)
                 override fun segmentsByDay(day: String): List<SegmentRow> = emptyList()
                 override fun segmentById(id: String): SegmentRow? = drainStore.segmentRow(id)
                 override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
@@ -332,7 +334,11 @@ private fun sync(
                 override fun upsertSyncState(row: SyncStateRow) = drainStore.upsertSyncState(row)
                 override fun syncState(): SyncStateRow? = drainStore.syncState()
                 override fun pendingCount(stream: String): Int = drainStore.pendingCount(stream)
-                override fun pendingSourceIds(stream: String): List<String> = emptyList()
+                override fun pendingSourceIds(stream: String): List<String> =
+                    drainablePendingSourceIds(
+                        drainStore.segmentsForDrain(),
+                        stream,
+                    ) { id -> drainStore.filesBySegmentId(id) }
                 override fun segmentState(id: String): QueueState? = drainStore.segmentRow(id)?.state
                 override fun updateState(id: String, state: QueueState): Int {
                     val event = when (state) {
@@ -354,6 +360,7 @@ private fun sync(
         drainStore to f
     } else {
         val db = persistenceDb ?: (context?.let { openSolstonePersistenceDatabase(it) } ?: throw IllegalStateException("Database or Context required for sync"))
+        capabilityDb = db
         if (persistenceDb == null) {
             shouldCloseDb = true
             dbToClose = db
@@ -486,6 +493,18 @@ private fun sync(
                                 SyncWorker.syncDiag?.invoke(line)
                                 workerLog("w", line, null)
                             },
+                        )
+                    }
+                },
+                onCalendarCapability = capabilityDb?.let { calendarDb ->
+                    { notes ->
+                        calendarDb.calendarDao().upsertCapability(
+                            app.solstone.platform.persistence.room.CalendarCapabilityRow(
+                                instanceId = credentials.identity.instanceId,
+                                caFingerprint = credentials.identity.caChainFingerprint,
+                                calendarNotes = if (notes) 1 else 0,
+                                observedAt = System.currentTimeMillis(),
+                            ),
                         )
                     }
                 },

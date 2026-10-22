@@ -12,6 +12,7 @@ internal val phoneSourceLabels: Map<String, String> = mapOf(
     "location" to "location",
     "camera" to "camera",
     "screen" to "screen",
+    "calendar" to "calendar",
 )
 
 fun sourceLabel(sourceId: String): String = phoneSourceLabels[sourceId] ?: sourceId
@@ -46,6 +47,7 @@ fun headingText(surface: PhoneSurface): String? = when (surface) {
         "heading.problem_reports" -> "problem reports"
         "heading.notifications" -> "notifications"
         "heading.help" -> "help"
+        "heading.calendar" -> "calendar"
         "heading.pane_shelf" -> "settings"
         else -> null
     }

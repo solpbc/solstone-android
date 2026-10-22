@@ -23,4 +23,4 @@ package app.solstone.observer.formfactor.phone
  * its detail view. That is the wrong side of § 2.4 to err on.
  */
 fun sourceEarnsSwitch(sourceId: String): Boolean =
-    sourceId == "audio" || sourceId == "location" || sourceId == "camera" || sourceId == "screen"
+    sourceId == "audio" || sourceId == "location" || sourceId == "camera" || sourceId == "screen" || sourceId == "calendar"

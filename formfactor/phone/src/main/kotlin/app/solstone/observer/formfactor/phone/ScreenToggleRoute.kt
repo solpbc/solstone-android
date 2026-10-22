@@ -10,6 +10,8 @@ enum class ScreenToggleAction {
     OpenDetail,
     LaunchConsent,
     TurnOff,
+    OpenCalendarSetup,
+    TurnOffCalendar,
 }
 
 fun screenToggleRoute(
@@ -17,6 +19,9 @@ fun screenToggleRoute(
     wish: SourceWish,
     fromDetail: Boolean,
 ): ScreenToggleAction {
+    if (sourceId == "calendar") {
+        return if (wish == SourceWish.On) ScreenToggleAction.OpenCalendarSetup else ScreenToggleAction.TurnOffCalendar
+    }
     if (sourceId != "screen") return ScreenToggleAction.Proceed
     return when (wish) {
         SourceWish.Off -> ScreenToggleAction.TurnOff

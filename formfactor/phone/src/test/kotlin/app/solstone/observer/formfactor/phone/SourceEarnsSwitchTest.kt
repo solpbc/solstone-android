@@ -19,6 +19,7 @@ class SourceEarnsSwitchTest {
         // set and never had a chance to name Android's camera.
         assertTrue(sourceEarnsSwitch("camera"))
         assertTrue(sourceEarnsSwitch("screen"))
+        assertTrue(sourceEarnsSwitch("calendar"))
         // These carry none, anywhere: the phone cannot start a session on them.
         assertFalse(sourceEarnsSwitch("watch"))
         assertFalse(sourceEarnsSwitch("pendant"))

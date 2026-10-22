@@ -123,13 +123,14 @@ class ExpressedWishStoreTest {
             f.controller,
             fakes.map { (id, engine) ->
                 SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
-            },
+            } + calendarRegistration(),
             MainPoster { it() },
             store,
         )
         val written = (store.read() as WishStoreState.Loaded).wishes
         assertEquals(mapOf("camera" to SourceWish.On), written)
         assertFalse("screen" in written)
+        assertFalse("calendar" in written)
     }
 
     @Test
@@ -248,16 +249,34 @@ class ExpressedWishStoreTest {
             f.controller,
             fakes.map { (id, engine) ->
                 SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
-            },
+            } + calendarRegistration(),
             MainPoster { it() },
             store,
         )
+        val calendar = registry.snapshot().sources.first { it.sourceId == "calendar" }
+        assertEquals(SourceWish.Off, calendar.wish)
+        assertFalse(calendar.wishExpressed)
         registry.setWish("audio", SourceWish.Off)
         assertEquals(
             listOf(mapOf("audio" to SourceWish.Off, "location" to SourceWish.On, "camera" to SourceWish.On)),
             store.writes,
         )
         assertFalse(store.writes.any { "screen" in it })
+        assertFalse(store.writes.any { "calendar" in it })
+    }
+
+    @Test
+    fun aConfirmedCalendarOnIsPersisted() {
+        val store = InMemorySourceWishStore()
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        val registry = SourceRegistry(
+            f.controller,
+            listOf(calendarRegistration()),
+            MainPoster { it() },
+            store,
+        )
+        registry.setWish("calendar", SourceWish.On)
+        assertEquals(mapOf("calendar" to SourceWish.On), (store.read() as WishStoreState.Loaded).wishes)
     }
 
     @Test
@@ -838,6 +857,31 @@ class ExpressedWishStoreTest {
         f3.controller.reconcile(ObserverStartMode.VisibleStart)
         assertEquals(1, f3.lifecycle.starts, "desiredStore setDesiredOn(true) allows reconcile to start observing")
     }
+
+    @Test
+    fun independentCalendarHonorsOwnerStopAndHealthWithoutRequiringAnObserver() {
+        val f = fixture(permissionStatus = allDenied(), snapshot = snapshot())
+        val engine = FakeSourceEngine(conditionValue = running())
+        var stopped = false
+        val registry = SourceRegistry(f.controller, listOf(calendarRegistration().copy(engine = engine)),
+            MainPoster { it() }, InMemorySourceWishStore(mapOf("calendar" to SourceWish.On)),
+            ownerStopped = { stopped })
+        assertEquals(SourceState.ON, registry.snapshot().sources.single().state)
+        stopped = true
+        assertEquals(SourceState.PAUSED, registry.snapshot().sources.single().state)
+        stopped = false
+        engine.conditionValue = running().copy(needsAttention = true)
+        assertEquals(SourceState.NEEDS_ATTENTION, registry.snapshot().sources.single().state)
+        assertEquals(SourceWish.On, registry.snapshot().sources.single().wish)
+    }
+
+    private fun calendarRegistration() = SourceRegistration(
+        sourceId = "calendar",
+        engine = FakeSourceEngine(conditionValue = running()),
+        requiredPermissionsGranted = { true },
+        captureForegroundType = null,
+        runsWithoutObserver = true,
+    )
 
     private fun reg(id: String, type: CaptureForegroundType) = SourceRegistration(
         sourceId = id,

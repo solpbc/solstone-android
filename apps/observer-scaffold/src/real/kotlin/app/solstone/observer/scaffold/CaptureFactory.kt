@@ -54,6 +54,8 @@ fun createCaptureSetup(
     context: Context,
     cameraLock: CameraLock,
     registerScreenSource: Boolean = false,
+    registerCalendarSource: Boolean = false,
+    calendarNeedsAttention: () -> Boolean = { false },
 ): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
     val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
@@ -134,6 +136,22 @@ fun createCaptureSetup(
                 captureForegroundType = identity.captureForegroundType,
             )
         } + listOfNotNull(
+            if (registerCalendarSource) {
+                val calendar = InertCalendarEngine(storageStatus::isStorageOk, calendarNeedsAttention)
+                SourceRegistration(
+                    sourceId = "calendar",
+                    engine = calendar,
+                    requiredPermissionsGranted = {
+                        context.checkSelfPermission(android.Manifest.permission.READ_CALENDAR) ==
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    },
+                    captureForegroundType = null,
+                    reasonWhenOff = calendar::reasonWhenOff,
+                    runsWithoutObserver = true,
+                )
+            } else {
+                null
+            },
             screen?.let { s ->
                 SourceRegistration(
                     sourceId = ScreenConstants.SOURCE_ID,

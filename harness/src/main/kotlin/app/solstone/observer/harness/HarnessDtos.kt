@@ -72,6 +72,7 @@ data class HarnessBacklogStatus(
     val pendingSourceIds: List<String>,
     val journalVersion: JournalVersionReading? = null,
     val imports: HarnessImportBacklog? = null,
+    val calendarHeldForJournal: Boolean = false,
 )
 
 /**

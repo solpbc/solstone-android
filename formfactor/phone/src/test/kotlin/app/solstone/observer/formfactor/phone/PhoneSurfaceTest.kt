@@ -25,8 +25,8 @@ class PhoneSurfaceTest {
     }
 
     @Test
-    fun surfaceCountIsTwentyOne() {
-        assertEquals(21, phoneSurfaces().size)
+    fun surfaceCountIsTwentyTwo() {
+        assertEquals(22, phoneSurfaces().size)
     }
 
     @Test
@@ -53,6 +53,7 @@ class PhoneSurfaceTest {
         assertTrue(registered(PhoneRoute.ProblemReports))
         assertTrue(registered(PhoneRoute.Notifications))
         assertTrue(registered(PhoneRoute.Help))
+        assertTrue(registered(PhoneRoute.CalendarSetup))
     }
 
     @Test
@@ -86,6 +87,7 @@ class PhoneSurfaceTest {
         PhoneRoute.ProblemReports -> PhoneRoute.ProblemReports in phoneSurfaces()
         PhoneRoute.Notifications -> PhoneRoute.Notifications in phoneSurfaces()
         PhoneRoute.Help -> PhoneRoute.Help in phoneSurfaces()
+        PhoneRoute.CalendarSetup -> PhoneRoute.CalendarSetup in phoneSurfaces()
         is PhoneRoute.SourceDetail -> phoneSurfaces().any { it is PhoneRoute.SourceDetail }
     }
 

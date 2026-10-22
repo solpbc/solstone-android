@@ -10,6 +10,7 @@ import app.solstone.core.model.WireKeys
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
 import app.solstone.core.segment.wireKeys
+import app.solstone.core.sources.CALENDAR_STREAM
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -389,6 +390,36 @@ class ObserverIngestClientTest {
 
         val meta = envelope["meta"] as Map<*, *>
         assertTrue(!meta.containsKey("tz"))
+    }
+
+    @Test
+    fun calendarFilesPostOneAtATimeAndOtherSourcesStayGrouped() {
+        val http = RecordingPlHttpClient(okResponse("a"))
+        val client = ObserverIngestClient(http) { "fixed-boundary" }
+        val manifest = BundleManifest(
+            key = SegmentKey("20261019", "094000_300"),
+            files = listOf(
+                BundleFile(CALENDAR_STREAM, "one.ndjson", "sha-1", 1, "application/x-ndjson", 1, 2),
+                BundleFile(CALENDAR_STREAM, "two.ndjson", "sha-2", 1, "application/x-ndjson", 1, 2),
+                BundleFile("mic", "audio.wav", "sha-3", 3, "audio/wav", 1, 2),
+                BundleFile("mic", "notes.txt", "sha-4", 3, "text/plain", 1, 2),
+            ),
+            gaps = emptyList(),
+        )
+
+        val outcomes = client.ingest(manifest, { byteArrayOf(1) })
+
+        assertEquals(3, outcomes.size)
+        assertEquals(3, http.requests.size)
+        val bodies = http.requests.map { requireNotNull(it.body).toString(Charsets.UTF_8) }
+        assertTrue(bodies[0].contains("one.ndjson"))
+        assertTrue(!bodies[0].contains("two.ndjson"))
+        assertTrue(!bodies[0].contains("audio.wav"))
+        assertTrue(bodies[1].contains("two.ndjson"))
+        assertTrue(!bodies[1].contains("one.ndjson"))
+        assertTrue(bodies[2].contains("audio.wav"))
+        assertTrue(bodies[2].contains("notes.txt"))
+        assertTrue(!bodies[2].contains("one.ndjson"))
     }
 
     private fun keysFor(zone: ZoneId, local: LocalDateTime): WireKeys {

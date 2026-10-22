@@ -38,6 +38,7 @@ val phoneSpec = FormFactorSpec(
     declaredCaptureForegroundTypes = PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES,
     matchForegroundTypesToWishes = true,
     registerScreenSource = true,
+    registerCalendarSource = true,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {
             arrayOf(
