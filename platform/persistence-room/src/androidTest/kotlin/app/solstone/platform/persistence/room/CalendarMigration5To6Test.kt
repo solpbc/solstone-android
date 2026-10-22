@@ -44,6 +44,7 @@ class CalendarMigration5To6Test {
             "calendar_identity",
             "calendar_intent",
             "calendar_capability",
+            "calendar_preview",
         ).forEach { table ->
             db.query("SELECT COUNT(*) FROM $table").use { cursor ->
                 cursor.moveToFirst()
@@ -61,20 +62,25 @@ class CalendarMigration5To6Test {
             id = "abc",
             day = "20261019",
             segment = "094000_300",
-            body = """{"v":1,"event":"e"}""",
+            body = "f".repeat(64),
             sealed = false,
             identityKeys = "e\u0000",
         )
-        open(context).use { db ->
+        var db = open(context)
+        try {
             db.calendarDao().upsertIntents(listOf(row))
-        }
-        open(context).use { db ->
+        } finally { db.close() }
+        db = open(context)
+        try {
             val stored = db.calendarDao().intents().single()
             assertEquals(row.body, stored.body)
             assertEquals(row.day, stored.day)
             assertEquals(row.segment, stored.segment)
             assertFalse(stored.sealed)
             assertEquals(row.identityKeys, stored.identityKeys)
+        } finally {
+            db.close()
+            context.deleteDatabase(REOPEN_DB)
         }
     }
 
