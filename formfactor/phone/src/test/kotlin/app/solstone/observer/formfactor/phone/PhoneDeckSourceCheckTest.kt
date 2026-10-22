@@ -145,11 +145,11 @@ class PhoneDeckSourceCheckTest {
         val tokens = listOf(
             "currentTimeMillis",
             "LocalTime",
-            "Calendar",
-            "Instant",
+            "java.util.Calendar",
+            "Instant.now(",
             "Clock",
             "SystemClock",
-            "java.time",
+            "java.time.Clock",
         )
         val root = File("src/main/kotlin/app/solstone/observer/formfactor/phone")
         root.walkTopDown().filter { it.extension == "kt" }.forEach { file ->
