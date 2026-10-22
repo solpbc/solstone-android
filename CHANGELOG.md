@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.29] - 2026-10-21
+
+### Changed
+
+- when something you added to your journal has to wait and try again later, the event log now says which step it was on and why.
+
 ## [2.1.28] - 2026-10-20
 
 ### Added
