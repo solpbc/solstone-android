@@ -16,6 +16,7 @@ const val CALENDAR_MAX_LINES = 5_000
 const val CALENDAR_MAX_BYTES = 8 * 1024 * 1024
 
 private val NOTE_KEYS = listOf(
+    "account",
     "all_day",
     "attendees",
     "calendar",
@@ -86,6 +87,8 @@ data class CalendarNote(
     val timeZone: String?,
     val title: String?,
     val url: String? = null,
+    /** The name of the account the calendar belongs to. Rides with [calendar]; never part of the fingerprint. */
+    val account: String? = null,
 )
 
 class CalendarWireException(message: String) : IllegalArgumentException(message)
@@ -128,6 +131,10 @@ fun encodeCalendarObject(fields: Map<String, Any?>): String {
     val repeats = fields["repeats"]
     if (repeats != null && repeats !is String) {
         throw CalendarWireException("bad repeats")
+    }
+    val account = fields["account"]
+    if (account != null && account !is String) {
+        throw CalendarWireException("bad account")
     }
     val attendees = fields["attendees"] as? List<*>
         ?: throw CalendarWireException("bad attendees")
@@ -211,6 +218,7 @@ private fun compareNullable(left: String?, right: String?): Int = when {
 }
 
 private fun CalendarNote.toWireMap(): LinkedHashMap<String, Any?> = linkedMapOf(
+    "account" to account,
     "all_day" to allDay,
     "attendees" to attendees.sortedWith(attendeeOrder).map { it.toWireMap() },
     "calendar" to calendar,
@@ -246,6 +254,9 @@ fun contentFingerprint(note: CalendarNote): String {
     val fields = note.toWireMap()
     fields.remove("change")
     fields.remove("changed_at")
+    // An account difference alone is never a change, and an upgraded phone keeps every fingerprint
+    // it already stored: the account first goes out with an event's next real change.
+    fields.remove("account")
     return sha256(ByteArrayInputStream(toJson(fields).toByteArray(Charsets.UTF_8)))
 }
 
@@ -269,5 +280,6 @@ fun decodeCalendarLine(line: String): CalendarNote {
         end = text("end"), event = text("event") ?: throw CalendarWireException("bad event"),
         location = text("location"), notes = text("notes"), occurrence = text("occurrence"),
         organizer = organizer, repeats = text("repeats"), start = text("start"),
-        timeZone = text("time_zone"), title = text("title"), url = text("url")).also { encodeCalendarLine(it) }
+        timeZone = text("time_zone"), title = text("title"), url = text("url"),
+        account = text("account")).also { encodeCalendarLine(it) }
 }

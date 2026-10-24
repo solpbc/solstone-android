@@ -16,6 +16,7 @@ const val CALENDAR_COL_CALENDAR_ID = "calendar_id"
 const val CALENDAR_COL_DISPLAY_NAME = "calendar_displayName"
 const val CALENDAR_COL_OWNER = "ownerAccount"
 const val CALENDAR_COL_ACCOUNT_TYPE = "account_type"
+const val CALENDAR_COL_ACCOUNT_NAME = "account_name"
 const val CALENDAR_COL_VISIBLE = "visible"
 const val CALENDAR_COL_EVENT_ID = "event_id"
 const val CALENDAR_COL_TITLE = "title"
@@ -72,6 +73,7 @@ data class ProviderCalendar(
     val ownerAccount: String?,
     val accountType: String?,
     val visible: Boolean,
+    val accountName: String? = null,
 )
 
 sealed interface CalendarScan {
@@ -170,6 +172,7 @@ class CalendarReader(private val surface: CalendarQuerySurface) {
                     CALENDAR_COL_OWNER,
                     CALENDAR_COL_ACCOUNT_TYPE,
                     CALENDAR_COL_VISIBLE,
+                    CALENDAR_COL_ACCOUNT_NAME,
                 ),
                 selection = null,
                 selectionArgs = null,
@@ -185,6 +188,7 @@ class CalendarReader(private val surface: CalendarQuerySurface) {
                     ownerAccount = rows.string(CALENDAR_COL_OWNER),
                     accountType = rows.string(CALENDAR_COL_ACCOUNT_TYPE),
                     visible = (rows.int(CALENDAR_COL_VISIBLE) ?: 1) != 0,
+                    accountName = rows.string(CALENDAR_COL_ACCOUNT_NAME),
                 )
             }
             return out
@@ -222,7 +226,8 @@ class CalendarReader(private val surface: CalendarQuerySurface) {
                     rows.string(CALENDAR_COL_END_TIMEZONE), rows.string(CALENDAR_COL_TITLE),
                     rows.string(CALENDAR_COL_LOCATION), rows.string(CALENDAR_COL_DESCRIPTION), rrule,
                     rows.string(CALENDAR_COL_ORGANIZER), null,
-                    (rows.int(CALENDAR_COL_STATUS) ?: 0) == CALENDAR_STATUS_CANCELED, emptyList(), namespace, originalId)
+                    (rows.int(CALENDAR_COL_STATUS) ?: 0) == CALENDAR_STATUS_CANCELED, emptyList(), namespace, originalId,
+                    accountName = calendar.accountName)
             }
             out
         }

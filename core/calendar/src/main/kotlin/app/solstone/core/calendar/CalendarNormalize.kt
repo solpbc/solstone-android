@@ -42,6 +42,7 @@ data class RawCalendarInstance(
     val attendees: List<RawAttendee>,
     val fallbackNamespace: String,
     val masterEventId: Long? = null,
+    val accountName: String? = null,
 )
 
 data class NormalizedInstance(
@@ -164,6 +165,7 @@ fun normalizeInstance(raw: RawCalendarInstance): NormalizedInstance? {
         timeZone = zone,
         title = raw.title?.trim()?.ifBlank { null },
         url = null,
+        account = raw.accountName?.trim()?.ifBlank { null },
     )
     return NormalizedInstance(
         event = event,
@@ -182,6 +184,7 @@ fun removedNote(
     title: String?,
     calendar: String,
     changedAt: String,
+    account: String? = null,
 ): CalendarNote = CalendarNote(
     allDay = null,
     attendees = emptyList(),
@@ -199,6 +202,7 @@ fun removedNote(
     timeZone = null,
     title = title,
     url = null,
+    account = account,
 )
 
 private fun utcDate(epochMs: Long): String =

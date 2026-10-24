@@ -81,6 +81,7 @@ fun completeSeal(
             publishedChangedAtEpochMs = identity.pendingChangedAtEpochMs,
             lastTitle = parsed["title"] as? String,
             lastCalendar = parsed["calendar"] as? String,
+            lastAccount = parsed["account"] as? String,
             lastChange = parsed["change"] as? String,
             pendingFingerprint = null,
             pendingChangedAt = null,

@@ -25,7 +25,7 @@ import app.solstone.core.model.QueueState
         CalendarCapabilityRow::class,
         CalendarPreviewRow::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)

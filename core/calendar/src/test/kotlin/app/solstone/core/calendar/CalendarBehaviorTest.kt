@@ -116,6 +116,79 @@ class CalendarBehaviorTest {
         )
         assertFailsWith<CalendarWireException> { encodeCalendarObject(map) }
         assertFailsWith<CalendarWireException> { encodeCalendarObject(map + ("v" to 1) + ("change" to "nope")) }
+        assertFailsWith<CalendarWireException> { encodeCalendarObject(map + ("v" to 1)) }
+        assertFailsWith<CalendarWireException> { encodeCalendarObject(map + ("v" to 1) + ("account" to 7)) }
+        assertTrue(encodeCalendarObject(map + ("v" to 1) + ("account" to null)).startsWith("{\"account\":null,\"all_day\":false,"))
+        assertTrue(encodeCalendarObject(map + ("v" to 1) + ("account" to "iCloud")).startsWith("{\"account\":\"iCloud\","))
+    }
+
+    @Test
+    fun anAccountAloneIsNeverAChangeAndKeepsEveryStoredFingerprint() {
+        // The fingerprint a phone stored before the account existed, byte for byte.
+        val legacy = """{"all_day":false,"attendees":[],"calendar":"Work","end":null,"event":"e","location":null,"notes":null,"occurrence":null,"organizer":null,"repeats":null,"start":"2026-10-19T09:00:00-06:00","time_zone":"America/Denver","title":"t","url":null,"v":1}"""
+        assertEquals(sha(legacy.toByteArray(Charsets.UTF_8)), contentFingerprint(sample()))
+        assertEquals(contentFingerprint(sample()), contentFingerprint(sample().copy(account = "iCloud")))
+
+        val sent = publish(reconcileScan(emptyList(), listOf(seen("e", "Work", 1)), setOf(1), ScanOutcome.COMPLETE, t0, denver, 1, 1, Long.MIN_VALUE))
+        assertNull(sent.single().lastAccount)
+        val upgraded = reconcileScan(sent, listOf(seen("e", "Work", 1, account = "iCloud")), setOf(1), ScanOutcome.COMPLETE, t0 + 60_000, denver, 1, 1, Long.MIN_VALUE)
+        assertTrue(upgraded.notes.isEmpty())
+        val changed = reconcileScan(upgraded.identities, listOf(seen("e", "Work", 1, title = "later", account = "iCloud")), setOf(1), ScanOutcome.COMPLETE, t0 + 120_000, denver, 1, 1, Long.MIN_VALUE)
+        assertEquals(CalendarChange.CHANGED, changed.notes.single().change)
+        assertEquals("iCloud", changed.notes.single().account)
+        assertEquals("iCloud", publish(changed).single().lastAccount)
+    }
+
+    @Test
+    fun theAccountRidesWithTheCalendarNameItBelongsTo() {
+        val both = reconcileScan(emptyList(), listOf(seen("e", "Work", 1, account = "work@example.com"), seen("e", "Home", 2, account = "home@example.com")),
+            setOf(1, 2), ScanOutcome.COMPLETE, t0, denver, 1, 1, Long.MIN_VALUE)
+        assertEquals("Work", both.notes.single().calendar)
+        assertEquals("work@example.com", both.notes.single().account)
+        val identities = dropCalendar(publish(both), 1)
+        val later = reconcileScan(identities, listOf(seen("e", "Home", 2, title = "later", account = "home@example.com")), setOf(2),
+            ScanOutcome.COMPLETE, t0 + 60_000, denver, 1, 1, Long.MIN_VALUE)
+        assertEquals("Work", later.notes.single().calendar)
+        assertEquals("work@example.com", later.notes.single().account)
+    }
+
+    @Test
+    fun aRemovalCarriesTheLastKnownAccountAndAnOlderRecordLoadsAsNull() {
+        val identities = publish(reconcileScan(emptyList(), listOf(seen("e", "Work", 1, title = "design review", account = "iCloud")), setOf(1), ScanOutcome.COMPLETE, t0, denver, 1, 1, Long.MIN_VALUE))
+        assertEquals("iCloud", identities.single().lastAccount)
+        fun removal(from: List<CalendarIdentityRecord>): CalendarNote {
+            val miss = reconcileScan(from, emptyList(), setOf(1), ScanOutcome.COMPLETE, t0 + 60_000, denver, 1, 1, Long.MIN_VALUE)
+            return reconcileScan(miss.identities, emptyList(), setOf(1), ScanOutcome.COMPLETE, t0 + 60_000 + CALENDAR_MISS_GAP_MS, denver, 1, 1, Long.MIN_VALUE).notes.single()
+        }
+        val removed = removal(identities)
+        assertEquals(CalendarChange.REMOVED, removed.change)
+        assertEquals("Work", removed.calendar)
+        assertEquals("iCloud", removed.account)
+
+        // A record sent before the account existed has a last-known calendar and no account.
+        val older = removal(identities.map { it.copy(lastAccount = null) })
+        assertEquals("Work", older.calendar)
+        assertNull(older.account)
+        assertTrue(encodeCalendarLine(older).startsWith("{\"account\":null,"))
+
+        // Bytes staged before the account existed seal and decode with a null account.
+        val legacyLine = """{"all_day":false,"attendees":[],"calendar":"Work","change":"added","changed_at":"2026-10-19T09:42:00-06:00","end":null,"event":"e","location":null,"notes":null,"occurrence":null,"organizer":null,"repeats":null,"start":"2026-10-19T09:00:00-06:00","time_zone":"America/Denver","title":"t","url":null,"v":1}"""
+        val pending = CalendarIdentityRecord("e", "", pendingFingerprint = "f", pendingChangedAt = "2026-10-19T09:42:00-06:00",
+            pendingCanonical = legacyLine, pendingIntentId = "i")
+        val intent = CalendarIntentRecord("i", "20261019", "094000_300", legacyLine.toByteArray(Charsets.UTF_8), false, listOf("e" to ""))
+        val sealed = completeSeal(listOf(pending), listOf(intent), "i").identities.single()
+        assertEquals("Work", sealed.lastCalendar)
+        assertNull(sealed.lastAccount)
+        val decoded = decodeCalendarLine(legacyLine)
+        assertNull(decoded.account)
+        assertEquals("{\"account\":null," + legacyLine.removePrefix("{"), encodeCalendarLine(decoded))
+    }
+
+    @Test
+    fun theAccountIsTrimmedAndAnEmptyOneIsNull() {
+        assertEquals("iCloud", normalizeInstance(raw().copy(accountName = "  iCloud "))!!.note.account)
+        assertNull(normalizeInstance(raw().copy(accountName = "   "))!!.note.account)
+        assertNull(normalizeInstance(raw())!!.note.account)
     }
 
     @Test
@@ -428,8 +501,9 @@ class CalendarBehaviorTest {
         calendarId: Long,
         title: String = "t",
         start: Long = t0,
+        account: String? = null,
     ): SeenEvent {
-        val note = sample(event).copy(calendar = calendar, title = title, changedAt = "2026-10-19T09:42:00-06:00")
+        val note = sample(event).copy(calendar = calendar, title = title, changedAt = "2026-10-19T09:42:00-06:00", account = account)
         return SeenEvent(event, null, calendarId, calendar, start, note)
     }
 

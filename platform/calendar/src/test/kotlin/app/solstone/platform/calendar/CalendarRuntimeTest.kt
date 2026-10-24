@@ -145,6 +145,7 @@ class CalendarRuntimeTest {
                     CALENDAR_COL_OWNER to "owner@example.com",
                     CALENDAR_COL_ACCOUNT_TYPE to "local",
                     CALENDAR_COL_VISIBLE to 0,
+                    CALENDAR_COL_ACCOUNT_NAME to "owner@example.com",
                 ),
             ),
         )
@@ -164,6 +165,8 @@ class CalendarRuntimeTest {
         val ok = assertIs<CalendarScan.Ok>(read)
         assertEquals(listOf(4L), ok.calendars.map { it.id })
         assertFalse(ok.calendars.single().visible)
+        assertEquals("owner@example.com", ok.calendars.single().accountName)
+        assertTrue(CALENDAR_COL_ACCOUNT_NAME in queries.first { it.target == CalendarQueryTarget.CALENDARS }.projection)
         assertTrue(ok.instances.isEmpty())
         assertTrue(calendars.closed)
         assertNull(queries.first { it.target == CalendarQueryTarget.CALENDARS }.selection)

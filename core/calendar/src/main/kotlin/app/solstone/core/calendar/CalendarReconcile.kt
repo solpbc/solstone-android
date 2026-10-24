@@ -39,6 +39,7 @@ data class CalendarIdentityRecord(
     val nameHolder: Long? = null,
     val lastStartEpochMs: Long? = null,
     val providerEventIds: Set<Long> = emptySet(),
+    val lastAccount: String? = null,
 )
 
 data class SeenEvent(
@@ -165,12 +166,19 @@ private fun applyPresent(
     val observedHolders = events.map { it.calendarId }.toSet()
     val nameHolder = previous?.nameHolder ?: winner.calendarId
     val nameHolderRead = nameHolder in readCalendarIds
+    val nameSource = if (nameHolderRead) events.firstOrNull { it.calendarId == nameHolder } ?: winner else null
     val calendarName = when {
-        nameHolderRead -> events.firstOrNull { it.calendarId == nameHolder }?.calendarName ?: winner.calendarName
+        nameSource != null -> nameSource.calendarName
         previous?.lastCalendar != null -> previous.lastCalendar
         else -> winner.calendarName
     }
-    val body = winner.note.copy(calendar = calendarName)
+    // The account rides with the calendar name it belongs to.
+    val account = when {
+        nameSource != null -> nameSource.note.account
+        previous?.lastCalendar != null -> previous.lastAccount
+        else -> winner.note.account
+    }
+    val body = winner.note.copy(calendar = calendarName, account = account)
     val fingerprint = contentFingerprint(body)
     val priorFingerprint = previous?.pendingFingerprint ?: previous?.publishedFingerprint
     val priorChangedAt = previous?.pendingChangedAt ?: previous?.publishedChangedAt
@@ -244,6 +252,7 @@ private fun noteMiss(
         occurrence = previous.occurrence.ifEmpty { null },
         title = previous.lastTitle,
         calendar = previous.lastCalendar ?: "",
+        account = previous.lastAccount,
         changedAt = changedAt,
     )
     return MissUpdate(

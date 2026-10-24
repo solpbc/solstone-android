@@ -74,6 +74,7 @@ data class CalendarIdentityRow(
     @ColumnInfo(name = "touched_at") val touchedAt: Long?,
     @ColumnInfo(name = "last_start_epoch_ms") val lastStartEpochMs: Long? = null,
     @ColumnInfo(name = "provider_event_ids") val providerEventIds: String = "",
+    @ColumnInfo(name = "last_account") val lastAccount: String? = null,
 )
 
 /** Hash reference to private durable bytes staged before a segment row exists. */

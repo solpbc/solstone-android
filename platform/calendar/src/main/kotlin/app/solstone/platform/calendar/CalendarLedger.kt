@@ -184,6 +184,7 @@ private fun CalendarIdentityRow.toRecord(): CalendarIdentityRecord = CalendarIde
     nameHolder = nameHolder,
     lastStartEpochMs = lastStartEpochMs,
     providerEventIds = decodeHolders(providerEventIds),
+    lastAccount = lastAccount,
 )
 
 private fun CalendarIdentityRecord.toRow(): CalendarIdentityRow = CalendarIdentityRow(
@@ -208,6 +209,7 @@ private fun CalendarIdentityRecord.toRow(): CalendarIdentityRow = CalendarIdenti
     touchedAt = touchedAt,
     lastStartEpochMs = lastStartEpochMs,
     providerEventIds = encodeHolders(providerEventIds),
+    lastAccount = lastAccount,
 )
 
 private fun CalendarIntentRow.toRecord(payload: ByteArray): CalendarIntentRecord = CalendarIntentRecord(
