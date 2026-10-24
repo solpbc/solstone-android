@@ -106,6 +106,44 @@ class CalendarRuntimeTest {
     }
 
     @Test
+    fun firstSyncStartsWithEveryCalendarOffAndBringsInOnlyWhatTheOwnerSwitchesOn() {
+        val harness = Harness(listOf(1L to "Family", 2L to "Birthdays", 3L to "Holidays"))
+        harness.ledger.saveCalendars(emptyList())
+        harness.runtime.refreshPreview()
+        harness.runtime.count()
+        val first = harness.runtime.ui
+        assertEquals(listOf(1L, 2L, 3L), first.rows.map { it.id })
+        assertTrue(first.rows.none { it.selected })
+        assertNull(first.countStatus)
+        assertNull(first.countValue)
+        assertFalse(first.confirmEnabled)
+        assertFalse(harness.runtime.primary())
+        assertTrue(harness.enabledCalls.isEmpty())
+        assertTrue(harness.ledger.intents().isEmpty())
+
+        harness.runtime.setSelected(2, true)
+        harness.runtime.count()
+        assertEquals("ready", harness.runtime.ui.countStatus)
+        assertTrue(harness.runtime.ui.confirmEnabled)
+        assertTrue(harness.runtime.primary())
+        assertEquals(listOf(2L), harness.ledger.calendars().filter { it.confirmed }.map { it.providerId })
+    }
+
+    @Test
+    fun anEarlierChoiceIsKeptAndACalendarAddedLaterStartsOff() {
+        val harness = Harness(listOf(7L to "Work", 8L to "Added later"))
+        harness.ledger.saveCalendars(listOf(row(7, selected = true, confirmed = true)))
+        harness.ledger.saveSettings(harness.ledger.settings().copy(enabled = true, confirmedGeneration = 1,
+            confirmedHistoryKind = HistoryKind.DAYS_30.name))
+        harness.runtime.refreshPreview()
+        val rows = harness.ledger.calendars().associateBy { it.providerId }
+        assertTrue(rows.getValue(7).selected)
+        assertTrue(rows.getValue(7).confirmed)
+        assertFalse(rows.getValue(8).selected)
+        assertTrue(harness.runtime.ui.resume)
+    }
+
+    @Test
     fun abandonTurnsOffOnlyAFirstSetupAndKeepsAConfirmedSource() {
         val first = Harness()
         first.wish = true
@@ -242,7 +280,7 @@ class CalendarRuntimeTest {
         }
     }
 
-    private class Harness {
+    private class Harness(listed: List<Pair<Long, String>> = listOf(1L to "Synthetic")) {
         var wish = false
         val enabledCalls = mutableListOf<Boolean>()
         val scheduled = mutableListOf<Boolean>()
@@ -252,7 +290,7 @@ class CalendarRuntimeTest {
             ledger = ledger,
             reader = CalendarReader(object : CalendarQuerySurface {
                 override fun query(query: CalendarQuery): CalendarCursor? = when (query.target) {
-                    CalendarQueryTarget.CALENDARS -> MapCursor(listOf(mapOf(CALENDAR_COL_ID to 1L, CALENDAR_COL_DISPLAY_NAME to "Synthetic")))
+                    CalendarQueryTarget.CALENDARS -> MapCursor(listed.map { (id, name) -> mapOf(CALENDAR_COL_ID to id, CALENDAR_COL_DISPLAY_NAME to name) })
                     else -> MapCursor(emptyList())
                 }
             }),

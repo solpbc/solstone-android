@@ -61,6 +61,7 @@ class CalendarDurabilityAndroidTest {
             CALENDAR_COL_END to Instant.parse("2026-10-23T00:00:00Z").toEpochMilli()))
         val runtime = rig.runtime()
         runtime.refreshPreview()
+        runtime.setSelected(41, true)
         runtime.setHistory(HistoryKind.NONE_BEFORE_TODAY)
         runtime.count()
         val settings = rig.ledger().settings()
@@ -89,7 +90,7 @@ class CalendarDurabilityAndroidTest {
             CALENDAR_COL_END to Instant.parse("2026-10-23T17:00:00Z").toEpochMilli())
         rig.rows = (0..128).map { row("approved-$it") }
         val first = rig.runtime()
-        first.refreshPreview(); first.count()
+        first.refreshPreview(); first.setSelected(41, true); first.count()
         rig.refuseSeals = true
         assertFalse(first.confirm())
         assertEquals(64, rig.ledger().settings().importCompleted)

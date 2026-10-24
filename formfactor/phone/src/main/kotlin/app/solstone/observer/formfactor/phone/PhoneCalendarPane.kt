@@ -140,6 +140,7 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier) {
             }
         }
         if (state.enabled) TextButton(onClick = binding.onTurnOff) { Text("pause calendar") }
+        PaneNote("pausing or switching a calendar off stops new events. what's already in your journal stays.")
         if (state.importing && state.importTotal != null) {
             PaneNote("bringing in ${state.importCompleted} of ${state.importTotal}")
         }

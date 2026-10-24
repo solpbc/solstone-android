@@ -135,9 +135,11 @@ class CalendarRuntime(
         val ids = ledger.calendars().filter { it.selected }.map { it.providerId }.toSet()
         val fingerprint = calendarSelectionFingerprint(ids, s.historyKind)
         ledger.clearPreview(generation)
+        // Nothing switched on is a choice, not a failed read: there is nothing to count yet.
+        if (ids.isEmpty()) { publish(); return }
         ledger.saveCount(CalendarCountRow(generation, fingerprint, "", 0, "running", ""))
         publish()
-        if (!permission() || ids.isEmpty() || !still(token, t)) {
+        if (!permission() || !still(token, t)) {
             finishCount(generation, fingerprint, "", "failed")
             return
         }
@@ -374,9 +376,11 @@ class CalendarRuntime(
         val listed = reader.readCalendars() ?: run { recordFailure(); return }
         val existing = ledger.calendars().associateBy { it.providerId }
         val added = listed.any { it.id !in existing }
+        // A calendar the app has not seen before starts off; the owner switches on the ones they want.
+        // A calendar already stored keeps the owner's earlier choice.
         val merged = listed.map { c -> existing[c.id]?.copy(displayName = c.name,
             ownerAccount = c.ownerAccount, accountType = c.accountType, visible = c.visible)
-            ?: CalendarCalendarRow(c.id, c.name, c.ownerAccount, c.accountType, true, false, c.visible) } +
+            ?: CalendarCalendarRow(c.id, c.name, c.ownerAccount, c.accountType, false, false, c.visible) } +
             existing.values.filter { prior -> listed.none { it.id == prior.providerId } }
         val s = ledger.settings()
         ledger.saveConfiguration(if (added) s.copy(countGeneration = s.countGeneration + 1,
