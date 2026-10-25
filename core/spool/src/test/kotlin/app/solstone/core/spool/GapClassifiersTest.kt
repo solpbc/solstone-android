@@ -16,6 +16,14 @@ class GapClassifiersTest {
     private val zone = ZoneId.of("America/New_York")
 
     @Test
+    fun aFailedSweepLeavesTheGateShutUnlessTheInstallAlreadyOpenedIt() {
+        assertTrue(gapPassCompleted(sweepSucceeded = true, opened = false))
+        assertTrue(gapPassCompleted(sweepSucceeded = true, opened = true))
+        assertTrue(gapPassCompleted(sweepSucceeded = false, opened = true))
+        assertFalse(gapPassCompleted(sweepSucceeded = false, opened = false))
+    }
+
+    @Test
     fun adtsHeaderAtZeroExistsWhenTheFileCoversTheFrame() {
         val header = adts(frameLength = 32, protectionAbsent = true)
         assertTrue(adtsExisted(header, fileSize = 32))

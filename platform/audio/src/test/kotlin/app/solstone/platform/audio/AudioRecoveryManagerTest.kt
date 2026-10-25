@@ -453,7 +453,7 @@ class AudioRecoveryManagerTest {
     }
 
     @Test
-    fun legacyPreserveFailsClosedWhenMarkUnresolvedFails() {
+    fun legacyFileStaysWhenTheLossSyncThrows() {
         val root = tempDirectory()
         val spoolDir = tempDirectory().toPath()
         val audioDir = File(root, "audio-source").apply { mkdirs() }
@@ -491,6 +491,35 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertTrue(legacyFile.exists(), "legacy file should be kept if the loss write fails")
+    }
+
+    @Test
+    fun legacyCopyFailureLeavesTheCacheAndWritesNoFactUntilTheCopyCanLand() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val cache = File(root, "cache/audio-source").apply { mkdirs() }
+        val bytes = "legacy-m4a-bytes".encodeToByteArray()
+        val legacyFile = File(cache, "audio-1700000000000.m4a").apply { writeBytes(bytes) }
+        val fileSha = sha256(legacyFile.toPath())
+        val blocker = File(audioDir, "legacy").apply { writeBytes(byteArrayOf(1)) }
+        val gaps = gapsOf(root)
+        val manager = manager(root, audioDir, gaps, cache)
+
+        manager.recover()
+
+        assertTrue(legacyFile.exists())
+        assertTrue(blocker.isFile)
+        assertTrue(audioDir.walk().none { it.name == "gap-loss" })
+
+        assertTrue(blocker.delete())
+        manager.recover()
+
+        assertFalse(legacyFile.exists())
+        assertEquals(1, rows(gaps).count { it.kind == "loss" && it.material == legacyMaterial(fileSha) })
+        assertTrue(gapLossFactExists(File(audioDir, "legacy/$fileSha").toPath()))
+        val preserved = File(audioDir, "legacy/$fileSha/audio-1700000000000.m4a")
+        assertTrue(preserved.exists())
+        assertEquals(bytes.decodeToString(), preserved.readText())
     }
 
     @Test

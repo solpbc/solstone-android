@@ -285,9 +285,9 @@ class PhoneStatusViewModelTest {
         )
         viewModel.onStatusForeground(true)
         assertTrue(marked.isEmpty())
+        viewModel.onNow(now)
         runner.runNext()
         poster.runNext()
-        viewModel.onNow(now)
         assertEquals(0, runner.pendingCount)
         viewModel.onStatusForeground(true)
         assertEquals(listOf(setOf("shown") to setOf("draft/leaf")), marked)
@@ -359,6 +359,92 @@ class PhoneStatusViewModelTest {
         viewModel.onHostStop(false)
         viewModel.onStatusForeground(true)
         assertEquals(listOf(setOf("loss")), marked)
+    }
+
+    @Test
+    fun aLoadThatLandsWhileForegroundMarksWithoutASecondCall() {
+        val now = 1_762_000_000_000L
+        val marked = mutableListOf<Pair<Set<String>, Set<String>>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = {
+                PhoneGapStatus(
+                    losses = listOf(PhoneGapLoss("shown", now, now, false)),
+                    unknownPresent = true,
+                    unknownUnseen = true,
+                    unseenUnknownKeys = listOf("draft/leaf"),
+                    gateOpen = true,
+                )
+            },
+            markSeen = { ids, keys -> marked += ids to keys; true },
+            zone = ZoneId.of("UTC"),
+        )
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        viewModel.onNow(now)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(listOf(setOf("shown") to setOf("draft/leaf")), marked)
+    }
+
+    @Test
+    fun resumeWithTheSheetOpenMarksWhatIsOnScreenAndAConfigurationChangeDoesNot() {
+        val now = 1_762_000_000_000L
+        var gaps = PhoneGapStatus(
+            losses = listOf(PhoneGapLoss("shown", now, now, false)),
+            gateOpen = true,
+        )
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = { gaps },
+            markSeen = { ids, _ ->
+                marked += ids
+                gaps = gaps.copy(
+                    losses = gaps.losses.map { loss -> if (loss.id in ids) loss.copy(seen = true) else loss },
+                )
+                true
+            },
+            zone = ZoneId.of("UTC"),
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(true)
+        assertEquals(listOf(setOf("shown")), marked)
+
+        gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("later", now, now, false))
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, marked.size)
+
+        viewModel.onHostStop(false)
+        viewModel.onHostResumed()
+        assertEquals(listOf(setOf("shown"), setOf("later")), marked)
+
+        gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("newest", now, now, false))
+        viewModel.onHostStop(true)
+        viewModel.onHostResumed()
+        runner.runNext()
+        poster.runNext()
+        assertEquals(2, marked.size)
+        val status = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
+        assertFalse(status.gapLosses.single { it.id == "newest" }.seen)
     }
 
     @Test

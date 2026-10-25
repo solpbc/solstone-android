@@ -142,6 +142,9 @@ fun gapFoundInWindow(foundEpochMs: Long, nowEpochMs: Long, zone: ZoneId): Boolea
 fun gapWindowEndMillis(foundEpochMs: Long, zone: ZoneId): Long =
     localDate(foundEpochMs, zone).plusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
 
+/** A failed sweep leaves the gate shut unless this install already opened it. */
+fun gapPassCompleted(sweepSucceeded: Boolean, opened: Boolean): Boolean = sweepSucceeded || opened
+
 data class GapDayLoss(
     val capturedEpochMs: Long?,
     val foundEpochMs: Long,

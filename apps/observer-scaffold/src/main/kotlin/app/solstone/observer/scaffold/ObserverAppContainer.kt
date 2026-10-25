@@ -18,6 +18,7 @@ import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.core.spool.emitDroppedRecoveryEvent
+import app.solstone.core.spool.gapPassCompleted
 import app.solstone.platform.identity.file.CommitMarkerStatus
 import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.harness.AsyncLoad
@@ -269,6 +270,7 @@ class ObserverAppContainer(
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
+            var milestoneReady = true
             val finished = runCatching {
                 val gaps = captureSetup.gaps
                 val filesDir = context.filesDir.toPath()
@@ -301,9 +303,12 @@ class ObserverAppContainer(
                     }
                 }
                 SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
-                if (gaps != null) gaps.sweepMilestone(unknown)
+                if (gaps != null) {
+                    val swept = gaps.sweepMilestone(unknown)
+                    milestoneReady = gapPassCompleted(swept, gaps.isOpened())
+                }
             }.isSuccess
-            if (finished) {
+            if (finished && milestoneReady) {
                 recoveryCompleted = true
                 journalCacheCoordinator.requestImmediatePass()
                 ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

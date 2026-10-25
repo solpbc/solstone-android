@@ -36,6 +36,7 @@ class PhoneStatusViewModel(
     private var readInFlight = false
     private var trailingRefreshRequested = false
     private var hasSeenHostResume = false
+    private var contentVisible = false
     private var visitActive = false
     private var visitLossIds: Set<String> = emptySet()
     private var visitUnknownKeys: Set<String> = emptySet()
@@ -64,6 +65,7 @@ class PhoneStatusViewModel(
         } else {
             hasSeenHostResume = true
         }
+        beginVisit()
     }
 
     /** Moves the time the pill reads. Does not read status again. */
@@ -72,12 +74,20 @@ class PhoneStatusViewModel(
     }
 
     /**
-     * A visit starts when status content is on screen. It marks exactly the loss ids and unknown
-     * keys on screen then, and only when the gate is open. A later loss is not in that set.
-     * Closing the sheet does not end the visit.
+     * Remembers whether status content is on screen. Closing the sheet does not end the visit.
+     * A visit starts from here, from a load that lands while the content is open, or from resume.
      */
     fun onStatusForeground(visible: Boolean) {
-        if (!visible || visitActive) return
+        contentVisible = visible
+        if (visible) beginVisit()
+    }
+
+    /**
+     * Marks exactly the loss ids and unknown keys on screen when the gate is open.
+     * A later loss is not in that set. A closed gate still becomes a visit and marks nothing.
+     */
+    private fun beginVisit() {
+        if (!contentVisible || visitActive) return
         val loaded = statusState as? LoadState.Loaded ?: return
         val model = loaded.value.status
         if (!model.gateOpen) {
@@ -140,7 +150,10 @@ class PhoneStatusViewModel(
         val generation = ++requestedGeneration
         asyncLoad.load({ snapshotOf(backlog) }) { incoming ->
             if (incoming is LoadState.Loading) return@load
-            if (generation == requestedGeneration) statusState = incoming
+            if (generation == requestedGeneration) {
+                statusState = incoming
+                if (incoming is LoadState.Loaded) beginVisit()
+            }
         }
     }
 
@@ -152,7 +165,10 @@ class PhoneStatusViewModel(
                 return@load
             }
             readInFlight = false
-            if (generation == requestedGeneration) statusState = incoming
+            if (generation == requestedGeneration) {
+                statusState = incoming
+                if (incoming is LoadState.Loaded) beginVisit()
+            }
             if (trailingRefreshRequested) {
                 trailingRefreshRequested = false
                 startRead(requestedGeneration)

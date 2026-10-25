@@ -243,6 +243,69 @@ class RecoveryApplierTest {
         }
     }
 
+    @Test
+    fun anUnreadableInvalidPayloadManifestLeavesTheDraft() {
+        val baseDir = Files.createTempDirectory("recovery-unreadable-payload")
+        try {
+            val draftDir = baseDir.resolve(".draft").resolve("20260304").resolve(MAIN_STREAM).resolve("bad")
+            Files.createDirectories(draftDir)
+            Files.write(draftDir.resolve("manifest"), "not a manifest".toByteArray(StandardCharsets.UTF_8))
+            Files.write(draftDir.resolve("audio.m4a"), "payload".toByteArray(StandardCharsets.UTF_8))
+            val gaps = GapNoticeStore(baseDir.resolve("gap"))
+            val events = applyRecoveryActions(
+                listOf(
+                    RecoveryAction.Discard(
+                        draftDir = draftDir,
+                        event = SpoolRecoveryEvent("partial_segment", 10L, "invalid payload audio.m4a"),
+                    ),
+                ),
+                gaps,
+                mutableListOf(),
+                baseDir,
+            )
+            assertTrue(Files.isRegularFile(draftDir.resolve("manifest")))
+            assertTrue(Files.isRegularFile(draftDir.resolve("audio.m4a")))
+            assertTrue(rows(gaps).none { it.kind == "loss" || it.reason == "no bytes" })
+            assertTrue(events.isEmpty())
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun anEmptyFileListOnAnInvalidPayloadLeavesTheDraft() {
+        val baseDir = Files.createTempDirectory("recovery-empty-file-list")
+        try {
+            val segment = emptySegment()
+            val draftDir = baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve("bad")
+            Files.createDirectories(draftDir)
+            Files.write(
+                draftDir.resolve("manifest"),
+                serializeManifest(segment, app.solstone.core.model.BundleManifest(segment.key, emptyList(), emptyList()))
+                    .toByteArray(StandardCharsets.UTF_8),
+            )
+            Files.write(draftDir.resolve("audio.m4a"), "payload".toByteArray(StandardCharsets.UTF_8))
+            val gaps = GapNoticeStore(baseDir.resolve("gap"))
+            val events = applyRecoveryActions(
+                listOf(
+                    RecoveryAction.Discard(
+                        draftDir = draftDir,
+                        event = SpoolRecoveryEvent("partial_segment", 10L, "invalid payload audio.m4a"),
+                    ),
+                ),
+                gaps,
+                mutableListOf(),
+                baseDir,
+            )
+            assertTrue(Files.isRegularFile(draftDir.resolve("manifest")))
+            assertTrue(Files.isRegularFile(draftDir.resolve("audio.m4a")))
+            assertTrue(rows(gaps).none { it.kind == "loss" || it.reason == "no bytes" })
+            assertTrue(events.isEmpty())
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
     private class Applied(
         val events: List<SpoolRecoveryEvent>,
         val unknown: List<String>,

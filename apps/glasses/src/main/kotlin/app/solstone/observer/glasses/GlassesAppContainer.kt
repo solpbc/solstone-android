@@ -27,6 +27,7 @@ import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.core.spool.emitDroppedRecoveryEvent
+import app.solstone.core.spool.gapPassCompleted
 import app.solstone.platform.identity.file.CommitMarkerStatus
 import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.formfactor.glasses.StillQrDecoder
@@ -228,6 +229,7 @@ class GlassesAppContainer(
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
         funnel.execute("recovery") {
+            var milestoneReady = true
             val finished = runCatching {
                 val gaps = captureSetup.gaps
                 val filesDir = context.filesDir.toPath()
@@ -258,9 +260,12 @@ class GlassesAppContainer(
                     }
                 }
                 SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
-                if (gaps != null) gaps.sweepMilestone(unknown)
+                if (gaps != null) {
+                    val swept = gaps.sweepMilestone(unknown)
+                    milestoneReady = gapPassCompleted(swept, gaps.isOpened())
+                }
             }.isSuccess
-            if (!finished) return@execute
+            if (!finished || !milestoneReady) return@execute
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

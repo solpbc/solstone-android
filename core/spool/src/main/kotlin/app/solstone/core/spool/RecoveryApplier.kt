@@ -115,13 +115,10 @@ fun applyRecoveryActions(
 private fun discardInvalidPayload(dir: Path, gaps: GapNoticeStore): Boolean {
     val parsed = runCatching {
         parseManifest(String(Files.readAllBytes(dir.resolve("manifest")), StandardCharsets.UTF_8))
-    }.getOrNull()
+    }.getOrNull() ?: return false
+    val files = parsed.manifest.files
+    if (files.isEmpty()) return false
     val leaf = dir.fileName.toString()
-    val files = parsed?.manifest?.files.orEmpty()
-    if (files.isEmpty()) {
-        gaps.recordDiagnostic("spool", "no bytes", leaf, null)
-        return true
-    }
     var everyLoss = true
     for ((sourceId, entries) in files.groupBy { it.sourceId }) {
         val source = gapSourceFor(sourceId)

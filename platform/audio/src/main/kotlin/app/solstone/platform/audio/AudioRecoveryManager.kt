@@ -298,17 +298,15 @@ class AudioRecoveryManager(
                 file.delete()
                 continue
             }
-            if (file.length() <= 0L) {
+            val hasBytes = file.length() > 0L
+            if (!hasBytes) {
                 gaps.recordDiagnostic("audio", "no bytes", legacyMaterial(fileSha256), null)
-            } else {
-                if (!gaps.recordLoss("audio", "undeliverable", legacyMaterial(fileSha256), null)) continue
-                factDir.mkdirs()
-                if (!writeGapLossFact(factDir.toPath())) continue
+            } else if (!gaps.recordLoss("audio", "undeliverable", legacyMaterial(fileSha256), null)) {
+                continue
             }
 
-            val targetSubdir = factDir
-            targetSubdir.mkdirs()
-            var targetFile = File(targetSubdir, file.name)
+            factDir.mkdirs()
+            var targetFile = File(factDir, file.name)
             var counter = 1
             while (targetFile.exists()) {
                 val targetSha = runCatching { sha256(targetFile.toPath()) }.getOrNull()
@@ -318,25 +316,25 @@ class AudioRecoveryManager(
                 if (fileSha256.isNotEmpty() && targetSha == fileSha256) {
                     break
                 }
-                targetFile = File(targetSubdir, "${file.name}__$counter")
+                targetFile = File(factDir, "${file.name}__$counter")
                 counter++
             }
 
-            if (targetFile.exists()) {
+            val durable = if (targetFile.exists()) {
                 val targetSha = runCatching { sha256(targetFile.toPath()) }.getOrNull()
-                if (targetSha != null && fileSha256.isNotEmpty() && targetSha == fileSha256 &&
-                    forceFileAndParent(targetFile, audioSourceDir)) {
-                    file.delete()
-                }
+                targetSha != null && fileSha256.isNotEmpty() && targetSha == fileSha256 &&
+                    forceFileAndParent(targetFile, audioSourceDir)
             } else {
                 try {
                     Files.copy(file.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                    if (forceFileAndParent(targetFile, audioSourceDir)) {
-                        file.delete()
-                    }
+                    forceFileAndParent(targetFile, audioSourceDir)
                 } catch (_: Exception) {
+                    false
                 }
             }
+            if (!durable) continue
+            if (hasBytes && !writeGapLossFact(factDir.toPath())) continue
+            file.delete()
         }
     }
 
