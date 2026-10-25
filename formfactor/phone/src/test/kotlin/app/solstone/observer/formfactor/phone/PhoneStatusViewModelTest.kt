@@ -311,9 +311,15 @@ class PhoneStatusViewModelTest {
         assertFalse(during.gapLosses.single { it.id == "shown" }.seen)
         assertFalse(during.gapLosses.single { it.id == "later" }.seen)
 
+        val stillShowing = phoneStatusContentVisible(
+            sheetOpen = false,
+            pairingOpen = false,
+            splitDrawn = true,
+            statusDetailForeground = true,
+        )
+        assertTrue(stillShowing)
         viewModel.onHostStop(changingConfigurations = true)
-        viewModel.onStatusForeground(false)
-        viewModel.onStatusForeground(true)
+        viewModel.onStatusForeground(stillShowing)
         assertEquals(1, marked.size)
         assertEquals(0, runner.pendingCount)
         val kept = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
@@ -326,6 +332,69 @@ class PhoneStatusViewModelTest {
         val still = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
         assertFalse(still.gapLosses.single { it.id == "shown" }.seen)
         assertFalse(still.gapLosses.single { it.id == "later" }.seen)
+    }
+
+    @Test
+    fun aFoldToCompactWithTheSheetClosedEndsTheVisit() {
+        val now = 1_762_000_000_000L
+        var gaps = PhoneGapStatus(
+            losses = listOf(PhoneGapLoss("shown", now, now, false)),
+            gateOpen = true,
+        )
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = { gaps },
+            markSeen = { ids, _ ->
+                marked += ids
+                gaps = gaps.copy(
+                    losses = gaps.losses.map { loss -> if (loss.id in ids) loss.copy(seen = true) else loss },
+                )
+                true
+            },
+            zone = ZoneId.of("UTC"),
+            clock = { now },
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onHostStarted()
+        viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(listOf(setOf("shown")), marked)
+        val open = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(open.gapLosses.single { it.id == "shown" }.seen)
+
+        val foldedHidden = phoneStatusContentVisible(
+            sheetOpen = false,
+            pairingOpen = false,
+            splitDrawn = false,
+            statusDetailForeground = false,
+        )
+        assertFalse(foldedHidden)
+        viewModel.onHostStop(changingConfigurations = true)
+        viewModel.onStatusForeground(foldedHidden)
+        val folded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertTrue(folded.gapLosses.single { it.id == "shown" }.seen)
+
+        gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("whileFolded", now, now, false))
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, marked.size)
+
+        viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(setOf("whileFolded"), marked.last())
     }
 
     @Test

@@ -87,14 +87,15 @@ class PhoneStatusViewModel(
     /**
      * A visit is one continuous showing of the status content while the app is in the foreground.
      * It starts when the content becomes visible while started, or when the host resumes with it
-     * visible. Hiding the content ends it, except across a configuration change, which keeps the
-     * same showing. A loss that appears during the visit is shown and not marked; the next visit
-     * marks it.
+     * visible. Hiding the content ends it. A configuration change keeps the same showing only when
+     * the content is still showing afterward. The first hidden report after recreation ends it.
+     * A loss that appears during the visit is shown and not marked; the next visit marks it.
      */
     fun onStatusForeground(visible: Boolean) {
         if (!visible) {
             contentVisible = false
-            if (!retainVisit) endVisit()
+            retainVisit = false
+            endVisit()
             return
         }
         contentVisible = true
@@ -147,8 +148,9 @@ class PhoneStatusViewModel(
     }
 
     /**
-     * A real stop ends the visit. A configuration change keeps it, and the losses it displayed
-     * stay displayed. Nothing is marked while the host is stopped for a real stop.
+     * A real stop ends the visit. A configuration change keeps it when the content is still showing
+     * afterward. The first hidden report after recreation ends it. Nothing is marked while the host
+     * is stopped for a real stop.
      */
     fun onHostStop(changingConfigurations: Boolean) {
         if (changingConfigurations) {
