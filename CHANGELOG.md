@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- when you set up calendar, every calendar starts off, and so does one that shows up on your phone later. you switch on the ones you want before anything comes in. the calendar page now says that what's already in your journal stays when you pause or switch a calendar off.
+
 ## [2.1.30] - 2026-10-22
 
 ### Added
