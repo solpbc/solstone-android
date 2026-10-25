@@ -40,6 +40,7 @@ class PhoneStatusViewModel(
     private var contentVisible = false
     private var hostInForeground = false
     private var visitActive = false
+    private var retainVisit = false
     private var visitLossIds: Set<String> = emptySet()
     private var visitUnknownKeys: Set<String> = emptySet()
 
@@ -86,16 +87,18 @@ class PhoneStatusViewModel(
     /**
      * A visit is one continuous showing of the status content while the app is in the foreground.
      * It starts when the content becomes visible while started, or when the host resumes with it
-     * visible. Hiding the content ends it. A loss that appears during the visit is shown and not
-     * marked; the next visit marks it.
+     * visible. Hiding the content ends it, except across a configuration change, which keeps the
+     * same showing. A loss that appears during the visit is shown and not marked; the next visit
+     * marks it.
      */
     fun onStatusForeground(visible: Boolean) {
         if (!visible) {
             contentVisible = false
-            endVisit()
+            if (!retainVisit) endVisit()
             return
         }
         contentVisible = true
+        retainVisit = false
         beginVisit()
     }
 
@@ -144,13 +147,17 @@ class PhoneStatusViewModel(
     }
 
     /**
-     * Leaving the foreground ends the visit, including a configuration change.
-     * Nothing is marked until the content is showing again after start or resume.
+     * A real stop ends the visit. A configuration change keeps it, and the losses it displayed
+     * stay displayed. Nothing is marked while the host is stopped for a real stop.
      */
     fun onHostStop(changingConfigurations: Boolean) {
+        if (changingConfigurations) {
+            retainVisit = true
+            return
+        }
         hostInForeground = false
+        retainVisit = false
         endVisit()
-        if (changingConfigurations) return
     }
 
     private fun endVisit() {

@@ -392,7 +392,10 @@ class GapNoticeStoreTest {
             failed += "$kind $source $reason $material"
         })
         assertFalse(broken.recordLoss("audio", "undeliverable", "rec-1", 1L))
-        assertEquals(listOf("loss audio undeliverable rec-1"), failed)
+        assertEquals(
+            listOf("kept audio loss could not be recorded (undeliverable); material kept for a later pass rec-1"),
+            failed,
+        )
         assertFalse(broken.recordLoss("audio", "undeliverable", "bad id", 1L))
         assertEquals(1, failed.size)
 
@@ -416,6 +419,60 @@ class GapNoticeStoreTest {
         val again = ready(store).single { it.material == "rec-kept" }
         assertTrue(again.seen)
         assertTrue(again.id != id)
+    }
+
+    @Test
+    fun aSeenMaterialKeyDropsOnceTheMaterialIsGone() {
+        var present = true
+        val store = store(temp(), materialExists = { _, material -> present && material == "rec-kept" })
+        now = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        val id = ready(store).single().id
+        assertTrue(store.markSeen(setOf(id), emptySet()))
+        now = Instant.parse("2026-02-15T00:00:00Z").toEpochMilli()
+        assertTrue(ready(store).none { it.material == "rec-kept" })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        assertTrue(ready(store).single { it.material == "rec-kept" }.seen)
+        val again = ready(store).single { it.material == "rec-kept" }.id
+        assertTrue(store.markSeen(setOf(again), emptySet()))
+        present = false
+        now = Instant.parse("2026-04-01T00:00:00Z").toEpochMilli()
+        assertTrue(ready(store).none { it.material == "rec-kept" })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        assertFalse(ready(store).single { it.material == "rec-kept" }.seen)
+    }
+
+    @Test
+    fun anUnknownSeenMarkSurvivesEventPruning() {
+        val store = store(temp())
+        val path = "spool/.draft/2026-10-25/main/kept"
+        assertTrue(store.rewriteUnknown(listOf(path)))
+        assertTrue(store.markSeen(emptySet(), setOf(path)))
+        now = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-old", 1L))
+        val id = ready(store).single { it.material == "rec-old" }.id
+        assertTrue(store.markSeen(setOf(id), emptySet()))
+        now = Instant.parse("2026-02-15T00:00:00Z").toEpochMilli()
+        assertTrue(ready(store).none { it.material == "rec-old" })
+        assertEquals(setOf(path), store.snapshot(zone)?.unknownSeen)
+    }
+
+    @Test
+    fun ownerMaterialExistsChecksOnlyTheOwnerSourceTrees() {
+        val files = temp()
+        val gap = files.resolve("gap")
+        Files.createDirectories(gap)
+        val audio = files.resolve("audio-source").resolve("rec-1")
+        Files.createDirectories(audio)
+        Files.write(audio.resolve("clip.m4a"), byteArrayOf(1))
+        val other = files.resolve("other")
+        Files.createDirectories(other)
+        Files.write(other.resolve("clip.m4a"), byteArrayOf(1))
+        val exists = ownerMaterialExists(gap)
+        assertTrue(exists("audio", "clip.m4a"))
+        assertFalse(exists("audio", "missing.m4a"))
+        Files.delete(audio.resolve("clip.m4a"))
+        assertFalse(exists("audio", "clip.m4a"))
     }
 
     @Test
@@ -448,6 +505,7 @@ class GapNoticeStoreTest {
         sync: (Path) -> Unit = ::forceGapDirectory,
         beforeWrite: (Path) -> Unit = {},
         listener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+        materialExists: (String, String) -> Boolean = { _, _ -> true },
     ) = GapNoticeStore(
         directory = root,
         clock = { now },
@@ -459,6 +517,7 @@ class GapNoticeStoreTest {
         syncDirectory = sync,
         beforeWrite = beforeWrite,
         listener = listener,
+        materialExists = materialExists,
     )
 
     private fun temp(): Path = Files.createTempDirectory("gap-notice")

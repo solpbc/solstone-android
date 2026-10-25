@@ -298,6 +298,27 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
+    fun aFailedEmptyRecordingDiagnosticStillDeletesTheAttempt() {
+        val outputDirectory = tempDirectory()
+        val sink = CapturingSink()
+        val gaps = GapNoticeStore(File(outputDirectory, "gap").toPath(), beforeWrite = { path ->
+            if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+        })
+        val engine = createEngine(
+            outputDirectory = outputDirectory,
+            gaps = gaps,
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = ByteArray(0)),
+        )
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+        assertTrue(
+            outputDirectory.listFiles { file -> file.isDirectory && file.name.startsWith("rec-") }.isNullOrEmpty(),
+        )
+    }
+
+    @Test
     fun openReturnsPayloadBytesOnceAndReleaseDeletesDir() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()

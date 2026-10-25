@@ -8,6 +8,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.core.calendar.*
 import app.solstone.core.pl.toJson
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.GapRead
 import app.solstone.platform.persistence.room.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -135,6 +137,31 @@ class CalendarDurabilityAndroidTest {
             assertTrue(result.get(10, TimeUnit.SECONDS))
             assertNotNull(ledger.settings().lastSuccessAt)
         } finally { release.countDown(); worker.shutdownNow(); session.close() }
+    }
+
+    @Test fun aPartialDraftFromADeadSealIsReplacedByTheNextSeal() = Rig().use { rig ->
+        val changedAt = formatChangedAt(Instant.ofEpochMilli(rig.now), rig.zone)
+        val line = """{"changed_at":"$changedAt"}"""
+        val file = CalendarFileBytes(
+            name = "calendar_dead.jsonl",
+            bytes = line.toByteArray(),
+            mediaType = "application/x-ndjson",
+            day = "2026-10-22",
+            segment = "seg-dead",
+            sourceId = CALENDAR_STREAM,
+        )
+        val spool = rig.base.resolve("spool")
+        val draft = spool.resolve(".draft").resolve(file.day).resolve(CALENDAR_STREAM).resolve(file.segment)
+        Files.createDirectories(draft)
+        Files.write(draft.resolve(file.name), "partial".toByteArray())
+        val gaps = GapNoticeStore(rig.base.resolve("gap"))
+        assertTrue(sealCalendarFile(rig.db, spool, file, gaps))
+        assertFalse(Files.exists(draft))
+        val read = gaps.read(rig.zone)
+        assertTrue(read is GapRead.Ready)
+        assertTrue((read as GapRead.Ready).rows.none { it.kind == "loss" })
+        val sealed = spool.resolve(file.day).resolve(CALENDAR_STREAM).resolve(file.segment).resolve(file.name)
+        assertEquals(line, String(Files.readAllBytes(sealed), Charsets.UTF_8))
     }
 
     private class Rig : AutoCloseable {

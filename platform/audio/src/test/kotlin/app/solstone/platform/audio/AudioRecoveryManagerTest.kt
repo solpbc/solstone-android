@@ -362,7 +362,7 @@ class AudioRecoveryManagerTest {
     }
 
     @Test
-    fun aFailedLossWriteLeavesARemuxThatProducedNothing() {
+    fun aFailedDiagnosticWriteStillDeletesAnEmptyRemux() {
         val root = tempDirectory()
         val audioDir = File(root, "audio-source").apply { mkdirs() }
         val dir = attempt(audioDir, "rec-zero", "bytes".encodeToByteArray())
@@ -370,7 +370,7 @@ class AudioRecoveryManagerTest {
             if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
         })
         manager(root, audioDir, gaps).recover()
-        assertTrue(dir.exists())
+        assertFalse(dir.exists())
         assertFalse(gapLossFactExists(dir.toPath()))
     }
 

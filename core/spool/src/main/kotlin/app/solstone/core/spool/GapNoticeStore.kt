@@ -32,6 +32,22 @@ data class GapSnapshot(
 )
 
 /**
+ * True when [material] is still a file under the owner's audio, screen, or spool tree.
+ * The gap directory's parent is that tree's root. A missing parent keeps the key.
+ */
+fun ownerMaterialExists(gapDirectory: Path): (String, String) -> Boolean = exists@{ _, material ->
+    val files = gapDirectory.parent ?: return@exists true
+    sequenceOf("audio-source", "screen-source", "spool").any { name ->
+        val root = files.resolve(name)
+        Files.isDirectory(root) && runCatching {
+            Files.walk(root).use { paths ->
+                paths.anyMatch { it.fileName?.toString() == material }
+            }
+        }.getOrDefault(false)
+    }
+}
+
+/**
  * One process-wide record of gaps under `filesDir/gap/`.
  * The JVM monitor and the `writer.lock` file lock are held together across every rewrite.
  */
@@ -43,6 +59,7 @@ class GapNoticeStore(
     private val syncDirectory: (Path) -> Unit = ::forceGapDirectory,
     private val beforeWrite: (Path) -> Unit = {},
     private val listener: (kind: String, source: String, reason: String, material: String) -> Unit = { _, _, _, _ -> },
+    private val materialExists: (String, String) -> Boolean = { _, _ -> true },
 ) {
     /** Test seam. Runs while this store holds its lock, before [markSeen] changes rows. */
     @Volatile
@@ -147,6 +164,7 @@ class GapNoticeStore(
                     is Loaded.Rows -> {
                         val pruned = prune(loaded.rows, clock(), zone)
                         rememberPrunedSeenLosses(loaded.rows, pruned)
+                        forgetGoneSeenMaterials(pruned)
                         if (pruned != loaded.rows) writeEvents(pruned)
                         GapRead.Ready(pruned)
                     }
@@ -389,6 +407,7 @@ class GapNoticeStore(
     private fun commitRows(rows: List<GapNoticeRow>, now: Long) {
         val pruned = prune(rows, now, zone())
         rememberPrunedSeenLosses(rows, pruned)
+        forgetGoneSeenMaterials(pruned)
         writeEvents(pruned)
     }
 
@@ -411,9 +430,32 @@ class GapNoticeStore(
         writeKeys(seenMaterialsPath, keys)
     }
 
+    private fun forgetGoneSeenMaterials(liveRows: List<GapNoticeRow>) {
+        val keys = readSeenMaterialKeys()
+        if (keys.isEmpty()) return
+        val live = liveRows.filter { it.kind == "loss" }
+            .map { seenMaterialKey(it.source, it.material) }
+            .toSet()
+        val kept = keys.filter { key ->
+            if (key in live) return@filter true
+            val tab = key.indexOf('\t')
+            if (tab <= 0) return@filter true
+            val source = key.substring(0, tab)
+            val material = key.substring(tab + 1)
+            if (material.isEmpty()) return@filter true
+            materialExists(source, material)
+        }.toSet()
+        if (kept != keys) writeSeenMaterialKeys(kept)
+    }
+
     private fun noteLossWriteFailed(source: String, reason: String, material: String) {
         try {
-            listener("loss", source, reason, material)
+            listener(
+                "kept",
+                source,
+                "loss could not be recorded ($reason); material kept for a later pass",
+                material,
+            )
         } catch (_: Exception) {
             // The event log is best-effort. The material stays where it was.
         }

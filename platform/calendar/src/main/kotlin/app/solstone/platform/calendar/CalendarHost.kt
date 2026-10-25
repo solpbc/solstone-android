@@ -23,6 +23,7 @@ import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealState
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
@@ -89,6 +90,7 @@ class CalendarSession(
     private val onSealed: () -> Unit,
     private val onChanged: () -> Unit,
     readerOverride: CalendarReader? = null,
+    gaps: GapNoticeStore? = null,
 ) {
     private val appContext = context.applicationContext
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -99,7 +101,7 @@ class CalendarSession(
     private val runtime = CalendarRuntime(
         ledger = RoomCalendarLedger(database.calendarDao(), CalendarPayloads(spoolDir.parent.resolve("calendar-pending"))),
         reader = readerOverride ?: CalendarReader(ContentResolverCalendarQuery(appContext.contentResolver)),
-        sealer = { file -> sealCalendarFile(database, spoolDir, file) },
+        sealer = { file -> sealCalendarFile(database, spoolDir, file, gaps) },
         segmentExists = { intent -> calendarSegmentExists(database, intent) },
         permission = permission,
         wishOn = wishOn,
@@ -198,7 +200,12 @@ class CalendarSession(
     }
 }
 
-internal fun sealCalendarFile(database: SolstonePersistenceDatabase, spoolDir: Path, file: CalendarFileBytes): Boolean {
+internal fun sealCalendarFile(
+    database: SolstonePersistenceDatabase,
+    spoolDir: Path,
+    file: CalendarFileBytes,
+    gaps: GapNoticeStore? = null,
+): Boolean {
     val line = file.bytes.toString(Charsets.UTF_8).lineSequence().firstOrNull { it.isNotBlank() } ?: return false
     val changedAt = ((app.solstone.core.pl.parseJson(line) as? Map<*, *>)?.get("changed_at") as? String) ?: return false
     val keys = calendarWindow(changedAt)
@@ -219,6 +226,7 @@ internal fun sealCalendarFile(database: SolstonePersistenceDatabase, spoolDir: P
     val writer = FileSpoolWriter(
         baseDir = spoolDir,
         occupiedLeaves = { day, stream -> database.segmentDao().occupiedDirSegments(day, stream) },
+        gaps = gaps,
     )
     val result = writer.seal(
         segment,

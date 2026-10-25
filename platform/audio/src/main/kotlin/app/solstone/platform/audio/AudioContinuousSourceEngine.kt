@@ -519,7 +519,8 @@ class AudioContinuousSourceEngine(
     private fun deleteUndeliverableOrEmpty(dir: File, attemptId: String, captured: Long) {
         if (audioAttemptExisted(dir)) {
             if (gaps.recordLoss("audio", "undeliverable", attemptId, captured)) dir.deleteRecursively()
-        } else if (gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)) {
+        } else {
+            gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)
             dir.deleteRecursively()
         }
     }

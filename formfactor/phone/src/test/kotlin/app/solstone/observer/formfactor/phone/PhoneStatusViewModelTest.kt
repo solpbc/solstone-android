@@ -316,15 +316,16 @@ class PhoneStatusViewModelTest {
         viewModel.onStatusForeground(true)
         assertEquals(1, marked.size)
         assertEquals(0, runner.pendingCount)
-        val ended = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
-        assertTrue(ended.gapLosses.single { it.id == "shown" }.seen)
-        assertFalse(ended.gapLosses.single { it.id == "later" }.seen)
+        val kept = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(kept.gapLosses.single { it.id == "shown" }.seen)
+        assertFalse(kept.gapLosses.single { it.id == "later" }.seen)
 
         viewModel.onHostResumed()
-        runner.runNext()
-        poster.runNext()
-        assertEquals(setOf("later"), marked.last().first)
-        assertEquals(emptySet(), marked.last().second)
+        assertEquals(0, runner.pendingCount)
+        assertEquals(1, marked.size)
+        val still = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(still.gapLosses.single { it.id == "shown" }.seen)
+        assertFalse(still.gapLosses.single { it.id == "later" }.seen)
     }
 
     @Test

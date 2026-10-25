@@ -24,6 +24,16 @@ fun emitDroppedRecoveryEvent(
     emit("diagnostic", "spool", detail, "draft")
 }
 
+/** One listener failure does not skip the events after it. */
+fun emitDroppedRecoveryEvents(
+    events: List<SpoolRecoveryEvent>,
+    emit: (kind: String, source: String, reason: String, material: String) -> Unit,
+) {
+    events.forEach { event ->
+        runCatching { emitDroppedRecoveryEvent(event, emit) }
+    }
+}
+
 fun applyRecoveryActions(
     actions: List<RecoveryAction>,
     gaps: GapNoticeStore?,
@@ -102,17 +112,15 @@ fun applyRecoveryActions(
                 val detail = action.event.detail.orEmpty()
                 when {
                     recoveryContent(action.draftDir) == RecoveryContent.EMPTY -> {
-                        val recorded = gaps?.recordDiagnostic(
+                        gaps?.recordDiagnostic(
                             "spool",
                             "empty draft",
                             gapMaterialForDraft(action.draftDir),
                             null,
-                        ) == true
-                        if (recorded) {
-                            action.draftDir.deleteRecursively()
-                            cleanupEmptyDraftParents(action.draftDir)
-                            events += action.event
-                        }
+                        )
+                        action.draftDir.deleteRecursively()
+                        cleanupEmptyDraftParents(action.draftDir)
+                        events += action.event
                     }
                     detail.startsWith("invalid payload") -> {
                         if (discardInvalidPayload(action.draftDir, gaps)) {

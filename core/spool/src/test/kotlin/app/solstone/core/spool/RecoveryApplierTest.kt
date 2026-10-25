@@ -329,6 +329,36 @@ class RecoveryApplierTest {
         )
     }
 
+    @Test
+    fun aFailedEmptyDraftDiagnosticStillDeletesTheDraft() {
+        val baseDir = Files.createTempDirectory("recovery-empty-fail")
+        try {
+            val draftDir = baseDir.resolve(".draft").resolve("20260304").resolve(MAIN_STREAM).resolve("bad")
+            Files.createDirectories(draftDir)
+            val gaps = GapNoticeStore(baseDir.resolve("gap"), syncDirectory = { throw java.io.IOException("sync") })
+            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(10L), gaps, mutableListOf(), baseDir)
+            assertFalse(Files.exists(draftDir))
+            assertEquals("missing manifest", events.single().detail)
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun oneDroppedRecoveryEventThrowDoesNotSkipTheNext() {
+        val logged = mutableListOf<String>()
+        emitDroppedRecoveryEvents(
+            listOf(
+                SpoolRecoveryEvent("partial_segment", 1L, "kept unknown"),
+                SpoolRecoveryEvent("partial_segment", 2L, "divergent final"),
+            ),
+        ) { _, _, reason, _ ->
+            if (reason == "kept unknown") throw IllegalStateException("listener")
+            logged += reason
+        }
+        assertEquals(listOf("divergent final"), logged)
+    }
+
     private class Applied(
         val events: List<SpoolRecoveryEvent>,
         val unknown: List<String>,

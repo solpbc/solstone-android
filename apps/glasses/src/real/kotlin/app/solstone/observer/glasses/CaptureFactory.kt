@@ -9,6 +9,7 @@ import app.solstone.core.metadata.PhotoMetadataContract
 import app.solstone.core.metadata.PhotoMetadataEngine
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.ownerMaterialExists
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.audio.AndroidAacAdtsRemuxer
 import app.solstone.platform.audio.AudioCommitStatus
@@ -33,9 +34,11 @@ fun createCaptureSetup(
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
+    val gapDirectory = context.filesDir.resolve("gap").toPath()
     val gaps = GapNoticeStore(
-        directory = context.filesDir.resolve("gap").toPath(),
+        directory = gapDirectory,
         listener = gapListener,
+        materialExists = ownerMaterialExists(gapDirectory),
     )
     val remuxer = AndroidAacAdtsRemuxer()
     val audio = AudioContinuousSourceEngine(

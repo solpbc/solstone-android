@@ -18,7 +18,7 @@ import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryPass
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
-import app.solstone.core.spool.emitDroppedRecoveryEvent
+import app.solstone.core.spool.emitDroppedRecoveryEvents
 import app.solstone.core.spool.gapPassCompleted
 import app.solstone.platform.identity.file.CommitMarkerStatus
 import app.solstone.platform.identity.file.PairingCommitMarker
@@ -307,7 +307,7 @@ class ObserverAppContainer(
                             unknown,
                             filesDir,
                         )
-                        events.forEach { event -> emitDroppedRecoveryEvent(event, gapListener) }
+                        emitDroppedRecoveryEvents(events, gapListener)
                     },
                     {
                         SpoolRoomReconciler(spoolDir, database.segmentDao()) { line ->

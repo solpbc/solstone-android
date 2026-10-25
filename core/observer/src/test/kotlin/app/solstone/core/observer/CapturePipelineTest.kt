@@ -17,12 +17,14 @@ import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.CountingSpoolWriter
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealResult
 import app.solstone.core.spool.SealState
 import app.solstone.core.spool.SealedSegmentSink
 import app.solstone.core.spool.SpoolWriter
 import java.io.ByteArrayInputStream
+import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -167,6 +169,70 @@ class CapturePipelineTest {
         assertFalse(provider.released.any { it.ref.name == "audio-0.m4a" })
         assertTrue(provider.released.any { it.ref.name == "audio-1.m4a" })
         assertTrue(diags.any { it.startsWith("capture event=segment-sealed count=") })
+    }
+
+    @Test
+    fun aStoreFailureDuringSealParksTheOldDraftAndReleasesPayloads() {
+        val base = Files.createTempDirectory("capture-park")
+        try {
+            val gaps = GapNoticeStore(base.resolve("gap"), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            val provider = RecordingPayloadProvider()
+            val diags = mutableListOf<String>()
+            val writer = object : SpoolWriter {
+                private val delegate = FileSpoolWriter(base, gaps = gaps)
+                private var seeded = false
+                override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
+                    if (!seeded) {
+                        seeded = true
+                        val draft = base.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(segment.key.segment)
+                        Files.createDirectories(draft)
+                        Files.write(draft.resolve("leftover.bin"), "old".toByteArray())
+                    }
+                    return delegate.seal(segment, payloadBytes)
+                }
+            }
+            val engine = ScriptedEngine(
+                listOf(
+                    SourceEmission(
+                        sourceId = "location",
+                        stream = MAIN_STREAM,
+                        sourceKind = SourceKind.OBSERVER,
+                        captureStartEpochMs = BASE_EPOCH_MS,
+                        captureEndEpochMs = BASE_EPOCH_MS + 20_000L,
+                        payloadRefs = listOf(
+                            PayloadRef("location.jsonl", "application/x-ndjson", 4, null),
+                            PayloadRef("camera.jpg", "image/jpeg", 4, null),
+                            PayloadRef("audio.m4a", "audio/mp4", 4, null),
+                        ),
+                        metadata = emptyMap(),
+                        gaps = emptyList(),
+                    ),
+                ),
+            )
+            val pipeline = CapturePipeline(
+                segmenter = Segmenter(java.time.ZoneId.of("UTC")),
+                spoolWriter = writer,
+                sealedSink = ThreadCapturingSink(),
+                payloadBytes = provider,
+                engines = listOf(engine),
+                nowProvider = { BASE_EPOCH_MS + 610_000L },
+                tickIntervalMs = 10L,
+                diag = diags::add,
+            )
+            pipeline.start()
+            assertTrue(engine.emitted.await(5, TimeUnit.SECONDS))
+            pipeline.stop()
+            assertTrue(provider.released.any { it.ref.name == "location.jsonl" })
+            assertTrue(provider.released.any { it.ref.name == "camera.jpg" })
+            assertFalse(diags.any { it.startsWith("capture event=segment-seal-failed") })
+            assertTrue(Files.walk(base).use { paths ->
+                paths.anyMatch { it.fileName.toString() == "leftover.bin" && ".kept-" in it.toString() }
+            })
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     @Test

@@ -346,7 +346,7 @@ class FileSpoolWriterTest {
             val bytes = "first-bytes".toByteArray()
             val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
             Files.createDirectories(draft)
-            Files.write(draft.resolve("first.bin"), "old-bytes".toByteArray())
+            Files.write(draft.resolve("other.bin"), "old-bytes".toByteArray())
             val gaps = GapNoticeStore(baseDir.resolve("gap"))
             FileSpoolWriter(baseDir, gaps = gaps).seal(
                 segment(FIRST_START, "first.bin", 11L),
@@ -363,40 +363,81 @@ class FileSpoolWriterTest {
     }
 
     @Test
-    fun aFailedDraftRecordLeavesTheDraftAndDoesNotMixTheNewBytes() {
+    fun theSamePayloadNamesReplaceAnInterruptedDraft() {
         withTempDir { baseDir ->
             val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
             Files.createDirectories(draft)
-            Files.write(draft.resolve("first.bin"), "old-bytes".toByteArray())
+            Files.write(draft.resolve("first.bin"), "partial".toByteArray())
             val gaps = GapNoticeStore(baseDir.resolve("gap"), beforeWrite = { path ->
                 if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
             })
-            assertFailsWith<java.io.IOException> {
-                FileSpoolWriter(baseDir, gaps = gaps).seal(
-                    segment(FIRST_START, "first.bin", 11L),
-                    provider("first.bin" to "first-bytes".toByteArray()),
-                )
-            }
-            assertContentEquals("old-bytes".toByteArray(), Files.readAllBytes(draft.resolve("first.bin")))
-            assertFalse(Files.exists(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to "first-bytes".toByteArray()),
+            )
+            assertFalse(Files.exists(draft))
+            assertFalse(Files.exists(draft.parent.resolve("$WIRE_SEGMENT.kept-1")))
+            assertContentEquals(
+                "first-bytes".toByteArray(),
+                Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")),
+            )
+        }
+    }
 
-            assertFailsWith<java.io.IOException> {
-                FileSpoolWriter(baseDir).seal(
-                    segment(FIRST_START, "first.bin", 11L),
-                    provider("first.bin" to "first-bytes".toByteArray()),
-                )
-            }
-            assertContentEquals("old-bytes".toByteArray(), Files.readAllBytes(draft.resolve("first.bin")))
-
-            draft.toFile().deleteRecursively()
+    @Test
+    fun aFailedDraftRecordParksTheDraftAndSealsTheNewBytes() {
+        withTempDir { baseDir ->
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
             Files.createDirectories(draft)
-            assertFailsWith<java.io.IOException> {
-                FileSpoolWriter(baseDir, gaps = gaps).seal(
-                    segment(FIRST_START, "first.bin", 11L),
-                    provider("first.bin" to "first-bytes".toByteArray()),
-                )
-            }
-            assertEquals(0L, Files.list(draft).use { it.count() })
+            Files.write(draft.resolve("other.bin"), "old-bytes".toByteArray())
+            val gaps = GapNoticeStore(baseDir.resolve("gap"), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to "first-bytes".toByteArray()),
+            )
+            assertFalse(Files.exists(draft))
+            assertContentEquals(
+                "old-bytes".toByteArray(),
+                Files.readAllBytes(draft.parent.resolve("$WIRE_SEGMENT.kept-1").resolve("other.bin")),
+            )
+            assertContentEquals(
+                "first-bytes".toByteArray(),
+                Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")),
+            )
+        }
+        withTempDir { baseDir ->
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            Files.write(draft.resolve("other.bin"), "old-bytes".toByteArray())
+            FileSpoolWriter(baseDir).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to "first-bytes".toByteArray()),
+            )
+            assertFalse(Files.exists(draft))
+            assertContentEquals(
+                "old-bytes".toByteArray(),
+                Files.readAllBytes(draft.parent.resolve("$WIRE_SEGMENT.kept-1").resolve("other.bin")),
+            )
+            assertContentEquals(
+                "first-bytes".toByteArray(),
+                Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")),
+            )
+        }
+        withTempDir { baseDir ->
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            val gaps = GapNoticeStore(baseDir.resolve("gap"), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to "first-bytes".toByteArray()),
+            )
+            assertFalse(Files.exists(draft))
+            assertTrue(Files.isDirectory(draft.parent.resolve("$WIRE_SEGMENT.kept-1")))
+            assertTrue(Files.isRegularFile(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
         }
     }
 

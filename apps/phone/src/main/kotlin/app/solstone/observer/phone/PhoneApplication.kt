@@ -15,6 +15,7 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.core.spool.GAP_HEADLINE
 import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.ownerMaterialExists
 import app.solstone.core.spool.formatGapTechnicalDetails
 import app.solstone.observer.formfactor.phone.PhoneGapLoss
 import app.solstone.observer.formfactor.phone.PhoneGapStatus
@@ -430,6 +431,7 @@ class PhoneApplication : ObserverApplication(
             },
             onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
             onChanged = { container.sources.refreshSubscribers() },
+            gaps = gapStore(filesDir),
         )
         CalendarRuntimes.current?.onProcessStart()
     }
@@ -502,7 +504,7 @@ class PhoneApplication : ObserverApplication(
 
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
-        val statusModel = container?.let { initialized ->
+        val statusRead = container?.let { initialized ->
             runCatching {
                 val backlog = PhoneStatusSupplier.forContainer(initialized).invoke()
                 statusListeners.forEach { listener -> runCatching { listener(backlog) } }
@@ -514,8 +516,9 @@ class PhoneApplication : ObserverApplication(
                     audioAwaitingCustody = phoneAudioAwaitingCustody(applicationContext, initialized),
                     gaps = phoneGapStatus(applicationContext, initialized.noticesMayShow, now, zone),
                 ).status
-            }.getOrElse { emptyPhoneStatus() }
-        } ?: emptyPhoneStatus()
+            }
+        }
+        val statusModel = statusRead?.getOrNull() ?: emptyPhoneStatus()
         syncGapAlarm(PhoneGapWindowScheduler(this), statusModel, now, zone)
         val notice = audioOffNotices.read()
         val presentedReadModel = presentAudioOffNotice(readModel, notice)
@@ -525,7 +528,9 @@ class PhoneApplication : ObserverApplication(
             startOutcome = widgetStartOutcomes.read(),
             notice = notice,
         )
-        rememberWidgetSyncText(filesDir, cachedWidgetModel.syncText)
+        if (statusRead?.isSuccess == true) {
+            rememberWidgetSyncText(filesDir, cachedWidgetModel.syncText)
+        }
     }
 
     private fun startCaptureAction(
@@ -611,11 +616,14 @@ internal fun phoneGapStatus(
     zone: ZoneId = ZoneId.systemDefault(),
 ): PhoneGapStatus = liveGapStatus(context.filesDir, noticesMayShow, nowEpochMs, zone)
 
-internal fun phoneMarkGapSeen(context: Context, lossIds: Set<String>, unknownKeys: Set<String>): Boolean =
-    GapNoticeStore(
-        directory = context.filesDir.resolve("gap").toPath(),
+internal fun phoneMarkGapSeen(context: Context, lossIds: Set<String>, unknownKeys: Set<String>): Boolean {
+    val directory = context.filesDir.resolve("gap").toPath()
+    return GapNoticeStore(
+        directory = directory,
         listener = phoneGapListener,
+        materialExists = ownerMaterialExists(directory),
     ).markSeen(lossIds, unknownKeys)
+}
 
 internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, zone: ZoneId): PhoneStatusModel {
     val gaps = coldGapStatus(filesDir, nowEpochMs, zone)
@@ -688,10 +696,14 @@ private fun gapStatusOf(
     )
 }
 
-private fun gapStore(filesDir: File) = GapNoticeStore(
-    directory = filesDir.resolve("gap").toPath(),
-    listener = phoneGapListener,
-)
+private fun gapStore(filesDir: File): GapNoticeStore {
+    val directory = filesDir.resolve("gap").toPath()
+    return GapNoticeStore(
+        directory = directory,
+        listener = phoneGapListener,
+        materialExists = ownerMaterialExists(directory),
+    )
+}
 
 private val phoneGapListener: (String, String, String, String) -> Unit = { kind, source, reason, material ->
     PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))

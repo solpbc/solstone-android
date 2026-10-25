@@ -35,6 +35,19 @@ class PhoneTwoPaneLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun aRouteOnTopOfTheStatusDetailDoesNotCountAsShowing() {
+        val withRoute = mutableListOf<Boolean>()
+        showWideStatus(withRoute, PhoneRouteStack.Empty.showInDetail(PhoneRoute.Help))
+        composeRule.onNodeWithTag("phoneSplit").assertIsDisplayed()
+        assertEquals(false, withRoute.last())
+
+        val open = mutableListOf<Boolean>()
+        showWideStatus(open, PhoneRouteStack.Empty)
+        composeRule.onNodeWithTag("phoneSplit").assertIsDisplayed()
+        assertEquals(true, open.last())
+    }
+
+    @Test
     fun deckTapsKeepDeckWhileBackWalksDetailStack() {
         setWideContent()
 
@@ -95,6 +108,29 @@ class PhoneTwoPaneLayoutTest {
         val largeDeckWidth = renderedDeckWidthDp(LARGE_SIZE)
         assertDeckIsColumn(LARGE_SIZE, largeDeckWidth)
         assertEquals(412f, largeDeckWidth, 1f)
+    }
+
+    private fun showWideStatus(seen: MutableList<Boolean>, initial: PhoneRouteStack) {
+        val status = connected()
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(MEDIUM_SIZE),
+            ) {
+                PhoneObserverScreen(
+                    loadState = loaded(audioOn()),
+                    status = status,
+                    defaultDetailStatus = PhoneDefaultDetailStatus.Paired(
+                        PhoneStatusSnapshot(status, emptyList()),
+                    ),
+                    onToggle = { _, _ -> },
+                    onStartObserving = {},
+                    onConfirmMark = {},
+                    initial = initial,
+                    onStatusContentVisible = { seen += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
     }
 
     private fun setWideContent() {

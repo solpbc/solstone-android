@@ -95,7 +95,7 @@ class FileSpoolWriter(
         requireSingleLeaf(draftDir, baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream), leaf)
         requireSingleLeaf(finalDir, baseDir.resolve(segment.key.day).resolve(segment.stream), leaf)
         Files.createDirectories(draftDir.parent)
-        if (Files.exists(draftDir) && !retireExistingDraft(draftDir, segment, payloadBytes, leaf)) {
+        if (Files.exists(draftDir) && !retireExistingDraft(draftDir, segment, leaf)) {
             throw java.io.IOException("existing draft kept")
         }
         Files.createDirectories(draftDir)
@@ -149,17 +149,19 @@ class FileSpoolWriter(
     }
 
     /**
-     * A draft already at this leaf is not the segment being sealed. Identical payload bytes are
-     * removed with no loss. Anything else is recorded before it is destroyed. A failed record
-     * leaves the draft in place and the seal does not write into it.
+     * A draft whose payload names are the incoming seal's is that seal's own interrupted attempt.
+     * The new bytes replace it and no gap event is written.
+     * Any other draft is recorded, then removed. When the store cannot record it, the old draft
+     * moves aside under a new name and the new material still seals.
      */
     private fun retireExistingDraft(
         draftDir: Path,
         segment: SealedSegment,
-        payloadBytes: PayloadBytesProvider,
         leaf: String,
     ): Boolean {
-        if (draftMatchesIncoming(draftDir, segment, payloadBytes)) {
+        val incoming = segment.payloads.map { it.ref.name }.toSet()
+        val onDisk = draftPayloadNames(draftDir)
+        if (onDisk != null && onDisk == incoming && incoming.isNotEmpty()) {
             draftDir.deleteRecursively()
             return !Files.exists(draftDir)
         }
@@ -169,43 +171,39 @@ class FileSpoolWriter(
         } else {
             gaps?.recordDiagnostic("spool", "empty draft", material, null) == true
         }
-        if (!recorded) return false
-        draftDir.deleteRecursively()
-        return !Files.exists(draftDir)
+        if (recorded) {
+            draftDir.deleteRecursively()
+            return !Files.exists(draftDir)
+        }
+        return parkDraft(draftDir)
     }
 
-    private fun draftMatchesIncoming(
-        draftDir: Path,
-        segment: SealedSegment,
-        payloadBytes: PayloadBytesProvider,
-    ): Boolean {
-        val names = runCatching {
-            Files.list(draftDir).use { stream ->
-                buildList {
-                    stream.filter { Files.isRegularFile(it) && it.fileName.toString() != "manifest" }
-                        .forEach { add(it.fileName.toString()) }
-                }
+    private fun draftPayloadNames(draftDir: Path): Set<String>? = runCatching {
+        Files.list(draftDir).use { stream ->
+            buildList {
+                stream.filter { Files.isRegularFile(it) && it.fileName.toString() != "manifest" }
+                    .forEach { add(it.fileName.toString()) }
             }
-        }.getOrNull() ?: return false
-        if (names.toSet() != segment.payloads.map { it.ref.name }.toSet()) return false
-        return segment.payloads.all { payload ->
-            val file = draftDir.resolve(payload.ref.name)
-            if (file.normalize().parent != draftDir.normalize()) return false
-            val onDisk = runCatching { app.solstone.core.segment.sha256(file) }.getOrNull() ?: return false
-            val incoming = runCatching {
-                payloadBytes.open(payload).use { input ->
-                    val digest = MessageDigest.getInstance("SHA-256")
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        digest.update(buffer, 0, read)
-                    }
-                    digest.digest().joinToString("") { "%02x".format(it) }
+        }.toSet()
+    }.getOrNull()
+
+    /** Keeps a draft the store could not record, outside the leaf the new seal is about to use. */
+    private fun parkDraft(draftDir: Path): Boolean {
+        val parent = draftDir.parent ?: return false
+        val leaf = draftDir.fileName.toString()
+        for (index in 1..999) {
+            val parked = parent.resolve("$leaf.kept-$index")
+            if (Files.exists(parked)) continue
+            val moved = runCatching {
+                try {
+                    Files.move(draftDir, parked, StandardCopyOption.ATOMIC_MOVE)
+                } catch (_: AtomicMoveNotSupportedException) {
+                    Files.move(draftDir, parked)
                 }
-            }.getOrNull() ?: return false
-            onDisk == incoming
+            }.isSuccess
+            if (moved && !Files.exists(draftDir)) return true
         }
+        return false
     }
 
     private fun draftHasPayloadBytes(draftDir: Path): Boolean = runCatching {
