@@ -438,8 +438,27 @@ class GapNoticeStoreTest {
         present = false
         now = Instant.parse("2026-04-01T00:00:00Z").toEpochMilli()
         assertTrue(ready(store).none { it.material == "rec-kept" })
+        store.dropGoneSeenMaterials()
         assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
         assertFalse(ready(store).single { it.material == "rec-kept" }.seen)
+    }
+
+    @Test
+    fun aReadDoesNotAskWhetherMaterialExists() {
+        val root = temp()
+        Files.createDirectories(root)
+        Files.writeString(root.resolve(GapNoticeStore.SEEN_MATERIALS), "audio\trec-kept\n")
+        var asked = false
+        val store = store(root, materialExists = { _, _ ->
+            asked = true
+            true
+        })
+        assertIs<GapRead.Ready>(store.read(zone))
+        assertFalse(asked)
+        assertTrue(store.recordLoss("audio", "undeliverable", "other-rec", 1L))
+        assertFalse(asked)
+        assertTrue(store.recordDiagnostic("spool", "empty draft", "other-rec", null))
+        assertFalse(asked)
     }
 
     @Test

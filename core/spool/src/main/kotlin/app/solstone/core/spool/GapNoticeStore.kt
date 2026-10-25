@@ -164,7 +164,6 @@ class GapNoticeStore(
                     is Loaded.Rows -> {
                         val pruned = prune(loaded.rows, clock(), zone)
                         rememberPrunedSeenLosses(loaded.rows, pruned)
-                        forgetGoneSeenMaterials(pruned)
                         if (pruned != loaded.rows) writeEvents(pruned)
                         GapRead.Ready(pruned)
                     }
@@ -407,8 +406,25 @@ class GapNoticeStore(
     private fun commitRows(rows: List<GapNoticeRow>, now: Long) {
         val pruned = prune(rows, now, zone())
         rememberPrunedSeenLosses(rows, pruned)
-        forgetGoneSeenMaterials(pruned)
         writeEvents(pruned)
+    }
+
+    /**
+     * Drops remembered seen-material keys whose bytes are gone and that are not a live loss.
+     * A recovery pass calls this once. A status read or a gap write does not.
+     */
+    fun dropGoneSeenMaterials() {
+        try {
+            exclusive {
+                val rows = when (val loaded = loadEvents()) {
+                    is Loaded.Undecodable -> return@exclusive
+                    is Loaded.Rows -> loaded.rows
+                }
+                forgetGoneSeenMaterials(rows)
+            }
+        } catch (_: Exception) {
+            // The next pass tries again. A read does not walk the capture tree to finish this.
+        }
     }
 
     private fun rememberPrunedSeenLosses(before: List<GapNoticeRow>, after: List<GapNoticeRow>) {

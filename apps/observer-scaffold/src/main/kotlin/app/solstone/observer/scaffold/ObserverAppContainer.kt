@@ -314,6 +314,7 @@ class ObserverAppContainer(
                             Log.w("SpoolRoomReconciler", line)
                         }.reconcile()
                     },
+                    { gaps?.dropGoneSeenMaterials() },
                 ),
                 openNotices = {
                     val store = gaps

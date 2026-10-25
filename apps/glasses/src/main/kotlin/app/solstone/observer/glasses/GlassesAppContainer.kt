@@ -271,6 +271,7 @@ class GlassesAppContainer(
                             GlassesDiagLog.appendRaw(line)
                         }.reconcile()
                     },
+                    { gaps?.dropGoneSeenMaterials() },
                     { gaps?.sweepMilestone(unknown.toList()) },
                 ),
             )
