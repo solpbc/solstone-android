@@ -13,12 +13,13 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
-import app.solstone.core.spool.GapConversionState
+import app.solstone.core.spool.GAP_HEADLINE
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.formatGapTechnicalDetails
 import app.solstone.observer.formfactor.phone.PhoneGapLoss
 import app.solstone.observer.formfactor.phone.PhoneGapStatus
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
+import app.solstone.observer.formfactor.phone.STATUS_UNKNOWN_RECOVERY_LEAD
 import app.solstone.observer.formfactor.phone.syncGapAlarm
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.SourcesReadModel
@@ -511,7 +512,7 @@ class PhoneApplication : ObserverApplication(
                     awaitingMarkConfirmation = phoneAwaitingMarkConfirmation(applicationContext),
                     recoveryCompleted = initialized.recoveryCompleted,
                     audioAwaitingCustody = phoneAudioAwaitingCustody(applicationContext, initialized),
-                    gaps = phoneGapStatus(applicationContext, initialized.recoveryCompleted, now, zone),
+                    gaps = phoneGapStatus(applicationContext, initialized.noticesMayShow, now, zone),
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()
@@ -524,6 +525,7 @@ class PhoneApplication : ObserverApplication(
             startOutcome = widgetStartOutcomes.read(),
             notice = notice,
         )
+        rememberWidgetSyncText(filesDir, cachedWidgetModel.syncText)
     }
 
     private fun startCaptureAction(
@@ -604,10 +606,10 @@ internal fun audioAttemptStillWaiting(dir: File): Boolean {
 
 internal fun phoneGapStatus(
     context: Context,
-    recoveryCompleted: Boolean,
+    noticesMayShow: Boolean,
     nowEpochMs: Long = System.currentTimeMillis(),
     zone: ZoneId = ZoneId.systemDefault(),
-): PhoneGapStatus = liveGapStatus(context.filesDir, recoveryCompleted, nowEpochMs, zone)
+): PhoneGapStatus = liveGapStatus(context.filesDir, noticesMayShow, nowEpochMs, zone)
 
 internal fun phoneMarkGapSeen(context: Context, lossIds: Set<String>, unknownKeys: Set<String>): Boolean =
     GapNoticeStore(
@@ -619,11 +621,11 @@ internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, z
     val gaps = coldGapStatus(filesDir, nowEpochMs, zone)
     return PhoneStatusModel(
         paired = coldPaired(filesDir),
-        online = true,
+        online = false,
         pendingCount = 0,
         hasContentPending = false,
         awaitingMarkConfirmation = false,
-        recoveryCompleted = true,
+        recoveryCompleted = false,
         audioAwaitingCustody = audioAwaitingCustody(cacheDir, filesDir, emptySet()),
         gapLosses = gaps.losses,
         unknownPresent = gaps.unknownPresent,
@@ -631,6 +633,8 @@ internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, z
         unseenUnknownKeys = gaps.unseenUnknownKeys,
         gateOpen = gaps.gateOpen,
         gapTechnicalDetails = gaps.technicalDetails,
+        connectivityKnown = false,
+        rememberedSyncText = rememberedWidgetSyncText(filesDir),
     )
 }
 
@@ -640,18 +644,29 @@ internal fun coldPaired(filesDir: File): Boolean {
     return marker?.status == CommitMarkerStatus.COMMITTED
 }
 
-internal fun liveGapStatus(filesDir: File, recoveryCompleted: Boolean, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
-    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus()
+internal fun liveGapStatus(filesDir: File, noticesMayShow: Boolean, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
+    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus(technicalDetails = "unreadable")
     val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
-    val open = recoveryCompleted && snapshot.conversion !is GapConversionState.NotRun
-    if (!open) return PhoneGapStatus(technicalDetails = technical)
+    if (!noticesMayShow || !snapshot.opened) return PhoneGapStatus(technicalDetails = technical)
     return gapStatusOf(snapshot, technical, gateOpen = true)
 }
 
 private fun coldGapStatus(filesDir: File, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
-    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus()
+    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus(technicalDetails = "unreadable")
     val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
+    if (!snapshot.opened) return PhoneGapStatus(technicalDetails = technical)
     return gapStatusOf(snapshot, technical, gateOpen = true)
+}
+
+/** Last status line drawn while connectivity was known. A gap line is not stored; it is read from the gap record. */
+internal const val WIDGET_SYNC_LINE = "widget-sync-line"
+
+internal fun rememberedWidgetSyncText(filesDir: File): String? =
+    runCatching { File(filesDir, WIDGET_SYNC_LINE).readText() }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+
+internal fun rememberWidgetSyncText(filesDir: File, syncText: String) {
+    if (syncText.isEmpty() || syncText == GAP_HEADLINE || syncText == STATUS_UNKNOWN_RECOVERY_LEAD) return
+    runCatching { File(filesDir, WIDGET_SYNC_LINE).writeText(syncText) }
 }
 
 private fun gapStatusOf(

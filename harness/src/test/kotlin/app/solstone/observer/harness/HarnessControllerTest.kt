@@ -126,6 +126,24 @@ class HarnessControllerTest {
     }
 
     @Test
+    fun aCommittedPairRunsTheHookAndAFailedPairDoesNot() {
+        var commits = 0
+        val paired = fixture()
+        paired.controller.onPairingCommitted = { commits += 1 }
+        assertIs<PairLinkDispatchResult.Attempted>(paired.controller.dispatchPairLink(validPairLink()))
+        assertEquals(1, commits)
+
+        val failed = fixture(
+            pairProbe = PairProbe { _, _ -> throw IOException("failed", ConnectException("refused")) },
+        )
+        failed.controller.onPairingCommitted = { commits += 1 }
+        assertIs<PairAttemptOutcome.NetworkUnavailable>(
+            (failed.controller.dispatchPairLink(validPairLink()) as PairLinkDispatchResult.Attempted).outcome,
+        )
+        assertEquals(1, commits)
+    }
+
+    @Test
     fun startRefusedUntilRequiredPermissionsAreGranted() {
         val allDenied = fixture(
             permissionStatus = grantedPermissions().copy(

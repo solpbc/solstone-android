@@ -26,7 +26,7 @@ fun emitDroppedRecoveryEvent(
 
 fun applyRecoveryActions(
     actions: List<RecoveryAction>,
-    gaps: GapNoticeStore,
+    gaps: GapNoticeStore?,
     unknownPaths: MutableCollection<String>,
     filesDir: Path,
 ): List<SpoolRecoveryEvent> {
@@ -70,6 +70,11 @@ fun applyRecoveryActions(
                         )
                     } else {
                         rememberUnknown(filesDir, action.draftDir, unknownPaths)
+                        events += SpoolRecoveryEvent(
+                            kind = "partial_segment",
+                            atEpochMs = action.parsedManifest.endEpochMs,
+                            detail = "divergent final",
+                        )
                     }
                     return@forEach
                 }
@@ -81,7 +86,12 @@ fun applyRecoveryActions(
                     Files.move(action.draftDir, action.finalDir)
                 }
                 cleanupEmptyDraftParents(action.draftDir)
-                gaps.recordDiagnostic("spool", "delivered", leaf, action.parsedManifest.endEpochMs)
+                gaps?.recordDiagnostic(
+                    "spool",
+                    "delivered",
+                    gapMaterialForDraft(action.finalDir),
+                    action.parsedManifest.endEpochMs,
+                )
                 events += SpoolRecoveryEvent(
                     kind = "finalized_segment",
                     atEpochMs = action.parsedManifest.endEpochMs,
@@ -92,10 +102,17 @@ fun applyRecoveryActions(
                 val detail = action.event.detail.orEmpty()
                 when {
                     recoveryContent(action.draftDir) == RecoveryContent.EMPTY -> {
-                        gaps.recordDiagnostic("spool", "empty draft", action.draftDir.fileName.toString(), null)
-                        action.draftDir.deleteRecursively()
-                        cleanupEmptyDraftParents(action.draftDir)
-                        events += action.event
+                        val recorded = gaps?.recordDiagnostic(
+                            "spool",
+                            "empty draft",
+                            gapMaterialForDraft(action.draftDir),
+                            null,
+                        ) == true
+                        if (recorded) {
+                            action.draftDir.deleteRecursively()
+                            cleanupEmptyDraftParents(action.draftDir)
+                            events += action.event
+                        }
                     }
                     detail.startsWith("invalid payload") -> {
                         if (discardInvalidPayload(action.draftDir, gaps)) {
@@ -104,7 +121,14 @@ fun applyRecoveryActions(
                             events += action.event
                         }
                     }
-                    else -> rememberUnknown(filesDir, action.draftDir, unknownPaths)
+                    else -> {
+                        rememberUnknown(filesDir, action.draftDir, unknownPaths)
+                        events += SpoolRecoveryEvent(
+                            kind = action.event.kind,
+                            atEpochMs = action.event.atEpochMs,
+                            detail = "kept unknown",
+                        )
+                    }
                 }
             }
         }
@@ -112,22 +136,22 @@ fun applyRecoveryActions(
     return events
 }
 
-private fun discardInvalidPayload(dir: Path, gaps: GapNoticeStore): Boolean {
+private fun discardInvalidPayload(dir: Path, gaps: GapNoticeStore?): Boolean {
     val parsed = runCatching {
         parseManifest(String(Files.readAllBytes(dir.resolve("manifest")), StandardCharsets.UTF_8))
     }.getOrNull() ?: return false
     val files = parsed.manifest.files
     if (files.isEmpty()) return false
-    val leaf = dir.fileName.toString()
+    val material = gapMaterialForDraft(dir)
     var everyLoss = true
     for ((sourceId, entries) in files.groupBy { it.sourceId }) {
         val source = gapSourceFor(sourceId)
         val captured = entries.firstNotNullOfOrNull { it.captureStartEpochMs.takeIf { start -> start > 0L } }
         val existed = entries.any { entry -> draftPayloadExisted(dir, entry.name) }
         if (existed) {
-            if (!gaps.recordLoss(source, "invalid payload", leaf, captured)) everyLoss = false
+            if (gaps?.recordLoss(source, "invalid payload", material, captured) != true) everyLoss = false
         } else {
-            gaps.recordDiagnostic(source, "no bytes", leaf, captured)
+            gaps?.recordDiagnostic(source, "no bytes", material, captured)
         }
     }
     return everyLoss

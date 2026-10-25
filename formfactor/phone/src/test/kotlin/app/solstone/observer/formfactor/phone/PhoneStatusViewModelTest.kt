@@ -282,13 +282,16 @@ class PhoneStatusViewModelTest {
             },
             onGapSeen = { seenCalls += 1 },
             zone = zone,
+            clock = { now },
         )
         viewModel.onStatusForeground(true)
         assertTrue(marked.isEmpty())
         viewModel.onNow(now)
         runner.runNext()
         poster.runNext()
-        assertEquals(0, runner.pendingCount)
+        assertEquals(1, runner.pendingCount)
+        runner.runNext()
+        poster.runNext()
         viewModel.onStatusForeground(true)
         assertEquals(listOf(setOf("shown") to setOf("draft/leaf")), marked)
         assertEquals(1, seenCalls)
@@ -302,8 +305,8 @@ class PhoneStatusViewModelTest {
         viewModel.refresh()
         runner.runNext()
         poster.runNext()
-        viewModel.onStatusForeground(false)
         viewModel.onHostStop(changingConfigurations = true)
+        viewModel.onStatusForeground(false)
         viewModel.onStatusForeground(true)
         assertEquals(1, marked.size)
         val reloaded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
@@ -317,6 +320,8 @@ class PhoneStatusViewModelTest {
         val ended = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
         assertTrue(ended.gapLosses.single { it.id == "shown" }.seen)
         viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
         assertEquals(setOf("later"), marked.last().first)
         assertEquals(emptySet(), marked.last().second)
     }
@@ -344,6 +349,7 @@ class PhoneStatusViewModelTest {
             gapStatus = gaps,
             markSeen = { ids, _ -> marked += ids; true },
             zone = ZoneId.of("UTC"),
+            clock = { now },
         )
         runner.runNext()
         poster.runNext()
@@ -358,6 +364,8 @@ class PhoneStatusViewModelTest {
         assertTrue(marked.isEmpty())
         viewModel.onHostStop(false)
         viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
         assertEquals(listOf(setOf("loss")), marked)
     }
 
@@ -385,10 +393,13 @@ class PhoneStatusViewModelTest {
             },
             markSeen = { ids, keys -> marked += ids to keys; true },
             zone = ZoneId.of("UTC"),
+            clock = { now },
         )
         viewModel.onStatusForeground(true)
         assertTrue(marked.isEmpty())
         viewModel.onNow(now)
+        runner.runNext()
+        poster.runNext()
         runner.runNext()
         poster.runNext()
         assertEquals(listOf(setOf("shown") to setOf("draft/leaf")), marked)
@@ -420,11 +431,14 @@ class PhoneStatusViewModelTest {
                 true
             },
             zone = ZoneId.of("UTC"),
+            clock = { now },
         )
         runner.runNext()
         poster.runNext()
         viewModel.onNow(now)
         viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
         assertEquals(listOf(setOf("shown")), marked)
 
         gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("later", now, now, false))
@@ -435,6 +449,8 @@ class PhoneStatusViewModelTest {
 
         viewModel.onHostStop(false)
         viewModel.onHostResumed()
+        runner.runNext()
+        poster.runNext()
         assertEquals(listOf(setOf("shown"), setOf("later")), marked)
 
         gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("newest", now, now, false))
@@ -469,16 +485,21 @@ class PhoneStatusViewModelTest {
             markSeen = { _, _ -> false },
             onGapSeen = { seenCalls += 1 },
             zone = ZoneId.of("UTC"),
+            clock = { now },
         )
         runner.runNext()
         poster.runNext()
         viewModel.onNow(now)
         viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
         assertEquals(0, seenCalls)
         val status = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
         assertFalse(status.gapLosses.single().seen)
         viewModel.onHostStop(false)
         viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
         val again = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
         assertFalse(again.gapLosses.single().seen)
     }
@@ -522,16 +543,141 @@ class PhoneStatusViewModelTest {
             },
             markSeen = { ids, _ -> marked += ids; true },
             zone = ZoneId.of("UTC"),
+            clock = { now },
         )
         runner.runNext()
         poster.runNext()
         viewModel.onNow(now)
         viewModel.onStatusForeground(true)
         assertTrue(marked.isEmpty())
-        assertTrue(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, wide = true, pairedDetail = true))
-        assertFalse(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, wide = false, pairedDetail = true))
-        assertTrue(phoneStatusContentVisible(sheetOpen = true, pairingOpen = false, wide = false, pairedDetail = false))
-        assertFalse(phoneStatusContentVisible(sheetOpen = true, pairingOpen = true, wide = true, pairedDetail = true))
+        assertTrue(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, splitDrawn = true, statusDetailForeground = true))
+        assertFalse(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, splitDrawn = false, statusDetailForeground = true))
+        assertTrue(phoneStatusContentVisible(sheetOpen = true, pairingOpen = false, splitDrawn = false, statusDetailForeground = false))
+        assertFalse(phoneStatusContentVisible(sheetOpen = true, pairingOpen = true, splitDrawn = true, statusDetailForeground = true))
+        assertFalse(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, splitDrawn = true, statusDetailForeground = false))
+    }
+
+    @Test
+    fun aRouteOnTopDoesNotMarkTheLosses() {
+        val now = 1_762_000_000_000L
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = {
+                PhoneGapStatus(
+                    losses = listOf(PhoneGapLoss("loss", now, now, false)),
+                    gateOpen = true,
+                )
+            },
+            markSeen = { ids, _ -> marked += ids; true },
+            zone = ZoneId.of("UTC"),
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(false)
+        assertTrue(marked.isEmpty())
+        assertEquals(0, runner.pendingCount)
+    }
+
+    @Test
+    fun closingAndReopeningTheSheetMarksTheLossFoundBetweenThem() {
+        val now = 1_762_000_000_000L
+        var gaps = PhoneGapStatus(
+            losses = listOf(PhoneGapLoss("shown", now, now, false)),
+            gateOpen = true,
+        )
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = { gaps },
+            markSeen = { ids, _ ->
+                marked += ids
+                gaps = gaps.copy(
+                    losses = gaps.losses.map { loss -> if (loss.id in ids) loss.copy(seen = true) else loss },
+                )
+                true
+            },
+            zone = ZoneId.of("UTC"),
+            clock = { now },
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(listOf(setOf("shown")), marked)
+
+        viewModel.onStatusForeground(false)
+        gaps = gaps.copy(losses = gaps.losses + PhoneGapLoss("between", now, now, false))
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, marked.size)
+        viewModel.onStatusForeground(true)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(setOf("between"), marked.last())
+    }
+
+    @Test
+    fun theHostRefreshesTheClockAndAReturnMarksALossFoundTheNextDay() {
+        val day0 = java.time.Instant.parse("2026-10-25T12:00:00Z").toEpochMilli()
+        val day1 = java.time.Instant.parse("2026-10-26T12:00:00Z").toEpochMilli()
+        var now = day0
+        val gaps = PhoneGapStatus(
+            losses = listOf(PhoneGapLoss("loss", day1, day1, false)),
+            gateOpen = true,
+        )
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = { gaps },
+            markSeen = { ids, _ -> marked += ids; true },
+            zone = ZoneId.of("UTC"),
+            clock = { now },
+        )
+        val host = PhoneStatusHost(viewModel)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(day0, viewModel.nowEpochMs)
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        now = day1
+        assertEquals(day0, viewModel.nowEpochMs)
+        host.onStart()
+        assertEquals(day1, viewModel.nowEpochMs)
+        now = day0
+        host.onStart()
+        viewModel.onHostStop(false)
+        now = day1
+        host.onResume()
+        runner.runNext()
+        poster.runNext()
+        assertEquals(day1, viewModel.nowEpochMs)
+        assertEquals(listOf(setOf("loss")), marked)
     }
 
     private fun viewModel(

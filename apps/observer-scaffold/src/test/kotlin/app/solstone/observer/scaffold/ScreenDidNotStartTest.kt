@@ -24,4 +24,23 @@ class ScreenDidNotStartTest {
         assertEquals(listOf(Triple("screen", "screen did not start", "screen-start")), recorded)
         assertNull(failedReason)
     }
+
+    @Test
+    fun aLateFragmentIsADiagnosticAndAnOwnerRemovalWritesNothing() {
+        val recorded = mutableListOf<Triple<String, String, String>>()
+        val record = { source: String, reason: String, material: String ->
+            recorded += Triple(source, reason, material)
+        }
+        recordLateFragment(dropped = false, source = "location", record = record)
+        assertEquals(emptyList(), recorded)
+        recordLateFragment(dropped = true, source = "location", record = record)
+        recordLateFragment(dropped = true, source = "camera", record = record)
+        assertEquals(
+            listOf(
+                Triple("location", "late fragment", "late"),
+                Triple("camera", "late fragment", "late"),
+            ),
+            recorded,
+        )
+    }
 }

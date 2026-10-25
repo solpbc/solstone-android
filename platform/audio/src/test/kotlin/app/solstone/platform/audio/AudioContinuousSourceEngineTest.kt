@@ -383,6 +383,33 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
+    fun aFailedLossWriteLeavesTheUndeliverableWindow() {
+        val outputDirectory = tempDirectory()
+        var now = OFF_BOUNDARY_EPOCH_MS
+        var sleepCount = 0
+        val gaps = GapNoticeStore(File(outputDirectory, "gap").toPath(), beforeWrite = { path ->
+            if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+        })
+        val sink = CapturingSink()
+        val engine = createEngine(
+            outputDirectory = outputDirectory,
+            gaps = gaps,
+            remuxer = FakeAacRemuxer(remuxDurationMs = 0L),
+            nowProvider = { now },
+            sleeper = {
+                if (sleepCount++ == 0) now = BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS
+                else throw InterruptedException()
+            },
+        )
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+        val dirs = outputDirectory.listFiles { file -> file.isDirectory && file.name.startsWith("rec-") }.orEmpty()
+        assertTrue(dirs.isNotEmpty())
+        assertTrue(dirs.none { File(it, "gap-loss").exists() })
+    }
+
+    @Test
     fun inFlightRecordingIdsTracksActiveAndRegisteredAttempts() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()

@@ -32,3 +32,12 @@ fun recordScreenDidNotStart(
 ) {
     if (!started) record("screen", "screen did not start", "screen-start")
 }
+
+/** A dropped uncommitted fragment is a diagnostic. An owner removal writes nothing. */
+fun recordLateFragment(
+    dropped: Boolean,
+    source: String,
+    record: (source: String, reason: String, material: String) -> Unit,
+) {
+    if (dropped) record(source, "late fragment", "late")
+}

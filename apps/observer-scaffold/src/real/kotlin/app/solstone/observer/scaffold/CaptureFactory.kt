@@ -197,12 +197,16 @@ fun createCaptureSetup(
                     AudioContinuousSourceEngine.SOURCE_ID -> audio.discardUncommitted(payload)
                     LocationContinuousSourceEngine.SOURCE_ID -> {
                         val dropped = location.discardUncommitted(payload)
-                        if (dropped) gaps.recordDiagnostic("location", "late fragment", "late", null)
+                        recordLateFragment(dropped, "location") { source, reason, material ->
+                            gaps.recordDiagnostic(source, reason, material, null)
+                        }
                         dropped
                     }
                     StillCaptureEngine.SOURCE_ID -> {
                         val dropped = camera.discardUncommitted(payload)
-                        if (dropped) gaps.recordDiagnostic("camera", "late fragment", "late", null)
+                        recordLateFragment(dropped, "camera") { source, reason, material ->
+                            gaps.recordDiagnostic(source, reason, material, null)
+                        }
                         dropped
                     }
                     ScreenConstants.SOURCE_ID -> screen?.discardUncommitted(payload) ?: true

@@ -402,4 +402,87 @@ class ScreenContinuousSourceEngineTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun aStopperThatAlreadyEndedTheSessionKeepsCaptureFailed() {
+        val root = Files.createTempDirectory("screen-stopper-failed").toFile()
+        val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val engine = ScreenContinuousSourceEngine(
+            root,
+            StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(),
+            gapsOf(root),
+            holder,
+            encoderFactory = { _, _, _, _ ->
+                object : ScreenEncoder {
+                    override fun inputSurface(): Any = "surface"
+                    override fun start(raw: File, index: File, callback: (Long) -> Unit) {
+                        holder.stopSession()
+                        error("encoder failed")
+                    }
+                    override fun stop(): Long = 1L
+                    override fun release() {}
+                }
+            },
+            nowProvider = time::get,
+            sleeper = { delta -> time.addAndGet(delta.coerceAtLeast(1L)) },
+            stopJoinTimeoutMs = 2_000L,
+        )
+        try {
+            engine.start(EmissionSink { })
+            val deadline = System.currentTimeMillis() + 3_000L
+            while (engine.reasonWhenOff() == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertEquals(ReasonCode.SCREEN_CAPTURE_FAILED, engine.reasonWhenOff())
+        } finally {
+            engine.stop()
+            holder.stopSession()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aHealthyRunStoppedExternallyDoesNotBecomeAFailure() {
+        val root = Files.createTempDirectory("screen-clean-stop").toFile()
+        val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val engine = ScreenContinuousSourceEngine(
+            root,
+            StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(),
+            gapsOf(root),
+            holder,
+            encoderFactory = { _, _, _, _ ->
+                object : ScreenEncoder {
+                    override fun inputSurface(): Any = "surface"
+                    override fun start(raw: File, index: File, callback: (Long) -> Unit) {
+                        holder.stopSession()
+                        callback(time.get())
+                    }
+                    override fun stop(): Long = 1L
+                    override fun release() {}
+                }
+            },
+            nowProvider = time::get,
+            sleeper = { delta -> time.addAndGet(delta.coerceAtLeast(1L)) },
+            stopJoinTimeoutMs = 2_000L,
+        )
+        try {
+            engine.start(EmissionSink { })
+            val deadline = System.currentTimeMillis() + 3_000L
+            while (engine.condition().running && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertEquals(null, engine.reasonWhenOff())
+            assertFalse(engine.condition().running)
+        } finally {
+            engine.stop()
+            holder.stopSession()
+            root.deleteRecursively()
+        }
+    }
 }

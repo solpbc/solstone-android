@@ -42,7 +42,7 @@ class ScreenRecoveryManager(
         if (!screenSourceDir.exists() || !screenSourceDir.isDirectory) return
         val dirs = screenSourceDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return
 
-        val spoolWriter = FileSpoolWriter(spoolDir, occupiedLeaves = occupiedLeaves)
+        val spoolWriter = FileSpoolWriter(spoolDir, occupiedLeaves = occupiedLeaves, gaps = gaps)
 
         for (dir in dirs) {
             val attemptId = dir.name
@@ -92,7 +92,7 @@ class ScreenRecoveryManager(
                     }
                     info = info.copy(sampleDurationMs = remuxResult.sampleDurationMs)
                     if (!ScreenContinuousSourceEngine.writeAndForceRecordTxt(recordFile, info)) {
-                        keepFrameOrNoFrame(dir, attemptId, captured)
+                        gaps.recordDiagnostic("screen", "record not written", attemptId, captured)
                         continue
                     }
                     captureEndEpochMs = info.captureBounds(remuxResult.sampleDurationMs).second

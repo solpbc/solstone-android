@@ -203,6 +203,8 @@ data class GapNoticeRow(
     val count: Int,
     val firstEpochMs: Long,
     val lastEpochMs: Long,
+    /** Marker modification time for an imported legacy row. Retention uses [foundEpochMs]. */
+    val markerEpochMs: Long? = null,
 )
 
 sealed interface GapConversionState {
@@ -244,15 +246,58 @@ fun formatGapTechnicalDetails(
 fun formatGapTechnicalRow(row: GapNoticeRow, zone: ZoneId): String {
     val captured = row.capturedEpochMs?.let { formatGapLocalTime(it, zone) } ?: "unknown"
     val seen = if (row.seen) "seen" else "unseen"
-    return "${formatGapLocalTime(row.lastEpochMs, zone)} ${row.kind} ${row.source} ${row.reason} ${row.material} captured $captured $seen count ${row.count}"
+    val marked = row.markerEpochMs?.let { " marked ${formatGapLocalTime(it, zone)}" }.orEmpty()
+    return "${formatGapLocalTime(row.lastEpochMs, zone)} ${row.kind} ${row.source} ${row.reason} ${row.material} captured $captured $seen count ${row.count}$marked"
+}
+
+/**
+ * A material id for one draft or final folder. Day, stream, and folder stay distinct, the alphabet
+ * matches [gapMaterialOk], and a long id keeps a hash suffix so two folders cannot share a key.
+ */
+fun gapDraftMaterial(day: String, stream: String, folder: String): String {
+    fun piece(raw: String): String {
+        val cleaned = raw.map { ch ->
+            when {
+                ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '.' || ch == '_' || ch == '-' -> ch
+                else -> '_'
+            }
+        }.joinToString("")
+        return cleaned.ifEmpty { "x" }
+    }
+    val joined = "${piece(day)}.${piece(stream)}.${piece(folder)}"
+    if (joined.length <= 64 && gapMaterialOk(joined)) return joined
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(joined.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+        .take(12)
+    val room = (64 - digest.length - 1).coerceAtLeast(1)
+    val prefix = joined.take(room).trimEnd('.')
+    val candidate = "$prefix.$digest"
+    return if (gapMaterialOk(candidate)) candidate else digest
+}
+
+/** Draft and final folders are `{day}/{stream}/{folder}`. */
+fun gapMaterialForDraft(dir: Path): String {
+    val folder = dir.fileName?.toString().orEmpty()
+    val stream = dir.parent?.fileName?.toString().orEmpty()
+    val day = dir.parent?.parent?.fileName?.toString().orEmpty()
+    return gapDraftMaterial(day, stream, folder)
 }
 
 fun formatGapLocalTime(epochMs: Long, zone: ZoneId): String =
     Instant.ofEpochMilli(epochMs).atZone(zone).format(LOCAL_TIME)
 
-fun legacyMaterial(sha256: String): String {
+fun legacyMaterial(sha256: String, fileKey: String = ""): String {
     val hex = sha256.lowercase().filter { it in '0'..'9' || it in 'a'..'f' }
-    return if (hex.isEmpty()) "legacy-unreadable" else "legacy-${hex.take(12)}"
+    if (hex.isNotEmpty()) return "legacy-${hex.take(12)}"
+    return gapDraftMaterial("legacy", "unread", fileKey.ifEmpty { "file" })
+}
+
+/** Fact-folder name for one legacy cache file. An unreadable hash is keyed by that file, not shared. */
+fun legacyFactFolder(sha256: String, fileName: String): String {
+    val hex = sha256.lowercase().filter { it in '0'..'9' || it in 'a'..'f' }
+    if (hex.isNotEmpty()) return hex
+    return gapDraftMaterial("unread", "file", fileName)
 }
 
 /**

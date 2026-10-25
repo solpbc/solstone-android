@@ -308,11 +308,12 @@ internal fun PhoneObserverScreen(
     val statusOpen = paneStates.isOpen(PhonePane.STATUS)
     val shelfOpen = paneStates.isOpen(PhonePane.SHELF)
     val paneModel = paneStatus ?: status
+    val top = detailStack.toList().lastOrNull()
     val statusContentVisible = phoneStatusContentVisible(
         sheetOpen = statusOpen,
         pairingOpen = pairingOpen,
-        wide = widthClass != WidthClass.COMPACT,
-        pairedDetail = defaultDetailStatus is PhoneDefaultDetailStatus.Paired,
+        splitDrawn = renderSplit,
+        statusDetailForeground = top == null && defaultDetailStatus is PhoneDefaultDetailStatus.Paired,
     )
     LaunchedEffect(statusContentVisible) {
         onStatusContentVisible(statusContentVisible)
@@ -325,7 +326,6 @@ internal fun PhoneObserverScreen(
         }
         previousJournalSheetOpen = journalSheetOpen
     }
-    val top = detailStack.toList().lastOrNull()
     val popDetail = {
         val remaining = detailStack.toList().dropLast(1)
         detailStack = remaining.fold(PhoneRouteStack.Empty) { stack, route ->

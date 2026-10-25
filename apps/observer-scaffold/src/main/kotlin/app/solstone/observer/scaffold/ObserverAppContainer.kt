@@ -15,6 +15,7 @@ import app.solstone.core.model.SourceState
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.RecoveryPass
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.core.spool.emitDroppedRecoveryEvent
@@ -64,6 +65,7 @@ interface ObserverRuntimeContainer {
     val sources: SourceRegistry
     val backlogStatus: BacklogStatusReader
     val recoveryCompleted: Boolean
+    val noticesMayShow: Boolean get() = false
     val inFlightAudioIds: Set<String> get() = emptySet()
     fun setBackgroundStatusRefreshListener(listener: (() -> Unit)?)
     fun rehydrateInBackground()
@@ -196,6 +198,9 @@ class ObserverAppContainer(
     )
     @Volatile override var recoveryCompleted: Boolean = false
         private set
+    @Volatile override var noticesMayShow: Boolean = false
+        private set
+    @Volatile private var recoveryClosed = false
     override val inFlightAudioIds: Set<String>
         get() = captureSetup.inFlightAudioIds()
     val inFlightScreenIds: Set<String>
@@ -267,60 +272,86 @@ class ObserverAppContainer(
                 destroyLock.notifyAll()
             }
         }
+        controller.onPairingCommitted = { applyPairedJournal() }
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
-            var milestoneReady = true
-            val finished = runCatching {
-                val gaps = captureSetup.gaps
-                val filesDir = context.filesDir.toPath()
-                val unknown = mutableListOf<String>()
-                if (gaps != null) {
-                    gaps.conversion(
-                        listOf(
-                            "audio" to filesDir.resolve("audio-interruption"),
-                            "other" to filesDir.resolve("other-interruption"),
-                            "unknown" to filesDir.resolve("unknown-interruption"),
-                            "screen" to filesDir.resolve("screen-interruption"),
-                        ),
-                    )
-                    val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
-                    val journal = if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
-                    gaps.journalId(journal)
-                }
-                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
-                captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds())
-                captureSetup.recoverScreen(spoolDir, database.segmentDao(), captureSetup.inFlightScreenIds())
-                if (gaps != null) {
-                    val events = applyRecoveryActions(
-                        RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
-                        gaps,
-                        unknown,
-                        filesDir,
-                    )
-                    events.forEach { event ->
-                        runCatching { emitDroppedRecoveryEvent(event, gapListener) }
+            val gaps = captureSetup.gaps
+            val filesDir = context.filesDir.toPath()
+            val unknown = mutableListOf<String>()
+            val pass = RecoveryPass { recoveryClosed }
+            pass.run(
+                steps = listOf(
+                    {
+                        gaps?.conversion(
+                            listOf(
+                                "audio" to filesDir.resolve("audio-interruption"),
+                                "other" to filesDir.resolve("other-interruption"),
+                                "unknown" to filesDir.resolve("unknown-interruption"),
+                                "screen" to filesDir.resolve("screen-interruption"),
+                            ),
+                        )
+                    },
+                    { gaps?.journalId(committedJournalId()) },
+                    {
+                        SpoolRoomReconciler(spoolDir, database.segmentDao()) { line ->
+                            Log.w("SpoolRoomReconciler", line)
+                        }.reconcile()
+                    },
+                    { captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds()) },
+                    { captureSetup.recoverScreen(spoolDir, database.segmentDao(), captureSetup.inFlightScreenIds()) },
+                    {
+                        val events = applyRecoveryActions(
+                            RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
+                            gaps,
+                            unknown,
+                            filesDir,
+                        )
+                        events.forEach { event -> emitDroppedRecoveryEvent(event, gapListener) }
+                    },
+                    {
+                        SpoolRoomReconciler(spoolDir, database.segmentDao()) { line ->
+                            Log.w("SpoolRoomReconciler", line)
+                        }.reconcile()
+                    },
+                ),
+                openNotices = {
+                    val store = gaps
+                    if (store == null) {
+                        false
+                    } else {
+                        val swept = runCatching { store.sweepMilestone(unknown.toList()) }.getOrDefault(false)
+                        gapPassCompleted(swept, runCatching { store.isOpened() }.getOrDefault(false))
                     }
-                }
-                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
-                if (gaps != null) {
-                    val swept = gaps.sweepMilestone(unknown)
-                    milestoneReady = gapPassCompleted(swept, gaps.isOpened())
-                }
-            }.isSuccess
-            if (finished && milestoneReady) {
-                recoveryCompleted = true
-                journalCacheCoordinator.requestImmediatePass()
-                ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
-                deferredStartMode?.let { mode ->
-                    deferredStartMode = null
-                    controller.reconcile(mode)
-                }
+                },
+            )
+            if (!pass.passEnded) return@execute
+            recoveryCompleted = true
+            noticesMayShow = pass.noticesMayShow
+            journalCacheCoordinator.requestImmediatePass()
+            ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
+            deferredStartMode?.let { mode ->
+                deferredStartMode = null
+                controller.reconcile(mode)
             }
         }
     }
 
+    /** A pairing that commits now, not at the next process start. */
+    fun applyPairedJournal() {
+        background.execute {
+            if (recoveryClosed) return@execute
+            captureSetup.gaps?.journalId(committedJournalId())
+        }
+    }
+
+    private fun committedJournalId(): String? {
+        val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
+        return if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
+    }
+
     override fun close() {
+        recoveryClosed = true
         ObserverForegroundService.onDestroyCallback = null
         journalCacheCoordinator.close()
         mainHandler.removeCallbacks(pollRunnable)
@@ -433,6 +464,7 @@ class ObserverAppContainer(
             spoolWriter = FileSpoolWriter(
                 baseDir = spoolDir,
                 occupiedLeaves = { day, stream -> database.segmentDao().occupiedDirSegments(day, stream) },
+                gaps = captureSetup.gaps,
             ),
             sealedSink = syncingOnSeal(RoomSealedSegmentSink(database.segmentDao())) { controller.syncNow() },
             payloadBytes = captureSetup.payloadBytesProvider,

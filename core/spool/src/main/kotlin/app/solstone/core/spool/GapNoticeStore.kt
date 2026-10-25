@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.SecureRandom
 import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface GapRead {
     data class Ready(val rows: List<GapNoticeRow>) : GapRead
@@ -53,6 +54,7 @@ class GapNoticeStore(
     private val journalPath get() = directory.resolve(JOURNAL_ID)
     private val openedPath get() = directory.resolve(OPENED)
     private val conversionPath get() = directory.resolve(CONVERSION)
+    private val seenMaterialsPath get() = directory.resolve(SEEN_MATERIALS)
     private val lockPath get() = directory.resolve(LOCK)
 
     fun recordLoss(source: String, reason: String, material: String, capturedEpochMs: Long?): Boolean {
@@ -66,15 +68,16 @@ class GapNoticeStore(
                     return@exclusive true
                 }
                 val now = clock()
-                val row = newRow("loss", source, reason, material, capturedEpochMs, now, seen = false)
+                val seen = seenMaterialKey(source, material) in readSeenMaterialKeys()
+                val row = newRow("loss", source, reason, material, capturedEpochMs, now, seen = seen)
                 pending += row
-                writeEvents(prune(loaded.rows + row, now, zone()))
+                commitRows(loaded.rows + row, now)
                 true
             }
         } catch (_: Exception) {
             false
         }
-        if (ok) emit(pending)
+        if (ok) emit(pending) else noteLossWriteFailed(source, reason, material)
         return ok
     }
 
@@ -93,7 +96,7 @@ class GapNoticeStore(
                     newRow("diagnostic", source, reason, material, capturedEpochMs, now, seen = false).also { rows += it }
                 }
                 pending += row
-                writeEvents(prune(rows, now, zone()))
+                commitRows(rows, now)
                 true
             }
         } catch (_: Exception) {
@@ -116,7 +119,7 @@ class GapNoticeStore(
                 val updated = loaded.rows.map { row ->
                     if (row.kind == "loss" && row.id in lossIds) row.copy(seen = true) else row
                 }
-                if (loaded.replaced || updated != loaded.rows) writeEvents(prune(updated, clock(), zone()))
+                if (loaded.replaced || updated != loaded.rows) commitRows(updated, clock())
                 val seen = readKeys(unknownSeenPath).toMutableSet()
                 seen += unknownKeys
                 writeKeys(unknownSeenPath, seen)
@@ -138,11 +141,12 @@ class GapNoticeStore(
                         val row = unreadableRow()
                         pending += row
                         quarantine()
-                        writeEvents(prune(listOf(row), clock(), zone))
+                        commitRows(listOf(row), clock())
                         GapRead.Ready(listOf(row))
                     }
                     is Loaded.Rows -> {
                         val pruned = prune(loaded.rows, clock(), zone)
+                        rememberPrunedSeenLosses(loaded.rows, pruned)
                         if (pruned != loaded.rows) writeEvents(pruned)
                         GapRead.Ready(pruned)
                     }
@@ -186,6 +190,7 @@ class GapNoticeStore(
                     return@exclusive line
                 }
                 var rows = loadForWrite(pending).rows
+                var converted = 0
                 for ((source, path) in present) {
                     if (source !in GAP_SOURCES) continue
                     val already = rows.any {
@@ -195,14 +200,17 @@ class GapNoticeStore(
                         Files.deleteIfExists(path)
                         continue
                     }
-                    val found = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrElse { clock() }
-                    val row = newRow("legacy", source, "legacy marker", "marker", null, found, seen = false)
+                    val markerTime = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrElse { clock() }
+                    val now = clock()
+                    val row = newRow("legacy", source, "legacy marker", "marker", null, now, seen = true)
+                        .copy(markerEpochMs = markerTime)
                     rows = rows + row
-                    writeEvents(prune(rows, clock(), zone()))
+                    commitRows(rows, now)
                     pending += row
+                    converted += 1
                     Files.deleteIfExists(path)
                 }
-                val line = "complete ${present.size}"
+                val line = "complete $converted"
                 writeText(conversionPath, line)
                 line
             }
@@ -295,7 +303,7 @@ class GapNoticeStore(
                     val rows = loadForWrite(pending).rows.map { row ->
                         if (row.kind == "loss") row.copy(seen = true) else row
                     }
-                    writeEvents(prune(rows, clock(), zone()))
+                    commitRows(rows, clock())
                     writeKeys(unknownItemsPath, clean)
                     writeKeys(unknownSeenPath, clean.toSet())
                     writeBytes(openedPath, ByteArray(0))
@@ -377,6 +385,39 @@ class GapNoticeStore(
 
     private fun inputsOk(source: String, reason: String, material: String): Boolean =
         source in GAP_SOURCES && reason in GAP_REASONS && gapMaterialOk(material)
+
+    private fun commitRows(rows: List<GapNoticeRow>, now: Long) {
+        val pruned = prune(rows, now, zone())
+        rememberPrunedSeenLosses(rows, pruned)
+        writeEvents(pruned)
+    }
+
+    private fun rememberPrunedSeenLosses(before: List<GapNoticeRow>, after: List<GapNoticeRow>) {
+        val kept = after.map { it.id }.toSet()
+        val dropped = before.filter { it.kind == "loss" && it.seen && it.id !in kept }
+        if (dropped.isEmpty()) return
+        val keys = readSeenMaterialKeys().toMutableSet()
+        var changed = false
+        for (row in dropped) {
+            changed = keys.add(seenMaterialKey(row.source, row.material)) || changed
+        }
+        if (changed) writeSeenMaterialKeys(keys)
+    }
+
+    private fun readSeenMaterialKeys(): Set<String> =
+        readKeys(seenMaterialsPath).filter { it.contains('\t') }.toSet()
+
+    private fun writeSeenMaterialKeys(keys: Set<String>) {
+        writeKeys(seenMaterialsPath, keys)
+    }
+
+    private fun noteLossWriteFailed(source: String, reason: String, material: String) {
+        try {
+            listener("loss", source, reason, material)
+        } catch (_: Exception) {
+            // The event log is best-effort. The material stays where it was.
+        }
+    }
 
     private fun writeEvents(rows: List<GapNoticeRow>) {
         writeBytes(eventsPath, encode(rows))
@@ -492,14 +533,22 @@ class GapNoticeStore(
         // lock while that flag is set, and the row would never land.
         val wasInterrupted = Thread.interrupted()
         try {
-            synchronized(this) {
+            // One monitor per directory per process, taken before the file lock.
+            // Two store instances otherwise throw OverlappingFileLockException instead of waiting.
+            // The normalized path is agreed before the directory exists. The real path is taken
+            // after create, and both monitors are held across the file lock.
+            val preliminary = directory.toAbsolutePath().normalize().toString()
+            synchronized(monitorFor(preliminary)) {
                 Files.createDirectories(directory)
-                FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-                    val lock = channel.lock()
-                    try {
-                        return block()
-                    } finally {
-                        lock.release()
+                val real = runCatching { directory.toRealPath().normalize().toString() }.getOrElse { preliminary }
+                synchronized(monitorFor(real)) {
+                    FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+                        val lock = channel.lock()
+                        try {
+                            return block()
+                        } finally {
+                            lock.release()
+                        }
                     }
                 }
             }
@@ -515,7 +564,12 @@ class GapNoticeStore(
         const val JOURNAL_ID = "journal-id"
         const val OPENED = "opened"
         const val CONVERSION = "conversion"
+        const val SEEN_MATERIALS = "seen-materials"
         const val LOCK = "writer.lock"
+
+        private val directoryMonitors = ConcurrentHashMap<String, Any>()
+
+        private fun monitorFor(key: String): Any = directoryMonitors.computeIfAbsent(key) { Any() }
 
         private val ID_PATTERN = Regex("[0-9a-f]{32}")
         private val random = SecureRandom()
@@ -528,10 +582,12 @@ class GapNoticeStore(
     }
 }
 
+internal fun seenMaterialKey(source: String, material: String): String = "$source\t$material"
+
 internal fun parseGapLine(line: String): GapNoticeRow? {
     if (line.isEmpty() || line.contains('\r')) return null
     val parts = line.split('\t')
-    if (parts.size != 11) return null
+    if (parts.size != 11 && parts.size != 12) return null
     val id = parts[0]
     val kind = parts[1]
     val source = parts[2]
@@ -554,13 +610,14 @@ internal fun parseGapLine(line: String): GapNoticeRow? {
     if (count < 1) return null
     val first = parts[9].toLongOrNull() ?: return null
     val last = parts[10].toLongOrNull() ?: return null
-    return GapNoticeRow(id, kind, source, reason, material, captured, found, seen, count, first, last)
+    val marker = if (parts.size == 12) parts[11].toLongOrNull() ?: return null else null
+    return GapNoticeRow(id, kind, source, reason, material, captured, found, seen, count, first, last, marker)
 }
 
 internal fun encodeGapRows(rows: List<GapNoticeRow>): ByteArray {
     if (rows.isEmpty()) return ByteArray(0)
     val text = rows.joinToString("\n", postfix = "\n") { row ->
-        listOf(
+        val fields = mutableListOf(
             row.id,
             row.kind,
             row.source,
@@ -572,7 +629,9 @@ internal fun encodeGapRows(rows: List<GapNoticeRow>): ByteArray {
             row.count.toString(),
             row.firstEpochMs.toString(),
             row.lastEpochMs.toString(),
-        ).joinToString("\t")
+        )
+        if (row.markerEpochMs != null) fields += row.markerEpochMs.toString()
+        fields.joinToString("\t")
     }
     return text.toByteArray(StandardCharsets.UTF_8)
 }

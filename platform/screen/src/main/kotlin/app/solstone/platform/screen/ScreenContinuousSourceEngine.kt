@@ -159,16 +159,22 @@ class ScreenContinuousSourceEngine(
         synchronized(lifecycleLock) {
             if (activeRun === run) running.set(false)
         }
-        if (run.ended.compareAndSet(false, true) && sessionHolder.stopIfGeneration(run.generation)) {
-            // Storage attention follows actual free space after it recovers.
+        if (!run.ended.compareAndSet(false, true)) return
+        val failed = run.failed || run.failure.get() != null
+        // The stopper may already have stopped the session. The failure still belongs to this run.
+        if (failed) {
             synchronized(lifecycleLock) {
-                if (activeRun === run) {
-                    failedReason = if (run.failed || run.failure.get() != null) ReasonCode.SCREEN_CAPTURE_FAILED else null
-                }
+                if (activeRun === run) failedReason = ReasonCode.SCREEN_CAPTURE_FAILED
             }
-            if (run.floor) onFloorTripped?.invoke()
-            else if (run.failed || run.failure.get() != null) onFailed?.invoke()
         }
+        if (!sessionHolder.stopIfGeneration(run.generation)) return
+        if (!failed) {
+            synchronized(lifecycleLock) {
+                if (activeRun === run) failedReason = null
+            }
+        }
+        if (run.floor) onFloorTripped?.invoke()
+        else if (failed) onFailed?.invoke()
     }
 
     private fun fail(run: Run, error: Throwable) {

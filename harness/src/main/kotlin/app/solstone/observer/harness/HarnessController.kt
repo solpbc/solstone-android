@@ -75,6 +75,7 @@ class HarnessController(
     // Whether the foreground service is up and holding its capture types — intake that started.
     private val foregroundServiceLive: () -> Boolean = { ObserverForegroundService.heldCaptureForegroundTypes != null },
     var mediaProjectionPromotable: () -> Boolean = { false },
+    var onPairingCommitted: (() -> Unit)? = null,
 ) {
 
     var desiredOn: Boolean
@@ -321,7 +322,7 @@ class HarnessController(
             }
         }
         if (result != null && result.pairStatus in 200..299 && result.statusStatus in 200..299) {
-            opportunisticSync?.onPairingSuccess()
+            notePairingCommitted()
         }
         return result
     }
@@ -351,7 +352,7 @@ class HarnessController(
             outcome.result.pairStatus in 200..299 &&
             outcome.result.statusStatus in 200..299
         ) {
-            opportunisticSync?.onPairingSuccess()
+            notePairingCommitted()
         }
         return outcome
     }
@@ -369,6 +370,11 @@ class HarnessController(
             // gone, so this is the same repair path as a journal-side revocation.
             HarnessPlStatus.NotPaired -> null
         }
+    }
+
+    private fun notePairingCommitted() {
+        opportunisticSync?.onPairingSuccess()
+        onPairingCommitted?.invoke()
     }
 
     fun dispatchPairLink(rawText: String?): PairLinkDispatchResult {

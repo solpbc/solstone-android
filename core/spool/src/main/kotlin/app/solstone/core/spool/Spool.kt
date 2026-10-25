@@ -78,6 +78,7 @@ class FileSpoolWriter(
     private val baseDir: Path,
     private val fsync: (Path) -> Unit = ::forcePath,
     private val occupiedLeaves: (day: String, stream: String) -> Set<String> = { _, _ -> emptySet() },
+    private val gaps: GapNoticeStore? = null,
 ) : SpoolWriter {
     override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
         val leaf = when (val selection = selectDirLeaf(segment, payloadBytes)) {
@@ -94,7 +95,9 @@ class FileSpoolWriter(
         requireSingleLeaf(draftDir, baseDir.resolve(".draft").resolve(segment.key.day).resolve(segment.stream), leaf)
         requireSingleLeaf(finalDir, baseDir.resolve(segment.key.day).resolve(segment.stream), leaf)
         Files.createDirectories(draftDir.parent)
-        if (Files.exists(draftDir)) draftDir.deleteRecursively()
+        if (Files.exists(draftDir) && !retireExistingDraft(draftDir, segment, payloadBytes, leaf)) {
+            throw java.io.IOException("existing draft kept")
+        }
         Files.createDirectories(draftDir)
 
         val files = segment.payloads.map { payload ->
@@ -144,6 +147,76 @@ class FileSpoolWriter(
         cleanupEmptyDraftParents(draftDir)
         return SealResult(manifest = manifest, directory = finalDir, state = SealState.SEALED)
     }
+
+    /**
+     * A draft already at this leaf is not the segment being sealed. Identical payload bytes are
+     * removed with no loss. Anything else is recorded before it is destroyed. A failed record
+     * leaves the draft in place and the seal does not write into it.
+     */
+    private fun retireExistingDraft(
+        draftDir: Path,
+        segment: SealedSegment,
+        payloadBytes: PayloadBytesProvider,
+        leaf: String,
+    ): Boolean {
+        if (draftMatchesIncoming(draftDir, segment, payloadBytes)) {
+            draftDir.deleteRecursively()
+            return !Files.exists(draftDir)
+        }
+        val material = gapDraftMaterial(segment.key.day, segment.stream, leaf)
+        val recorded = if (draftHasPayloadBytes(draftDir)) {
+            gaps?.recordLoss("spool", "undeliverable", material, segment.wireKeys.startEpochMs) == true
+        } else {
+            gaps?.recordDiagnostic("spool", "empty draft", material, null) == true
+        }
+        if (!recorded) return false
+        draftDir.deleteRecursively()
+        return !Files.exists(draftDir)
+    }
+
+    private fun draftMatchesIncoming(
+        draftDir: Path,
+        segment: SealedSegment,
+        payloadBytes: PayloadBytesProvider,
+    ): Boolean {
+        val names = runCatching {
+            Files.list(draftDir).use { stream ->
+                stream.filter { Files.isRegularFile(it) && it.fileName.toString() != "manifest" }
+                    .map { it.fileName.toString() }
+                    .toList()
+            }
+        }.getOrNull() ?: return false
+        if (names.toSet() != segment.payloads.map { it.ref.name }.toSet()) return false
+        return segment.payloads.all { payload ->
+            val file = draftDir.resolve(payload.ref.name)
+            if (file.normalize().parent != draftDir.normalize()) return false
+            val onDisk = runCatching { app.solstone.core.segment.sha256(file) }.getOrNull() ?: return false
+            val incoming = runCatching {
+                payloadBytes.open(payload).use { input ->
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        digest.update(buffer, 0, read)
+                    }
+                    digest.digest().joinToString("") { "%02x".format(it) }
+                }
+            }.getOrNull() ?: return false
+            onDisk == incoming
+        }
+    }
+
+    private fun draftHasPayloadBytes(draftDir: Path): Boolean = runCatching {
+        Files.list(draftDir).use { stream ->
+            stream.anyMatch { path ->
+                if (!Files.isRegularFile(path)) return@anyMatch false
+                val name = path.fileName.toString()
+                if (name == "manifest") return@anyMatch false
+                if (name == "capture.adts") adtsFileExisted(path) else Files.size(path) > 0L
+            }
+        }
+    }.getOrDefault(true)
 
     private fun syncFinalPublication(finalDir: Path) {
         var current: Path? = finalDir

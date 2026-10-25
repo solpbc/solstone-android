@@ -24,10 +24,10 @@ import app.solstone.core.pl.looksLikePairLink
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.RecoveryPass
 import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.core.spool.emitDroppedRecoveryEvent
-import app.solstone.core.spool.gapPassCompleted
 import app.solstone.platform.identity.file.CommitMarkerStatus
 import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.formfactor.glasses.StillQrDecoder
@@ -198,7 +198,10 @@ class GlassesAppContainer(
             },
             isUsableNetworkPresent = flavor.isUsableNetworkPresent,
             nowSeconds = ::nowSeconds,
-            onPairingCommitted = { mainHandler.post { GlassesHarnessRuntime.onPairingCommitted?.invoke() } },
+            onPairingCommitted = {
+                applyPairedJournal()
+                mainHandler.post { GlassesHarnessRuntime.onPairingCommitted?.invoke() }
+            },
         ),
     )
     private val cuePoller = StatusCuePoller({ cueSnapshot(controller) }, flavor.audioFeedback)
@@ -219,6 +222,8 @@ class GlassesAppContainer(
     var recoveryCompleted: Boolean = false
         private set
 
+    @Volatile private var recoveryClosed = false
+
     init {
         // Keep the flavor seam observable for mock tests; WorkManager UPDATE keeps this idempotent.
         controller.schedulePeriodicSync()
@@ -226,46 +231,50 @@ class GlassesAppContainer(
             "GlassesPower",
             "oem guidance ${flavor.oemGuidance.id} autostartAvailable=${flavor.oemGuidance.autostartAvailable}",
         )
+        controller.onPairingCommitted = { applyPairedJournal() }
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
         funnel.execute("recovery") {
-            var milestoneReady = true
-            val finished = runCatching {
-                val gaps = captureSetup.gaps
-                val filesDir = context.filesDir.toPath()
-                val unknown = mutableListOf<String>()
-                if (gaps != null) {
-                    gaps.conversion(
-                        listOf(
-                            "audio" to filesDir.resolve("audio-interruption"),
-                            "other" to filesDir.resolve("other-interruption"),
-                            "unknown" to filesDir.resolve("unknown-interruption"),
-                        ),
-                    )
-                    val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
-                    val journal = if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
-                    gaps.journalId(journal)
-                }
-                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
-                captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds())
-                if (gaps != null) {
-                    val events = applyRecoveryActions(
-                        RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
-                        gaps,
-                        unknown,
-                        filesDir,
-                    )
-                    events.forEach { event ->
-                        runCatching { emitDroppedRecoveryEvent(event, gapListener) }
-                    }
-                }
-                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
-                if (gaps != null) {
-                    val swept = gaps.sweepMilestone(unknown)
-                    milestoneReady = gapPassCompleted(swept, gaps.isOpened())
-                }
-            }.isSuccess
-            if (!finished || !milestoneReady) return@execute
+            val gaps = captureSetup.gaps
+            val filesDir = context.filesDir.toPath()
+            val unknown = mutableListOf<String>()
+            val pass = RecoveryPass { recoveryClosed }
+            pass.run(
+                listOf(
+                    {
+                        gaps?.conversion(
+                            listOf(
+                                "audio" to filesDir.resolve("audio-interruption"),
+                                "other" to filesDir.resolve("other-interruption"),
+                                "unknown" to filesDir.resolve("unknown-interruption"),
+                            ),
+                        )
+                    },
+                    { gaps?.journalId(committedJournalId()) },
+                    {
+                        SpoolRoomReconciler(spoolDir, database.segmentDao()) { line ->
+                            GlassesDiagLog.appendRaw(line)
+                        }.reconcile()
+                    },
+                    { captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds()) },
+                    {
+                        val events = applyRecoveryActions(
+                            RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
+                            gaps,
+                            unknown,
+                            filesDir,
+                        )
+                        events.forEach { event -> emitDroppedRecoveryEvent(event, gapListener) }
+                    },
+                    {
+                        SpoolRoomReconciler(spoolDir, database.segmentDao()) { line ->
+                            GlassesDiagLog.appendRaw(line)
+                        }.reconcile()
+                    },
+                    { gaps?.sweepMilestone(unknown.toList()) },
+                ),
+            )
+            if (!pass.passEnded) return@execute
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
@@ -273,7 +282,20 @@ class GlassesAppContainer(
         }
     }
 
+    fun applyPairedJournal() {
+        funnel.execute("paired-journal") {
+            if (recoveryClosed) return@execute
+            captureSetup.gaps?.journalId(committedJournalId())
+        }
+    }
+
+    private fun committedJournalId(): String? {
+        val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
+        return if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
+    }
+
     override fun close() {
+        recoveryClosed = true
         journalCacheCoordinator.close()
         stopPhotoPairWatch()
         mainHandler.removeCallbacks(pollRunnable)
@@ -421,6 +443,7 @@ class GlassesAppContainer(
             spoolWriter = FileSpoolWriter(
                 spoolDir,
                 occupiedLeaves = { day, stream -> database.segmentDao().occupiedDirSegments(day, stream) },
+                gaps = captureSetup.gaps,
             ),
             sealedSink = syncingOnSeal(RoomSealedSegmentSink(database.segmentDao())) { controller.syncNow() },
             payloadBytes = captureSetup.payloadBytesProvider,

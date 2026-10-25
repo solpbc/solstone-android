@@ -362,6 +362,46 @@ class AudioRecoveryManagerTest {
     }
 
     @Test
+    fun aFailedLossWriteLeavesARemuxThatProducedNothing() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val dir = attempt(audioDir, "rec-zero", "bytes".encodeToByteArray())
+        val gaps = GapNoticeStore(File(root, "gap").toPath(), beforeWrite = { path ->
+            if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+        })
+        manager(root, audioDir, gaps).recover()
+        assertTrue(dir.exists())
+        assertFalse(gapLossFactExists(dir.toPath()))
+    }
+
+    @Test
+    fun twoUnreadableLegacyFilesEachKeepACopyAndAFact() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val cache = File(root, "cache/audio-source").apply { mkdirs() }
+        val first = File(cache, "a.m4a").apply { writeBytes("one".encodeToByteArray()) }
+        val second = File(cache, "b.m4a").apply { writeBytes("two".encodeToByteArray()) }
+        val gaps = gapsOf(root)
+        AudioRecoveryManager(
+            audioDir, cache, tempDirectory().toPath(), { _, _ -> emptySet() },
+            AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+            FakeSealedSegmentSink(), gaps, FakeRemuxer(0L),
+            hashFile = { "" },
+        ).recover()
+        assertFalse(first.exists())
+        assertFalse(second.exists())
+        val losses = rows(gaps).filter { it.kind == "loss" }
+        assertEquals(2, losses.size)
+        assertEquals(2, losses.map { it.material }.toSet().size)
+        val copies = File(audioDir, "legacy").listFiles()?.filter { it.isDirectory }.orEmpty()
+        assertEquals(2, copies.size)
+        assertTrue(copies.all { gapLossFactExists(it.toPath()) })
+        val names = copies.flatMap { it.listFiles()?.map { file -> file.name }.orEmpty() }
+        assertTrue(names.contains("a.m4a"))
+        assertTrue(names.contains("b.m4a"))
+    }
+
+    @Test
     fun legacyCoordinatesMatchDeletesCacheFileWithoutMark() {
         val root = tempDirectory()
         val spoolDir = tempDirectory().toPath()

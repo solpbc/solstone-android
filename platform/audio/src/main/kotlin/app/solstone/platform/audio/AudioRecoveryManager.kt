@@ -19,6 +19,7 @@ import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealedSegmentSink
 import app.solstone.core.spool.adtsFileExisted
 import app.solstone.core.spool.gapLossFactExists
+import app.solstone.core.spool.legacyFactFolder
 import app.solstone.core.spool.legacyMaterial
 import app.solstone.core.spool.payloadBytesExisted
 import app.solstone.core.spool.writeGapLossFact
@@ -124,6 +125,9 @@ class AudioRecoveryManager(
     private val remuxer: AacAdtsRemuxer,
     private val isReadableM4aProbe: (File) -> Boolean = { isReadableM4a(it) },
     private val nowProvider: () -> Long = System::currentTimeMillis,
+    private val hashFile: (File) -> String = { file ->
+        runCatching { sha256(file.toPath()) }.getOrNull().orEmpty()
+    },
 ) {
     fun recover(inFlightIds: Set<String> = emptySet()) {
         recoverAttemptDirectories(inFlightIds)
@@ -134,7 +138,7 @@ class AudioRecoveryManager(
         if (!audioSourceDir.exists() || !audioSourceDir.isDirectory) return
         val dirs = audioSourceDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return
 
-        val spoolWriter = FileSpoolWriter(spoolDir, occupiedLeaves = occupiedLeaves)
+        val spoolWriter = FileSpoolWriter(spoolDir, occupiedLeaves = occupiedLeaves, gaps = gaps)
 
         for (dir in dirs) {
             val attemptId = dir.name
@@ -285,23 +289,23 @@ class AudioRecoveryManager(
         val legacyDir = File(audioSourceDir, "legacy")
 
         for (file in files) {
-            val fileSha256 = runCatching { sha256(file.toPath()) }.getOrNull() ?: ""
+            val fileSha256 = hashFile(file)
 
             if (fileSha256.isNotEmpty() && lookup.legacyManifestCoordinatesMatch(fileSha256)) {
                 file.delete()
                 continue
             }
 
-            val shaKey = if (fileSha256.isNotEmpty()) fileSha256 else "unreadable"
-            val factDir = File(legacyDir, shaKey)
+            val factDir = File(legacyDir, legacyFactFolder(fileSha256, file.name))
             if (gapLossFactExists(factDir.toPath())) {
                 file.delete()
                 continue
             }
             val hasBytes = file.length() > 0L
+            val material = legacyMaterial(fileSha256, file.name)
             if (!hasBytes) {
-                gaps.recordDiagnostic("audio", "no bytes", legacyMaterial(fileSha256), null)
-            } else if (!gaps.recordLoss("audio", "undeliverable", legacyMaterial(fileSha256), null)) {
+                gaps.recordDiagnostic("audio", "no bytes", material, null)
+            } else if (!gaps.recordLoss("audio", "undeliverable", material, null)) {
                 continue
             }
 
@@ -346,8 +350,7 @@ class AudioRecoveryManager(
     private fun deleteUndeliverableOrEmpty(dir: File, attemptId: String, captured: Long?) {
         if (audioAttemptExisted(dir)) {
             if (gaps.recordLoss("audio", "undeliverable", attemptId, captured)) dir.deleteRecursively()
-        } else {
-            gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)
+        } else if (gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)) {
             dir.deleteRecursively()
         }
     }

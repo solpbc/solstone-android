@@ -10,6 +10,8 @@ import app.solstone.core.spool.GAP_TODAY
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
+import app.solstone.observer.formfactor.phone.statusPillText
+import java.time.Instant
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.platform.identity.file.CommitMarkerStatus
@@ -35,12 +37,14 @@ class ColdGapStatusTest {
             val zone = ZoneId.systemDefault()
             val store = GapNoticeStore(File(files, "gap").toPath(), clock = { now }, zone = { zone })
             assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", now))
+            val closed = coldPhoneStatus(files, cache, now, zone)
+            assertFalse(closed.gateOpen)
+            assertFalse(statusPillText(closed, now, zone) == GAP_HEADLINE)
+            File(files, "gap/opened").writeBytes(ByteArray(0))
             val status = coldPhoneStatus(files, cache, now, zone)
             assertTrue(status.paired)
-            assertTrue(status.online)
-            assertEquals(0, status.pendingCount)
+            assertFalse(status.connectivityKnown)
             assertFalse(status.awaitingMarkConfirmation)
-            assertTrue(status.recoveryCompleted)
             assertTrue(status.gateOpen)
             val rendered = render(status)
             assertEquals(GAP_HEADLINE, rendered.syncText)
@@ -73,17 +77,18 @@ class ColdGapStatusTest {
             )
             val clean = coldPhoneStatus(files, cache, now, zone)
             val rendered = render(clean)
-            assertEquals("connected", rendered.syncText)
+            assertEquals("", rendered.syncText)
             assertNull(rendered.syncDetail)
             assertFalse(rendered.needsAttention)
             assertFalse(rendered.syncText.contains("syncing"))
+            assertFalse(rendered.syncText == "connected")
         } finally {
             root.deleteRecursively()
         }
     }
 
     @Test
-    fun theLiveGateStaysClosedUntilRecoveryAndConversionBothFinish() {
+    fun theLiveGateReadsTheStoredOpeningAndAFailedConversionDoesNotHoldIt() {
         val root = Files.createTempDirectory("live-gate").toFile()
         try {
             val files = File(root, "files")
@@ -92,23 +97,93 @@ class ColdGapStatusTest {
             val store = GapNoticeStore(File(files, "gap").toPath(), clock = { now }, zone = { zone })
             assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", now))
             assertTrue(store.rewriteUnknown(listOf("draft/leaf")))
-            val before = liveGapStatus(files, recoveryCompleted = true, now, zone)
+            val before = liveGapStatus(files, noticesMayShow = true, now, zone)
             assertFalse(before.gateOpen)
             assertTrue(before.losses.isEmpty())
             assertFalse(before.unknownPresent)
+            assertTrue(before.technicalDetails.startsWith("not run"))
 
-            assertEquals("complete 0", store.conversion(emptyList()))
-            val waiting = liveGapStatus(files, recoveryCompleted = false, now, zone)
+            File(files, "gap/opened").writeBytes(ByteArray(0))
+            val waiting = liveGapStatus(files, noticesMayShow = false, now, zone)
             assertFalse(waiting.gateOpen)
             assertTrue(waiting.losses.isEmpty())
 
-            val open = liveGapStatus(files, recoveryCompleted = true, now, zone)
+            File(files, "gap/conversion").writeText("failed IOException\n")
+            val open = liveGapStatus(files, noticesMayShow = true, now, zone)
             assertTrue(open.gateOpen)
             assertEquals(1, open.losses.size)
             assertFalse(open.losses.single().seen)
             assertTrue(open.unknownPresent)
             assertTrue(open.unknownUnseen)
             assertEquals(listOf("draft/leaf"), open.unseenUnknownKeys)
+            assertTrue(open.technicalDetails.startsWith("failed IOException"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aColdRedrawKeepsTheLastStatusLineAndDropsTheGapWhenTheWindowEnds() {
+        val root = Files.createTempDirectory("cold-remembered").toFile()
+        try {
+            val files = File(root, "files")
+            val cache = File(root, "cache")
+            commit(files)
+            val zone = ZoneId.of("UTC")
+            val now = Instant.parse("2026-10-25T15:00:00Z").toEpochMilli()
+            val found = Instant.parse("2026-10-17T15:00:00Z").toEpochMilli()
+            var clock = found
+            val store = GapNoticeStore(File(files, "gap").toPath(), clock = { clock }, zone = { zone })
+            assertTrue(store.recordLoss("audio", "undeliverable", "rec-old", found))
+            File(files, "gap/opened").writeBytes(ByteArray(0))
+            rememberWidgetSyncText(files, "3 syncing")
+            rememberWidgetSyncText(files, GAP_HEADLINE)
+            assertEquals("3 syncing", File(files, WIDGET_SYNC_LINE).readText())
+            val later = coldPhoneStatus(files, cache, now, zone)
+            assertEquals("3 syncing", statusPillText(later, now, zone))
+            assertFalse(statusPillText(later, now, zone) == GAP_HEADLINE)
+
+            clock = now
+            assertTrue(store.recordLoss("audio", "undeliverable", "rec-new", now))
+            val during = coldPhoneStatus(files, cache, now, zone)
+            assertEquals(GAP_HEADLINE, statusPillText(during, now, zone))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun anUnreadableGapStoreSaysSoAndAMissingOneHasNotRun() {
+        val root = Files.createTempDirectory("gap-unreadable").toFile()
+        try {
+            val files = File(root, "files").apply { mkdirs() }
+            val now = System.currentTimeMillis()
+            val zone = ZoneId.of("UTC")
+            File(files, "gap").writeText("blocked")
+            assertEquals("unreadable", liveGapStatus(files, noticesMayShow = true, now, zone).technicalDetails)
+            assertEquals("unreadable", coldPhoneStatus(files, File(root, "cache"), now, zone).gapTechnicalDetails)
+            val fresh = File(root, "fresh")
+            assertEquals("not run", liveGapStatus(fresh, noticesMayShow = true, now, zone).technicalDetails)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun custodyUnprovenAndSealFailedFoldersStillWait() {
+        val root = Files.createTempDirectory("custody-shape").toFile()
+        try {
+            val files = File(root, "files")
+            val audio = File(files, "audio-source").apply { mkdirs() }
+            val unproven = File(audio, "rec-unproven").apply { mkdirs() }
+            File(unproven, "record.txt").writeText("record")
+            val sealFailed = File(audio, "rec-seal").apply { mkdirs() }
+            File(sealFailed, "record.txt").writeText("record")
+            assertFalse(File(unproven, "gap-loss").exists())
+            assertFalse(File(sealFailed, "gap-loss").exists())
+            assertTrue(audioAttemptStillWaiting(unproven))
+            assertTrue(audioAttemptStillWaiting(sealFailed))
+            assertTrue(audioAwaitingCustody(File(root, "cache"), files, emptySet()))
         } finally {
             root.deleteRecursively()
         }

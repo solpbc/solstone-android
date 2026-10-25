@@ -66,7 +66,7 @@ class RecoveryApplierTest {
 
             assertEquals(sentinel, String(Files.readAllBytes(finalDir.resolve("manifest")), StandardCharsets.UTF_8))
             assertTrue(Files.exists(draftDir))
-            assertTrue(applied.events.isEmpty())
+            assertEquals("divergent final", applied.events.single().detail)
             assertEquals(1, applied.unknown.size)
             assertTrue(rows(applied.gaps).isEmpty())
         } finally {
@@ -133,7 +133,7 @@ class RecoveryApplierTest {
             val applied = run(baseDir)
 
             assertTrue(Files.exists(draftDir), "draft should be kept on payload byte mismatch")
-            assertTrue(applied.events.isEmpty())
+            assertEquals("divergent final", applied.events.single().detail)
             assertEquals(1, applied.unknown.size)
             assertTrue(rows(applied.gaps).isEmpty())
         } finally {
@@ -304,6 +304,29 @@ class RecoveryApplierTest {
         } finally {
             baseDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun droppedRecoveryEventsLogTheKeptDraftAndSkipPathsAndInvalidPayloads() {
+        val logged = mutableListOf<List<String>>()
+        val emit = { kind: String, source: String, reason: String, material: String ->
+            logged += listOf(kind, source, reason, material)
+        }
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, "kept unknown"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, "divergent final"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, "final already exists"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, "day/stream/leaf"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("finalized_segment", 1L, "000000_1"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, "invalid payload audio.m4a"), emit)
+        emitDroppedRecoveryEvent(SpoolRecoveryEvent("partial_segment", 1L, null), emit)
+        assertEquals(
+            listOf(
+                listOf("diagnostic", "spool", "kept unknown", "draft"),
+                listOf("diagnostic", "spool", "divergent final", "draft"),
+                listOf("diagnostic", "spool", "final already exists", "draft"),
+            ),
+            logged,
+        )
     }
 
     private class Applied(

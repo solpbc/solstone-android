@@ -75,6 +75,7 @@ internal fun PhonePairingOverlay(
     controller: HarnessController,
     stores: SyncStores,
     pairingViewModel: PhonePairingViewModel,
+    onPairingCommitted: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val session = state.session
@@ -96,6 +97,7 @@ internal fun PhonePairingOverlay(
                     onScannerNeedsCamera = onScannerNeedsCamera,
                     dispatch = dispatch,
                     controller = controller,
+                    onPairingCommitted = onPairingCommitted,
                 )
             }
             is PhonePairingSession.Entry -> {
@@ -164,6 +166,7 @@ internal fun PhonePairingScanning(
     onScannerNeedsCamera: () -> Unit,
     dispatch: (PhonePairingEvent) -> Unit,
     controller: HarnessController,
+    onPairingCommitted: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val entry = scanEntry(hasCamera, cameraAsk)
@@ -266,7 +269,7 @@ internal fun PhonePairingScanning(
                                 context = ctx,
                                 controller = controller,
                                 threadLabel = "phone",
-                                onPairingCommitted = {},
+                                onPairingCommitted = onPairingCommitted,
                                 onDecoded = onDecoded,
                                 status = { scannerStatus = it },
                             )

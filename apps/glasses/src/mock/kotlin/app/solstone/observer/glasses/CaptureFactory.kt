@@ -13,6 +13,7 @@ import app.solstone.core.metadata.PhotoMetadataContract
 import app.solstone.core.metadata.PhotoMetadataEngine
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.platform.metadata.AndroidMetadataScheduler
 import app.solstone.platform.camera.still.CameraLock
@@ -63,6 +64,10 @@ fun createCaptureSetup(
                 if (payload.sourceId == PhotoMetadataContract.SOURCE_ID) metadataEngine.release(payload)
             }
         },
+        gaps = GapNoticeStore(
+            directory = context.filesDir.toPath().resolve("gap"),
+            listener = gapListener,
+        ),
     )
 }
 

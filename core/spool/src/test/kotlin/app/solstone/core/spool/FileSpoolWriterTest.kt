@@ -321,6 +321,102 @@ class FileSpoolWriterTest {
         }
     }
 
+    @Test
+    fun anIdenticalDraftIsRemovedWithNoLoss() {
+        withTempDir { baseDir ->
+            val bytes = "first-bytes".toByteArray()
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            Files.write(draft.resolve("first.bin"), bytes)
+            val gaps = GapNoticeStore(baseDir.resolve("gap"))
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to bytes),
+            )
+            assertFalse(Files.exists(draft))
+            val rows = (gaps.read(java.time.ZoneId.of("UTC")) as GapRead.Ready).rows
+            assertTrue(rows.none { it.kind == "loss" })
+            assertContentEquals(bytes, Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
+        }
+    }
+
+    @Test
+    fun aDifferentDraftIsRecordedBeforeItIsDestroyed() {
+        withTempDir { baseDir ->
+            val bytes = "first-bytes".toByteArray()
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            Files.write(draft.resolve("first.bin"), "old-bytes".toByteArray())
+            val gaps = GapNoticeStore(baseDir.resolve("gap"))
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to bytes),
+            )
+            assertFalse(Files.exists(draft))
+            val rows = (gaps.read(java.time.ZoneId.of("UTC")) as GapRead.Ready).rows
+            assertTrue(rows.any {
+                it.kind == "loss" && it.reason == "undeliverable" &&
+                    it.material == gapDraftMaterial(DAY, STREAM, WIRE_SEGMENT)
+            })
+            assertContentEquals(bytes, Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
+        }
+    }
+
+    @Test
+    fun aFailedDraftRecordLeavesTheDraftAndDoesNotMixTheNewBytes() {
+        withTempDir { baseDir ->
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            Files.write(draft.resolve("first.bin"), "old-bytes".toByteArray())
+            val gaps = GapNoticeStore(baseDir.resolve("gap"), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            assertFailsWith<java.io.IOException> {
+                FileSpoolWriter(baseDir, gaps = gaps).seal(
+                    segment(FIRST_START, "first.bin", 11L),
+                    provider("first.bin" to "first-bytes".toByteArray()),
+                )
+            }
+            assertContentEquals("old-bytes".toByteArray(), Files.readAllBytes(draft.resolve("first.bin")))
+            assertFalse(Files.exists(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
+
+            assertFailsWith<java.io.IOException> {
+                FileSpoolWriter(baseDir).seal(
+                    segment(FIRST_START, "first.bin", 11L),
+                    provider("first.bin" to "first-bytes".toByteArray()),
+                )
+            }
+            assertContentEquals("old-bytes".toByteArray(), Files.readAllBytes(draft.resolve("first.bin")))
+
+            draft.toFile().deleteRecursively()
+            Files.createDirectories(draft)
+            assertFailsWith<java.io.IOException> {
+                FileSpoolWriter(baseDir, gaps = gaps).seal(
+                    segment(FIRST_START, "first.bin", 11L),
+                    provider("first.bin" to "first-bytes".toByteArray()),
+                )
+            }
+            assertEquals(0L, Files.list(draft).use { it.count() })
+        }
+    }
+
+    @Test
+    fun anEmptyDraftIsADiagnosticAndThenTheNewSegmentLands() {
+        withTempDir { baseDir ->
+            val draft = baseDir.resolve(".draft").resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT)
+            Files.createDirectories(draft)
+            val gaps = GapNoticeStore(baseDir.resolve("gap"))
+            FileSpoolWriter(baseDir, gaps = gaps).seal(
+                segment(FIRST_START, "first.bin", 11L),
+                provider("first.bin" to "first-bytes".toByteArray()),
+            )
+            assertFalse(Files.exists(draft))
+            val rows = (gaps.read(java.time.ZoneId.of("UTC")) as GapRead.Ready).rows
+            assertTrue(rows.any { it.kind == "diagnostic" && it.reason == "empty draft" })
+            assertTrue(Files.isRegularFile(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
+        }
+    }
+
     private fun segment(
         startEpochMs: Long,
         payloadName: String,

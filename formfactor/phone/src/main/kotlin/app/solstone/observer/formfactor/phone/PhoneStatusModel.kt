@@ -54,6 +54,10 @@ data class PhoneStatusModel(
     val wrist: WristShare = WristShare.Unknown,
     val journalVersion: JournalVersionReading? = null,
     val calendarHeldForJournal: Boolean = false,
+    /** False when this redraw does not know connectivity or how many segments are waiting. */
+    val connectivityKnown: Boolean = true,
+    /** Last status line drawn while those facts were known. A cold redraw keeps it. */
+    val rememberedSyncText: String? = null,
 )
 
 data class PhoneJournalFacts(
@@ -155,7 +159,9 @@ fun statusPillText(
     model: PhoneStatusModel,
     nowEpochMs: Long = statusWallNow(),
     zone: ZoneId = ZoneId.systemDefault(),
-): String = when {
+): String {
+    if (!model.connectivityKnown) return coldStatusLine(model, nowEpochMs, zone)
+    return when {
     !model.paired -> "not paired"
     !model.online -> "offline · ${model.pendingCount} waiting"
     model.awaitingMarkConfirmation -> if (model.pendingCount > 0) {
@@ -169,6 +175,22 @@ fun statusPillText(
     gapPill(model, nowEpochMs, zone) == GapPill.UNKNOWN -> STATUS_UNKNOWN_RECOVERY_LEAD
     gapPill(model, nowEpochMs, zone) == GapPill.GAP -> GAP_HEADLINE
     else -> "connected"
+    }
+}
+
+/**
+ * A cold redraw knows pairing, custody, and the gap record. It does not know the link or the
+ * waiting count, so it does not invent "connected" or a waiting number. A gap still replaces the
+ * remembered line. With no remembered line, the status line stays blank.
+ */
+private fun coldStatusLine(model: PhoneStatusModel, nowEpochMs: Long, zone: ZoneId): String {
+    if (!model.paired) return "not paired"
+    if (model.audioAwaitingCustody) return STATUS_WAITING_TO_SYNC_LEAD
+    if (model.gateOpen && model.unknownUnseen) return STATUS_UNKNOWN_RECOVERY_LEAD
+    if (model.gateOpen && unseenGapInWindow(model, nowEpochMs, zone) && !model.calendarHeldForJournal) {
+        return GAP_HEADLINE
+    }
+    return model.rememberedSyncText.orEmpty()
 }
 
 fun PhoneStatusModel.clearedForSupport(): PhoneStatusModel = copy(

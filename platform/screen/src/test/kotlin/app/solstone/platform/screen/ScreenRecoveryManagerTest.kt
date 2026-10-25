@@ -83,6 +83,53 @@ class ScreenRecoveryManagerTest {
     }
 
     @Test
+    fun aRecordThatCannotBeWrittenIsADiagnosticAndTheFolderStays() {
+        val root = Files.createTempDirectory("screen-record-tmp").toFile()
+        try {
+            val source = File(root, "screen-source").apply { mkdirs() }
+            val spool = File(root, "spool").toPath()
+            val grid = 1_800_000_000_000L
+            val dir = createAttemptDir(source, "rec-record", grid, grid + 1_000L, grid + 11_000L)
+            File(dir, "record.tmp").mkdir()
+            val gaps = gapsOf(root)
+            ScreenRecoveryManager(
+                source, spool, { _, _ -> emptySet() },
+                AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+                RecordingSealedSink(), gaps, FakeRemuxer(),
+            ).recover()
+            assertTrue(dir.exists())
+            assertFalse(gapLossFactExists(dir.toPath()))
+            assertTrue(rows(gaps).none { it.kind == "loss" })
+            assertTrue(rows(gaps).any { it.kind == "diagnostic" && it.reason == "record not written" })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aFailedLossWriteLeavesTheScreenFolder() {
+        val root = Files.createTempDirectory("screen-keep-loss").toFile()
+        try {
+            val source = File(root, "screen-source").apply { mkdirs() }
+            val dir = File(source, "rec-keep").apply { mkdirs() }
+            File(dir, ScreenConstants.PAYLOAD_NAME).writeBytes(byteArrayOf(1, 2, 3))
+            val gaps = GapNoticeStore(File(root, "gap").toPath(), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            ScreenRecoveryManager(
+                source, File(root, "spool").toPath(), { _, _ -> emptySet() },
+                AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+                RecordingSealedSink(), gaps, FakeRemuxer(),
+            ).recover()
+            assertTrue(dir.exists())
+            assertTrue(File(dir, ScreenConstants.PAYLOAD_NAME).exists())
+            assertFalse(gapLossFactExists(dir.toPath()))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun roomFailureRetainsAttemptAndRetryUsesFirstFrameKeyWithoutAnotherDirectory() {
         val root = Files.createTempDirectory("screen-ledger-retry").toFile()
         try {

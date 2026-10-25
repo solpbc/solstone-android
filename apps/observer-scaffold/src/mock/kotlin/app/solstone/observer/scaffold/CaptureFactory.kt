@@ -6,6 +6,7 @@ package app.solstone.observer.scaffold
 import android.content.Context
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.camera.still.CameraLock
@@ -85,5 +86,9 @@ fun createCaptureSetup(
             override fun open(payload: SegmentPayload) =
                 ByteArrayInputStream(fakePayloadBytes(payload.sourceId, payload.ref.name, 0, payload.ref.byteSize.toInt()))
         },
+        gaps = GapNoticeStore(
+            directory = context.filesDir.toPath().resolve("gap"),
+            listener = gapListener,
+        ),
     )
 }

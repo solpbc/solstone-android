@@ -25,11 +25,12 @@ class PhoneStatusViewModel(
     private val onGapSeen: () -> Unit = {},
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val clock: () -> Long = { statusWallNow() },
 ) : ViewModel() {
     var statusState: LoadState<PhoneStatusSnapshot> by androidx.compose.runtime.mutableStateOf(LoadState.Loading)
         private set
 
-    var nowEpochMs by mutableLongStateOf(statusWallNow())
+    var nowEpochMs by mutableLongStateOf(clock())
         private set
 
     private var requestedGeneration = 0L
@@ -38,6 +39,7 @@ class PhoneStatusViewModel(
     private var hasSeenHostResume = false
     private var contentVisible = false
     private var visitActive = false
+    private var retainVisit = false
     private var visitLossIds: Set<String> = emptySet()
     private var visitUnknownKeys: Set<String> = emptySet()
 
@@ -59,7 +61,13 @@ class PhoneStatusViewModel(
         startRead(generation)
     }
 
+    /** The activity is started. Refreshes the clock before a delayed midnight tick can run. */
+    fun onHostStarted() {
+        nowEpochMs = clock()
+    }
+
     fun onHostResumed() {
+        nowEpochMs = clock()
         if (hasSeenHostResume) {
             refresh()
         } else {
@@ -74,19 +82,28 @@ class PhoneStatusViewModel(
     }
 
     /**
-     * Remembers whether status content is on screen. Closing the sheet does not end the visit.
-     * A visit starts from here, from a load that lands while the content is open, or from resume.
+     * A visit is one continuous showing of the status content. Hiding it ends the visit, except
+     * across a configuration change that already stopped the host. The next showing marks the
+     * losses it displays.
      */
     fun onStatusForeground(visible: Boolean) {
-        contentVisible = visible
-        if (visible) beginVisit()
+        if (!visible) {
+            contentVisible = false
+            if (!retainVisit) endVisit()
+            return
+        }
+        contentVisible = true
+        retainVisit = false
+        beginVisit()
     }
 
     /**
      * Marks exactly the loss ids and unknown keys on screen when the gate is open.
+     * The clock is read before that set is chosen. The mark itself runs off the caller thread.
      * A later loss is not in that set. A closed gate still becomes a visit and marks nothing.
      */
     private fun beginVisit() {
+        nowEpochMs = clock()
         if (!contentVisible || visitActive) return
         val loaded = statusState as? LoadState.Loaded ?: return
         val model = loaded.value.status
@@ -96,29 +113,44 @@ class PhoneStatusViewModel(
             visitUnknownKeys = emptySet()
             return
         }
-        visitLossIds = displayedGapLossIds(model, nowEpochMs, zone)
-        visitUnknownKeys = model.unseenUnknownKeys.toSet()
+        val lossIds = displayedGapLossIds(model, nowEpochMs, zone)
+        val unknownKeys = model.unseenUnknownKeys.toSet()
+        visitLossIds = lossIds
+        visitUnknownKeys = unknownKeys
         visitActive = true
-        if (visitLossIds.isEmpty() && visitUnknownKeys.isEmpty()) return
-        if (!markSeen(visitLossIds, visitUnknownKeys)) return
-        val remainingKeys = model.unseenUnknownKeys.filter { it !in visitUnknownKeys }
-        statusState = LoadState.Loaded(
-            loaded.value.copy(
-                status = model.copy(
-                    gapLosses = model.gapLosses.map { loss ->
-                        if (loss.id in visitLossIds) loss.copy(seen = true) else loss
-                    },
-                    unseenUnknownKeys = remainingKeys,
-                    unknownUnseen = remainingKeys.isNotEmpty(),
+        if (lossIds.isEmpty() && unknownKeys.isEmpty()) return
+        asyncLoad.load({ markSeen(lossIds, unknownKeys) }) { incoming ->
+            if (incoming !is LoadState.Loaded || incoming.value != true) return@load
+            if (!visitActive || visitLossIds != lossIds || visitUnknownKeys != unknownKeys) return@load
+            val current = statusState as? LoadState.Loaded ?: return@load
+            val currentModel = current.value.status
+            val remainingKeys = currentModel.unseenUnknownKeys.filter { it !in unknownKeys }
+            statusState = LoadState.Loaded(
+                current.value.copy(
+                    status = currentModel.copy(
+                        gapLosses = currentModel.gapLosses.map { loss ->
+                            if (loss.id in lossIds) loss.copy(seen = true) else loss
+                        },
+                        unseenUnknownKeys = remainingKeys,
+                        unknownUnseen = remainingKeys.isNotEmpty(),
+                    ),
                 ),
-            ),
-        )
-        onGapSeen()
+            )
+            onGapSeen()
+        }
     }
 
     /** A configuration change keeps the visit. Leaving the screen ends it. */
     fun onHostStop(changingConfigurations: Boolean) {
-        if (changingConfigurations) return
+        if (changingConfigurations) {
+            retainVisit = true
+            return
+        }
+        retainVisit = false
+        endVisit()
+    }
+
+    private fun endVisit() {
         visitActive = false
         visitLossIds = emptySet()
         visitUnknownKeys = emptySet()
@@ -187,12 +219,28 @@ class PhoneStatusViewModel(
 }
 
 /**
- * Status content is the open sheet, or the wide paired detail beside the deck.
- * The pairing overlay covers both, so neither is a visit while it is open.
+ * Status content is the open sheet, or the paired detail actually drawn in the foreground.
+ * A route on top of the detail stack, or a split that is not drawn, is not a visit.
+ * The pairing overlay covers both.
  */
 fun phoneStatusContentVisible(
     sheetOpen: Boolean,
     pairingOpen: Boolean,
-    wide: Boolean,
-    pairedDetail: Boolean,
-): Boolean = !pairingOpen && (sheetOpen || (wide && pairedDetail))
+    splitDrawn: Boolean,
+    statusDetailForeground: Boolean,
+): Boolean = !pairingOpen && (sheetOpen || (splitDrawn && statusDetailForeground))
+
+/** The activity's start, resume, and stop for the status clock and the visit. */
+class PhoneStatusHost(private val status: PhoneStatusViewModel) {
+    fun onStart() {
+        status.onHostStarted()
+    }
+
+    fun onResume() {
+        status.onHostResumed()
+    }
+
+    fun onStop(changingConfigurations: Boolean) {
+        status.onHostStop(changingConfigurations)
+    }
+}

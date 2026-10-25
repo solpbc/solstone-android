@@ -27,7 +27,7 @@ class RecoveryEvidenceTest {
         applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
         val losses = rows(gaps).filter { it.kind == "loss" }
         assertEquals(setOf("audio", "camera"), losses.map { it.source }.toSet())
-        assertTrue(losses.all { it.reason == "invalid payload" && it.material == draft.fileName.toString() })
+        assertTrue(losses.all { it.reason == "invalid payload" && it.material == gapMaterialForDraft(draft) })
         assertFalse(Files.exists(draft))
         assertTrue(unknown.isEmpty())
     }
@@ -50,7 +50,7 @@ class RecoveryEvidenceTest {
         val unknown = mutableListOf<String>()
         val events = applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
         assertTrue(rows(gaps).isEmpty())
-        assertTrue(events.isEmpty())
+        assertEquals(listOf("kept unknown"), events.map { it.detail })
         assertEquals(1, unknown.size)
         assertTrue(Files.exists(draft.resolve("unknown.bin")))
     }
@@ -82,10 +82,40 @@ class RecoveryEvidenceTest {
         val gaps = GapNoticeStore(root.resolve("gap"))
         val unknown = mutableListOf<String>()
         val events = applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
-        assertTrue(events.isEmpty())
+        assertEquals("kept unknown", events.single().detail)
         assertTrue(rows(gaps).isEmpty())
         assertEquals(listOf(".draft/20261003/main/000000_1"), unknown)
         assertTrue(Files.exists(draft.resolve("manifest")))
+    }
+
+    @Test
+    fun theSameLeafOnAnotherDayIsItsOwnLoss() {
+        val root = Files.createTempDirectory("two-day-loss")
+        try {
+            val monday = root.resolve(".draft/20261005/main/120000_1")
+            val tuesday = root.resolve(".draft/20261006/main/120000_1")
+            Files.createDirectories(monday)
+            Files.createDirectories(tuesday)
+            writeManifest(monday, listOf("camera"))
+            writeManifest(tuesday, listOf("camera"))
+            val gaps = GapNoticeStore(root.resolve("gap"))
+            applyRecoveryActions(RecoveryScanner(root).scan(), gaps, mutableListOf(), root)
+            val losses = rows(gaps).filter { it.kind == "loss" }
+            assertEquals(2, losses.size)
+            assertEquals(
+                setOf(gapMaterialForDraft(monday), gapMaterialForDraft(tuesday)),
+                losses.map { it.material }.toSet(),
+            )
+            assertFalse(Files.exists(monday))
+            assertFalse(Files.exists(tuesday))
+            val longA = gapDraftMaterial("20261005", "main", "x".repeat(80))
+            val longB = gapDraftMaterial("20261005", "main", "y".repeat(80))
+            assertTrue(longA.length <= 64 && gapMaterialOk(longA))
+            assertTrue(longA != longB)
+            assertTrue(gapDraftMaterial("20261005", "main", "120000_1") != gapDraftMaterial("20261006", "main", "120000_1"))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     private fun writeManifest(draft: Path, sources: List<String>) {

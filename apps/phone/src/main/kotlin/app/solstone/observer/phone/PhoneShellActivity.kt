@@ -58,6 +58,7 @@ import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRoute
 import app.solstone.observer.formfactor.phone.PhoneRouteStack
 import app.solstone.observer.formfactor.phone.PhoneStatusSnapshot
+import app.solstone.observer.formfactor.phone.PhoneStatusHost
 import app.solstone.observer.formfactor.phone.PhoneStatusViewModel
 import app.solstone.observer.formfactor.phone.SourcesViewModel
 import app.solstone.observer.formfactor.phone.decodePhoneRoute
@@ -163,6 +164,7 @@ class PhoneShellActivity : ComponentActivity() {
     private lateinit var container: ObserverAppContainer
     private lateinit var sourcesViewModel: SourcesViewModel
     private lateinit var statusViewModel: PhoneStatusViewModel
+    private lateinit var statusHost: PhoneStatusHost
     private lateinit var stores: SyncStores
     private lateinit var pairingViewModel: PhonePairingViewModel
     private var hasCameraPermission by mutableStateOf(false)
@@ -407,7 +409,7 @@ class PhoneShellActivity : ComponentActivity() {
             awaitingMarkConfirmation = { phoneAwaitingMarkConfirmation(this@PhoneShellActivity) },
             recoveryCompleted = { container.recoveryCompleted },
             audioAwaitingCustody = { phoneAudioAwaitingCustody(this@PhoneShellActivity, container) },
-            gapStatus = { phoneGapStatus(this@PhoneShellActivity, container.recoveryCompleted) },
+            gapStatus = { phoneGapStatus(this@PhoneShellActivity, container.noticesMayShow) },
             markSeen = { lossIds, unknownKeys -> phoneMarkGapSeen(this@PhoneShellActivity, lossIds, unknownKeys) },
             onGapSeen = { (application as? PhoneApplication)?.refreshWidgetAfterGapSeen() },
             capturedStatusState = capture.capturedStatusState,
@@ -417,6 +419,7 @@ class PhoneShellActivity : ComponentActivity() {
             factory,
         ).get(SourcesViewModel::class.java)
         statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
+        statusHost = PhoneStatusHost(statusViewModel)
         setContent {
             LaunchedEffect(Unit) {
                 while (true) {
@@ -1128,6 +1131,7 @@ class PhoneShellActivity : ComponentActivity() {
                     controller = container.controller,
                     stores = stores,
                     pairingViewModel = pairingViewModel,
+                    onPairingCommitted = { container.applyPairedJournal() },
                 )
                 }
             }
@@ -1503,7 +1507,7 @@ class PhoneShellActivity : ComponentActivity() {
         // observed. ⛔ Not inside `refreshPermissions()` — that is a query a dozen internal paths
         // call — and ⛔ not inline: it writes a file and can start an engine.
         container.onOwnerResumed()
-        statusViewModel.onHostResumed()
+        if (::statusHost.isInitialized) statusHost.onResume()
         ObserverNotification.ensureChannel(this)
         notificationsEnabled = ObserverNotification.notificationsEnabled(this)
         captureOwnerToken = container.captureAuthority.acquire()
@@ -1688,6 +1692,7 @@ class PhoneShellActivity : ComponentActivity() {
         super.onStart()
         activityStarted = true
         (application as? PhoneApplication)?.addStatusListener(statusListener)
+        if (::statusHost.isInitialized) statusHost.onStart()
         attachCalendarUi()
         armMidnight()
     }
@@ -1747,7 +1752,7 @@ class PhoneShellActivity : ComponentActivity() {
         super.onStop()
         activityStarted = false
         mainHandler.removeCallbacks(midnightTick)
-        if (::statusViewModel.isInitialized) statusViewModel.onHostStop(isChangingConfigurations)
+        if (::statusHost.isInitialized) statusHost.onStop(isChangingConfigurations)
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
         CalendarRuntimes.current?.setOnChanged {}
         connectionCheck = null

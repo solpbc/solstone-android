@@ -6,9 +6,12 @@ package app.solstone.core.spool
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -158,7 +161,7 @@ class GapNoticeStoreTest {
         Files.writeString(leftover, "unresolved")
         Files.write(leftoverDir.resolve("events.v1"), encodeGapRows(listOf(legacyRow("cc", "screen"))))
         val retry = store(leftoverDir)
-        assertEquals("complete 1", retry.conversion(listOf("screen" to leftover)))
+        assertEquals("complete 0", retry.conversion(listOf("screen" to leftover)))
         assertFalse(Files.exists(leftover))
         assertEquals(1, ready(retry).count { it.kind == "legacy" })
     }
@@ -336,6 +339,105 @@ class GapNoticeStoreTest {
         assertTrue(writeGapLossFact(dir) { if (fail) throw IOException("sync") })
         assertTrue(Files.isRegularFile(dir.resolve("gap-loss")))
         assertEquals(0, Files.size(dir.resolve("gap-loss")))
+    }
+
+    @Test
+    fun twoInstancesOnOneDirectoryWaitAndLoseNothing() {
+        val root = temp()
+        val ids = AtomicInteger()
+        fun open() = GapNoticeStore(
+            directory = root,
+            clock = { now },
+            ids = { ids.incrementAndGet().toString(16).padStart(32, '0') },
+            zone = { zone },
+        )
+        val writer = open()
+        val marker = open()
+        assertTrue(writer.recordLoss("audio", "undeliverable", "rec-a", 1L))
+        val id = ready(writer).single().id
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        val oks = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
+        val writing = Thread {
+            start.await()
+            repeat(30) { index -> oks += writer.recordLoss("audio", "undeliverable", "rec-w-$index", 1L) }
+            done.countDown()
+        }
+        val marking = Thread {
+            start.await()
+            repeat(30) { index ->
+                oks += marker.recordLoss("screen", "undeliverable", "rec-m-$index", 1L)
+                oks += marker.markSeen(setOf(id), emptySet())
+            }
+            done.countDown()
+        }
+        writing.start()
+        marking.start()
+        start.countDown()
+        assertTrue(done.await(20, TimeUnit.SECONDS))
+        writing.join(2_000)
+        marking.join(2_000)
+        assertTrue(oks.all { it })
+        val rows = ready(writer)
+        assertEquals(61, rows.count { it.kind == "loss" })
+        assertTrue(rows.single { it.id == id }.seen)
+    }
+
+    @Test
+    fun aFailedLossWriteIsLoggedAndADuplicateIsNotLoggedAgain() {
+        val failed = mutableListOf<String>()
+        val broken = store(temp(), beforeWrite = { path ->
+            if (path.fileName.toString() == "events.v1") throw IOException("events")
+        }, listener = { kind, source, reason, material ->
+            failed += "$kind $source $reason $material"
+        })
+        assertFalse(broken.recordLoss("audio", "undeliverable", "rec-1", 1L))
+        assertEquals(listOf("loss audio undeliverable rec-1"), failed)
+        assertFalse(broken.recordLoss("audio", "undeliverable", "bad id", 1L))
+        assertEquals(1, failed.size)
+
+        val logged = mutableListOf<String>()
+        val store = store(temp(), listener = { kind, _, _, material -> logged += "$kind $material" })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 1L))
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 1L))
+        assertEquals(listOf("loss rec-1"), logged)
+    }
+
+    @Test
+    fun aSeenLossStaysSeenAfterItsEventIsPruned() {
+        val store = store(temp())
+        now = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        val id = ready(store).single().id
+        assertTrue(store.markSeen(setOf(id), emptySet()))
+        now = Instant.parse("2026-02-15T00:00:00Z").toEpochMilli()
+        assertTrue(ready(store).none { it.material == "rec-kept" })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        val again = ready(store).single { it.material == "rec-kept" }
+        assertTrue(again.seen)
+        assertTrue(again.id != id)
+    }
+
+    @Test
+    fun anImportedMarkerIsKeptFromTheImportTimeAndShowsTheMarkerTime() {
+        val root = temp()
+        val marker = root.resolve("audio-interruption")
+        Files.writeString(marker, "unresolved")
+        val old = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        Files.setLastModifiedTime(marker, FileTime.fromMillis(old))
+        val markerTime = Files.getLastModifiedTime(marker).toMillis()
+        now = Instant.parse("2026-10-25T12:00:00Z").toEpochMilli()
+        assertTrue(markerTime < now - 40L * 24 * 60 * 60 * 1000)
+        val store = store(root)
+        assertEquals("complete 1", store.conversion(listOf("audio" to marker)))
+        assertFalse(Files.exists(marker))
+        val row = ready(store).single { it.kind == "legacy" }
+        assertEquals(now, row.foundEpochMs)
+        assertEquals(now, row.lastEpochMs)
+        assertTrue(row.seen)
+        assertEquals(markerTime, row.markerEpochMs)
+        val details = formatGapTechnicalDetails(listOf(row), GapConversionState.Complete(1), now, zone)
+        assertTrue(details.contains("marked"))
     }
 
     private fun ready(store: GapNoticeStore): List<GapNoticeRow> =
