@@ -181,9 +181,10 @@ class FileSpoolWriter(
     ): Boolean {
         val names = runCatching {
             Files.list(draftDir).use { stream ->
-                stream.filter { Files.isRegularFile(it) && it.fileName.toString() != "manifest" }
-                    .map { it.fileName.toString() }
-                    .toList()
+                buildList {
+                    stream.filter { Files.isRegularFile(it) && it.fileName.toString() != "manifest" }
+                        .forEach { add(it.fileName.toString()) }
+                }
             }
         }.getOrNull() ?: return false
         if (names.toSet() != segment.payloads.map { it.ref.name }.toSet()) return false
