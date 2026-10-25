@@ -259,13 +259,16 @@ class PhoneObserverWidgetModelTest {
         )
 
     @Test
-    fun widgetSyncDetailSurfacesInterruptionAndCustody() {
+    fun widgetSyncDetailSurfacesTheGapAndCustody() {
+        val now = System.currentTimeMillis()
+        val gap = status(losses = listOf(PhoneGapLoss("loss", now, now, false)), gateOpen = true)
         val interrupted = renderPhoneObserverWidget(
             readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
-            statusModel = status(unresolvedAudioInterruption = true),
+            statusModel = gap,
             startOutcome = PhoneWidgetStartOutcome.None,
         )
-        assertEquals("some audio hasn't reached your journal.", interrupted.syncDetail)
+        assertEquals(app.solstone.core.spool.GAP_HEADLINE, interrupted.syncText)
+        assertEquals(app.solstone.core.spool.GAP_TODAY, interrupted.syncDetail)
 
         val custody = renderPhoneObserverWidget(
             readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
@@ -276,11 +279,12 @@ class PhoneObserverWidgetModelTest {
 
         val both = renderPhoneObserverWidget(
             readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
-            statusModel = status(unresolvedAudioInterruption = true, audioAwaitingCustody = true),
+            statusModel = gap.copy(audioAwaitingCustody = true),
             startOutcome = PhoneWidgetStartOutcome.None,
         )
+        assertEquals("waiting to sync", both.syncText)
         assertEquals(
-            "some audio hasn't reached your journal.\nwaiting to sync\non this device",
+            "there's a gap in your journal\nsome of what you shared today didn't reach it.\non this device",
             both.syncDetail,
         )
 
@@ -290,6 +294,7 @@ class PhoneObserverWidgetModelTest {
             startOutcome = PhoneWidgetStartOutcome.None,
         )
         assertEquals(null, connected.syncDetail)
+        assertEquals("connected", connected.syncText)
     }
 
     private fun status(
@@ -297,7 +302,8 @@ class PhoneObserverWidgetModelTest {
         awaitingMarkConfirmation: Boolean = false,
         recoveryCompleted: Boolean = true,
         audioAwaitingCustody: Boolean = false,
-        unresolvedAudioInterruption: Boolean = false,
+        losses: List<PhoneGapLoss> = emptyList(),
+        gateOpen: Boolean = false,
     ): PhoneStatusModel =
         PhoneStatusModel(
             paired = true,
@@ -307,6 +313,7 @@ class PhoneObserverWidgetModelTest {
             awaitingMarkConfirmation = awaitingMarkConfirmation,
             recoveryCompleted = recoveryCompleted,
             audioAwaitingCustody = audioAwaitingCustody,
-            unresolvedAudioInterruption = unresolvedAudioInterruption,
+            gapLosses = losses,
+            gateOpen = gateOpen,
         )
 }

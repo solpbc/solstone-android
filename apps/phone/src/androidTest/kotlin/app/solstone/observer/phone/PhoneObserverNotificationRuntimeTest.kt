@@ -140,7 +140,6 @@ class PhoneObserverNotificationRuntimeTest {
             awaitingMarkConfirmation = false,
             recoveryCompleted = true,
             audioAwaitingCustody = false,
-            unresolvedAudioInterruption = false,
         )
         val syncText = statusPillText(distinctiveStatusModel)
         PhoneStatusSupplier.override = {

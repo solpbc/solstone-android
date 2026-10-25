@@ -33,6 +33,7 @@ fun createCaptureSetup(
     registerScreenSource: Boolean = false,
     registerCalendarSource: Boolean = false,
     calendarNeedsAttention: () -> Boolean = { false },
+    gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val audio = FakeContinuousSource(
         sourceId = "audio",

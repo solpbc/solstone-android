@@ -21,9 +21,7 @@ fun phoneStatusSnapshotOf(
     awaitingMarkConfirmation: Boolean,
     recoveryCompleted: Boolean,
     audioAwaitingCustody: Boolean,
-    unresolvedAudioInterruption: Boolean,
-    unresolvedOtherInterruption: Boolean = false,
-    unresolvedUnknownRecovery: Boolean = false,
+    gaps: PhoneGapStatus = PhoneGapStatus(),
 ): PhoneStatusSnapshot {
     val (paired, online) = when (val plStatus = backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
@@ -51,9 +49,12 @@ fun phoneStatusSnapshotOf(
             awaitingMarkConfirmation = awaitingMarkConfirmation,
             recoveryCompleted = recoveryCompleted,
             audioAwaitingCustody = audioAwaitingCustody,
-            unresolvedAudioInterruption = unresolvedAudioInterruption,
-            unresolvedOtherInterruption = unresolvedOtherInterruption,
-            unresolvedUnknownRecovery = unresolvedUnknownRecovery,
+            gapLosses = gaps.losses,
+            unknownPresent = gaps.unknownPresent,
+            unknownUnseen = gaps.unknownUnseen,
+            unseenUnknownKeys = gaps.unseenUnknownKeys,
+            gateOpen = gaps.gateOpen,
+            gapTechnicalDetails = gaps.technicalDetails,
             journalVersion = backlog.journalVersion,
             calendarHeldForJournal = backlog.calendarHeldForJournal,
         ),

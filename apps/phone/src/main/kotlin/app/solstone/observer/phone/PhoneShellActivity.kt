@@ -9,6 +9,8 @@ import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
 import app.solstone.observer.formfactor.phone.PhoneCalendarPaneState
 import app.solstone.observer.formfactor.phone.PhoneCalendarRow
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
+import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
+import app.solstone.observer.formfactor.phone.PhoneStatusNow
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -169,6 +171,12 @@ class PhoneShellActivity : ComponentActivity() {
     private val capturePermissionRequests by lazy { CapturePermissionRequestStore(this) }
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var activityStarted = false
+    private val midnightTick = Runnable {
+        if (!activityStarted || !::statusViewModel.isInitialized) return@Runnable
+        statusViewModel.onNow(System.currentTimeMillis())
+        armMidnight()
+    }
     private val statusListener: (HarnessBacklogStatus) -> Unit = { backlog ->
         mainHandler.post { if (::statusViewModel.isInitialized) statusViewModel.publish(backlog) }
     }
@@ -399,9 +407,9 @@ class PhoneShellActivity : ComponentActivity() {
             awaitingMarkConfirmation = { phoneAwaitingMarkConfirmation(this@PhoneShellActivity) },
             recoveryCompleted = { container.recoveryCompleted },
             audioAwaitingCustody = { phoneAudioAwaitingCustody(this@PhoneShellActivity, container) },
-            unresolvedAudioInterruption = { phoneUnresolvedAudioInterruption(this@PhoneShellActivity) },
-            unresolvedOtherInterruption = { phoneUnresolvedOtherInterruption(this@PhoneShellActivity) },
-            unresolvedUnknownRecovery = { phoneUnresolvedUnknownRecovery(this@PhoneShellActivity) },
+            gapStatus = { phoneGapStatus(this@PhoneShellActivity, container.recoveryCompleted) },
+            markSeen = { lossIds, unknownKeys -> phoneMarkGapSeen(this@PhoneShellActivity, lossIds, unknownKeys) },
+            onGapSeen = { (application as? PhoneApplication)?.refreshWidgetAfterGapSeen() },
             capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
@@ -417,7 +425,11 @@ class PhoneShellActivity : ComponentActivity() {
                 }
             }
             val statusState = statusViewModel.statusState
+            val paneState = statusViewModel.paneState()
             val snapshot = (statusState as? LoadState.Loaded)?.value
+            val paneSnapshot = (paneState as? LoadState.Loaded)?.value
+            val statusNow = statusViewModel.nowEpochMs
+            LaunchedEffect(statusState) { armMidnight() }
             var pairingSnapshot by remember { mutableStateOf(displayedSnapshot()) }
             var journalConfirmed by remember {
                 val snapshot = displayedSnapshot()
@@ -892,14 +904,17 @@ class PhoneShellActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalPhoneImport provides importBinding,
                 LocalPhoneCalendar provides calendarBinding,
+                LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
                 status = snapshot?.status,
+                paneStatus = paneSnapshot?.status,
+                onStatusContentVisible = statusViewModel::onStatusForeground,
                 aboutBlock = aboutBlock,
                 onAboutOpened = { aboutSnapshotEpoch++ },
                 waiting = snapshot?.waiting.orEmpty(),
-                defaultDetailStatus = phoneDefaultDetailStatusOf(statusState),
+                defaultDetailStatus = phoneDefaultDetailStatusOf(paneState),
                 onRefreshStatus = statusViewModel::refresh,
                 onToggle = { id, wish ->
                     when (screenToggleRoute(id, wish, fromDetail = true)) {
@@ -1671,8 +1686,21 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        activityStarted = true
         (application as? PhoneApplication)?.addStatusListener(statusListener)
         attachCalendarUi()
+        armMidnight()
+    }
+
+    private fun armMidnight() {
+        mainHandler.removeCallbacks(midnightTick)
+        if (!activityStarted || !::statusViewModel.isInitialized) return
+        val model = (statusViewModel.statusState as? LoadState.Loaded)?.value?.status ?: return
+        if (model.gapLosses.isEmpty() && !model.unknownPresent) return
+        val zone = java.time.ZoneId.systemDefault()
+        val next = java.time.LocalDate.now(zone).plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val delay = (next - System.currentTimeMillis()).coerceAtLeast(1L)
+        mainHandler.postDelayed(midnightTick, delay)
     }
 
     private fun requestCalendarPermission() {
@@ -1717,6 +1745,9 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        activityStarted = false
+        mainHandler.removeCallbacks(midnightTick)
+        if (::statusViewModel.isInitialized) statusViewModel.onHostStop(isChangingConfigurations)
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
         CalendarRuntimes.current?.setOnChanged {}
         connectionCheck = null
@@ -1800,9 +1831,9 @@ class PhoneShellActivity : ComponentActivity() {
         private val awaitingMarkConfirmation: () -> Boolean,
         private val recoveryCompleted: () -> Boolean,
         private val audioAwaitingCustody: () -> Boolean,
-        private val unresolvedAudioInterruption: () -> Boolean,
-        private val unresolvedOtherInterruption: () -> Boolean,
-        private val unresolvedUnknownRecovery: () -> Boolean,
+        private val gapStatus: () -> app.solstone.observer.formfactor.phone.PhoneGapStatus,
+        private val markSeen: (Set<String>, Set<String>) -> Boolean,
+        private val onGapSeen: () -> Unit,
         private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1817,9 +1848,9 @@ class PhoneShellActivity : ComponentActivity() {
                         awaitingMarkConfirmation = awaitingMarkConfirmation,
                         recoveryCompleted = recoveryCompleted,
                         audioAwaitingCustody = audioAwaitingCustody,
-                        unresolvedAudioInterruption = unresolvedAudioInterruption,
-                        unresolvedOtherInterruption = unresolvedOtherInterruption,
-                        unresolvedUnknownRecovery = unresolvedUnknownRecovery,
+                        gapStatus = gapStatus,
+                        markSeen = markSeen,
+                        onGapSeen = onGapSeen,
                         capturedStatusState = capturedStatusState,
                     ) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")

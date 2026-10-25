@@ -11,7 +11,8 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.GapRead
 import app.solstone.platform.power.StorageStatus
 import app.solstone.platform.power.UsableSpaceProvider
 import app.solstone.testing.BASE_CAPTURE_EPOCH_MS
@@ -28,6 +29,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class AudioContinuousSourceEngineTest {
@@ -255,10 +257,10 @@ class AudioContinuousSourceEngineTest {
     fun startFailureAndZeroByteRecordingEmitGapsWithoutPayloads() {
         val failedOutputDirectory = tempDirectory()
         val failedSink = CapturingSink()
-        val failedInterruption = FakeUnresolvedInterruption()
+        val failedGaps = gapsOf(failedOutputDirectory)
         val failedEngine = createEngine(
             outputDirectory = failedOutputDirectory,
-            interruption = failedInterruption,
+            gaps = failedGaps,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(startError = IllegalStateException("boom")),
         )
@@ -271,14 +273,15 @@ class AudioContinuousSourceEngineTest {
         assertTrue(failedEmission.payloadRefs.isEmpty())
         assertEquals("capture_gap", failedEmission.gaps.single().kind)
         assertEquals("IllegalStateException", failedEmission.gaps.single().detail)
-        assertTrue(failedInterruption.marked)
+        assertEquals(listOf("recording did not start"), rows(failedGaps).map { it.reason })
+        assertTrue(failedOutputDirectory.listFiles { file -> file.isDirectory && file.name.startsWith("rec-") }.isNullOrEmpty())
 
         val emptyOutputDirectory = tempDirectory()
         val emptySink = CapturingSink()
-        val emptyInterruption = FakeUnresolvedInterruption()
+        val emptyGaps = gapsOf(emptyOutputDirectory)
         val emptyEngine = createEngine(
             outputDirectory = emptyOutputDirectory,
-            interruption = emptyInterruption,
+            gaps = emptyGaps,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = ByteArray(0)),
         )
@@ -290,7 +293,8 @@ class AudioContinuousSourceEngineTest {
         val emptyEmission = emptySink.emissions.single()
         assertTrue(emptyEmission.payloadRefs.isEmpty())
         assertEquals("empty_recording", emptyEmission.gaps.single().detail)
-        assertTrue(emptyInterruption.marked)
+        assertEquals(listOf("empty recording"), rows(emptyGaps).map { it.reason })
+        assertTrue(emptyOutputDirectory.listFiles { file -> file.isDirectory && file.name.startsWith("rec-") }.isNullOrEmpty())
     }
 
     @Test
@@ -320,16 +324,17 @@ class AudioContinuousSourceEngineTest {
         engine.release(payload)
         assertFalse(attemptDir.exists())
         assertFailsWith<IllegalArgumentException> { engine.open(payload) }
+        assertTrue(rows(gapsOf(outputDirectory)).isEmpty())
     }
 
     @Test
     fun discardUncommittedMarksInterruptionAndDeletesDir() {
         val outputDirectory = tempDirectory()
         val sink = CapturingSink()
-        val interruption = FakeUnresolvedInterruption()
+        val gaps = gapsOf(outputDirectory)
         val engine = createEngine(
             outputDirectory = outputDirectory,
-            interruption = interruption,
+            gaps = gaps,
             sleeper = { throw InterruptedException() },
             recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
         )
@@ -346,8 +351,35 @@ class AudioContinuousSourceEngineTest {
         assertTrue(attemptDir.exists())
 
         assertTrue(engine.discardUncommitted(payload))
-        assertTrue(interruption.marked)
+        assertEquals(listOf("uncommitted window"), rows(gaps).filter { it.kind == "loss" }.map { it.reason })
         assertFalse(attemptDir.exists())
+        assertFalse(File(attemptDir, "gap-loss").exists())
+
+        val unknown = SegmentPayload("audio", emission.payloadRefs.single(), 1L, 2L)
+        assertTrue(engine.discardUncommitted(unknown))
+        assertEquals(1, rows(gaps).size)
+
+        var fail = true
+        val held = tempDirectory()
+        val heldGaps = GapNoticeStore(File(held, "gap").toPath(), syncDirectory = { if (fail) throw java.io.IOException("sync") })
+        val heldEngine = createEngine(
+            outputDirectory = held,
+            gaps = heldGaps,
+            sleeper = { throw InterruptedException() },
+            recorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+        )
+        val heldSink = CapturingSink()
+        heldEngine.start(heldSink)
+        waitForEmissions(heldSink, 1)
+        heldEngine.stop()
+        val heldEmission = heldSink.emissions.single()
+        val heldPayload = SegmentPayload(heldEmission.sourceId, heldEmission.payloadRefs.single(), heldEmission.captureStartEpochMs, heldEmission.captureEndEpochMs)
+        val heldDir = held.listFiles { file -> file.isDirectory && file.name.startsWith("rec-") }!!.single()
+        assertFalse(heldEngine.discardUncommitted(heldPayload))
+        assertTrue(heldDir.exists())
+        fail = false
+        assertTrue(heldEngine.discardUncommitted(heldPayload))
+        assertFalse(heldDir.exists())
     }
 
     @Test
@@ -494,7 +526,7 @@ class AudioContinuousSourceEngineTest {
         outputDirectory: File = tempDirectory(),
         storageStatus: StorageStatus = okStorage(),
         remuxer: AacAdtsRemuxer = FakeAacRemuxer(),
-        interruption: UnresolvedInterruption = FakeUnresolvedInterruption(),
+        gaps: GapNoticeStore? = null,
         nowProvider: () -> Long = { OFF_BOUNDARY_EPOCH_MS },
         sleeper: (Long) -> Unit = { Thread.sleep(it) },
         recorderFactory: AudioRecorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
@@ -503,7 +535,7 @@ class AudioContinuousSourceEngineTest {
         outputDirectory = outputDirectory,
         storageStatus = storageStatus,
         remuxer = remuxer,
-        interruption = interruption,
+        gaps = gaps ?: GapNoticeStore(File(outputDirectory, "gap").toPath()),
         nowProvider = nowProvider,
         sleeper = sleeper,
         recorderFactory = recorderFactory,
@@ -524,15 +556,10 @@ class AudioContinuousSourceEngineTest {
         }
     }
 
-    private class FakeUnresolvedInterruption : UnresolvedInterruption {
-        var marked = false
-        override fun markUnresolved(): Boolean {
-            marked = true
-            return true
-        }
+    private fun gapsOf(root: File) = GapNoticeStore(File(root, "gap").toPath())
 
-        override fun isUnresolved(): Boolean = marked
-    }
+    private fun rows(store: GapNoticeStore) =
+        assertIs<GapRead.Ready>(store.read(java.time.ZoneId.of("UTC"))).rows
 
     private class FakeAudioRecorderFactory(
         private val bytesToWrite: ByteArray = AUDIO_BYTES,

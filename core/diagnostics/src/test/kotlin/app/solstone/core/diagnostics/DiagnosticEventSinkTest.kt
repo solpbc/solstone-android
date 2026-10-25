@@ -171,6 +171,15 @@ class DiagnosticEventSinkTest {
             formatDiagEvent(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected")),
         )
         assertEquals(
+            "kind=loss source=audio reason=uncommitted window material=rec-1",
+            formatDiagEvent(DiagEvent.GapRow("loss", "audio", "uncommitted window", "rec-1")),
+        )
+        val withPath = formatDiagEvent(
+            DiagEvent.GapRow("diagnostic", "spool", "delivered", "segment"),
+        )
+        assertEquals("kind=diagnostic source=spool reason=delivered material=segment", withPath)
+        assertFalse(withPath.contains("/"))
+        assertEquals(
             "kind=journal-browser class=proxy outcome=ok",
             formatDiagEvent(DiagEvent.JournalBrowser(eventClass = "proxy", outcome = "ok")),
         )

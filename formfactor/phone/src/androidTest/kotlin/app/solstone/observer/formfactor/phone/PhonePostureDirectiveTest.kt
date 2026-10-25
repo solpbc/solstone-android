@@ -127,7 +127,6 @@ class PhonePostureDirectiveTest {
         awaitingMarkConfirmation = false,
         recoveryCompleted = true,
         audioAwaitingCustody = false,
-        unresolvedAudioInterruption = false,
     )
 
     private companion object {

@@ -6,8 +6,8 @@ package app.solstone.observer.scaffold
 import android.content.Context
 import android.os.Build
 import app.solstone.core.segment.SegmentPayload
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.audio.AndroidAacAdtsRemuxer
 import app.solstone.platform.audio.AudioCommitStatus
@@ -56,15 +56,19 @@ fun createCaptureSetup(
     registerScreenSource: Boolean = false,
     registerCalendarSource: Boolean = false,
     calendarNeedsAttention: () -> Boolean = { false },
+    gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
-    val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
+    val gaps = GapNoticeStore(
+        directory = context.filesDir.resolve("gap").toPath(),
+        listener = gapListener,
+    )
     val remuxer = AndroidAacAdtsRemuxer()
     val audio = AudioContinuousSourceEngine(
         outputDirectory = context.filesDir.resolve("audio-source"),
         storageStatus = storageStatus,
         remuxer = remuxer,
-        interruption = interruption,
+        gaps = gaps,
     )
     val location = LocationContinuousSourceEngine(AndroidLocationSource(context))
     val camera = StillCaptureEngine(
@@ -89,7 +93,9 @@ fun createCaptureSetup(
         ).also { holder ->
             ObserverForegroundService.screenSessionStarter = ObserverForegroundService.Companion.ScreenSessionStarter { _, token ->
                 holder.startSession(context, token).also { started ->
-                    if (!started) UnresolvedInterruptionStore(context.filesDir.resolve("screen-interruption").toPath()).markUnresolved()
+                    recordScreenDidNotStart(started) { source, reason, material ->
+                        gaps.recordDiagnostic(source, reason, material, null)
+                    }
                 }
             }
             ObserverForegroundService.screenSessionStopper = {
@@ -113,7 +119,7 @@ fun createCaptureSetup(
             outputDirectory = context.filesDir.resolve("screen-source"),
             storageStatus = screenStorageStatus,
             remuxer = screenRemuxer,
-            interruption = UnresolvedInterruptionStore(context.filesDir.resolve("screen-interruption").toPath()),
+            gaps = gaps,
             sessionHolder = screenSessionHolder,
             diag = screenDiag,
             onFloorTripped = { android.os.Handler(android.os.Looper.getMainLooper()).post { if (!screenSessionHolder.isSessionLive()) ObserverForegroundService.screenSessionStopper?.invoke() } },
@@ -189,15 +195,24 @@ fun createCaptureSetup(
             override fun discardUncommitted(payload: SegmentPayload): Boolean =
                 when (payload.sourceId) {
                     AudioContinuousSourceEngine.SOURCE_ID -> audio.discardUncommitted(payload)
-                    LocationContinuousSourceEngine.SOURCE_ID -> location.discardUncommitted(payload)
-                    StillCaptureEngine.SOURCE_ID -> camera.discardUncommitted(payload)
+                    LocationContinuousSourceEngine.SOURCE_ID -> {
+                        val dropped = location.discardUncommitted(payload)
+                        if (dropped) gaps.recordDiagnostic("location", "late fragment", "late", null)
+                        dropped
+                    }
+                    StillCaptureEngine.SOURCE_ID -> {
+                        val dropped = camera.discardUncommitted(payload)
+                        if (dropped) gaps.recordDiagnostic("camera", "late fragment", "late", null)
+                        dropped
+                    }
                     ScreenConstants.SOURCE_ID -> screen?.discardUncommitted(payload) ?: true
                     else -> error("unknown payload source: ${payload.sourceId}")
                 }
         },
         storageOk = storageStatus::isStorageOk,
         inFlightAudioIds = audio::inFlightRecordingIds,
-        recoverAudio = { spoolDir, dao, interruptionStore, inFlightIds ->
+        gaps = gaps,
+        recoverAudio = { spoolDir, dao, inFlightIds ->
             val lookup = object : AudioSpoolLookup {
                 override fun findStatus(
                     sha256: String,
@@ -279,13 +294,13 @@ fun createCaptureSetup(
                 occupiedLeaves = dao::occupiedDirSegments,
                 lookup = lookup,
                 sealedSink = RoomSealedSegmentSink(dao),
-                interruption = interruptionStore,
+                gaps = gaps,
                 remuxer = remuxer,
             )
             manager.recover(inFlightIds)
         },
         inFlightScreenIds = { screen?.inFlightRecordingIds() ?: emptySet() },
-        recoverScreen = { spoolDir, dao, interruptionStore, inFlightIds ->
+        recoverScreen = { spoolDir, dao, inFlightIds ->
             if (screenRemuxer != null) {
                 val factsFunction = { day: String, stream: String, segmentLeaf: String, sha256: String ->
                     val wireId = "$day/$stream/$segmentLeaf"
@@ -341,7 +356,7 @@ fun createCaptureSetup(
                     occupiedLeaves = dao::occupiedDirSegments,
                     lookup = lookup,
                     sealedSink = RoomSealedSegmentSink(dao),
-                    interruption = interruptionStore,
+                    gaps = gaps,
                     remuxer = screenRemuxer,
                     factsProvider = factsFunction,
                 )

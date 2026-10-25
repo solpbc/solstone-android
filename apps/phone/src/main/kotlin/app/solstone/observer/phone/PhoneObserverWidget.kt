@@ -266,7 +266,6 @@ internal fun emptyPhoneStatus() = phoneStatusSnapshotOf(
     awaitingMarkConfirmation = false,
     recoveryCompleted = false,
     audioAwaitingCustody = false,
-    unresolvedAudioInterruption = false,
 ).status
 
 private fun colorFor(role: PhoneObserverWidgetColorRole): ColorProvider =

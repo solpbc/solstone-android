@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
+    implementation(project(":core:spool"))
 
     testImplementation(kotlin("test"))
     // Widget reducer tests construct the real HarnessController/SourceRegistry path. These stay

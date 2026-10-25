@@ -4,8 +4,8 @@
 package app.solstone.observer.glasses
 
 import app.solstone.core.sources.ContinuousSourceEngine
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruption
 import app.solstone.platform.persistence.room.SegmentDao
 import java.nio.file.Path
 
@@ -14,5 +14,6 @@ data class CaptureSetup(
     val payloadBytesProvider: PayloadBytesProvider,
     val storageOk: () -> Boolean = { true },
     val inFlightAudioIds: () -> Set<String> = { emptySet() },
-    val recoverAudio: (Path, SegmentDao, UnresolvedInterruption, Set<String>) -> Unit = { _, _, _, _ -> },
+    val gaps: GapNoticeStore? = null,
+    val recoverAudio: (Path, SegmentDao, Set<String>) -> Unit = { _, _, _ -> },
 )

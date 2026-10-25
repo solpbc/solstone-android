@@ -270,6 +270,11 @@ private fun PhoneDetailContent(
             onCheckConnection = onCheckConnection,
             onOpenEventLog = onOpenEventLog,
             modifier = modifier,
+            gapDetails = (defaultDetailStatus as? PhoneDefaultDetailStatus.Paired)
+                ?.snapshot
+                ?.status
+                ?.gapTechnicalDetails
+                ?: "not run",
         )
         PhoneRoute.EventLog -> PhoneEventLogPane(eventLog = eventLog, modifier = modifier)
         PhoneRoute.ProblemReports -> PhoneProblemReportsPane(

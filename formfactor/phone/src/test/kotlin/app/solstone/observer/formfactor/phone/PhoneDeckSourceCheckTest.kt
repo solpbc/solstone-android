@@ -156,7 +156,7 @@ class PhoneDeckSourceCheckTest {
             val text = file.readText()
             if (file.name == "PhoneObserverScreen.kt") {
                 assertEquals(1, text.split("LocalTime.now(").size - 1, file.name)
-            } else if (file.name == "PhoneAboutFacts.kt") {
+            } else if (file.name == "PhoneAboutFacts.kt" || file.name == "PhoneStatusPill.kt") {
                 assertEquals(1, text.split("currentTimeMillis").size - 1, file.name)
                 tokens.filterNot { it == "currentTimeMillis" }.forEach { token ->
                     assertFalse(text.contains(token), "${file.name} contains $token")

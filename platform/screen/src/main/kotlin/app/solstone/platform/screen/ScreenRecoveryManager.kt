@@ -11,9 +11,13 @@ import app.solstone.core.segment.wireKeys
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealedSegmentSink
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.gapLossFactExists
+import app.solstone.core.spool.payloadBytesExisted
+import app.solstone.core.spool.screenIndexHasRealSample
+import app.solstone.core.spool.writeGapLossFact
 import app.solstone.platform.audio.AudioCommitStatus
 import app.solstone.platform.audio.AudioSpoolFact
 import app.solstone.platform.audio.AudioSpoolLookup
@@ -29,7 +33,7 @@ class ScreenRecoveryManager(
     private val occupiedLeaves: (day: String, stream: String) -> Set<String>,
     private val lookup: AudioSpoolLookup,
     private val sealedSink: SealedSegmentSink,
-    private val interruption: UnresolvedInterruption,
+    private val gaps: GapNoticeStore,
     private val remuxer: ScreenRemuxer,
     private val nowProvider: () -> Long = System::currentTimeMillis,
     private val factsProvider: ((day: String, stream: String, segmentLeaf: String, sha256: String) -> List<AudioSpoolFact>)? = null,
@@ -46,59 +50,60 @@ class ScreenRecoveryManager(
 
             try {
                 val recordFile = File(dir, "record.txt")
-                if (!recordFile.exists() || !recordFile.isFile) {
-                    if (File(dir, "capture.h264").length() > 0 || File(dir, ScreenConstants.PAYLOAD_NAME).length() > 0) {
-                        interruption.markUnresolved()
-                    }
+                if (!recordFile.isFile) {
+                    keepUndeliverableOrNoBytes(dir, attemptId, null)
                     continue
                 }
 
                 var info = ScreenRecordInfo.parse(recordFile.readText())
                 if (info == null) {
-                    if (File(dir, "capture.h264").length() > 0 || File(dir, ScreenConstants.PAYLOAD_NAME).length() > 0) {
-                        interruption.markUnresolved()
-                    }
+                    keepUndeliverableOrNoBytes(dir, attemptId, null)
                     continue
                 }
 
                 val h264File = File(dir, "capture.h264")
                 val indexFile = File(dir, "samples.idx")
                 val mp4File = File(dir, ScreenConstants.PAYLOAD_NAME)
-                val h264NonEmpty = h264File.exists() && h264File.length() > 0L
-                val mp4NonEmpty = mp4File.exists() && mp4File.length() > 0L
+                val h264NonEmpty = h264File.isFile && h264File.length() > 0L
+                val mp4NonEmpty = mp4File.isFile && mp4File.length() > 0L
+                val captured = info.captureStartEpochMs
 
                 val captureEndEpochMs: Long
                 if (!h264NonEmpty && !mp4NonEmpty) {
-                    if (interruption.markUnresolved()) {
-                        dir.deleteRecursively()
-                    }
+                    gaps.recordDiagnostic("screen", "no bytes", attemptId, captured)
+                    dir.deleteRecursively()
                     continue
                 } else if (info.sampleDurationMs != null && info.sampleDurationMs > 0L && mp4NonEmpty) {
-                    val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
                     captureEndEpochMs = info.captureBounds(info.sampleDurationMs!!).second
-                } else if (h264NonEmpty && indexFile.exists() && indexFile.length() > 0L) {
+                } else if (h264NonEmpty && indexFile.isFile && indexFile.length() > 0L) {
                     val remuxResult = try {
                         remuxer.remux(dir, h264File, indexFile, recordFile, mp4File)
                     } catch (_: Throwable) {
-                        interruption.markUnresolved()
+                        gaps.recordDiagnostic("screen", "remux failed", attemptId, captured)
                         continue
                     }
                     if (remuxResult !is ScreenRemuxResult.Success || remuxResult.sampleDurationMs <= 0L || remuxResult.outputBytes <= 0L) {
-                        interruption.markUnresolved()
+                        if (indexFile.isFile && screenIndexHasRealSample(indexFile.readText())) {
+                            keepLoss(dir, attemptId, captured)
+                        } else {
+                            gaps.recordDiagnostic("screen", "no captured frame", attemptId, captured)
+                        }
                         continue
                     }
                     info = info.copy(sampleDurationMs = remuxResult.sampleDurationMs)
-                    if (!ScreenContinuousSourceEngine.writeAndForceRecordTxt(recordFile, info)) { interruption.markUnresolved(); continue }
-                    val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
+                    if (!ScreenContinuousSourceEngine.writeAndForceRecordTxt(recordFile, info)) {
+                        keepFrameOrNoFrame(dir, attemptId, captured)
+                        continue
+                    }
                     captureEndEpochMs = info.captureBounds(remuxResult.sampleDurationMs).second
                 } else {
-                    interruption.markUnresolved()
+                    keepFrameOrNoFrame(dir, attemptId, captured)
                     continue
                 }
 
                 val captureStart = info.firstFrameEpochMs ?: info.captureStartEpochMs
                 if (captureEndEpochMs <= captureStart) {
-                    interruption.markUnresolved()
+                    keepFrameOrNoFrame(dir, attemptId, captured)
                     continue
                 }
 
@@ -141,6 +146,7 @@ class ScreenRecoveryManager(
                         continue
                     }
                     is AudioCommitStatus.CustodyUnproven -> {
+                        gaps.recordDiagnostic("screen", "custody unproven", attemptId, captureStart)
                         continue
                     }
                     is AudioCommitStatus.IdentityCollisionDifferentBytes -> {
@@ -157,12 +163,15 @@ class ScreenRecoveryManager(
                                 it.sha256 != mp4Sha256 &&
                                 it.segmentId.startsWith("${wireId}__ws${captureStart}")
                         } ?: false
-                        if (facts == null || hasSameBoundsMismatch || hasSameLeafMismatch) {
-                            interruption.markUnresolved()
+                        if (facts == null || hasSameBoundsMismatch) {
+                            gaps.recordDiagnostic("screen", "same bounds", attemptId, captureStart)
                             continue
                         }
-                        // Only mismatch is a different hash with different capture bounds in the same window:
-                        // fall through to seal and allocate __ws
+                        if (hasSameLeafMismatch) {
+                            keepLoss(dir, attemptId, captureStart)
+                            continue
+                        }
+                        // Different bounds only: fall through and seal.
                     }
                     is AudioCommitStatus.NotFound -> {
                         // proceed to seal
@@ -191,22 +200,48 @@ class ScreenRecoveryManager(
                 val sealResult = try {
                     spoolWriter.seal(segment, singleProvider)
                 } catch (_: Throwable) {
-                    interruption.markUnresolved()
+                    gaps.recordDiagnostic("screen", "seal failed", attemptId, captureStart)
                     continue
                 }
 
                 try {
                     sealedSink.persistSealed(segment, sealResult, nowProvider())
                 } catch (_: Throwable) {
-                    interruption.markUnresolved()
+                    gaps.recordDiagnostic("screen", "seal failed", attemptId, captureStart)
                     continue
                 }
 
-                dir.deleteRecursively()
+                gaps.recordDiagnostic("screen", "delivered", attemptId, captureStart)
+                if (!dir.deleteRecursively()) error("screen attempt delete failed")
             } catch (_: Exception) {
-                interruption.markUnresolved()
+                gaps.recordDiagnostic("screen", "seal failed", attemptId, null)
                 continue
             }
         }
+    }
+
+    private fun keepUndeliverableOrNoBytes(dir: File, attemptId: String, captured: Long?) {
+        if (screenPayloadExisted(dir)) keepLoss(dir, attemptId, captured)
+        else gaps.recordDiagnostic("screen", "no bytes", attemptId, captured)
+    }
+
+    /** A real index sample or a non-empty mp4 is a loss. Configuration-only bytes are not. */
+    private fun keepFrameOrNoFrame(dir: File, attemptId: String, captured: Long?) {
+        if (screenPayloadExisted(dir)) keepLoss(dir, attemptId, captured)
+        else gaps.recordDiagnostic("screen", "no captured frame", attemptId, captured)
+    }
+
+    private fun keepLoss(dir: File, attemptId: String, captured: Long?) {
+        if (gapLossFactExists(dir.toPath())) return
+        if (!gaps.recordLoss("screen", "undeliverable", attemptId, captured)) return
+        writeGapLossFact(dir.toPath())
+    }
+
+    private fun screenPayloadExisted(dir: File): Boolean {
+        val mp4 = File(dir, ScreenConstants.PAYLOAD_NAME)
+        if (mp4.isFile && payloadBytesExisted(mp4.length())) return true
+        val index = File(dir, "samples.idx")
+        if (!index.isFile) return false
+        return screenIndexHasRealSample(index.readText())
     }
 }

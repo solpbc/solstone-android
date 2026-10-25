@@ -167,5 +167,4 @@ private fun connected() = PhoneStatusModel(
     awaitingMarkConfirmation = false,
     recoveryCompleted = true,
     audioAwaitingCustody = false,
-    unresolvedAudioInterruption = false,
 )

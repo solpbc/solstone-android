@@ -14,11 +14,14 @@ import app.solstone.core.segment.wireKeys
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.spool.FileSpoolWriter
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.SealResult
-import app.solstone.core.spool.SealState
 import app.solstone.core.spool.SealedSegmentSink
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.adtsFileExisted
+import app.solstone.core.spool.gapLossFactExists
+import app.solstone.core.spool.legacyMaterial
+import app.solstone.core.spool.payloadBytesExisted
+import app.solstone.core.spool.writeGapLossFact
 import java.io.File
 import java.io.InputStream
 import java.nio.channels.FileChannel
@@ -29,10 +32,10 @@ import java.nio.file.StandardOpenOption
 import java.time.ZoneId
 
 sealed interface AudioCommitStatus {
-    object CommittedMatch : AudioCommitStatus
-    object IdentityCollisionDifferentBytes : AudioCommitStatus
-    object CustodyUnproven : AudioCommitStatus
-    object NotFound : AudioCommitStatus
+    data object CommittedMatch : AudioCommitStatus
+    data class IdentityCollisionDifferentBytes(val boundsEqual: Boolean) : AudioCommitStatus
+    data object CustodyUnproven : AudioCommitStatus
+    data object NotFound : AudioCommitStatus
 }
 
 data class AudioSpoolFact(
@@ -66,7 +69,7 @@ fun classifyAudioAttempt(
         if (fact.sourceId != sourceId || fact.name != name) continue
         if (fact.sha256 == sha256 && fact.captureStartEpochMs == captureStartEpochMs && fact.captureEndEpochMs == captureEndEpochMs) {
             if (!fact.confirmedUploaded && fact.spoolPayloadExists && !fact.spoolPayloadShaMatches) {
-                return AudioCommitStatus.IdentityCollisionDifferentBytes
+                return AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual = true)
             }
             if (fact.confirmedUploaded || (fact.spoolPayloadExists && fact.spoolPayloadShaMatches && fact.spoolCustodyDurable)) {
                 committedMatch = true
@@ -74,8 +77,9 @@ fun classifyAudioAttempt(
                 return AudioCommitStatus.CustodyUnproven
             }
         } else if (fact.sha256 != sha256) {
-            if (fact.segmentId == wireId || (fact.captureStartEpochMs == captureStartEpochMs && fact.captureEndEpochMs == captureEndEpochMs)) {
-                return AudioCommitStatus.IdentityCollisionDifferentBytes
+            val boundsEqual = fact.captureStartEpochMs == captureStartEpochMs && fact.captureEndEpochMs == captureEndEpochMs
+            if (fact.segmentId == wireId || boundsEqual) {
+                return AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual = boundsEqual)
             }
         }
     }
@@ -116,7 +120,7 @@ class AudioRecoveryManager(
     private val occupiedLeaves: (day: String, stream: String) -> Set<String>,
     private val lookup: AudioSpoolLookup,
     private val sealedSink: SealedSegmentSink,
-    private val interruption: UnresolvedInterruption,
+    private val gaps: GapNoticeStore,
     private val remuxer: AacAdtsRemuxer,
     private val isReadableM4aProbe: (File) -> Boolean = { isReadableM4a(it) },
     private val nowProvider: () -> Long = System::currentTimeMillis,
@@ -138,27 +142,27 @@ class AudioRecoveryManager(
 
             try {
                 val recordFile = File(dir, "record.txt")
-                if (!recordFile.exists() || !recordFile.isFile) {
-                    if (File(dir, "capture.adts").length() > 0 || File(dir, "audio.m4a").length() > 0) interruption.markUnresolved()
+                if (!recordFile.isFile) {
+                    keepUndeliverableOrNoBytes(dir, attemptId, null)
                     continue
                 }
 
                 val info = AudioRecordInfo.parse(recordFile.readText(Charsets.UTF_8))
                 if (info == null) {
-                    if (File(dir, "capture.adts").length() > 0 || File(dir, "audio.m4a").length() > 0) interruption.markUnresolved()
+                    keepUndeliverableOrNoBytes(dir, attemptId, null)
                     continue
                 }
 
                 val adtsFile = File(dir, "capture.adts")
                 val m4aFile = File(dir, AudioContinuousSourceEngine.PAYLOAD_NAME)
-                val adtsNonEmpty = adtsFile.exists() && adtsFile.length() > 0L
-                val m4aNonEmpty = m4aFile.exists() && m4aFile.length() > 0L
+                val adtsNonEmpty = adtsFile.isFile && adtsFile.length() > 0L
+                val m4aNonEmpty = m4aFile.isFile && m4aFile.length() > 0L
+                val captured = info.captureStartEpochMs
 
                 val captureEndEpochMs: Long
                 if (!adtsNonEmpty && !m4aNonEmpty) {
-                    if (interruption.markUnresolved()) {
-                        dir.deleteRecursively()
-                    }
+                    gaps.recordDiagnostic("audio", "no bytes", attemptId, captured)
+                    dir.deleteRecursively()
                     continue
                 } else if (info.sampleDurationMs != null && info.sampleDurationMs > 0L && m4aNonEmpty && isReadableM4aProbe(m4aFile)) {
                     val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
@@ -167,27 +171,29 @@ class AudioRecoveryManager(
                     val remux = try {
                         remuxer.remux(adtsFile, m4aFile)
                     } catch (_: Throwable) {
+                        gaps.recordDiagnostic("audio", "remux failed", attemptId, captured)
                         continue
                     }
                     if (remux.sampleDurationMs <= 0L || remux.outputBytes <= 0L) {
-                        if (interruption.markUnresolved()) {
-                            dir.deleteRecursively()
-                        }
+                        deleteUndeliverableOrEmpty(dir, attemptId, captured)
                         continue
                     }
                     val updatedInfo = info.copy(sampleDurationMs = remux.sampleDurationMs)
                     if (!AudioContinuousSourceEngine.writeAndForceRecordTxt(recordFile, updatedInfo)) {
+                        gaps.recordDiagnostic("audio", "record not written", attemptId, captured)
                         continue
                     }
                     val openEnd = info.openEndEpochMs ?: info.windowEndEpochMs
                     captureEndEpochMs = minOf(info.captureStartEpochMs + remux.sampleDurationMs, openEnd)
                 } else {
-                    interruption.markUnresolved()
+                    if (audioAttemptExisted(dir)) keepLoss(dir, attemptId, captured)
+                    else gaps.recordDiagnostic("audio", "no bytes", attemptId, captured)
                     continue
                 }
 
                 if (captureEndEpochMs <= info.captureStartEpochMs) {
-                    interruption.markUnresolved()
+                    if (audioAttemptExisted(dir)) keepLoss(dir, attemptId, captured)
+                    else gaps.recordDiagnostic("audio", "no bytes", attemptId, captured)
                     continue
                 }
 
@@ -213,10 +219,19 @@ class AudioRecoveryManager(
                         continue
                     }
                     is AudioCommitStatus.IdentityCollisionDifferentBytes -> {
-                        interruption.markUnresolved()
+                        if (status.boundsEqual) {
+                            gaps.recordDiagnostic("audio", "same bounds", attemptId, info.captureStartEpochMs)
+                        } else if (audioAttemptExisted(dir)) {
+                            keepLoss(dir, attemptId, info.captureStartEpochMs)
+                        } else {
+                            gaps.recordDiagnostic("audio", "no bytes", attemptId, info.captureStartEpochMs)
+                        }
                         continue
                     }
-                    is AudioCommitStatus.CustodyUnproven -> continue
+                    is AudioCommitStatus.CustodyUnproven -> {
+                        gaps.recordDiagnostic("audio", "custody unproven", attemptId, info.captureStartEpochMs)
+                        continue
+                    }
                     is AudioCommitStatus.NotFound -> {
                         val payload = SegmentPayload(
                             sourceId = AudioContinuousSourceEngine.SOURCE_ID,
@@ -240,20 +255,23 @@ class AudioRecoveryManager(
                         val sealResult = try {
                             spoolWriter.seal(segment, singleProvider)
                         } catch (_: Throwable) {
+                            gaps.recordDiagnostic("audio", "seal failed", attemptId, info.captureStartEpochMs)
                             continue
                         }
 
                         try {
                             sealedSink.persistSealed(segment, sealResult, nowProvider())
                         } catch (_: Throwable) {
+                            gaps.recordDiagnostic("audio", "seal failed", attemptId, info.captureStartEpochMs)
                             continue
                         }
 
+                        gaps.recordDiagnostic("audio", "delivered", attemptId, info.captureStartEpochMs)
                         dir.deleteRecursively()
                     }
                 }
             } catch (_: Exception) {
-                // Preserve this attempt and continue classifying the rest.
+                gaps.recordDiagnostic("audio", "seal failed", attemptId, null)
                 continue
             }
         }
@@ -274,11 +292,21 @@ class AudioRecoveryManager(
                 continue
             }
 
-            if (!interruption.markUnresolved()) {
+            val shaKey = if (fileSha256.isNotEmpty()) fileSha256 else "unreadable"
+            val factDir = File(legacyDir, shaKey)
+            if (gapLossFactExists(factDir.toPath())) {
+                file.delete()
                 continue
             }
+            if (file.length() <= 0L) {
+                gaps.recordDiagnostic("audio", "no bytes", legacyMaterial(fileSha256), null)
+            } else {
+                if (!gaps.recordLoss("audio", "undeliverable", legacyMaterial(fileSha256), null)) continue
+                factDir.mkdirs()
+                if (!writeGapLossFact(factDir.toPath())) continue
+            }
 
-            val targetSubdir = File(legacyDir, if (fileSha256.isNotEmpty()) fileSha256 else "unreadable")
+            val targetSubdir = factDir
             targetSubdir.mkdirs()
             var targetFile = File(targetSubdir, file.name)
             var counter = 1
@@ -312,6 +340,27 @@ class AudioRecoveryManager(
         }
     }
 
+    private fun keepUndeliverableOrNoBytes(dir: File, attemptId: String, captured: Long?) {
+        if (audioAttemptExisted(dir)) keepLoss(dir, attemptId, captured)
+        else gaps.recordDiagnostic("audio", "no bytes", attemptId, captured)
+    }
+
+    private fun deleteUndeliverableOrEmpty(dir: File, attemptId: String, captured: Long?) {
+        if (audioAttemptExisted(dir)) {
+            if (gaps.recordLoss("audio", "undeliverable", attemptId, captured)) dir.deleteRecursively()
+        } else {
+            gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)
+            dir.deleteRecursively()
+        }
+    }
+
+    /** A kept undeliverable folder gets one loss and a fact. A failed write leaves the folder without a fact. */
+    private fun keepLoss(dir: File, attemptId: String, captured: Long?) {
+        if (gapLossFactExists(dir.toPath())) return
+        if (!gaps.recordLoss("audio", "undeliverable", attemptId, captured)) return
+        writeGapLossFact(dir.toPath())
+    }
+
     private companion object {
         fun forceFileAndParent(file: File, durableRoot: File): Boolean {
             val wasInterrupted = Thread.interrupted()
@@ -333,6 +382,12 @@ class AudioRecoveryManager(
             }
         }
     }
+}
+
+internal fun audioAttemptExisted(dir: File): Boolean {
+    val m4a = File(dir, AudioContinuousSourceEngine.PAYLOAD_NAME)
+    if (m4a.isFile && payloadBytesExisted(m4a.length())) return true
+    return adtsFileExisted(File(dir, "capture.adts").toPath())
 }
 
 fun isReadableM4a(file: File): Boolean {

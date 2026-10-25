@@ -297,9 +297,15 @@ class FilePairingGraphDeathMatrixTest {
             directEndpoint = DirectEndpoint("10.0.0.1", 7657),
             isDirectAssociated = true,
         )
+        val gapDir = File(temp.root, "gap")
+        gapDir.mkdirs()
+        val gapJournal = File(gapDir, "journal-id")
+        gapJournal.writeText("journal\n")
         val forgetResult = graph.forget()
         assertTrue(forgetResult is GraphMutationResult.Cleared)
         assertTrue(graph.currentSnapshot() is PairingGraphSnapshot.Absent)
+        assertTrue(gapJournal.isFile)
+        assertEquals("journal\n", gapJournal.readText())
 
         val recovered = FilePairingGraph(
             identityFile = identFile,

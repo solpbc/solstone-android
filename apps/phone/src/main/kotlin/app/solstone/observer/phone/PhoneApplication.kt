@@ -13,6 +13,19 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.spool.GapConversionState
+import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.formatGapTechnicalDetails
+import app.solstone.observer.formfactor.phone.PhoneGapLoss
+import app.solstone.observer.formfactor.phone.PhoneGapStatus
+import app.solstone.observer.formfactor.phone.PhoneStatusModel
+import app.solstone.observer.formfactor.phone.syncGapAlarm
+import app.solstone.observer.harness.ObserverStatus
+import app.solstone.observer.harness.SourcesReadModel
+import app.solstone.platform.identity.file.CommitMarkerStatus
+import app.solstone.platform.identity.file.PairingCommitMarker
+import java.io.File
+import java.time.ZoneId
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.PhoneObserverWidgetModel
 import app.solstone.observer.formfactor.phone.phoneStatusSnapshotOf
@@ -21,7 +34,6 @@ import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourceToggleResult
-import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.observer.harness.WishSaveOutcome
 import app.solstone.observer.scaffold.ForegroundSourceActivation
 import app.solstone.observer.scaffold.ObserverAppContainer
@@ -66,6 +78,9 @@ class PhoneApplication : ObserverApplication(
                 type = throwable.javaClass.simpleName,
             ),
         )
+    },
+    gapListener = { kind, source, reason, material ->
+        PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
     },
 ), app.solstone.platform.calendar.CalendarWorkerHost {
     override fun calendarSessionForWork(): CalendarSession? {
@@ -197,8 +212,26 @@ class PhoneApplication : ObserverApplication(
         }
     }
 
-    internal fun widgetModel(): PhoneObserverWidgetModel =
-        if (runtime.containerIfInitialized == null) emptyWidgetModel(audioOffNotices.read()) else cachedWidgetModel
+    internal fun widgetModel(): PhoneObserverWidgetModel {
+        if (runtime.containerIfInitialized != null) return cachedWidgetModel
+        val now = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
+        val status = coldPhoneStatus(filesDir, cacheDir, now, zone)
+        syncGapAlarm(PhoneGapWindowScheduler(this), status, now, zone)
+        return renderPhoneObserverWidget(
+            readModel = SourcesReadModel(
+                observer = ObserverStatus(SourceState.OFF, ReasonCode.NONE),
+                sources = emptyList(),
+            ),
+            statusModel = status,
+            startOutcome = PhoneWidgetStartOutcome.None,
+            notice = audioOffNotices.read(),
+        )
+    }
+
+    internal fun refreshWidgetAfterGapSeen() {
+        refreshWidgetAndUpdate()
+    }
 
     internal fun intakeModel(): PhoneIntakeNotificationModel = cachedIntakeModel
 
@@ -466,6 +499,8 @@ class PhoneApplication : ObserverApplication(
             ObserverForegroundService.refreshInactiveNotification(applicationContext, stopped = !desiredOn)
         }
 
+        val now = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
         val statusModel = container?.let { initialized ->
             runCatching {
                 val backlog = PhoneStatusSupplier.forContainer(initialized).invoke()
@@ -476,12 +511,11 @@ class PhoneApplication : ObserverApplication(
                     awaitingMarkConfirmation = phoneAwaitingMarkConfirmation(applicationContext),
                     recoveryCompleted = initialized.recoveryCompleted,
                     audioAwaitingCustody = phoneAudioAwaitingCustody(applicationContext, initialized),
-                    unresolvedAudioInterruption = phoneUnresolvedAudioInterruption(applicationContext),
-                    unresolvedOtherInterruption = phoneUnresolvedOtherInterruption(applicationContext),
-                    unresolvedUnknownRecovery = phoneUnresolvedUnknownRecovery(applicationContext),
+                    gaps = phoneGapStatus(applicationContext, initialized.recoveryCompleted, now, zone),
                 ).status
             }.getOrElse { emptyPhoneStatus() }
         } ?: emptyPhoneStatus()
+        syncGapAlarm(PhoneGapWindowScheduler(this), statusModel, now, zone)
         val notice = audioOffNotices.read()
         val presentedReadModel = presentAudioOffNotice(readModel, notice)
         cachedWidgetModel = renderPhoneObserverWidget(
@@ -546,30 +580,104 @@ class PhoneApplication : ObserverApplication(
     }
 }
 
-internal fun phoneAudioAwaitingCustody(context: Context, container: app.solstone.observer.scaffold.ObserverRuntimeContainer?): Boolean {
-    val legacy = context.cacheDir.resolve("audio-source")
+internal fun phoneAudioAwaitingCustody(context: Context, container: app.solstone.observer.scaffold.ObserverRuntimeContainer?): Boolean =
+    audioAwaitingCustody(context.cacheDir, context.filesDir, container?.inFlightAudioIds.orEmpty())
+
+internal fun audioAwaitingCustody(cacheDir: File, filesDir: File, inFlight: Set<String>): Boolean {
+    val legacy = File(cacheDir, "audio-source")
     if (legacy.exists() && (legacy.listFiles()?.isNotEmpty() != false)) return true
-    val dir = context.filesDir.resolve("audio-source")
+    val dir = File(filesDir, "audio-source")
     if (!dir.exists() || !dir.isDirectory) return false
     val attemptDirs = dir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return true
     if (attemptDirs.isEmpty()) return false
-    val inFlight = container?.inFlightAudioIds.orEmpty()
-    return attemptDirs.any { it.name !in inFlight }
+    return attemptDirs.any { it.name !in inFlight && audioAttemptStillWaiting(it) }
 }
 
-internal fun phoneUnresolvedAudioInterruption(context: Context): Boolean {
-    val store = app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
-    return store.isUnresolved()
+internal fun audioAttemptStillWaiting(dir: File): Boolean {
+    if (File(dir, "gap-loss").isFile) return false
+    val record = File(dir, "record.txt").isFile
+    val adts = File(dir, "capture.adts")
+    val m4a = File(dir, "audio.m4a")
+    val payload = (adts.isFile && adts.length() > 0L) || (m4a.isFile && m4a.length() > 0L)
+    return record || payload
 }
 
-internal fun phoneUnresolvedOtherInterruption(context: Context): Boolean =
-    app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()).isUnresolved()
+internal fun phoneGapStatus(
+    context: Context,
+    recoveryCompleted: Boolean,
+    nowEpochMs: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): PhoneGapStatus = liveGapStatus(context.filesDir, recoveryCompleted, nowEpochMs, zone)
 
-internal fun phoneUnresolvedUnknownRecovery(context: Context): Boolean {
-    val store = app.solstone.core.spool.UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath())
-    if (store.isUnresolved()) return true
-    val drafts = context.filesDir.resolve("spool/.draft")
-    var unreadable = false
-    val remaining = drafts.walkTopDown().onFail { _, _ -> unreadable = true }.any { it.isFile }
-    return remaining || unreadable
+internal fun phoneMarkGapSeen(context: Context, lossIds: Set<String>, unknownKeys: Set<String>): Boolean =
+    GapNoticeStore(
+        directory = context.filesDir.resolve("gap").toPath(),
+        listener = phoneGapListener,
+    ).markSeen(lossIds, unknownKeys)
+
+internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, zone: ZoneId): PhoneStatusModel {
+    val gaps = coldGapStatus(filesDir, nowEpochMs, zone)
+    return PhoneStatusModel(
+        paired = coldPaired(filesDir),
+        online = true,
+        pendingCount = 0,
+        hasContentPending = false,
+        awaitingMarkConfirmation = false,
+        recoveryCompleted = true,
+        audioAwaitingCustody = audioAwaitingCustody(cacheDir, filesDir, emptySet()),
+        gapLosses = gaps.losses,
+        unknownPresent = gaps.unknownPresent,
+        unknownUnseen = gaps.unknownUnseen,
+        unseenUnknownKeys = gaps.unseenUnknownKeys,
+        gateOpen = gaps.gateOpen,
+        gapTechnicalDetails = gaps.technicalDetails,
+    )
+}
+
+internal fun coldPaired(filesDir: File): Boolean {
+    if (!File(filesDir, "pl/identity.tsv").isFile) return false
+    val marker = PairingCommitMarker.parse(File(filesDir, "pl/pairing.commit"))
+    return marker?.status == CommitMarkerStatus.COMMITTED
+}
+
+internal fun liveGapStatus(filesDir: File, recoveryCompleted: Boolean, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
+    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus()
+    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
+    val open = recoveryCompleted && snapshot.conversion !is GapConversionState.NotRun
+    if (!open) return PhoneGapStatus(technicalDetails = technical)
+    return gapStatusOf(snapshot, technical, gateOpen = true)
+}
+
+private fun coldGapStatus(filesDir: File, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
+    val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus()
+    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
+    return gapStatusOf(snapshot, technical, gateOpen = true)
+}
+
+private fun gapStatusOf(
+    snapshot: app.solstone.core.spool.GapSnapshot,
+    technical: String,
+    gateOpen: Boolean,
+): PhoneGapStatus {
+    val losses = snapshot.rows.filter { it.kind == "loss" }.map { row ->
+        PhoneGapLoss(row.id, row.capturedEpochMs, row.foundEpochMs, row.seen)
+    }
+    val unseenUnknown = snapshot.unknownItems.filter { it !in snapshot.unknownSeen }
+    return PhoneGapStatus(
+        losses = losses,
+        unknownPresent = snapshot.unknownItems.isNotEmpty(),
+        unknownUnseen = unseenUnknown.isNotEmpty(),
+        unseenUnknownKeys = unseenUnknown,
+        gateOpen = gateOpen,
+        technicalDetails = technical,
+    )
+}
+
+private fun gapStore(filesDir: File) = GapNoticeStore(
+    directory = filesDir.resolve("gap").toPath(),
+    listener = phoneGapListener,
+)
+
+private val phoneGapListener: (String, String, String, String) -> Unit = { kind, source, reason, material ->
+    PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
 }

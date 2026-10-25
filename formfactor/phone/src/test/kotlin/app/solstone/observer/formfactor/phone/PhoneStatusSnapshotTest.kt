@@ -45,7 +45,6 @@ class PhoneStatusSnapshotTest {
             awaitingMarkConfirmation = false,
             recoveryCompleted = true,
             audioAwaitingCustody = false,
-            unresolvedAudioInterruption = false,
         )
 
         assertEquals(listOf("audio", "location", "a-orphan", "z-orphan"), snapshot.waiting.map { it.sourceId })
@@ -66,7 +65,6 @@ class PhoneStatusSnapshotTest {
             awaitingMarkConfirmation = false,
             recoveryCompleted = true,
             audioAwaitingCustody = false,
-            unresolvedAudioInterruption = false,
         )
 
         assertEquals(1, snapshot.status.pendingCount)
@@ -88,24 +86,36 @@ class PhoneStatusSnapshotTest {
             awaitingMarkConfirmation = false,
             recoveryCompleted = true,
             audioAwaitingCustody = false,
-            unresolvedAudioInterruption = false,
         )
         assertEquals(reading, snapshot.status.journalVersion)
     }
 
     @Test
     fun passesThroughRecoveryAndCustodyFacts() {
+        val loss = PhoneGapLoss("loss", 1_700_000_000_000L, 1_700_000_000_000L, false)
         val snapshot = phoneStatusSnapshotOf(
             backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pendingCount = 0, pendingSourceIds = emptyList()),
             registered = emptyList(),
             awaitingMarkConfirmation = false,
             recoveryCompleted = false,
             audioAwaitingCustody = true,
-            unresolvedAudioInterruption = true,
+            gaps = PhoneGapStatus(
+                losses = listOf(loss),
+                unknownPresent = true,
+                unknownUnseen = true,
+                unseenUnknownKeys = listOf("draft/leaf"),
+                gateOpen = true,
+                technicalDetails = "complete 1",
+            ),
         )
         assertFalse(snapshot.status.recoveryCompleted)
         assertTrue(snapshot.status.audioAwaitingCustody)
-        assertTrue(snapshot.status.unresolvedAudioInterruption)
+        assertEquals(listOf(loss), snapshot.status.gapLosses)
+        assertTrue(snapshot.status.unknownPresent)
+        assertTrue(snapshot.status.unknownUnseen)
+        assertEquals(listOf("draft/leaf"), snapshot.status.unseenUnknownKeys)
+        assertTrue(snapshot.status.gateOpen)
+        assertEquals("complete 1", snapshot.status.gapTechnicalDetails)
     }
 
     private fun flagsFor(plStatus: HarnessPlStatus): Pair<Boolean, Boolean> {
@@ -115,7 +125,6 @@ class PhoneStatusSnapshotTest {
             awaitingMarkConfirmation = false,
             recoveryCompleted = true,
             audioAwaitingCustody = false,
-            unresolvedAudioInterruption = false,
         )
         return snapshot.status.paired to snapshot.status.online
     }

@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- the status said "audio was interrupted" or "there's a gap in your journal" and kept saying it. now, when something you shared won't reach your journal, the status says there's a gap and which day, and it clears once you've looked at it.
+
 ## [2.1.31] - 2026-10-24
 
 ### Changed

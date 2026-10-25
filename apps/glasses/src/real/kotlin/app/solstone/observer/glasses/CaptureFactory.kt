@@ -8,8 +8,8 @@ import android.hardware.SensorManager
 import app.solstone.core.metadata.PhotoMetadataContract
 import app.solstone.core.metadata.PhotoMetadataEngine
 import app.solstone.core.segment.SegmentPayload
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.platform.audio.AndroidAacAdtsRemuxer
 import app.solstone.platform.audio.AudioCommitStatus
 import app.solstone.platform.audio.AudioContinuousSourceEngine
@@ -27,15 +27,22 @@ import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
 import java.nio.file.Files
 
-fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
+fun createCaptureSetup(
+    context: Context,
+    cameraLock: CameraLock,
+    gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
-    val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
+    val gaps = GapNoticeStore(
+        directory = context.filesDir.resolve("gap").toPath(),
+        listener = gapListener,
+    )
     val remuxer = AndroidAacAdtsRemuxer()
     val audio = AudioContinuousSourceEngine(
         outputDirectory = context.filesDir.resolve("audio-source"),
         storageStatus = storageStatus,
         remuxer = remuxer,
-        interruption = interruption,
+        gaps = gaps,
     )
     val camera = StillCaptureEngine(
         stillCamera = Camera2StillCamera(context),
@@ -71,14 +78,23 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
             override fun discardUncommitted(payload: SegmentPayload): Boolean =
                 when (payload.sourceId) {
                     AudioContinuousSourceEngine.SOURCE_ID -> audio.discardUncommitted(payload)
-                    StillCaptureEngine.SOURCE_ID -> camera.discardUncommitted(payload)
-                    PhotoMetadataContract.SOURCE_ID -> metadataEngine.discardUncommitted(payload)
+                    StillCaptureEngine.SOURCE_ID -> {
+                        val dropped = camera.discardUncommitted(payload)
+                        if (dropped) gaps.recordDiagnostic("camera", "late fragment", "late", null)
+                        dropped
+                    }
+                    PhotoMetadataContract.SOURCE_ID -> {
+                        val dropped = metadataEngine.discardUncommitted(payload)
+                        if (dropped) gaps.recordDiagnostic("metadata", "late fragment", "late", null)
+                        dropped
+                    }
                     else -> error("unknown payload source: ${payload.sourceId}")
                 }
         },
         storageOk = storageStatus::isStorageOk,
         inFlightAudioIds = audio::inFlightRecordingIds,
-        recoverAudio = { spoolDir, dao, interruptionStore, inFlightIds ->
+        gaps = gaps,
+        recoverAudio = { spoolDir, dao, inFlightIds ->
             val lookup = object : AudioSpoolLookup {
                 override fun findStatus(
                     sha256: String,
@@ -160,7 +176,7 @@ fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
                 occupiedLeaves = dao::occupiedDirSegments,
                 lookup = lookup,
                 sealedSink = RoomSealedSegmentSink(dao),
-                interruption = interruptionStore,
+                gaps = gaps,
                 remuxer = remuxer,
             )
             manager.recover(inFlightIds)

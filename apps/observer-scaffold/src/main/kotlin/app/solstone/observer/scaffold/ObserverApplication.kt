@@ -16,6 +16,7 @@ import app.solstone.platform.work.syncStores
 open class ObserverApplication(
     val spec: FormFactorSpec,
     private val syncFailureReporter: (String, Throwable) -> Unit = { _, _ -> },
+    private val gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ) : Application() {
     lateinit var runtime: ObserverRuntime
         private set
@@ -32,7 +33,7 @@ open class ObserverApplication(
             SyncScheduler.enqueueNow(applicationContext, spec.stream)
         }
         runtime = ObserverRuntime(applicationContext, spec) { context, formFactor ->
-            ObserverAppContainer(context, formFactor, syncFailureReporter)
+            ObserverAppContainer(context, formFactor, syncFailureReporter, gapListener)
         }
         ObserverHarnessRuntime.runtime = runtime
         ObserverForegroundService.rehydrator = ObserverServiceRehydrator {

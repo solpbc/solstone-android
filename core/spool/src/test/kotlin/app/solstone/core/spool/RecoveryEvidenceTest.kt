@@ -11,58 +11,81 @@ import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.sha256
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class RecoveryEvidenceTest {
     @Test
     fun invalidCameraInMixedDraftStillEstablishesDiscardedAudio() = withDraft { root, draft ->
         writeManifest(draft, listOf("audio", "camera"))
-        val audio = Marker()
-        val other = Marker()
-        val unknown = Marker()
-        applyRecoveryActions(RecoveryScanner(root).scan(), audio, other, unknown)
-        assertEquals(1, audio.marks)
-        assertEquals(0, other.marks)
-        assertEquals(0, unknown.marks)
+        val gaps = GapNoticeStore(root.resolve("gap"))
+        val unknown = mutableListOf<String>()
+        applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
+        val losses = rows(gaps).filter { it.kind == "loss" }
+        assertEquals(setOf("audio", "camera"), losses.map { it.source }.toSet())
+        assertTrue(losses.all { it.reason == "invalid payload" && it.material == draft.fileName.toString() })
         assertFalse(Files.exists(draft))
+        assertTrue(unknown.isEmpty())
     }
 
     @Test
     fun knownNonAudioDiscardCannotSetAudioDiagnosis() = withDraft { root, draft ->
         writeManifest(draft, listOf("camera"))
-        val audio = Marker()
-        val other = Marker()
-        val unknown = Marker()
-        applyRecoveryActions(RecoveryScanner(root).scan(), audio, other, unknown)
-        assertEquals(0, audio.marks)
-        assertEquals(1, other.marks)
-        assertEquals(0, unknown.marks)
+        val gaps = GapNoticeStore(root.resolve("gap"))
+        applyRecoveryActions(RecoveryScanner(root).scan(), gaps, mutableListOf(), root)
+        val losses = rows(gaps).filter { it.kind == "loss" }
+        assertEquals(listOf("camera"), losses.map { it.source })
+        assertTrue(losses.none { it.source == "audio" })
+        assertFalse(Files.exists(draft))
     }
 
     @Test
     fun unknownContentIsPreservedWithoutAnInventedAudioDiagnosis() = withDraft { root, draft ->
         Files.write(draft.resolve("unknown.bin"), "keep these bytes".toByteArray())
-        val audio = Marker()
-        val other = Marker()
-        val unknown = Marker()
-        applyRecoveryActions(RecoveryScanner(root).scan(), audio, other, unknown)
-        assertEquals(0, audio.marks)
-        assertEquals(0, other.marks)
-        assertEquals(1, unknown.marks)
+        val gaps = GapNoticeStore(root.resolve("gap"))
+        val unknown = mutableListOf<String>()
+        val events = applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
+        assertTrue(rows(gaps).isEmpty())
+        assertTrue(events.isEmpty())
+        assertEquals(1, unknown.size)
         assertTrue(Files.exists(draft.resolve("unknown.bin")))
     }
 
     @Test
     fun failedDurableNoticePreservesKnownAudioDraft() = withDraft { root, draft ->
         writeManifest(draft, listOf("audio", "camera"))
-        val failedStore = UnresolvedInterruptionStore(root.resolve("audio-notice")) {
-            throw java.io.IOException("directory publication failed")
-        }
-        applyRecoveryActions(RecoveryScanner(root).scan(), failedStore, Marker(), Marker())
+        val failedStore = GapNoticeStore(root.resolve("gap"), syncDirectory = { throw java.io.IOException("directory publication failed") })
+        applyRecoveryActions(RecoveryScanner(root).scan(), failedStore, mutableListOf(), root)
         assertTrue(Files.exists(draft.resolve("audio.bin")))
+        assertTrue(Files.exists(draft.resolve("camera.bin")))
+    }
+
+    @Test
+    fun invalidPayloadWithAShortSiblingRecordsOneLossPerSourceThatHadBytes() = withDraft { root, draft ->
+        writeManifest(draft, listOf("audio", "camera"))
+        Files.write(draft.resolve("audio.bin"), ByteArray(0))
+        val gaps = GapNoticeStore(root.resolve("gap"))
+        applyRecoveryActions(RecoveryScanner(root).scan(), gaps, mutableListOf(), root)
+        val recorded = rows(gaps)
+        assertEquals(listOf("camera"), recorded.filter { it.kind == "loss" }.map { it.source })
+        assertTrue(recorded.any { it.kind == "diagnostic" && it.source == "audio" && it.reason == "no bytes" })
+        assertFalse(Files.exists(draft))
+    }
+
+    @Test
+    fun malformedManifestIsKeptWithNoGapRow() = withDraft { root, draft ->
+        Files.write(draft.resolve("manifest"), "not a manifest".toByteArray())
+        val gaps = GapNoticeStore(root.resolve("gap"))
+        val unknown = mutableListOf<String>()
+        val events = applyRecoveryActions(RecoveryScanner(root).scan(), gaps, unknown, root)
+        assertTrue(events.isEmpty())
+        assertTrue(rows(gaps).isEmpty())
+        assertEquals(listOf(".draft/20261003/main/000000_1"), unknown)
+        assertTrue(Files.exists(draft.resolve("manifest")))
     }
 
     private fun writeManifest(draft: Path, sources: List<String>) {
@@ -89,9 +112,6 @@ class RecoveryEvidenceTest {
         }
     }
 
-    private class Marker : UnresolvedInterruption {
-        var marks = 0
-        override fun markUnresolved(): Boolean { marks++; return true }
-        override fun isUnresolved(): Boolean = marks > 0
-    }
+    private fun rows(gaps: GapNoticeStore): List<GapNoticeRow> =
+        assertIs<GapRead.Ready>(gaps.read(ZoneId.of("UTC"))).rows
 }

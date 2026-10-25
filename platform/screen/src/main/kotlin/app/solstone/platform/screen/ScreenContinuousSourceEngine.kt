@@ -13,8 +13,9 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.screenIndexHasRealSample
 import app.solstone.platform.power.StorageStatus
 import java.io.File
 import java.io.FileOutputStream
@@ -38,7 +39,7 @@ class ScreenContinuousSourceEngine(
     private val outputDirectory: File,
     private val storageStatus: StorageStatus,
     private val remuxer: ScreenRemuxer,
-    private val interruption: UnresolvedInterruption,
+    private val gaps: GapNoticeStore,
     private val sessionHolder: ScreenSessionHolder,
     private val encoderFactory: ScreenEncoderFactory = ScreenEncoderFactory { w, h, b, f -> AndroidScreenEncoder(w, h, b, f) },
     private val onFloorTripped: (() -> Unit)? = null,
@@ -78,7 +79,6 @@ class ScreenContinuousSourceEngine(
     fun reasonWhenOff(): ReasonCode? = when {
         !storageStatus.isStorageOk() -> ReasonCode.STORAGE_FULL
         failedReason != null -> failedReason
-        interruption.isUnresolved() -> ReasonCode.SCREEN_CAPTURE_FAILED
         else -> null
     }
 
@@ -142,8 +142,8 @@ class ScreenContinuousSourceEngine(
     override fun discardUncommitted(payload: SegmentPayload): Boolean {
         // Neither a watermark nor a completed finalizer is durable custody.
         // Keep the capacity/protection entry for initialization recovery after restart.
-        interruption.markUnresolved()
-        registered.remove(Key(payload.captureStartEpochMs, payload.captureEndEpochMs))
+        val attempt = registered.remove(Key(payload.captureStartEpochMs, payload.captureEndEpochMs))
+        gaps.recordDiagnostic("screen", "screen restart", attempt?.id ?: "late", payload.captureStartEpochMs)
         return false
     }
 
@@ -174,7 +174,15 @@ class ScreenContinuousSourceEngine(
     private fun fail(run: Run, error: Throwable) {
         run.failure.compareAndSet(null, error)
         run.failed = true
-        interruption.markUnresolved()
+        val current = attempts.values.toList()
+        if (current.isEmpty()) {
+            gaps.recordDiagnostic("screen", "no captured frame", "late", null)
+        } else {
+            for (attempt in current) {
+                val reason = if (screenAttemptHasFrame(attempt.dir)) "screen restart" else "no captured frame"
+                gaps.recordDiagnostic("screen", reason, attempt.id, null)
+            }
+        }
         runCatching { diag("screen event=failed type=${error.javaClass.simpleName}") }
         endCapture(run)
         if (run.control !== Thread.currentThread()) interruptCapture(run)
@@ -325,11 +333,20 @@ class ScreenContinuousSourceEngine(
                     mapOf("zoneId" to info.zoneId, "utcOffsetSeconds" to info.utcOffsetSeconds.toString()),
                     emptyList(), independentTimeline = true))
             } else if (raw.length() == 0L && recordingFailure == null && stopError == null && drainError == null) {
+                gaps.recordDiagnostic("screen", "empty recording", id, start)
                 dir.deleteRecursively()
                 attempts.remove(id)
             } else if (raw.length() > 0L) error("screen has bytes without a captured frame")
             (recordingFailure ?: cutoffError ?: stopError ?: drainError)?.let { throw it }
         }
+    }
+
+    private fun screenAttemptHasFrame(dir: File): Boolean {
+        val mp4 = File(dir, ScreenConstants.PAYLOAD_NAME)
+        if (mp4.isFile && mp4.length() > 0L) return true
+        val index = File(dir, "samples.idx")
+        if (!index.isFile) return false
+        return screenIndexHasRealSample(index.readText())
     }
 
     companion object {

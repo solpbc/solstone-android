@@ -21,7 +21,11 @@ import app.solstone.testing.FakeBatterySource
 import app.solstone.testing.fakePayloadBytes
 import java.io.ByteArrayInputStream
 
-fun createCaptureSetup(context: Context, cameraLock: CameraLock): CaptureSetup {
+fun createCaptureSetup(
+    context: Context,
+    cameraLock: CameraLock,
+    gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+): CaptureSetup {
     val audio = FakeContinuousSource(
         sourceId = "audio",
         stream = MAIN_STREAM,

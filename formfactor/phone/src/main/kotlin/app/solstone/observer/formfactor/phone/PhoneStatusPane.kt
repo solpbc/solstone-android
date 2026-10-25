@@ -173,69 +173,16 @@ private fun PhonePairedStatusSummary(
     model: PhoneStatusModel,
     onConfirmMark: () -> Unit,
 ) {
-    val summary = pairedStatusSummary(model) ?: return
-    val custody = audioCustodyLines(model)
-    val pillText = statusPillText(model)
-
-    if (pillText in setOf(STATUS_AUDIO_INTERRUPTED_LEAD, STATUS_WAITING_TO_SYNC_LEAD,
-            STATUS_OTHER_INTERRUPTED_LEAD, STATUS_UNKNOWN_RECOVERY_LEAD)) {
-        if (custody.isNotEmpty()) {
-            PaneLead(custody[0])
-            for (i in 1 until custody.size) {
-                PaneSubLine(custody[i])
-            }
-        }
-        if (summary.action) {
-            TextButton(
-                onClick = onConfirmMark,
-                modifier = Modifier.testTag("statusConfirmMark"),
-            ) {
-                Text("confirm the mark")
-            }
-        }
-        return
-    }
-
-    val markLine = "waiting for you to confirm your journal's mark"
-    val importsNeedYou = LocalPhoneImport.current.state.recent.needsOwner
-    when (summary.lead) {
-        // Imports that need the owner aren't in the count, so it can read zero while they
-        // wait; that is never "all caught up".
-        PairedStatusLead.CAUGHT_UP -> when {
-            importsNeedYou -> PaneLead("imports need you")
-            model.calendarHeldForJournal -> PaneLead("journal needs an update")
-            else -> PaneLead("all caught up")
-        }
-        PairedStatusLead.COUNT -> PaneCount(model.pendingCount)
-        PairedStatusLead.MARK_LINE -> PaneLead(markLine)
-    }
-    if (summary.markLineFollowsCount) {
-        PaneLead(markLine)
-    }
-    if (summary.subLine) {
-        val subText = when (statusPillKind(model)) {
-            StatusPillKind.CONNECTED -> when {
-                importsNeedYou -> "open import to see why"
-                model.calendarHeldForJournal -> "calendar notes stay on this phone until your journal can take them."
-                else -> "everything is in your journal"
-            }
-            StatusPillKind.SYNCING -> "syncing to your journal…"
-            StatusPillKind.OFFLINE -> "on this device"
-            StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
-            StatusPillKind.NOT_PAIRED -> ""
-        }
-        if (subText.isNotEmpty()) {
-            PaneSubLine(subText)
-        }
-    }
-    if (model.calendarHeldForJournal && statusPillKind(model) != StatusPillKind.CONNECTED) {
-        PaneLead("journal needs an update")
-        PaneSubLine("calendar notes stay on this phone until your journal can take them.")
-    }
-    custody.forEach { line ->
-        PaneSubLine(line)
-    }
-    if (summary.action) {
+    val copy = statusPaneCopy(
+        model = model,
+        nowEpochMs = LocalPhoneStatusNow.current.nowEpochMs(),
+        zone = java.time.ZoneId.systemDefault(),
+        importsNeedYou = LocalPhoneImport.current.state.recent.needsOwner,
+    ) ?: return
+    if (copy.count) PaneCount(model.pendingCount)
+    copy.lead?.let { PaneLead(it) }
+    copy.lines.forEach { PaneSubLine(it) }
+    if (copy.confirm) {
         TextButton(
             onClick = onConfirmMark,
             modifier = Modifier.testTag("statusConfirmMark"),

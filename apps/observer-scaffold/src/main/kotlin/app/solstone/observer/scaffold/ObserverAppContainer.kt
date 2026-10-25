@@ -16,8 +16,10 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
-import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.core.spool.applyRecoveryActions
+import app.solstone.core.spool.emitDroppedRecoveryEvent
+import app.solstone.platform.identity.file.CommitMarkerStatus
+import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.BacklogStatusReader
 import app.solstone.observer.harness.HarnessController
@@ -71,6 +73,7 @@ class ObserverAppContainer(
     private val context: Context,
     private val spec: FormFactorSpec,
     private val syncFailureReporter: (String, Throwable) -> Unit = { _, _ -> },
+    private val gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ) : ObserverRuntimeContainer {
     override val cameraLock = SingleHolderCameraLock()
     override val captureAuthority = VisibleCaptureOwnerRegistry()
@@ -81,6 +84,7 @@ class ObserverAppContainer(
         spec.registerScreenSource,
         spec.registerCalendarSource,
         { calendarNeedsAttention() },
+        gapListener,
     )
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
@@ -265,23 +269,48 @@ class ObserverAppContainer(
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
-            val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
-            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
-            captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
-            captureSetup.recoverScreen(spoolDir, database.segmentDao(),
-                UnresolvedInterruptionStore(context.filesDir.resolve("screen-interruption").toPath()), captureSetup.inFlightScreenIds())
-            applyRecoveryActions(
-                RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption,
-                UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()),
-                UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath()),
-            )
-            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
-            recoveryCompleted = true
-            journalCacheCoordinator.requestImmediatePass()
-            ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
-            deferredStartMode?.let { mode ->
-                deferredStartMode = null
-                controller.reconcile(mode)
+            val finished = runCatching {
+                val gaps = captureSetup.gaps
+                val filesDir = context.filesDir.toPath()
+                val unknown = mutableListOf<String>()
+                if (gaps != null) {
+                    gaps.conversion(
+                        listOf(
+                            "audio" to filesDir.resolve("audio-interruption"),
+                            "other" to filesDir.resolve("other-interruption"),
+                            "unknown" to filesDir.resolve("unknown-interruption"),
+                            "screen" to filesDir.resolve("screen-interruption"),
+                        ),
+                    )
+                    val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
+                    val journal = if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
+                    gaps.journalId(journal)
+                }
+                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
+                captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds())
+                captureSetup.recoverScreen(spoolDir, database.segmentDao(), captureSetup.inFlightScreenIds())
+                if (gaps != null) {
+                    val events = applyRecoveryActions(
+                        RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
+                        gaps,
+                        unknown,
+                        filesDir,
+                    )
+                    events.forEach { event ->
+                        runCatching { emitDroppedRecoveryEvent(event, gapListener) }
+                    }
+                }
+                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> Log.w("SpoolRoomReconciler", line) }.reconcile()
+                if (gaps != null) gaps.sweepMilestone(unknown)
+            }.isSuccess
+            if (finished) {
+                recoveryCompleted = true
+                journalCacheCoordinator.requestImmediatePass()
+                ObserverHarnessRuntime.hooks?.onRecoveryComplete?.invoke()
+                deferredStartMode?.let { mode ->
+                    deferredStartMode = null
+                    controller.reconcile(mode)
+                }
             }
         }
     }

@@ -3,8 +3,8 @@
 
 package app.solstone.observer.scaffold
 
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruption
 import app.solstone.observer.harness.SourceRegistration
 import app.solstone.platform.persistence.room.SegmentDao
 import java.nio.file.Path
@@ -19,7 +19,16 @@ data class CaptureSetup(
     val payloadBytesProvider: PayloadBytesProvider,
     val storageOk: () -> Boolean = { true },
     val inFlightAudioIds: () -> Set<String> = { emptySet() },
-    val recoverAudio: (Path, SegmentDao, UnresolvedInterruption, Set<String>) -> Unit = { _, _, _, _ -> },
+    val gaps: GapNoticeStore? = null,
+    val recoverAudio: (Path, SegmentDao, Set<String>) -> Unit = { _, _, _ -> },
     val inFlightScreenIds: () -> Set<String> = { emptySet() },
-    val recoverScreen: (Path, SegmentDao, UnresolvedInterruption, Set<String>) -> Unit = { _, _, _, _ -> },
+    val recoverScreen: (Path, SegmentDao, Set<String>) -> Unit = { _, _, _ -> },
 )
+
+/** A screen session that did not start is one diagnostic. It does not set the engine's failure reason. */
+fun recordScreenDidNotStart(
+    started: Boolean,
+    record: (source: String, reason: String, material: String) -> Unit,
+) {
+    if (!started) record("screen", "screen did not start", "screen-start")
+}

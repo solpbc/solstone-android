@@ -22,7 +22,6 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = false,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNull(summary)
@@ -39,7 +38,6 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = true,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -60,7 +58,6 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = true,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -81,7 +78,6 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = false,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
@@ -102,11 +98,33 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = false,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)
         assertEquals(PairedStatusLead.COUNT, summary.lead)
+        assertFalse(summary.markLineFollowsCount)
+        assertTrue(summary.subLine)
+        assertFalse(summary.action)
+    }
+
+    @Test
+    fun noticeKindReturnsTheCaughtUpSummary() {
+        val now = System.currentTimeMillis()
+        val summary = pairedStatusSummary(
+            PhoneStatusModel(
+                paired = true,
+                online = true,
+                pendingCount = 0,
+                hasContentPending = false,
+                awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+                gateOpen = true,
+            ),
+        )
+        assertNotNull(summary)
+        assertEquals(PairedStatusLead.CAUGHT_UP, summary.lead)
         assertFalse(summary.markLineFollowsCount)
         assertTrue(summary.subLine)
         assertFalse(summary.action)
@@ -123,7 +141,6 @@ class PairedStatusSummaryTest {
                 awaitingMarkConfirmation = false,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
         )
         assertNotNull(summary)

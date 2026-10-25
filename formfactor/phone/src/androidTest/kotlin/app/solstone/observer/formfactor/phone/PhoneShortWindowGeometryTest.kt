@@ -242,6 +242,5 @@ class PhoneShortWindowGeometryTest {
         awaitingMarkConfirmation = false,
         recoveryCompleted = true,
         audioAwaitingCustody = false,
-        unresolvedAudioInterruption = false,
     )
 }

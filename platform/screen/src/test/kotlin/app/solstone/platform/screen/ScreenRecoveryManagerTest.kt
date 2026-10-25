@@ -7,7 +7,10 @@ import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.sha256
 import app.solstone.core.spool.SealResult
 import app.solstone.core.spool.SealedSegmentSink
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.GapNoticeStore
+import app.solstone.core.spool.GapRead
+import app.solstone.core.spool.gapLossFactExists
+import app.solstone.core.spool.screenIndexHasRealSample
 import app.solstone.platform.audio.AudioCommitStatus
 import app.solstone.platform.audio.AudioSpoolFact
 import app.solstone.platform.audio.AudioSpoolLookup
@@ -17,18 +20,15 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ScreenRecoveryManagerTest {
 
-    private class TestInterruption : UnresolvedInterruption {
-        var markCount = 0
-        override fun markUnresolved(): Boolean {
-            markCount++
-            return true
-        }
-        override fun isUnresolved(): Boolean = markCount > 0
-    }
+    private fun gapsOf(root: File) = GapNoticeStore(File(root, "gap").toPath())
+
+    private fun rows(store: GapNoticeStore) =
+        assertIs<GapRead.Ready>(store.read(java.time.ZoneId.of("UTC"))).rows
 
     private class RecordingSealedSink : SealedSegmentSink {
         val persisted = mutableListOf<Pair<SealedSegment, SealResult>>()
@@ -101,7 +101,7 @@ class ScreenRecoveryManagerTest {
                     assertEquals(segment.key, result.manifest.key)
                     if (fail) error("Room unavailable")
                     adopted += segment
-                }, TestInterruption(), FakeRemuxer(sampleDurationMs = 10_000L))
+                }, gapsOf(root), FakeRemuxer(sampleDurationMs = 10_000L))
             manager.recover()
             assertTrue(dir.exists())
             assertTrue(File(dir, "capture.h264").exists())
@@ -125,7 +125,7 @@ class ScreenRecoveryManagerTest {
             val sourceDir = File(baseDir, "screen-source").apply { mkdirs() }
             val spoolDir = File(baseDir, "spool").toPath().apply { Files.createDirectories(this) }
             val occupied = mutableSetOf<String>()
-            val interruption = TestInterruption()
+            val gaps = gapsOf(baseDir)
             val sink = RecordingSealedSink()
             val facts = mutableListOf<AudioSpoolFact>()
 
@@ -158,7 +158,7 @@ class ScreenRecoveryManagerTest {
                         spoolCustodyDurable = true,
                     )
                 },
-                interruption = interruption,
+                gaps = gaps,
                 remuxer = FakeRemuxer(succeed = true, sampleDurationMs = 10_000L, content = "portion-1-bytes"),
                 factsProvider = { _, _, _, _ -> facts },
             )
@@ -185,7 +185,7 @@ class ScreenRecoveryManagerTest {
         try {
             val sourceDir = File(baseDir, "screen-source").apply { mkdirs() }
             val spoolDir = File(baseDir, "spool").toPath().apply { Files.createDirectories(this) }
-            val interruption = TestInterruption()
+            val gaps = gapsOf(baseDir)
             val sink = RecordingSealedSink()
 
             val attemptDir = createAttemptDir(sourceDir, "rec-fail", 1_700_000_000_000L, 1_700_000_010_000L, 1_700_000_020_000L)
@@ -196,15 +196,15 @@ class ScreenRecoveryManagerTest {
                 occupiedLeaves = { _, _ -> emptySet() },
                 lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
                 sealedSink = sink,
-                interruption = interruption,
+                gaps = gaps,
                 remuxer = FakeRemuxer(succeed = false),
             )
 
             manager.recover()
 
-            // Failed remux keeps directory and marks interruption unresolved
             assertTrue(attemptDir.exists(), "Failed remux must keep the directory")
-            assertTrue(interruption.markCount > 0, "Failed remux must mark unresolved")
+            assertEquals(listOf("no captured frame"), rows(gaps).map { it.reason })
+            assertTrue(rows(gaps).none { it.kind == "loss" })
             assertEquals(0, sink.persisted.size)
         } finally {
             baseDir.deleteRecursively()
@@ -218,7 +218,7 @@ class ScreenRecoveryManagerTest {
             val sourceDir = File(baseDir, "screen-source").apply { mkdirs() }
             val spoolDir = File(baseDir, "spool").toPath().apply { Files.createDirectories(this) }
             val occupied = mutableSetOf<String>()
-            val interruption = TestInterruption()
+            val gaps = gapsOf(baseDir)
             val sink = RecordingSealedSink()
             val facts = mutableListOf<AudioSpoolFact>()
 
@@ -252,7 +252,7 @@ class ScreenRecoveryManagerTest {
                         spoolCustodyDurable = true,
                     )
                 },
-                interruption = interruption,
+                gaps = gaps,
                 remuxer = FakeRemuxer(succeed = true, sampleDurationMs = 20_000L),
                 factsProvider = { _, _, _, _ -> facts },
             )
@@ -277,6 +277,80 @@ class ScreenRecoveryManagerTest {
             assertEquals(app.solstone.core.segment.wireKeys(p1Start, p1End, java.time.ZoneId.of("UTC")).segment, segment1Name)
             assertEquals(app.solstone.core.segment.wireKeys(p2Start, p2End, java.time.ZoneId.of("UTC")).segment, segment2Name)
             assertTrue(segment2Name != segment1Name)
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun remuxThatThrowsKeepsTheDirectoryAndALaterSuccessDeliversWithoutALoss() {
+        val baseDir = Files.createTempDirectory(Path.of("/var/tmp"), "screen-recovery-throw-").toFile()
+        try {
+            val sourceDir = File(baseDir, "screen-source").apply { mkdirs() }
+            val spoolDir = File(baseDir, "spool").toPath().apply { Files.createDirectories(this) }
+            val gaps = gapsOf(baseDir)
+            val sink = RecordingSealedSink()
+            var explode = true
+            val remuxer = object : ScreenRemuxer {
+                override fun remux(attemptDir: File, h264File: File, indexFile: File, recordFile: File, mp4File: File): ScreenRemuxResult {
+                    if (explode) error("remux failed")
+                    mp4File.writeText("playable")
+                    return ScreenRemuxResult.Success(sampleDurationMs = 10_000L, outputBytes = mp4File.length())
+                }
+            }
+            val attemptDir = createAttemptDir(sourceDir, "rec-throw", 1_700_000_000_000L, 1_700_000_010_000L, 1_700_000_020_000L)
+            val manager = ScreenRecoveryManager(
+                screenSourceDir = sourceDir,
+                spoolDir = spoolDir,
+                occupiedLeaves = { _, _ -> emptySet() },
+                lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+                sealedSink = sink,
+                gaps = gaps,
+                remuxer = remuxer,
+            )
+            manager.recover()
+            assertTrue(attemptDir.exists())
+            assertEquals(listOf("remux failed"), rows(gaps).map { it.reason })
+            assertTrue(rows(gaps).none { it.kind == "loss" })
+            assertFalse(File(attemptDir, "gap-loss").exists())
+            explode = false
+            manager.recover()
+            assertFalse(attemptDir.exists())
+            assertEquals(1, sink.persisted.size)
+            assertTrue(rows(gaps).none { it.kind == "loss" })
+            assertTrue(rows(gaps).any { it.reason == "delivered" })
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun remuxFailureWithARealIndexSampleIsALossAndConfigurationOnlyIsNot() {
+        val baseDir = Files.createTempDirectory(Path.of("/var/tmp"), "screen-recovery-index-").toFile()
+        try {
+            val sourceDir = File(baseDir, "screen-source").apply { mkdirs() }
+            val spoolDir = File(baseDir, "spool").toPath().apply { Files.createDirectories(this) }
+            val gaps = gapsOf(baseDir)
+            val real = createAttemptDir(sourceDir, "rec-real", 1_700_000_000_000L, 1_700_000_010_000L, 1_700_000_020_000L)
+            File(real, "samples.idx").writeText("0,100,0\n")
+            val config = createAttemptDir(sourceDir, "rec-config", 1_700_000_100_000L, 1_700_000_110_000L, 1_700_000_120_000L)
+            File(config, "samples.idx").writeText("0,10,4\n")
+            val manager = ScreenRecoveryManager(
+                screenSourceDir = sourceDir,
+                spoolDir = spoolDir,
+                occupiedLeaves = { _, _ -> emptySet() },
+                lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+                sealedSink = RecordingSealedSink(),
+                gaps = gaps,
+                remuxer = FakeRemuxer(succeed = false),
+            )
+            manager.recover()
+            assertTrue(real.exists())
+            assertTrue(File(real, "gap-loss").isFile)
+            assertEquals(listOf("undeliverable"), rows(gaps).filter { it.kind == "loss" }.map { it.reason })
+            assertTrue(config.exists())
+            assertFalse(File(config, "gap-loss").exists())
+            assertTrue(rows(gaps).any { it.kind == "diagnostic" && it.reason == "no captured frame" && it.material == "rec-config" })
         } finally {
             baseDir.deleteRecursively()
         }

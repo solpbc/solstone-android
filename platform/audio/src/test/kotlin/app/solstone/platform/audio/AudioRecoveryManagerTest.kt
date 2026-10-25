@@ -5,15 +5,20 @@ package app.solstone.platform.audio
 
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.sha256
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.SealResult
+import app.solstone.core.spool.GapRead
 import app.solstone.core.spool.SealedSegmentSink
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.gapLossFactExists
+import app.solstone.core.spool.legacyMaterial
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class AudioRecoveryManagerTest {
@@ -42,7 +47,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "capture.adts").writeBytes("fake-adts-data".encodeToByteArray())
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val remuxer = FakeRemuxer(durationMs = 299_000L)
         val lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound }
 
@@ -53,7 +58,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -61,7 +66,8 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertFalse(attemptDir.exists(), "recovered attempt dir should be deleted after seal")
-        assertFalse(interruption.marked)
+        assertTrue(rows(gaps).none { it.kind == "loss" })
+        assertTrue(rows(gaps).any { it.reason == "delivered" })
         assertEquals(1, sink.persisted.size)
         val sealed = sink.persisted.single()
         assertEquals(1, sealed.payloads.size)
@@ -119,7 +125,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "audio.m4a").writeBytes("existing-m4a-bytes".encodeToByteArray())
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         var remuxCalled = false
         val remuxer = object : AacAdtsRemuxer {
             override fun remux(adts: File, m4a: File): AacRemux {
@@ -136,7 +142,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -145,7 +151,8 @@ class AudioRecoveryManagerTest {
 
         assertFalse(remuxCalled)
         assertFalse(attemptDir.exists())
-        assertFalse(interruption.marked)
+        assertTrue(rows(gaps).none { it.kind == "loss" })
+        assertTrue(rows(gaps).any { it.reason == "delivered" })
         assertEquals(1, sink.persisted.size)
         val sealed = sink.persisted.single()
         assertEquals(windowStart + 1000L + 250_000L, sealed.payloads.single().captureEndEpochMs)
@@ -178,7 +185,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "capture.adts").writeBytes("adts-bytes".encodeToByteArray())
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         var remuxCalled = false
         val remuxer = object : AacAdtsRemuxer {
             override fun remux(adts: File, m4a: File): AacRemux {
@@ -196,7 +203,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -233,7 +240,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "capture.adts").writeBytes("adts-data".encodeToByteArray())
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val remuxer = object : AacAdtsRemuxer {
             override fun remux(adts: File, m4a: File): AacRemux {
                 throw RuntimeException("codec explosion")
@@ -248,7 +255,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -256,7 +263,8 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertTrue(attemptDir.exists(), "directory should be kept on thrown remux")
-        assertFalse(interruption.marked, "interruption should not be marked on thrown remux")
+        assertEquals(listOf("remux failed"), rows(gaps).map { it.reason })
+        assertTrue(rows(gaps).none { it.kind == "loss" })
         assertTrue(sink.persisted.isEmpty(), "segment should not be sealed on thrown remux")
     }
 
@@ -283,7 +291,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "capture.adts").writeBytes("fake-adts-data".encodeToByteArray())
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val remuxer = FakeRemuxer(durationMs = 300_000L)
         val lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound }
 
@@ -294,7 +302,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -303,7 +311,7 @@ class AudioRecoveryManagerTest {
 
         assertTrue(attemptDir.exists(), "in-flight attempt dir should be preserved")
         assertTrue(sink.persisted.isEmpty())
-        assertFalse(interruption.marked)
+        assertTrue(rows(gaps).isEmpty())
     }
 
     @Test
@@ -329,7 +337,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "capture.adts").writeBytes(ByteArray(0))
 
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val remuxer = FakeRemuxer(durationMs = 0L)
         val lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound }
 
@@ -340,7 +348,7 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = lookup,
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = remuxer,
             isReadableM4aProbe = { true },
         )
@@ -348,7 +356,8 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertFalse(attemptDir.exists(), "failed attempt dir should be deleted")
-        assertTrue(interruption.marked, "failed attempt should mark unresolved interruption")
+        assertEquals(listOf("no bytes"), rows(gaps).map { it.reason })
+        assertTrue(rows(gaps).none { it.kind == "loss" })
         assertTrue(sink.persisted.isEmpty())
     }
 
@@ -362,7 +371,7 @@ class AudioRecoveryManagerTest {
             writeBytes("matching-legacy-bytes".encodeToByteArray())
         }
 
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val manager = AudioRecoveryManager(
             audioSourceDir = audioDir,
             cacheAudioDir = legacyDir,
@@ -383,7 +392,7 @@ class AudioRecoveryManagerTest {
                 override fun legacyManifestCoordinatesMatch(sha256: String): Boolean = true
             },
             sealedSink = FakeSealedSegmentSink(),
-            interruption = interruption,
+            gaps = gaps,
             remuxer = FakeRemuxer(0L),
             isReadableM4aProbe = { true },
         )
@@ -391,7 +400,7 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertFalse(legacyFile.exists(), "matching legacy file should be deleted")
-        assertFalse(interruption.marked, "matching legacy file should not mark interruption")
+        assertTrue(rows(gaps).isEmpty())
     }
 
     @Test
@@ -406,7 +415,7 @@ class AudioRecoveryManagerTest {
         }
         val fileSha = sha256(legacyFile.toPath())
 
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
         val manager = AudioRecoveryManager(
             audioSourceDir = audioDir,
             cacheAudioDir = legacyDir,
@@ -427,7 +436,7 @@ class AudioRecoveryManagerTest {
                 override fun legacyManifestCoordinatesMatch(sha256: String): Boolean = false
             },
             sealedSink = FakeSealedSegmentSink(),
-            interruption = interruption,
+            gaps = gaps,
             remuxer = FakeRemuxer(0L),
             isReadableM4aProbe = { true },
         )
@@ -435,7 +444,9 @@ class AudioRecoveryManagerTest {
         manager.recover()
 
         assertFalse(legacyFile.exists(), "legacy audio file should be removed from cache after copy")
-        assertTrue(interruption.marked, "uncoordinated legacy file should mark interruption")
+        assertEquals(listOf("undeliverable"), rows(gaps).filter { it.kind == "loss" }.map { it.reason })
+        assertEquals(legacyMaterial(fileSha), rows(gaps).single { it.kind == "loss" }.material)
+        assertTrue(gapLossFactExists(File(audioDir, "legacy/$fileSha").toPath()))
         val preserved = File(audioDir, "legacy/$fileSha/audio-1700000000000.m4a")
         assertTrue(preserved.exists(), "file should be preserved under legacy/<sha>/")
         assertEquals(bytes.decodeToString(), preserved.readText())
@@ -451,10 +462,7 @@ class AudioRecoveryManagerTest {
             writeBytes("legacy-m4a-bytes".encodeToByteArray())
         }
 
-        val interruption = object : UnresolvedInterruption {
-            override fun markUnresolved(): Boolean = false
-            override fun isUnresolved(): Boolean = false
-        }
+        val gaps = GapNoticeStore(File(root, "gap").toPath(), syncDirectory = { throw java.io.IOException("sync") })
         val manager = AudioRecoveryManager(
             audioSourceDir = audioDir,
             cacheAudioDir = legacyDir,
@@ -475,14 +483,14 @@ class AudioRecoveryManagerTest {
                 override fun legacyManifestCoordinatesMatch(sha256: String): Boolean = false
             },
             sealedSink = FakeSealedSegmentSink(),
-            interruption = interruption,
+            gaps = gaps,
             remuxer = FakeRemuxer(0L),
             isReadableM4aProbe = { true },
         )
 
         manager.recover()
 
-        assertTrue(legacyFile.exists(), "legacy file should be kept if markUnresolved fails")
+        assertTrue(legacyFile.exists(), "legacy file should be kept if the loss write fails")
     }
 
     @Test
@@ -564,7 +572,7 @@ class AudioRecoveryManagerTest {
             ),
         )
         assertEquals(
-            AudioCommitStatus.IdentityCollisionDifferentBytes,
+            AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual = true),
             classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf, differentShaSameBounds),
         )
 
@@ -582,9 +590,145 @@ class AudioRecoveryManagerTest {
             ),
         )
         assertEquals(
-            AudioCommitStatus.IdentityCollisionDifferentBytes,
+            AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual = true),
             classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf, hashMismatchFact),
         )
+
+        val differentBoundsSameWire = listOf(
+            AudioSpoolFact(
+                segmentId = wireId,
+                sha256 = "different-sha",
+                captureStartEpochMs = 3_000L,
+                captureEndEpochMs = 4_000L,
+                sourceId = "audio",
+                name = "audio.m4a",
+                spoolPayloadExists = true,
+                spoolPayloadShaMatches = true,
+            ),
+        )
+        assertEquals(
+            AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual = false),
+            classifyAudioAttempt(sha, start, end, "audio", "audio.m4a", wireDay, wireStream, wireLeaf, differentBoundsSameWire),
+        )
+    }
+
+    @Test
+    fun longHeaderlessAdtsDeletedIsALossAndAShortDeclaredFrameIsADiagnostic() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val longDir = attempt(audioDir, "rec-long", ByteArray(8192))
+        val shortFrame = ByteArray(100)
+        shortFrame[0] = 0xFF.toByte()
+        shortFrame[1] = 0xF1.toByte()
+        shortFrame[3] = 0
+        shortFrame[4] = 25
+        shortFrame[5] = 0
+        val shortDir = attempt(audioDir, "rec-short", shortFrame)
+        val gaps = gapsOf(root)
+        AudioRecoveryManager(
+            audioDir, File(root, "cache"), tempDirectory().toPath(), { _, _ -> emptySet() },
+            AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+            FakeSealedSegmentSink(), gaps, object : AacAdtsRemuxer {
+                override fun remux(adts: File, m4a: File) = AacRemux(0L, 0L)
+            },
+        ).recover()
+        assertFalse(longDir.exists())
+        assertTrue(rows(gaps).any { it.kind == "loss" && it.material == "rec-long" && it.reason == "undeliverable" })
+        assertFalse(gapLossFactExists(longDir.toPath()))
+        assertFalse(shortDir.exists())
+        assertTrue(rows(gaps).any { it.kind == "diagnostic" && it.material == "rec-short" && it.reason == "empty recording" })
+    }
+
+    @Test
+    fun nonEmptyM4aWithNoRecordIsALossAndAFactAndStaysOutAfterTheEventFileIsDeleted() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val dir = File(audioDir, "rec-m4a").apply { mkdirs() }
+        File(dir, "audio.m4a").writeBytes("m4a-bytes".encodeToByteArray())
+        val gaps = gapsOf(root)
+        val manager = manager(root, audioDir, gaps)
+        manager.recover()
+        assertTrue(dir.exists())
+        assertEquals(1, rows(gaps).count { it.kind == "loss" && it.material == "rec-m4a" })
+        assertTrue(gapLossFactExists(dir.toPath()))
+        File(root, "gap/events.v1").delete()
+        manager.recover()
+        assertTrue(dir.exists())
+        assertTrue(rows(gaps).none { it.material == "rec-m4a" })
+        assertTrue(gapLossFactExists(dir.toPath()))
+    }
+
+    @Test
+    fun emptyRecordingFolderIsADiagnosticAndIsNotWaitingBytes() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val dir = File(audioDir, "rec-empty").apply { mkdirs() }
+        val gaps = gapsOf(root)
+        manager(root, audioDir, gaps).recover()
+        assertTrue(dir.exists())
+        assertEquals(listOf("no bytes"), rows(gaps).map { it.reason })
+        assertFalse(gapLossFactExists(dir.toPath()))
+    }
+
+    @Test
+    fun sameBoundsCollisionStaysWaitingAndDifferentBoundsIsALossWithAFact() {
+        val sameRoot = tempDirectory()
+        val sameDir = File(sameRoot, "audio-source").apply { mkdirs() }
+        val same = prepared(sameDir, "rec-same")
+        val sameGaps = gapsOf(sameRoot)
+        collide(sameRoot, sameDir, sameGaps, boundsEqual = true)
+        assertTrue(same.exists())
+        assertTrue(rows(sameGaps).any { it.material == "rec-same" && it.reason == "same bounds" && it.kind == "diagnostic" })
+        assertFalse(gapLossFactExists(same.toPath()))
+
+        val diffRoot = tempDirectory()
+        val diffDir = File(diffRoot, "audio-source").apply { mkdirs() }
+        val different = prepared(diffDir, "rec-diff")
+        val diffGaps = gapsOf(diffRoot)
+        collide(diffRoot, diffDir, diffGaps, boundsEqual = false)
+        assertTrue(different.exists())
+        assertTrue(rows(diffGaps).any { it.material == "rec-diff" && it.kind == "loss" && it.reason == "undeliverable" })
+        assertTrue(gapLossFactExists(different.toPath()))
+    }
+
+    @Test
+    fun failedLossWriteLeavesNoFactAndTheNextPassRecordsTheLoss() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val dir = File(audioDir, "rec-retry").apply { mkdirs() }
+        File(dir, "audio.m4a").writeBytes("bytes".encodeToByteArray())
+        var fail = true
+        val gaps = GapNoticeStore(File(root, "gap").toPath(), syncDirectory = { if (fail) throw java.io.IOException("sync") })
+        val manager = manager(root, audioDir, gaps)
+        manager.recover()
+        assertTrue(dir.exists())
+        assertFalse(gapLossFactExists(dir.toPath()))
+        fail = false
+        manager.recover()
+        assertEquals(1, rows(gaps).count { it.kind == "loss" && it.material == "rec-retry" })
+        assertTrue(gapLossFactExists(dir.toPath()))
+    }
+
+    @Test
+    fun legacyZeroBytesMovesWithoutAFactAndAnExistingFactDeletesTheCache() {
+        val root = tempDirectory()
+        val audioDir = File(root, "audio-source").apply { mkdirs() }
+        val cache = File(root, "cache/audio-source").apply { mkdirs() }
+        val empty = File(cache, "empty.m4a").apply { writeBytes(ByteArray(0)) }
+        val gaps = gapsOf(root)
+        manager(root, audioDir, gaps, cache).recover()
+        assertFalse(empty.exists())
+        assertTrue(rows(gaps).any { it.reason == "no bytes" && it.material.startsWith("legacy-") })
+        assertTrue(File(audioDir, "legacy").walk().none { it.name == "gap-loss" })
+
+        val again = File(cache, "again.m4a").apply { writeBytes("again".encodeToByteArray()) }
+        val sha = sha256(again.toPath())
+        val factDir = File(audioDir, "legacy/$sha").apply { mkdirs() }
+        File(factDir, "gap-loss").writeBytes(ByteArray(0))
+        val before = rows(gaps).size
+        manager(root, audioDir, gaps, cache).recover()
+        assertFalse(again.exists())
+        assertEquals(before, rows(gaps).size)
     }
 
     @Test
@@ -650,7 +794,7 @@ class AudioRecoveryManagerTest {
         File(attemptDir, "record.txt").writeText(info.serialize())
         File(attemptDir, "capture.adts").writeBytes("fake-adts-data".encodeToByteArray())
         val sink = FakeSealedSegmentSink()
-        val interruption = FakeInterruption()
+        val gaps = gapsOf(root)
 
         AudioRecoveryManager(
             audioSourceDir = audioDir,
@@ -659,12 +803,13 @@ class AudioRecoveryManagerTest {
             occupiedLeaves = { _, _ -> emptySet() },
             lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
             sealedSink = sink,
-            interruption = interruption,
+            gaps = gaps,
             remuxer = FakeRemuxer(durationMs = durationMs),
             isReadableM4aProbe = { true },
         ).recover()
 
-        assertFalse(interruption.marked)
+        assertTrue(rows(gaps).none { it.kind == "loss" })
+        assertTrue(rows(gaps).any { it.reason == "delivered" })
         assertFalse(attemptDir.exists())
         return sink.persisted.single()
     }
@@ -683,15 +828,37 @@ class AudioRecoveryManagerTest {
         }
     }
 
-    private class FakeInterruption : UnresolvedInterruption {
-        var marked = false
-        override fun markUnresolved(): Boolean {
-            marked = true
-            return true
-        }
-
-        override fun isUnresolved(): Boolean = marked
+    private fun attempt(audioDir: File, id: String, adts: ByteArray): File {
+        val dir = File(audioDir, id).apply { mkdirs() }
+        File(dir, "record.txt").writeText(AudioRecordInfo(id, 1_700_000_000_000L, "UTC", 0, 1_700_000_000_000L, 1_700_000_300_000L).serialize())
+        File(dir, "capture.adts").writeBytes(adts)
+        return dir
     }
+
+    private fun prepared(audioDir: File, id: String): File {
+        val dir = attempt(audioDir, id, "fake-adts-data".encodeToByteArray())
+        return dir
+    }
+
+    private fun collide(root: File, audioDir: File, gaps: GapNoticeStore, boundsEqual: Boolean) {
+        AudioRecoveryManager(
+            audioDir, File(root, "cache"), tempDirectory().toPath(), { _, _ -> emptySet() },
+            AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.IdentityCollisionDifferentBytes(boundsEqual) },
+            FakeSealedSegmentSink(), gaps, FakeRemuxer(1_000L), isReadableM4aProbe = { true },
+        ).recover()
+    }
+
+    private fun manager(root: File, audioDir: File, gaps: GapNoticeStore, cache: File = File(root, "cache")) =
+        AudioRecoveryManager(
+            audioDir, cache, tempDirectory().toPath(), { _, _ -> emptySet() },
+            AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+            FakeSealedSegmentSink(), gaps, FakeRemuxer(0L),
+        )
+
+    private fun gapsOf(root: File) = GapNoticeStore(File(root, "gap").toPath())
+
+    private fun rows(store: GapNoticeStore) =
+        assertIs<GapRead.Ready>(store.read(ZoneId.of("UTC"))).rows
 
     private class FakeSealedSegmentSink : SealedSegmentSink {
         val persisted = mutableListOf<SealedSegment>()

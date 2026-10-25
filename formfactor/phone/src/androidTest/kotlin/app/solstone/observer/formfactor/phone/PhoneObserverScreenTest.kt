@@ -10,9 +10,9 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.DeviceConfigurationOverride
@@ -164,7 +164,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillSyncingCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, true, 4, true, false, recoveryCompleted = true, audioAwaitingCustody = false), onClick = {})
         }
         composeRule.onNodeWithText("4 syncing").assertIsDisplayed()
     }
@@ -172,7 +172,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillOfflineCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(true, false, 2, true, false, recoveryCompleted = true, audioAwaitingCustody = false), onClick = {})
         }
         composeRule.onNodeWithText("offline · 2 waiting").assertIsDisplayed()
     }
@@ -180,7 +180,7 @@ class PhoneObserverScreenTest {
     @Test
     fun pillNotPairedCopy() {
         composeRule.setContent {
-            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false), onClick = {})
+            PhoneStatusPill(model = PhoneStatusModel(false, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false), onClick = {})
         }
         composeRule.onNodeWithText("not paired").assertIsDisplayed()
     }
@@ -190,7 +190,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, true, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+                status = PhoneStatusModel(true, true, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -591,7 +591,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(true, false, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+                status = PhoneStatusModel(true, false, 1, true, false, recoveryCompleted = true, audioAwaitingCustody = false),
                 waiting = listOf(audioOn()),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -605,31 +605,36 @@ class PhoneObserverScreenTest {
     }
 
     @Test
-    fun liveRegionTextDoesNotContainCount() {
-        val decrements = 3
-        var pending by mutableStateOf(6)
-        composeRule.setContent {
-            PhoneStatusPill(
-                model = PhoneStatusModel(true, true, pending, true, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
-                onClick = {},
-            )
+    fun liveRegionAndStateDescriptionEqualTheVisibleSentence() {
+        val now = System.currentTimeMillis()
+        val notice = PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            hasContentPending = false,
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+            gateOpen = true,
+        )
+        var model by mutableStateOf(notice)
+        composeRule.setContent { PhoneStatusPill(model = model, onClick = {}) }
+        composeRule.waitForIdle()
+        assertLiveSentence("there's a gap in your journal")
+        composeRule.onNodeWithTag("statusDot", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("statusPulse").assertDoesNotExist()
+
+        composeRule.runOnIdle { model = connected() }
+        composeRule.waitForIdle()
+        assertLiveSentence("connected")
+        composeRule.onNodeWithTag("statusPulse").assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            model = PhoneStatusModel(true, false, 2, true, false, recoveryCompleted = true, audioAwaitingCustody = false)
         }
         composeRule.waitForIdle()
-        val live = liveRegionNode()
-        val state = stateDescriptionNode()
-        assertNotEquals(live.id, state.id)
-        val firstLive = announcedText(live)
-        val descriptions = mutableListOf(state.config.getOrNull(SemanticsProperties.StateDescription))
-        assertFalse("live announced contains count $pending: $firstLive", pending.toString() in firstLive)
-        repeat(decrements) {
-            pending -= 1
-            composeRule.waitForIdle()
-            val liveNow = announcedText(liveRegionNode())
-            assertEquals(firstLive, liveNow)
-            assertFalse("live announced contains count $pending: $liveNow", pending.toString() in liveNow)
-            descriptions += stateDescriptionNode().config.getOrNull(SemanticsProperties.StateDescription)
-        }
-        assertEquals(decrements, descriptions.zipWithNext().count { it.first != it.second })
+        assertLiveSentence("offline · 2 waiting")
     }
 
     @Test
@@ -866,24 +871,15 @@ class PhoneObserverScreenTest {
             .config
             .getOrNull(SemanticsProperties.StateDescription)
 
-    private fun liveRegionNode() =
-        composeRule.onNodeWithTag("statusLiveRegion", useUnmergedTree = true).fetchSemanticsNode()
-
-    private fun stateDescriptionNode() =
-        composeRule.onNodeWithTag("statusState", useUnmergedTree = true).fetchSemanticsNode()
-
-    private fun announcedText(node: SemanticsNode): String {
-        val parts = mutableListOf<String>()
-        fun walk(n: SemanticsNode) {
-            n.config.getOrNull(SemanticsProperties.ContentDescription)?.let { parts.addAll(it) }
-            n.config.getOrNull(SemanticsProperties.Text)?.let { texts ->
-                parts.addAll(texts.map { it.text })
-            }
-            n.config.getOrNull(SemanticsProperties.StateDescription)?.let { parts.add(it) }
-            n.children.forEach(::walk)
-        }
-        walk(node)
-        return parts.joinToString(" ")
+    private fun assertLiveSentence(expected: String) {
+        composeRule.onNodeWithTag("statusLiveRegion").assertDoesNotExist()
+        val nodes = composeRule.onAllNodesWithTag("statusState", useUnmergedTree = true).fetchSemanticsNodes()
+        assertEquals(1, nodes.size)
+        val node = nodes.single()
+        val visible = node.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString(separator = "") { it.text }
+        assertEquals(expected, visible)
+        assertEquals(expected, node.config.getOrNull(SemanticsProperties.StateDescription))
+        assertEquals(LiveRegionMode.Polite, node.config.getOrNull(SemanticsProperties.LiveRegion))
     }
 
     private fun sourceTileMatcher() = SemanticsMatcher("source tile") { node ->
@@ -905,7 +901,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
                 onConnectJournal = { connectCalls += 1 },
@@ -924,7 +920,7 @@ class PhoneObserverScreenTest {
         composeRule.setContent {
             PhoneObserverScreen(
                 loadState = loaded(audioOn()),
-                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+                status = PhoneStatusModel(paired = false, online = false, pendingCount = 0, hasContentPending = false, awaitingMarkConfirmation = false, recoveryCompleted = true, audioAwaitingCustody = false),
                 showWelcome = true,
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -1014,5 +1010,4 @@ private fun connected() = PhoneStatusModel(
     awaitingMarkConfirmation = false,
     recoveryCompleted = true,
     audioAwaitingCustody = false,
-    unresolvedAudioInterruption = false,
 )

@@ -116,16 +116,20 @@ class PhoneObserverWidgetLayoutTest {
         assertEquals(statusPillText(heldStatus()), sync.text)
     }
 
-    private fun heldStatus() = PhoneStatusModel(
-        paired = true,
-        online = true,
-        pendingCount = 1,
-        hasContentPending = true,
-        awaitingMarkConfirmation = true,
-        recoveryCompleted = true,
-        audioAwaitingCustody = false,
-        unresolvedAudioInterruption = true,
-    )
+    private fun heldStatus(): PhoneStatusModel {
+        val now = System.currentTimeMillis()
+        return PhoneStatusModel(
+            paired = true,
+            online = true,
+            pendingCount = 1,
+            hasContentPending = true,
+            awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+            gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+            gateOpen = true,
+        )
+    }
 
     private fun heldInterrupted(): PhoneObserverWidgetModel {
         val status = heldStatus()

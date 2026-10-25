@@ -105,6 +105,5 @@ class PhoneDeckScrollRestorationTest {
         awaitingMarkConfirmation = false,
         recoveryCompleted = true,
         audioAwaitingCustody = false,
-        unresolvedAudioInterruption = false,
     )
 }

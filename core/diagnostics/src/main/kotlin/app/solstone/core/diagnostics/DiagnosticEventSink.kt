@@ -172,6 +172,14 @@ sealed interface DiagEvent {
         val outcome: String,
     ) : DiagEvent
 
+    /** One durable gap row, or one recovery event the container used to drop. `material` is an id, never a path. */
+    data class GapRow(
+        val gapKind: String,
+        val source: String,
+        val reason: String,
+        val material: String,
+    ) : DiagEvent
+
     enum class CaptureRefusalSource { RUNTIME_COMMAND, FGS_REHYDRATE, POLL, SWIPE, OTHER }
 
     enum class CaptureRefusalReason { NO_VISIBLE_OWNER, CAMERA_PERMISSION_MISSING, MIC_PERMISSION_MISSING }
@@ -195,6 +203,7 @@ fun formatDiagEvent(event: DiagEvent): String =
         is DiagEvent.CaptureOwner -> "kind=capture-owner transition=${event.transition.key()}"
         is DiagEvent.CaptureRefused -> "kind=capture-refused source=${event.source.key()} reason=${event.reason.key()}"
         is DiagEvent.JournalBrowser -> "kind=journal-browser class=${event.eventClass} outcome=${event.outcome}"
+        is DiagEvent.GapRow -> "kind=${event.gapKind} source=${event.source} reason=${event.reason} material=${event.material}"
     }
 
 private fun DiagEvent.FgsPhase.key(): String =

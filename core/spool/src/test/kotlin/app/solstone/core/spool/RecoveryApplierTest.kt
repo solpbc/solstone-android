@@ -14,6 +14,7 @@ import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class RecoveryApplierTest {
@@ -30,14 +31,15 @@ class RecoveryApplierTest {
                     .toByteArray(StandardCharsets.UTF_8),
             )
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
             val finalDir = baseDir.resolve(segment.key.day).resolve(segment.stream).resolve(segment.key.segment)
 
             assertTrue(Files.isRegularFile(finalDir.resolve("manifest")))
             assertFalse(Files.exists(draftDir))
-            assertEquals(listOf("finalized_segment"), events.map { it.kind })
-            assertEquals(0, interruption.marks)
+            assertEquals(listOf("finalized_segment"), applied.events.map { it.kind })
+            assertEquals(segment.key.segment, applied.events.single().detail)
+            assertFalse(applied.events.single().detail!!.contains("/"))
+            assertEquals(listOf("delivered"), rows(applied.gaps).map { it.reason })
         } finally {
             baseDir.deleteRecursively()
         }
@@ -60,17 +62,13 @@ class RecoveryApplierTest {
             )
             Files.write(finalDir.resolve("manifest"), sentinel.toByteArray(StandardCharsets.UTF_8))
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertEquals(sentinel, String(Files.readAllBytes(finalDir.resolve("manifest")), StandardCharsets.UTF_8))
-            // Unverified final -> draft kept and markUnresolved was required
             assertTrue(Files.exists(draftDir))
-            assertEquals(0, interruption.marks)
-            assertEquals(
-                listOf(SpoolRecoveryEvent("partial_segment", segment.wireKeys.endEpochMs, "final already exists")),
-                events,
-            )
+            assertTrue(applied.events.isEmpty())
+            assertEquals(1, applied.unknown.size)
+            assertTrue(rows(applied.gaps).isEmpty())
         } finally {
             baseDir.deleteRecursively()
         }
@@ -90,15 +88,14 @@ class RecoveryApplierTest {
             Files.write(draftDir.resolve("manifest"), manifestBytes)
             Files.write(finalDir.resolve("manifest"), manifestBytes)
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertEquals(manifestBytes.decodeToString(), String(Files.readAllBytes(finalDir.resolve("manifest")), StandardCharsets.UTF_8))
             assertFalse(Files.exists(draftDir))
-            assertEquals(0, interruption.marks)
+            assertTrue(rows(applied.gaps).isEmpty())
             assertEquals(
                 listOf(SpoolRecoveryEvent("partial_segment", segment.wireKeys.endEpochMs, "final already exists")),
-                events,
+                applied.events,
             )
         } finally {
             baseDir.deleteRecursively()
@@ -133,15 +130,12 @@ class RecoveryApplierTest {
             Files.write(draftDir.resolve("manifest"), manifestBytes)
             Files.write(finalDir.resolve("manifest"), manifestBytes)
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertTrue(Files.exists(draftDir), "draft should be kept on payload byte mismatch")
-            assertEquals(1, interruption.marks)
-            assertEquals(
-                listOf(SpoolRecoveryEvent("partial_segment", segment.wireKeys.endEpochMs, "final already exists")),
-                events,
-            )
+            assertTrue(applied.events.isEmpty())
+            assertEquals(1, applied.unknown.size)
+            assertTrue(rows(applied.gaps).isEmpty())
         } finally {
             baseDir.deleteRecursively()
         }
@@ -174,14 +168,13 @@ class RecoveryApplierTest {
             Files.write(draftDir.resolve("manifest"), manifestBytes)
             Files.write(finalDir.resolve("manifest"), manifestBytes)
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertFalse(Files.exists(draftDir), "draft should be deleted on payload byte match")
-            assertEquals(0, interruption.marks)
+            assertTrue(rows(applied.gaps).isEmpty())
             assertEquals(
                 listOf(SpoolRecoveryEvent("partial_segment", segment.wireKeys.endEpochMs, "final already exists")),
-                events,
+                applied.events,
             )
         } finally {
             baseDir.deleteRecursively()
@@ -206,13 +199,26 @@ class RecoveryApplierTest {
                     .toByteArray(StandardCharsets.UTF_8),
             )
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertTrue(Files.exists(bareFinalDir.resolve("manifest")))
             assertTrue(Files.exists(suffixedFinalDir.resolve("manifest")))
             assertFalse(Files.exists(draftDir))
-            assertEquals(listOf("finalized_segment"), events.map { it.kind })
+            assertEquals(listOf("finalized_segment"), applied.events.map { it.kind })
+            assertEquals(suffixedLeaf, applied.events.single().detail)
+            assertEquals("delivered", rows(applied.gaps).single().reason)
+            val failing = GapNoticeStore(baseDir.resolve("gap-fail"), syncDirectory = { throw java.io.IOException("sync") })
+            val again = Files.createTempDirectory("recovery-suffixed-move")
+            try {
+                val movedDraft = again.resolve(".draft").resolve(segment.key.day).resolve(segment.stream).resolve(suffixedLeaf)
+                val movedFinal = again.resolve(segment.key.day).resolve(segment.stream).resolve(suffixedLeaf)
+                Files.createDirectories(movedDraft)
+                Files.write(movedDraft.resolve("manifest"), Files.readAllBytes(suffixedFinalDir.resolve("manifest")))
+                applyRecoveryActions(RecoveryScanner(again).scan(nowEpochMs = 10L), failing, mutableListOf(), again)
+                assertTrue(Files.isRegularFile(movedFinal.resolve("manifest")))
+            } finally {
+                again.deleteRecursively()
+            }
         } finally {
             baseDir.deleteRecursively()
         }
@@ -225,25 +231,32 @@ class RecoveryApplierTest {
             val draftDir = baseDir.resolve(".draft").resolve("20260304").resolve(MAIN_STREAM).resolve("bad")
             Files.createDirectories(draftDir)
 
-            val interruption = FakeInterruption()
-            val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), interruption, interruption, interruption)
+            val applied = run(baseDir)
 
             assertFalse(Files.exists(draftDir))
-            assertEquals(0, interruption.marks)
-            assertEquals(listOf(SpoolRecoveryEvent("partial_segment", 10L, "missing manifest")), events)
+            assertEquals(listOf(SpoolRecoveryEvent("partial_segment", 10L, "missing manifest")), applied.events)
+            val recorded = rows(applied.gaps)
+            assertEquals(listOf("empty draft"), recorded.map { it.reason })
+            assertTrue(recorded.none { it.kind == "loss" })
         } finally {
             baseDir.deleteRecursively()
         }
     }
 
-    private class FakeInterruption(var succeed: Boolean = true) : UnresolvedInterruption {
-        var marks = 0
-        override fun markUnresolved(): Boolean {
-            marks += 1
-            return succeed
-        }
-        override fun isUnresolved(): Boolean = marks > 0
+    private class Applied(
+        val events: List<SpoolRecoveryEvent>,
+        val unknown: List<String>,
+        val gaps: GapNoticeStore,
+    )
+
+    private fun run(baseDir: Path, gaps: GapNoticeStore = GapNoticeStore(baseDir.resolve("gap"))): Applied {
+        val unknown = mutableListOf<String>()
+        val events = applyRecoveryActions(RecoveryScanner(baseDir).scan(nowEpochMs = 10L), gaps, unknown, baseDir)
+        return Applied(events, unknown, gaps)
     }
+
+    private fun rows(gaps: GapNoticeStore): List<GapNoticeRow> =
+        assertIs<GapRead.Ready>(gaps.read(ZoneId.of("UTC"))).rows
 
     private fun emptySegment(): SealedSegment {
         val keys = wireKeys(BASE_EPOCH_MS, BASE_EPOCH_MS, ZoneId.of("UTC"))

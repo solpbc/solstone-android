@@ -1,0 +1,383 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 sol pbc
+
+package app.solstone.core.spool
+
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Instant
+import java.time.ZoneId
+import java.util.concurrent.CountDownLatch
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class GapNoticeStoreTest {
+    private val zone = ZoneId.of("UTC")
+    private var now = Instant.parse("2026-10-25T12:00:00Z").toEpochMilli()
+    private var nextId = 0
+
+    @Test
+    fun parentSyncFailureReturnsFalseAndTheNextCallResyncsTheExistingRow() {
+        val root = temp()
+        var fail = true
+        val store = store(root, sync = { if (fail) throw IOException("sync failed") })
+        assertFalse(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        assertTrue(Files.isRegularFile(root.resolve("events.v1")))
+        fail = false
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        val rows = ready(store)
+        assertEquals(1, rows.size)
+        assertEquals("rec-1", rows[0].material)
+        assertEquals(0, Files.list(root).use { stream -> stream.filter { it.fileName.toString().endsWith(".tmp") }.count() })
+    }
+
+    @Test
+    fun readThrowLeavesTheFileAndShowsNothing() {
+        val root = temp()
+        val store = store(root)
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        Files.delete(root.resolve("events.v1"))
+        Files.createDirectory(root.resolve("events.v1"))
+        assertIs<GapRead.Unavailable>(store.read(zone))
+        assertTrue(Files.isDirectory(root.resolve("events.v1")))
+        assertNullSnapshot(store)
+    }
+
+    @Test
+    fun undecodableBytesAreSetAsideAndANewLossStillRecords() {
+        val root = temp()
+        val heard = mutableListOf<String>()
+        val store = store(root, listener = { kind, source, reason, material ->
+            heard += "$kind $source $reason $material"
+        })
+        Files.write(root.resolve("events.v1"), byteArrayOf(0xC3.toByte(), 0x28))
+        val kept = root.resolve("segment.bin")
+        Files.write(kept, byteArrayOf(1))
+        val read = store.read(zone)
+        val ready = assertIs<GapRead.Ready>(read)
+        assertEquals("unreadable record", ready.rows.single().reason)
+        assertEquals("events", ready.rows.single().material)
+        assertTrue(Files.list(root).use { it.anyMatch { path -> path.fileName.toString().startsWith("events.v1.bad-") } })
+        assertTrue(heard.any { it == "diagnostic spool unreadable record events" })
+        assertTrue(Files.isRegularFile(kept))
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-new", 5L))
+        val rows = ready(store)
+        assertEquals(2, rows.size)
+        assertTrue(rows.any { it.material == "rec-new" && it.kind == "loss" })
+    }
+
+    @Test
+    fun aLineThatDoesNotParseIsUndecodable() {
+        val root = temp()
+        val store = store(root)
+        Files.writeString(root.resolve("events.v1"), "not a row\n")
+        val ready = assertIs<GapRead.Ready>(store.read(zone))
+        assertEquals("unreadable record", ready.rows.single().reason)
+    }
+
+    @Test
+    fun lossCollapseKeepsADiagnosticAndDiagnosticsCollapseAcrossMaterial() {
+        val root = temp()
+        val store = store(root)
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 9L))
+        assertTrue(store.recordDiagnostic("audio", "remux failed", "rec-1", 5L))
+        now += 1_000
+        assertTrue(store.recordDiagnostic("audio", "remux failed", "rec-2", 6L))
+        now += 1_000
+        assertTrue(store.recordDiagnostic("screen", "no bytes", "rec-3", null))
+        now += 1_000
+        assertTrue(store.recordDiagnostic("audio", "remux failed", "rec-4", 7L))
+        val rows = ready(store)
+        assertEquals(1, rows.count { it.kind == "loss" })
+        val remux = rows.single { it.reason == "remux failed" }
+        assertEquals(3, remux.count)
+        assertEquals("rec-4", remux.material)
+        assertEquals(rows.first { it.reason == "remux failed" }.id, remux.id)
+        assertTrue(remux.lastEpochMs > remux.firstEpochMs)
+        assertEquals(1, rows.single { it.reason == "no bytes" }.count)
+    }
+
+    @Test
+    fun legacyRowsDoNotCollapseAndConversionWritesOneRowPerMarker() {
+        val root = temp()
+        val store = store(root)
+        val audio = root.resolve("audio-interruption")
+        val screen = root.resolve("screen-interruption")
+        Files.writeString(audio, "unresolved")
+        Files.writeString(screen, "unresolved")
+        val first = store.conversion(listOf("audio" to audio, "screen" to screen))
+        assertEquals("complete 2", first)
+        assertFalse(Files.exists(audio))
+        assertFalse(Files.exists(screen))
+        val legacy = ready(store).filter { it.kind == "legacy" }
+        assertEquals(2, legacy.size)
+        assertTrue(legacy.all { it.reason == "legacy marker" && it.material == "marker" && it.capturedEpochMs == null })
+        val again = root.resolve("audio-interruption")
+        Files.writeString(again, "unresolved")
+        assertEquals("complete 2", store.conversion(listOf("audio" to again, "screen" to screen)))
+        assertTrue(Files.exists(again))
+        assertEquals(2, ready(store).count { it.kind == "legacy" })
+        val seededDir = temp()
+        Files.write(
+            seededDir.resolve("events.v1"),
+            encodeGapRows(listOf(legacyRow("aa", "audio"), legacyRow("bb", "audio"))),
+        )
+        val other = store(seededDir)
+        assertTrue(other.recordDiagnostic("spool", "delivered", "leaf", null))
+        assertEquals(2, ready(other).count { it.kind == "legacy" && it.source == "audio" })
+    }
+
+    @Test
+    fun noMarkersWritesCompleteZeroAndFailedIsRetried() {
+        val root = temp()
+        var fail = true
+        val store = store(root, beforeWrite = { path ->
+            if (fail && path.fileName.toString() == "events.v1") throw IOException("events")
+        })
+        val marker = root.resolve("audio-interruption")
+        Files.writeString(marker, "unresolved")
+        assertTrue(store.conversion(listOf("audio" to marker)).startsWith("failed "))
+        assertTrue(Files.exists(marker))
+        fail = false
+        assertEquals("complete 1", store.conversion(listOf("audio" to marker)))
+        assertFalse(Files.exists(marker))
+        Files.writeString(marker, "unresolved")
+        assertEquals("complete 1", store.conversion(listOf("audio" to marker)))
+        assertTrue(Files.exists(marker))
+        assertEquals(1, ready(store).count { it.kind == "legacy" })
+        val empty = store(temp())
+        assertEquals("complete 0", empty.conversion(emptyList()))
+        assertEquals("complete 0", empty.conversion(emptyList()))
+        val leftoverDir = temp()
+        val leftover = leftoverDir.resolve("screen-interruption")
+        Files.writeString(leftover, "unresolved")
+        Files.write(leftoverDir.resolve("events.v1"), encodeGapRows(listOf(legacyRow("cc", "screen"))))
+        val retry = store(leftoverDir)
+        assertEquals("complete 1", retry.conversion(listOf("screen" to leftover)))
+        assertFalse(Files.exists(leftover))
+        assertEquals(1, ready(retry).count { it.kind == "legacy" })
+    }
+
+    @Test
+    fun pruneKeepsThirtyDaysAndCapsAndAnUnseenInWindowLoss() {
+        val root = temp()
+        val store = store(root)
+        now = Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+        assertTrue(store.recordDiagnostic("spool", "delivered", "old", null))
+        now = Instant.parse("2026-02-15T00:00:00Z").toEpochMilli()
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-kept", 1L))
+        val attempt = root.resolve("attempt")
+        Files.createDirectories(attempt)
+        Files.write(attempt.resolve("gap-loss"), byteArrayOf())
+        Files.write(root.resolve("segment.bin"), byteArrayOf(1))
+        val rows = ready(store)
+        assertTrue(rows.none { it.material == "old" })
+        assertTrue(rows.any { it.material == "rec-kept" })
+        assertTrue(Files.isRegularFile(attempt.resolve("gap-loss")))
+        assertTrue(Files.isRegularFile(root.resolve("segment.bin")))
+
+        val capped = store(temp())
+        now = Instant.parse("2026-10-25T12:00:00Z").toEpochMilli()
+        val unseen = material(0)
+        assertTrue(capped.recordLoss("audio", "undeliverable", unseen, now))
+        val seenIds = mutableListOf<String>()
+        repeat(500) { index ->
+            now += 1
+            val name = material(index + 1)
+            assertTrue(capped.recordLoss("audio", "undeliverable", name, now))
+            seenIds += ready(capped).single { it.material == name }.id
+        }
+        assertTrue(capped.markSeen(seenIds.toSet(), emptySet()))
+        val after = ready(capped)
+        val losses = after.filter { it.kind == "loss" }
+        assertTrue(losses.any { it.material == unseen && !it.seen })
+        assertTrue(losses.size <= 500)
+
+        val floodedDir = temp()
+        val legacyBase = Instant.parse("2026-10-01T00:00:00Z").toEpochMilli()
+        val legacyFlood = (1..1001).map { index ->
+            legacyRow(index.toString(16), "spool").copy(
+                id = (0x100000 + index).toString(16).padStart(32, '0'),
+                firstEpochMs = legacyBase + index,
+                lastEpochMs = legacyBase + index,
+            )
+        }
+        Files.write(floodedDir.resolve("events.v1"), encodeGapRows(legacyFlood))
+        val flooded = store(floodedDir)
+        now = Instant.parse("2026-10-25T12:00:00Z").toEpochMilli()
+        assertTrue(flooded.recordLoss("audio", "undeliverable", "rec-gap", now))
+        repeat(30) { index ->
+            now += 1
+            assertTrue(flooded.recordDiagnostic("spool", "delivered", material(index), null))
+        }
+        val floodRows = ready(flooded)
+        assertTrue(floodRows.any { it.material == "rec-gap" && !it.seen })
+        assertEquals(1, floodRows.count { it.reason == "delivered" })
+        assertTrue(floodRows.count { it.kind == "legacy" } <= 1000)
+    }
+
+    @Test
+    fun beforeOpenedALossIsUnseenAndSweepMarksItThenStops() {
+        val root = temp()
+        val store = store(root)
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        assertFalse(ready(store).single().seen)
+        assertFalse(store.isOpened())
+        val path = "spool/.draft/2026-10-25/main/leaf"
+        assertTrue(store.sweepMilestone(listOf(path)))
+        assertTrue(store.isOpened())
+        assertTrue(ready(store).single().seen)
+        val snap = store.snapshot(zone)
+        assertEquals(listOf(path), snap?.unknownItems)
+        assertTrue(snap?.unknownSeen?.contains(path) == true)
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-2", 6L))
+        assertFalse(ready(store).single { it.material == "rec-2" }.seen)
+        assertTrue(store.sweepMilestone(emptyList()))
+        assertFalse(ready(store).single { it.material == "rec-2" }.seen)
+    }
+
+    @Test
+    fun failedSweepDoesNotCreateOpened() {
+        val root = temp()
+        var fail = false
+        val store = store(root, sync = { if (fail) throw IOException("sync failed") })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        fail = true
+        assertFalse(store.sweepMilestone(listOf("spool/.draft/2026-10-25/main/leaf")))
+        assertFalse(store.isOpened())
+    }
+
+    @Test
+    fun journalIdRules() {
+        val root = temp()
+        var rejectJournal = false
+        val store = store(root, beforeWrite = { path ->
+            if (rejectJournal && path.fileName.toString() == "journal-id") throw IOException("journal")
+        })
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
+        assertTrue(store.journalId("journal-a"))
+        assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
+        assertFalse(ready(store).single().seen)
+        assertTrue(store.journalId("journal-a"))
+        assertFalse(ready(store).single().seen)
+        assertTrue(store.journalId(null))
+        assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
+        assertFalse(ready(store).single().seen)
+        val path = "spool/.draft/2026-10-25/main/leaf"
+        assertTrue(store.rewriteUnknown(listOf(path, "spool/.draft/2026-10-25/main/stale")))
+        assertTrue(store.markSeen(emptySet(), setOf(path, "spool/.draft/2026-10-25/main/stale")))
+        rejectJournal = true
+        assertFalse(store.journalId("journal-b"))
+        assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
+        assertFalse(ready(store).single().seen)
+        rejectJournal = false
+        assertTrue(store.journalId("journal-b"))
+        assertTrue(ready(store).single().seen)
+        assertEquals("journal-b", Files.readString(root.resolve("journal-id")).trim())
+        assertTrue(store.snapshot(zone)?.unknownSeen?.contains(path) == true)
+    }
+
+    @Test
+    fun unknownRewriteReplacesTheSetAndDropsStaleSeenKeys() {
+        val root = temp()
+        val store = store(root)
+        assertTrue(store.snapshot(zone)?.unknownItems?.isEmpty() == true)
+        val kept = "spool/.draft/2026-10-25/main/kept"
+        val stale = "spool/.draft/2026-10-25/main/stale"
+        assertTrue(store.rewriteUnknown(listOf(kept, stale)))
+        assertTrue(store.markSeen(emptySet(), setOf(kept, stale)))
+        assertTrue(store.rewriteUnknown(listOf(kept)))
+        val snap = store.snapshot(zone)
+        assertEquals(listOf(kept), snap?.unknownItems)
+        assertEquals(setOf(kept), snap?.unknownSeen)
+    }
+
+    @Test
+    fun markSeenFlipsOnlyTheGivenIdsWhileAnotherLossIsRecorded() {
+        val root = temp()
+        val store = store(root)
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-a", 1L))
+        assertTrue(store.recordLoss("audio", "undeliverable", "rec-b", 2L))
+        val rows = ready(store)
+        val idA = rows.single { it.material == "rec-a" }.id
+        val idB = rows.single { it.material == "rec-b" }.id
+        val entered = CountDownLatch(1)
+        val writer = Thread {
+            entered.await()
+            assertTrue(store.recordLoss("screen", "undeliverable", "rec-c", 3L))
+        }
+        writer.start()
+        store.duringLock = {
+            entered.countDown()
+            val deadline = System.nanoTime() + 2_000_000_000L
+            while (writer.state != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield()
+        }
+        assertTrue(store.markSeen(setOf(idA), emptySet()))
+        writer.join(2_000)
+        assertFalse(writer.isAlive)
+        val after = ready(store)
+        assertTrue(after.single { it.id == idA }.seen)
+        assertFalse(after.single { it.id == idB }.seen)
+        assertFalse(after.single { it.material == "rec-c" }.seen)
+    }
+
+    @Test
+    fun failedFactWriteLeavesTheFolderWithoutAFact() {
+        val dir = temp()
+        var fail = true
+        assertFalse(writeGapLossFact(dir) { if (fail) throw IOException("sync") })
+        assertFalse(Files.exists(dir.resolve("gap-loss")))
+        fail = false
+        assertTrue(writeGapLossFact(dir) { if (fail) throw IOException("sync") })
+        assertTrue(Files.isRegularFile(dir.resolve("gap-loss")))
+        assertEquals(0, Files.size(dir.resolve("gap-loss")))
+    }
+
+    private fun ready(store: GapNoticeStore): List<GapNoticeRow> =
+        assertIs<GapRead.Ready>(store.read(zone)).rows
+
+    private fun store(
+        root: Path,
+        sync: (Path) -> Unit = ::forceGapDirectory,
+        beforeWrite: (Path) -> Unit = {},
+        listener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    ) = GapNoticeStore(
+        directory = root,
+        clock = { now },
+        ids = {
+            nextId += 1
+            nextId.toString(16).padStart(32, '0')
+        },
+        zone = { zone },
+        syncDirectory = sync,
+        beforeWrite = beforeWrite,
+        listener = listener,
+    )
+
+    private fun temp(): Path = Files.createTempDirectory("gap-notice")
+
+    private fun material(index: Int): String = "rec-" + index.toString().padStart(4, '0')
+
+    private fun legacyRow(idTail: String, source: String) = GapNoticeRow(
+        id = idTail.padStart(32, 'a'),
+        kind = "legacy",
+        source = source,
+        reason = "legacy marker",
+        material = "marker",
+        capturedEpochMs = null,
+        foundEpochMs = now,
+        seen = false,
+        count = 1,
+        firstEpochMs = now,
+        lastEpochMs = now,
+    )
+
+    private fun assertNullSnapshot(store: GapNoticeStore) {
+        assertEquals(null, store.snapshot(zone))
+    }
+}

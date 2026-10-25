@@ -17,7 +17,7 @@ import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealResult
 import app.solstone.core.spool.SpoolWriter
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.platform.audio.AudioCommitStatus
 import app.solstone.platform.audio.AudioSpoolLookup
 import app.solstone.platform.fgs.ScreenConsentToken
@@ -94,10 +94,10 @@ class ScreenHandoffTest {
             }
         }, { DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 } },
             { engine.stop() })
-        val interruption = object : UnresolvedInterruption {
-            override fun markUnresolved(): Boolean { unresolved.set(true); unresolvedMarked.countDown(); return true }
-            override fun isUnresolved() = unresolved.get()
-        }
+        val gaps = GapNoticeStore(File(root, "gap").toPath(), listener = { _, _, _, _ ->
+            unresolved.set(true)
+            unresolvedMarked.countDown()
+        })
         val remuxer = ScreenRemuxer { _, raw, _, _, output ->
             val number = raw.readBytes().first().toInt()
             remuxEntered.offer(number)
@@ -111,7 +111,7 @@ class ScreenHandoffTest {
         init {
             if (stage == Stage.ROOM_BLOCK) roomGates[1] = CountDownLatch(1)
             engine = ScreenContinuousSourceEngine(source, StorageStatus(free::get, 1_000L), remuxer,
-                interruption, holder, encoderFactory = { _, _, _, _ ->
+                gaps, holder, encoderFactory = { _, _, _, _ ->
                     clock.addAndGet(1_000L)
                     Encoder(encoders.size + 1).also { encoders += it }
                 }, onFloorTripped = { terminals.offer("floor") }, onFailed = { terminals.offer("failed") },
@@ -209,7 +209,7 @@ class ScreenHandoffTest {
             val touched = AtomicBoolean(false)
             val recovery = ScreenRecoveryManager(source, File(root, "guard-spool").toPath(), { _, _ -> emptySet() },
                 AudioSpoolLookup { _, _, _, _, _, _, _, _ -> touched.set(true); AudioCommitStatus.NotFound },
-                { _, _, _ -> touched.set(true) }, interruption,
+                { _, _, _ -> touched.set(true) }, gaps,
                 ScreenRemuxer { _, _, _, _, _ -> touched.set(true); ScreenRemuxResult.Failure("protected") })
             recovery.recover(engine.inFlightRecordingIds())
             assertFalse(touched.get())
@@ -226,7 +226,7 @@ class ScreenHandoffTest {
             val adopted = mutableListOf<SealedSegment>()
             val recovery = ScreenRecoveryManager(copied, File(restarted, "spool").toPath(), { _, _ -> emptySet() },
                 AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
-                { segment, _, _ -> adopted += segment }, interruption, remuxer)
+                { segment, _, _ -> adopted += segment }, gaps, remuxer)
             recovery.recover(); recovery.recover()
             assertEquals(2, adopted.size)
             assertTrue(copied.listFiles()!!.isEmpty())

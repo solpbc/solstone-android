@@ -9,7 +9,7 @@ import app.solstone.core.model.ReasonCode
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.SourceEmission
-import app.solstone.core.spool.UnresolvedInterruption
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.platform.fgs.ScreenConsentToken
 import app.solstone.platform.power.StorageStatus
 import java.io.File
@@ -59,14 +59,7 @@ class ScreenContinuousSourceEngineTest {
         }
     }
 
-    private class TestInterruption : UnresolvedInterruption {
-        var marked = false
-        override fun markUnresolved(): Boolean {
-            marked = true
-            return true
-        }
-        override fun isUnresolved(): Boolean = marked
-    }
+    private fun gapsOf(root: File) = GapNoticeStore(File(root, "gap").toPath())
 
     private class SimpleVirtualDisplay : ScreenVirtualDisplay {
         override fun setSurface(surface: Any?) {}
@@ -125,7 +118,7 @@ class ScreenContinuousSourceEngineTest {
         }
         val emissions = java.util.concurrent.CopyOnWriteArrayList<SourceEmission>()
         val engine = ScreenContinuousSourceEngine(source, StorageStatus({ 100_000L }, 1L),
-            FakeRemuxer(), TestInterruption(), holder, encoderFactory = { _, _, _, _ -> encoder },
+            FakeRemuxer(), gapsOf(root), holder, encoderFactory = { _, _, _, _ -> encoder },
             nowProvider = time::get, sleeper = { sleeping.countDown(); Thread.sleep(60_000L) },
             stopJoinTimeoutMs = 20L)
         try {
@@ -148,7 +141,7 @@ class ScreenContinuousSourceEngineTest {
             val recovery = ScreenRecoveryManager(crashed, File(root, "spool").toPath(), { _, _ -> emptySet() },
                 app.solstone.platform.audio.AudioSpoolLookup { _, _, _, _, _, _, _, _ ->
                     app.solstone.platform.audio.AudioCommitStatus.NotFound },
-                { segment, _, _ -> adopted += segment }, TestInterruption(), FakeRemuxer())
+                { segment, _, _ -> adopted += segment }, gapsOf(root), FakeRemuxer())
             recovery.recover(); recovery.recover()
             assertEquals(1, adopted.size)
             assertEquals(1_700_000_000_050L, adopted.single().wireKeys.startEpochMs)
@@ -171,13 +164,12 @@ class ScreenContinuousSourceEngineTest {
         val emitted = java.util.concurrent.CopyOnWriteArrayList<SourceEmission>()
         val count = java.util.concurrent.atomic.AtomicInteger()
         val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
-        val interruption = TestInterruption()
         val holder = ScreenSessionHolder(SimpleProjectionManager(), {
             DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
         }, {})
         assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
         val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
-            FakeRemuxer(), interruption, holder,
+            FakeRemuxer(), gapsOf(root), holder,
             encoderFactory = { _, _, _, _ ->
                 val first = time.getAndAdd(1_000L) + 50L
                 FakeEncoder(first, full = count.incrementAndGet() == 1)
@@ -190,7 +182,7 @@ class ScreenContinuousSourceEngineTest {
             assertTrue(firstEmitted.await(3, java.util.concurrent.TimeUnit.SECONDS))
             assertEquals(1, emitted.size)
             assertTrue(holder.isSessionLive())
-            assertFalse(interruption.marked)
+            assertEquals(null, engine.reasonWhenOff())
             engine.stop()
             assertEquals(2, emitted.size)
             assertEquals(1_700_000_000_050L, emitted[0].captureStartEpochMs)
@@ -217,7 +209,7 @@ class ScreenContinuousSourceEngineTest {
             ScreenRemuxResult.Success(200L, 500L)
         }
         val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L), remuxer,
-            TestInterruption(), holder, encoderFactory = { _, _, _, _ ->
+            gapsOf(root), holder, encoderFactory = { _, _, _, _ ->
                 count.incrementAndGet(); FakeEncoder(time.get())
             }, nowProvider = time::get, sleeper = {
                 sleeping.put(count.get()); Thread.sleep(60_000L)
@@ -253,7 +245,7 @@ class ScreenContinuousSourceEngineTest {
         }, {})
         assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
         val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
-            FakeRemuxer(), TestInterruption(), holder,
+            FakeRemuxer(), gapsOf(root), holder,
             encoderFactory = { _, _, _, _ -> encoder },
             nowProvider = { 1_700_000_000_500L },
             sleeper = { enteredSleep.countDown(); Thread.sleep(60_000L) })
@@ -278,7 +270,7 @@ class ScreenContinuousSourceEngineTest {
             var freeBytes = 2_000L
             val storage = StorageStatus({ freeBytes }, minimumFreeBytes = 1_000L)
             val remuxer = FakeRemuxer()
-            val interruption = TestInterruption()
+            val gaps = gapsOf(tempDir)
             val holder = ScreenSessionHolder(
                 projectionManager = SimpleProjectionManager(),
                 getDisplayMetrics = {
@@ -304,7 +296,7 @@ class ScreenContinuousSourceEngineTest {
                 outputDirectory = tempDir,
                 storageStatus = storage,
                 remuxer = remuxer,
-                interruption = interruption,
+                gaps = gaps,
                 sessionHolder = holder,
                 encoderFactory = { _, _, _, _ -> FakeEncoder() },
                 onFloorTripped = { floorTrippedCalled = true },
@@ -347,6 +339,67 @@ class ScreenContinuousSourceEngineTest {
             assertFalse(engine.condition().needsAttention)
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedReasonStaysAfterStopClearsOnTheNextStartAndAMarkerDoesNotShow() {
+        val root = Files.createTempDirectory("screen-failed-reason").toFile()
+        File(root, "screen-interruption").writeText("legacy")
+        val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        var fail = true
+        val engine = ScreenContinuousSourceEngine(
+            root,
+            StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(),
+            gapsOf(root),
+            holder,
+            encoderFactory = { _, _, _, _ ->
+                object : ScreenEncoder {
+                    override fun inputSurface(): Any = "surface"
+                    override fun start(raw: File, index: File, callback: (Long) -> Unit) {
+                        if (fail) error("encoder failed")
+                        raw.writeBytes(ByteArray(16))
+                        index.writeBytes(ByteArray(8))
+                        callback(time.get())
+                    }
+                    override fun stop(): Long = 1L
+                    override fun release() {}
+                }
+            },
+            nowProvider = time::get,
+            sleeper = { delta -> time.addAndGet(delta.coerceAtLeast(1L)) },
+            stopJoinTimeoutMs = 2_000L,
+        )
+        try {
+            assertEquals(null, engine.reasonWhenOff())
+            engine.start(EmissionSink { })
+            val deadline = System.currentTimeMillis() + 3_000L
+            while (engine.reasonWhenOff() == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertEquals(ReasonCode.SCREEN_CAPTURE_FAILED, engine.reasonWhenOff())
+            engine.stop()
+            assertEquals(ReasonCode.SCREEN_CAPTURE_FAILED, engine.reasonWhenOff())
+            fail = false
+            assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 2L)))
+            engine.start(EmissionSink { })
+            assertEquals(null, engine.reasonWhenOff())
+            engine.stop()
+            val fresh = ScreenContinuousSourceEngine(
+                root,
+                StorageStatus({ 100_000L }, 1L),
+                FakeRemuxer(),
+                gapsOf(root),
+                holder,
+            )
+            assertEquals(null, fresh.reasonWhenOff())
+        } finally {
+            engine.stop()
+            holder.stopSession()
+            root.deleteRecursively()
         }
     }
 }

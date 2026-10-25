@@ -12,8 +12,18 @@ data class PairedStatusSummary(
     val action: Boolean,
 )
 
-fun pairedStatusSummary(model: PhoneStatusModel): PairedStatusSummary? = when (statusPillKind(model)) {
+fun pairedStatusSummary(
+    model: PhoneStatusModel,
+    nowEpochMs: Long = statusWallNow(),
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): PairedStatusSummary? = when (statusPillKind(model, nowEpochMs, zone)) {
     StatusPillKind.NOT_PAIRED -> null
+    StatusPillKind.NOTICE -> PairedStatusSummary(
+        lead = PairedStatusLead.CAUGHT_UP,
+        markLineFollowsCount = false,
+        subLine = true,
+        action = false,
+    )
     StatusPillKind.AWAITING_MARK_CONFIRMATION -> if (model.pendingCount == 0) {
         PairedStatusSummary(
             lead = PairedStatusLead.MARK_LINE,

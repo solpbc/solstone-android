@@ -13,6 +13,7 @@ import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -74,11 +75,78 @@ class PhoneDefaultDetailPaneTest {
     }
 
     @Test
+    fun anUnseenGapReplacesAllCaughtUpAndStillSaysConnected() {
+        val now = System.currentTimeMillis()
+        val snapshot = snapshot(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+            gateOpen = true,
+        )
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot))
+        assertTextShown("there's a gap in your journal")
+        assertTextShown("some of what you shared today didn't reach it.")
+        composeRule.onNodeWithText("all caught up").assertDoesNotExist()
+        assertTextShown("connected")
+    }
+
+    @Test
+    fun unknownPresentNeverDrawsAllCaughtUp() {
+        val snapshot = snapshot(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            unknownPresent = true,
+            gateOpen = true,
+        )
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot))
+        assertTextShown("an unfinished item couldn't be checked")
+        assertTextShown("on this device")
+        composeRule.onNodeWithText("all caught up").assertDoesNotExist()
+        assertTextShown("connected")
+    }
+
+    @Test
+    fun calendarHeldShowsTheGapBesideTheJournalUpdate() {
+        val now = System.currentTimeMillis()
+        val snapshot = snapshot(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+            gateOpen = true,
+            calendarHeldForJournal = true,
+        )
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot))
+        assertTextShown("connected")
+        assertTextShown("journal needs an update")
+        assertTextShown("there's a gap in your journal")
+        composeRule.onNodeWithText("all caught up").assertDoesNotExist()
+    }
+
+    @Test
+    fun aPendingCountStillShowsTheGap() {
+        val now = System.currentTimeMillis()
+        val snapshot = snapshot(
+            paired = true,
+            online = true,
+            pendingCount = 3,
+            gapLosses = listOf(PhoneGapLoss("loss", now, now, false)),
+            gateOpen = true,
+        )
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot))
+        assertTextShown("3")
+        assertTextShown("there's a gap in your journal")
+        composeRule.onNodeWithText("all caught up").assertDoesNotExist()
+    }
+
+    @Test
     fun unpairedShowsTheJournalSetupBesideTheDeckAndConnectsOnce() {
         var connections = 0
 
         setWideContent(
-            status = PhoneStatusModel(false, false, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+            status = PhoneStatusModel(false, false, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false),
             detailStatus = PhoneDefaultDetailStatus.Unpaired,
             onConnectJournal = { connections += 1 },
         )
@@ -150,7 +218,7 @@ class PhoneDefaultDetailPaneTest {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
                 PhoneObserverScreen(
                     loadState = loadedSources(),
-                    status = PhoneStatusModel(true, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false, unresolvedAudioInterruption = false),
+                    status = PhoneStatusModel(true, true, 0, false, false, recoveryCompleted = true, audioAwaitingCustody = false),
                     defaultDetailStatus = detailStatus,
                     onToggle = { _, _ -> },
                     onStartObserving = {},
@@ -191,6 +259,10 @@ class PhoneDefaultDetailPaneTest {
             adaptiveInfo = adaptiveInfo(widthDp = 600)
         }
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+    }
+
+    private fun assertTextShown(text: String) {
+        composeRule.onAllNodesWithText(text)[0].assertIsDisplayed()
     }
 
     private fun setWideContent(
@@ -238,6 +310,10 @@ private fun snapshot(
     pendingCount: Int,
     waiting: List<SourceStatus> = emptyList(),
     awaitingMarkConfirmation: Boolean = false,
+    gapLosses: List<PhoneGapLoss> = emptyList(),
+    unknownPresent: Boolean = false,
+    gateOpen: Boolean = false,
+    calendarHeldForJournal: Boolean = false,
 ): PhoneStatusSnapshot = PhoneStatusSnapshot(
     status = PhoneStatusModel(
         paired = paired,
@@ -247,7 +323,10 @@ private fun snapshot(
         awaitingMarkConfirmation = awaitingMarkConfirmation,
         recoveryCompleted = true,
         audioAwaitingCustody = false,
-        unresolvedAudioInterruption = false,
+        gapLosses = gapLosses,
+        unknownPresent = unknownPresent,
+        gateOpen = gateOpen,
+        calendarHeldForJournal = calendarHeldForJournal,
     ),
     waiting = waiting,
 )

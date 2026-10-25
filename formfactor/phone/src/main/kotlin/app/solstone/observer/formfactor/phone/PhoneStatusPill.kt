@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -30,6 +31,18 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import java.time.ZoneId
+
+/** The one wall-clock read the status surface uses. Callers pass the value onward. */
+fun statusWallNow(): Long = System.currentTimeMillis()
+
+fun interface PhoneStatusNow {
+    fun nowEpochMs(): Long
+}
+
+val LocalPhoneStatusNow = staticCompositionLocalOf<PhoneStatusNow> {
+    PhoneStatusNow { statusWallNow() }
+}
 
 /**
  * The status pill in the app bar.
@@ -55,15 +68,10 @@ fun PhoneStatusPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val kind = statusPillKind(model)
-    val text = statusPillText(model)
-    val liveText = when (kind) {
-        StatusPillKind.CONNECTED -> "connected"
-        StatusPillKind.SYNCING -> "syncing"
-        StatusPillKind.OFFLINE -> "offline"
-        StatusPillKind.NOT_PAIRED -> "not paired"
-        StatusPillKind.AWAITING_MARK_CONFIRMATION -> "confirm the mark"
-    }
+    val now = LocalPhoneStatusNow.current.nowEpochMs()
+    val zone = ZoneId.systemDefault()
+    val kind = statusPillKind(model, now, zone)
+    val text = statusPillText(model, now, zone)
     val pulse = kind == StatusPillKind.SYNCING
     val infinite: InfiniteTransition = rememberInfiniteTransition(label = "statusPulse")
     val pulseAlpha by infinite.animateFloat(
@@ -78,12 +86,12 @@ fun PhoneStatusPill(
     val calm = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
     val mark = when (kind) {
         StatusPillKind.CONNECTED, StatusPillKind.SYNCING -> TileDotMark.DISC
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION -> TileDotMark.RING
+        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> TileDotMark.RING
     }
     val dotColor = when (kind) {
         StatusPillKind.CONNECTED -> LocalStatusOnGreen.current
         StatusPillKind.SYNCING -> MaterialTheme.colorScheme.primaryContainer
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION -> calm
+        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> calm
     }
     Box(
         modifier = modifier
@@ -99,19 +107,11 @@ fun PhoneStatusPill(
         ) {
             Box(
                 Modifier
+                    .testTag(if (pulse) "statusPulse" else "statusDot")
                     .size(12.dp)
-                    .alpha(if (pulse) pulseAlpha else 1f)
-                    .testTag(if (pulse) "statusPulse" else "statusDot"),
+                    .alpha(if (pulse) pulseAlpha else 1f),
             ) {
                 PhoneTileDot(mark = mark, color = dotColor)
-            }
-            Box(
-                Modifier
-                    .size(0.dp)
-                    .testTag("statusLiveRegion")
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-            ) {
-                Text(text = liveText)
             }
             Text(
                 text = text,
@@ -122,7 +122,10 @@ fun PhoneStatusPill(
                 modifier = Modifier
                     .padding(start = 7.dp)
                     .testTag("statusState")
-                    .semantics { stateDescription = text },
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        stateDescription = text
+                    },
             )
         }
     }

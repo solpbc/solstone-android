@@ -93,7 +93,7 @@ class PhoneObserverWidgetRuntimeTest {
         val model = application.widgetModel()
 
         assertFalse(model.audioChecked)
-        assertTrue(model.needsAttention)
+        assertFalse(model.needsAttention)
     }
 
     @Test

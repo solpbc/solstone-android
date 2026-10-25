@@ -25,8 +25,10 @@ import app.solstone.core.segment.Segmenter
 import app.solstone.core.segment.systemZoneId
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.RecoveryScanner
-import app.solstone.core.spool.UnresolvedInterruptionStore
 import app.solstone.core.spool.applyRecoveryActions
+import app.solstone.core.spool.emitDroppedRecoveryEvent
+import app.solstone.platform.identity.file.CommitMarkerStatus
+import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.formfactor.glasses.StillQrDecoder
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
@@ -77,11 +79,16 @@ interface GlassesRuntimeContainer {
     fun close()
 }
 
-class GlassesAppContainer(private val context: Context) : GlassesRuntimeContainer {
+class GlassesAppContainer(
+    private val context: Context,
+    private val gapListener: (String, String, String, String) -> Unit = { kind, source, reason, material ->
+        GlassesDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
+    },
+) : GlassesRuntimeContainer {
     val pairingMigrationOwner = syncStores(context).pairingMigrationOwner
     val cameraLock = SingleHolderCameraLock()
     val captureAuthority = VisibleCaptureOwnerRegistry()
-    private val captureSetup = createCaptureSetup(context, cameraLock)
+    private val captureSetup = createCaptureSetup(context, cameraLock, gapListener)
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")
     private val finisher = ConfirmedCopyFinisher(
@@ -221,15 +228,39 @@ class GlassesAppContainer(private val context: Context) : GlassesRuntimeContaine
         mainHandler.post(pollRunnable)
         startPhotoPairWatch()
         funnel.execute("recovery") {
-            val interruption = UnresolvedInterruptionStore(context.filesDir.resolve("audio-interruption").toPath())
-            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
-            captureSetup.recoverAudio(spoolDir, database.segmentDao(), interruption, captureSetup.inFlightAudioIds())
-            applyRecoveryActions(
-                RecoveryScanner(spoolDir).scan(System.currentTimeMillis()), interruption,
-                UnresolvedInterruptionStore(context.filesDir.resolve("other-interruption").toPath()),
-                UnresolvedInterruptionStore(context.filesDir.resolve("unknown-interruption").toPath()),
-            )
-            SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
+            val finished = runCatching {
+                val gaps = captureSetup.gaps
+                val filesDir = context.filesDir.toPath()
+                val unknown = mutableListOf<String>()
+                if (gaps != null) {
+                    gaps.conversion(
+                        listOf(
+                            "audio" to filesDir.resolve("audio-interruption"),
+                            "other" to filesDir.resolve("other-interruption"),
+                            "unknown" to filesDir.resolve("unknown-interruption"),
+                        ),
+                    )
+                    val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
+                    val journal = if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
+                    gaps.journalId(journal)
+                }
+                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
+                captureSetup.recoverAudio(spoolDir, database.segmentDao(), captureSetup.inFlightAudioIds())
+                if (gaps != null) {
+                    val events = applyRecoveryActions(
+                        RecoveryScanner(spoolDir).scan(System.currentTimeMillis()),
+                        gaps,
+                        unknown,
+                        filesDir,
+                    )
+                    events.forEach { event ->
+                        runCatching { emitDroppedRecoveryEvent(event, gapListener) }
+                    }
+                }
+                SpoolRoomReconciler(spoolDir, database.segmentDao()) { line -> GlassesDiagLog.appendRaw(line) }.reconcile()
+                if (gaps != null) gaps.sweepMilestone(unknown)
+            }.isSuccess
+            if (!finished) return@execute
             recoveryCompleted = true
             journalCacheCoordinator.requestImmediatePass()
             GlassesHarnessRuntime.hooks?.onRecoveryComplete?.invoke()

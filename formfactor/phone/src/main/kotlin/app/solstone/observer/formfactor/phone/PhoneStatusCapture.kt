@@ -74,7 +74,6 @@ private fun capturedStatusState(
                 awaitingMarkConfirmation = awaitingMarkConfirmation,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
-                unresolvedAudioInterruption = false,
             ),
             waiting = waiting,
         ),

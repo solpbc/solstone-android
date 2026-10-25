@@ -13,8 +13,8 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
+import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.UnresolvedInterruption
 import app.solstone.platform.power.StorageStatus
 import java.io.File
 import java.io.FileOutputStream
@@ -125,7 +125,7 @@ class AudioContinuousSourceEngine(
     private val outputDirectory: File,
     private val storageStatus: StorageStatus,
     private val remuxer: AacAdtsRemuxer,
-    private val interruption: UnresolvedInterruption,
+    private val gaps: GapNoticeStore,
     private val sourceId: String = SOURCE_ID,
     private val nowProvider: () -> Long = System::currentTimeMillis,
     private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
@@ -210,7 +210,13 @@ class AudioContinuousSourceEngine(
     override fun discardUncommitted(payload: SegmentPayload): Boolean {
         val key = PayloadKey(payload.captureStartEpochMs, payload.captureEndEpochMs)
         val entry = registeredAttempts.remove(key) ?: return true
-        return if (interruption.markUnresolved()) {
+        val captured = payload.captureStartEpochMs
+        if (!audioAttemptExisted(entry.dir)) {
+            gaps.recordDiagnostic("audio", "no bytes", entry.attemptId, captured)
+            entry.dir.deleteRecursively()
+            return true
+        }
+        return if (gaps.recordLoss("audio", "uncommitted window", entry.attemptId, captured)) {
             entry.dir.deleteRecursively()
             true
         } else {
@@ -285,6 +291,7 @@ class AudioContinuousSourceEngine(
         )
 
         if (!writeAndForceRecordTxt(recordFile, info)) {
+            gaps.recordDiagnostic("audio", "record not written", attemptId, actualRecordingStart)
             attemptDir.deleteRecursively()
             return RecordingOutcome(
                 emission = gapEmission(actualRecordingStart, nowProvider(), "record_sync_failed"),
@@ -302,9 +309,8 @@ class AudioContinuousSourceEngine(
         } catch (error: Exception) {
             clearActiveRecording(active)
             recording?.discard()
-            if (interruption.markUnresolved()) {
-                attemptDir.deleteRecursively()
-            }
+            gaps.recordDiagnostic("audio", "recording did not start", attemptId, actualRecordingStart)
+            attemptDir.deleteRecursively()
             val completed = sleepUntilWindowEnd(windowEnd, currentToken.get())
             return RecordingOutcome(
                 emission = gapEmission(actualRecordingStart, nowProvider(), error.javaClass.simpleName),
@@ -326,6 +332,7 @@ class AudioContinuousSourceEngine(
             if (remuxResult != null && remuxResult.sampleDurationMs > 0L && remuxResult.outputBytes > 0L) {
                 val updatedInfo = info.copy(openEndEpochMs = openEndEpochMs, sampleDurationMs = remuxResult.sampleDurationMs)
                 if (!writeAndForceRecordTxt(recordFile, updatedInfo)) {
+                    gaps.recordDiagnostic("audio", "record not written", attemptId, actualRecordingStart)
                     return RecordingOutcome(
                         emission = emptyEmission(actualRecordingStart),
                         interrupted = !completed,
@@ -348,6 +355,7 @@ class AudioContinuousSourceEngine(
                     interrupted = !completed,
                 )
             } else {
+                gaps.recordDiagnostic("audio", "remux failed", attemptId, actualRecordingStart)
                 return RecordingOutcome(
                     emission = emptyEmission(actualRecordingStart),
                     interrupted = !completed,
@@ -357,9 +365,7 @@ class AudioContinuousSourceEngine(
 
         val size = (finishResult.getOrNull() as RecordingFinishResult.Success).byteCount
         if (size <= 0L) {
-            if (interruption.markUnresolved()) {
-                attemptDir.deleteRecursively()
-            }
+            deleteUndeliverableOrEmpty(attemptDir, attemptId, actualRecordingStart)
             return RecordingOutcome(
                 emission = gapEmission(actualRecordingStart, openEndEpochMs, "empty_recording"),
                 interrupted = !completed,
@@ -369,6 +375,7 @@ class AudioContinuousSourceEngine(
         val remux = try {
             remuxer.remux(adtsFile, m4aFile)
         } catch (_: Throwable) {
+            gaps.recordDiagnostic("audio", "remux failed", attemptId, actualRecordingStart)
             return RecordingOutcome(
                 emission = emptyEmission(actualRecordingStart),
                 interrupted = !completed,
@@ -376,9 +383,7 @@ class AudioContinuousSourceEngine(
         }
 
         if (remux.sampleDurationMs <= 0L || remux.outputBytes <= 0L) {
-            if (interruption.markUnresolved()) {
-                attemptDir.deleteRecursively()
-            }
+            deleteUndeliverableOrEmpty(attemptDir, attemptId, actualRecordingStart)
             return RecordingOutcome(
                 emission = gapEmission(actualRecordingStart, openEndEpochMs, "no_complete_frame"),
                 interrupted = !completed,
@@ -387,6 +392,7 @@ class AudioContinuousSourceEngine(
 
         val updatedInfo = info.copy(openEndEpochMs = openEndEpochMs, sampleDurationMs = remux.sampleDurationMs)
         if (!writeAndForceRecordTxt(recordFile, updatedInfo)) {
+            gaps.recordDiagnostic("audio", "record not written", attemptId, actualRecordingStart)
             return RecordingOutcome(
                 emission = emptyEmission(actualRecordingStart),
                 interrupted = !completed,
@@ -509,6 +515,15 @@ class AudioContinuousSourceEngine(
     private data class PayloadKey(val captureStartEpochMs: Long, val captureEndEpochMs: Long)
     private data class AttemptEntry(val attemptId: String, val dir: File, val m4aFile: File)
     private data class ActiveRecording(val token: Any, val recording: AudioRecording, val attemptId: String)
+
+    private fun deleteUndeliverableOrEmpty(dir: File, attemptId: String, captured: Long) {
+        if (audioAttemptExisted(dir)) {
+            if (gaps.recordLoss("audio", "undeliverable", attemptId, captured)) dir.deleteRecursively()
+        } else {
+            gaps.recordDiagnostic("audio", "empty recording", attemptId, captured)
+            dir.deleteRecursively()
+        }
+    }
 
     companion object {
         const val SOURCE_ID = "audio"

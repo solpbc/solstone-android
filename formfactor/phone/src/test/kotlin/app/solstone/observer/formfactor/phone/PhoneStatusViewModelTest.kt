@@ -18,9 +18,12 @@ import app.solstone.observer.harness.SourcesChangeListener
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.observer.harness.SourcesReader
 import app.solstone.observer.harness.SourcesSubscription
+import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class PhoneStatusViewModelTest {
     @Test
@@ -206,7 +209,13 @@ class PhoneStatusViewModelTest {
         val poster = ManualPoster()
         var recovering = false
         var custody = true
-        var interrupted = true
+        var gaps = PhoneGapStatus(
+            losses = listOf(PhoneGapLoss("loss", 1L, 1L, false)),
+            unknownPresent = true,
+            unknownUnseen = true,
+            unseenUnknownKeys = listOf("draft/leaf"),
+            gateOpen = true,
+        )
         val viewModel = PhoneStatusViewModel(
             read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 1, emptyList()) },
             sources = TestSourcesReader,
@@ -214,25 +223,229 @@ class PhoneStatusViewModelTest {
             awaitingMarkConfirmation = { false },
             recoveryCompleted = { recovering },
             audioAwaitingCustody = { custody },
-            unresolvedAudioInterruption = { interrupted },
+            gapStatus = { gaps },
         )
         runner.runNext()
         poster.runNext()
         val initial = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
-        kotlin.test.assertFalse(initial.value.status.recoveryCompleted)
-        kotlin.test.assertTrue(initial.value.status.audioAwaitingCustody)
-        kotlin.test.assertTrue(initial.value.status.unresolvedAudioInterruption)
+        assertFalse(initial.value.status.recoveryCompleted)
+        assertTrue(initial.value.status.audioAwaitingCustody)
+        assertEquals(listOf("loss"), initial.value.status.gapLosses.map { it.id })
+        assertTrue(initial.value.status.gateOpen)
 
         recovering = true
         custody = false
-        interrupted = false
+        gaps = PhoneGapStatus()
         viewModel.publish(HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 2, emptyList()))
         runner.runNext()
         poster.runNext()
         val published = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
-        kotlin.test.assertTrue(published.value.status.recoveryCompleted)
-        kotlin.test.assertFalse(published.value.status.audioAwaitingCustody)
-        kotlin.test.assertFalse(published.value.status.unresolvedAudioInterruption)
+        assertTrue(published.value.status.recoveryCompleted)
+        assertFalse(published.value.status.audioAwaitingCustody)
+        assertTrue(published.value.status.gapLosses.isEmpty())
+        assertFalse(published.value.status.gateOpen)
+    }
+
+    @Test
+    fun visitMarksExactlyTheDisplayedIdsAndKeepsThemOnThePane() {
+        val now = 1_762_000_000_000L
+        val zone = ZoneId.of("UTC")
+        val shown = PhoneGapLoss("shown", now, now, false)
+        val later = PhoneGapLoss("later", now, now, false)
+        var gaps = PhoneGapStatus(
+            losses = listOf(shown),
+            unknownPresent = true,
+            unknownUnseen = true,
+            unseenUnknownKeys = listOf("draft/leaf"),
+            gateOpen = true,
+        )
+        val marked = mutableListOf<Pair<Set<String>, Set<String>>>()
+        var seenCalls = 0
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = { gaps },
+            markSeen = { ids, keys ->
+                marked += ids to keys
+                gaps = gaps.copy(
+                    losses = gaps.losses.map { loss -> if (loss.id in ids) loss.copy(seen = true) else loss },
+                    unseenUnknownKeys = gaps.unseenUnknownKeys.filter { it !in keys },
+                    unknownUnseen = gaps.unseenUnknownKeys.any { it !in keys },
+                )
+                true
+            },
+            onGapSeen = { seenCalls += 1 },
+            zone = zone,
+        )
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        assertEquals(0, runner.pendingCount)
+        viewModel.onStatusForeground(true)
+        assertEquals(listOf(setOf("shown") to setOf("draft/leaf")), marked)
+        assertEquals(1, seenCalls)
+        val pill = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
+        assertTrue(pill.gapLosses.single { it.id == "shown" }.seen)
+        assertFalse(pill.unknownUnseen)
+        val pane = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(pane.gapLosses.single { it.id == "shown" }.seen)
+
+        gaps = gaps.copy(losses = gaps.losses + later)
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+        viewModel.onStatusForeground(false)
+        viewModel.onHostStop(changingConfigurations = true)
+        viewModel.onStatusForeground(true)
+        assertEquals(1, marked.size)
+        val reloaded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
+        assertTrue(reloaded.gapLosses.single { it.id == "shown" }.seen)
+        assertFalse(reloaded.gapLosses.single { it.id == "later" }.seen)
+        val during = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(during.gapLosses.single { it.id == "shown" }.seen)
+        assertFalse(during.gapLosses.single { it.id == "later" }.seen)
+
+        viewModel.onHostStop(changingConfigurations = false)
+        val ended = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertTrue(ended.gapLosses.single { it.id == "shown" }.seen)
+        viewModel.onStatusForeground(true)
+        assertEquals(setOf("later"), marked.last().first)
+        assertEquals(emptySet(), marked.last().second)
+    }
+
+    @Test
+    fun aVisitBeforeTheGateMarksNothing() {
+        val now = 1_762_000_000_000L
+        var open = false
+        val gaps = {
+            PhoneGapStatus(
+                losses = listOf(PhoneGapLoss("loss", now, now, false)),
+                gateOpen = open,
+            )
+        }
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = gaps,
+            markSeen = { ids, _ -> marked += ids; true },
+            zone = ZoneId.of("UTC"),
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        open = true
+        viewModel.refresh()
+        runner.runNext()
+        poster.runNext()
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        viewModel.onHostStop(false)
+        viewModel.onStatusForeground(true)
+        assertEquals(listOf(setOf("loss")), marked)
+    }
+
+    @Test
+    fun aFailedSeenWriteLeavesTheLossUnseen() {
+        val now = 1_762_000_000_000L
+        var seenCalls = 0
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = {
+                PhoneGapStatus(
+                    losses = listOf(PhoneGapLoss("loss", now, now, false)),
+                    gateOpen = true,
+                )
+            },
+            markSeen = { _, _ -> false },
+            onGapSeen = { seenCalls += 1 },
+            zone = ZoneId.of("UTC"),
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(true)
+        assertEquals(0, seenCalls)
+        val status = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
+        assertFalse(status.gapLosses.single().seen)
+        viewModel.onHostStop(false)
+        viewModel.onStatusForeground(true)
+        val again = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status
+        assertFalse(again.gapLosses.single().seen)
+    }
+
+    @Test
+    fun onClockChangesNowWithoutReadingAgain() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var reads = 0
+        val viewModel = viewModel(runner, poster) {
+            reads += 1
+            HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList())
+        }
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, reads)
+        viewModel.onNow(42L)
+        assertEquals(42L, viewModel.nowEpochMs)
+        assertEquals(1, reads)
+        assertEquals(0, runner.pendingCount)
+    }
+
+    @Test
+    fun aSeenLossSurvivesANewVisitAndTheWidePaneCountsAsOne() {
+        val now = 1_762_000_000_000L
+        val marked = mutableListOf<Set<String>>()
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        val viewModel = PhoneStatusViewModel(
+            read = { HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList()) },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            gapStatus = {
+                PhoneGapStatus(
+                    losses = listOf(PhoneGapLoss("loss", now, now, seen = true)),
+                    gateOpen = true,
+                )
+            },
+            markSeen = { ids, _ -> marked += ids; true },
+            zone = ZoneId.of("UTC"),
+        )
+        runner.runNext()
+        poster.runNext()
+        viewModel.onNow(now)
+        viewModel.onStatusForeground(true)
+        assertTrue(marked.isEmpty())
+        assertTrue(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, wide = true, pairedDetail = true))
+        assertFalse(phoneStatusContentVisible(sheetOpen = false, pairingOpen = false, wide = false, pairedDetail = true))
+        assertTrue(phoneStatusContentVisible(sheetOpen = true, pairingOpen = false, wide = false, pairedDetail = false))
+        assertFalse(phoneStatusContentVisible(sheetOpen = true, pairingOpen = true, wide = true, pairedDetail = true))
     }
 
     private fun viewModel(
@@ -247,7 +460,6 @@ class PhoneStatusViewModelTest {
         awaitingMarkConfirmation = awaitingMarkConfirmation,
         recoveryCompleted = { true },
         audioAwaitingCustody = { false },
-        unresolvedAudioInterruption = { false },
     )
 }
 

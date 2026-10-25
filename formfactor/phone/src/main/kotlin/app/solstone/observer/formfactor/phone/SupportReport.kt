@@ -41,7 +41,7 @@ fun supportState(status: PhoneDefaultDetailStatus): String = when (status) {
     PhoneDefaultDetailStatus.Loading -> "loading"
     PhoneDefaultDetailStatus.Failed -> "status unavailable"
     PhoneDefaultDetailStatus.Unpaired -> "not paired"
-    is PhoneDefaultDetailStatus.Paired -> statusPillText(status.snapshot.status)
+    is PhoneDefaultDetailStatus.Paired -> statusPillText(status.snapshot.status.clearedForSupport())
 }
 
 private fun formEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

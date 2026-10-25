@@ -121,6 +121,8 @@ fun PhoneObserverScreen(
     version: String = "",
     captureWidthDp: Int? = null,
     onConfirmMark: () -> Unit,
+    paneStatus: PhoneStatusModel? = status,
+    onStatusContentVisible: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo(
         supportLargeAndXLargeWidth = true,
@@ -187,6 +189,8 @@ fun PhoneObserverScreen(
             )
         } ?: windowAdaptiveInfo,
         onConfirmMark = onConfirmMark,
+        paneStatus = paneStatus,
+        onStatusContentVisible = onStatusContentVisible,
     )
 }
 
@@ -251,6 +255,8 @@ internal fun PhoneObserverScreen(
     version: String = "",
     windowAdaptiveInfo: WindowAdaptiveInfo,
     onConfirmMark: () -> Unit,
+    paneStatus: PhoneStatusModel? = status,
+    onStatusContentVisible: (Boolean) -> Unit = {},
 ) {
     var paneStates by rememberPaneStates(
         initial = PaneStates.Empty
@@ -301,6 +307,16 @@ internal fun PhoneObserverScreen(
     )
     val statusOpen = paneStates.isOpen(PhonePane.STATUS)
     val shelfOpen = paneStates.isOpen(PhonePane.SHELF)
+    val paneModel = paneStatus ?: status
+    val statusContentVisible = phoneStatusContentVisible(
+        sheetOpen = statusOpen,
+        pairingOpen = pairingOpen,
+        wide = widthClass != WidthClass.COMPACT,
+        pairedDetail = defaultDetailStatus is PhoneDefaultDetailStatus.Paired,
+    )
+    LaunchedEffect(statusContentVisible) {
+        onStatusContentVisible(statusContentVisible)
+    }
     val deckPaneOpen = statusOpen || shelfOpen
     var previousJournalSheetOpen by remember { mutableStateOf(journalSheetOpen) }
     LaunchedEffect(journalSheetOpen) {
@@ -363,7 +379,7 @@ internal fun PhoneObserverScreen(
                     )
                     if (statusOpen && !pairingOpen) {
                         PhoneStatusPane(
-                            model = model,
+                            model = paneModel ?: model,
                             waiting = waiting,
                             onDismiss = { paneStates = paneStates.close(PhonePane.STATUS) },
                             onOpenSource = { id ->
