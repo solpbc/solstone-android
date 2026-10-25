@@ -377,6 +377,7 @@ class FileSpoolWriterTest {
             )
             assertFalse(Files.exists(draft))
             assertFalse(Files.exists(draft.parent.resolve("$WIRE_SEGMENT.kept-1")))
+            assertFalse(Files.exists(parkedCopy(baseDir)))
             assertContentEquals(
                 "first-bytes".toByteArray(),
                 Files.readAllBytes(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")),
@@ -400,7 +401,7 @@ class FileSpoolWriterTest {
             assertFalse(Files.exists(draft))
             assertContentEquals(
                 "old-bytes".toByteArray(),
-                Files.readAllBytes(draft.parent.resolve("$WIRE_SEGMENT.kept-1").resolve("other.bin")),
+                Files.readAllBytes(parkedCopy(baseDir).resolve("other.bin")),
             )
             assertContentEquals(
                 "first-bytes".toByteArray(),
@@ -418,7 +419,7 @@ class FileSpoolWriterTest {
             assertFalse(Files.exists(draft))
             assertContentEquals(
                 "old-bytes".toByteArray(),
-                Files.readAllBytes(draft.parent.resolve("$WIRE_SEGMENT.kept-1").resolve("other.bin")),
+                Files.readAllBytes(parkedCopy(baseDir).resolve("other.bin")),
             )
             assertContentEquals(
                 "first-bytes".toByteArray(),
@@ -436,7 +437,8 @@ class FileSpoolWriterTest {
                 provider("first.bin" to "first-bytes".toByteArray()),
             )
             assertFalse(Files.exists(draft))
-            assertTrue(Files.isDirectory(draft.parent.resolve("$WIRE_SEGMENT.kept-1")))
+            assertTrue(Files.isDirectory(parkedCopy(baseDir)))
+            assertFalse(Files.exists(draft.parent.resolve("$WIRE_SEGMENT.kept-1")))
             assertTrue(Files.isRegularFile(baseDir.resolve(DAY).resolve(STREAM).resolve(WIRE_SEGMENT).resolve("first.bin")))
         }
     }
@@ -492,6 +494,9 @@ class FileSpoolWriterTest {
                 ByteArrayInputStream(bytesByName.getValue(payload.ref.name))
         }
     }
+
+    private fun parkedCopy(baseDir: Path): Path =
+        baseDir.resolve(".parked").resolve(DAY).resolve(STREAM).resolve("$WIRE_SEGMENT.kept-1")
 
     private fun withTempDir(block: (Path) -> Unit) {
         val dir = Files.createTempDirectory("solstone-file-spool-writer")

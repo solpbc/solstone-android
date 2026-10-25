@@ -228,7 +228,10 @@ class CapturePipelineTest {
             assertTrue(provider.released.any { it.ref.name == "camera.jpg" })
             assertFalse(diags.any { it.startsWith("capture event=segment-seal-failed") })
             assertTrue(Files.walk(base).use { paths ->
-                paths.anyMatch { it.fileName.toString() == "leftover.bin" && ".kept-" in it.toString() }
+                paths.anyMatch {
+                    val text = it.toString().replace('\\', '/')
+                    it.fileName.toString() == "leftover.bin" && ".kept-" in text && "/.parked/" in text
+                }
             })
         } finally {
             base.toFile().deleteRecursively()

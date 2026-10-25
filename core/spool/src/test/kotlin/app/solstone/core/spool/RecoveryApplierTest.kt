@@ -3,15 +3,23 @@
 
 package app.solstone.core.spool
 
+import app.solstone.core.model.BundleFile
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
+import app.solstone.core.model.WireKeys
 import app.solstone.core.segment.SealedSegment
+import app.solstone.core.segment.SegmentPayload
+import app.solstone.core.segment.sha256
 import app.solstone.core.segment.wireKeys
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.PayloadRef
+import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.ZoneId
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -357,6 +365,142 @@ class RecoveryApplierTest {
             logged += reason
         }
         assertEquals(listOf("divergent final"), logged)
+    }
+
+    @Test
+    fun aParkedDraftWithAValidManifestIsNeverFinalizedOrQueued() {
+        val baseDir = Files.createTempDirectory("recovery-parked")
+        try {
+            val day = "20261101"
+            val stream = "observer"
+            val leaf = "011500_300"
+            val start = 1_793_515_500_000L
+            val draft = baseDir.resolve(".draft").resolve(day).resolve(stream).resolve(leaf)
+            Files.createDirectories(draft)
+            val oldBytes = "old-audio".toByteArray(StandardCharsets.UTF_8)
+            val payload = draft.resolve("other.bin")
+            Files.write(payload, oldBytes)
+            val parkedSegment = sealSegment(day, stream, leaf, start, "other.bin", oldBytes.size.toLong())
+            val file = BundleFile(
+                sourceId = "audio",
+                name = "other.bin",
+                sha256 = sha256(payload),
+                byteSize = oldBytes.size.toLong(),
+                mediaType = "application/octet-stream",
+                captureStartEpochMs = start,
+                captureEndEpochMs = start + 300_000L,
+            )
+            Files.write(
+                draft.resolve("manifest"),
+                serializeManifest(parkedSegment, BundleManifest(parkedSegment.key, listOf(file), emptyList()))
+                    .toByteArray(StandardCharsets.UTF_8),
+            )
+            val failing = GapNoticeStore(baseDir.resolve("gap"), beforeWrite = { path ->
+                if (path.fileName.toString() == "events.v1") throw java.io.IOException("events")
+            })
+            FileSpoolWriter(baseDir, gaps = failing).seal(
+                sealSegment(day, stream, leaf, start, "first.bin", "new-bytes".length.toLong()),
+                bytesProvider("first.bin" to "new-bytes".toByteArray(StandardCharsets.UTF_8)),
+            )
+
+            val parked = baseDir.resolve(".parked").resolve(day).resolve(stream).resolve("$leaf.kept-1")
+            val sealed = baseDir.resolve(day).resolve(stream).resolve(leaf)
+            val queuedKept = baseDir.resolve(day).resolve(stream).resolve("$leaf.kept-1")
+            assertTrue(Files.isRegularFile(parked.resolve("manifest")))
+            assertTrue(Files.isRegularFile(parked.resolve("other.bin")))
+            assertFalse(Files.exists(baseDir.resolve(".draft").resolve(day).resolve(stream).resolve("$leaf.kept-1")))
+            assertContentEquals("new-bytes".toByteArray(StandardCharsets.UTF_8), Files.readAllBytes(sealed.resolve("first.bin")))
+            assertEquals(leaf, manifestSegment(parked))
+            assertEquals(manifestSegment(sealed), manifestSegment(parked))
+
+            val before = RecoveryScanner(baseDir).scan(nowEpochMs = 10L)
+            assertTrue(before.none { it is RecoveryAction.Finalize })
+            assertEquals(parked, (before.single() as RecoveryAction.Parked).draftDir)
+
+            val unknown = mutableListOf<String>()
+            val events = applyRecoveryActions(before, failing, unknown, baseDir)
+            assertTrue(events.none { it.kind == "finalized_segment" })
+            assertEquals(listOf("kept unknown"), events.map { it.detail })
+            assertTrue(unknown.any { ".parked" in it && ".kept-" in it })
+            assertTrue(Files.isRegularFile(parked.resolve("manifest")))
+            assertFalse(Files.exists(queuedKept))
+            assertEquals(listOf(leaf), queueableManifests(baseDir).map { it.parent.fileName.toString() })
+
+            val working = GapNoticeStore(baseDir.resolve("gap-working"))
+            val laterUnknown = mutableListOf<String>()
+            val later = applyRecoveryActions(
+                RecoveryScanner(baseDir).scan(nowEpochMs = 11L),
+                working,
+                laterUnknown,
+                baseDir,
+            )
+            assertTrue(later.none { it.kind == "finalized_segment" })
+            assertTrue(laterUnknown.isEmpty())
+            assertFalse(Files.exists(parked))
+            assertFalse(Files.exists(queuedKept))
+            assertEquals(listOf(leaf), queueableManifests(baseDir).map { it.parent.fileName.toString() })
+            val loss = rows(working).single { it.kind == "loss" }
+            assertEquals("spool", loss.source)
+            assertEquals("undeliverable", loss.reason)
+            assertEquals(gapDraftMaterial(day, stream, leaf), loss.material)
+            assertContentEquals("new-bytes".toByteArray(StandardCharsets.UTF_8), Files.readAllBytes(sealed.resolve("first.bin")))
+        } finally {
+            baseDir.deleteRecursively()
+        }
+    }
+
+    private fun sealSegment(
+        day: String,
+        stream: String,
+        leaf: String,
+        start: Long,
+        payloadName: String,
+        byteSize: Long,
+    ): SealedSegment = SealedSegment(
+        stream = stream,
+        key = SegmentKey(day, leaf),
+        wireKeys = WireKeys(
+            day = day,
+            segment = leaf,
+            startEpochMs = start,
+            endEpochMs = start + 300_000L,
+            zoneId = "America/New_York",
+            utcOffsetSeconds = -14_400,
+        ),
+        payloads = listOf(
+            SegmentPayload(
+                sourceId = "audio",
+                ref = PayloadRef(payloadName, "application/octet-stream", byteSize, null),
+                captureStartEpochMs = start,
+                captureEndEpochMs = start + 300_000L,
+            ),
+        ),
+        gaps = emptyList(),
+    )
+
+    private fun bytesProvider(vararg entries: Pair<String, ByteArray>): PayloadBytesProvider {
+        val bytesByName = entries.toMap()
+        return object : PayloadBytesProvider {
+            override fun open(payload: SegmentPayload): ByteArrayInputStream =
+                ByteArrayInputStream(bytesByName.getValue(payload.ref.name))
+        }
+    }
+
+    private fun manifestSegment(dir: Path): String =
+        parseManifest(String(Files.readAllBytes(dir.resolve("manifest")), StandardCharsets.UTF_8)).manifest.key.segment
+
+    private fun queueableManifests(baseDir: Path): List<Path> {
+        if (!Files.exists(baseDir)) return emptyList()
+        return Files.walk(baseDir).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.fileName.toString() == "manifest" }
+                .filter { manifest ->
+                    val parts = baseDir.relativize(manifest).toString().replace('\\', '/').split('/')
+                    if (parts.any { it == ".draft" || it == ".parked" }) return@filter false
+                    val dayDir = manifest.parent?.parent?.parent ?: return@filter false
+                    dayDir.parent == baseDir
+                }
+                .toList()
+        }
     }
 
     private class Applied(

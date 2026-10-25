@@ -10,24 +10,29 @@ import java.nio.file.Path
 
 class RecoveryScanner(private val baseDir: Path) {
     fun scan(nowEpochMs: Long = 0L): List<RecoveryAction> {
-        val draftRoot = baseDir.resolve(".draft")
-        if (!Files.isDirectory(draftRoot)) return emptyList()
-
         val actions = mutableListOf<RecoveryAction>()
-        Files.newDirectoryStream(draftRoot).use { days ->
+        collect(baseDir.resolve(".draft"), actions) { segmentDir -> actionFor(segmentDir, nowEpochMs) }
+        collect(baseDir.resolve(".parked"), actions) { segmentDir ->
+            RecoveryAction.Parked(draftDir = segmentDir, atEpochMs = nowEpochMs)
+        }
+        return actions.sortedBy { it.draftDir().toString() }
+    }
+
+    private fun collect(root: Path, actions: MutableList<RecoveryAction>, action: (Path) -> RecoveryAction) {
+        if (!Files.isDirectory(root)) return
+        Files.newDirectoryStream(root).use { days ->
             days.filter(Files::isDirectory).forEach { dayDir ->
                 Files.newDirectoryStream(dayDir).use { streams ->
                     streams.filter(Files::isDirectory).forEach { streamDir ->
                         Files.newDirectoryStream(streamDir).use { segments ->
                             segments.filter(Files::isDirectory).forEach { segmentDir ->
-                                actions += actionFor(segmentDir, nowEpochMs)
+                                actions += action(segmentDir)
                             }
                         }
                     }
                 }
             }
         }
-        return actions.sortedBy { it.draftDir().toString() }
     }
 
     private fun actionFor(draftDir: Path, nowEpochMs: Long): RecoveryAction {
@@ -80,6 +85,7 @@ private fun RecoveryAction.draftDir(): Path =
     when (this) {
         is RecoveryAction.Discard -> draftDir
         is RecoveryAction.Finalize -> draftDir
+        is RecoveryAction.Parked -> draftDir
     }
 
 sealed class RecoveryAction {
@@ -92,6 +98,12 @@ sealed class RecoveryAction {
     data class Discard(
         val draftDir: Path,
         val event: SpoolRecoveryEvent,
+    ) : RecoveryAction()
+
+    /** A draft parked because its loss could not be recorded. Recovery never seals it. */
+    data class Parked(
+        val draftDir: Path,
+        val atEpochMs: Long,
     ) : RecoveryAction()
 }
 

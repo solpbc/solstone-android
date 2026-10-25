@@ -152,7 +152,7 @@ class FileSpoolWriter(
      * A draft whose payload names are the incoming seal's is that seal's own interrupted attempt.
      * The new bytes replace it and no gap event is written.
      * Any other draft is recorded, then removed. When the store cannot record it, the old draft
-     * moves aside under a new name and the new material still seals.
+     * moves outside the draft tree and the new material still seals.
      */
     private fun retireExistingDraft(
         draftDir: Path,
@@ -166,7 +166,7 @@ class FileSpoolWriter(
             return !Files.exists(draftDir)
         }
         val material = gapDraftMaterial(segment.key.day, segment.stream, leaf)
-        val recorded = if (draftHasPayloadBytes(draftDir)) {
+        val recorded = if (directoryHasPayloadBytes(draftDir)) {
             gaps?.recordLoss("spool", "undeliverable", material, segment.wireKeys.startEpochMs) == true
         } else {
             gaps?.recordDiagnostic("spool", "empty draft", material, null) == true
@@ -187,14 +187,17 @@ class FileSpoolWriter(
         }.toSet()
     }.getOrNull()
 
-    /** Keeps a draft the store could not record, outside the leaf the new seal is about to use. */
+    /** Keeps a draft the store could not record, outside the tree recovery finalizes. */
     private fun parkDraft(draftDir: Path): Boolean {
-        val parent = draftDir.parent ?: return false
+        val streamDir = draftDir.parent ?: return false
+        val dayDir = streamDir.parent ?: return false
         val leaf = draftDir.fileName.toString()
+        val parkedParent = baseDir.resolve(".parked").resolve(dayDir.fileName).resolve(streamDir.fileName)
         for (index in 1..999) {
-            val parked = parent.resolve("$leaf.kept-$index")
+            val parked = parkedParent.resolve("$leaf.kept-$index")
             if (Files.exists(parked)) continue
             val moved = runCatching {
+                Files.createDirectories(parkedParent)
                 try {
                     Files.move(draftDir, parked, StandardCopyOption.ATOMIC_MOVE)
                 } catch (_: AtomicMoveNotSupportedException) {
@@ -205,17 +208,6 @@ class FileSpoolWriter(
         }
         return false
     }
-
-    private fun draftHasPayloadBytes(draftDir: Path): Boolean = runCatching {
-        Files.list(draftDir).use { stream ->
-            stream.anyMatch { path ->
-                if (!Files.isRegularFile(path)) return@anyMatch false
-                val name = path.fileName.toString()
-                if (name == "manifest") return@anyMatch false
-                if (name == "capture.adts") adtsFileExisted(path) else Files.size(path) > 0L
-            }
-        }
-    }.getOrDefault(true)
 
     private fun syncFinalPublication(finalDir: Path) {
         var current: Path? = finalDir

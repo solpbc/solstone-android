@@ -117,6 +117,18 @@ fun adtsFrameLength(prefix: ByteArray): Int? {
 /** m4a, mp4, and any other payload file existed when its length is greater than 0. */
 fun payloadBytesExisted(length: Long): Boolean = length > 0L
 
+/** A draft had payload bytes when a non-manifest file exists, with the same ADTS rule as a loss. */
+fun directoryHasPayloadBytes(dir: Path): Boolean = runCatching {
+    Files.list(dir).use { stream ->
+        stream.anyMatch { path ->
+            if (!Files.isRegularFile(path)) return@anyMatch false
+            val name = path.fileName.toString()
+            if (name == "manifest") return@anyMatch false
+            if (name == "capture.adts") adtsFileExisted(path) else payloadBytesExisted(Files.size(path))
+        }
+    }
+}.getOrDefault(true)
+
 /**
  * A samples.idx line is `pts,size,flags`. Bit 2 is codec configuration and is not a captured frame.
  */

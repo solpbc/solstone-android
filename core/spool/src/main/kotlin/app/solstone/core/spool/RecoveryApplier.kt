@@ -139,9 +139,59 @@ fun applyRecoveryActions(
                     }
                 }
             }
+            is RecoveryAction.Parked -> retireParked(action, gaps, unknownPaths, filesDir, events)
         }
     }
     return events
+}
+
+/**
+ * A parked draft is an unknown item until a pass can record it. It is never sealed.
+ * Payload bytes are a loss. An empty draft is a diagnostic. The folder is removed only when that
+ * record succeeds.
+ */
+private fun retireParked(
+    action: RecoveryAction.Parked,
+    gaps: GapNoticeStore?,
+    unknownPaths: MutableCollection<String>,
+    filesDir: Path,
+    events: MutableList<SpoolRecoveryEvent>,
+) {
+    val dir = action.draftDir
+    val material = parkedMaterial(dir)
+    val recorded = if (directoryHasPayloadBytes(dir)) {
+        gaps?.recordLoss("spool", "undeliverable", material, parkedCaptureStart(dir)) == true
+    } else {
+        gaps?.recordDiagnostic("spool", "empty draft", material, null) == true
+    }
+    if (recorded) {
+        dir.deleteRecursively()
+        cleanupEmptyDraftParents(dir)
+        return
+    }
+    rememberUnknown(filesDir, dir, unknownPaths)
+    events += SpoolRecoveryEvent(
+        kind = "partial_segment",
+        atEpochMs = action.atEpochMs,
+        detail = "kept unknown",
+    )
+}
+
+private val PARKED_SUFFIX = Regex("""\.kept-\d+$""")
+
+private fun parkedMaterial(dir: Path): String {
+    val folder = dir.fileName?.toString().orEmpty().replace(PARKED_SUFFIX, "")
+    val stream = dir.parent?.fileName?.toString().orEmpty()
+    val day = dir.parent?.parent?.fileName?.toString().orEmpty()
+    return gapDraftMaterial(day, stream, folder)
+}
+
+private fun parkedCaptureStart(dir: Path): Long? {
+    val manifest = dir.resolve("manifest")
+    if (!Files.isRegularFile(manifest)) return null
+    return runCatching {
+        parseManifest(String(Files.readAllBytes(manifest), StandardCharsets.UTF_8)).startEpochMs
+    }.getOrNull()
 }
 
 private fun discardInvalidPayload(dir: Path, gaps: GapNoticeStore?): Boolean {

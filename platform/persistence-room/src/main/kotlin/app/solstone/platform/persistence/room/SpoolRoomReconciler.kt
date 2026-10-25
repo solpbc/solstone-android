@@ -21,7 +21,10 @@ class SpoolRoomReconciler(
         baseDirFile.walkTopDown()
             .filter { file -> file.isFile }
             .filter { file -> file.name == "manifest" }
-            .filter { file -> !file.relativeParts().contains(".draft") }
+            .filter { file ->
+                val parts = file.relativeParts()
+                ".draft" !in parts && ".parked" !in parts
+            }
             .forEach { manifestFile ->
                 if (insertManifest(manifestFile)) inserted += 1
         }
