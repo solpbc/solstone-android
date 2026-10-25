@@ -94,5 +94,11 @@ fun createCaptureSetup(
                 materialExists = ownerMaterialExists(gapDirectory),
             )
         },
+        recoverAudio = audio@{ _, _, _ ->
+            val audio = context.filesDir.resolve("audio-source")
+            if (!audio.isFile) return@audio
+            context.filesDir.resolve(".audio-recovery-step").writeText("entered")
+            throw IllegalStateException("audio recovery")
+        },
     )
 }
