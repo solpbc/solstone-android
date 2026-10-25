@@ -38,8 +38,8 @@ class PhoneStatusViewModel(
     private var trailingRefreshRequested = false
     private var hasSeenHostResume = false
     private var contentVisible = false
+    private var hostInForeground = false
     private var visitActive = false
-    private var retainVisit = false
     private var visitLossIds: Set<String> = emptySet()
     private var visitUnknownKeys: Set<String> = emptySet()
 
@@ -61,13 +61,15 @@ class PhoneStatusViewModel(
         startRead(generation)
     }
 
-    /** The activity is started. Refreshes the clock before a delayed midnight tick can run. */
+    /** The activity is started. Refreshes the clock. A visit still waits for a showing or a resume. */
     fun onHostStarted() {
         nowEpochMs = clock()
+        hostInForeground = true
     }
 
     fun onHostResumed() {
         nowEpochMs = clock()
+        hostInForeground = true
         if (hasSeenHostResume) {
             refresh()
         } else {
@@ -82,29 +84,30 @@ class PhoneStatusViewModel(
     }
 
     /**
-     * A visit is one continuous showing of the status content. Hiding it ends the visit, except
-     * across a configuration change that already stopped the host. The next showing marks the
-     * losses it displays.
+     * A visit is one continuous showing of the status content while the app is in the foreground.
+     * It starts when the content becomes visible while started, or when the host resumes with it
+     * visible. Hiding the content ends it. A loss that appears during the visit is shown and not
+     * marked; the next visit marks it.
      */
     fun onStatusForeground(visible: Boolean) {
         if (!visible) {
             contentVisible = false
-            if (!retainVisit) endVisit()
+            endVisit()
             return
         }
         contentVisible = true
-        retainVisit = false
         beginVisit()
     }
 
     /**
-     * Marks exactly the loss ids and unknown keys on screen when the gate is open.
+     * Marks exactly the unseen in-window losses on screen when this showing starts.
      * The clock is read before that set is chosen. The mark itself runs off the caller thread.
-     * A later loss is not in that set. A closed gate still becomes a visit and marks nothing.
+     * Nothing is marked while the host is stopped. An empty showing marks nothing.
+     * A closed gate still becomes a visit and marks nothing.
      */
     private fun beginVisit() {
         nowEpochMs = clock()
-        if (!contentVisible || visitActive) return
+        if (!hostInForeground || !contentVisible || visitActive) return
         val loaded = statusState as? LoadState.Loaded ?: return
         val model = loaded.value.status
         if (!model.gateOpen) {
@@ -140,14 +143,14 @@ class PhoneStatusViewModel(
         }
     }
 
-    /** A configuration change keeps the visit. Leaving the screen ends it. */
+    /**
+     * Leaving the foreground ends the visit, including a configuration change.
+     * Nothing is marked until the content is showing again after start or resume.
+     */
     fun onHostStop(changingConfigurations: Boolean) {
-        if (changingConfigurations) {
-            retainVisit = true
-            return
-        }
-        retainVisit = false
+        hostInForeground = false
         endVisit()
+        if (changingConfigurations) return
     }
 
     private fun endVisit() {
