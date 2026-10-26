@@ -6,9 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.32] - 2026-10-25
+
 ### Fixed
 
-- the status said "audio was interrupted" or "there's a gap in your journal" and kept saying it. now, when something you shared won't reach your journal, the status says there's a gap and which day, and it clears once you've opened it.
+- the status said "audio was interrupted" or "there's a gap in your journal" and kept saying it. now, when something already on your phone can't reach your journal, the status says there's a gap and which day, and the notice clears once you've opened the status.
+- after one interrupted recording, your screen source could keep saying "the recording couldn't be saved" whenever it was off. now it says that only when the latest recording fails.
 
 ## [2.1.31] - 2026-10-24
 
