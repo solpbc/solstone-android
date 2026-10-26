@@ -12,6 +12,8 @@ import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SealWindowHold
+import app.solstone.core.sources.SealWindowHoldClient
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.GapNoticeStore
@@ -133,7 +135,7 @@ class AudioContinuousSourceEngine(
     private val recorderFactory: AudioRecorderFactory = MediaRecorderFactory(),
     private val zoneProvider: () -> ZoneId = { ZoneId.systemDefault() },
     private val diag: (String) -> Unit = {},
-) : ContinuousSourceEngine, PayloadBytesProvider {
+) : ContinuousSourceEngine, PayloadBytesProvider, SealWindowHoldClient {
     private val running = AtomicBoolean(false)
     private val currentToken = AtomicReference<Any?>(null)
     private val activeRecording = AtomicReference<ActiveRecording?>(null)
@@ -141,6 +143,7 @@ class AudioContinuousSourceEngine(
     private val registeredAttempts = ConcurrentHashMap<PayloadKey, AttemptEntry>()
     private var worker: Thread? = null
     @Volatile private var consecutiveStartFailures = 0
+    @Volatile private var sealHold: SealWindowHold? = null
 
     fun reasonWhenOff(): ReasonCode? =
         if (running.get() && consecutiveStartFailures >= 2) ReasonCode.AUDIO_START_FAILED else null
@@ -149,6 +152,10 @@ class AudioContinuousSourceEngine(
         val activeId = activeRecording.get()?.attemptId
         val registeredIds = registeredAttempts.values.map { it.attemptId }
         return if (activeId != null) (registeredIds + activeId).toSet() else registeredIds.toSet()
+    }
+
+    override fun bindSealWindowHold(hold: SealWindowHold) {
+        sealHold = hold
     }
 
     override fun start(sink: EmissionSink) {
@@ -262,12 +269,19 @@ class AudioContinuousSourceEngine(
                 continue
             }
 
-            val outcome = recordWindow(windowStart, windowEnd, nextRestartGap, token)
-            if (outcome.emission.payloadRefs.isNotEmpty() || outcome.emission.gaps.isNotEmpty()) {
-                if (!emitSafely(sink, outcome.emission, token)) break
+            val held = HeldWindow(sealHold)
+            try {
+                val outcome = recordWindow(windowStart, windowEnd, nextRestartGap, token, held)
+                if (outcome.emission.payloadRefs.isNotEmpty() || outcome.emission.gaps.isNotEmpty()) {
+                    if (!emitSafely(sink, outcome.emission, token)) break
+                }
+                nextRestartGap = restartGap(outcome.emission.captureEndEpochMs)
+                if (outcome.interrupted) break
+            } finally {
+                // The sink queues the feed on the pipeline's one thread, so the window
+                // is released only after the recording has been fed into it.
+                held.release()
             }
-            nextRestartGap = restartGap(outcome.emission.captureEndEpochMs)
-            if (outcome.interrupted) break
         }
     }
 
@@ -276,6 +290,7 @@ class AudioContinuousSourceEngine(
         windowEnd: Long,
         restartGap: GapEvent?,
         token: Any,
+        held: HeldWindow,
     ): RecordingOutcome {
         val attemptId = "rec-${UUID.randomUUID()}"
         val attemptDir = File(outputDirectory, attemptId)
@@ -328,6 +343,7 @@ class AudioContinuousSourceEngine(
             )
         }
 
+        held.take(windowStart(actualRecordingStart))
         val completed = sleepUntilWindowEnd(windowEnd, currentToken.get())
         val openEndEpochMs = if (completed) windowEnd else nowProvider()
         val startedRecording = checkNotNull(recording)
@@ -520,6 +536,25 @@ class AudioContinuousSourceEngine(
 
     private fun windowStart(epochMs: Long): Long =
         Math.floorDiv(epochMs, WINDOW_MS) * WINDOW_MS
+
+    // Finishing, remuxing and syncing a recording happens after its window ends. Holding
+    // the window until the recording is fed keeps another source's payload in that window
+    // from sealing it first, which would leave the audio late and drop it.
+    private class HeldWindow(private val hold: SealWindowHold?) {
+        private var windowStartEpochMs: Long? = null
+
+        fun take(windowStartEpochMs: Long) {
+            val hold = hold ?: return
+            runCatching { hold.hold(MAIN_STREAM, windowStartEpochMs) }
+                .onSuccess { this.windowStartEpochMs = windowStartEpochMs }
+        }
+
+        fun release() {
+            val heldWindow = windowStartEpochMs ?: return
+            windowStartEpochMs = null
+            runCatching { hold?.release(MAIN_STREAM, heldWindow) }
+        }
+    }
 
     private data class RecordingOutcome(val emission: SourceEmission, val interrupted: Boolean)
 

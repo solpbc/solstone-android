@@ -3,24 +3,32 @@
 
 package app.solstone.platform.audio
 
+import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceKind
+import app.solstone.core.observer.CapturePipeline
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
+import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.GapRead
+import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealResult
+import app.solstone.core.spool.SealState
 import app.solstone.core.spool.SealedSegmentSink
+import app.solstone.core.spool.SpoolWriter
 import app.solstone.platform.power.StorageStatus
 import app.solstone.platform.power.UsableSpaceProvider
 import app.solstone.testing.BASE_CAPTURE_EPOCH_MS
 import app.solstone.testing.FakeContinuousSource
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Files
 import java.time.ZoneId
@@ -29,6 +37,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -658,6 +667,64 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
+    fun aSlowHandoverStillSealsWithTheWindowAnotherSourceOpened() {
+        val root = tempDirectory()
+        val gaps = gapsOf(root)
+        val windowEnd = BASE_CAPTURE_EPOCH_MS + AudioContinuousSourceEngine.WINDOW_MS
+        val now = AtomicLong(BASE_CAPTURE_EPOCH_MS + 1_000L)
+        val finishEntered = CountDownLatch(1)
+        val releaseFinish = CountDownLatch(1)
+        val sleeps = AtomicInteger()
+        val audio = createEngine(
+            outputDirectory = root,
+            gaps = gaps,
+            nowProvider = now::get,
+            sleeper = { if (sleeps.getAndIncrement() == 0) now.set(windowEnd) else throw InterruptedException() },
+            recorderFactory = FirstFinishWaitsRecorderFactory(finishEntered, releaseFinish),
+            zoneProvider = { UTC },
+        )
+        val location = OneEmissionEngine(
+            coSourceEmission(BASE_CAPTURE_EPOCH_MS + 10_000L, BASE_CAPTURE_EPOCH_MS + 20_000L).copy(sourceId = "location"),
+        )
+        val ticksPastGrace = AtomicInteger()
+        val writer = RecordingSpoolWriter()
+        val pipeline = CapturePipeline(
+            segmenter = Segmenter(UTC),
+            spoolWriter = writer,
+            sealedSink = FakeSealedSegmentSink(),
+            payloadBytes = object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) =
+                    if (payload.sourceId == AudioContinuousSourceEngine.SOURCE_ID) audio.open(payload) else ByteArrayInputStream(byteArrayOf(1))
+                override fun release(payload: SegmentPayload) {
+                    if (payload.sourceId == AudioContinuousSourceEngine.SOURCE_ID) audio.release(payload)
+                }
+                override fun discardUncommitted(payload: SegmentPayload): Boolean =
+                    payload.sourceId != AudioContinuousSourceEngine.SOURCE_ID || audio.discardUncommitted(payload)
+            },
+            engines = listOf(audio, location),
+            nowProvider = { now.get().also { if (it >= windowEnd + 5_000L) ticksPastGrace.incrementAndGet() } },
+            tickIntervalMs = 10L,
+        )
+
+        pipeline.start()
+        try {
+            assertTrue(finishEntered.await(5, TimeUnit.SECONDS))
+            now.set(windowEnd + 6_000L)
+            waitForCondition { ticksPastGrace.get() >= 3 }
+            releaseFinish.countDown()
+            waitForCondition { sleeps.get() >= 2 }
+        } finally {
+            releaseFinish.countDown()
+            pipeline.stop()
+        }
+
+        val first = writer.sealed.single { it.wireKeys.startEpochMs < windowEnd }
+        assertEquals(setOf("location", AudioContinuousSourceEngine.SOURCE_ID), first.payloads.map { it.sourceId }.toSet())
+        assertTrue(writer.opened.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.captureStartEpochMs == BASE_CAPTURE_EPOCH_MS + 1_000L })
+        assertTrue(rows(gaps).none { it.kind == "loss" })
+    }
+
+    @Test
     fun recordingPastGraceSealsFromItsStart() {
         val start = utc(8, 17, 13)
         val stop = utc(8, 17, 26)
@@ -890,6 +957,57 @@ class AudioContinuousSourceEngineTest {
 
                 override fun silenced(): SilencedFact = SilencedFact.SILENCED
             }
+    }
+
+    private class FirstFinishWaitsRecorderFactory(
+        private val finishEntered: CountDownLatch,
+        private val releaseFinish: CountDownLatch,
+    ) : AudioRecorderFactory {
+        private val creations = AtomicInteger()
+
+        override fun create(output: File): AudioRecording {
+            val waits = creations.getAndIncrement() == 0
+            return object : AudioRecording {
+                override fun start() {
+                    output.parentFile?.mkdirs()
+                    output.writeBytes(AUDIO_BYTES)
+                }
+
+                override fun finish(): RecordingFinishResult {
+                    if (waits) {
+                        finishEntered.countDown()
+                        releaseFinish.await(5, TimeUnit.SECONDS)
+                    }
+                    return RecordingFinishResult.Success(output.length())
+                }
+
+                override fun discard() {
+                    output.delete()
+                }
+
+                override fun silenced(): SilencedFact = SilencedFact.NOT_SILENCED
+            }
+        }
+    }
+
+    private class OneEmissionEngine(private val emission: SourceEmission) : ContinuousSourceEngine {
+        override fun start(sink: EmissionSink) = sink.emit(emission)
+        override fun stop() {}
+        override fun condition() = SourceCondition(true, true, true, false, false, SilencedFact.UNKNOWN)
+    }
+
+    private class RecordingSpoolWriter : SpoolWriter {
+        val sealed = CopyOnWriteArrayList<SealedSegment>()
+        val opened = CopyOnWriteArrayList<SegmentPayload>()
+
+        override fun seal(segment: SealedSegment, payloadBytes: PayloadBytesProvider): SealResult {
+            segment.payloads.forEach { payload ->
+                payloadBytes.open(payload).close()
+                opened += payload
+            }
+            sealed += segment
+            return SealResult(BundleManifest(segment.key, files = emptyList(), gaps = segment.gaps), null, SealState.SEALED)
+        }
     }
 
     private class StopStartOverlapRecorderFactory(
