@@ -23,22 +23,28 @@ class ColdWidgetSyncLineTest {
     fun aRefreshWithNoContainerDoesNotRememberNotPaired() {
         val app = ApplicationProvider.getApplicationContext<PhoneApplication>()
         val line = File(app.filesDir, WIDGET_SYNC_LINE)
-        line.delete()
-        app.refreshWidgetModel(container = null)
-        assertFalse(line.exists())
+        // refreshWidgetModel uses the application monitor. Keep unrelated queued
+        // widget refreshes out of this call's delete/read/assert interval.
+        synchronized(app) {
+            line.delete()
+            app.refreshWidgetModel(container = null)
+            assertFalse(line.exists())
+        }
     }
 
     @Test
     fun aThrowingStatusReadDoesNotRememberNotPaired() {
         val app = ApplicationProvider.getApplicationContext<PhoneApplication>()
         val line = File(app.filesDir, WIDGET_SYNC_LINE)
-        line.delete()
         resetObserverRuntime()
         val container = obtainObserverContainer()
         PhoneStatusSupplier.override = { throw IllegalStateException("status") }
         try {
-            app.refreshWidgetModel(container)
-            assertFalse(line.exists())
+            synchronized(app) {
+                line.delete()
+                app.refreshWidgetModel(container)
+                assertFalse(line.exists())
+            }
         } finally {
             PhoneStatusSupplier.override = null
             container.close()
