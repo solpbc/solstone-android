@@ -263,6 +263,7 @@ android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
 PHONE_GRADLE := apps/phone/build.gradle.kts
 ARTIFACTS := artifacts
 PHONE_RELEASE_APK_LOCAL := $(ARTIFACTS)/phone-real-release.apk
+PHONE_RELEASE_MAPPING_LOCAL := $(ARTIFACTS)/phone-real-release-mapping.txt
 
 phone-version:
 	@grep -E 'versionName = ' $(PHONE_GRADLE) | sed -E 's/.*versionName = "([^"]+)".*/\1/'
@@ -286,12 +287,14 @@ changelog-notes:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
 	@tools/release/changelog-notes.sh $(VERSION)
 
-# Build the signed phone APK on the remote host and pull it back to ./artifacts/.
+# Build the signed phone APK on the remote host and pull it back to ./artifacts/, with the R8
+# mapping from the same build: published stack traces are obfuscated, and retrace needs it.
 # (The release/sign toolchain lives on the build host; gh + git live on the caller.)
 pull-phone-apk: sync-android-host
 	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:assembleRealRelease'
 	mkdir -p $(ARTIFACTS)
 	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk/real/release/phone-real-release.apk $(PHONE_RELEASE_APK_LOCAL)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/mapping/realRelease/mapping.txt $(PHONE_RELEASE_MAPPING_LOCAL)
 
 # Stage the exact bytes an already-published GitHub release carries, verifying
 # the digest GitHub records for the asset. For an origin publish of a release

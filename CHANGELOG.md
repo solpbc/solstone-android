@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- on phones that use 16 KB memory pages, the part of the app that secures its connection to your journal could crash. this release resolves that, and the app is now a smaller download.
+
 ## [2.1.32] - 2026-10-25
 
 ### Fixed

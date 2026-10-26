@@ -3,6 +3,17 @@ import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.testing.Test
 import java.io.File
 
+buildscript {
+    repositories {
+        google()
+    }
+    dependencies {
+        // The R8 that AGP 8.9 bundles predates Kotlin 2.2 metadata and cannot read it; 8.10.21
+        // is the first release that can. Drop this once AGP itself bundles 8.10 or later.
+        classpath("com.android.tools:r8:8.10.24")
+    }
+}
+
 plugins {
     base
     id("com.android.application") version "8.9.1" apply false
@@ -2756,6 +2767,35 @@ fun Project.registerRealReleasePushDexCheck() {
             if (!hasConnector) {
                 throw GradleException("Expected UnifiedPush connector classes (Lorg/unifiedpush/android/connector/) not found in dex")
             }
+
+            // The banned-descriptor scan above identifies third-party code by package, so R8 must
+            // leave every package name as it was. A class moved to another package could carry a
+            // banned SDK past the scan under a name nobody would recognise.
+            val mapping = layout.buildDirectory.file("outputs/mapping/realRelease/mapping.txt").get().asFile
+            if (!mapping.exists()) {
+                throw GradleException("R8 mapping not found at ${mapping.relativeTo(rootProject.projectDir)}: the release build is expected to run R8")
+            }
+            var mappedClasses = 0
+            val moved = mutableListOf<String>()
+            mapping.forEachLine { line ->
+                if (line.startsWith("#") || line.startsWith(" ") || !line.contains(" -> ")) return@forEachLine
+                val (original, output) = line.trimEnd().removeSuffix(":").split(" -> ", limit = 2)
+                if (output.startsWith("R8\$\$REMOVED\$\$CLASS\$\$")) return@forEachLine
+                mappedClasses++
+                if (original.substringBeforeLast('.', "") != output.substringBeforeLast('.', "")) {
+                    moved += "$original -> $output"
+                }
+            }
+            if (mappedClasses == 0) {
+                throw GradleException("R8 mapping ${mapping.name} lists no classes")
+            }
+            if (moved.isNotEmpty()) {
+                throw GradleException(
+                    "R8 moved ${moved.size} classes out of their packages; the dex scan needs package names kept:\n" +
+                        moved.take(10).joinToString("\n"),
+                )
+            }
+            println("R8 kept the package of all $mappedClasses mapped classes")
         }
     }
 }

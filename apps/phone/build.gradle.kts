@@ -115,6 +115,8 @@ android {
             buildConfigField("boolean", "PUSH_REGISTRATION", "true")
         }
         release {
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
             buildConfigField("boolean", "PUSH_REGISTRATION", "true") // the owner turns it on per device; off until they do.
         }
