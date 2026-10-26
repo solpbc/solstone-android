@@ -355,10 +355,10 @@ class SegmentTest {
 
         val sealed = mutableListOf<SealedSegment>()
         sealed += segmenter.feed(audioEmission(w1Start, w1Start + 10_000L)).sealed
-        sealed += segmenter.feed(audioEmission(w1Start + 20_000L, w1Start + 300_000L)).sealed
+        sealed += segmenter.feed(locationEmission(w1Start + 20_000L, w1Start + 300_000L)).sealed
 
         sealed += segmenter.feed(audioEmission(w2Start, w2Start + 10_000L)).sealed
-        sealed += segmenter.feed(audioEmission(w2Start + 20_000L, w2Start + 300_000L)).sealed
+        sealed += segmenter.feed(locationEmission(w2Start + 20_000L, w2Start + 300_000L)).sealed
 
         sealed += segmenter.flush().sealed
         assertEquals(2, sealed.size)
@@ -391,7 +391,7 @@ class SegmentTest {
 
         segmenter.feed(audioEmission(windowStart, windowStart + 10_000L))
         currentZone = ZoneId.of("Pacific/Auckland")
-        segmenter.feed(audioEmission(windowStart + 20_000L, windowStart + 300_000L))
+        segmenter.feed(locationEmission(windowStart + 20_000L, windowStart + 300_000L))
 
         val flushed = segmenter.flush().sealed.single()
         assertEquals("Europe/Paris", flushed.wireKeys.zoneId)
@@ -606,6 +606,50 @@ class SegmentTest {
         val flushSealed = segmenterSealsBefore.flush().sealed
         assertEquals(1, flushSealed.size)
         assertEquals("082240_140", flushSealed.single().key.segment)
+    }
+
+    @Test
+    fun aRecordingStartedAfterAnotherSourceOpensItsOwnSegment() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(stillEmission(utc(8, 15, 30)))
+        segmenter.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0)))
+        segmenter.feed(stillEmission(utc(8, 18, 0)))
+        segmenter.feed(locationEmission(utc(8, 15, 0), utc(8, 20, 0)))
+        val sealed = segmenter.flush().sealed
+
+        assertEquals(listOf("081500_300", "081713_167"), sealed.map { it.key.segment })
+        assertEquals(
+            listOf("camera" to utc(8, 15, 30), "location" to utc(8, 15, 0)),
+            sealed[0].payloads.map { it.sourceId to it.captureStartEpochMs },
+        )
+        assertEquals(
+            listOf("audio" to utc(8, 17, 13), "camera" to utc(8, 18, 0)),
+            sealed[1].payloads.map { it.sourceId to it.captureStartEpochMs },
+        )
+        assertEquals(utc(8, 17, 13), sealed[1].wireKeys.startEpochMs)
+        assertEquals(utc(8, 20, 0), sealed[1].wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun aSecondRecordingInOneWindowOpensItsOwnSegment() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(audioEmission(utc(8, 15, 0), utc(8, 16, 0)))
+        segmenter.feed(audioEmission(utc(8, 18, 0), utc(8, 20, 0)))
+        val sealed = segmenter.flush().sealed
+
+        assertEquals(listOf("081500_60", "081800_120"), sealed.map { it.key.segment })
+        assertEquals(listOf(1, 1), sealed.map { it.payloads.size })
+    }
+
+    @Test
+    fun aRecordingInsideGraceOfAnotherSourceSharesItsSegment() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(locationEmission(utc(8, 15, 0), utc(8, 20, 0)))
+        segmenter.feed(audioEmission(utc(8, 15, 5), utc(8, 20, 0)))
+        val sealed = segmenter.flush().sealed.single()
+
+        assertEquals("081500_300", sealed.key.segment)
+        assertEquals(setOf("audio", "location"), sealed.payloads.map { it.sourceId }.toSet())
     }
 
     private fun segmentLen(segment: String): Long = segment.substringAfter('_').toLong()

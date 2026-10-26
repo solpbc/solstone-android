@@ -337,9 +337,8 @@ class AudioContinuousSourceEngineTest {
             ),
         ).sealed
 
-        val sealedWindow = sealed.single()
-        assertTrue(sealedWindow.payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.ref.name == AudioContinuousSourceEngine.PAYLOAD_NAME })
-        assertFalse(sealedWindow.gaps.any { it.kind == "late_emission" })
+        assertTrue(sealed.flatMap { it.payloads }.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.ref.name == AudioContinuousSourceEngine.PAYLOAD_NAME })
+        assertFalse(sealed.flatMap { it.gaps }.any { it.kind == "late_emission" })
     }
 
     @Test
@@ -604,7 +603,9 @@ class AudioContinuousSourceEngineTest {
             ),
         ).sealed
 
-        val payloads = sealed.single().payloads
+        val payloads = sealed.flatMap { it.payloads }
+        val audioSegment = sealed.single { segment -> segment.payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID } }
+        assertEquals(audioEmission.captureStartEpochMs, audioSegment.wireKeys.startEpochMs)
         assertTrue(payloads.any { it.sourceId == "photo" && it.ref.name == "photo.jpg" })
         assertTrue(payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID && it.ref.name == AudioContinuousSourceEngine.PAYLOAD_NAME })
     }

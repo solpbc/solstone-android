@@ -258,22 +258,39 @@ class Segmenter(
     }
 
     private fun WindowBucket.toSegments(): List<SealedSegment> {
+        if (payloads.isEmpty() && gaps.isEmpty()) return emptyList()
         val coveredMs = (maxCaptureEndEpochMs - windowStartEpochMs).coerceIn(0L, windowMs)
         val endEpochMs = windowStartEpochMs + coveredMs
         val earliestPayloadStart = payloads.minOfOrNull { it.captureStartEpochMs }
         // Payloads starting within graceMs of windowStartEpochMs (including equal) keep the mark name.
-        val startEpochMs = if (earliestPayloadStart != null && earliestPayloadStart - windowStartEpochMs > graceMs) {
+        val firstStartEpochMs = if (earliestPayloadStart != null && earliestPayloadStart - windowStartEpochMs > graceMs) {
             earliestPayloadStart
         } else {
             windowStartEpochMs
         }
-        val keys = wireKeys(startEpochMs, endEpochMs, zoneId)
-        val result = mutableListOf<SealedSegment>()
-        if (payloads.isNotEmpty() || gaps.isNotEmpty()) {
-            result += SealedSegment(stream, SegmentKey(keys.day, keys.segment), keys, payloads.toList(),
-                gaps.sortedWith(compareBy<GapEvent> { it.atEpochMs }.thenBy { it.kind }.thenBy { it.detail ?: "" }))
+        // The journal places a recording from the start of its segment, so a recording that
+        // begins more than graceMs into a segment opens one of its own. Everything that began
+        // before it stays whole in the earlier segment.
+        val starts = mutableListOf(firstStartEpochMs)
+        payloads.filter { it.ref.mediaType.startsWith("audio/") }
+            .map { it.captureStartEpochMs }
+            .sorted()
+            .forEach { if (it - starts.last() > graceMs) starts += it }
+        val segmentOf = { epochMs: Long -> starts.indexOfLast { it <= epochMs }.coerceAtLeast(0) }
+        val payloadsBySegment = payloads.groupBy { segmentOf(it.captureStartEpochMs) }
+        val gapsBySegment = gaps.groupBy { segmentOf(it.atEpochMs) }
+        return starts.mapIndexed { index, startEpochMs ->
+            val segmentPayloads = payloadsBySegment[index].orEmpty()
+            val segmentEndEpochMs = if (index == starts.lastIndex) {
+                endEpochMs
+            } else {
+                (segmentPayloads.maxOfOrNull { it.captureEndEpochMs } ?: startEpochMs).coerceIn(startEpochMs, endEpochMs)
+            }
+            val keys = wireKeys(startEpochMs, segmentEndEpochMs, zoneId)
+            SealedSegment(stream, SegmentKey(keys.day, keys.segment), keys, segmentPayloads,
+                gapsBySegment[index].orEmpty()
+                    .sortedWith(compareBy<GapEvent> { it.atEpochMs }.thenBy { it.kind }.thenBy { it.detail ?: "" }))
         }
-        return result
     }
 
     private data class WindowKey(val stream: String, val windowStartEpochMs: Long)
