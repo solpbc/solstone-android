@@ -41,6 +41,29 @@ class ClientsSelfApiTest {
     }
 
     @Test
+    fun clientAppVersionAppendsBuildAsSemverMetadata() {
+        assertEquals("2.1.32+41", clientAppVersion("2.1.32", 41L))
+        assertEquals("2.1.32+41", sanitizeField(clientAppVersion("2.1.32", 41L), APP_VERSION_MAX_UTF8_BYTES))
+    }
+
+    @Test
+    fun clientAppVersionKeepsVersionNameWhenBuildOrNameIsMissing() {
+        assertEquals("2.1.32", clientAppVersion("2.1.32", null))
+        assertNull(clientAppVersion(null, 41L))
+        assertNull(clientAppVersion(null, null))
+        assertEquals("", clientAppVersion("", 41L))
+        assertEquals("  ", clientAppVersion("  ", 41L))
+    }
+
+    @Test
+    fun clientAppVersionKeepsVersionNameWhenBuildWouldOverflowTheField() {
+        val fits = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 3)
+        assertEquals("$fits+41", clientAppVersion(fits, 41L))
+        val tooLong = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 2)
+        assertEquals(tooLong, clientAppVersion(tooLong, 41L))
+    }
+
+    @Test
     fun sanitizeReportedDescriptionHandlesMultibyteUtf8Bounds() {
         val validMultibyte = "é".repeat(40)
         assertEquals(80, validMultibyte.toByteArray(Charsets.UTF_8).size)

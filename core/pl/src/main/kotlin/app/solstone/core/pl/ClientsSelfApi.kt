@@ -40,6 +40,21 @@ sealed interface ClientsSelfPutResult {
     data class Failure(val status: Int?, val message: String?) : ClientsSelfPutResult
 }
 
+const val APP_VERSION_MAX_UTF8_BYTES = 64
+
+/**
+ * The `app_version` a client reports to the journal: `<versionName>+<versionCode>` (semver build
+ * metadata, e.g. `2.1.32+41`) so the journal can tell exactly which build ran. [versionName] is
+ * returned unchanged when it is null or blank, when the build number is unknown, or when the
+ * combined value would exceed the field's byte limit (the sanitizer would drop it entirely).
+ */
+fun clientAppVersion(versionName: String?, versionCode: Long?): String? {
+    if (versionName.isNullOrBlank() || versionCode == null) return versionName
+    val withBuild = "${versionName.trim()}+$versionCode"
+    if (withBuild.toByteArray(Charsets.UTF_8).size > APP_VERSION_MAX_UTF8_BYTES) return versionName
+    return withBuild
+}
+
 fun sanitizeField(value: String?, maxUtf8Bytes: Int): String? {
     if (value == null) return null
     val trimmed = value.trim()
@@ -56,7 +71,7 @@ fun sanitizeReportedDescription(raw: ClientReportedDescription): ClientReportedD
         platform = sanitizeField(raw.platform, 64),
         deviceType = sanitizeField(raw.deviceType, 64),
         appId = sanitizeField(raw.appId, 64),
-        appVersion = sanitizeField(raw.appVersion, 64),
+        appVersion = sanitizeField(raw.appVersion, APP_VERSION_MAX_UTF8_BYTES),
     )
 
 fun parseClientsSelfResponse(bodyText: String): ClientsSelfResponse? = runCatching {

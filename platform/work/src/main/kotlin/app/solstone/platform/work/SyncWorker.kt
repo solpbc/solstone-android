@@ -19,6 +19,7 @@ import app.solstone.core.pl.JournalVerdictListener
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
+import app.solstone.core.pl.clientAppVersion
 import app.solstone.core.spool.parseManifest
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ImportCustodyStore
@@ -639,7 +640,14 @@ fun currentPhoneDeviceDescription(context: Context): ClientReportedDescription {
     }.trim().ifBlank { null }
 
     val appVersion = runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+        clientAppVersion(info.versionName, versionCode)
     }.getOrNull()
 
     return ClientReportedDescription(
