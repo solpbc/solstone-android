@@ -100,13 +100,14 @@ class LocationContinuousSourceEngine(
 
     private fun runLoop(sink: EmissionSink, token: Any) {
         while (running.get() && currentToken.get() === token) {
-            val windowStart = windowStart(nowProvider())
+            val samplingNow = nowProvider()
+            val windowStart = windowStart(samplingNow)
             val windowEnd = windowStart + WINDOW_MS
-            if (!emitSafely(sink, captureWindow(windowStart, windowEnd, token), token)) break
+            if (!emitSafely(sink, captureWindow(samplingNow, windowStart, windowEnd, token), token)) break
         }
     }
 
-    private fun captureWindow(windowStart: Long, windowEnd: Long, token: Any): SourceEmission {
+    private fun captureWindow(samplingNow: Long, windowStart: Long, windowEnd: Long, token: Any): SourceEmission {
         val records = StringBuilder()
         // The underlying platform fix updates far more slowly than we sample, so without this
         // every window repeats one fix N times, differing only in fixAge.
@@ -160,12 +161,12 @@ class LocationContinuousSourceEngine(
         }
 
         val completed = nowProvider() >= windowEnd
-        val captureEndEpochMs = if (completed) windowEnd else maxOf(nowProvider(), windowStart)
+        val captureEndEpochMs = if (completed) windowEnd else maxOf(nowProvider(), samplingNow)
         val bytes = records.toString().encodeToByteArray()
         val refs = if (bytes.isEmpty()) {
             emptyList()
         } else {
-            payloads[PayloadKey(windowStart, captureEndEpochMs)] = bytes
+            payloads[PayloadKey(samplingNow, captureEndEpochMs)] = bytes
             trimPayloadCache()
             listOf(PayloadRef(PAYLOAD_NAME, MEDIA_TYPE, bytes.size.toLong(), null))
         }
@@ -178,7 +179,7 @@ class LocationContinuousSourceEngine(
             sourceId = sourceId,
             stream = MAIN_STREAM,
             sourceKind = SourceKind.OBSERVER,
-            captureStartEpochMs = windowStart,
+            captureStartEpochMs = samplingNow,
             captureEndEpochMs = captureEndEpochMs,
             payloadRefs = refs,
             metadata = emptyMap(),

@@ -6,6 +6,7 @@ package app.solstone.platform.audio
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceKind
+import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
 import app.solstone.core.sources.EmissionSink
@@ -14,6 +15,8 @@ import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.GapRead
+import app.solstone.core.spool.SealResult
+import app.solstone.core.spool.SealedSegmentSink
 import app.solstone.platform.power.StorageStatus
 import app.solstone.platform.power.UsableSpaceProvider
 import app.solstone.testing.BASE_CAPTURE_EPOCH_MS
@@ -654,6 +657,119 @@ class AudioContinuousSourceEngineTest {
         assertFalse(engine.condition().running)
     }
 
+    @Test
+    fun recordingPastGraceSealsFromItsStart() {
+        val start = utc(8, 17, 13)
+        val stop = utc(8, 17, 26)
+        val (_, sealed) = recordWindowAudio(start, stop)
+        assertEquals("081713_13", sealed.key.segment)
+        assertEquals(start, sealed.wireKeys.startEpochMs)
+        assertEquals(stop, sealed.wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun separatePipelinesInOneWindowDoNotShareAName() {
+        val (_, sealed1) = recordWindowAudio(utc(8, 17, 13), utc(8, 17, 26))
+        val (_, sealed2) = recordWindowAudio(utc(8, 17, 40), utc(8, 17, 53))
+        val (_, sealed3) = recordWindowAudio(utc(8, 18, 10), utc(8, 18, 23))
+
+        assertEquals("081713_13", sealed1.key.segment)
+        assertEquals("081740_13", sealed2.key.segment)
+        assertEquals("081810_13", sealed3.key.segment)
+
+        assertTrue(sealed1.wireKeys.endEpochMs <= sealed2.wireKeys.startEpochMs)
+        assertTrue(sealed2.wireKeys.endEpochMs <= sealed3.wireKeys.startEpochMs)
+    }
+
+    @Test
+    fun stopAndNewPipelineNamesEachRecording() {
+        val (_, sealedA) = recordWindowAudio(utc(8, 17, 13), utc(8, 18, 0))
+        val (_, sealedB) = recordWindowAudio(utc(8, 18, 1), utc(8, 18, 30))
+
+        assertEquals("081713_47", sealedA.key.segment)
+        assertEquals("081801_29", sealedB.key.segment)
+        assertTrue(sealedA.wireKeys.endEpochMs <= sealedB.wireKeys.startEpochMs)
+    }
+
+    @Test
+    fun liveSealAndRecoveryShareThePayloadStartName() {
+        val outputDirectory = tempDirectory()
+        val start = utc(8, 17, 13)
+        val stop = utc(8, 17, 26)
+        val (_, liveSealed) = recordWindowAudio(start, stop, outputDirectory = outputDirectory)
+        assertEquals("081713_13", liveSealed.key.segment)
+
+        val attemptDirs = outputDirectory.listFiles { f -> f.isDirectory && f.name.startsWith("rec-") }
+        assertEquals(1, attemptDirs?.size)
+
+        val recoverySink = FakeSealedSegmentSink()
+        val spoolDir = tempDirectory().toPath()
+        val recoveryGaps = GapNoticeStore(File(outputDirectory, "recovery-gap").toPath())
+        AudioRecoveryManager(
+            audioSourceDir = outputDirectory,
+            cacheAudioDir = null,
+            spoolDir = spoolDir,
+            occupiedLeaves = { _, _ -> emptySet() },
+            lookup = AudioSpoolLookup { _, _, _, _, _, _, _, _ -> AudioCommitStatus.NotFound },
+            sealedSink = recoverySink,
+            gaps = recoveryGaps,
+            remuxer = FakeAacRemuxer(stop - start),
+            isReadableM4aProbe = { true },
+        ).recover()
+
+        assertEquals(1, recoverySink.persisted.size)
+        val recovered = recoverySink.persisted.single()
+        assertEquals(liveSealed.key.segment, recovered.key.segment)
+        assertEquals("081713_13", recovered.key.segment)
+    }
+
+    private fun utc(hour: Int, minute: Int, second: Int, millis: Int = 0): Long =
+        java.time.LocalDateTime.of(2026, 3, 4, hour, minute, second)
+            .atZone(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() + millis
+
+    private fun recordWindowAudio(
+        startEpochMs: Long,
+        stopEpochMs: Long,
+        outputDirectory: File = tempDirectory(),
+    ): Pair<SourceEmission, SealedSegment> {
+        val sink = CapturingSink()
+        var now = startEpochMs
+        val durationMs = stopEpochMs - startEpochMs
+        val engine = createEngine(
+            outputDirectory = outputDirectory,
+            remuxer = FakeAacRemuxer(remuxDurationMs = durationMs),
+            nowProvider = { now },
+            sleeper = {
+                now = stopEpochMs
+                throw InterruptedException()
+            },
+            zoneProvider = { ZoneId.of("UTC") },
+        )
+        engine.start(sink)
+        waitForEmissions(sink, 1)
+        engine.stop()
+
+        val emission = sink.emissions.single()
+        assertTrue(emission.payloadRefs.isNotEmpty(), "expected non-empty payload in emission")
+        assertEquals(startEpochMs, emission.captureStartEpochMs)
+
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        val seals = segmenter.feed(emission).sealed + segmenter.flush().sealed
+        val sealed = seals.single()
+        return emission to sealed
+    }
+
+    private class FakeSealedSegmentSink : SealedSegmentSink {
+        val persisted = mutableListOf<SealedSegment>()
+        override fun persistSealed(
+            segment: SealedSegment,
+            result: SealResult,
+            sealedAtEpochMs: Long,
+        ) {
+            persisted += segment
+        }
+    }
+
     private fun completedAudioEmission(outputDirectory: File): SourceEmission {
         val sink = CapturingSink()
         var now = OFF_BOUNDARY_EPOCH_MS
@@ -684,6 +800,7 @@ class AudioContinuousSourceEngineTest {
         nowProvider: () -> Long = { OFF_BOUNDARY_EPOCH_MS },
         sleeper: (Long) -> Unit = { Thread.sleep(it) },
         recorderFactory: AudioRecorderFactory = FakeAudioRecorderFactory(bytesToWrite = AUDIO_BYTES),
+        zoneProvider: () -> ZoneId = { ZoneId.systemDefault() },
         diag: (String) -> Unit = {},
     ): AudioContinuousSourceEngine = AudioContinuousSourceEngine(
         outputDirectory = outputDirectory,
@@ -693,6 +810,7 @@ class AudioContinuousSourceEngineTest {
         nowProvider = nowProvider,
         sleeper = sleeper,
         recorderFactory = recorderFactory,
+        zoneProvider = zoneProvider,
         diag = diag,
     )
 

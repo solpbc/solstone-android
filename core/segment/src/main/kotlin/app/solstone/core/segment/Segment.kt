@@ -259,7 +259,15 @@ class Segmenter(
 
     private fun WindowBucket.toSegments(): List<SealedSegment> {
         val coveredMs = (maxCaptureEndEpochMs - windowStartEpochMs).coerceIn(0L, windowMs)
-        val keys = wireKeys(windowStartEpochMs, windowStartEpochMs + coveredMs, zoneId)
+        val endEpochMs = windowStartEpochMs + coveredMs
+        val earliestPayloadStart = payloads.minOfOrNull { it.captureStartEpochMs }
+        // Payloads starting within graceMs of windowStartEpochMs (including equal) keep the mark name.
+        val startEpochMs = if (earliestPayloadStart != null && earliestPayloadStart - windowStartEpochMs > graceMs) {
+            earliestPayloadStart
+        } else {
+            windowStartEpochMs
+        }
+        val keys = wireKeys(startEpochMs, endEpochMs, zoneId)
         val result = mutableListOf<SealedSegment>()
         if (payloads.isNotEmpty() || gaps.isNotEmpty()) {
             result += SealedSegment(stream, SegmentKey(keys.day, keys.segment), keys, payloads.toList(),

@@ -194,7 +194,7 @@ class SegmentTest {
         val partialSegmenter = Segmenter(ZoneId.of("UTC"))
         partialSegmenter.feed(audioEmission(BASE_EPOCH_MS + 10_000L, BASE_EPOCH_MS + 70_000L))
         val partial = partialSegmenter.flush().sealed.single()
-        assertEquals("000000_70", partial.key.segment)
+        assertEquals("000010_60", partial.key.segment)
         assertEquals(BASE_EPOCH_MS + 70_000L, partial.wireKeys.endEpochMs)
     }
 
@@ -478,6 +478,136 @@ class SegmentTest {
         }
     }
 
+    private fun utc(hour: Int, minute: Int, second: Int, millis: Int = 0): Long =
+        java.time.LocalDateTime.of(2026, 3, 4, hour, minute, second)
+            .atZone(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() + millis
+
+    @Test
+    fun gapDoesNotCountAsPayloadStart() {
+        val segmenterA = Segmenter(ZoneId.of("UTC"))
+        val gapA = GapEvent("location_gap", utc(8, 15, 0), "no_fix")
+        segmenterA.feed(locationEmission(utc(8, 15, 0), utc(8, 15, 0), gaps = listOf(gapA)))
+        segmenterA.feed(audioEmission(utc(8, 17, 13), utc(8, 17, 26)))
+        val sealedA = segmenterA.flush().sealed.single()
+        assertEquals("081713_13", sealedA.key.segment)
+        assertEquals(utc(8, 17, 13), sealedA.wireKeys.startEpochMs)
+        assertEquals(utc(8, 17, 26), sealedA.wireKeys.endEpochMs)
+
+        val segmenterB = Segmenter(ZoneId.of("UTC"))
+        val gapB = GapEvent("location_gap", utc(8, 15, 0), "no_fix")
+        segmenterB.feed(locationEmission(utc(8, 15, 0), utc(8, 15, 0), gaps = listOf(gapB)))
+        val sealedB = segmenterB.flush().sealed.single()
+        assertEquals("081500_1", sealedB.key.segment)
+        assertTrue(sealedB.payloads.isEmpty())
+    }
+
+    @Test
+    fun handoverWithinGraceKeepsMarkName() {
+        fun runCase(offsetMs: Long): Pair<SealedSegment, SealedSegment> {
+            val segmenter = Segmenter(ZoneId.of("UTC"))
+            val seals = mutableListOf<SealedSegment>()
+            seals += segmenter.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0))).sealed
+            seals += segmenter.feed(audioEmission(utc(8, 20, 0) + offsetMs, utc(8, 25, 0))).sealed
+            seals += segmenter.flush().sealed
+            assertEquals(2, seals.size)
+            return seals[0] to seals[1]
+        }
+
+        val (w1_400, w2_400) = runCase(400L)
+        val (w1_1500, w2_1500) = runCase(1500L)
+
+        assertEquals("081713_167", w1_400.key.segment)
+        assertEquals(utc(8, 17, 13), w1_400.wireKeys.startEpochMs)
+        assertEquals(utc(8, 20, 0), w1_400.wireKeys.endEpochMs)
+
+        assertEquals("081713_167", w1_1500.key.segment)
+        assertEquals(utc(8, 17, 13), w1_1500.wireKeys.startEpochMs)
+        assertEquals(utc(8, 20, 0), w1_1500.wireKeys.endEpochMs)
+
+        assertEquals(
+            listOf("082000_300", "082000_300"),
+            listOf(w2_400.key.segment, w2_1500.key.segment),
+        )
+        assertEquals(utc(8, 20, 0), w2_400.wireKeys.startEpochMs)
+        assertEquals(utc(8, 25, 0), w2_400.wireKeys.endEpochMs)
+        assertEquals(utc(8, 20, 0), w2_1500.wireKeys.startEpochMs)
+        assertEquals(utc(8, 25, 0), w2_1500.wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun graceBoundaryIsInclusive() {
+        val segmenterEqual = Segmenter(ZoneId.of("UTC"))
+        val sealsEqual = mutableListOf<SealedSegment>()
+        sealsEqual += segmenterEqual.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0))).sealed
+        sealsEqual += segmenterEqual.feed(audioEmission(utc(8, 20, 5), utc(8, 25, 0))).sealed
+        sealsEqual += segmenterEqual.flush().sealed
+        assertEquals(2, sealsEqual.size)
+        val window2Equal = sealsEqual[1]
+        assertEquals("082000_300", window2Equal.key.segment)
+
+        val segmenterPast = Segmenter(ZoneId.of("UTC"))
+        val sealsPast = mutableListOf<SealedSegment>()
+        sealsPast += segmenterPast.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0))).sealed
+        sealsPast += segmenterPast.feed(audioEmission(utc(8, 20, 5, 1), utc(8, 25, 0))).sealed
+        sealsPast += segmenterPast.flush().sealed
+        assertEquals(2, sealsPast.size)
+        val window2Past = sealsPast[1]
+        assertEquals("082005_294", window2Past.key.segment)
+        assertEquals(utc(8, 20, 5, 1), window2Past.wireKeys.startEpochMs)
+        assertEquals(utc(8, 25, 0), window2Past.wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun recordingInsideGraceNamesFromTheMark() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(audioEmission(utc(8, 20, 3), utc(8, 21, 0)))
+        val sealed = segmenter.flush().sealed.single()
+        assertEquals("082000_60", sealed.key.segment)
+        assertEquals(utc(8, 20, 0), sealed.wireKeys.startEpochMs)
+        assertEquals(utc(8, 21, 0), sealed.wireKeys.endEpochMs)
+    }
+
+    @Test
+    fun laterWindowNamesFromItsOwnPayloadStart() {
+        // Case 1: Stills at 08:17:13, 08:18:13, 08:19:13, 08:20:13, 08:21:13, 08:22:13, 08:23:13, 08:24:13
+        val segmenterStills = Segmenter(ZoneId.of("UTC"))
+        val stillMinutes = listOf(
+            utc(8, 17, 13), utc(8, 18, 13), utc(8, 19, 13),
+            utc(8, 20, 13), utc(8, 21, 13), utc(8, 22, 13), utc(8, 23, 13), utc(8, 24, 13),
+        )
+        val sealsStills = mutableListOf<SealedSegment>()
+        stillMinutes.forEach { ts ->
+            sealsStills += segmenterStills.feed(stillEmission(ts)).sealed
+        }
+        sealsStills += segmenterStills.flush().sealed
+        assertEquals(2, sealsStills.size)
+        val w2Stills = sealsStills.single { it.wireKeys.startEpochMs >= utc(8, 20, 0) }
+        assertEquals("082013_240", w2Stills.key.segment)
+
+        // Case 2: Audio 08:17:13–08:20:00 and audio 08:20:06–08:25:00
+        val segmenterAudio = Segmenter(ZoneId.of("UTC"))
+        val sealsAudio = mutableListOf<SealedSegment>()
+        sealsAudio += segmenterAudio.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0))).sealed
+        sealsAudio += segmenterAudio.feed(audioEmission(utc(8, 20, 6), utc(8, 25, 0))).sealed
+        sealsAudio += segmenterAudio.flush().sealed
+        assertEquals(2, sealsAudio.size)
+        assertEquals("081713_167", sealsAudio[0].key.segment)
+        assertEquals("082006_294", sealsAudio[1].key.segment)
+        assertEquals(utc(8, 20, 0), sealsAudio[0].wireKeys.endEpochMs)
+        assertEquals(utc(8, 20, 6), sealsAudio[1].wireKeys.startEpochMs)
+        assertTrue(sealsAudio[0].wireKeys.endEpochMs <= sealsAudio[1].wireKeys.startEpochMs)
+
+        // Case 3: Feed audio 08:17:13–08:20:00, then audio 08:22:40–08:25:00 (seals earlier window via sealWindowsBefore)
+        val segmenterSealsBefore = Segmenter(ZoneId.of("UTC"))
+        segmenterSealsBefore.feed(audioEmission(utc(8, 17, 13), utc(8, 20, 0)))
+        val feedSealed = segmenterSealsBefore.feed(audioEmission(utc(8, 22, 40), utc(8, 25, 0))).sealed
+        assertEquals(1, feedSealed.size)
+        assertEquals("081713_167", feedSealed.single().key.segment)
+        val flushSealed = segmenterSealsBefore.flush().sealed
+        assertEquals(1, flushSealed.size)
+        assertEquals("082240_140", flushSealed.single().key.segment)
+    }
+
     private fun segmentLen(segment: String): Long = segment.substringAfter('_').toLong()
 
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =
@@ -510,6 +640,18 @@ class SegmentTest {
             },
             metadata = emptyMap(),
             gaps = gaps,
+        )
+
+    private fun stillEmission(epochMs: Long): SourceEmission =
+        SourceEmission(
+            sourceId = "camera",
+            stream = MAIN_STREAM,
+            sourceKind = SourceKind.OBSERVER,
+            captureStartEpochMs = epochMs,
+            captureEndEpochMs = epochMs,
+            payloadRefs = listOf(PayloadRef("camera.jpg", "image/jpeg", 32, null)),
+            metadata = emptyMap(),
+            gaps = emptyList(),
         )
 
     private companion object {
