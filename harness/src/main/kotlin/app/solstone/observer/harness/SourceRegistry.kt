@@ -7,6 +7,7 @@ import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.SourceFacts
 import app.solstone.core.diagnostics.reduce
 import app.solstone.core.model.SilencedFact
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
@@ -189,7 +190,7 @@ class SourceRegistry(
             }
             bound.first { it.sourceId == sourceId }
         }
-        val result = wrapper.actuate()
+        val result = wrapper.actuate(retryFailedStart = wish == SourceWish.On)
         notifyListeners()
         return result
     }
@@ -545,10 +546,11 @@ class SourceRegistry(
                 paused = condition?.paused == true || ownerStopped(),
                 foregroundTypeHeld = foregroundTypeHeld,
                 startRefused = controller.lastStartRefused,
+                forcedReason = registration.reasonWhenOff?.invoke(),
             )
         }
 
-        fun actuate(): SourceToggleResult {
+        fun actuate(retryFailedStart: Boolean = false): SourceToggleResult {
             synchronized(actuationLock) {
                 val current = synchronized(lock) { wishes.getValue(sourceId) }
                 return try {
@@ -558,7 +560,14 @@ class SourceRegistry(
                             if (held == null) {
                                 SourceToggleResult.AwaitingObserver
                             } else {
-                                val alreadyStarted = synchronized(lock) { started }
+                                var alreadyStarted = synchronized(lock) { started }
+                                if (alreadyStarted && retryFailedStart &&
+                                    registration.reasonWhenOff?.invoke() == ReasonCode.AUDIO_START_FAILED
+                                ) {
+                                    inner.stop()
+                                    synchronized(lock) { started = false }
+                                    alreadyStarted = false
+                                }
                                 if (!alreadyStarted) {
                                     try {
                                         inner.start(held)

@@ -38,6 +38,7 @@ fun reasonDiagnosis(reason: ReasonCode): String? = when (reason) {
     ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY -> "other sources stopped unexpectedly"
     ReasonCode.MICROPHONE_SILENCED -> "another app has the microphone, or access is off. audio picks up again on its own once the microphone is free or microphone access is back on."
     ReasonCode.SCREEN_CAPTURE_FAILED -> "the recording couldn't be saved"
+    ReasonCode.AUDIO_START_FAILED -> "intake couldn't start"
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }

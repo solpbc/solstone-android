@@ -35,6 +35,7 @@ import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
 enum class SourceDetailActionKind {
+    ENABLE_SOURCE,
     RETRY,
     GRANT_PERMISSIONS,
     CONNECT_JOURNAL,
@@ -104,6 +105,8 @@ private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason
     ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailAction("start intake again")
     ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailAction("start intake")
     ReasonCode.PERSISTENCE_FAILED -> SourceDetailAction("try again")
+    ReasonCode.AUDIO_START_FAILED -> SourceDetailAction("try again", SourceDetailActionKind.ENABLE_SOURCE)
+    ReasonCode.SCREEN_CAPTURE_FAILED -> SourceDetailAction("turn this on again", SourceDetailActionKind.ENABLE_SOURCE)
     // ⛔ No generic retry: a lack of recent input does not establish a restartable stall, and an
     // unreachable journal does not by itself make intake fail.
     ReasonCode.PROVIDER_SILENT,
@@ -113,7 +116,6 @@ private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason
     ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE,
     ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY,
     ReasonCode.MICROPHONE_SILENCED,
-    ReasonCode.SCREEN_CAPTURE_FAILED,
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }
@@ -123,6 +125,7 @@ private fun reasonRetryIsHonest(reason: ReasonCode): Boolean = when (reason) {
     ReasonCode.REBOOTED,
     ReasonCode.FOREGROUND_START_NOT_ALLOWED,
     ReasonCode.FOREGROUND_TYPE_NOT_HELD,
+    ReasonCode.AUDIO_START_FAILED,
     ReasonCode.PERSISTENCE_FAILED -> true
     ReasonCode.PERMISSION_REVOKED,
     ReasonCode.AUTH_REVOKED,
@@ -278,6 +281,7 @@ private fun SourceDetailTemplate(
             onGrantPermissions = onGrantPermissions,
             onConnectJournal = onConnectJournal,
             onManageLocalStorage = onManageLocalStorage,
+            onEnableSource = { onToggle(SourceWish.On) },
         )
     }
     if (status.state == SourceState.ON && !paired) {
@@ -384,9 +388,11 @@ private fun SourceDetailActionControl(
     onGrantPermissions: (String) -> Unit,
     onConnectJournal: () -> Unit,
     onManageLocalStorage: () -> Unit,
+    onEnableSource: () -> Unit,
 ) {
     val enabled = action.kind != SourceDetailActionKind.RETRY || retryHonest
     val onClick = when (action.kind) {
+        SourceDetailActionKind.ENABLE_SOURCE -> onEnableSource
         SourceDetailActionKind.RETRY -> onStartObserving
         // ⛔ The source id is not decoration here: it is what makes the grant attributable, so the
         // owner is asked for this source's permission and not for every declared type.

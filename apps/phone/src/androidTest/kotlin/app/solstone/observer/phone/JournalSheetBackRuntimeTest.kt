@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import android.view.InputDevice
-import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -140,7 +139,7 @@ class JournalSheetBackRuntimeTest {
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
             // Back 1: #x -> /b
-            pressBackKey()
+            pressBackKey(scenario)
             composeRule.waitUntil(10_000) {
                 val last = history.lastOrNull() ?: return@waitUntil false
                 val uri = runCatching { URI(last.url) }.getOrNull()
@@ -150,7 +149,7 @@ class JournalSheetBackRuntimeTest {
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
             // Back 2: /b -> /a
-            pressBackKey()
+            pressBackKey(scenario)
             composeRule.waitUntil(10_000) {
                 val last = history.lastOrNull() ?: return@waitUntil false
                 val uri = runCatching { URI(last.url) }.getOrNull()
@@ -160,7 +159,7 @@ class JournalSheetBackRuntimeTest {
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
             // Back 3: dismiss sheet
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -180,7 +179,7 @@ class JournalSheetBackRuntimeTest {
             composeRule.onNodeWithText("close").assertExists()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -202,7 +201,7 @@ class JournalSheetBackRuntimeTest {
             composeRule.onNodeWithText("close").assertExists()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -236,7 +235,7 @@ class JournalSheetBackRuntimeTest {
             }
             composeRule.onNodeWithText(lostMsg).assertExists()
 
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -282,7 +281,7 @@ class JournalSheetBackRuntimeTest {
             composeRule.onNodeWithText("close").assertExists()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
 
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -316,7 +315,7 @@ class JournalSheetBackRuntimeTest {
             }
             composeRule.onNodeWithText(lostMsg).assertExists()
 
-            pressBackKey()
+            pressBackKey(scenario)
             assertSheetDismissed()
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
@@ -391,8 +390,10 @@ class JournalSheetBackRuntimeTest {
         }
     }
 
-    private fun pressBackKey() {
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+    private fun pressBackKey(scenario: ActivityScenario<PhoneShellActivity>) {
+        lateinit var activity: PhoneShellActivity
+        scenario.onActivity { activity = it }
+        pressSystemBackWhenFocused(activity, dialog = true)
         composeRule.waitForIdle()
     }
 

@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- if audio keeps failing to start, its tile now says it needs attention and offers a way to try again.
+- the notice about an unfinished item clears after you open status. the item stays on your phone.
+
 - the status said "audio was interrupted" or "there's a gap in your journal" and kept saying it. now, when something you shared won't reach your journal, the status says there's a gap and which day, and it clears once you've opened it.
 
 ## [2.1.31] - 2026-10-24

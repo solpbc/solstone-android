@@ -15,6 +15,41 @@ import kotlin.test.assertTrue
 
 class SourceRegistryFactsTest {
     @Test
+    fun failedAudioRetriesOnlyOnExplicitOnAndLeavesScreenRunning() {
+        val f = fixture(snapshot = snapshot())
+        var failure: ReasonCode? = ReasonCode.AUDIO_START_FAILED
+        val audio = FakeSourceEngine(conditionValue = runningCondition())
+        val screen = FakeSourceEngine(conditionValue = runningCondition())
+        val registry = sourceRegistry(
+            f = f,
+            registrations = listOf(
+                SourceRegistration("audio", audio, reasonWhenOff = { failure }),
+                SourceRegistration("screen", screen, runsWithoutObserver = true),
+            ),
+        )
+        registry.setWish("audio", SourceWish.On)
+        registry.setWish("screen", SourceWish.On)
+        registry.engines.forEach { it.start(EmissionSink { }) }
+        val initialAudioStarts = audio.startCalls
+        val initialScreenStarts = screen.startCalls
+        repeat(3) {
+            val row = registry.snapshot().sources.first { it.sourceId == "audio" }
+            assertEquals(SourceState.NEEDS_ATTENTION, row.state)
+            assertEquals(ReasonCode.AUDIO_START_FAILED, row.reason)
+        }
+        assertEquals(initialAudioStarts, audio.startCalls)
+        registry.setWish("audio", SourceWish.On)
+        assertEquals(initialAudioStarts + 1, audio.startCalls)
+        assertEquals(1, audio.stopCalls)
+        assertEquals(ReasonCode.AUDIO_START_FAILED, registry.snapshot().sources.first { it.sourceId == "audio" }.reason)
+        failure = null
+        assertEquals(SourceState.ON, registry.snapshot().sources.first { it.sourceId == "audio" }.state)
+        assertEquals(initialScreenStarts, screen.startCalls)
+        assertEquals(0, screen.stopCalls)
+        assertEquals(SourceWish.On, registry.snapshot().sources.first { it.sourceId == "screen" }.wish)
+    }
+
+    @Test
     fun storageFullMarksEveryDesiredOnSourceRow() {
         val registry = sourceRegistry(
             f = fixture(snapshot = snapshot(storageOk = false)),

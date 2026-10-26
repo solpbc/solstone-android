@@ -6,6 +6,7 @@ package app.solstone.core.spool
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
@@ -44,8 +45,13 @@ fun applyRecoveryActions(
     actions.forEach { action ->
         when (action) {
             is RecoveryAction.Finalize -> {
+                val draftManifest = action.parsedManifest
+                if (!draftInventoryMatches(action.draftDir, draftManifest)) {
+                    rememberUnknown(filesDir, action.draftDir, unknownPaths)
+                    events += SpoolRecoveryEvent("partial_segment", draftManifest.endEpochMs, "kept unknown")
+                    return@forEach
+                }
                 if (Files.exists(action.finalDir)) {
-                    val draftManifest = action.parsedManifest
                     val finalManifestPath = action.finalDir.resolve("manifest")
                     val finalParsed = if (Files.isRegularFile(finalManifestPath)) {
                         runCatching {
@@ -60,15 +66,8 @@ fun applyRecoveryActions(
                         draftManifest.endEpochMs == finalParsed.endEpochMs &&
                         draftManifest.zoneId == finalParsed.zoneId &&
                         draftManifest.utcOffsetSeconds == finalParsed.utcOffsetSeconds &&
-                        draftManifest.manifest.files.size == finalParsed.manifest.files.size &&
-                        draftManifest.manifest.files.all { df ->
-                            val draftFile = action.draftDir.resolve(df.name)
-                            val finalFile = action.finalDir.resolve(df.name)
-                            Files.isRegularFile(draftFile) &&
-                                Files.isRegularFile(finalFile) &&
-                                Files.size(draftFile) == Files.size(finalFile) &&
-                                app.solstone.core.segment.sha256(draftFile) == app.solstone.core.segment.sha256(finalFile)
-                        }
+                        draftManifest.manifest.files == finalParsed.manifest.files &&
+                        wholeDraftMatchesSealed(action.draftDir, action.finalDir, finalParsed)
 
                     if (equal) {
                         action.draftDir.deleteRecursively()
@@ -111,6 +110,11 @@ fun applyRecoveryActions(
             is RecoveryAction.Discard -> {
                 val detail = action.event.detail.orEmpty()
                 when {
+                    (detail == "missing manifest" || detail == "malformed manifest") &&
+                        isSealedResidue(action.draftDir) -> {
+                        action.draftDir.deleteRecursively()
+                        cleanupEmptyDraftParents(action.draftDir)
+                    }
                     recoveryContent(action.draftDir) == RecoveryContent.EMPTY -> {
                         gaps?.recordDiagnostic(
                             "spool",
@@ -127,6 +131,8 @@ fun applyRecoveryActions(
                             action.draftDir.deleteRecursively()
                             cleanupEmptyDraftParents(action.draftDir)
                             events += action.event
+                        } else {
+                            rememberUnknown(filesDir, action.draftDir, unknownPaths)
                         }
                     }
                     else -> {
@@ -198,6 +204,7 @@ private fun discardInvalidPayload(dir: Path, gaps: GapNoticeStore?): Boolean {
     val parsed = runCatching {
         parseManifest(String(Files.readAllBytes(dir.resolve("manifest")), StandardCharsets.UTF_8))
     }.getOrNull() ?: return false
+    if (!draftInventoryMatches(dir, parsed)) return false
     val files = parsed.manifest.files
     if (files.isEmpty()) return false
     val material = gapMaterialForDraft(dir)
@@ -229,6 +236,44 @@ private fun rememberUnknown(filesDir: Path, draftDir: Path, unknownPaths: Mutabl
     if (text.isEmpty() || parts.any { it.isEmpty() || it == "." || it == ".." }) return
     unknownPaths += text
 }
+
+/** Only a complete, verified same-coordinate sealed copy can retire unknown material. */
+private fun isSealedResidue(draft: Path): Boolean = runCatching {
+    val stream = draft.parent ?: return false
+    val day = stream.parent ?: return false
+    val drafts = day.parent ?: return false
+    if (drafts.fileName.toString() != ".draft") return false
+    val root = drafts.parent ?: return false
+    val sealed = root.resolve(day.fileName).resolve(stream.fileName).resolve(draft.fileName)
+    val manifest = sealed.resolve("manifest")
+    if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS)) return false
+    val parsed = parseManifest(String(Files.readAllBytes(manifest), StandardCharsets.UTF_8))
+    parsed.manifest.key.day == day.fileName.toString() &&
+        parsed.manifest.key.segment == draft.fileName.toString() &&
+        wholeDraftMatchesSealed(draft, sealed, parsed)
+}.getOrDefault(false)
+
+private fun draftInventoryMatches(draft: Path, parsed: ParsedManifest): Boolean = runCatching {
+    if (!Files.isDirectory(draft, NOFOLLOW_LINKS)) return false
+    val entries = parsed.manifest.files
+    val names = entries.map { it.name }.toSet()
+    if (names.size != entries.size || names.any { it.isEmpty() || it == "manifest" || it == "." || it == ".." || '/' in it || '\\' in it }) return false
+    val children = Files.list(draft).use { it.toArray().map { child -> child as Path } }
+    if (children.any { !Files.isRegularFile(it, NOFOLLOW_LINKS) }) return false
+    children.map { it.fileName.toString() }.filter { it != "manifest" }.toSet() == names
+}.getOrDefault(false)
+
+private fun wholeDraftMatchesSealed(draft: Path, sealed: Path, parsed: ParsedManifest): Boolean = runCatching {
+    if (!draftInventoryMatches(draft, parsed) || !Files.isDirectory(sealed, NOFOLLOW_LINKS)) return false
+    parsed.manifest.files.all { entry ->
+        val original = draft.resolve(entry.name)
+        val copy = sealed.resolve(entry.name)
+        Files.isRegularFile(copy, NOFOLLOW_LINKS) &&
+            Files.size(original) == entry.byteSize && Files.size(copy) == entry.byteSize &&
+            app.solstone.core.segment.sha256(original) == entry.sha256 &&
+            app.solstone.core.segment.sha256(copy) == entry.sha256
+    }
+}.getOrDefault(false)
 
 private enum class RecoveryContent { AUDIO, OTHER, UNKNOWN, EMPTY }
 

@@ -5,7 +5,6 @@ package app.solstone.observer.phone
 
 import android.content.Context
 import androidx.test.platform.app.InstrumentationRegistry
-import android.view.KeyEvent
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
@@ -128,11 +127,13 @@ class PhoneHeldRevokeAndMarkTest {
         val server = standIn!!
         installTestPairing(server)
 
-        ActivityScenario.launch(PhoneShellActivity::class.java).use {
+        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+            lateinit var activity: PhoneShellActivity
+            scenario.onActivity { activity = it }
             composeRule.waitUntil(10_000) {
                 composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isNotEmpty()
             }
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            pressSystemBackWhenFocused(activity)
             composeRule.waitUntil(10_000) {
                 composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isEmpty()
             }
@@ -162,11 +163,13 @@ class PhoneHeldRevokeAndMarkTest {
         val server = standIn!!
         installTestPairing(server)
 
-        ActivityScenario.launch(PhoneShellActivity::class.java).use {
+        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+            lateinit var activity: PhoneShellActivity
+            scenario.onActivity { activity = it }
             composeRule.waitUntil(10_000) {
                 composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isNotEmpty()
             }
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            pressSystemBackWhenFocused(activity)
             composeRule.waitUntil(10_000) {
                 composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("pairingHeld")).fetchSemanticsNodes().isEmpty()
             }

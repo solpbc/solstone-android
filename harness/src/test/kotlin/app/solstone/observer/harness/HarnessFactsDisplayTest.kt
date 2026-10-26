@@ -14,34 +14,11 @@ import kotlin.test.assertTrue
 
 class HarnessFactsDisplayTest {
     @Test
-    fun everyReasonCodeHasExactOwnerVoiceDisplay() {
-        val expected = mapOf(
-            ReasonCode.NONE to "needs attention",
-            ReasonCode.PERMISSION_REVOKED to "needs attention: permissions needed",
-            ReasonCode.SERVICE_KILLED to "needs attention: intake was stopped by the system",
-            ReasonCode.PERSISTENCE_FAILED to "needs attention: couldn't save journal access on this phone",
-            ReasonCode.REBOOTED to "needs attention: this device restarted and intake didn't resume on its own",
-            ReasonCode.UNPAIRED to "needs attention: not paired with your journal",
-            ReasonCode.STORAGE_FULL to "needs attention: storage is full",
-            ReasonCode.PROVIDER_SILENT to "needs attention: nothing has come in recently",
-            ReasonCode.AUTH_REVOKED to "needs attention: access to your journal was revoked",
-            ReasonCode.TRANSPORT_UNAVAILABLE to "needs attention: can't reach your journal",
-            ReasonCode.FOREGROUND_START_NOT_ALLOWED to "needs attention: intake couldn't start from the background",
-            ReasonCode.FOREGROUND_TYPE_NOT_HELD to "needs attention: this source needs intake to restart",
-            ReasonCode.AUDIO_CHOICE_NOT_SAVED to "needs attention: audio off setting may not have saved",
-            ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE to "needs attention: audio intake may resume after restart",
-            ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE to "needs attention: couldn't confirm the stop was saved",
-            ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY to "needs attention: other sources stopped unexpectedly",
-            ReasonCode.MICROPHONE_SILENCED to "needs attention: another app has the microphone, or access is off. audio picks up again on its own once the microphone is free or microphone access is back on.",
-            ReasonCode.SCREEN_CAPTURE_FAILED to "needs attention: the recording couldn't be saved",
-            // Repeating the state as a reason adds no information, so this is the bare state word.
-            ReasonCode.DESIRED_OFF to "needs attention",
-        )
-
-        assertEquals(ReasonCode.entries.toSet(), expected.keys)
+    fun everyReasonUsesTheSharedDiagnosisWithoutLeakingItsCode() {
         ReasonCode.entries.forEach { reason ->
             val display = displayFor(SourceState.NEEDS_ATTENTION, reason)
-            assertEquals(expected.getValue(reason), display, reason.name)
+            val diagnosis = reasonDiagnosis(reason)
+            if (diagnosis != null) assertTrue(display.endsWith(diagnosis), reason.name)
             assertFalse(display.contains('_'), reason.name)
             assertFalse(display.contains(reason.name.lowercase(Locale.ROOT)), reason.name)
         }

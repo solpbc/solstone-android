@@ -14,6 +14,13 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
+import java.io.FileOutputStream
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -42,6 +49,27 @@ class PhoneSourceDetailTest {
     )
     private var contentSet = false
     private val homeTileStore = TestPhoneHomeTileStore()
+
+    @Test
+    fun failedStartAndSaveActionsEnableOnlyTheirOwnSource() {
+        for ((id, reason) in listOf("audio" to ReasonCode.AUDIO_START_FAILED, "screen" to ReasonCode.SCREEN_CAPTURE_FAILED)) {
+            var serviceStarts = 0
+            val wishes = mutableListOf<SourceWish>()
+            render(
+                sourceId = id,
+                loadState = loaded(source(id, reason)),
+                onStartObserving = { serviceStarts++ },
+                onToggle = { wishes += it },
+            )
+            val directory = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null)!!
+            FileOutputStream(File(directory, "$id-failed-detail.png")).use { out ->
+                composeRule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            composeRule.onNodeWithTag(ACTION_TEST_TAG).assertIsEnabled().performClick()
+            assertEquals(listOf(SourceWish.On), wishes)
+            assertEquals(0, serviceStarts)
+        }
+    }
 
     @Test
     fun detailUsesSelectedRowReasonFromSharedSnapshot() {
@@ -85,6 +113,7 @@ class PhoneSourceDetailTest {
             ReasonCode.FOREGROUND_TYPE_NOT_HELD,
             ReasonCode.FOREGROUND_START_NOT_ALLOWED,
             ReasonCode.PERSISTENCE_FAILED,
+            ReasonCode.AUDIO_START_FAILED,
         )
         ReasonCode.entries.forEach { reason ->
             render(loadState = loaded(source("audio", reason)))
@@ -290,6 +319,7 @@ class PhoneSourceDetailTest {
         onGrantPermissions: (String) -> Unit = {},
         onConnectJournal: () -> Unit = {},
         onManageLocalStorage: () -> Unit = {},
+        onToggle: (SourceWish) -> Unit = {},
     ) {
         val input = DetailInput(
             sourceId,
@@ -298,6 +328,7 @@ class PhoneSourceDetailTest {
             onGrantPermissions,
             onConnectJournal,
             onManageLocalStorage,
+            onToggle,
         )
         if (contentSet) {
             composeRule.runOnIdle { detailInput = input }
@@ -313,6 +344,7 @@ class PhoneSourceDetailTest {
                         onGrantPermissions = detailInput.onGrantPermissions,
                         onConnectJournal = detailInput.onConnectJournal,
                         onManageLocalStorage = detailInput.onManageLocalStorage,
+                        onToggle = detailInput.onToggle,
                     )
                 }
             }
@@ -337,6 +369,7 @@ private data class DetailInput(
     val onGrantPermissions: (String) -> Unit = {},
     val onConnectJournal: () -> Unit = {},
     val onManageLocalStorage: () -> Unit = {},
+    val onToggle: (SourceWish) -> Unit = {},
 )
 
 private class TestPhoneHomeTileStore : PhoneHomeTileStore {

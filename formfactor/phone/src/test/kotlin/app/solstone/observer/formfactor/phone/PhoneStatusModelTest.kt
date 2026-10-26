@@ -324,15 +324,16 @@ class PhoneStatusModelTest {
     }
 
     @Test
-    fun unknownPresentNeverDrawsAllCaughtUpEvenAfterItIsSeen() {
-        val now = at(2026, 10, 25, 15, 0)
-        val seen = ready(unknownPresent = true, gateOpen = true)
-        assertEquals("connected", statusPillText(seen, now, ny))
-        val pane = statusPaneCopy(seen, now, ny)!!
-        assertEquals(STATUS_UNKNOWN_RECOVERY_LEAD, pane.lead)
-        assertTrue(STATUS_ON_THIS_DEVICE in pane.lines)
-        assertTrue("connected" in pane.lines)
-        assertFalse(pane.lead == "all caught up" || "all caught up" in pane.lines)
+    fun seenUnknownNoticeEndsWithoutAssertingDeliveryAndANewItemShowsAgain() {
+        val seen = ready(unknownPresent = true, unknownUnseen = false, gateOpen = true)
+        assertTrue(audioCustodyLines(seen).isEmpty())
+        val pane = statusPaneCopy(seen)!!
+        assertFalse(pane.lead == STATUS_UNKNOWN_RECOVERY_LEAD)
+        assertFalse(pane.lines.contains(STATUS_UNKNOWN_RECOVERY_LEAD))
+        assertFalse(pane.lines.contains("everything is in your journal"))
+        val new = seen.copy(unknownUnseen = true, unseenUnknownKeys = listOf("new"))
+        assertEquals(STATUS_UNKNOWN_RECOVERY_LEAD, statusPaneCopy(new)!!.lead)
+        assertEquals(STATUS_UNKNOWN_RECOVERY_LEAD, audioCustodyLines(new).first())
     }
 
     @Test

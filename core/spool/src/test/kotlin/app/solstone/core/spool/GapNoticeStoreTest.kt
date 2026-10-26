@@ -301,6 +301,30 @@ class GapNoticeStoreTest {
     }
 
     @Test
+    fun anOmittedButPresentItemKeepsAcknowledgementAcrossStoreRecreation() {
+        val root = temp().resolve("gap")
+        val held = "spool/.draft/2026-10-25/main/kept"
+        val item = root.parent.resolve(held)
+        Files.createDirectories(item)
+        try {
+            val store = store(root)
+            assertTrue(store.sweepMilestone(emptyList()))
+            assertTrue(store.rewriteUnknown(listOf(held)))
+            assertTrue(store.markSeen(emptySet(), setOf(held)))
+            assertTrue(store.sweepMilestone(emptyList()))
+            val reopened = store(root)
+            assertTrue(reopened.rewriteUnknown(emptyList()))
+            assertTrue(reopened.sweepMilestone(listOf(held)))
+            assertEquals(setOf(held), reopened.snapshot(zone)?.unknownSeen)
+            Files.delete(item)
+            assertTrue(reopened.sweepMilestone(emptyList()))
+            assertTrue(reopened.snapshot(zone)?.unknownSeen?.isEmpty() == true)
+        } finally {
+            Files.deleteIfExists(item)
+        }
+    }
+
+    @Test
     fun markSeenFlipsOnlyTheGivenIdsWhileAnotherLossIsRecorded() {
         val root = temp()
         val store = store(root)

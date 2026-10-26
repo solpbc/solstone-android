@@ -140,7 +140,7 @@ fun audioCustodyLines(
     nowEpochMs: Long = statusWallNow(),
     zone: ZoneId = ZoneId.systemDefault(),
 ): List<String> = buildList {
-    if (model.gateOpen && model.unknownPresent) {
+    if (model.gateOpen && model.unknownUnseen) {
         add(STATUS_UNKNOWN_RECOVERY_LEAD)
         add(STATUS_ON_THIS_DEVICE)
     }
@@ -217,7 +217,7 @@ fun statusPaneCopy(
     val summary = pairedStatusSummary(model, nowEpochMs, zone) ?: return null
     val day = gapDaySentence(model, nowEpochMs, zone)
     val showGap = day != null
-    val showUnknown = model.unknownPresent
+    val showUnknown = model.gateOpen && model.unknownUnseen
     val notice = showGap || showUnknown
     val kind = statusPillKind(model, nowEpochMs, zone)
     val lines = mutableListOf<String>()
@@ -225,6 +225,7 @@ fun statusPaneCopy(
         importsNeedYou -> "imports need you"
         model.calendarHeldForJournal -> "journal needs an update"
         notice -> null
+        model.unknownPresent -> "nothing waiting to sync"
         else -> "all caught up"
     }
     val lead = when (summary.lead) {
@@ -240,6 +241,7 @@ fun statusPaneCopy(
                 importsNeedYou -> "open import to see why"
                 model.calendarHeldForJournal -> CALENDAR_HELD_SUB
                 notice -> null
+                model.unknownPresent -> null
                 else -> "everything is in your journal"
             }
             StatusPillKind.SYNCING -> "syncing to your journal…"

@@ -168,7 +168,7 @@ class PhoneStatusViewModel(
         visitUnknownKeys = emptySet()
     }
 
-    /** The pane keeps the visit's losses unseen until the visit ends. The pill reads [statusState]. */
+    /** The pane keeps the visit's notices until the visit ends. The pill reads [statusState]. */
     fun paneState(): LoadState<PhoneStatusSnapshot> {
         val current = statusState
         if (!visitActive) return current
@@ -177,6 +177,7 @@ class PhoneStatusViewModel(
         return LoadState.Loaded(
             loaded.value.copy(
                 status = status.copy(
+                    unknownUnseen = status.unknownUnseen || (status.unknownPresent && visitUnknownKeys.isNotEmpty()),
                     gapLosses = status.gapLosses.map { loss ->
                         if (loss.id in visitLossIds) loss.copy(seen = false) else loss
                     },

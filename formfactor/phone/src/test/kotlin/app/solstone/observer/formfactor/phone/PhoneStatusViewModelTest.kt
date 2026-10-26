@@ -301,6 +301,7 @@ class PhoneStatusViewModelTest {
         assertFalse(pill.unknownUnseen)
         val pane = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
         assertFalse(pane.gapLosses.single { it.id == "shown" }.seen)
+        assertTrue(pane.unknownUnseen)
 
         gaps = gaps.copy(losses = gaps.losses + later)
         viewModel.refresh()
@@ -309,6 +310,7 @@ class PhoneStatusViewModelTest {
         assertEquals(1, marked.size)
         val during = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
         assertFalse(during.gapLosses.single { it.id == "shown" }.seen)
+        assertTrue(during.unknownUnseen)
         assertFalse(during.gapLosses.single { it.id == "later" }.seen)
 
         val stillShowing = phoneStatusContentVisible(
@@ -332,6 +334,11 @@ class PhoneStatusViewModelTest {
         val still = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
         assertFalse(still.gapLosses.single { it.id == "shown" }.seen)
         assertFalse(still.gapLosses.single { it.id == "later" }.seen)
+        viewModel.onStatusForeground(false)
+        val closed = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.paneState()).value.status
+        assertFalse(closed.unknownUnseen)
+        assertTrue(closed.unknownPresent)
+
     }
 
     @Test

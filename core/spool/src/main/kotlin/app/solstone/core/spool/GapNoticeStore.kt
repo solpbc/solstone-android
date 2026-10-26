@@ -285,6 +285,13 @@ class GapNoticeStore(
         }
     }
 
+    private fun retainedUnknownSeen(current: List<String>): Set<String> =
+        readKeys(unknownSeenPath).filter { key ->
+            key in current || directory.parent?.resolve(key)?.let {
+                !Files.notExists(it, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+            } != false
+        }.toSet()
+
     fun rewriteUnknown(paths: List<String>): Boolean = try {
         exclusive {
             val clean = paths.filter(::validUnknownKey).distinct()
@@ -292,7 +299,7 @@ class GapNoticeStore(
             val priorSeen = runCatching { Files.readAllBytes(unknownSeenPath) }.getOrNull()
             try {
                 writeKeys(unknownItemsPath, clean)
-                val seen = readKeys(unknownSeenPath).filter { it in clean }.toSet()
+                val seen = retainedUnknownSeen(clean)
                 writeKeys(unknownSeenPath, seen)
             } catch (error: Exception) {
                 if (priorItems != null) restoreBytes(unknownItemsPath, priorItems) else Files.deleteIfExists(unknownItemsPath)
@@ -326,7 +333,7 @@ class GapNoticeStore(
                     writeBytes(openedPath, ByteArray(0))
                 } else {
                     writeKeys(unknownItemsPath, clean)
-                    val seen = readKeys(unknownSeenPath).filter { it in clean }.toSet()
+                    val seen = retainedUnknownSeen(clean)
                     writeKeys(unknownSeenPath, seen)
                 }
                 true

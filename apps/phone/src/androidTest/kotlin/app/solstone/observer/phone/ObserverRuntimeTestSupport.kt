@@ -7,8 +7,11 @@ import android.app.Activity
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.view.KeyEvent
+import android.view.inspector.WindowInspector
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.core.model.QueueState
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.observer.scaffold.ObserverAppContainer
@@ -20,6 +23,26 @@ import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import org.junit.Assert.fail
 
 internal const val TEST_DATABASE_NAME = "solstone-persistence.db"
+
+/** Raw keys sent before the receiving window gains focus are dropped as stale by Android. */
+internal fun pressSystemBackWhenFocused(activity: Activity, dialog: Boolean = false) {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    waitUntil(if (dialog) "sheet window focus for Back" else "activity window focus for Back") {
+        var focused = false
+        instrumentation.runOnMainSync {
+            focused = if (dialog) {
+                WindowInspector.getGlobalWindowViews().any {
+                    it !== activity.window.decorView && it.hasWindowFocus()
+                }
+            } else {
+                activity.hasWindowFocus()
+            }
+        }
+        focused
+    }
+    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+    instrumentation.waitForIdleSync()
+}
 
 internal fun resetObserverRuntime() {
     app.solstone.platform.calendar.CalendarRuntimes.current?.close()

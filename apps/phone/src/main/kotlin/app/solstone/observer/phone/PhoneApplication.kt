@@ -654,14 +654,16 @@ internal fun coldPaired(filesDir: File): Boolean {
 
 internal fun liveGapStatus(filesDir: File, noticesMayShow: Boolean, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
     val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus(technicalDetails = "unreadable")
-    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
+    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone) +
+        if (snapshot.unknownItems.isEmpty()) "" else "\nunknown items kept=${snapshot.unknownItems.size} unseen=${snapshot.unknownItems.count { it !in snapshot.unknownSeen }}"
     if (!noticesMayShow || !snapshot.opened) return PhoneGapStatus(technicalDetails = technical)
     return gapStatusOf(snapshot, technical, gateOpen = true)
 }
 
 private fun coldGapStatus(filesDir: File, nowEpochMs: Long, zone: ZoneId): PhoneGapStatus {
     val snapshot = gapStore(filesDir).snapshot(zone) ?: return PhoneGapStatus(technicalDetails = "unreadable")
-    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone)
+    val technical = formatGapTechnicalDetails(snapshot.rows, snapshot.conversion, nowEpochMs, zone) +
+        if (snapshot.unknownItems.isEmpty()) "" else "\nunknown items kept=${snapshot.unknownItems.size} unseen=${snapshot.unknownItems.count { it !in snapshot.unknownSeen }}"
     if (!snapshot.opened) return PhoneGapStatus(technicalDetails = technical)
     return gapStatusOf(snapshot, technical, gateOpen = true)
 }

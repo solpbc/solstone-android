@@ -114,6 +114,12 @@ class PhoneGapNoticeScreenshotTest {
         assertTextShown("on this device")
         composeRule.onNodeWithText("all caught up").assertDoesNotExist()
 
+        capture("gap-unknown-seen.png") {
+            PhonePairedStatusContent(unknown.copy(unknownUnseen = false, unseenUnknownKeys = emptyList()), emptyList(), { _ -> }, {})
+        }
+        composeRule.onNodeWithText("an unfinished item couldn't be checked").assertDoesNotExist()
+        composeRule.onNodeWithText("everything is in your journal").assertDoesNotExist()
+
         capture("gap-caught-up.png") {
             Column(Modifier.fillMaxWidth()) {
                 PhoneStatusPill(model = caughtUp, onClick = {})

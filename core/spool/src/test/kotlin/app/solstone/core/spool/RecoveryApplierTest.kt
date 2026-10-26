@@ -27,6 +27,59 @@ import kotlin.test.assertTrue
 
 class RecoveryApplierTest {
     @Test
+    fun onlyACompleteVerifiedTwinRetiresDraftResidue() {
+        val cases = listOf("missing", "malformed", "valid", "valid-extra", "valid-extra-no-twin", "invalid-extra", "invalid-extra-no-twin", "extra", "nested", "symlink", "different", "absent", "bad-final", "corrupt-final")
+        for (case in cases) {
+            val root = Files.createTempDirectory("residue-$case")
+            try {
+                val segment = emptySegment()
+                val relative = Path.of(segment.key.day, segment.stream, segment.key.segment)
+                val draft = root.resolve(".draft").resolve(relative)
+                val sealed = root.resolve(relative)
+                Files.createDirectories(draft)
+                Files.createDirectories(sealed)
+                val bytes = "owner audio".toByteArray()
+                Files.write(draft.resolve("audio.m4a"), bytes)
+                Files.write(sealed.resolve("audio.m4a"), bytes)
+                val file = BundleFile("audio", "audio.m4a", sha256(draft.resolve("audio.m4a")), bytes.size.toLong(), "audio/mp4", BASE_EPOCH_MS, BASE_EPOCH_MS + 1000)
+                val manifest = serializeManifest(segment, BundleManifest(segment.key, listOf(file), emptyList())).toByteArray()
+                Files.write(sealed.resolve("manifest"), manifest)
+                when (case) {
+                    "malformed" -> Files.write(draft.resolve("manifest"), byteArrayOf(1, 2, 3))
+                    "valid", "valid-extra", "valid-extra-no-twin", "invalid-extra", "invalid-extra-no-twin" -> Files.write(draft.resolve("manifest"), manifest)
+                }
+                when (case) {
+                    "extra", "valid-extra", "valid-extra-no-twin", "invalid-extra", "invalid-extra-no-twin" -> Files.write(draft.resolve("unlisted.m4a"), bytes)
+                    "nested" -> Files.createDirectory(draft.resolve("nested"))
+                    "symlink" -> {
+                        Files.delete(draft.resolve("audio.m4a"))
+                        Files.createSymbolicLink(draft.resolve("audio.m4a"), sealed.resolve("audio.m4a"))
+                    }
+                    "different" -> Files.write(draft.resolve("audio.m4a"), "other audio".toByteArray())
+                    "absent" -> sealed.deleteRecursively()
+                    "bad-final" -> Files.write(sealed.resolve("manifest"), byteArrayOf(1))
+                    "corrupt-final" -> Files.write(sealed.resolve("audio.m4a"), "other audio".toByteArray())
+                }
+                if (case.startsWith("invalid-extra")) Files.write(draft.resolve("audio.m4a"), "bad".toByteArray())
+                if (case.endsWith("no-twin")) sealed.deleteRecursively()
+                val expected = Files.readAllBytes(draft.resolve("audio.m4a"))
+                val retired = case in setOf("missing", "malformed", "valid")
+                val applied = run(root)
+                assertEquals(!retired, Files.exists(draft), case)
+                assertEquals(if (retired) 0 else 1, applied.unknown.size, case)
+                assertTrue(rows(applied.gaps).isEmpty(), case)
+                if (!retired) {
+                    assertContentEquals(expected, Files.readAllBytes(draft.resolve("audio.m4a")), case)
+                    if ("extra" in case) assertContentEquals(bytes, Files.readAllBytes(draft.resolve("unlisted.m4a")), case)
+                    assertEquals(1, run(root, applied.gaps).unknown.size, case)
+                }
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test
     fun applyRecoveryActionsFinalizesValidDraft() {
         val baseDir = Files.createTempDirectory("recovery-finalize")
         try {

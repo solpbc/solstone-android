@@ -4,14 +4,12 @@
 package app.solstone.observer.phone
 
 import android.graphics.Insets
-import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.Button
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.observer.scaffold.ObserverActivity
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -59,7 +57,7 @@ class ObserverHarnessChromeRuntimeTest {
                 assertNotNull(findButton(root, "Back"))
             }
 
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            pressSystemBackWhenFocused(activity)
 
             scenario.onActivity {
                 val root = it.findViewById<View>(android.R.id.content)
@@ -67,7 +65,7 @@ class ObserverHarnessChromeRuntimeTest {
                 assertNull(findButton(root, "Back"))
             }
 
-            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            pressSystemBackWhenFocused(activity)
             waitUntilFinished(activity)
             assertTrue(activity.isFinishing || activity.isDestroyed)
         }

@@ -92,7 +92,7 @@ class PhoneDefaultDetailPaneTest {
     }
 
     @Test
-    fun unknownPresentNeverDrawsAllCaughtUp() {
+    fun unseenUnknownNeverDrawsAllCaughtUp() {
         val snapshot = snapshot(
             paired = true,
             online = true,
@@ -325,6 +325,7 @@ private fun snapshot(
         audioAwaitingCustody = false,
         gapLosses = gapLosses,
         unknownPresent = unknownPresent,
+        unknownUnseen = unknownPresent,
         gateOpen = gateOpen,
         calendarHeldForJournal = calendarHeldForJournal,
     ),

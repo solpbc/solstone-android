@@ -16,6 +16,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class PhoneSourceDetailRuleTest {
+    @Test
+    fun startAndSaveFailuresRouteToTheSourceOnAction() {
+        for (reason in listOf(ReasonCode.AUDIO_START_FAILED, ReasonCode.SCREEN_CAPTURE_FAILED)) {
+            assertEquals(SourceDetailActionKind.ENABLE_SOURCE, sourceDetailRule(reason).action?.kind)
+        }
+    }
+
     /**
      * 🔴 **`paused` promised a way back and the screen offered none.**
      *
@@ -140,7 +147,7 @@ class PhoneSourceDetailRuleTest {
                 false,
             ),
             ExpectedRule(ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY, "other sources stopped unexpectedly", null, false),
-            ExpectedRule(ReasonCode.SCREEN_CAPTURE_FAILED, "the recording couldn't be saved", null, false),
+            ExpectedRule(ReasonCode.SCREEN_CAPTURE_FAILED, "the recording couldn't be saved", "turn this on again", false, SourceDetailActionKind.ENABLE_SOURCE),
         )
 
         expected.forEach { expectedRule ->

@@ -4,6 +4,7 @@
 package app.solstone.platform.audio
 
 import app.solstone.core.model.SilencedFact
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.segment.Segmenter
@@ -33,6 +34,111 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class AudioContinuousSourceEngineTest {
+    @Test
+    fun repeatedStartFailureClearsOnGoodStartEvenWhenTheWindowIsEmpty() {
+        val permits = java.util.concurrent.Semaphore(0)
+        val sleeps = AtomicInteger()
+        val starts = AtomicInteger()
+        val now = java.util.concurrent.atomic.AtomicLong(OFF_BOUNDARY_EPOCH_MS)
+        val fail = java.util.concurrent.atomic.AtomicBoolean(true)
+        val engine = createEngine(
+            nowProvider = now::get,
+            sleeper = {
+                sleeps.incrementAndGet()
+                permits.acquire()
+                now.addAndGet(AudioContinuousSourceEngine.WINDOW_MS)
+            },
+            recorderFactory = object : AudioRecorderFactory {
+                override fun create(output: File): AudioRecording {
+                    starts.incrementAndGet()
+                    return FakeAudioRecorderFactory(
+                        bytesToWrite = byteArrayOf(),
+                        startError = if (fail.get()) IllegalStateException("cannot start") else null,
+                    ).create(output)
+                }
+            },
+        )
+        try {
+            engine.start(CapturingSink())
+            waitForCondition { sleeps.get() == 1 }
+            assertEquals(null, engine.reasonWhenOff())
+            permits.release()
+            waitForCondition { sleeps.get() == 2 }
+            assertEquals(ReasonCode.AUDIO_START_FAILED, engine.reasonWhenOff())
+            engine.stop()
+            engine.start(CapturingSink())
+            waitForCondition { sleeps.get() == 3 }
+            assertEquals(ReasonCode.AUDIO_START_FAILED, engine.reasonWhenOff())
+            engine.stop()
+            fail.set(false)
+            engine.start(CapturingSink())
+            waitForCondition { sleeps.get() == 4 }
+            assertEquals(null, engine.reasonWhenOff())
+            permits.release()
+            waitForCondition { sleeps.get() == 5 }
+            assertEquals(null, engine.reasonWhenOff())
+            assertEquals(5, starts.get())
+        } finally {
+            engine.stop()
+        }
+    }
+
+    @Test
+    fun retiredWorkerFailureCannotCountAgainstNewWorker() {
+        val oldEntered = CountDownLatch(1)
+        val releaseOld = CountDownLatch(1)
+        val oldFailureRecorded = CountDownLatch(1)
+        val oldWorker = ThreadLocal<Boolean>()
+        val starts = AtomicInteger()
+        val sleeps = AtomicInteger()
+        val permits = java.util.concurrent.Semaphore(0)
+        val now = java.util.concurrent.atomic.AtomicLong(OFF_BOUNDARY_EPOCH_MS)
+        val root = tempDirectory()
+        val gaps = GapNoticeStore(File(root, "gap").toPath(), listener = { _, _, reason, _ ->
+            if (oldWorker.get() == true && reason == "recording did not start") oldFailureRecorded.countDown()
+        })
+        val engine = createEngine(
+            outputDirectory = root,
+            gaps = gaps,
+            nowProvider = now::get,
+            sleeper = {
+                if (oldWorker.get() == true) throw InterruptedException()
+                sleeps.incrementAndGet()
+                permits.acquire()
+                now.addAndGet(AudioContinuousSourceEngine.WINDOW_MS)
+            },
+            recorderFactory = object : AudioRecorderFactory {
+                override fun create(output: File): AudioRecording {
+                    val attempt = starts.incrementAndGet()
+                    if (attempt == 1) {
+                        oldWorker.set(true)
+                        oldEntered.countDown()
+                        awaitIgnoringInterrupts(releaseOld)
+                        throw IllegalStateException("late failure")
+                    }
+                    return FakeAudioRecorderFactory(
+                        startError = if (attempt > 2) IllegalStateException("one new failure") else null,
+                    ).create(output)
+                }
+            },
+        )
+        try {
+            engine.start(CapturingSink())
+            assertTrue(oldEntered.await(1, TimeUnit.SECONDS))
+            engine.stop()
+            engine.start(CapturingSink())
+            waitForCondition { sleeps.get() == 1 }
+            releaseOld.countDown()
+            assertTrue(oldFailureRecorded.await(1, TimeUnit.SECONDS))
+            permits.release()
+            waitForCondition { sleeps.get() == 2 }
+            assertEquals(null, engine.reasonWhenOff())
+        } finally {
+            releaseOld.countDown()
+            engine.stop()
+        }
+    }
+
     @Test
     fun conditionExposesOnlyInFlightRecordingSilencedFact() {
         val sink = CapturingSink()

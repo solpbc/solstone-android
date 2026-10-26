@@ -4,6 +4,7 @@
 package app.solstone.platform.audio
 
 import app.solstone.core.model.GapEvent
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SilencedFact
 import app.solstone.core.model.SourceKind
 import app.solstone.core.segment.SegmentPayload
@@ -139,6 +140,10 @@ class AudioContinuousSourceEngine(
     private val recordingStateLock = Any()
     private val registeredAttempts = ConcurrentHashMap<PayloadKey, AttemptEntry>()
     private var worker: Thread? = null
+    @Volatile private var consecutiveStartFailures = 0
+
+    fun reasonWhenOff(): ReasonCode? =
+        if (running.get() && consecutiveStartFailures >= 2) ReasonCode.AUDIO_START_FAILED else null
 
     fun inFlightRecordingIds(): Set<String> {
         val activeId = activeRecording.get()?.attemptId
@@ -307,6 +312,11 @@ class AudioContinuousSourceEngine(
             active = ActiveRecording(token, recording, attemptId)
             publishActiveRecording(active)
         } catch (error: Exception) {
+            synchronized(recordingStateLock) {
+                if (running.get() && currentToken.get() === token) {
+                    consecutiveStartFailures = minOf(2, consecutiveStartFailures + 1)
+                }
+            }
             clearActiveRecording(active)
             recording?.discard()
             gaps.recordDiagnostic("audio", "recording did not start", attemptId, actualRecordingStart)
@@ -456,6 +466,7 @@ class AudioContinuousSourceEngine(
     private fun publishActiveRecording(active: ActiveRecording) {
         synchronized(recordingStateLock) {
             if (!running.get() || currentToken.get() !== active.token) return
+            consecutiveStartFailures = 0
             val current = activeRecording.get()
             if (current == null || current.token === active.token) {
                 activeRecording.set(active)

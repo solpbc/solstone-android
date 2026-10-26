@@ -143,6 +143,7 @@ fun createCaptureSetup(
                 engine = engine,
                 requiredPermissionsGranted = permCheck,
                 captureForegroundType = identity.captureForegroundType,
+                reasonWhenOff = if (identity.sourceId == AudioContinuousSourceEngine.SOURCE_ID) audio::reasonWhenOff else null,
             )
         } + listOfNotNull(
             if (registerCalendarSource) {
