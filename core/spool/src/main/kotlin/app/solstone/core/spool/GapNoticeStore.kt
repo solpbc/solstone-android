@@ -260,18 +260,19 @@ class GapNoticeStore(
                 }
                 if (previous == id) return@exclusive true
                 val priorEvents = eventsBytes()
-                val priorSeen = runCatching { Files.readAllBytes(unknownSeenPath) }.getOrNull()
-                val pending = mutableListOf<GapNoticeRow>()
-                val loaded = loadForWrite(pending)
-                val rows = loaded.rows.map { it.copy(seen = true) }
-                writeEvents(rows)
+                val priorSeen = recordedBytes(unknownSeenPath)
                 val items = readKeys(unknownItemsPath)
-                writeKeys(unknownSeenPath, items.toSet())
+                val seen = retainedUnknownKeys(unknownSeenPath, items) + items
+                val pending = mutableListOf<GapNoticeRow>()
                 try {
+                    val loaded = loadForWrite(pending)
+                    writeEvents(loaded.rows.map { it.copy(seen = true) })
+                    writeKeys(unknownSeenPath, seen)
                     writeText(journalPath, id)
                 } catch (error: Exception) {
                     restoreBytes(eventsPath, priorEvents)
                     if (priorSeen != null) restoreBytes(unknownSeenPath, priorSeen) else Files.deleteIfExists(unknownSeenPath)
+                    writeText(journalPath, previous)
                     throw error
                 }
                 emitLater(pending)
@@ -285,21 +286,31 @@ class GapNoticeStore(
         }
     }
 
-    private fun retainedUnknownSeen(current: List<String>): Set<String> =
-        readKeys(unknownSeenPath).filter { key ->
+    // A failed read must not authorize rollback to delete an existing record.
+    private fun recordedBytes(record: Path): ByteArray? =
+        if (Files.notExists(record, java.nio.file.LinkOption.NOFOLLOW_LINKS)) null else Files.readAllBytes(record)
+
+    private fun retainedUnknownKeys(record: Path, current: List<String>): Set<String> =
+        readKeys(record).filter { key ->
             key in current || directory.parent?.resolve(key)?.let {
                 !Files.notExists(it, java.nio.file.LinkOption.NOFOLLOW_LINKS)
             } != false
         }.toSet()
 
+    private fun unknownInventory(paths: List<String>): List<String> {
+        val current = paths.filter(::validUnknownKey).distinct()
+        return (current + retainedUnknownKeys(unknownItemsPath, current) +
+            retainedUnknownKeys(unknownSeenPath, current)).distinct()
+    }
+
     fun rewriteUnknown(paths: List<String>): Boolean = try {
         exclusive {
-            val clean = paths.filter(::validUnknownKey).distinct()
-            val priorItems = runCatching { Files.readAllBytes(unknownItemsPath) }.getOrNull()
-            val priorSeen = runCatching { Files.readAllBytes(unknownSeenPath) }.getOrNull()
+            val clean = unknownInventory(paths)
+            val priorItems = recordedBytes(unknownItemsPath)
+            val priorSeen = recordedBytes(unknownSeenPath)
+            val seen = retainedUnknownKeys(unknownSeenPath, clean)
             try {
                 writeKeys(unknownItemsPath, clean)
-                val seen = retainedUnknownSeen(clean)
                 writeKeys(unknownSeenPath, seen)
             } catch (error: Exception) {
                 if (priorItems != null) restoreBytes(unknownItemsPath, priorItems) else Files.deleteIfExists(unknownItemsPath)
@@ -321,7 +332,8 @@ class GapNoticeStore(
         val pending = mutableListOf<GapNoticeRow>()
         return try {
             exclusive {
-                val clean = unknownPaths.filter(::validUnknownKey).distinct()
+                val clean = unknownInventory(unknownPaths)
+                val seen = retainedUnknownKeys(unknownSeenPath, clean)
                 val opened = Files.exists(openedPath)
                 if (!opened) {
                     val rows = loadForWrite(pending).rows.map { row ->
@@ -329,11 +341,10 @@ class GapNoticeStore(
                     }
                     commitRows(rows, clock())
                     writeKeys(unknownItemsPath, clean)
-                    writeKeys(unknownSeenPath, clean.toSet())
+                    writeKeys(unknownSeenPath, seen + clean)
                     writeBytes(openedPath, ByteArray(0))
                 } else {
                     writeKeys(unknownItemsPath, clean)
-                    val seen = retainedUnknownSeen(clean)
                     writeKeys(unknownSeenPath, seen)
                 }
                 true

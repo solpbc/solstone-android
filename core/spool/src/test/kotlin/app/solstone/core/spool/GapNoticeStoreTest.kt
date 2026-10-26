@@ -259,8 +259,19 @@ class GapNoticeStoreTest {
     fun journalIdRules() {
         val root = temp()
         var rejectJournal = false
-        val store = store(root, beforeWrite = { path ->
+        var rejectSeen = false
+        var rejectJournalSync = false
+        var writingJournal = false
+        val store = store(root, sync = { directory ->
+            forceGapDirectory(directory)
+            if (rejectJournalSync && writingJournal) {
+                rejectJournalSync = false
+                throw IOException("journal directory sync")
+            }
+        }, beforeWrite = { path ->
+            writingJournal = path.fileName.toString() == "journal-id"
             if (rejectJournal && path.fileName.toString() == "journal-id") throw IOException("journal")
+            if (rejectSeen && path.fileName.toString() == "unknown-seen") throw IOException("seen")
         })
         assertTrue(store.recordLoss("audio", "undeliverable", "rec-1", 5L))
         assertTrue(store.journalId("journal-a"))
@@ -274,11 +285,24 @@ class GapNoticeStoreTest {
         val path = "spool/.draft/2026-10-25/main/leaf"
         assertTrue(store.rewriteUnknown(listOf(path, "spool/.draft/2026-10-25/main/stale")))
         assertTrue(store.markSeen(emptySet(), setOf(path, "spool/.draft/2026-10-25/main/stale")))
+        val priorSeen = store.snapshot(zone)?.unknownSeen
+        rejectSeen = true
+        assertFalse(store.journalId("journal-b"))
+        assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
+        assertFalse(ready(store).single().seen)
+        assertEquals(priorSeen, store.snapshot(zone)?.unknownSeen)
+        rejectSeen = false
         rejectJournal = true
         assertFalse(store.journalId("journal-b"))
         assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
         assertFalse(ready(store).single().seen)
+        assertEquals(priorSeen, store.snapshot(zone)?.unknownSeen)
         rejectJournal = false
+        rejectJournalSync = true
+        assertFalse(store.journalId("journal-b"))
+        assertEquals("journal-a", Files.readString(root.resolve("journal-id")).trim())
+        assertFalse(ready(store).single().seen)
+        assertEquals(priorSeen, store.snapshot(zone)?.unknownSeen)
         assertTrue(store.journalId("journal-b"))
         assertTrue(ready(store).single().seen)
         assertEquals("journal-b", Files.readString(root.resolve("journal-id")).trim())
@@ -308,17 +332,72 @@ class GapNoticeStoreTest {
         Files.createDirectories(item)
         try {
             val store = store(root)
+            assertTrue(store.journalId("journal-a"))
             assertTrue(store.sweepMilestone(emptyList()))
             assertTrue(store.rewriteUnknown(listOf(held)))
             assertTrue(store.markSeen(emptySet(), setOf(held)))
-            assertTrue(store.sweepMilestone(emptyList()))
+            val pass = RecoveryPass()
+            pass.run(listOf({ throw IOException("scan failed") }), { store.sweepMilestone(emptyList()) })
+            assertTrue(pass.noticesMayShow)
+            assertEquals(listOf(held), store.snapshot(zone)?.unknownItems)
             val reopened = store(root)
             assertTrue(reopened.rewriteUnknown(emptyList()))
+            assertEquals(listOf(held), reopened.snapshot(zone)?.unknownItems)
+            assertTrue(reopened.journalId("journal-b"))
             assertTrue(reopened.sweepMilestone(listOf(held)))
             assertEquals(setOf(held), reopened.snapshot(zone)?.unknownSeen)
             Files.delete(item)
             assertTrue(reopened.sweepMilestone(emptyList()))
+            assertTrue(reopened.snapshot(zone)?.unknownItems?.isEmpty() == true)
             assertTrue(reopened.snapshot(zone)?.unknownSeen?.isEmpty() == true)
+        } finally {
+            Files.deleteIfExists(item)
+        }
+    }
+
+    @Test
+    fun anOlderSeenOnlyRecordStillNamesRetainedMaterialAfterPairing() {
+        val root = temp().resolve("gap")
+        val held = "spool/.draft/2026-10-25/main/kept"
+        val item = root.parent.resolve(held)
+        Files.createDirectories(item)
+        try {
+            val store = store(root)
+            assertTrue(store.journalId("journal-a"))
+            assertTrue(store.sweepMilestone(emptyList()))
+            // A seen key can outlive an inventory omitted by an older recovery pass.
+            assertTrue(store.markSeen(emptySet(), setOf(held)))
+            val reopened = store(root)
+            assertTrue(reopened.journalId("journal-b"))
+            assertTrue(reopened.sweepMilestone(emptyList()))
+            assertEquals(listOf(held), reopened.snapshot(zone)?.unknownItems)
+            assertEquals(setOf(held), reopened.snapshot(zone)?.unknownSeen)
+            Files.delete(item)
+            assertTrue(reopened.rewriteUnknown(emptyList()))
+            assertTrue(reopened.snapshot(zone)?.unknownItems?.isEmpty() == true)
+            assertTrue(reopened.snapshot(zone)?.unknownSeen?.isEmpty() == true)
+        } finally {
+            Files.deleteIfExists(item)
+        }
+    }
+
+    @Test
+    fun anInterruptedFirstOpeningRetainsItsInventoryOnRetry() {
+        val root = temp().resolve("gap")
+        val held = "spool/.draft/2026-10-25/main/kept"
+        val item = root.parent.resolve(held)
+        Files.createDirectories(item)
+        try {
+            val store = store(root, beforeWrite = { target ->
+                if (target.fileName.toString() == "opened") throw IOException("interrupted opening")
+            })
+            assertFalse(store.sweepMilestone(listOf(held)))
+            assertFalse(store.isOpened())
+            val reopened = store(root)
+            assertTrue(reopened.sweepMilestone(emptyList()))
+            assertTrue(reopened.isOpened())
+            assertEquals(listOf(held), reopened.snapshot(zone)?.unknownItems)
+            assertEquals(setOf(held), reopened.snapshot(zone)?.unknownSeen)
         } finally {
             Files.deleteIfExists(item)
         }
