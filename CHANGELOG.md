@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- on phones that use 16 KB memory pages, the part of the app that secures its connection to your journal could crash. this release resolves that, and the app is now a smaller download.
 - if audio keeps failing to start, its tile now says it needs attention and offers a way to try again.
 - the notice about an unfinished item clears after you open status. the item stays on your phone.
 
