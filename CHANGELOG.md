@@ -8,10 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- if location or the camera was on and the phone took more than a few seconds to save a recording at the end of a five-minute stretch, that recording could be lost. the phone now waits for it.
+- a recording you start partway through a five-minute stretch now begins in your journal when you started it, even if location or the camera was already on, so short recordings no longer overlap or put your words minutes before you said them. thanks to @dvanduzer for the report.
 - on phones that use 16 KB memory pages, the part of the app that secures its connection to your journal could crash. this release resolves that, and the app is now a smaller download.
 - if audio keeps failing to start, its tile now says it needs attention and offers a way to try again.
 - the notice about an unfinished item clears after you open status. the item stays on your phone.
-- a recording you start partway through a five-minute stretch now begins in your journal when you started it, so short recordings no longer overlap or put your words minutes before you said them. if another source like location or the camera was already on when you started recording, this isn't fixed yet. thanks to @dvanduzer for the report.
 
 ## [2.1.32] - 2026-10-25
 
