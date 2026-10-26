@@ -41,9 +41,9 @@ class ClientsSelfApiTest {
     }
 
     @Test
-    fun clientAppVersionAppendsBuildAsSemverMetadata() {
-        assertEquals("2.1.32+41", clientAppVersion("2.1.32", 41L))
-        assertEquals("2.1.32+41", sanitizeField(clientAppVersion("2.1.32", 41L), APP_VERSION_MAX_UTF8_BYTES))
+    fun clientAppVersionAppendsBuildInParentheses() {
+        assertEquals("2.1.32 (41)", clientAppVersion("2.1.32", 41L))
+        assertEquals("2.1.32 (41)", sanitizeField(clientAppVersion("2.1.32", 41L), APP_VERSION_MAX_UTF8_BYTES))
     }
 
     @Test
@@ -57,9 +57,9 @@ class ClientsSelfApiTest {
 
     @Test
     fun clientAppVersionKeepsVersionNameWhenBuildWouldOverflowTheField() {
-        val fits = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 3)
-        assertEquals("$fits+41", clientAppVersion(fits, 41L))
-        val tooLong = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 2)
+        val fits = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 5)
+        assertEquals("$fits (41)", clientAppVersion(fits, 41L))
+        val tooLong = "1".repeat(APP_VERSION_MAX_UTF8_BYTES - 4)
         assertEquals(tooLong, clientAppVersion(tooLong, 41L))
     }
 

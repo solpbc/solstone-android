@@ -43,14 +43,15 @@ sealed interface ClientsSelfPutResult {
 const val APP_VERSION_MAX_UTF8_BYTES = 64
 
 /**
- * The `app_version` a client reports to the journal: `<versionName>+<versionCode>` (semver build
- * metadata, e.g. `2.1.32+41`) so the journal can tell exactly which build ran. [versionName] is
- * returned unchanged when it is null or blank, when the build number is unknown, or when the
- * combined value would exceed the field's byte limit (the sanitizer would drop it entirely).
+ * The `app_version` a client reports to the journal: `<versionName> (<versionCode>)`, e.g.
+ * `2.1.32 (41)`, the about block's `<version> (<build>)` form, so the journal can tell exactly which
+ * build ran and shows it the way the app does. [versionName] is returned unchanged when it is null
+ * or blank, when the build number is unknown, or when the combined value would exceed the field's
+ * byte limit (the sanitizer would drop it entirely).
  */
 fun clientAppVersion(versionName: String?, versionCode: Long?): String? {
     if (versionName.isNullOrBlank() || versionCode == null) return versionName
-    val withBuild = "${versionName.trim()}+$versionCode"
+    val withBuild = "${versionName.trim()} ($versionCode)"
     if (withBuild.toByteArray(Charsets.UTF_8).size > APP_VERSION_MAX_UTF8_BYTES) return versionName
     return withBuild
 }
