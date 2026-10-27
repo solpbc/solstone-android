@@ -77,11 +77,13 @@ fun PhoneSourceTile(
         modifier = modifier
             .testTag("sourceTile-${status.sourceId}")
             .clearAndSetSemantics {
-                // Section 5.5: the accessible VALUE is the state word from section 5.1 --
-                // "the same word the sighted owner reads, nothing added and nothing
-                // translated" -- and the NAME is the source's own label, so a screen
-                // reader says "audio, on, button" where the screen reads audio / on.
-                // Parity is the whole requirement.
+                // Section 5.5: the accessible NAME is the source's own label, and the
+                // accessible VALUE is the state word alone, except when the source needs
+                // attention or is paused for a reason the owner did not choose (today,
+                // microphone silenced). Those two speak the drawn sub-line after the state
+                // word, separated by ". ", so TalkBack reads why without altering the
+                // visual layout. The drawn glyph, state word, and sub-line do not change;
+                // name, role, collection item info, and custom actions do not change.
                 //
                 // This was one merged `stateDescription = "$label $stateCopy"` with no
                 // name and no role. Three consequences, all real: a screen reader
@@ -92,7 +94,7 @@ fun PhoneSourceTile(
                 // the release gate had to reach a source through `add more` instead of
                 // off the deck.
                 contentDescription = label
-                stateDescription = stateCopy
+                stateDescription = sourceStateDescription(status, paired)
                 role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {

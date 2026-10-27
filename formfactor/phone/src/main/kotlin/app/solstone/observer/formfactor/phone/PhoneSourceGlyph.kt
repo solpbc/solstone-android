@@ -68,6 +68,16 @@ fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status
     SourceState.READY_TO_SET_UP -> null
 }
 
+fun sourceStateDescription(status: SourceStatus, paired: Boolean): String {
+    val stateWord = sourceStateCopy(status.state)
+    val speaksReason = status.state == SourceState.NEEDS_ATTENTION ||
+        (status.state == SourceState.PAUSED && status.reason == ReasonCode.MICROPHONE_SILENCED)
+    if (!speaksReason) return stateWord
+    val subLine = sourceSubLine(status, paired)
+    if (subLine.isNullOrEmpty()) return stateWord
+    return "$stateWord. $subLine"
+}
+
 /**
  * What a source does while it is on, in the owner's words.
  *

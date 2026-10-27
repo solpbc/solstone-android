@@ -813,6 +813,22 @@ class PhoneObserverScreenTest {
     }
 
     @Test
+    fun microphoneSilencedPausedAudioTileSpeaksReason() {
+        val status = SourceStatus("audio", SourceWish.On, SourceState.PAUSED, ReasonCode.MICROPHONE_SILENCED)
+        composeRule.setContent {
+            PhoneObserverScreen(
+                loadState = loaded(status),
+                status = connected(),
+                onToggle = { _, _ -> },
+                onStartObserving = {},
+                onConfirmMark = {},
+            )
+        }
+        assertEquals(sourceStateDescription(status, paired = true), tileStateDescription("audio"))
+        assertEquals("audio", tileAccessibleName("audio"))
+    }
+
+    @Test
     fun capturingSourceRendersOn() {
         composeRule.setContent {
             PhoneObserverScreen(
@@ -832,9 +848,10 @@ class PhoneObserverScreenTest {
 
     @Test
     fun needsAttentionAudioTileRendersHonestUnknownDiagnosis() {
+        val audioStatus = status("audio", SourceState.NEEDS_ATTENTION, SourceWish.On)
         composeRule.setContent {
             PhoneObserverScreen(
-                loadState = loaded(status("audio", SourceState.NEEDS_ATTENTION, SourceWish.On)),
+                loadState = loaded(audioStatus),
                 status = connected(),
                 onToggle = { _, _ -> },
                 onStartObserving = {},
@@ -848,15 +865,16 @@ class PhoneObserverScreenTest {
             "the reason it couldn't reach your journal isn't clear.",
             useUnmergedTree = true,
         ).assertIsDisplayed()
-        assertEquals("needs attention", tileStateDescription("audio"))
+        assertEquals(sourceStateDescription(audioStatus, paired = true), tileStateDescription("audio"))
         assertEquals("audio", tileAccessibleName("audio"))
         composeRule.onNodeWithText("tap to fix", useUnmergedTree = true).assertDoesNotExist()
     }
 
     /**
      * The tile's accessible NAME. Section 5.5 splits it from the value: the name is the
-     * source's own label, the value is the state word alone. Both were previously merged
-     * into the value, which left the tile with no name at all.
+     * source's own label, and the value is the state word (continuing with the drawn reason
+     * when the source needs attention or is paused for a reason the owner did not choose).
+     * Both were previously merged into the value, which left the tile with no name at all.
      */
     private fun tileAccessibleName(sourceId: String): String? =
         composeRule.onNodeWithTag("sourceTile-$sourceId", useUnmergedTree = true)

@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - if audio keeps failing to start, its tile now says it needs attention and offers a way to try again.
 - the notice about an unfinished item clears after you open status. the item stays on your phone.
 - a file over about 1 MB that you shared to your journal could stop partway on its first try, then wait at least fifteen minutes before the phone tried again. it no longer stops that way.
+- with TalkBack on, a source tile that needs attention now reads why after its state, and so does a tile that paused without you pausing it.
 
 ## [2.1.32] - 2026-10-25
 
