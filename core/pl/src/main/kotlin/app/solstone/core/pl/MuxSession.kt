@@ -314,7 +314,10 @@ class MuxSession(
                 requestClosed = true
             }
 
-            var sendCredit = INITIAL_SEND_WINDOW.toLong()
+            // Framing § flow control: the OPEN frame's head draws on the same send window as the
+            // body. Left out, a body over 1 MiB overran a journal that had not granted yet by the
+            // head's size, and the journal reset the stream with FLOW_CONTROL_ERROR.
+            var sendCredit = INITIAL_SEND_WINDOW.toLong() - reqHeaderBytes.size
             val receive = ReceiveCredit(initialReceiveWindow)
             var cumulativeBytes = 0L
             var isPreOpen = true

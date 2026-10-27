@@ -194,6 +194,45 @@ class MuxSessionTest {
     }
 
     @Test
+    fun streamedRequestCountsItsHeadAgainstTheSendWindow() {
+        val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
+        val body = ByteArray(2 * TEST_INITIAL_RECEIVE_WINDOW) { (it % 251).toByte() }
+        val home = startHome(server) { duplex ->
+            val received = ByteArrayOutputStream()
+            var streamId = 0
+            var headSize = 0
+            while (received.size() < TEST_INITIAL_RECEIVE_WINDOW) {
+                val frame = readFrame(duplex.input)
+                assertEquals(0, frame.flags and FLAG_CLOSE)
+                if ((frame.flags and FLAG_OPEN) != 0) headSize = frame.payload.size
+                streamId = frame.streamId
+                received.write(frame.payload)
+            }
+            // The OPEN frame's head draws on the same 1 MiB as the body. A sender that counts
+            // only the body overruns a journal that has not yet granted, by the head's size, and
+            // the journal resets the stream with FLOW_CONTROL_ERROR.
+            assertEquals(TEST_INITIAL_RECEIVE_WINDOW, received.size())
+            assertNull(pollFrame(duplex.input, iterations = 40), "no DATA beyond the send window")
+            sendFrame(duplex, streamId, FLAG_WINDOW, encodeWindowCredit(headSize + body.size - TEST_INITIAL_RECEIVE_WINDOW))
+            do {
+                val frame = readFrame(duplex.input)
+                received.write(frame.payload)
+            } while ((frame.flags and FLAG_CLOSE) == 0)
+            val all = received.toByteArray()
+            assertContentEquals(body, all.copyOfRange(headSize, all.size))
+            sendFrame(duplex, streamId, FLAG_DATA or FLAG_CLOSE, responseBytes(32))
+        }
+
+        val source = body.inputStream()
+        val response = client.use {
+            runCatching { MuxSession(it).requestStreaming("POST", "/b3", emptyList(), body.size.toLong(), source::read) }
+        }
+        // The home's own finding first: a client error here is only the home hanging up.
+        finishHome(home)
+        assertEquals(200, response.getOrThrow().status)
+    }
+
+    @Test
     fun answerBeforeTheWholeRequestCancelsTheRest() {
         val (client, server) = pairedDuplexes(bufferSize = 128 * 1024)
         val body = ByteArray(2 * TEST_INITIAL_RECEIVE_WINDOW)
