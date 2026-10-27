@@ -414,9 +414,9 @@ class JournalBrowserDefaultRouteRelayHostTest {
                     assertFalse(openPayload.contains("Transfer-Encoding", ignoreCase = true))
                     assertTrue(openPayload.contains("accept: application/json", ignoreCase = true))
 
-                    // 2. Read body frames up to INITIAL_SEND_WINDOW
+                    // 2. Read body frames up to the window the OPEN head left (the head draws on it too)
                     val receivedBytes = ByteArrayOutputStream()
-                    while (receivedBytes.size() < INITIAL_SEND_WINDOW) {
+                    while (receivedBytes.size() < INITIAL_SEND_WINDOW - openFrame.payload.size) {
                         val frame = readFrameFromStream(muxIn)
                         assertEquals(1, frame.streamId)
                         assertEquals(FLAG_DATA, frame.flags)
@@ -533,9 +533,9 @@ class JournalBrowserDefaultRouteRelayHostTest {
                         val openFrame = readFrameFromStream(muxIn)
                         assertEquals(streamId, openFrame.streamId)
 
-                        // Read initial window
+                        // Read the initial window the OPEN head left
                         var bytesReceived = 0L
-                        while (bytesReceived < INITIAL_SEND_WINDOW) {
+                        while (bytesReceived < INITIAL_SEND_WINDOW - openFrame.payload.size) {
                             val frame = readFrameFromStream(muxIn)
                             bytesReceived += frame.payload.size
                         }

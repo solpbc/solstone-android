@@ -583,10 +583,10 @@ class JournalBrowserDefaultRouteDirectHostTest {
                     assertFalse(openPayload.contains("Transfer-Encoding", ignoreCase = true))
                     assertTrue(openPayload.contains("accept: application/json", ignoreCase = true))
 
-                    // 2. Read body frames up to INITIAL_SEND_WINDOW
+                    // 2. Read body frames up to the window the OPEN head left (the head draws on it too)
                     val receivedBytes = ByteArrayOutputStream()
                     var frameCount = 0
-                    while (receivedBytes.size() < INITIAL_SEND_WINDOW) {
+                    while (receivedBytes.size() < INITIAL_SEND_WINDOW - openFrame.payload.size) {
                         val frame = readFrameFromStream(`in`)
                         assertEquals(1, frame.streamId)
                         assertEquals(FLAG_DATA, frame.flags)
@@ -700,9 +700,9 @@ class JournalBrowserDefaultRouteDirectHostTest {
                     val openFrame = readFrameFromStream(`in`)
                     assertEquals(1, openFrame.streamId)
 
-                    // Read body up to INITIAL_SEND_WINDOW
+                    // Read body up to the window the OPEN head left
                     var bytesReceived = 0
-                    while (bytesReceived < INITIAL_SEND_WINDOW) {
+                    while (bytesReceived < INITIAL_SEND_WINDOW - openFrame.payload.size) {
                         val frame = readFrameFromStream(`in`)
                         bytesReceived += frame.payload.size
                     }
@@ -789,9 +789,9 @@ class JournalBrowserDefaultRouteDirectHostTest {
                         val openFrame = readFrameFromStream(`in`)
                         assertEquals(streamId, openFrame.streamId)
 
-                        // Read initial window
+                        // Read the initial window the OPEN head left
                         var bytesReceived = 0L
-                        while (bytesReceived < INITIAL_SEND_WINDOW) {
+                        while (bytesReceived < INITIAL_SEND_WINDOW - openFrame.payload.size) {
                             val frame = readFrameFromStream(`in`)
                             bytesReceived += frame.payload.size
                         }
