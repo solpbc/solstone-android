@@ -19,6 +19,9 @@ data class SourceEmission(
   // Closed media seals immediately at its first-sample wire identity,
   // independently of shared source windows and their watermark.
   val independentTimeline: Boolean = false,
+  // The recording in this emission stopped before its window ended, so nothing more of
+  // it will join the window and its segment need not wait for the window to seal.
+  val endsRecording: Boolean = false,
 )
 
 const val MAIN_STREAM = "observer"

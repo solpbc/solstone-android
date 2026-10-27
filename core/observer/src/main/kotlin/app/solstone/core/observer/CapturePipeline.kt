@@ -71,7 +71,7 @@ class CapturePipeline(
                         override fun feed(emission: app.solstone.core.sources.SourceEmission) {
                             lastEmissionEpochMs = nowProvider()
                             executor.execute {
-                                runDraining(sourceLabel(emission.sourceId)) { segmenter.feed(emission) }
+                                runDraining(sourceLabel(emission.sourceId)) { feedEmission(emission) }
                             }
                         }
 
@@ -79,7 +79,7 @@ class CapturePipeline(
                             lastEmissionEpochMs = nowProvider()
                             executor.execute {
                                 runDraining(sourceLabel(emission.sourceId)) {
-                                    val result = segmenter.feed(emission)
+                                    val result = feedEmission(emission)
                                     val windowStart = segmenter.windowStart(emission.captureStartEpochMs)
                                     segmenter.releaseWindow(emission.stream, windowStart)
                                     result
@@ -98,7 +98,7 @@ class CapturePipeline(
                     EmissionSink { emission ->
                         lastEmissionEpochMs = nowProvider()
                         executor.execute {
-                            runDraining(sourceLabel(emission.sourceId)) { segmenter.feed(emission) }
+                            runDraining(sourceLabel(emission.sourceId)) { feedEmission(emission) }
                         }
                     },
                 )
@@ -139,6 +139,16 @@ class CapturePipeline(
     fun startedEpochMs(): Long? = startedEpochMs
 
     fun lastEmissionEpochMs(): Long? = lastEmissionEpochMs
+
+    // A recording that stops while other sources keep capturing seals its own segment now,
+    // so it reaches sync without waiting for its window, or for a tick a sleeping phone may
+    // not run. When capture itself is stopping, the flush seals the window as a whole.
+    private fun feedEmission(emission: app.solstone.core.sources.SourceEmission): SegmenterResult {
+        val fed = segmenter.feed(emission)
+        if (!emission.endsRecording || !started.get()) return fed
+        val recording = segmenter.sealRecording(emission)
+        return SegmenterResult(fed.sealed + recording.sealed, fed.droppedPayloads + recording.droppedPayloads)
+    }
 
     private fun runDraining(source: String, block: () -> SegmenterResult) {
         try {

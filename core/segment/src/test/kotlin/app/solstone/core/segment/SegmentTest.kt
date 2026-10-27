@@ -652,6 +652,24 @@ class SegmentTest {
         assertEquals(setOf("audio", "location"), sealed.payloads.map { it.sourceId }.toSet())
     }
 
+    @Test
+    fun aStoppedRecordingSealsAloneAndWhatCameBeforeItWaitsForTheWindow() {
+        val segmenter = Segmenter(ZoneId.of("UTC"))
+        segmenter.feed(stillEmission(utc(8, 15, 30)))
+        val recording = audioEmission(utc(8, 17, 13), utc(8, 18, 0)).copy(endsRecording = true)
+        segmenter.feed(recording)
+
+        val now = segmenter.sealRecording(recording).sealed.single()
+        assertEquals("081713_47", now.key.segment)
+        assertEquals(listOf("audio"), now.payloads.map { it.sourceId })
+        assertTrue(segmenter.sealDue(utc(8, 18, 0)).sealed.isEmpty())
+
+        segmenter.feed(locationEmission(utc(8, 15, 0), utc(8, 20, 0)))
+        val window = segmenter.sealDue(utc(8, 20, 5)).sealed.single()
+        assertEquals("081500_300", window.key.segment)
+        assertEquals(setOf("camera", "location"), window.payloads.map { it.sourceId }.toSet())
+    }
+
     private fun segmentLen(segment: String): Long = segment.substringAfter('_').toLong()
 
     private fun audioEmission(startEpochMs: Long, endEpochMs: Long): SourceEmission =

@@ -377,6 +377,7 @@ class AudioContinuousSourceEngine(
                         payloadRefs = listOf(PayloadRef(PAYLOAD_NAME, MEDIA_TYPE, remuxResult.outputBytes, null)),
                         metadata = metadata(),
                         gaps = listOfNotNull(restartGap),
+                        endsRecording = !completed,
                     ),
                     interrupted = !completed,
                 )
@@ -438,6 +439,7 @@ class AudioContinuousSourceEngine(
                 payloadRefs = listOf(PayloadRef(PAYLOAD_NAME, MEDIA_TYPE, remux.outputBytes, null)),
                 metadata = metadata(),
                 gaps = listOfNotNull(restartGap),
+                endsRecording = !completed,
             ),
             interrupted = !completed,
         )

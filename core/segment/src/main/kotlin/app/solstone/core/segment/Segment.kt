@@ -257,10 +257,44 @@ class Segmenter(
         return bucket.toSegments()
     }
 
-    private fun WindowBucket.toSegments(): List<SealedSegment> {
+    /**
+     * Seals, now, the segment a stopped recording belongs to and everything cut after it in
+     * its window. Nothing more of the recording will arrive, so it need not wait for the
+     * window. What began before it stays open with the window, which keeps its watermark.
+     */
+    fun sealRecording(emission: SourceEmission): SegmenterResult {
+        if (emission.independentTimeline || emission.payloadRefs.isEmpty()) return SegmenterResult(emptyList(), emptyList())
+        val bucket = open[WindowKey(emission.stream, windowStart(emission.captureStartEpochMs))]
+            ?: return SegmenterResult(emptyList(), emptyList())
+        val cuts = bucket.cuts()
+        val first = cuts.indexOfLast { it.startEpochMs <= emission.captureStartEpochMs }.coerceAtLeast(0)
+        val sealed = bucket.toSegments(cuts).drop(first)
+        val kept = cuts.take(first)
+        bucket.payloads.clear()
+        bucket.payloads += kept.flatMap { it.payloads }
+        bucket.gaps.clear()
+        bucket.gaps += kept.flatMap { it.gaps }
+        bucket.maxCaptureEndEpochMs = bucket.payloads.maxOfOrNull { it.captureEndEpochMs } ?: bucket.windowStartEpochMs
+        return SegmenterResult(sealed, emptyList())
+    }
+
+    private fun WindowBucket.toSegments(cuts: List<Cut> = cuts()): List<SealedSegment> {
         if (payloads.isEmpty() && gaps.isEmpty()) return emptyList()
         val coveredMs = (maxCaptureEndEpochMs - windowStartEpochMs).coerceIn(0L, windowMs)
         val endEpochMs = windowStartEpochMs + coveredMs
+        return cuts.mapIndexed { index, cut ->
+            val segmentEndEpochMs = if (index == cuts.lastIndex) {
+                endEpochMs
+            } else {
+                (cut.payloads.maxOfOrNull { it.captureEndEpochMs } ?: cut.startEpochMs).coerceIn(cut.startEpochMs, endEpochMs)
+            }
+            val keys = wireKeys(cut.startEpochMs, segmentEndEpochMs, zoneId)
+            SealedSegment(stream, SegmentKey(keys.day, keys.segment), keys, cut.payloads,
+                cut.gaps.sortedWith(compareBy<GapEvent> { it.atEpochMs }.thenBy { it.kind }.thenBy { it.detail ?: "" }))
+        }
+    }
+
+    private fun WindowBucket.cuts(): List<Cut> {
         val earliestPayloadStart = payloads.minOfOrNull { it.captureStartEpochMs }
         // Payloads starting within graceMs of windowStartEpochMs (including equal) keep the mark name.
         val firstStartEpochMs = if (earliestPayloadStart != null && earliestPayloadStart - windowStartEpochMs > graceMs) {
@@ -280,18 +314,11 @@ class Segmenter(
         val payloadsBySegment = payloads.groupBy { segmentOf(it.captureStartEpochMs) }
         val gapsBySegment = gaps.groupBy { segmentOf(it.atEpochMs) }
         return starts.mapIndexed { index, startEpochMs ->
-            val segmentPayloads = payloadsBySegment[index].orEmpty()
-            val segmentEndEpochMs = if (index == starts.lastIndex) {
-                endEpochMs
-            } else {
-                (segmentPayloads.maxOfOrNull { it.captureEndEpochMs } ?: startEpochMs).coerceIn(startEpochMs, endEpochMs)
-            }
-            val keys = wireKeys(startEpochMs, segmentEndEpochMs, zoneId)
-            SealedSegment(stream, SegmentKey(keys.day, keys.segment), keys, segmentPayloads,
-                gapsBySegment[index].orEmpty()
-                    .sortedWith(compareBy<GapEvent> { it.atEpochMs }.thenBy { it.kind }.thenBy { it.detail ?: "" }))
+            Cut(startEpochMs, payloadsBySegment[index].orEmpty(), gapsBySegment[index].orEmpty())
         }
     }
+
+    private class Cut(val startEpochMs: Long, val payloads: List<SegmentPayload>, val gaps: List<GapEvent>)
 
     private data class WindowKey(val stream: String, val windowStartEpochMs: Long)
 

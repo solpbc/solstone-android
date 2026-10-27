@@ -726,6 +726,96 @@ class AudioContinuousSourceEngineTest {
     }
 
     @Test
+    fun aRecordingStoppedWhileLocationRunsIsSentWithoutWaitingForItsWindow() {
+        val location = LaterEmissionEngine()
+        val run = StoppedRecordingRun(listOf(location))
+        run.pipeline.start()
+        try {
+            run.stopRecording()
+            // The clock stays inside the window, as it does on a phone that sleeps right after the stop.
+            waitForCondition { run.sent.any { segment -> segment.payloads.any { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID } } }
+            assertEquals(listOf("081600_60"), run.sent.map { it.key.segment })
+            assertEquals(listOf(AudioContinuousSourceEngine.SOURCE_ID), run.sent.single().payloads.map { it.sourceId })
+
+            // Location reports its window when the window ends, and still seals with it.
+            location.emit(coSourceEmission(utc(8, 15, 10), utc(8, 20, 0)).copy(sourceId = "location"))
+            run.now.set(utc(8, 20, 5))
+            waitForCondition { run.sent.size == 2 }
+        } finally {
+            run.pipeline.stop()
+        }
+
+        assertEquals(listOf("081600_60", "081510_290"), run.sent.map { it.key.segment })
+        assertEquals(listOf("location"), run.sent[1].payloads.map { it.sourceId })
+        assertEquals(1, run.writer.opened.count { it.sourceId == AudioContinuousSourceEngine.SOURCE_ID })
+        assertTrue(rows(run.gaps).none { it.kind == "loss" })
+    }
+
+    @Test
+    fun aRecordingStoppedWithNothingElseOnSealsAsItDidBefore() {
+        val run = StoppedRecordingRun(emptyList())
+        run.pipeline.start()
+        try {
+            run.stopRecording()
+        } finally {
+            run.pipeline.stop()
+        }
+
+        assertEquals(listOf("081600_60"), run.sent.map { it.key.segment })
+        assertEquals(listOf(AudioContinuousSourceEngine.SOURCE_ID), run.sent.single().payloads.map { it.sourceId })
+        assertTrue(rows(run.gaps).none { it.kind == "loss" })
+    }
+
+    // Records from 08:16:00 inside a running pipeline. stopRecording() turns the microphone off at
+    // 08:17:00 the way the owner's toggle does, stopping audio while the pipeline keeps running.
+    private inner class StoppedRecordingRun(others: List<ContinuousSourceEngine>) {
+        val root = tempDirectory()
+        val gaps = gapsOf(root)
+        val now = AtomicLong(utc(8, 16, 0))
+        val writer = RecordingSpoolWriter()
+        val sent = CopyOnWriteArrayList<SealedSegment>()
+        private val recording = CountDownLatch(1)
+        private val audio = createEngine(
+            outputDirectory = root,
+            gaps = gaps,
+            remuxer = FakeAacRemuxer(remuxDurationMs = 60_000L),
+            nowProvider = now::get,
+            sleeper = {
+                recording.countDown()
+                Thread.sleep(Long.MAX_VALUE)
+            },
+            zoneProvider = { UTC },
+        )
+        val pipeline = CapturePipeline(
+            segmenter = Segmenter(UTC),
+            spoolWriter = writer,
+            sealedSink = object : SealedSegmentSink {
+                override fun persistSealed(segment: SealedSegment, result: SealResult, sealedAtEpochMs: Long) {
+                    sent += segment
+                }
+            },
+            payloadBytes = object : PayloadBytesProvider {
+                override fun open(payload: SegmentPayload) =
+                    if (payload.sourceId == AudioContinuousSourceEngine.SOURCE_ID) audio.open(payload) else ByteArrayInputStream(byteArrayOf(1))
+                override fun release(payload: SegmentPayload) {
+                    if (payload.sourceId == AudioContinuousSourceEngine.SOURCE_ID) audio.release(payload)
+                }
+                override fun discardUncommitted(payload: SegmentPayload): Boolean =
+                    payload.sourceId != AudioContinuousSourceEngine.SOURCE_ID || audio.discardUncommitted(payload)
+            },
+            engines = listOf(audio) + others,
+            nowProvider = now::get,
+            tickIntervalMs = 10L,
+        )
+
+        fun stopRecording() {
+            assertTrue(recording.await(5, TimeUnit.SECONDS))
+            now.set(utc(8, 17, 0))
+            audio.stop()
+        }
+    }
+
+    @Test
     fun recordingPastGraceSealsFromItsStart() {
         val start = utc(8, 17, 13)
         val stop = utc(8, 17, 26)
@@ -993,6 +1083,19 @@ class AudioContinuousSourceEngineTest {
 
     private class OneEmissionEngine(private val emission: SourceEmission) : ContinuousSourceEngine {
         override fun start(sink: EmissionSink) = sink.emit(emission)
+        override fun stop() {}
+        override fun condition() = SourceCondition(true, true, true, false, false, SilencedFact.UNKNOWN)
+    }
+
+    private class LaterEmissionEngine : ContinuousSourceEngine {
+        @Volatile private var sink: EmissionSink? = null
+
+        override fun start(sink: EmissionSink) {
+            this.sink = sink
+        }
+
+        fun emit(emission: SourceEmission) = checkNotNull(sink).emit(emission)
+
         override fun stop() {}
         override fun condition() = SourceCondition(true, true, true, false, false, SilencedFact.UNKNOWN)
     }
