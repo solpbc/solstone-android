@@ -116,6 +116,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
             buildConfigField("boolean", "PUSH_REGISTRATION", "true") // the owner turns it on per device; off until they do.
@@ -250,29 +251,22 @@ tasks.register("verifyJournalWebHostContractAsset") {
 
 tasks.register("checkPushPresentationPackaging") {
     group = "verification"
-    description = "Verifies push presentation assets and absence of test/en-GB strings in realDebug APK."
-    dependsOn("assembleRealDebug")
+    description = "Verifies push presentation assets and absence of test/en-GB strings in the realDebug and " +
+        "realRelease APKs, and that resource shrinking keeps every push presentation resource in release."
+    dependsOn("assembleRealDebug", "assembleRealRelease")
     doLast {
-        val apk = layout.buildDirectory
+        val debugApk = layout.buildDirectory
             .file("outputs/apk/real/debug/phone-real-debug.apk")
             .get()
             .asFile
-        if (!apk.exists()) {
-            throw GradleException("phone-real-debug.apk not found at ${apk.absolutePath}")
+        if (!debugApk.exists()) {
+            throw GradleException("phone-real-debug.apk not found at ${debugApk.absolutePath}")
         }
-
-        ZipFile(apk).use { zip ->
-            val entries = zip.entries().asSequence().map { it.name }.toList()
-            if (entries.none { it == "assets/ir.json" }) {
-                throw GradleException("assets/ir.json is missing in ${apk.name}")
-            }
-            val forbidden = entries.filter {
-                it.contains("en-GB.ftl") || it.contains("en-rGB") || it.contains("values-en-rGB") ||
-                    it.contains("translations/") || it.endsWith(".ftl")
-            }
-            if (forbidden.isNotEmpty()) {
-                throw GradleException("Forbidden push localization entries found in ${apk.name}: $forbidden")
-            }
+        val releaseApks = layout.buildDirectory.dir("outputs/apk/real/release").get().asFile
+            .listFiles { file -> file.extension == "apk" }
+            .orEmpty()
+        if (releaseApks.isEmpty()) {
+            throw GradleException("realRelease APK missing from push presentation packaging check")
         }
 
         val sdkDir = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.sdkDirectory
@@ -290,33 +284,64 @@ tasks.register("checkPushPresentationPackaging") {
                 ?.firstOrNull { it.canExecute() }
             ?: throw GradleException("aapt/aapt2 binary not found under ${buildToolsDir.absolutePath}")
 
-        fun runDump(subcommand: String): String {
-            val cmd = listOf(aaptBinary.absolutePath, "dump", subcommand, apk.absolutePath)
-            val process = ProcessBuilder(cmd).redirectErrorStream(true).start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exitCode = process.waitFor()
-            if (exitCode != 0) {
-                throw GradleException("Failed to run ${aaptBinary.name} dump $subcommand (exit $exitCode): $output")
+        // Returns the push presentation resources (type/name) the APK carries.
+        fun checkApk(apk: File): Set<String> {
+            ZipFile(apk).use { zip ->
+                val entries = zip.entries().asSequence().map { it.name }.toList()
+                if (entries.none { it == "assets/ir.json" }) {
+                    throw GradleException("assets/ir.json is missing in ${apk.name}")
+                }
+                val forbidden = entries.filter {
+                    it.contains("en-GB.ftl") || it.contains("en-rGB") || it.contains("values-en-rGB") ||
+                        it.contains("translations/") || it.endsWith(".ftl")
+                }
+                if (forbidden.isNotEmpty()) {
+                    throw GradleException("Forbidden push localization entries found in ${apk.name}: $forbidden")
+                }
             }
-            return output
+
+            fun runDump(subcommand: String): String {
+                val cmd = listOf(aaptBinary.absolutePath, "dump", subcommand, apk.absolutePath)
+                val process = ProcessBuilder(cmd).redirectErrorStream(true).start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                val exitCode = process.waitFor()
+                if (exitCode != 0) {
+                    throw GradleException("Failed to run ${aaptBinary.name} dump $subcommand (exit $exitCode): $output")
+                }
+                return output
+            }
+
+            val resourceDump = runDump("resources")
+            val stringDump = runDump("strings")
+
+            if (stringDump.contains("[test]") || resourceDump.contains("[test]")) {
+                throw GradleException("Found forbidden '[test]' in ${apk.name} resources")
+            }
+
+            val pushDump = resourceDump.split("resource ").filter { it.contains("m70757368") }.joinToString("\n")
+            if (pushDump.isEmpty()) {
+                throw GradleException("No push presentation resources (m70757368...) found in ${apk.name}")
+            }
+            if (pushDump.contains("en-rGB") || pushDump.contains("en-GB")) {
+                throw GradleException("Found forbidden 'en-rGB' in push presentation resources of ${apk.name}")
+            }
+            if (!pushDump.contains("en-rUS")) {
+                throw GradleException("Expected 'en-rUS' configuration missing from push presentation resources of ${apk.name}")
+            }
+            return Regex("""\b(string|plurals)/(m70757368[0-9a-z_]*)""").findAll(resourceDump)
+                .map { "${it.groupValues[1]}/${it.groupValues[2]}" }
+                .toSet()
         }
 
-        val resourceDump = runDump("resources")
-        val stringDump = runDump("strings")
-
-        if (stringDump.contains("[test]") || resourceDump.contains("[test]")) {
-            throw GradleException("Found forbidden '[test]' in ${apk.name} resources")
-        }
-
-        val pushDump = resourceDump.split("resource ").filter { it.contains("m70757368") }.joinToString("\n")
-        if (pushDump.isEmpty()) {
-            throw GradleException("No push presentation resources (m70757368...) found in ${apk.name}")
-        }
-        if (pushDump.contains("en-rGB") || pushDump.contains("en-GB")) {
-            throw GradleException("Found forbidden 'en-rGB' in push presentation resources of ${apk.name}")
-        }
-        if (!pushDump.contains("en-rUS")) {
-            throw GradleException("Expected 'en-rUS' configuration missing from push presentation resources of ${apk.name}")
+        val debugPush = checkApk(debugApk)
+        releaseApks.forEach { releaseApk ->
+            val releasePush = checkApk(releaseApk)
+            // The renderer looks these up by name, so the release resource shrinker cannot see them used.
+            val stripped = debugPush - releasePush
+            if (stripped.isNotEmpty()) {
+                throw GradleException("Resource shrinking removed push presentation resources from ${releaseApk.name}: $stripped")
+            }
+            logger.lifecycle("checkPushPresentationPackaging: ${releasePush.size} push presentation resources in ${releaseApk.name}")
         }
     }
 }
