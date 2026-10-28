@@ -13,8 +13,9 @@ object ScreenConstants {
     // Codec bitrate is a hint. Bound each durable portion even when an encoder exceeds it.
     const val MAX_RECORD_BYTES = 32L * 1024L * 1024L
     const val MAX_MP4_BYTES = 33L * 1024L * 1024L
-    const val BIT_RATE = 1_500_000
-    const val FRAME_RATE = 15
+    // One frame a second, like every other solstone screen source, at their bitrate.
+    const val BIT_RATE = 1_000_000
+    const val FRAME_RATE = 1
     const val MAX_RECORD_SAMPLES = FRAME_RATE * 300 + 2
     const val I_FRAME_INTERVAL_SECONDS = 2
     const val MIME_TYPE = "video/avc"
