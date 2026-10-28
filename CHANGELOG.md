@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.34] - 2026-10-28
+
 ### Changed
 
 - your screen now goes into your journal as one picture a second, the same as on a computer. before, it was fifteen a second.
