@@ -1166,7 +1166,8 @@ class AudioContinuousSourceEngineTest {
     }
 
     private fun waitForDiag(lines: List<String>, expected: String) {
-        repeat(200) {
+        val deadline = System.nanoTime() + WAIT_BUDGET_NANOS
+        while (System.nanoTime() < deadline) {
             if (expected in lines) return
             Thread.sleep(5L)
         }
@@ -1192,7 +1193,8 @@ class AudioContinuousSourceEngineTest {
         Files.createTempDirectory("solstone-audio-test").toFile()
 
     private fun waitForEmissions(sink: CapturingSink, count: Int) {
-        repeat(200) {
+        val deadline = System.nanoTime() + WAIT_BUDGET_NANOS
+        while (System.nanoTime() < deadline) {
             if (sink.emissions.size >= count) return
             Thread.sleep(5L)
         }
@@ -1200,7 +1202,8 @@ class AudioContinuousSourceEngineTest {
     }
 
     private fun waitForCondition(predicate: () -> Boolean) {
-        repeat(200) {
+        val deadline = System.nanoTime() + WAIT_BUDGET_NANOS
+        while (System.nanoTime() < deadline) {
             if (predicate()) return
             Thread.sleep(5L)
         }
@@ -1208,6 +1211,10 @@ class AudioContinuousSourceEngineTest {
     }
 
     private companion object {
+        // A loaded build host can starve the pipeline's threads for well over a second, and
+        // every wait returns as soon as its condition holds.
+        const val WAIT_BUDGET_NANOS = 10_000_000_000L
+
         fun awaitIgnoringInterrupts(latch: CountDownLatch) {
             while (true) {
                 try {
