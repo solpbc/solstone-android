@@ -49,6 +49,7 @@ class ScreenContinuousSourceEngine(
     private val zoneProvider: () -> ZoneId = { ZoneId.systemDefault() },
     private val diag: (String) -> Unit = {},
     private val stopJoinTimeoutMs: Long = 10_000L,
+    private val captureGate: ScreenCaptureGate = ScreenCaptureGate(),
 ) : ContinuousSourceEngine, PayloadBytesProvider {
     private val running = AtomicBoolean(false)
     private val lifecycleLock = Any()
@@ -124,7 +125,7 @@ class ScreenContinuousSourceEngine(
         running = running.get() && sessionHolder.isSessionLive() && activeRun?.generation == sessionHolder.generation(),
         available = storageStatus.isStorageOk(),
         needsAttention = reasonWhenOff() != null,
-        paused = false,
+        paused = !captureGate.isAllowed(),
         silenced = SilencedFact.UNKNOWN,
     )
 
@@ -197,13 +198,21 @@ class ScreenContinuousSourceEngine(
     private fun runWorker(sink: EmissionSink, run: Run) {
         var pending: (() -> Unit)? = null
         try {
+            captureGate.start()
             while (shouldRun(run)) {
                 if (!storageStatus.isStorageOk()) { run.floor = true; break }
+                val permit = captureGate.openPortion()
+                if (permit == null) {
+                    synchronized(run.interruptLock) { run.captureLoop = true }
+                    try { if (shouldRun(run)) sleeper(250L) }
+                    finally { synchronized(run.interruptLock) { run.captureLoop = false } }
+                    continue
+                }
                 if (attempts.size >= MAX_ATTEMPTS) { run.failed = true; break }
                 val display = sessionHolder.currentVirtualDisplay.get() ?: break
                 val geometry = sessionHolder.currentGeometry.get() ?: break
                 val end = windowStart(nowProvider()) + ScreenConstants.WINDOW_MS
-                val finish = capturePortion(sink, run, display, geometry, end)
+                val finish = capturePortion(sink, run, display, geometry, end, permit)
                 pending = finish
                 run.finalizer.execute { try { finish() } catch (t: Throwable) { fail(run, t) } }
                 pending = null
@@ -213,6 +222,7 @@ class ScreenContinuousSourceEngine(
         } catch (t: Throwable) {
             fail(run, t)
         } finally {
+            captureGate.stop()
             endCapture(run)
             run.finalizer.shutdown()
             // Public stop has a bounded join. This stopped worker may remain
@@ -233,7 +243,7 @@ class ScreenContinuousSourceEngine(
     }
 
     private fun capturePortion(sink: EmissionSink, run: Run, display: ScreenVirtualDisplay,
-        geometry: ScreenGeometry, windowEnd: Long): () -> Unit {
+        geometry: ScreenGeometry, windowEnd: Long, permit: ScreenCaptureGate.Permit): () -> Unit {
         val start = nowProvider()
         val grid = windowStart(start)
         val zone = zoneProvider()
@@ -267,7 +277,9 @@ class ScreenContinuousSourceEngine(
         var drainMs = 0L
         try {
             if (!shouldRun(run)) throw InterruptedException()
+            if (!permit.allowsFrame()) return { dir.deleteRecursively(); attempts.remove(id); Unit }
             encoder = encoderFactory.create(geometry.width, geometry.height, ScreenConstants.BIT_RATE, ScreenConstants.FRAME_RATE)
+            encoder.setFrameAdmission(permit::allowsFrame)
             encoder.start(raw, index) { first ->
                 firstFrame.set(first)
                 synchronized(recordLock) {
@@ -277,7 +289,7 @@ class ScreenContinuousSourceEngine(
             }
             display.setSurface(encoder.inputSurface())
             synchronized(run.interruptLock) { run.captureLoop = true }
-            while (shouldRun(run) && nowProvider() < windowEnd && sessionHolder.currentGeometry.get() == geometry &&
+            while (shouldRun(run) && permit.allowsFrame() && nowProvider() < windowEnd && sessionHolder.currentGeometry.get() == geometry &&
                 !encoder.sizeLimitReached()) {
                 if (!storageStatus.isStorageOk()) { run.floor = true; break }
                 encoder.failure()?.let { throw it }
@@ -289,7 +301,7 @@ class ScreenContinuousSourceEngine(
             recordingFailure = t
             run.failed = true
         } finally {
-            val cutoff = minOf(windowEnd, nowProvider(), run.cutoff.get())
+            val cutoff = minOf(windowEnd, nowProvider(), run.cutoff.get(), permit.cutoffEpochMs)
             synchronized(run.interruptLock) {
                 run.captureLoop = false
                 wasInterrupted = Thread.interrupted() || wasInterrupted
@@ -338,7 +350,7 @@ class ScreenContinuousSourceEngine(
                     listOf(PayloadRef(ScreenConstants.PAYLOAD_NAME, ScreenConstants.MEDIA_TYPE, result.outputBytes, null)),
                     mapOf("zoneId" to info.zoneId, "utcOffsetSeconds" to info.utcOffsetSeconds.toString()),
                     emptyList(), independentTimeline = true))
-            } else if (raw.length() == 0L && recordingFailure == null && stopError == null && drainError == null) {
+            } else if (firstFrame.get() == null && recordingFailure == null && stopError == null && drainError == null) {
                 gaps.recordDiagnostic("screen", "empty recording", id, start)
                 dir.deleteRecursively()
                 attempts.remove(id)

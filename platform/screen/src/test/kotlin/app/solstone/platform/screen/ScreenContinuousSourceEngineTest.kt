@@ -89,6 +89,135 @@ class ScreenContinuousSourceEngineTest {
     private enum class FakeWish { Off, On }
 
     @Test
+    fun lockSealsPrefixAndUnlockResumesWithoutReplacingProjection() {
+        val root = Files.createTempDirectory("screen-lock").toFile()
+        val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
+        val allowed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val count = java.util.concurrent.atomic.AtomicInteger()
+        val resumed = java.util.concurrent.CountDownLatch(1)
+        val prefix = java.util.concurrent.CountDownLatch(1)
+        val emissions = java.util.concurrent.CopyOnWriteArrayList<SourceEmission>()
+        var phase = 0
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val generation = holder.generation()
+        val gate = ScreenCaptureGate(allowed::get, time::get)
+        val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(ScreenRemuxResult.Success(500L, 500L)), gapsOf(root), holder,
+            encoderFactory = { _, _, _, _ -> count.incrementAndGet(); FakeEncoder(time.get() + 50L) },
+            captureGate = gate, nowProvider = time::get, sleeper = {
+                when (phase++) {
+                    0 -> { assertEquals(0, count.get()); allowed.set(true) }
+                    1 -> { time.addAndGet(500L); allowed.set(false) }
+                    2 -> { assertEquals(1, count.get()); time.addAndGet(5_000L); allowed.set(true) }
+                    else -> { resumed.countDown(); Thread.sleep(60_000L) }
+                }
+            })
+        try {
+            engine.start(EmissionSink { emissions += it; prefix.countDown() })
+            assertTrue(resumed.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(prefix.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(2, count.get())
+            assertEquals(generation, holder.generation())
+            assertTrue(holder.isSessionLive())
+            assertEquals(1_700_000_000_500L, emissions.first().captureEndEpochMs)
+            time.addAndGet(500L)
+            engine.stop()
+            assertEquals(2, emissions.size)
+            assertTrue(emissions.last().captureStartEpochMs >= 1_700_000_005_500L)
+            assertEquals(null, engine.reasonWhenOff())
+        } finally { engine.stop(); holder.stopSession(); root.deleteRecursively() }
+    }
+
+    @Test
+    fun finalizerFailureWhileLockedEndsConsentInsteadOfResumingOnUnlock() {
+        val root = Files.createTempDirectory("screen-lock-finalizer-failure").toFile()
+        val time = java.util.concurrent.atomic.AtomicLong(1_700_000_000_000L)
+        val allowed = java.util.concurrent.atomic.AtomicBoolean(true)
+        val count = java.util.concurrent.atomic.AtomicInteger()
+        val paused = java.util.concurrent.CountDownLatch(1)
+        val remuxEntered = java.util.concurrent.CountDownLatch(1)
+        val failRemux = java.util.concurrent.CountDownLatch(1)
+        val failed = java.util.concurrent.CountDownLatch(1)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
+            ScreenRemuxer { _, _, _, _, _ ->
+                remuxEntered.countDown(); failRemux.await(); error("remux failed")
+            }, gapsOf(root), holder, captureGate = ScreenCaptureGate(allowed::get, time::get),
+            encoderFactory = { _, _, _, _ -> count.incrementAndGet(); FakeEncoder(time.get() + 50L) },
+            nowProvider = time::get, onFailed = { failed.countDown() }, sleeper = {
+                if (allowed.getAndSet(false)) time.addAndGet(500L)
+                else { paused.countDown(); Thread.sleep(60_000L) }
+            })
+        try {
+            engine.start(EmissionSink { error("failed finalizer emitted") })
+            assertTrue(paused.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(remuxEntered.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            failRemux.countDown()
+            assertTrue(failed.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            allowed.set(true)
+            engine.stop()
+            assertEquals(1, count.get())
+            assertFalse(holder.isSessionLive())
+            assertEquals(ReasonCode.SCREEN_CAPTURE_FAILED, engine.reasonWhenOff())
+        } finally { failRemux.countDown(); engine.stop(); holder.stopSession(); root.deleteRecursively() }
+    }
+
+    @Test
+    fun projectionStopWhilePausedCannotResumeAfterUnlock() {
+        val root = Files.createTempDirectory("screen-lock-platform-stop").toFile()
+        val allowed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val waiting = java.util.concurrent.CountDownLatch(1)
+        val finished = java.util.concurrent.CountDownLatch(1)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val gate = object : ScreenCaptureGate(allowed::get) {
+            override fun stop() { super.stop(); finished.countDown() }
+        }
+        val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(), gapsOf(root), holder, captureGate = gate,
+            encoderFactory = { _, _, _, _ -> error("projection already ended") },
+            sleeper = { waiting.countDown(); Thread.sleep(5L) })
+        try {
+            engine.start(EmissionSink { error("locked emission") })
+            assertTrue(waiting.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            holder.stopSession()
+            allowed.set(true)
+            assertTrue(finished.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            assertFalse(engine.condition().running)
+            assertTrue(engine.inFlightRecordingIds().isEmpty())
+        } finally { engine.stop(); holder.stopSession(); root.deleteRecursively() }
+    }
+
+    @Test
+    fun stopWhileLockedEndsTheExistingSessionWithoutCreatingAnEncoder() {
+        val root = Files.createTempDirectory("screen-locked-stop").toFile()
+        val waiting = java.util.concurrent.CountDownLatch(1)
+        val holder = ScreenSessionHolder(SimpleProjectionManager(), {
+            DisplayMetrics().apply { widthPixels = 720; heightPixels = 1280; densityDpi = 320 }
+        }, {})
+        assertTrue(holder.startSession(token = ScreenConsentToken(-1, Intent(), 1L)))
+        val engine = ScreenContinuousSourceEngine(root, StorageStatus({ 100_000L }, 1L),
+            FakeRemuxer(), gapsOf(root), holder, captureGate = ScreenCaptureGate({ false }),
+            encoderFactory = { _, _, _, _ -> error("locked capture") },
+            sleeper = { waiting.countDown(); Thread.sleep(60_000L) })
+        try {
+            engine.start(EmissionSink { error("locked emission") })
+            assertTrue(waiting.await(3, java.util.concurrent.TimeUnit.SECONDS))
+            engine.stop()
+            assertFalse(holder.isSessionLive())
+            assertTrue(engine.inFlightRecordingIds().isEmpty())
+        } finally { engine.stop(); holder.stopSession(); root.deleteRecursively() }
+    }
+
+    @Test
     fun stoppedCutoffSurvivesBlockedDrainLateFirstFrameAndRecovery() {
         val root = Files.createTempDirectory("screen-cutoff").toFile()
         val source = File(root, "live").apply { mkdirs() }

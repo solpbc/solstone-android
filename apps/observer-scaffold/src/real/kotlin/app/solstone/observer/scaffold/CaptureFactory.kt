@@ -27,6 +27,7 @@ import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.occupiedDirSegments
 import app.solstone.platform.power.FileUsableSpaceProvider
 import app.solstone.platform.power.StorageStatus
+import app.solstone.platform.screen.AndroidScreenCaptureGate
 import app.solstone.platform.screen.AndroidScreenProjectionManager
 import app.solstone.platform.screen.AndroidScreenRemuxer
 import app.solstone.platform.screen.ScreenConstants
@@ -124,6 +125,7 @@ fun createCaptureSetup(
             remuxer = screenRemuxer,
             gaps = gaps,
             sessionHolder = screenSessionHolder,
+            captureGate = AndroidScreenCaptureGate(context),
             diag = screenDiag,
             onFloorTripped = { android.os.Handler(android.os.Looper.getMainLooper()).post { if (!screenSessionHolder.isSessionLive()) ObserverForegroundService.screenSessionStopper?.invoke() } },
             onFailed = { android.os.Handler(android.os.Looper.getMainLooper()).post { if (!screenSessionHolder.isSessionLive()) ObserverForegroundService.screenSessionStopper?.invoke() } },

@@ -13,6 +13,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface ScreenEncoder {
+    fun setFrameAdmission(allowed: () -> Boolean) {}
     fun inputSurface(): Any?
     fun start(outputH264: File, outputIndex: File, onFirstFrame: (Long) -> Unit)
     fun stop(): Long
@@ -39,6 +40,9 @@ class AndroidScreenEncoder(
     @Volatile private var sampleCount = 0L
     @Volatile private var atSizeLimit = false
     private var started = false
+    private var frameAdmission: () -> Boolean = { true }
+
+    override fun setFrameAdmission(allowed: () -> Boolean) { frameAdmission = allowed }
 
     init {
         try {
@@ -72,26 +76,7 @@ class AndroidScreenEncoder(
             try {
                 FileOutputStream(outputH264).use { raw ->
                     FileOutputStream(outputIndex).use { index ->
-                        val copyBuffer = ByteArray(64 * 1024)
-                        var writtenBytes = 0L
-                        var writtenSamples = 0
-                        fun append(buffer: ByteBuffer, pts: Long, flags: Int) {
-                            val size = buffer.remaining()
-                            check(size in 1..MAX_SAMPLE_BYTES)
-                            if (writtenBytes + size > ScreenConstants.MAX_RECORD_BYTES ||
-                                writtenSamples >= ScreenConstants.MAX_RECORD_SAMPLES) throw PortionFull()
-                            while (buffer.hasRemaining()) {
-                                val count = minOf(copyBuffer.size, buffer.remaining())
-                                buffer.get(copyBuffer, 0, count)
-                                raw.write(copyBuffer, 0, count)
-                            }
-                            // A durable index line can only refer to already durable video bytes.
-                            raw.fd.sync()
-                            index.write("$pts,$size,$flags\n".toByteArray(Charsets.US_ASCII))
-                            index.fd.sync()
-                            writtenBytes += size
-                            writtenSamples++
-                        }
+                        val writer = ScreenSampleWriter(raw, index, frameAdmission)
                         val info = MediaCodec.BufferInfo()
                         var firstFrame = true
                         while (draining.get()) {
@@ -100,7 +85,7 @@ class AndroidScreenEncoder(
                                 val format = codec.outputFormat
                                 for (key in listOf("csd-0", "csd-1")) {
                                     format.getByteBuffer(key)?.duplicate()?.let {
-                                        if (it.hasRemaining()) append(it, 0L, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
+                                        if (it.hasRemaining()) writer.append(it, 0L, MediaCodec.BUFFER_FLAG_CODEC_CONFIG, configuration = true)
                                     }
                                 }
                             } else if (slot >= 0) {
@@ -109,8 +94,9 @@ class AndroidScreenEncoder(
                                         val buffer = checkNotNull(codec.getOutputBuffer(slot)).duplicate()
                                         buffer.position(info.offset)
                                         buffer.limit(info.offset + info.size)
-                                        append(buffer, info.presentationTimeUs, info.flags)
-                                        if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                                        val configuration = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                                        val written = writer.append(buffer, info.presentationTimeUs, info.flags, configuration)
+                                        if (written && !configuration) {
                                             if (firstFrame) {
                                                 firstFrame = false
                                                 // Surface timestamps use the monotonic clock. Convert once;
@@ -129,7 +115,7 @@ class AndroidScreenEncoder(
                         }
                     }
                 }
-            } catch (_: PortionFull) {
+            } catch (_: ScreenPortionFull) {
                 atSizeLimit = true
             } catch (t: Throwable) {
                 error = t
@@ -169,5 +155,4 @@ class AndroidScreenEncoder(
         const val MAX_SAMPLE_BYTES = 8 * 1024 * 1024
     }
 
-    private class PortionFull : Exception()
 }
