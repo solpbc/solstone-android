@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.35] - 2026-11-01
+
+### Changed
+
+- your screen no longer goes into your journal while your phone is locked or its screen is off, so the lock screen and its notification previews stay out of it. when you unlock, your screen picks up again on its own. if android itself ended the screen share when you locked the phone, you start it again as before.
+
 ## [2.1.34] - 2026-10-28
 
 ### Changed
