@@ -9,6 +9,56 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class TlsDecisionsTest {
+    private val rootDer = certificateFromPem(TEST_ROOT_CERT_PEM).encoded
+    private val rootJid = jidFromCaPem(TEST_ROOT_CERT_PEM)
+
+    @Test
+    fun aDirectPairNamingThePinnedCasIdPasses() {
+        assertDirectPairIdentity(rootJid, TEST_ROOT_CERT_PEM, rootDer)
+    }
+
+    @Test
+    fun aDirectPairNamingAnyOtherIdIsRefused() {
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity("f30ed159-ef46-8e9c-913f-e49f0fe7d201", TEST_ROOT_CERT_PEM, rootDer)
+        }
+    }
+
+    // A forger holds a real journal's public key, because every door handshake shows it. Without
+    // its private key, the forger can't make a certificate of that key that signs itself.
+    @Test
+    fun aCertificateOfAnotherJournalsKeyThatDoesNotSignItselfIsRefused() {
+        val clientDer = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded
+        val claimed = jidFromSpkiDerOrNull(clientDer)
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity(claimed ?: rootJid, TEST_CLIENT_CERT_PEM, clientDer)
+        }
+    }
+
+    @Test
+    fun aChainThatIsNotThePinnedCertificateIsRefused() {
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity(rootJid, TEST_RELAY_UNRELATED_PEM, rootDer)
+        }
+    }
+
+    @Test
+    fun pinnedBytesWithAnythingAfterTheCertificateAreRefused() {
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity(rootJid, TEST_ROOT_CERT_PEM, rootDer + byteArrayOf(0))
+        }
+    }
+
+    @Test
+    fun aChainThatCannotBeReadIsRefused() {
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity(rootJid, "not a certificate", rootDer)
+        }
+    }
+
+    private fun jidFromSpkiDerOrNull(certificateDer: ByteArray): String? =
+        runCatching { jidFromSpkiDer(certificateFromDer(certificateDer).publicKey.encoded) }.getOrNull()
+
     @Test
     fun assertDirectCaPinAcceptsLeafSignedByPinnedCa() {
         val clientDer = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded

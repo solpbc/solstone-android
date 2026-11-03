@@ -170,22 +170,10 @@ class RelayPairingTest {
             override fun save(record: JournalMarkRecord) {}
             override fun clear() {}
         },
-    ) : JournalIdentityRefreshCoordinator(store) {
-        val usableCalls = AtomicInteger(0)
-        var lastInstanceId: String? = null
-
-        override fun onUsableConnection(
-            instanceId: String,
-            pairingMatches: () -> Boolean,
-            openClient: () -> PlHttpClient,
-        ) {
-            usableCalls.incrementAndGet()
-            lastInstanceId = instanceId
-        }
-    }
+    ) : JournalIdentityRefreshCoordinator(store)
 
     @Test
-    fun relayPairingStatus200PairingSubmitsOneUsableConnection() {
+    fun relayPairingStatus200PairingCompletesWithAMarkCoordinator() {
         val stores = Stores()
         val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
         val relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$INSTANCE_ID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}"""
@@ -206,12 +194,10 @@ class RelayPairingTest {
 
         assertEquals(200, result.pairStatus)
         assertEquals(RelayPairConnectionMode.PAIRING, result.connectionMode)
-        assertEquals(1, markCoordinator.usableCalls.get())
-        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
     }
 
     @Test
-    fun relayPairingStatus200ReconnectingSubmitsOneUsableConnection() {
+    fun relayPairingStatus200ReconnectingCompletesWithAMarkCoordinator() {
         val existing = pairedHome(state = IdentityState.UNPAIRED)
         val stores = Stores(home = existing)
         val bootstrapToken = v2Jwt(INSTANCE_ID, 100, 2000000000)
@@ -233,12 +219,10 @@ class RelayPairingTest {
 
         assertEquals(200, result.pairStatus)
         assertEquals(RelayPairConnectionMode.RECONNECTING, result.connectionMode)
-        assertEquals(1, markCoordinator.usableCalls.get())
-        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
     }
 
     @Test
-    fun relayPairingStatus200AlreadyConnectedSubmitsOneUsableConnection() {
+    fun relayPairingStatus200AlreadyConnectedCompletesWithAMarkCoordinator() {
         val existing = pairedHome(state = IdentityState.PAIRED)
         val stores = Stores(home = existing)
         stores.credentialStore.save(ClientCredential("key", "cert", listOf("ca")))
@@ -265,12 +249,10 @@ class RelayPairingTest {
 
         assertEquals(200, result.pairStatus)
         assertEquals(RelayPairConnectionMode.ALREADY_CONNECTED, result.connectionMode)
-        assertEquals(1, markCoordinator.usableCalls.get())
-        assertEquals(INSTANCE_ID, markCoordinator.lastInstanceId)
     }
 
     @Test
-    fun relayPairingFailedPairSubmitsZeroUsableConnection() {
+    fun relayPairingFailedPairStillFailsWithAMarkCoordinator() {
         val stores = Stores()
         val session = DynamicFakeSession(customStatus = 500)
         val poster = FakePoster(session)
@@ -289,7 +271,6 @@ class RelayPairingTest {
             )
         }
 
-        assertEquals(0, markCoordinator.usableCalls.get())
     }
 
     @Test

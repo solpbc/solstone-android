@@ -12,18 +12,6 @@ import kotlin.test.assertTrue
 
 class JournalIdentityApiTest {
 
-    private class FakePlHttpClient(
-        private val handler: (method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int) -> HttpResponse,
-    ) : PlHttpClient {
-        override fun request(
-            method: String,
-            path: String,
-            headers: Map<String, String>,
-            body: ByteArray?,
-            maxResponseBytes: Int,
-        ): HttpResponse = handler(method, path, headers, body, maxResponseBytes)
-    }
-
     @Test
     fun parseIdentityResponseVectorOnePrimary() {
         val json = """
@@ -197,25 +185,5 @@ class JournalIdentityApiTest {
         assertNull(parseIdentityResponse("""
             {"committed":true,"instance_id":"abc","mark":{"icon1":{"name":"a","svg":"<script>alert(1)</script>","color":{"name":"c","hex":"#112233"},"rot":0},"icon2":{"name":"b","svg":"<path d=\"M0 0\"/>","color":{"name":"c","hex":"#112233"},"rot":0},"words":["first","second"]}}
         """.trimIndent()))
-    }
-
-    @Test
-    fun fetchJournalIdentityReturnsSuccessOn200() {
-        val json = """{"committed":false,"instance_id":null,"mark":null}"""
-        val client = FakePlHttpClient { method, path, _, _, _ ->
-            assertEquals("GET", method)
-            assertEquals("/app/network/api/identity", path)
-            HttpResponse(200, emptyMap(), json.toByteArray())
-        }
-        val result = fetchJournalIdentity(client)
-        assertTrue(result is IdentityGetResult.Success)
-        assertFalse(result.response.committed)
-    }
-
-    @Test
-    fun fetchJournalIdentityReturnsNotFoundOn404() {
-        val client = FakePlHttpClient { _, _, _, _, _ -> HttpResponse(404, emptyMap(), ByteArray(0)) }
-        val result = fetchJournalIdentity(client)
-        assertTrue(result is IdentityGetResult.NotFound)
     }
 }

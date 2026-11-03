@@ -13,10 +13,7 @@ import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.awaitingMarkConfirmation
-import app.solstone.core.pl.PlHttpClient
-import app.solstone.core.pl.openPairingClient
 import app.solstone.core.sources.PHONE_STREAM
-import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedLeaseClient
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.SyncStores
 import app.solstone.platform.work.JournalRevokeOutcome
@@ -79,18 +76,8 @@ internal fun performPhoneConfirm(
 internal fun currentPairing(stores: SyncStores): PairingGeneration? =
     (stores.publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
 
-internal fun requestPairingMark(stores: SyncStores): Long? {
-    val asked = currentPairing(stores) ?: return null
-    val opener: () -> PlHttpClient = {
-        openPairingClient(stores.publisher) { lease ->
-            openAuthenticatedLeaseClient(lease)
-        }
-    }
-    return stores.journalIdentityCoordinator.onMarkRequested(
-        pairingMatches = { currentPairing(stores) == asked },
-        openClient = opener,
-    )
-}
+internal fun requestPairingMark(stores: SyncStores): Long? =
+    stores.journalIdentityCoordinator.onMarkRequested()
 
 internal fun Context.openUrl(url: String) {
     runCatching {

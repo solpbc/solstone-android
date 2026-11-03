@@ -1,0 +1,14 @@
+# Generates the journal mark vectors the Android derivation is tested against.
+# See README.md.
+[package]
+name = "mark-vectors"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "AGPL-3.0-only"
+
+[workspace]
+
+[dependencies]
+spl-core = { git = "https://github.com/solpbc/spl-rust.git", rev = "6ecae85c0606896d9ea29d50f3718ae15ed96821" }
+serde_json = "1"

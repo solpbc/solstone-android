@@ -23,9 +23,17 @@ import app.solstone.core.identity.JournalMarkIcon
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
-import app.solstone.core.pl.HttpResponse
+import app.solstone.core.identity.ClientCredential
+import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.GraphRevisions
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PairingLease
+import app.solstone.core.identity.PairingPublisher
+import app.solstone.core.identity.SubscriptionHandle
+import app.solstone.core.model.IdentityState
+import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
-import app.solstone.core.pl.PlHttpClient
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -46,18 +54,6 @@ class PhoneJournalMarkComposeTest {
         override fun load(): JournalMarkRecord? = record
         override fun save(r: JournalMarkRecord) { record = r }
         override fun clear() { record = null }
-    }
-
-    private class RoutingFakeClient(
-        private val handler: (method: String, path: String) -> HttpResponse,
-    ) : PlHttpClient {
-        override fun request(
-            method: String,
-            path: String,
-            headers: Map<String, String>,
-            body: ByteArray?,
-            maxResponseBytes: Int,
-        ): HttpResponse = handler(method, path)
     }
 
     private val fixture1Mark = JournalMark(
@@ -196,61 +192,86 @@ class PhoneJournalMarkComposeTest {
     }
 
     @Test
-    fun pairingSuccessMarkShowsLoadingWhileGetPendingThenSwapsToIdentified() {
+    fun pairingSuccessMarkShowsConnectingWhileDerivingThenSwapsToIdentified() {
+        val pairing = PairingGeneration("inst-1", "sha256:cert-1")
+        val publisher = object : PairingPublisher {
+            override fun currentSnapshot(): PairingGraphSnapshot = PairingGraphSnapshot.Committed(
+                sequenceNumber = 1L,
+                revisions = GraphRevisions(1L, 1L, 1L),
+                home = PairedHome(
+                    instanceId = pairing.instanceId,
+                    homeLabel = "Home",
+                    relayOrigin = null,
+                    caChainFingerprint = "sha256:ca-1",
+                    clientCertFingerprint = pairing.clientCertFingerprint,
+                    observerHandle = null,
+                    deviceToken = null,
+                    expiresAt = null,
+                    state = IdentityState.PAIRED,
+                ),
+                hasDirectEndpoint = false,
+                directAssociated = false,
+                relayLiveEligible = false,
+            )
+            override fun subscribe(observer: (PairingGraphSnapshot) -> Unit) = SubscriptionHandle {}
+            override fun <T> withMutationBoundary(block: () -> T): T = block()
+            override fun acquireDirectLease(): PairingLease.Direct? = error("unused")
+            override fun acquireRelayLease(): PairingLease.Relay? = error("unused")
+            override fun validateLease(lease: PairingLease): Boolean = error("unused")
+            override fun installOrReplace(
+                home: PairedHome,
+                credential: ClientCredential,
+                directEndpoint: app.solstone.core.model.DirectEndpoint?,
+                isDirectAssociated: Boolean,
+                provenance: app.solstone.core.identity.PairingProvenance,
+                directEndpoints: List<app.solstone.core.model.DirectEndpoint>,
+            ): GraphMutationResult = error("unused")
+            override fun replaceDirectEndpoints(
+                expected: PairingGraphSnapshot.Committed,
+                endpoints: List<app.solstone.core.model.DirectEndpoint>,
+            ): GraphMutationResult = error("unused")
+            override fun updateRelayAccess(
+                expectedPairing: PairingGeneration,
+                relayOrigin: String,
+                deviceToken: String,
+                expiresAt: String?,
+            ): GraphMutationResult = error("unused")
+            override fun revokeRelayAccess(expectedPairing: PairingGeneration): GraphMutationResult = error("unused")
+            override fun forget(): GraphMutationResult = error("unused")
+            override fun associateDirectIfProven(
+                expectedPairing: PairingGeneration,
+                endpoint: app.solstone.core.model.DirectEndpoint,
+                proof: () -> Boolean,
+            ): Boolean = error("unused")
+        }
         val store = InMemoryMarkStore()
         val executor = Executors.newCachedThreadPool()
-        val coordinator = JournalIdentityRefreshCoordinator(store, executor)
-
-        val inRequest = CountDownLatch(1)
-        val releaseRequest = CountDownLatch(1)
-
-        val json = """
-            {
-              "committed": true,
-              "instance_id": "inst-1",
-              "mark": {
-                "icon1": { "name": "piano", "svg": "<path d=\"M0 0h24v24H0z\"/>", "color": { "name": "blue", "hex": "#3b82f6" }, "rot": 45 },
-                "icon2": { "name": "key", "svg": "<path d=\"M0 0h24v24H0z\"/>", "color": { "name": "purple", "hex": "#a855f7" }, "rot": 0 },
-                "words": ["liquefy", "smock"]
-              }
-            }
-        """.trimIndent()
-
-        val client = RoutingFakeClient { _, _ ->
-            inRequest.countDown()
-            releaseRequest.await(5, TimeUnit.SECONDS)
-            HttpResponse(200, emptyMap(), json.toByteArray())
-        }
+        val deriving = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            executor = executor,
+            publisher = publisher,
+            deriveMark = {
+                deriving.countDown()
+                release.await(30, TimeUnit.SECONDS)
+                fixture1Mark
+            },
+        )
 
         composeRule.setContent {
             PhoneTheme {
-                PairingSuccessMark(coordinator = coordinator)
+                PairingSuccessMark(coordinator = coordinator, currentPairing = { pairing })
             }
         }
 
-        // A fresh pairing has no stored mark yet, so prompt renders connecting and no card
+        assertTrue(deriving.await(5, TimeUnit.SECONDS))
+        // While the mark is being worked out, the prompt renders connecting and no card.
         composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
         composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
 
-        // Trigger usable connection
-        coordinator.onUsableConnection(
-            instanceId = "inst-1",
-            pairingMatches = { true },
-            openClient = { client },
-        )
+        release.countDown()
 
-        assertTrue(inRequest.await(5, TimeUnit.SECONDS))
-        // While GET in flight, prompt still renders connecting and no card
-        composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
-        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
-
-        // Release GET response
-        releaseRequest.countDown()
-
-        // currentPresentation() flips on the identity job before ListenerDelivery
-        // runs the UI update on its own thread and posts it to the composition.
-        // Waiting on the field returns while the card still reads as loading.
-        // Same five-second budget, on the words the assertion checks.
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("liquefy", useUnmergedTree = true)
                 .fetchSemanticsNodes()
@@ -323,6 +344,28 @@ class PhoneJournalMarkComposeTest {
         composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("connect a journal", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    // The held and pending forms draw the generic mark, but neither journal is unset.
+    @Test
+    fun heldAndPendingDrawTheGenericFormButSayWhatIsTrue() {
+        var presentation by androidx.compose.runtime.mutableStateOf<JournalMarkPresentation>(
+            JournalMarkPresentation.Unconfirmed,
+        )
+        composeRule.setContent {
+            PhoneTheme {
+                PhoneJournalMarkPill(onClick = {}, paired = true, presentation = presentation)
+            }
+        }
+        composeRule.onNodeWithTag("journalMarkPill")
+            .assertContentDescriptionEquals(JournalMarkTokens.UNCONFIRMED_ACCESSIBLE_NAME)
+        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
+
+        presentation = JournalMarkPresentation.Loading
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("journalMarkPill")
+            .assertContentDescriptionEquals(JournalMarkTokens.LOADING_ACCESSIBLE_NAME)
+        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
     }
 
     private fun assertImagesDiffer(image1: ImageBitmap, image2: ImageBitmap) {

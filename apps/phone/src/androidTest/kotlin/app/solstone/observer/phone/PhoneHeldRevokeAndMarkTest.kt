@@ -9,6 +9,8 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -20,11 +22,11 @@ import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.awaitingMarkConfirmation
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.GraphMutationResult
-import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.journalMarkFromCaPem
 import app.solstone.platform.work.syncStores
 import app.solstone.testing.JournalLoopbackStandIn
 import org.junit.After
@@ -101,18 +103,16 @@ class PhoneHeldRevokeAndMarkTest {
         val server = standIn!!
         installTestPairing(server)
         val stores = syncStores(context)
-        val committed = (stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed).pairing
-        stores.journalMarkStore.save(
-            JournalMarkRecord(instanceId = committed.instanceId, mark = null, pairing = committed),
-        )
-        stores.journalIdentityCoordinator.onPairingChanged()
         val factory = phoneSpec.pairingAccessoryFactory!!
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContentView(factory(activity) {})
             }
-            composeRule.onNodeWithTag("pairingCancelPairing").performClick()
+            composeRule.waitUntil(MARK_DERIVED_MILLIS) {
+                composeRule.onAllNodesWithTag("pairingNoMatch").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("pairingNoMatch").performClick()
             composeRule.waitForIdle()
 
             composeRule.waitUntil(5000) {
@@ -194,24 +194,32 @@ class PhoneHeldRevokeAndMarkTest {
         }
     }
 
+    // The mark on the prompt comes from the CA this phone pinned, not from anything the peer serves.
     @Test
-    fun markViewCallingRequestMarkCausesGetIdentity() {
+    fun theMarkViewShowsTheMarkOfThePinnedCaWithoutAskingTheJournal() {
         val server = standIn!!
         installTestPairing(server)
         val stores = syncStores(context)
         stores.journalMarkStore.clear()
         val factory = phoneSpec.pairingAccessoryFactory!!
+        val expected = journalMarkFromCaPem(server.caPem)
 
         ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContentView(factory(activity) {})
             }
-            composeRule.waitForIdle()
-            composeRule.waitUntil(5000) {
-                server.recordedRequests.any { it.method == "GET" && it.path == "/app/network/api/identity" }
+            composeRule.waitUntil(MARK_DERIVED_MILLIS) {
+                composeRule.onAllNodesWithText(expected.words[0], useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
             }
-            assertTrue(server.recordedRequests.any { it.method == "GET" && it.path == "/app/network/api/identity" })
+            composeRule.onNodeWithText(expected.words[1], useUnmergedTree = true).assertExists()
+            assertTrue(server.recordedRequests.none { it.path == "/app/network/api/identity" })
         }
     }
-}
 
+    private companion object {
+        // Argon2 on an emulator, once per pairing.
+        const val MARK_DERIVED_MILLIS = 60_000L
+    }
+}

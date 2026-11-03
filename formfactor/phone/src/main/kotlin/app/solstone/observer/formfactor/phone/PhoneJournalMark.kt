@@ -50,7 +50,9 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +78,11 @@ object JournalMarkTokens {
     const val GENERIC_TINT_ALPHA = 0.07f
     const val IDENTIFIED_TINT_ALPHA = 0.12f                    // § 2.1; identified only
     const val RADIUS_RATIO = 0.25f                             // 0.25 × side
-    const val BORDER_RATIO = 2f / 48f
+    const val BORDER_RATIO = 2f / 48f                          // above fixedBorderMaxSide
+    val fixedBorder = 2.dp                                     // § 2.1: fixed up to fixedBorderMaxSide
+    val fixedBorderMaxSide = 64.dp
+    const val GLYPH_BOX_RATIO = 28f / 48f                      // § 2.1: 28 in a 48 side
+    const val GLYPH_STROKE_UNITS = 2f                          // § 2.1: in the glyph's own units
     const val GAP_RATIO = 0.23f
     const val DASH_ON_RATIO = 3.2f / 27f
     const val DASH_OFF_RATIO = 2.4f / 27f
@@ -89,7 +95,8 @@ object JournalMarkTokens {
     val unavailableGlyph = SolstoneColors.markUnavailableGlyph
     val cardRadius = 12.dp
     const val GENERIC_ACCESSIBLE_NAME = "your journal, not set up yet"
-    const val LOADING_ACCESSIBLE_NAME = "your journal, mark loading"
+    const val UNCONFIRMED_ACCESSIBLE_NAME = "your journal, mark not confirmed yet"
+    const val LOADING_ACCESSIBLE_NAME = "your journal, mark not read yet"
     const val UNAVAILABLE_ACCESSIBLE_NAME = "your journal's mark, unavailable right now"
 }
 
@@ -103,6 +110,7 @@ internal fun journalMarkSpokenForm(presentation: JournalMarkPresentation): Strin
     JournalMarkPresentation.Unavailable -> JournalMarkTokens.UNAVAILABLE_ACCESSIBLE_NAME
     JournalMarkPresentation.Loading -> JournalMarkTokens.LOADING_ACCESSIBLE_NAME
     JournalMarkPresentation.Generic -> JournalMarkTokens.GENERIC_ACCESSIBLE_NAME
+    JournalMarkPresentation.Unconfirmed -> JournalMarkTokens.UNCONFIRMED_ACCESSIBLE_NAME
 }
 
 fun parseHexColor(hex: String, defaultColor: Color): Color {
@@ -117,14 +125,15 @@ fun parseHexColor(hex: String, defaultColor: Color): Color {
  * Parses simple inner SVG elements and draws them into the canvas draw scope.
  */
 private fun DrawScope.drawSvgMarkup(svg: String, color: Color, chipSide: Float) {
+    val glyphBox = chipSide * JournalMarkTokens.GLYPH_BOX_RATIO
+    val scale = glyphBox / 24f
     val glyphStroke = Stroke(
-        width = chipSide * 0.07f,
+        width = JournalMarkTokens.GLYPH_STROKE_UNITS * scale,
         cap = StrokeCap.Round,
         join = StrokeJoin.Round,
     )
-    val scale = (chipSide * 0.55f) / 24f
-    val offsetX = chipSide * 0.225f
-    val offsetY = chipSide * 0.225f
+    val offsetX = (chipSide - glyphBox) / 2f
+    val offsetY = offsetX
 
     val elementRegex = Regex("<(path|circle|line|rect|ellipse|polyline|polygon)\\s+([^>]*)/?>")
     val attrRegex = Regex("""([a-zA-Z0-9_\-]+)\s*=\s*["']([^"']*)["']""")
@@ -219,7 +228,11 @@ private fun JournalMarkChip(
     ) {
         Canvas(Modifier.size(side)) {
             val s = size.minDimension
-            val strokeWidth = s * JournalMarkTokens.BORDER_RATIO
+            val strokeWidth = if (s <= JournalMarkTokens.fixedBorderMaxSide.toPx()) {
+                JournalMarkTokens.fixedBorder.toPx()
+            } else {
+                s * JournalMarkTokens.BORDER_RATIO
+            }
             val radius = CornerRadius(s * JournalMarkTokens.RADIUS_RATIO)
             val inset = strokeWidth / 2f
             val boxSize = Size(s - strokeWidth, s - strokeWidth)
@@ -464,6 +477,7 @@ internal const val PAIRING_CANCEL_PAIRING_TAG = "pairingCancelPairing"
 internal const val PAIRING_YES_TAG = "pairingYes"
 internal const val PAIRING_NO_MATCH_TAG = "pairingNoMatch"
 internal const val PAIRING_TRY_AGAIN_TAG = "pairingTryAgain"
+internal const val PAIRING_ANSWER_NOT_SAVED_TAG = "pairingAnswerNotSaved"
 internal const val PAIRING_SCAN_AGAIN_TAG = "pairingScanAgain"
 internal const val PAIRING_GET_HELP_TAG = "pairingGetHelp"
 
@@ -480,6 +494,7 @@ internal fun pairingPromptRequestsMark(
         JournalMarkPresentation.Loading,
         JournalMarkPresentation.Unavailable -> true
         is JournalMarkPresentation.Identified,
+        JournalMarkPresentation.Unconfirmed,
         JournalMarkPresentation.Generic -> false
     }
 }
@@ -510,6 +525,7 @@ internal fun pairingPromptShape(
         return PairingPromptShape.Connecting
     }
     return when (presentation) {
+        JournalMarkPresentation.Unconfirmed,
         JournalMarkPresentation.Generic -> PairingPromptShape.Unverified(
             withBody = false,
             card = JournalMarkPresentation.Generic,
@@ -572,6 +588,7 @@ internal fun isPairingConfirmationEnabled(
     return when (presentation) {
         is JournalMarkPresentation.Identified,
         JournalMarkPresentation.Generic,
+        JournalMarkPresentation.Unconfirmed,
         JournalMarkPresentation.Unavailable -> true
         JournalMarkPresentation.Loading -> false
     }
@@ -673,19 +690,24 @@ fun PairingSuccessMark(
 
     var confirmation by remember { mutableStateOf(PairingConfirmation.Waiting) }
     var mismatchResult by remember { mutableStateOf<PairingMismatchResult?>(null) }
+    var answerNotSaved by remember(activePairing) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val bodyColor = MaterialTheme.colorScheme.onBackground
 
     val onConfirmClick: () -> Unit = {
         val presented = generation
         if (presented != null && !cleanupInProgress) {
+            answerNotSaved = false
             scope.launch {
+                val saver = onYes
                 val ok = withContext(Dispatchers.IO) {
-                    onYes?.invoke(presented) == true
+                    saver?.invoke(presented) == true
                 }
                 if (ok) {
                     confirmation = PairingConfirmation.Confirmed
                     onConfirmed()
+                } else if (saver != null) {
+                    answerNotSaved = true
                 }
             }
         }
@@ -694,6 +716,7 @@ fun PairingSuccessMark(
     val onDropClick: () -> Unit = onDropClick@{
         if (cleanupInProgress || confirmation == PairingConfirmation.Removing) return@onDropClick
         confirmation = PairingConfirmation.Removing
+        answerNotSaved = false
         scope.launch {
             mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
             confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
@@ -745,6 +768,7 @@ fun PairingSuccessMark(
                                 textAlign = TextAlign.Center,
                             )
                         }
+                        if (answerNotSaved) AnswerNotSavedLine(bodyColor)
                         Spacer(Modifier.height(20.dp))
                         Button(
                             onClick = onConfirmClick,
@@ -784,6 +808,7 @@ fun PairingSuccessMark(
                             color = shellSecondaryInk,
                             textAlign = TextAlign.Center,
                         )
+                        if (answerNotSaved) AnswerNotSavedLine(bodyColor)
                         Spacer(Modifier.height(20.dp))
                         Button(
                             onClick = onConfirmClick,
@@ -855,6 +880,20 @@ fun PairingSuccessMark(
             }
         }
     }
+}
+
+@Composable
+private fun AnswerNotSavedLine(color: Color) {
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = "couldn't save your answer. try again.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .testTag(PAIRING_ANSWER_NOT_SAVED_TAG)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    )
 }
 
 @Composable

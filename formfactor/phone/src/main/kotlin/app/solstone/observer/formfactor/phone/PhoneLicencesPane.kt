@@ -47,6 +47,7 @@ fun PhoneLicencesPane(
     val context = LocalContext.current
     val agpl = remember(context) { context.readRawText(R.raw.license_agpl) }
     val ofl = remember(context) { context.readRawText(R.raw.license_ofl) }
+    val lucide = remember(context) { context.readRawText(R.raw.license_lucide) }
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Licences) },
     ) {
@@ -68,15 +69,27 @@ fun PhoneLicencesPane(
             PaneFactRow(label = "solstone", value = "AGPL-3.0-only")
             PaneRowDivider()
             PaneFactRow(label = "Comfortaa", value = "SIL OFL 1.1")
+            PaneRowDivider()
+            PaneFactRow(label = "Lucide", value = "ISC and MIT")
+            PaneRowDivider()
+            PaneFactRow(label = "EFF long wordlist", value = "CC BY 3.0 US")
         }
         // Third-party proper names keep their own casing; house lowercase is ours.
         PaneNote("Comfortaa is the typeface solstone is set in, by Johan Aakerlund.")
+        PaneNote("your journal's mark uses icons from Lucide and words from the EFF long wordlist.")
+        PaneNote(
+            "the EFF long wordlist is by the Electronic Frontier Foundation, under " +
+                "https://creativecommons.org/licenses/by/3.0/us/",
+        )
 
         PaneSectionTitle("GNU Affero General Public License v3")
         LicenceText(agpl, "licenceTextAgpl")
 
         PaneSectionTitle("SIL Open Font License 1.1")
         LicenceText(ofl, "licenceTextOfl")
+
+        PaneSectionTitle("Lucide")
+        LicenceText(lucide, "licenceTextLucide")
     }
 }
 

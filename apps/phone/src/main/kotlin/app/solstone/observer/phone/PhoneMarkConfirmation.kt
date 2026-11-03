@@ -23,7 +23,8 @@ internal fun phoneAwaitingMarkConfirmation(context: Context): Boolean {
  *
  * Known means owner-confirmed. Until the owner has answered this pairing's mark question, these
  * slots show the generic `your journal` mark, never the mark they haven't confirmed yet. The
- * prompt reads the identity coordinator itself, so it still shows the mark it is asking about.
+ * prompt reads the identity coordinator itself, so it still shows the mark it is asking about, and
+ * the spoken name says the mark isn't confirmed yet rather than that the journal isn't set up.
  */
 internal fun <P> shellMarkPresentation(
     currentPairing: P?,
@@ -31,7 +32,7 @@ internal fun <P> shellMarkPresentation(
     journalConfirmed: Boolean,
     markPresentation: JournalMarkPresentation,
 ): JournalMarkPresentation = when {
-    currentPairing != null && !journalConfirmed -> JournalMarkPresentation.Generic
+    currentPairing != null && !journalConfirmed -> JournalMarkPresentation.Unconfirmed
     currentPairing != null && markGeneration != currentPairing -> JournalMarkPresentation.Loading
     else -> markPresentation
 }

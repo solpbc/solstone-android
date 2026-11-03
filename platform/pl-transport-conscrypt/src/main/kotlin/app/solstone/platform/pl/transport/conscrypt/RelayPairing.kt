@@ -328,9 +328,6 @@ fun pairOverRelay(
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
                 app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred) }
             }
-            journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
-                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(curOrigin, prior.instanceId, curToken, cred) }
-            }
         }
         return RelayPairResult(
             handshakePinned = true,
@@ -392,9 +389,6 @@ fun pairOverRelay(
             app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
-        }
-        journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
             app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(relayAccessDecoded.relayOrigin, pairResponse.instanceId, relayAccessDecoded.deviceToken, credential) }
         }
 
@@ -498,9 +492,6 @@ fun pairOverRelay(
                         app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
                     }
                     relayAccessCoordinator?.onUsableConnection(updatedHome.instanceId, updatedHome.caChainFingerprint, updatedHome.clientCertFingerprint) {
-                        app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
-                    }
-                    journalIdentityCoordinator?.onUsableConnection(updatedHome.instanceId) {
                         app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(pairResponse.instanceId, clientCertFingerprint)) { openRelaySyncClient(origin.httpsBase, pairResponse.instanceId, deviceToken, credential) }
                     }
                 }

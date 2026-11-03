@@ -108,6 +108,11 @@ class PhoneDeckSourceCheckTest {
         assertEquals(journalMarkSpokenForm(JournalMarkPresentation.Loading), loadingSpoken)
         assertNotEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME, loadingSpoken)
 
+        val heldSpoken = spokenPaneTitle(PhonePane.JOURNAL, JournalMarkPresentation.Unconfirmed)
+        assertEquals(JournalMarkTokens.UNCONFIRMED_ACCESSIBLE_NAME, heldSpoken)
+        assertNotEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME, heldSpoken)
+        assertNotEquals(loadingSpoken, heldSpoken)
+
         val mark = JournalMark(
             icon1 = JournalMarkIcon(name = "circle", svg = "<path/>", colorName = "blue", colorHex = "#0000FF", rot = 0),
             icon2 = JournalMarkIcon(name = "sun", svg = "<path/>", colorName = "gold", colorHex = "#FFD700", rot = 0),

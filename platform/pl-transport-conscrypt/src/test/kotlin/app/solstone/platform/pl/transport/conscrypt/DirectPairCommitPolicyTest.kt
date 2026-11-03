@@ -597,7 +597,7 @@ class DirectPairCommitPolicyTest {
         {
           "ca_chain":[${app.solstone.core.pl.toJson(PAIR_TEST_CA_PEM)}],
           "client_cert":${app.solstone.core.pl.toJson(PAIR_TEST_LEAF_PEM)},
-          "instance_id":"test-instance",
+          "instance_id":"$PAIR_TEST_CA_JID",
           "home_label":"test-home",
           "home_attestation":"attestation.jwt",
           "fingerprint":"$fingerprint"

@@ -53,6 +53,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+    testImplementation(project(":testing"))
     // Test-only: a TLS 1.3 server that can send a chosen fatal alert, which JSSE and Conscrypt
     // servers cannot. Never part of the shipped app.
     testImplementation("org.bouncycastle:bctls-jdk15to18:1.85")

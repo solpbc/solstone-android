@@ -5,6 +5,7 @@ package app.solstone.platform.pl.transport.conscrypt
 
 import app.solstone.core.crypto.CaPinException
 import app.solstone.core.crypto.assertDirectCaPin
+import app.solstone.core.crypto.assertDirectPairIdentity
 import app.solstone.core.crypto.buildCsrPem
 import app.solstone.core.crypto.certificateFromPem
 import app.solstone.core.crypto.generateP256KeyPair
@@ -227,6 +228,12 @@ internal fun pairAndProbe(
                         "pair response CA fingerprint did not match QR pin",
                     )
                 }
+                try {
+                    assertDirectPairIdentity(resp.instanceId, resp.caChain.first(), caDer)
+                } catch (e: CaPinException) {
+                    report(endpoint, DialOutcome.NOT_VERIFIED)
+                    throw SSLException("direct pair response did not match the pinned CA", e)
+                }
                 report(endpoint, DialOutcome.CONNECTED)
                 val clientCertificate = certificateFromPem(resp.clientCert)
                 val clientDer = clientCertificate.encoded
@@ -363,9 +370,6 @@ internal fun persistOrReturnDirectPairResult(
             relayAccessCoordinator?.onUsableConnection(prior.instanceId, prior.caChainFingerprint, prior.clientCertFingerprint) {
                 app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint), targetEndpoint) { openAuthenticatedClient(targetEndpoint, retainedCredential) }
             }
-            journalIdentityCoordinator?.onUsableConnection(prior.instanceId) {
-                app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(prior.instanceId, prior.clientCertFingerprint), targetEndpoint) { openAuthenticatedClient(targetEndpoint, retainedCredential) }
-            }
         }
         return PairProbeResult(
             handshakePinned = handshakePinned,
@@ -431,9 +435,6 @@ internal fun persistOrReturnDirectPairResult(
             app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
         }
         relayAccessCoordinator?.onUsableConnection(home.instanceId, home.caChainFingerprint, home.clientCertFingerprint) {
-            app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
-        }
-        journalIdentityCoordinator?.onUsableConnection(home.instanceId) {
             app.solstone.core.pl.openAddressRefreshingClient(activePublisher, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint), endpoint) { openAuthenticatedClient(endpoint, credential) }
         }
     }

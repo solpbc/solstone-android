@@ -16,7 +16,6 @@ import app.solstone.core.pl.DirectEndpoint
 import app.solstone.core.pl.EndpointStore
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalIdentityRefreshCoordinator
-import app.solstone.core.pl.PlHttpClient
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,20 +42,8 @@ class DirectAndRelayPairMarkHookTest {
     private class RecordingMarkCoordinator(
         store: JournalMarkStore,
     ) : JournalIdentityRefreshCoordinator(store) {
-        val usableCalls = AtomicInteger(0)
         val identityChangedCalls = AtomicInteger(0)
         val pairingChangedCalls = AtomicInteger(0)
-        var lastInstanceId: String? = null
-
-        override fun onUsableConnection(
-            instanceId: String,
-            pairingMatches: () -> Boolean,
-            openClient: () -> PlHttpClient,
-        ) {
-            usableCalls.incrementAndGet()
-            lastInstanceId = instanceId
-            // Do NOT invoke openClient() to avoid dialing network
-        }
 
         override fun onIdentityChanged() {
             super.onIdentityChanged()
@@ -143,7 +130,7 @@ class DirectAndRelayPairMarkHookTest {
     }
 
     @Test
-    fun directPairingStatus200NewHomeSubmitsOneUsableConnection() {
+    fun directPairingNewHomeIsAnIdentityChange() {
         val markStore = RecordingMarkStore()
         val coordinator = RecordingMarkCoordinator(markStore)
         val identityStore = InMemoryIdentityStore(null)
@@ -164,14 +151,12 @@ class DirectAndRelayPairMarkHookTest {
             journalMarkStore = markStore,
         )
 
-        assertEquals(1, coordinator.usableCalls.get())
-        assertEquals("inst-new", coordinator.lastInstanceId)
         assertEquals(1, coordinator.identityChangedCalls.get())
         assertEquals(0, coordinator.pairingChangedCalls.get())
     }
 
     @Test
-    fun directPairingStatus200ReconnectingSubmitsOneUsableConnection() {
+    fun directPairingReconnectingIsAPairingChange() {
         val markStore = RecordingMarkStore()
         val coordinator = RecordingMarkCoordinator(markStore)
         val existing = sampleHome("inst-same").copy(state = IdentityState.UNPAIRED)
@@ -193,14 +178,12 @@ class DirectAndRelayPairMarkHookTest {
             journalMarkStore = markStore,
         )
 
-        assertEquals(1, coordinator.usableCalls.get())
-        assertEquals("inst-same", coordinator.lastInstanceId)
         assertEquals(0, coordinator.identityChangedCalls.get())
         assertEquals(1, coordinator.pairingChangedCalls.get())
     }
 
     @Test
-    fun directPairingStatus200AlreadyConnectedSubmitsOneUsableConnection() {
+    fun directPairingAlreadyConnectedChangesNothing() {
         val markStore = RecordingMarkStore()
         val coordinator = RecordingMarkCoordinator(markStore)
         val existing = sampleHome("inst-same")
@@ -222,12 +205,12 @@ class DirectAndRelayPairMarkHookTest {
             journalMarkStore = markStore,
         )
 
-        assertEquals(1, coordinator.usableCalls.get())
-        assertEquals("inst-same", coordinator.lastInstanceId)
+        assertEquals(0, coordinator.identityChangedCalls.get())
+        assertEquals(0, coordinator.pairingChangedCalls.get())
     }
 
     @Test
-    fun directPairingNon200SubmitsZeroUsableConnection() {
+    fun directPairingNon200StillInstallsTheIdentityChange() {
         val markStore = RecordingMarkStore()
         val coordinator = RecordingMarkCoordinator(markStore)
         val identityStore = InMemoryIdentityStore(null)
@@ -248,7 +231,7 @@ class DirectAndRelayPairMarkHookTest {
             journalMarkStore = markStore,
         )
 
-        assertEquals(0, coordinator.usableCalls.get())
+        assertEquals(1, coordinator.identityChangedCalls.get())
     }
 
     @Test

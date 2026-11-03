@@ -68,6 +68,9 @@ class FakePairingPublisher(
 
     override fun <T> withMutationBoundary(block: () -> T): T = block()
 
+    override fun pinnedCaPem(expected: PairingGeneration): String? =
+        credentialStore.load()?.caChainPem?.firstOrNull()
+
     override fun installOrReplace(
         home: PairedHome,
         credential: ClientCredential,

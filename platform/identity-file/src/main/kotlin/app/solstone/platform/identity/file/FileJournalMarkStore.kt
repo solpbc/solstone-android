@@ -44,6 +44,7 @@ class FileJournalMarkStore(private val file: File) : JournalMarkStore {
             "instance_id" to record.instanceId,
             "client_cert_fingerprint" to record.pairing?.clientCertFingerprint,
             "committed" to (record.mark != null),
+            "derived" to record.derived,
             "mark" to markMap,
         )
         val json = toJson(root)
@@ -62,16 +63,17 @@ class FileJournalMarkStore(private val file: File) : JournalMarkStore {
                 ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark committed")
             val fingerprint = root["client_cert_fingerprint"] as? String
             val pairing = fingerprint?.let { PairingGeneration(instanceId, it) }
+            val derived = root["derived"] as? Boolean ?: false
             if (!committed) {
                 return StoreInspectResult.Ready(
-                    JournalMarkRecord(instanceId = instanceId, mark = null, pairing = pairing),
+                    JournalMarkRecord(instanceId = instanceId, mark = null, pairing = pairing, derived = derived),
                 )
             }
             val parsed = parseIdentityResponse(text)
                 ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark payload")
             val mark = parsed.mark
                 ?: return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "mark missing")
-            StoreInspectResult.Ready(JournalMarkRecord(instanceId, mark, pairing))
+            StoreInspectResult.Ready(JournalMarkRecord(instanceId, mark, pairing, derived))
         } catch (t: Throwable) {
             StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, t.javaClass.simpleName)
         }

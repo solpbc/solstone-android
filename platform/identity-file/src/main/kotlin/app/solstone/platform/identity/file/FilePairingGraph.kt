@@ -117,6 +117,12 @@ class FilePairingGraph(
         return PairingLease.Relay(snap, cred, origin, snap.home.instanceId, token)
     }
 
+    override fun pinnedCaPem(expected: PairingGeneration): String? = synchronized(lock) {
+        val current = currentSnapshotState as? PairingGraphSnapshot.Committed
+        if (current?.pairing != expected) return null
+        credentialStore.load()?.caChainPem?.firstOrNull()
+    }
+
     override fun validateLease(lease: PairingLease): Boolean {
         val snap = currentSnapshotState as? PairingGraphSnapshot.Committed ?: return false
         if (snap.pairing != lease.snapshot.pairing) return false

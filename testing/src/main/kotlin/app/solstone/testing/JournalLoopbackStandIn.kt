@@ -82,6 +82,12 @@ class JournalLoopbackStandIn(
         isCa = false,
     )
 
+    /** The id its pair response names. A real journal can only name its own CA's. */
+    var claimedInstanceId: String = instanceId
+
+    /** The body of its served identity route, when it has one. */
+    var identityResponseBody: String? = null
+
     var dropStatusProbe: Boolean = false
     var relayEnrollStatus: Int = 200
 
@@ -448,7 +454,7 @@ class JournalLoopbackStandIn(
             {
               "ca_chain": [${toJson(caPem)}],
               "client_cert": ${toJson(clientCertPem)},
-              "instance_id": "$instanceId",
+              "instance_id": "$claimedInstanceId",
               "home_label": "Home",
               "home_attestation": "attestation.jwt",
               "fingerprint": "$fingerprint",
@@ -459,6 +465,8 @@ class JournalLoopbackStandIn(
         }
         method == "GET" && path == "/app/network/api/status" ->
             HttpResponse(200, emptyMap(), ByteArray(0))
+        method == "GET" && path == "/app/network/api/identity" && identityResponseBody != null ->
+            HttpResponse(200, emptyMap(), identityResponseBody!!.toByteArray(Charsets.UTF_8))
         path.startsWith("/enroll/device") -> {
             if (relayEnrollStatus == 200) {
                 HttpResponse(200, emptyMap(), """{"status":"ok"}""".toByteArray(Charsets.UTF_8))

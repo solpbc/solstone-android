@@ -12,14 +12,9 @@ data class IdentityApiResponse(
     val mark: JournalMark?,
 )
 
-sealed interface IdentityGetResult {
-    data class Success(val response: IdentityApiResponse) : IdentityGetResult
-    data object NotFound : IdentityGetResult
-    data class Failure(val status: Int?, val message: String?) : IdentityGetResult
-}
-
 private val HEX_COLOR_REGEX = Regex("^#[0-9a-f]{6}$")
-private val WORD_REGEX = Regex("^[a-z]+$")
+// Four words in the locked list are hyphenated: drop-down, felt-tip, t-shirt, yo-yo.
+private val WORD_REGEX = Regex("^[a-z]+(-[a-z]+)*$")
 private val ALLOWED_SVG_ELEMENTS = setOf("path", "circle", "rect", "ellipse", "line", "polyline", "polygon")
 private val PATH_D_REGEX = Regex("""\bd\s*=\s*["']([^"']*)["']""")
 
@@ -210,28 +205,4 @@ fun parseIdentityResponse(bodyText: String): IdentityApiResponse? {
             words = listOf(word1, word2),
         ),
     )
-}
-
-fun fetchJournalIdentity(
-    client: PlHttpClient,
-    maxResponseBytes: Int = 64 * 1024,
-): IdentityGetResult = try {
-    val response = client.request(
-        method = "GET",
-        path = "/app/network/api/identity",
-        headers = mapOf("Accept" to "application/json", "Cache-Control" to "no-cache"),
-        body = null,
-        maxResponseBytes = maxResponseBytes,
-    )
-    when (response.status) {
-        200 -> {
-            val parsed = parseIdentityResponse(response.bodyText())
-            if (parsed != null) IdentityGetResult.Success(parsed)
-            else IdentityGetResult.Failure(200, "invalid identity response JSON")
-        }
-        404 -> IdentityGetResult.NotFound
-        else -> IdentityGetResult.Failure(response.status, response.bodyText())
-    }
-} catch (e: Exception) {
-    IdentityGetResult.Failure(null, e.message)
 }

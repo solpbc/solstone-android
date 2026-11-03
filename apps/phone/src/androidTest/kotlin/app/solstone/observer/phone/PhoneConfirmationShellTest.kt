@@ -270,7 +270,7 @@ class PhoneConfirmationShellTest {
             JournalMarkIcon("key", "<circle cx=\"7.5\" cy=\"15.5\" r=\"5.5\"/>", "purple", "#a855f7", 0),
             listOf("liquefy", "smock"),
         )
-        stores.journalMarkStore.save(JournalMarkRecord(pairing.instanceId, mark, pairing))
+        stores.journalMarkStore.save(JournalMarkRecord(pairing.instanceId, mark, pairing, derived = true))
         stores.journalIdentityCoordinator.onPairingChanged()
     }
 

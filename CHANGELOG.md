@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- pairing now refuses a journal that isn't the one its pairing link names, and the mark you're asked to check is worked out on this phone instead of coming from the journal. before, a journal reached through a forged pairing link could show you your real journal's mark, so the check could pass.
+- your journal's mark now shows after a restart, even if you continued past the check. when it can't be worked out, the app says the mark is unavailable, not that your journal isn't set up.
+- if the app can't save your answer to the mark question, it now says so. before, the button seemed to do nothing.
+- your journal's mark now has the same line weights as in your journal's network app.
+- with TalkBack on, a journal waiting for you to confirm its mark no longer reads as not set up.
+
 ## [2.1.35] - 2026-11-01
 
 ### Changed

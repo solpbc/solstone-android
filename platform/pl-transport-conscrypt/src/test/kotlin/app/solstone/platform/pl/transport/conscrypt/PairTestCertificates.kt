@@ -4,6 +4,9 @@
 package app.solstone.platform.pl.transport.conscrypt
 
 // Test-only ephemeral certificates generated with openssl; not operational secrets.
+/** The journal id of [PAIR_TEST_CA_PEM], which a direct pair response has to name. */
+internal val PAIR_TEST_CA_JID: String = app.solstone.core.crypto.jidFromCaPem(PAIR_TEST_CA_PEM)
+
 internal const val PAIR_TEST_CA_PEM = """-----BEGIN CERTIFICATE-----
 MIIBlzCCAT2gAwIBAgIUPPGWUZjdtzsgVEHE+ZtQg5pKb9EwCgYIKoZIzj0EAwIw
 ITEfMB0GA1UEAwwWc29sc3RvbmUtdGVzdC1yZWxheS1jYTAeFw0yNjA2MjYwNjU2

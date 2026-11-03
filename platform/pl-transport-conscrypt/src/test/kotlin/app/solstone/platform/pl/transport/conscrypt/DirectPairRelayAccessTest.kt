@@ -108,10 +108,10 @@ class DirectPairRelayAccessTest {
         val credStore = FakeCredentialStore()
         val identStore = FakeIdentityStore()
         val endpStore = FakeEndpointStore()
-        val bootstrapToken = v2Jwt("test-instance", 100, 2000000000)
+        val bootstrapToken = v2Jwt(PAIR_TEST_CA_JID, 100, 2000000000)
         val publisher = FakePairingPublisher(identStore, credStore, endpStore)
         val responseJson = pairResponseWithRelayAccess(
-            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"test-instance","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
+            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$PAIR_TEST_CA_JID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
         )
 
         val result = pairAndProbe(
@@ -191,7 +191,7 @@ class DirectPairRelayAccessTest {
         val identStore = FakeIdentityStore()
         val endpStore = FakeEndpointStore()
         val responseJson = pairResponseWithRelayAccess(
-            relayAccessJson = """{"protocol_version":99,"status":"unknown_status","relay_origin":"https://link.solstone.app","instance_id":"test-instance","device_token":"tok"}""",
+            relayAccessJson = """{"protocol_version":99,"status":"unknown_status","relay_origin":"https://link.solstone.app","instance_id":"$PAIR_TEST_CA_JID","device_token":"tok"}""",
         )
 
         val result = pairAndProbe(
@@ -217,9 +217,9 @@ class DirectPairRelayAccessTest {
         val credStore = FakeCredentialStore()
         val identStore = FakeIdentityStore()
         val endpStore = FakeEndpointStore()
-        val expiredToken = v2Jwt("test-instance", 100, 200)
+        val expiredToken = v2Jwt(PAIR_TEST_CA_JID, 100, 200)
         val responseJson = pairResponseWithRelayAccess(
-            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"test-instance","device_token":"$expiredToken","expires_at":"1970-01-01T00:03:20Z"}""",
+            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$PAIR_TEST_CA_JID","device_token":"$expiredToken","expires_at":"1970-01-01T00:03:20Z"}""",
         )
 
         val result = pairAndProbe(
@@ -245,9 +245,9 @@ class DirectPairRelayAccessTest {
         val credStore = FakeCredentialStore()
         val identStore = FakeIdentityStore()
         val endpStore = FakeEndpointStore()
-        val bootstrapToken = v2Jwt("test-instance", 100, 2000000000)
+        val bootstrapToken = v2Jwt(PAIR_TEST_CA_JID, 100, 2000000000)
         val responseJson = pairResponseWithRelayAccess(
-            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://custom-relay.solstone.app:8443","instance_id":"test-instance","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
+            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://custom-relay.solstone.app:8443","instance_id":"$PAIR_TEST_CA_JID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
         )
 
         val result = pairAndProbe(
@@ -296,7 +296,7 @@ class DirectPairRelayAccessTest {
     @Test
     fun directPairSameHomeWithReadyBootstrapMutatesPriorHome() {
         val priorHome = PairedHome(
-            instanceId = "test-instance",
+            instanceId = PAIR_TEST_CA_JID,
             homeLabel = "My Home",
             relayOrigin = null,
             caChainFingerprint = "sha256:" + sha256Hex(app.solstone.core.crypto.pemToDer(PAIR_TEST_CA_PEM, "CERTIFICATE")),
@@ -310,9 +310,9 @@ class DirectPairRelayAccessTest {
         val identStore = FakeIdentityStore(priorHome)
         val endpStore = FakeEndpointStore()
         val mutator = FakeMutator(identStore)
-        val bootstrapToken = v2Jwt("test-instance", 100, 2000000000)
+        val bootstrapToken = v2Jwt(PAIR_TEST_CA_JID, 100, 2000000000)
         val responseJson = pairResponseWithRelayAccess(
-            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"test-instance","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
+            relayAccessJson = """{"protocol_version":2,"status":"ready","relay_origin":"https://link.solstone.app","instance_id":"$PAIR_TEST_CA_JID","device_token":"$bootstrapToken","expires_at":"2033-05-18T03:33:20Z"}""",
         )
 
         val result = pairAndProbe(
@@ -359,7 +359,7 @@ class DirectPairRelayAccessTest {
         {
           "ca_chain":[${app.solstone.core.pl.toJson(PAIR_TEST_CA_PEM)}],
           "client_cert":${app.solstone.core.pl.toJson(PAIR_TEST_LEAF_PEM)},
-          "instance_id":"test-instance",
+          "instance_id":"$PAIR_TEST_CA_JID",
           "home_label":"test-home",
           "home_attestation":"attestation.jwt",
           "fingerprint":"$fingerprint"${if (relayAccessJson != null) ",\n  \"relay_access\":$relayAccessJson" else ""}

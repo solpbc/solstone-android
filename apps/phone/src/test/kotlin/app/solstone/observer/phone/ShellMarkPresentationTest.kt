@@ -12,9 +12,9 @@ class ShellMarkPresentationTest {
 
     @Test
     fun anUnconfirmedPairingShowsTheGenericMark() {
-        assertEquals(JournalMarkPresentation.Generic, shellMarkPresentation("p1", "p1", false, loaded))
+        assertEquals(JournalMarkPresentation.Unconfirmed, shellMarkPresentation("p1", "p1", false, loaded))
         // Even before the mark for this pairing has loaded.
-        assertEquals(JournalMarkPresentation.Generic, shellMarkPresentation("p1", null, false, loaded))
+        assertEquals(JournalMarkPresentation.Unconfirmed, shellMarkPresentation("p1", null, false, loaded))
     }
 
     @Test

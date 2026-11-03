@@ -174,6 +174,9 @@ interface PairingPublisher {
     fun acquireRelayLease(): PairingLease.Relay?
     fun validateLease(lease: PairingLease): Boolean
 
+    /** The CA [expected] pinned, from its stored credential; null unless it is still committed. */
+    fun pinnedCaPem(expected: PairingGeneration): String? = null
+
     fun installOrReplace(
         home: PairedHome,
         credential: ClientCredential,

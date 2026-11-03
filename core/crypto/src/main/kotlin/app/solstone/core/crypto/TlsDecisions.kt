@@ -26,6 +26,32 @@ fun assertDirectCaPin(chain: List<ByteArray>, expectedCaDerPrefix: ByteArray) {
     }
 }
 
+/**
+ * A direct pair response's id must be the journal id of the CA the link pinned. [pinnedCaDer] is the
+ * exact bytes that passed the pin, and [caPem] is what gets stored: both have to be that one
+ * certificate, and the certificate has to prove it holds its own key, or a copy of a real journal's
+ * public key could be presented under that journal's id.
+ */
+fun assertDirectPairIdentity(instanceId: String, caPem: String, pinnedCaDer: ByteArray) {
+    val ca = try {
+        certificateFromDer(pinnedCaDer).also { it.verify(it.publicKey) }
+    } catch (e: Exception) {
+        throw CaPinException("direct pair CA was not a self-signed certificate", e)
+    }
+    val stored = runCatching { certificateFromPem(caPem).encoded }.getOrNull()
+    if (!ca.encoded.contentEquals(pinnedCaDer) || !pinnedCaDer.contentEquals(stored)) {
+        throw CaPinException("direct pair CA chain was not the pinned certificate")
+    }
+    val expected = try {
+        jidFromSpkiDer(ca.publicKey.encoded)
+    } catch (e: JidRefusalException) {
+        throw CaPinException("direct pair CA has no journal id", e)
+    }
+    if (instanceId != expected) {
+        throw CaPinException("direct pair response instance_id did not match pinned CA identity")
+    }
+}
+
 fun requireTls13(supportedProtocols: Array<String>): Array<String> {
     if ("TLSv1.3" in supportedProtocols) {
         return arrayOf("TLSv1.3")

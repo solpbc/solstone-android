@@ -23,7 +23,6 @@ import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingLease
 import app.solstone.core.identity.PairingPublisher
-import app.solstone.core.identity.PersistenceIssue
 import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.IdentityState
@@ -37,12 +36,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import app.solstone.core.pl.HttpResponse
-import app.solstone.core.pl.PlHttpClient
 
 @RunWith(AndroidJUnit4::class)
 class PhoneJournalMarkConfirmationComposeTest {
@@ -92,7 +88,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     private class StubPublisher(var snapshot: PairingGraphSnapshot) : PairingPublisher {
         override fun currentSnapshot(): PairingGraphSnapshot = snapshot
-        override fun subscribe(observer: (PairingGraphSnapshot) -> Unit): SubscriptionHandle = error("unused")
+        override fun subscribe(observer: (PairingGraphSnapshot) -> Unit): SubscriptionHandle = SubscriptionHandle {}
         override fun <T> withMutationBoundary(block: () -> T): T = block()
         override fun acquireDirectLease(): PairingLease.Direct? = error("unused")
         override fun acquireRelayLease(): PairingLease.Relay? = error("unused")
@@ -127,11 +123,36 @@ class PhoneJournalMarkConfirmationComposeTest {
         override fun clear() { result = StoreInspectResult.Missing }
     }
 
+    /** A coordinator whose derivation has already failed, and fails again if asked. */
+    private fun unavailableCoordinator(): JournalIdentityRefreshCoordinator {
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = FakeMarkStore(),
+            publisher = StubPublisher(committedSnapshot(pairingP)),
+            deriveMark = { error("no stored CA") },
+        )
+        val failed = CountDownLatch(1)
+        val remove = coordinator.addListener {
+            if (it is JournalMarkPresentation.Unavailable) failed.countDown()
+        }
+        assertTrue(failed.await(5, TimeUnit.SECONDS))
+        remove()
+        return coordinator
+    }
+
+    /** A coordinator still deriving, until [release] opens. */
+    private fun derivingCoordinator(release: CountDownLatch) = JournalIdentityRefreshCoordinator(
+        store = FakeMarkStore(),
+        publisher = StubPublisher(committedSnapshot(pairingP)),
+        deriveMark = {
+            release.await(30, TimeUnit.SECONDS)
+            sampleMark
+        },
+    )
+
     @Test
     fun storeMissingShowsMarkLoadingAccessibleNameDisablesYesAndCallsRequestMark() {
-        val store = FakeMarkStore(StoreInspectResult.Missing)
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        val release = CountDownLatch(1)
+        val coordinator = derivingCoordinator(release)
         val requestCalls = AtomicInteger(0)
 
         composeRule.setContent {
@@ -151,15 +172,22 @@ class PhoneJournalMarkConfirmationComposeTest {
         composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
         composeRule.onNodeWithText("yes, this is my journal").assertDoesNotExist()
         assertEquals(1, requestCalls.get())
+        release.countDown()
         coordinator.close()
     }
 
+    // A pairing stored before marks were computed here could hold no mark. It isn't asked about as
+    // an unset journal: it asks the one question, about the mark its own CA gives.
     @Test
-    fun storeReadyWithNullMarkYieldsGenericAndEnablesYes() {
+    fun aStoredPairingWithNoMarkAsksAboutItsComputedMark() {
         val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = null, pairing = pairingP)
         val store = FakeMarkStore(StoreInspectResult.Ready(record))
         val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        val coordinator = JournalIdentityRefreshCoordinator(
+            store = store,
+            publisher = publisher,
+            deriveMark = { sampleMark },
+        )
 
         composeRule.setContent {
             PhoneTheme {
@@ -170,16 +198,18 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_YES_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("journalMarkCard")
-            .assertContentDescriptionEquals("your journal, not set up yet")
-        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
-        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertIsEnabled()
+            .assertContentDescriptionEquals("blue, purple, liquefy, smock")
+        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertDoesNotExist()
         coordinator.close()
     }
 
     @Test
     fun storeReadyWithMarkYieldsIdentifiedShowsWordsAndEnablesYes() {
-        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = sampleMark, pairing = pairingP)
+        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = sampleMark, pairing = pairingP, derived = true)
         val store = FakeMarkStore(StoreInspectResult.Ready(record))
         val publisher = StubPublisher(committedSnapshot(pairingP))
         val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
@@ -202,10 +232,8 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
-    fun storeUnreadableYieldsUnavailableAndEnablesYes() {
-        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "corrupt"))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+    fun aFailedDerivationYieldsUnavailableAndEnablesYes() {
+        val coordinator = unavailableCoordinator()
 
         composeRule.setContent {
             PhoneTheme {
@@ -227,7 +255,7 @@ class PhoneJournalMarkConfirmationComposeTest {
     fun identifiedPresentationWithStaleCommittedPairingDisablesYesButton() {
         val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
         val pairingB = PairingGeneration("inst-b", "sha256:cert-b")
-        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA, derived = true)
         val store = FakeMarkStore(StoreInspectResult.Ready(record))
         val publisher = StubPublisher(committedSnapshot(pairingA))
         val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
@@ -260,7 +288,7 @@ class PhoneJournalMarkConfirmationComposeTest {
     fun yesButtonClickUsesComposedGenerationAndRejectsIfPairingChanged() {
         val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
         val pairingB = PairingGeneration("inst-b", "sha256:cert-b")
-        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA, derived = true)
         val markStore = FakeMarkStore(StoreInspectResult.Ready(record))
         val confirmStore = FakeConfirmationStore()
         val publisher = StubPublisher(committedSnapshot(pairingA))
@@ -303,7 +331,7 @@ class PhoneJournalMarkConfirmationComposeTest {
     @Test
     fun yesButtonClickWhilePairingCurrentConfirmsCurrentPairing() {
         val pairingA = PairingGeneration("inst-a", "sha256:cert-a")
-        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA)
+        val record = JournalMarkRecord(instanceId = pairingA.instanceId, mark = sampleMark, pairing = pairingA, derived = true)
         val markStore = FakeMarkStore(StoreInspectResult.Ready(record))
         val confirmStore = FakeConfirmationStore()
         val publisher = StubPublisher(committedSnapshot(pairingA))
@@ -342,40 +370,8 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
-    fun yesClickSuccessWithGenericShowsConnectedSentenceAndCallsOnConfirmed() {
-        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, null, pairingP)))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
-        var onYesCalled = false
-        var confirmedCalled = false
-
-        composeRule.setContent {
-            PhoneTheme {
-                PairingSuccessMark(
-                    coordinator = coordinator,
-                    currentPairing = { pairingP },
-                    onYes = { _ ->
-                        onYesCalled = true
-                        true
-                    },
-                    onConfirmed = { confirmedCalled = true },
-                )
-            }
-        }
-
-        composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
-        composeRule.waitForIdle()
-        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
-
-        assertTrue(onYesCalled)
-        assertTrue(confirmedCalled)
-        composeRule.onNodeWithText("this phone is connected to your journal.").assertExists()
-        coordinator.close()
-    }
-
-    @Test
     fun yesClickSuccessWithIdentifiedShowsConnectedSentenceAndCallsOnConfirmed() {
-        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, sampleMark, pairingP)))
+        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, sampleMark, pairingP, derived = true)))
         val publisher = StubPublisher(committedSnapshot(pairingP))
         val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
         var onYesCalled = false
@@ -407,9 +403,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     @Test
     fun yesClickSuccessWithUnavailableShowsConnectedSentenceAndCallsOnConfirmed() {
-        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "unreadable"))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        val coordinator = unavailableCoordinator()
         var onYesCalled = false
         var confirmedCalled = false
         var mismatchCount = 0
@@ -448,9 +442,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     @Test
     fun unavailableCancelCallsOnMismatchOnceAndNeverOnYes() {
-        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "unreadable"))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        val coordinator = unavailableCoordinator()
         var onYesCalled = false
         var confirmedCount = 0
         var mismatchCount = 0
@@ -484,10 +476,8 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
-    fun yesClickFailureStaysOnPromptWithoutConnectedSentenceOrDisconnectError() {
-        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, null, pairingP)))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+    fun yesClickFailureStaysOnPromptAndSaysTheAnswerWasNotSaved() {
+        val coordinator = unavailableCoordinator()
         var onYesCalled = false
         var confirmedCalled = false
 
@@ -505,8 +495,11 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
+        composeRule.onNodeWithTag(PAIRING_ANSWER_NOT_SAVED_TAG).assertDoesNotExist()
         composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).performClick()
-        composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_ANSWER_NOT_SAVED_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
 
         assertTrue(onYesCalled)
         assertFalse(confirmedCalled)
@@ -518,10 +511,36 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     @Test
+    fun yesTheSecondTimeClearsTheLineAndConfirms() {
+        val coordinator = identifiedCoordinator()
+        val attempts = AtomicInteger(0)
+        var confirmedCalled = false
+
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = { attempts.incrementAndGet() > 1 },
+                    onConfirmed = { confirmedCalled = true },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(PAIRING_YES_TAG).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_ANSWER_NOT_SAVED_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag(PAIRING_YES_TAG).performClick()
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { confirmedCalled } }
+
+        composeRule.onNodeWithTag(PAIRING_ANSWER_NOT_SAVED_TAG).assertDoesNotExist()
+        coordinator.close()
+    }
+
+    @Test
     fun thatDoesNotMatchClickDoesNotCallOnYesCallsOnConfirmedAndShowsMismatchSentence() {
-        val store = FakeMarkStore(StoreInspectResult.Ready(JournalMarkRecord(pairingP.instanceId, null, pairingP)))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
-        val coordinator = JournalIdentityRefreshCoordinator(store = store, publisher = publisher)
+        val coordinator = identifiedCoordinator()
         var onYesCalled = false
         var confirmedCount = 0
         var mismatchCount = 0
@@ -544,8 +563,8 @@ class PhoneJournalMarkConfirmationComposeTest {
             }
         }
 
-        composeRule.onNodeWithText("does this match your journal?").assertDoesNotExist()
-        composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
+        composeRule.onNodeWithText("does this match your journal?").assertExists()
+        composeRule.onNodeWithTag(PAIRING_NO_MATCH_TAG).performClick()
         composeRule.waitForIdle()
 
         assertFalse(onYesCalled)
@@ -557,35 +576,29 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     @Test
     fun cachedUnavailableRequestsMarkShowsConnectingThenRendersContinueAnywayOnAnswer() {
-        val store = FakeMarkStore(StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "corrupt"))
-        val publisher = StubPublisher(committedSnapshot(pairingP))
+        val attempts = AtomicInteger(0)
+        val retryEntered = CountDownLatch(1)
+        val releaseRetry = CountDownLatch(1)
         val coordinator = JournalIdentityRefreshCoordinator(
-            store = store,
-            publisher = publisher,
-            boundMillis = 60_000L,
+            store = FakeMarkStore(),
+            publisher = StubPublisher(committedSnapshot(pairingP)),
+            deriveMark = {
+                if (attempts.incrementAndGet() > 1) {
+                    retryEntered.countDown()
+                    releaseRetry.await(30, TimeUnit.SECONDS)
+                }
+                error("no stored CA")
+            },
         )
-
-        // Finish an earlier failing onUsableConnection (client throws) and wait until that check has published,
-        // then onPairingChanged.
-        val initialUnavailableLatch = CountDownLatch(1)
-        val removeInitialListener = coordinator.addListener {
-            if (it is JournalMarkPresentation.Unavailable) initialUnavailableLatch.countDown()
+        val failed = CountDownLatch(1)
+        val remove = coordinator.addListener {
+            if (it is JournalMarkPresentation.Unavailable) failed.countDown()
         }
-        coordinator.onUsableConnection(
-            instanceId = pairingP.instanceId,
-            pairingMatches = { true },
-            openClient = { error("network failed") },
-        )
-        assertTrue(initialUnavailableLatch.await(5, TimeUnit.SECONDS))
-        removeInitialListener()
-
-        coordinator.onPairingChanged()
-        assertEquals(JournalMarkPresentation.Unavailable, coordinator.currentPresentation())
+        assertTrue(failed.await(5, TimeUnit.SECONDS))
+        remove()
         assertEquals(pairingP, coordinator.currentPresentationGeneration())
 
         val requestCount = AtomicInteger(0)
-        val ticketClientEntered = CountDownLatch(1)
-        val releaseTicketClient = CountDownLatch(1)
 
         composeRule.setContent {
             PhoneTheme {
@@ -594,50 +607,24 @@ class PhoneJournalMarkConfirmationComposeTest {
                     currentPairing = { pairingP },
                     requestMark = {
                         requestCount.incrementAndGet()
-                        coordinator.onMarkRequested(
-                            pairingMatches = { true },
-                            openClient = {
-                                object : PlHttpClient {
-                                    override fun request(
-                                        method: String,
-                                        path: String,
-                                        headers: Map<String, String>,
-                                        body: ByteArray?,
-                                        maxResponseBytes: Int,
-                                    ): HttpResponse {
-                                        ticketClientEntered.countDown()
-                                        while (releaseTicketClient.count > 0) {
-                                            try {
-                                                releaseTicketClient.await(5, TimeUnit.SECONDS)
-                                            } catch (_: InterruptedException) {
-                                            }
-                                        }
-                                        throw IOException("ticket failed")
-                                    }
-                                }
-                            },
-                        )
+                        coordinator.onMarkRequested()
                     },
                 )
             }
         }
 
-        // Wait until client has entered
-        assertTrue(ticketClientEntered.await(5, TimeUnit.SECONDS))
+        assertTrue(retryEntered.await(5, TimeUnit.SECONDS))
         composeRule.waitForIdle()
 
-        // At first idle, pairingConnecting is shown and pairingContinueAnyway is absent, and lambda called once
         composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
         composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertDoesNotExist()
         assertEquals(1, requestCount.get())
 
-        // Release latch
-        releaseTicketClient.countDown()
+        releaseRetry.countDown()
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodesWithTag(PAIRING_CONTINUE_ANYWAY_TAG).fetchSemanticsNodes().isNotEmpty()
         }
 
-        // pairingContinueAnyway is enabled, and lambda was still called once
         composeRule.onNodeWithTag(PAIRING_CONTINUE_ANYWAY_TAG).assertIsEnabled()
         assertEquals(1, requestCount.get())
 
@@ -666,7 +653,7 @@ class PhoneJournalMarkConfirmationComposeTest {
     }
 
     private fun identifiedCoordinator(): JournalIdentityRefreshCoordinator {
-        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = sampleMark, pairing = pairingP)
+        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = sampleMark, pairing = pairingP, derived = true)
         return JournalIdentityRefreshCoordinator(
             store = FakeMarkStore(StoreInspectResult.Ready(record)),
             publisher = StubPublisher(committedSnapshot(pairingP)),
@@ -687,11 +674,7 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     @Test
     fun anUnverifiedMarkOffersOnlyContinueAndCancel() {
-        val record = JournalMarkRecord(instanceId = pairingP.instanceId, mark = null, pairing = pairingP)
-        val coordinator = JournalIdentityRefreshCoordinator(
-            store = FakeMarkStore(StoreInspectResult.Ready(record)),
-            publisher = StubPublisher(committedSnapshot(pairingP)),
-        )
+        val coordinator = unavailableCoordinator()
         composeRule.setContent {
             PhoneTheme {
                 PairingSuccessMark(coordinator = coordinator, currentPairing = { pairingP }, onScanAgain = {})
@@ -703,10 +686,8 @@ class PhoneJournalMarkConfirmationComposeTest {
 
     @Test
     fun connectingOffersNoButtons() {
-        val coordinator = JournalIdentityRefreshCoordinator(
-            store = FakeMarkStore(StoreInspectResult.Missing),
-            publisher = StubPublisher(committedSnapshot(pairingP)),
-        )
+        val release = CountDownLatch(1)
+        val coordinator = derivingCoordinator(release)
         composeRule.setContent {
             PhoneTheme {
                 PairingSuccessMark(
@@ -719,6 +700,7 @@ class PhoneJournalMarkConfirmationComposeTest {
         }
         composeRule.onNodeWithTag(PAIRING_CONNECTING_TAG).assertExists()
         assertOnlyButtons()
+        release.countDown()
         coordinator.close()
     }
 

@@ -3,6 +3,7 @@
 
 package app.solstone.core.pl
 
+import app.solstone.core.identity.JournalMark
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.JournalMarkRecord
 import app.solstone.core.identity.JournalMarkStore
@@ -10,6 +11,7 @@ import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.StoreInspectResult
+import app.solstone.core.identity.SubscriptionHandle
 import java.io.Closeable
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
@@ -45,21 +47,35 @@ sealed class JournalMarkEvent {
 }
 
 data class IdentityRefreshSnapshot(
-    val instanceId: String,
-    val pairing: PairingGeneration?,
-    val pairingMatches: () -> Boolean = { true },
-    val openClient: () -> PlHttpClient,
+    val pairing: PairingGeneration,
     val requestSeq: Long,
 )
 
+/** The mark of the journal whose CA [pairing] pinned, computed from that stored CA. */
+private fun markFromPinnedCa(publisher: PairingPublisher?, pairing: PairingGeneration): JournalMark {
+    val caPem = checkNotNull(publisher?.pinnedCaPem(pairing)) { "no stored CA for this pairing" }
+    return journalMarkFromCaPem(caPem)
+}
+
+/**
+ * Keeps the mark of the committed pairing: computed here from the CA that pairing pinned, once per
+ * pairing, off the main thread, and stored. Nothing the journal serves reaches it. A forged link
+ * pins the forger's key, so the owner asked about this mark sees the forger's own.
+ *
+ * Whatever has no mark yet (a new pairing, a replaced one, or a pairing stored before marks were
+ * computed here) is picked up from the pairing authority, so there is no read to depend on and
+ * nothing a restart can lose. A failed derivation presents unavailable, and is tried again when the
+ * prompt asks and on the next start.
+ */
 open class JournalIdentityRefreshCoordinator(
     private val store: JournalMarkStore,
     executor: ExecutorService = Executors.newCachedThreadPool { r ->
         Thread(r, "journal-identity-refresh").apply { isDaemon = true }
     },
-    boundMillis: Long = 15_000L,
+    boundMillis: Long = 60_000L,
     private val onMarkUpdated: () -> Unit = {},
     private val publisher: PairingPublisher? = null,
+    private val deriveMark: (PairingGeneration) -> JournalMark = { markFromPinnedCa(publisher, it) },
 ) : Closeable {
     private val submitLock = Any()
     private val publishLock = Any()
@@ -84,30 +100,75 @@ open class JournalIdentityRefreshCoordinator(
     private val markListeners = CopyOnWriteArrayList<ListenerDelivery<JournalMarkEvent>>()
 
     @Volatile
-    private var currentPresentation: JournalMarkPresentation = initialPresentation()
+    private var currentPresentation: JournalMarkPresentation = initialPresentation(publisher?.currentSnapshot())
     @Volatile
-    private var currentPresentationGeneration: PairingGeneration? =
+    private var currentPresentationGeneration: PairingGeneration? = committedPairing()
+
+    private val subscription: SubscriptionHandle?
+
+    init {
+        submitIfPending()
+        subscription = publisher?.subscribe { onPairingPublished() }
+    }
+
+    private fun committedPairing(): PairingGeneration? =
         (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
 
-    // Loading means a load is pending. With a pairing authority and no committed pairing there is
-    // no journal to load a mark from, so an owner who has never paired, or who has forgotten their
-    // journal, keeps the generic mark instead of one that reads as loading forever. Without an
-    // authority the caller owns that fact, and an empty store still reads as a pending load.
-    private fun initialPresentation(): JournalMarkPresentation {
-        val current = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-        if (publisher != null && current == null) return JournalMarkPresentation.Generic
-        return when (val inspected = store.inspect()) {
-            StoreInspectResult.Missing -> JournalMarkPresentation.Loading
-            is StoreInspectResult.Unreadable -> JournalMarkPresentation.Unavailable
-            is StoreInspectResult.Ready -> {
-                val record = inspected.value
-                if (publisher != null && (record.pairing == null || record.pairing != current)) {
-                    JournalMarkPresentation.Loading
-                } else {
-                    record.mark?.let(JournalMarkPresentation::Identified)
-                        ?: JournalMarkPresentation.Generic
-                }
+    // Generic means no journal: an owner who has never paired, or who has forgotten theirs. A
+    // committed pairing is never generic. It has its computed mark, or one is on its way. A pairing
+    // record that can't be read is a journal whose mark can't be shown, not an absent one.
+    private fun initialPresentation(snapshot: PairingGraphSnapshot?): JournalMarkPresentation = when (snapshot) {
+        null -> JournalMarkPresentation.Loading
+        is PairingGraphSnapshot.Absent -> JournalMarkPresentation.Generic
+        is PairingGraphSnapshot.Uncertain -> JournalMarkPresentation.Unavailable
+        is PairingGraphSnapshot.Committed ->
+            keptMark(snapshot.pairing)?.let(JournalMarkPresentation::Identified) ?: JournalMarkPresentation.Loading
+    }
+
+    /** A mark computed for exactly this pairing. A record from when marks were served never counts. */
+    private fun keptMark(pairing: PairingGeneration): JournalMark? =
+        (store.inspect() as? StoreInspectResult.Ready)?.value
+            ?.takeIf { it.derived && it.pairing == pairing }
+            ?.mark
+
+    private fun submitIfPending() {
+        synchronized(submitLock) {
+            val pairing = committedPairing() ?: return
+            if (currentPresentation !is JournalMarkPresentation.Loading) return
+            submitDerivation(pairing, requestCounter)
+        }
+    }
+
+    private fun submitDerivation(pairing: PairingGeneration, seq: Long) {
+        job.submit(IdentityRefreshSnapshot(pairing, seq)) { snap, gen -> executeDerivation(snap, gen) }
+    }
+
+    // Reads the authority rather than the published value: delivery is queued, and a stale snapshot
+    // must not put a replaced pairing's state back.
+    private fun onPairingPublished() {
+        var updated = false
+        synchronized(submitLock) {
+            val snapshot = publisher?.currentSnapshot() ?: return
+            val pairing = (snapshot as? PairingGraphSnapshot.Committed)?.pairing
+            val next = synchronized(publishLock) {
+                val samePairing = pairing == currentPresentationGeneration
+                // The same pairing keeps what it has: a mark, a derivation in flight, or a failure
+                // that waits to be asked again.
+                if (samePairing && pairing != null) return
+                val next = initialPresentation(snapshot)
+                if (samePairing && next == currentPresentation) return
+                job.bumpGeneration()
+                updatePresentationLocked(next, pairing)
+                answer(requestCounter)
+                next
             }
+            updated = true
+            if (pairing != null && next is JournalMarkPresentation.Loading) {
+                submitDerivation(pairing, requestCounter)
+            }
+        }
+        if (updated) {
+            runCatching { onMarkUpdated() }
         }
     }
 
@@ -195,11 +256,10 @@ open class JournalIdentityRefreshCoordinator(
             job.bumpGeneration()
             store.clear()
             synchronized(publishLock) {
-                val init = initialPresentation()
-                val gen = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-                updatePresentationLocked(init, gen)
+                updatePresentationLocked(initialPresentation(publisher?.currentSnapshot()), committedPairing())
                 answer(requestCounter)
             }
+            submitIfPending()
             updated = true
         }
         if (updated) {
@@ -212,11 +272,10 @@ open class JournalIdentityRefreshCoordinator(
         synchronized(submitLock) {
             job.bumpGeneration()
             synchronized(publishLock) {
-                val init = initialPresentation()
-                val gen = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-                updatePresentationLocked(init, gen)
+                updatePresentationLocked(initialPresentation(publisher?.currentSnapshot()), committedPairing())
                 answer(requestCounter)
             }
+            submitIfPending()
             updated = true
         }
         if (updated) {
@@ -224,93 +283,25 @@ open class JournalIdentityRefreshCoordinator(
         }
     }
 
-    open fun onUsableConnection(
-        instanceId: String,
-        pairingMatches: () -> Boolean = { true },
-        openClient: () -> PlHttpClient,
-    ) {
+    /** The prompt asking: answers with a ticket once the committed pairing's mark has settled. */
+    fun onMarkRequested(): Long? {
         synchronized(submitLock) {
-            val snapshot = IdentityRefreshSnapshot(
-                instanceId = instanceId,
-                pairing = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)
-                    ?.pairing
-                    ?.takeIf { it.instanceId == instanceId },
-                pairingMatches = pairingMatches,
-                openClient = openClient,
-                requestSeq = requestCounter,
-            )
-            job.submit(snapshot) { snap, gen ->
-                executeIdentityJob(snap, gen)
-            }
-        }
-    }
-
-    fun onMarkRequested(
-        pairingMatches: () -> Boolean,
-        openClient: (() -> PlHttpClient)?,
-    ): Long? {
-        synchronized(submitLock) {
-            val currentCommitted = (publisher?.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-                ?: return null
+            val pairing = committedPairing() ?: return null
             val seq = ++requestCounter
-            val snapshot = IdentityRefreshSnapshot(
-                instanceId = currentCommitted.instanceId,
-                pairing = currentCommitted,
-                pairingMatches = pairingMatches,
-                openClient = openClient ?: { error("no client for parked mark request") },
-                requestSeq = seq,
-            )
-            job.submit(snapshot) { snap, gen ->
-                if (openClient != null) {
-                    executeIdentityJob(snap, gen)
-                } else {
-                    try {
-                        Thread.sleep(Long.MAX_VALUE)
-                    } catch (_: InterruptedException) {
-                    }
-                }
-            }
+            submitDerivation(pairing, seq)
             return seq
         }
     }
 
-    private fun executeIdentityJob(snap: IdentityRefreshSnapshot, gen: Long) {
-        var client: PlHttpClient? = null
+    private fun executeDerivation(snap: IdentityRefreshSnapshot, gen: Long) {
+        if (gen != job.currentGeneration() || committedPairing() != snap.pairing) return
         try {
-            client = snap.openClient()
-            when (val getResult = fetchJournalIdentity(client)) {
-                is IdentityGetResult.Success -> {
-                    val resp = getResult.response
-                    if (gen == job.currentGeneration() && snap.pairingMatches()) {
-                        if (resp.instanceId != null && resp.instanceId != snap.instanceId) {
-                            presentUnavailableIfCurrent(snap, gen)
-                        } else {
-                            val mark = resp.mark
-                            val record = JournalMarkRecord(
-                                instanceId = snap.instanceId,
-                                mark = if (resp.committed) mark else null,
-                                pairing = snap.pairing,
-                            )
-                            val presentation = if (resp.committed && mark != null) {
-                                JournalMarkPresentation.Identified(mark)
-                            } else {
-                                JournalMarkPresentation.Generic
-                            }
-                            commitIfCurrent(snap, record, presentation, gen)
-                        }
-                    }
-                }
-                is IdentityGetResult.NotFound,
-                is IdentityGetResult.Failure -> {
-                    presentUnavailableIfCurrent(snap, gen)
-                }
-            }
+            val kept = keptMark(snap.pairing)
+            val mark = kept ?: deriveMark(snap.pairing)
+            val record = JournalMarkRecord(snap.pairing.instanceId, mark, snap.pairing, derived = true)
+            commitIfCurrent(snap, record, JournalMarkPresentation.Identified(mark), gen, save = kept == null)
         } catch (_: Throwable) {
             presentUnavailableIfCurrent(snap, gen)
-        } finally {
-            if (client is Closeable) {
-                runCatching { client.close() }
-            }
         }
     }
 
@@ -318,48 +309,15 @@ open class JournalIdentityRefreshCoordinator(
         snap: IdentityRefreshSnapshot,
         gen: Long,
     ) {
-        presentUnavailable(snap, gen == job.currentGeneration()) { gen == job.currentGeneration() }
-    }
-
-    private fun presentUnavailable(
-        snap: IdentityRefreshSnapshot,
-        generationAllows: Boolean,
-        generationAllowsNow: () -> Boolean = { generationAllows },
-    ) {
-        if (!generationAllows || !snap.pairingMatches()) return
-        val authority = publisher
-        if (authority == null) {
-            var updated = false
-            synchronized(publishLock) {
-                if (generationAllowsNow() && snap.pairingMatches()) {
-                    updatePresentationLocked(JournalMarkPresentation.Unavailable, snap.pairing)
-                    updated = true
-                }
-            }
-            if (updated) {
-                runCatching { onMarkUpdated() }
-            }
-            return
-        }
-        var matches = false
-        authority.withMutationBoundary {
-            val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (generationAllows && snap.pairing != null && current == snap.pairing && snap.pairingMatches()) {
-                matches = true
+        var updated = false
+        synchronized(publishLock) {
+            if (gen == job.currentGeneration() && committedPairing() == snap.pairing) {
+                updatePresentationLocked(JournalMarkPresentation.Unavailable, snap.pairing)
+                updated = true
             }
         }
-        if (matches) {
-            var updated = false
-            synchronized(publishLock) {
-                val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-                if (generationAllowsNow() && current == snap.pairing && snap.pairingMatches()) {
-                    updatePresentationLocked(JournalMarkPresentation.Unavailable, snap.pairing)
-                    updated = true
-                }
-            }
-            if (updated) {
-                runCatching { onMarkUpdated() }
-            }
+        if (updated) {
+            runCatching { onMarkUpdated() }
         }
     }
 
@@ -368,37 +326,22 @@ open class JournalIdentityRefreshCoordinator(
         record: JournalMarkRecord,
         presentation: JournalMarkPresentation,
         gen: Long,
+        save: Boolean,
     ) {
-        val authority = publisher
-        if (authority == null) {
-            if (gen != job.currentGeneration() || !snapshot.pairingMatches()) return
-            store.save(record)
-            var committed = false
-            synchronized(publishLock) {
-                if (gen == job.currentGeneration() && snapshot.pairingMatches()) {
-                    updatePresentationLocked(presentation, snapshot.pairing)
-                    committed = true
-                }
-            }
-            if (committed) {
-                runCatching { onMarkUpdated() }
-            }
-            return
-        }
+        val authority = publisher ?: return
         var committed = false
         authority.withMutationBoundary {
-            val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-            if (gen != job.currentGeneration() || snapshot.pairing == null || current != snapshot.pairing || !snapshot.pairingMatches()) {
+            if (gen != job.currentGeneration() || committedPairing() != snapshot.pairing) {
                 return@withMutationBoundary
             }
-            store.save(record)
+            // A mark that couldn't be kept is still the right mark. The next start computes it again.
+            if (save) runCatching { store.save(record) }
             committed = true
         }
         if (committed) {
             var updated = false
             synchronized(publishLock) {
-                val current = (authority.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
-                if (gen == job.currentGeneration() && current == snapshot.pairing && snapshot.pairingMatches()) {
+                if (gen == job.currentGeneration() && committedPairing() == snapshot.pairing) {
                     updatePresentationLocked(presentation, snapshot.pairing)
                     updated = true
                 }
@@ -410,6 +353,7 @@ open class JournalIdentityRefreshCoordinator(
     }
 
     override fun close() {
+        subscription?.cancel()
         job.close()
         listeners.forEach { it.close() }
         generationListeners.forEach { it.close() }
