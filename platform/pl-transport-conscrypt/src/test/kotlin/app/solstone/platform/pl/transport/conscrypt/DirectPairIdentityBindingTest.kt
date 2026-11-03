@@ -101,6 +101,22 @@ class DirectPairIdentityBindingTest {
         assertEquals(listOf("/app/network/pair"), forger.recordedRequests.map { it.path.substringBefore('?') })
     }
 
+    // The owner's CA certificate is public and really does sign itself, so a link can pin its hash
+    // and a forger can present and name it. All the forger can't do is hold its key: only the
+    // signature on the forger's own leaf gives that away, and only the handshake checks it.
+    @Test
+    fun aPeerPresentingACopyOfTheOwnersCaUnderItsPinIsRefusedAtTheHandshake() {
+        val owners = peer()
+        val forger = JournalLoopbackStandIn(impersonatedCa = owners.caCert).also { peers += it }
+        forger.claimedInstanceId = owners.instanceId
+
+        assertFailsWith<DirectPairNotVerifiedException> { pair(forger.pairLink()) }
+
+        assertIs<PairingGraphSnapshot.Absent>(publisher.currentSnapshot())
+        assertNull(credentials.value)
+        assertEquals(emptyList(), forger.recordedRequests.map { it.path })
+    }
+
     @Test
     fun aGenuinePeerPairsAndItsMarkIsComputedFromThePinnedCaNotServed() {
         val journal = peer()

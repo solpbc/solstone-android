@@ -66,12 +66,15 @@ data class StandInRecordedRequest(
 
 class JournalLoopbackStandIn(
     preferredPort: Int = 0,
+    /** A CA to present and name in place of its own, whose key this stand-in doesn't hold. */
+    impersonatedCa: X509Certificate? = null,
 ) : AutoCloseable {
     val caKeyPair: KeyPair = generateP256KeyPair()
     val caCert: X509Certificate = selfSignedCertificate(caKeyPair, "Journal CA", isCa = true)
     val caPem: String = pem("CERTIFICATE", caCert.encoded)
     val caPinSpki: ByteArray = caSpkiFp16(caPem)
     val instanceId: String = jidFromCaPem(caPem)
+    private val presentedCa: X509Certificate = impersonatedCa ?: caCert
 
     val serverKeyPair: KeyPair = generateP256KeyPair()
     val serverCert: X509Certificate = signedCertificate(
@@ -103,7 +106,7 @@ class JournalLoopbackStandIn(
     init {
         val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
             load(null)
-            setKeyEntry("server", serverKeyPair.private, PASSWORD, arrayOf(serverCert, caCert))
+            setKeyEntry("server", serverKeyPair.private, PASSWORD, arrayOf(serverCert, presentedCa))
         }
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
             init(keyStore, PASSWORD)
@@ -151,7 +154,7 @@ class JournalLoopbackStandIn(
         bytes[4] = (port and 0xff).toByte()
         ip.copyInto(bytes, 5)
         nonce.copyInto(bytes, 9)
-        val directCaPin = sha256(caCert.encoded).copyOf(16)
+        val directCaPin = sha256(presentedCa.encoded).copyOf(16)
         directCaPin.copyInto(bytes, 25)
         return "https://go.solstone.app/p#${encodeCrockford(bytes)}"
     }
@@ -452,7 +455,7 @@ class JournalLoopbackStandIn(
             val fingerprint = "sha256:" + sha256Hex(clientCert.encoded)
             val json = """
             {
-              "ca_chain": [${toJson(caPem)}],
+              "ca_chain": [${toJson(pem("CERTIFICATE", presentedCa.encoded))}],
               "client_cert": ${toJson(clientCertPem)},
               "instance_id": "$claimedInstanceId",
               "home_label": "Home",

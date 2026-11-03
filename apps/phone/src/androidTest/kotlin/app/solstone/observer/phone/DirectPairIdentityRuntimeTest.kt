@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.pl.journalMarkFromCaPem
+import app.solstone.platform.pl.transport.conscrypt.DirectPairNotVerifiedException
 import app.solstone.platform.pl.transport.conscrypt.pairAndProbe
 import app.solstone.platform.work.syncStores
 import app.solstone.testing.JournalLoopbackStandIn
@@ -71,6 +72,18 @@ class DirectPairIdentityRuntimeTest {
         assertTrue(stores.publisher.currentSnapshot() is PairingGraphSnapshot.Absent)
         assertNull(stores.credentialStore.load())
         assertEquals(listOf("/app/network/pair"), forger.recordedRequests.map { it.path.substringBefore('?') })
+    }
+
+    @Test
+    fun aPeerPresentingACopyOfTheOwnersCaUnderItsPinIsRefusedAtTheHandshake() {
+        val owners = peer()
+        val forger = JournalLoopbackStandIn(impersonatedCa = owners.caCert).also { peers += it }
+        forger.claimedInstanceId = owners.instanceId
+
+        assertThrows(DirectPairNotVerifiedException::class.java) { pair(forger.pairLink()) }
+
+        assertTrue(syncStores(context).publisher.currentSnapshot() is PairingGraphSnapshot.Absent)
+        assertTrue(forger.recordedRequests.isEmpty())
     }
 
     @Test

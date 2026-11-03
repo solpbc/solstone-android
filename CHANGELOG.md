@@ -8,7 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- pairing now refuses a journal that isn't the one its pairing link names, and the mark you're asked to check is worked out on this phone instead of coming from the journal. before, a journal reached through a forged pairing link could show you your real journal's mark, so the check could pass.
+- this is a security fix, please update. someone who got you to use a pairing link or code they had forged could show your real journal's mark on this phone, so it looked right when you were asked. if you went ahead, what was waiting on this phone, and what the solstone app took in after that, could have gone to them instead of your journal. if you opened your journal in the app, you were in theirs, and what you typed or saved there went to them too. pairing now refuses a journal claiming to be a different one, and the mark you're asked to check is worked out on this phone, so a forged link or code shows the forger's mark, not yours. if you paired before this update, you won't be asked, so compare the mark on this phone with the one in your journal's network app, and forget this journal if they differ.
 - your journal's mark now shows after a restart, even if you continued past the check. when it can't be worked out, the app says the mark is unavailable, not that your journal isn't set up.
 - if the app can't save your answer to the mark question, it now says so. before, the button seemed to do nothing.
 - your journal's mark now has the same line weights as in your journal's network app.
