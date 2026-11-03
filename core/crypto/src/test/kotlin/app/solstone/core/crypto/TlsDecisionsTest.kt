@@ -56,6 +56,24 @@ class TlsDecisionsTest {
         }
     }
 
+    @Test
+    fun theHandshakesLeafHasToChainToTheCertificateByItsSignature() {
+        val signedLeaf = certificateFromPem(TEST_CLIENT_CERT_PEM).encoded
+        val otherLeaf = certificateFromPem(TEST_RELAY_UNRELATED_PEM).encoded
+
+        assertDirectPairIdentity(rootJid, TEST_ROOT_CERT_PEM, rootDer, signedLeaf)
+        assertFailsWith<CaPinException> {
+            assertDirectPairIdentity(rootJid, TEST_ROOT_CERT_PEM, rootDer, otherLeaf)
+        }
+    }
+
+    @Test
+    fun anIdIsCheckedAgainstAStoredCaAndAnUnreadableCaSaysNothing() {
+        assertEquals(true, instanceIdMatchesCa(rootJid, TEST_ROOT_CERT_PEM))
+        assertEquals(false, instanceIdMatchesCa("f30ed159-ef46-8e9c-913f-e49f0fe7d201", TEST_ROOT_CERT_PEM))
+        assertEquals(null, instanceIdMatchesCa(rootJid, "not a certificate"))
+    }
+
     private fun jidFromSpkiDerOrNull(certificateDer: ByteArray): String? =
         runCatching { jidFromSpkiDer(certificateFromDer(certificateDer).publicKey.encoded) }.getOrNull()
 

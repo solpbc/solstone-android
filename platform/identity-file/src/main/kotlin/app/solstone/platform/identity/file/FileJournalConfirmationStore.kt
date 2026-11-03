@@ -34,28 +34,32 @@ class FileJournalConfirmationStore(private val file: File) : JournalConfirmation
                 return StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, "confirmation confirmed")
             }
             val confirmed = rawConfirmed as? String
-            StoreInspectResult.Ready(JournalConfirmation(confirmed = confirmed))
+            StoreInspectResult.Ready(JournalConfirmation(confirmed = confirmed, reasked = root["reasked"] as? String))
         } catch (t: Throwable) {
             StoreInspectResult.Unreadable(PersistenceIssue.PERSISTENCE_FAILED, t.javaClass.simpleName)
         }
     }
 
     override fun confirm(fingerprint: String) {
-        val root = mapOf(
-            "confirmed" to fingerprint,
-        )
-        val json = toJson(root)
-        atomicWriteOwnerOnly(file, json.toByteArray(Charsets.UTF_8))
-        notifyListeners()
+        write(JournalConfirmation(confirmed = fingerprint, reasked = readable()?.reasked))
     }
 
     override fun settle() {
-        val existingConfirmed = (inspect() as? StoreInspectResult.Ready)?.value?.confirmed
-        val root = mapOf(
-            "confirmed" to existingConfirmed,
-        )
-        val json = toJson(root)
-        atomicWriteOwnerOnly(file, json.toByteArray(Charsets.UTF_8))
+        write(readable() ?: JournalConfirmation(confirmed = null))
+    }
+
+    override fun holdToAskAgain(fingerprint: String) {
+        write(JournalConfirmation(confirmed = null, reasked = fingerprint))
+    }
+
+    private fun readable(): JournalConfirmation? = (inspect() as? StoreInspectResult.Ready)?.value
+
+    private fun write(state: JournalConfirmation) {
+        val root = buildMap {
+            put("confirmed", state.confirmed)
+            state.reasked?.let { put("reasked", it) }
+        }
+        atomicWriteOwnerOnly(file, toJson(root).toByteArray(Charsets.UTF_8))
         notifyListeners()
     }
 

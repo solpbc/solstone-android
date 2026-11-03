@@ -26,7 +26,10 @@ import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.observer.INGEST_PATH
+import app.solstone.core.observer.SEGMENTS_PATH
 import app.solstone.core.pl.journalMarkFromCaPem
+import app.solstone.platform.work.holdPairingWhoseIdIsNotItsCas
 import app.solstone.platform.work.syncStores
 import app.solstone.testing.JournalLoopbackStandIn
 import org.junit.After
@@ -61,7 +64,7 @@ class PhoneHeldRevokeAndMarkTest {
         runCatching { syncStores(context).publisher.forget() }
     }
 
-    private fun installTestPairing(standIn: JournalLoopbackStandIn) {
+    private fun installTestPairing(standIn: JournalLoopbackStandIn, instanceId: String = standIn.instanceId) {
         val stores = syncStores(context)
         val publisher = stores.publisher
         publisher.forget()
@@ -74,7 +77,7 @@ class PhoneHeldRevokeAndMarkTest {
             isCa = false,
         )
         val home = PairedHome(
-            instanceId = standIn.instanceId,
+            instanceId = instanceId,
             homeLabel = "Home",
             relayOrigin = null,
             caChainFingerprint = "sha256:ca-1",
@@ -191,6 +194,43 @@ class PhoneHeldRevokeAndMarkTest {
                 server.recordedRequests.any { it.method == "DELETE" && it.path.startsWith("/app/network/api/clients/") }
             }
             assertTrue(server.recordedRequests.any { it.method == "DELETE" && it.path.startsWith("/app/network/api/clients/") })
+        }
+    }
+
+    // A pairing stored before ids were checked. On start it goes back to held, the prompt asks about
+    // the mark its stored CA gives, nothing is sent to it meanwhile, and `no` tears it down as usual.
+    @Test
+    fun aStoredPairingWhoseIdIsNotItsCasIsHeldAskedAndTornDownOnNo() {
+        val server = standIn!!
+        val otherJournal = JournalLoopbackStandIn()
+        try {
+            installTestPairing(server, instanceId = otherJournal.instanceId)
+            val stores = syncStores(context)
+            val committed = stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed
+            stores.journalConfirmationStore.confirm(committed.home.clientCertFingerprint)
+
+            holdPairingWhoseIdIsNotItsCas(stores.publisher, stores.journalConfirmationStore)
+
+            assertTrue(phoneAwaitingMarkConfirmation(context))
+            val expected = journalMarkFromCaPem(server.caPem)
+            val factory = phoneSpec.pairingAccessoryFactory!!
+            ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    activity.setContentView(factory(activity) {})
+                }
+                composeRule.waitUntil(MARK_DERIVED_MILLIS) {
+                    composeRule.onAllNodesWithTag("pairingNoMatch").fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.onNodeWithText(expected.words[0], useUnmergedTree = true).assertExists()
+                assertTrue(server.recordedRequests.none { it.path.startsWith(INGEST_PATH) || it.path.startsWith(SEGMENTS_PATH) })
+
+                composeRule.onNodeWithTag("pairingNoMatch").performClick()
+                composeRule.waitUntil(5000) {
+                    stores.publisher.currentSnapshot() is PairingGraphSnapshot.Absent
+                }
+            }
+        } finally {
+            otherJournal.close()
         }
     }
 

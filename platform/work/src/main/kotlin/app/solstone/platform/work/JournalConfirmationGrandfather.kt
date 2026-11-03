@@ -3,6 +3,7 @@
 
 package app.solstone.platform.work
 
+import app.solstone.core.crypto.instanceIdMatchesCa
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.core.identity.PairingGraphSnapshot
@@ -45,6 +46,30 @@ object JournalConfirmationGrandfather {
                     }
                 }
             }
+            holdPairingWhoseIdIsNotItsCas(publisher, store)
+        }
+    }
+}
+
+/**
+ * A pairing stored before ids were checked may name a journal its pinned CA isn't. It goes back to
+ * the held state, once, and the owner is asked about the mark that CA gives. Nothing else is re-asked.
+ * A CA that can't be read proves nothing, so it holds nothing here: no dial can verify a peer
+ * without it, and the mark shows as unavailable.
+ */
+fun holdPairingWhoseIdIsNotItsCas(publisher: PairingPublisher, store: JournalConfirmationStore) {
+    if (!JournalConfirmationPolicy.consults) return
+    publisher.withMutationBoundary {
+        val snapshot = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed ?: return@withMutationBoundary
+        val fingerprint = snapshot.home.clientCertFingerprint
+        val state = (store.inspect() as? StoreInspectResult.Ready)?.value ?: return@withMutationBoundary
+        if (state.confirmed != fingerprint || state.reasked == fingerprint) return@withMutationBoundary
+        val caPem = runCatching { publisher.pinnedCaPem(snapshot.pairing) }.getOrNull() ?: return@withMutationBoundary
+        if (instanceIdMatchesCa(snapshot.home.instanceId, caPem) != false) return@withMutationBoundary
+        try {
+            store.holdToAskAgain(fingerprint)
+        } catch (t: Exception) {
+            workerLog("w", "confirmation write failed; pairing not held", t)
         }
     }
 }

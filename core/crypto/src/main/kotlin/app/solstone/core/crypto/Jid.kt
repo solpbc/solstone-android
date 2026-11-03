@@ -21,6 +21,20 @@ class JidRefusalException(message: String, cause: Throwable? = null) : Exception
 
 fun jidFromCaPem(caPem: String): String = jidFromSpkiDer(certificateFromPem(caPem).publicKey.encoded)
 
+/**
+ * Whether [instanceId] is the journal id of the CA in [caPem]. Null when the certificate can't be
+ * read, so nothing can be said either way. A certificate that reads but whose key has no journal id
+ * can't be the CA of any journal, so that is false.
+ */
+fun instanceIdMatchesCa(instanceId: String, caPem: String): Boolean? {
+    val publicKey = runCatching { certificateFromPem(caPem).publicKey }.getOrNull() ?: return null
+    return try {
+        jidFromSpkiDer(publicKey.encoded) == instanceId
+    } catch (_: JidRefusalException) {
+        false
+    }
+}
+
 fun jidFromSpkiDer(spkiDer: ByteArray): String {
     val raw = hkdfSha256(canonicalP256Spki(spkiDer), JID_HKDF_SALT, JID_HKDF_INFO, 16)
     raw[6] = ((raw[6].toInt() and 0x0f) or 0x80).toByte()

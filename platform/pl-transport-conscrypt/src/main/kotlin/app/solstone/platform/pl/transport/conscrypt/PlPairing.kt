@@ -193,12 +193,14 @@ internal fun pairAndProbe(
 
     for (endpoint in ordered) {
         var pinned = false
+        var peerLeafDer: ByteArray? = null
         val pairHttp = try {
             val pairPath = "/app/network/pair?token=" + link.nonce
             val pairHeaders = mapOf("content-type" to "application/json")
             val pairBody = material.requestBody
             val pairSession = sessionOpener(endpoint, link.caFingerprintPrefix)
             pinned = pairSession.handshakePinned
+            peerLeafDer = pairSession.peerLeafDer
             pairSession.session.use { session ->
                 requestInvoked = true
                 session.request("POST", pairPath, pairHeaders, pairBody)
@@ -229,7 +231,7 @@ internal fun pairAndProbe(
                     )
                 }
                 try {
-                    assertDirectPairIdentity(resp.instanceId, resp.caChain.first(), caDer)
+                    assertDirectPairIdentity(resp.instanceId, resp.caChain.first(), caDer, peerLeafDer)
                 } catch (e: CaPinException) {
                     report(endpoint, DialOutcome.NOT_VERIFIED)
                     throw SSLException("direct pair response did not match the pinned CA", e)
@@ -488,7 +490,12 @@ fun openAuthenticatedLeaseClient(lease: PairingLease): ConscryptPlHttpClient = w
     )
 }
 
-internal data class CertlessSession(val session: MuxSession, val handshakePinned: Boolean)
+internal class CertlessSession(
+    val session: MuxSession,
+    val handshakePinned: Boolean,
+    /** The leaf the handshake proved. The real opener always sets it. */
+    val peerLeafDer: ByteArray? = null,
+)
 
 private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: ByteArray): CertlessSession {
     val socket = connectedSslSocket(certlessFactory(), endpoint.host, endpoint.port)
@@ -503,7 +510,7 @@ private fun openCertlessSession(endpoint: DirectEndpoint, caFingerprintPrefix: B
         } catch (e: CaPinException) {
             throw SSLException(PAIR_TLS_CA_PIN_MISMATCH, e)
         }
-        return CertlessSession(MuxSession(SocketByteDuplex(socket)), true)
+        return CertlessSession(MuxSession(SocketByteDuplex(socket)), true, socket.session.peerCertificates.first().encoded)
     } catch (e: Exception) {
         socket.close()
         throw e

@@ -135,6 +135,37 @@ class DirectPairRelayAccessTest {
         assertEquals(bootstrapToken, home.deviceToken)
     }
 
+    // The pin's hash ties the response's CA to the handshake's. This holds the leaf to it by signature.
+    @Test
+    fun aHandshakeLeafThatTheResponsesCaDidNotSignIsRefusedAndNothingIsKept() {
+        val credStore = FakeCredentialStore()
+        val identStore = FakeIdentityStore()
+        val endpStore = FakeEndpointStore()
+        val responseJson = pairResponseWithRelayAccess(relayAccessJson = null)
+        val otherLeaf = app.solstone.core.crypto.generateP256KeyPair().let { keys ->
+            app.solstone.testing.JournalLoopbackStandIn.selfSignedCertificate(keys, "Other", isCa = false).encoded
+        }
+
+        kotlin.test.assertFailsWith<javax.net.ssl.SSLException> {
+            pairAndProbe(
+                pairLink = validPairLink(),
+                deviceLabel = "test phone",
+                credentialStore = credStore,
+                identityStore = identStore,
+                endpointStore = endpStore,
+                sessionOpener = { _, _ ->
+                    CertlessSession(app.solstone.core.pl.MuxSession(responseDuplex(200, responseJson)), true, otherLeaf)
+                },
+                localInterfaces = emptyList(),
+                materialFactory = { DirectPairMaterial("KEY", leafPublicKey(), "CSR".toByteArray()) },
+                statusProbe = { _, _ -> HttpResponse(200, emptyMap(), "ok".toByteArray()) },
+            )
+        }
+
+        assertNull(identStore.load())
+        assertNull(credStore.load())
+    }
+
     @Test
     fun directPairWithOmittedBootstrapSucceedsWithNullRelayFields() {
         val credStore = FakeCredentialStore()

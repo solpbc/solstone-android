@@ -52,6 +52,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(project(":core:spool"))
+    testImplementation(project(":testing"))
     androidTestImplementation("androidx.work:work-testing:2.9.1")
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.5.0")

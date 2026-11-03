@@ -30,13 +30,26 @@ fun assertDirectCaPin(chain: List<ByteArray>, expectedCaDerPrefix: ByteArray) {
  * A direct pair response's id must be the journal id of the CA the link pinned. [pinnedCaDer] is the
  * exact bytes that passed the pin, and [caPem] is what gets stored: both have to be that one
  * certificate, and the certificate has to prove it holds its own key, or a copy of a real journal's
- * public key could be presented under that journal's id.
+ * public key could be presented under that journal's id. [peerLeafDer] is the leaf the handshake
+ * proved, which has to chain to this certificate by signature as well as by the pin's hash.
  */
-fun assertDirectPairIdentity(instanceId: String, caPem: String, pinnedCaDer: ByteArray) {
+fun assertDirectPairIdentity(
+    instanceId: String,
+    caPem: String,
+    pinnedCaDer: ByteArray,
+    peerLeafDer: ByteArray? = null,
+) {
     val ca = try {
         certificateFromDer(pinnedCaDer).also { it.verify(it.publicKey) }
     } catch (e: Exception) {
         throw CaPinException("direct pair CA was not a self-signed certificate", e)
+    }
+    if (peerLeafDer != null) {
+        try {
+            certificateFromDer(peerLeafDer).verify(ca.publicKey)
+        } catch (e: Exception) {
+            throw CaPinException("direct pair peer leaf was not signed by the response's CA", e)
+        }
     }
     val stored = runCatching { certificateFromPem(caPem).encoded }.getOrNull()
     if (!ca.encoded.contentEquals(pinnedCaDer) || !pinnedCaDer.contentEquals(stored)) {
