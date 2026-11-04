@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +36,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import java.time.ZoneId
+import kotlinx.coroutines.delay
 
 /** The one wall-clock read the status surface uses. Callers pass the value onward. */
 fun statusWallNow(): Long = System.currentTimeMillis()
@@ -42,6 +47,30 @@ fun interface PhoneStatusNow {
 
 val LocalPhoneStatusNow = staticCompositionLocalOf<PhoneStatusNow> {
     PhoneStatusNow { statusWallNow() }
+}
+
+private const val UNCOVERED_SETTLE_MS = 400L
+
+/**
+ * [value], held while [covered] and for a moment after, so the pill's words change only once the
+ * pill is back in the accessibility tree.
+ *
+ * The pairing overlay takes the shell out of that tree. A pill that returns already showing its new
+ * state is a new node with nothing changed, and a live region speaks only a change: answering `yes`
+ * closed the prompt and a screen reader never heard the state it led to.
+ */
+@Composable
+fun <T> heldWhileCovered(value: T, covered: Boolean): T {
+    var shown by remember { mutableStateOf(value) }
+    var settling by remember { mutableStateOf(false) }
+    if (covered) settling = true
+    LaunchedEffect(value, covered) {
+        if (covered) return@LaunchedEffect
+        if (settling) delay(UNCOVERED_SETTLE_MS)
+        settling = false
+        shown = value
+    }
+    return shown
 }
 
 /**

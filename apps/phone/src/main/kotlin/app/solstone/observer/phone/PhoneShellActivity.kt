@@ -95,6 +95,7 @@ import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.observer.formfactor.phone.PhoneTheme
 import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_RUNNING
 import app.solstone.observer.formfactor.phone.checkConnectionResult
+import app.solstone.observer.formfactor.phone.heldWhileCovered
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.observer.harness.HarnessPlStatus
 import androidx.compose.runtime.rememberCoroutineScope
@@ -920,7 +921,7 @@ class PhoneShellActivity : ComponentActivity() {
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
-                status = snapshot?.status,
+                status = heldWhileCovered(snapshot?.status, covered = pairingOpen),
                 paneStatus = paneSnapshot?.status,
                 onStatusContentVisible = statusViewModel::onStatusForeground,
                 aboutBlock = aboutBlock,
