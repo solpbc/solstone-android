@@ -3,10 +3,10 @@
   "adoption_schema_version": 1,
   "consumer_identifier": "solpbc/solstone-android",
   "authority_repository": "https://github.com/solpbc/spl",
-  "authority_commit": "f9b0c65d6f0b234aa70d97cfc477e0b6ae35aa65",
-  "bundle_semver": "9.0.0",
+  "authority_commit": "38d51c46911c4e08cbbaa4bd2ec94ac8aa0e193f",
+  "bundle_semver": "9.0.1",
   "authority_manifest_path": "proto/definition/bundle/manifest.json",
-  "authority_manifest_sha256": "012fc87119ad9c831a76862a594f0529eb47bd647da549ca2acf7af1e91e8fce",
+  "authority_manifest_sha256": "6b3ae67058a47a27a5f07e99eae3b5421260e08c7fa492f3ec1df5c56f354968",
   "bundle_files": [
     {
       "path": "definition.json",
