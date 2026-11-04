@@ -751,6 +751,7 @@ class PhoneShellActivity : ComponentActivity() {
                         if (pairingDiagKey(before) != pairingDiagKey(effective)) {
                             PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(effective)}")
                         }
+                        pairingViewModel.closeQuestionIfNothingToAnswer(isAwaitingMarkConfirmation(), container.controller, stores)
                     }
                 }
                 val removeMarkListener = stores.journalIdentityCoordinator.addGenerationListener { generation, next ->

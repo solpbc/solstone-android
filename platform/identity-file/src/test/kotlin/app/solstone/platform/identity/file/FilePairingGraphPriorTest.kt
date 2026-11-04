@@ -184,13 +184,23 @@ class FilePairingGraphPriorTest {
         assertEquals(generation("b"), graph.committed().pairing)
     }
 
-    // Falsified by a record that can't be read blocking the answer: the owner can always still leave.
+    // Falsified by treating a passing keystore failure as no prior pairing: the no would fall through
+    // to forgetting, and delete the owner's working pairing for good.
     @Test
-    fun aKeptPairingThatCantBeReadIsNotOffered() {
+    fun aKeptPairingThatCantBeReadRightNowFailsAndStaysForAnotherTry() {
         val graph = graph()
         graph.pair("a")
         graph.replaceWith("b")
-        File(temp.root, "credential.pem.prior").writeText("not a credential")
-        assertFalse(graph.canRestorePrior(generation("b")))
+        val kept = File(temp.root, "credential.pem.prior")
+        val bytes = kept.readBytes()
+        kept.writeText("not a credential")
+
+        assertTrue(graph.canRestorePrior(generation("b")))
+        assertIs<GraphMutationResult.PersistenceFailed>(graph.restorePrior(generation("b")))
+        assertEquals(generation("b"), graph.committed().pairing)
+
+        kept.writeBytes(bytes)
+        assertIs<GraphMutationResult.Applied>(graph.restorePrior(generation("b")))
+        assertEquals(credential("a"), storedCredential())
     }
 }

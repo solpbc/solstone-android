@@ -63,6 +63,16 @@ class HandshakeGuard(
     private fun enforce(pairing: PairingGeneration, stop: HandshakeStop) {
         val snapshot = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed
         if (snapshot == null || snapshot.pairing != pairing) return
+        // A replacement the owner hasn't answered for refused this device. That says nothing about
+        // the pairing it replaced, which goes back to how it was. A restore that fails is retried at
+        // the next dial, since the stop stands.
+        if (publisher.canRestorePrior(pairing)) {
+            when (val result = publisher.restorePrior(pairing)) {
+                is GraphMutationResult.Applied -> log("unanswered pairing refused this device: ${stop.name.lowercase()}", null)
+                else -> log("could not restore the prior pairing: $result", null)
+            }
+            return
+        }
         if (snapshot.home.state != IdentityState.REVOKED) {
             when (val result = publisher.revokePairing(pairing)) {
                 is GraphMutationResult.Applied -> log("journal stopped accepting this device: ${stop.name.lowercase()}", null)

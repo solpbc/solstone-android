@@ -445,6 +445,7 @@ class PhoneJournalMarkConfirmationComposeTest {
     @Test
     fun aMismatchThatPutTheOldPairingBackSaysNotChanged() {
         val coordinator = unavailableCoordinator()
+        var clearedCount = 0
         composeRule.setContent {
             PhoneTheme {
                 PairingSuccessMark(
@@ -453,6 +454,7 @@ class PhoneJournalMarkConfirmationComposeTest {
                     onYes = { _ -> true },
                     onConfirmed = {},
                     onMismatch = { PairingMismatchResult.NotChanged },
+                    onMismatchCleared = { clearedCount += 1 },
                 )
             }
         }
@@ -463,6 +465,7 @@ class PhoneJournalMarkConfirmationComposeTest {
         }
         composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
         composeRule.onNodeWithText("this phone is no longer connected to that journal.").assertDoesNotExist()
+        assertEquals(1, clearedCount)
         coordinator.close()
     }
 

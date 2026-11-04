@@ -165,6 +165,24 @@ class PhoneMismatchOperationTest {
         assertNotEquals(prior, revokedWith)
     }
 
+    // Falsified by a passing keystore failure falling through to forget: the pairing it couldn't read
+    // right now would be deleted for good.
+    @Test fun aNoThatCantReadThePriorPairingFailsAndForgetsNothing() = runBlocking {
+        val graph = graph()
+        install(graph, "a")
+        val b = replace(graph, "b")
+        File(temp.root, "credential.pem.prior").writeText("not a credential")
+
+        val result = clearMismatchedPairing(graph, b.pairing,
+            revoke = { JournalRevokeOutcome.UNREACHED },
+            afterCleared = { error("must not forget") }, canClear = { true }, log = {},
+        )
+
+        assertIs<GraphMutationResult.PersistenceFailed>(result)
+        assertEquals(b.pairing, assertIs<PairingGraphSnapshot.Committed>(graph.currentSnapshot()).pairing)
+        assertTrue(graph.canRestorePrior(b.pairing))
+    }
+
     // Falsified by holding the prior pairing only in memory.
     @Test fun answeringNoAfterAProcessDeathStillPutsItBack() = runBlocking {
         val first = graph()

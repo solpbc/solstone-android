@@ -127,6 +127,7 @@ fun buildObserverFlavor(
         controller = controller,
         opportunisticSync = opportunisticSync,
         backlogStatus = backlogStatus,
+        journalConfirmation = stores.journalConfirmationStore,
     )
 }
 

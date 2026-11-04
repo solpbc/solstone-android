@@ -807,7 +807,10 @@ fun PairingSuccessMark(
             mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
             confirmation = when (mismatchResult) {
                 PairingMismatchResult.LocalFailure -> PairingConfirmation.Failed
-                PairingMismatchResult.NotChanged -> PairingConfirmation.NotChanged
+                PairingMismatchResult.NotChanged -> {
+                    onMismatchCleared()
+                    PairingConfirmation.NotChanged
+                }
                 else -> {
                     onMismatchCleared()
                     PairingConfirmation.Mismatched
@@ -960,7 +963,7 @@ fun PairingSuccessMark(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "your current pairing stays in use. nothing this phone has kept went to that journal through this link.",
+                    "your pairing stays as it was. nothing waiting on this phone went to that journal through this link.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = shellSecondaryInk,
                     textAlign = TextAlign.Center,

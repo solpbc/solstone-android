@@ -192,6 +192,45 @@ class HandshakeStopPersistenceTest {
         assertEquals(app.solstone.core.pl.LegOutcome.STOPPED, outcome)
     }
 
+    // Falsified by revoking the replacement: the question ends, and the healthy pairing it replaced is
+    // stranded behind a journal the owner never accepted.
+    @Test
+    fun anUnansweredReplacementThatRefusesThisDevicePutsThePriorPairingBack() {
+        val graph = graph()
+        install(graph, "sha256:cert-1")
+        val prior = PairingGeneration("home-1", "sha256:cert-1")
+        val replacement = PairingGeneration("home-1", "sha256:cert-2")
+        graph.holdPriorFor(replacement)
+        install(graph, "sha256:cert-2")
+        val guard = HandshakeGuard(process(t0), graph)
+
+        val attempt = guard.begin(replacement)
+        attempt.onRefused(JournalRefusalException(HandshakeFailure.TLS_ACCESS_DENIED, 49))
+
+        val restored = assertIs<PairingGraphSnapshot.Committed>(graph().currentSnapshot())
+        assertEquals(prior, restored.pairing)
+        assertEquals(IdentityState.PAIRED, restored.home.state)
+        assertTrue(!HandshakeGuard(process(t0 + 1), graph).stopped(prior))
+    }
+
+    // Answered for, it is the owner's pairing, and a refusal stops it like any other.
+    @Test
+    fun anAnsweredReplacementThatRefusesThisDeviceIsStopped() {
+        val graph = graph()
+        install(graph, "sha256:cert-1")
+        val replacement = PairingGeneration("home-1", "sha256:cert-2")
+        graph.holdPriorFor(replacement)
+        install(graph, "sha256:cert-2")
+        graph.discardPrior(replacement)
+        val guard = HandshakeGuard(process(t0), graph)
+
+        guard.begin(replacement).onRefused(JournalRefusalException(HandshakeFailure.TLS_ACCESS_DENIED, 49))
+
+        val stopped = assertIs<PairingGraphSnapshot.Committed>(graph().currentSnapshot())
+        assertEquals(replacement, stopped.pairing)
+        assertEquals(IdentityState.REVOKED, stopped.home.state)
+    }
+
     private fun graph() = FilePairingGraph(
         identityFile = File(temp.root, "identity.tsv"),
         credentialFile = File(temp.root, "credential.pem"),

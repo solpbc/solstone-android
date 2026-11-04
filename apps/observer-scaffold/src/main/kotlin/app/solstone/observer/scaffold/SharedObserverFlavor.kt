@@ -3,6 +3,7 @@
 
 package app.solstone.observer.scaffold
 
+import app.solstone.core.identity.JournalConfirmationStore
 import app.solstone.observer.harness.BacklogStatusReader
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.OpportunisticSync
@@ -13,6 +14,8 @@ data class SharedObserverFlavor(
     val syncControl: SyncControl? = null,
     val opportunisticSync: OpportunisticSync? = null,
     val backlogStatus: BacklogStatusReader? = null,
+    /** The owner's answer to the mark question; null where nothing asks it. */
+    val journalConfirmation: JournalConfirmationStore? = null,
 )
 
 interface HeartbeatControl {

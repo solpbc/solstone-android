@@ -97,6 +97,20 @@ class PhonePairingViewModel : ViewModel() {
         task.await()
     }
 
+    /**
+     * The pairing the open question was about is gone or refused: there is nothing left to answer.
+     * An owner's own no has its own ending, so it is left to finish.
+     */
+    fun closeQuestionIfNothingToAnswer(
+        awaiting: Boolean,
+        controller: HarnessController,
+        stores: SyncStores,
+    ) {
+        val held = pairingState.session as? PhonePairingSession.Held ?: return
+        if (awaiting || held.disconnected || mismatchInProgress) return
+        performDispatch(PhonePairingEvent.Dismiss, controller, stores)
+    }
+
     fun dispatch(
         event: PhonePairingEvent,
         controller: HarnessController,

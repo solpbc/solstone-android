@@ -1042,14 +1042,20 @@ class FilePairingGraph(
     }
 
     override fun canRestorePrior(current: PairingGeneration): Boolean = synchronized(lock) {
-        (currentSnapshotState as? PairingGraphSnapshot.Committed)?.pairing == current && readPriorLocked(current) != null
+        (currentSnapshotState as? PairingGraphSnapshot.Committed)?.pairing == current &&
+            readPriorRecordLocked()?.let { current in it.heldFor } == true
     }
 
     override fun restorePrior(current: PairingGeneration): GraphMutationResult = synchronized(lock) {
         if ((currentSnapshotState as? PairingGraphSnapshot.Committed)?.pairing != current) {
             return GraphMutationResult.Conflict("Pairing changed")
         }
-        val prior = readPriorLocked(current) ?: return GraphMutationResult.Conflict("No prior pairing")
+        val record = readPriorRecordLocked()?.takeIf { current in it.heldFor }
+            ?: return GraphMutationResult.Conflict("No prior pairing")
+        // Files that can't be read right now, a locked keystore say, are still the owner's pairing.
+        // The record stays for another try, and nothing here falls through to forgetting it.
+        val prior = readPriorLocked(record)
+            ?: return GraphMutationResult.PersistenceFailed(IllegalStateException("Prior pairing unreadable"))
         val result = installLocked(
             prior.home,
             prior.credential,
@@ -1076,8 +1082,7 @@ class FilePairingGraph(
         }
     }
 
-    private fun readPriorLocked(current: PairingGeneration): Prior? = runCatching {
-        val record = readPriorRecordLocked()?.takeIf { current in it.heldFor } ?: return null
+    private fun readPriorLocked(record: PriorRecord): Prior? = runCatching {
         val home = FileIdentityStore(priorIdentityFile, protector, fileWriter = fileWriter).load() ?: return null
         val credential = FileClientCredentialStore(priorCredentialFile, protector, fileWriter = fileWriter).load() ?: return null
         val endpoints = if (priorEndpointFile.exists()) {

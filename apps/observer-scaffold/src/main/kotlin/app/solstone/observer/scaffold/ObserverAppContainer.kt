@@ -20,6 +20,8 @@ import app.solstone.core.spool.RecoveryScanner
 import app.solstone.core.spool.applyRecoveryActions
 import app.solstone.core.spool.emitDroppedRecoveryEvents
 import app.solstone.core.spool.gapPassCompleted
+import app.solstone.core.identity.JournalConfirmationPolicy
+import app.solstone.core.identity.confirmedFor
 import app.solstone.platform.identity.file.CommitMarkerStatus
 import app.solstone.platform.identity.file.PairingCommitMarker
 import app.solstone.observer.harness.AsyncLoad
@@ -71,6 +73,13 @@ interface ObserverRuntimeContainer {
     fun rehydrateInBackground()
     fun close()
 }
+
+/**
+ * The journal the gap notices are measured against. Stamping a different one marks every notice seen,
+ * so only a pairing the owner answered for counts: a replacement they may yet refuse changes nothing.
+ */
+internal fun journalIdToStamp(marker: PairingCommitMarker?, isConfirmed: (String) -> Boolean): String? =
+    marker?.takeIf { it.status == CommitMarkerStatus.COMMITTED && isConfirmed(it.clientCertSha256.orEmpty()) }?.instanceId
 
 class ObserverAppContainer(
     private val context: Context,
@@ -164,6 +173,8 @@ class ObserverAppContainer(
         screenSessionLive = { ObserverForegroundService.isScreenSessionLive() },
         refreshWithoutStoppingService = { ObserverForegroundService.refreshRunningCaptureTypes(context) },
     )
+
+    private var removeConfirmationListener: (() -> Unit)? = null
 
     override val flavor: SharedObserverFlavor = buildObserverFlavor(
         context = context,
@@ -273,6 +284,7 @@ class ObserverAppContainer(
             }
         }
         controller.onPairingCommitted = { applyPairedJournal() }
+        removeConfirmationListener = flavor.journalConfirmation?.addListener { applyPairedJournal() }
         controller.schedulePeriodicSync()
         mainHandler.post(pollRunnable)
         background.execute {
@@ -346,13 +358,14 @@ class ObserverAppContainer(
         }
     }
 
-    private fun committedJournalId(): String? {
-        val marker = PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))
-        return if (marker?.status == CommitMarkerStatus.COMMITTED) marker.instanceId else null
-    }
+    private fun committedJournalId(): String? =
+        journalIdToStamp(PairingCommitMarker.parse(java.io.File(context.filesDir, "pl/pairing.commit"))) { fingerprint ->
+            flavor.journalConfirmation?.let { confirmedFor(JournalConfirmationPolicy.consults, it, fingerprint) } ?: true
+        }
 
     override fun close() {
         recoveryClosed = true
+        removeConfirmationListener?.invoke()
         ObserverForegroundService.onDestroyCallback = null
         journalCacheCoordinator.close()
         mainHandler.removeCallbacks(pollRunnable)
