@@ -191,11 +191,12 @@ class ObserverAppContainer(
     override val backlogStatus: BacklogStatusReader =
         flavor.backlogStatus ?: RealBacklogStatusReader(
             database.segmentDao(),
-            controller::routinePlStatus,
+            controller::currentPlStatus,
             calendarCapability = { instanceId, caFingerprint ->
                 database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
             },
             pendingCalendarImports = { database.calendarDao().pendingImportCount() },
+            present = controller::presentConnection,
         )
     override val sources = SourceRegistry(
         controller = controller,
@@ -219,9 +220,61 @@ class ObserverAppContainer(
     @Volatile var onScreenOwnerStart: (() -> Unit)? = null
     @Volatile private var deferredStartMode: ObserverStartMode? = null
 
+    /**
+     * Journal checks run here, never on [background]: a check can take seconds (a saved address
+     * timing out before the relay answers), and every status read waits on [background].
+     */
+    private val checks = Executors.newSingleThreadExecutor()
+    private val checkQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun requestCheck() {
+        if (!checkQueued.compareAndSet(false, true)) return
+        try {
+            checks.execute {
+                checkQueued.set(false)
+                val checked = runCatching { controller.checkIfDue() }.getOrDefault(false)
+                if (checked) refreshStatusInBackground()
+            }
+        } catch (_: RejectedExecutionException) {
+            checkQueued.set(false)
+        }
+    }
+
+    private fun refreshStatusInBackground() {
+        try {
+            background.execute {
+                runCatching { backgroundStatusRefreshListener?.invoke() }
+                scheduleConnectionChange()
+            }
+        } catch (_: RejectedExecutionException) {
+        }
+    }
+
+    private val connectionChangeRunnable = Runnable { refreshStatusInBackground() }
+
+    /** The presented connection can change between ticks (a grace, a dwell, a linger); redraw then. */
+    private fun scheduleConnectionChange() {
+        val inMs = runCatching { controller.connectionChangeInMs() }.getOrNull() ?: return
+        if (inMs >= STATUS_POLL_INTERVAL_MS) return
+        mainHandler.removeCallbacks(connectionChangeRunnable)
+        mainHandler.postDelayed(connectionChangeRunnable, inMs.coerceAtLeast(0L) + 1L)
+    }
+
+    /**
+     * The app's window came to the foreground or left it. In the foreground the journal is checked
+     * more often, and coming forward checks at once when one is due.
+     */
+    fun onOwnerForeground(inForeground: Boolean) {
+        controller.onForeground(inForeground)
+        if (!inForeground) return
+        requestCheck()
+        scheduleConnectionChange()
+    }
+
     private val pollRunnable = object : Runnable {
         override fun run() {
             journalCacheCoordinator.requestRoutinePass()
+            requestCheck()
             background.execute {
                 runCatching { controller.reconcile(ObserverStartMode.Rehydrate) }
                 runCatching {
@@ -231,6 +284,7 @@ class ObserverAppContainer(
                     sources.refreshSubscribers()
                     refreshServiceNotification(current)
                 }
+                scheduleConnectionChange()
             }
             mainHandler.postDelayed(this, STATUS_POLL_INTERVAL_MS)
         }
@@ -369,6 +423,8 @@ class ObserverAppContainer(
         ObserverForegroundService.onDestroyCallback = null
         journalCacheCoordinator.close()
         mainHandler.removeCallbacks(pollRunnable)
+        mainHandler.removeCallbacks(connectionChangeRunnable)
+        checks.shutdownNow()
         runCatching { controller.stop() }
         background.shutdown()
         runCatching { background.awaitTermination(2, TimeUnit.SECONDS) }

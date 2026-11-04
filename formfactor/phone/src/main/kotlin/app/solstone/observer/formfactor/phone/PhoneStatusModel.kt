@@ -16,6 +16,7 @@ import java.time.ZoneId
 enum class StatusPillKind {
     CONNECTED,
     SYNCING,
+    CONNECTING,
     OFFLINE,
     NOT_PAIRED,
     REFUSED,
@@ -58,12 +59,12 @@ data class PhoneStatusModel(
     val calendarHeldForJournal: Boolean = false,
     /** False when this redraw does not know connectivity or how many segments are waiting. */
     val connectivityKnown: Boolean = true,
-    /** Last status line drawn while those facts were known. A cold redraw keeps it. */
-    val rememberedSyncText: String? = null,
     /** Additive to the connection's own state: nothing here changes the pill. */
     val unknownJournals: List<UnknownJournalSighting> = emptyList(),
     /** The journal itself refuses this phone; see [app.solstone.observer.harness.journalRefusesThisDevice]. */
     val refused: Boolean = false,
+    /** Not connected, and not yet long enough to read offline. Only meaningful when not [online]. */
+    val connecting: Boolean = false,
 )
 
 data class PhoneJournalFacts(
@@ -91,7 +92,7 @@ fun statusPillKind(
 ): StatusPillKind = when {
     !model.paired -> StatusPillKind.NOT_PAIRED
     model.refused -> StatusPillKind.REFUSED
-    !model.online -> StatusPillKind.OFFLINE
+    !model.online -> if (model.connecting) StatusPillKind.CONNECTING else StatusPillKind.OFFLINE
     model.awaitingMarkConfirmation -> StatusPillKind.AWAITING_MARK_CONFIRMATION
     model.pendingCount > 0 -> StatusPillKind.SYNCING
     model.audioAwaitingCustody || !model.recoveryCompleted -> StatusPillKind.SYNCING
@@ -99,6 +100,7 @@ fun statusPillKind(
     else -> StatusPillKind.CONNECTED
 }
 
+const val STATUS_CONNECTING = "connecting…"
 const val STATUS_UNKNOWN_RECOVERY_LEAD = "an unfinished item couldn't be checked"
 const val STATUS_WAITING_TO_SYNC_LEAD = "waiting to sync"
 const val STATUS_ON_THIS_DEVICE = "on this device"
@@ -174,6 +176,7 @@ fun statusPillText(
     return when {
     !model.paired -> "not paired"
     model.refused -> if (model.pendingCount > 0) "$PAIR_AGAIN · ${model.pendingCount} waiting" else PAIR_AGAIN
+    !model.online && model.connecting -> STATUS_CONNECTING
     !model.online -> "offline · ${model.pendingCount} waiting"
     model.awaitingMarkConfirmation -> if (model.pendingCount > 0) {
         "confirm the mark · ${model.pendingCount} waiting"
@@ -191,8 +194,8 @@ fun statusPillText(
 
 /**
  * A cold redraw knows pairing, custody, and the gap record. It does not know the link or the
- * waiting count, so it does not invent "connected" or a waiting number. A gap still replaces the
- * remembered line. With no remembered line, the status line stays blank.
+ * waiting count, so it does not invent a connection or a waiting number: until this process hears
+ * the journal it is connecting, never a remembered connected.
  */
 private fun coldStatusLine(model: PhoneStatusModel, nowEpochMs: Long, zone: ZoneId): String {
     if (!model.paired) return "not paired"
@@ -201,7 +204,7 @@ private fun coldStatusLine(model: PhoneStatusModel, nowEpochMs: Long, zone: Zone
     if (model.gateOpen && unseenGapInWindow(model, nowEpochMs, zone) && !model.calendarHeldForJournal) {
         return GAP_HEADLINE
     }
-    return model.rememberedSyncText.orEmpty()
+    return STATUS_CONNECTING
 }
 
 fun PhoneStatusModel.clearedForSupport(): PhoneStatusModel = copy(
@@ -258,7 +261,7 @@ fun statusPaneCopy(
                 else -> "everything is in your journal"
             }
             StatusPillKind.SYNCING -> "syncing to your journal…"
-            StatusPillKind.OFFLINE -> STATUS_ON_THIS_DEVICE
+            StatusPillKind.CONNECTING, StatusPillKind.OFFLINE -> STATUS_ON_THIS_DEVICE
             StatusPillKind.REFUSED -> REFUSED_BODY
             StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
             StatusPillKind.NOT_PAIRED -> null

@@ -71,6 +71,28 @@ class PhoneStatusViewModelTest {
         assertEquals(1, reads)
     }
 
+    // Falsified by a refresh dropping a shown status to loading: the pill left the bar on every
+    // return to the app until the read landed.
+    @Test
+    fun aRefreshKeepsTheShownStatusUntilTheNewReadLands() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var pending = 4
+        val viewModel = viewModel(runner, poster) {
+            HarnessBacklogStatus(HarnessPlStatus.Reachable(200), pending, emptyList())
+        }
+        runner.runNext()
+        poster.runNext()
+        viewModel.onHostResumed()
+
+        pending = 1
+        viewModel.onHostResumed()
+        assertEquals(4, assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status.pendingCount)
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState).value.status.pendingCount)
+    }
+
     @Test
     fun staleSuccessDoesNotPublishAfterNewerRefreshRequest() {
         val runner = ManualRunner()

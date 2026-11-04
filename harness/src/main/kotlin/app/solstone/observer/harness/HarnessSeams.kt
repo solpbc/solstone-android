@@ -95,6 +95,9 @@ interface NetworkAvailability {
     fun start(onUsableNetwork: () -> Unit)
     fun stop()
     fun isUsableNow(): Boolean
+
+    /** Whether there is any network at all; unlike [isUsableNow] it does not ask for a validated one. */
+    fun hasNetwork(): Boolean = true
 }
 
 interface EvidenceReader {

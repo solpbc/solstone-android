@@ -77,6 +77,8 @@ class HarnessController(
     var mediaProjectionPromotable: () -> Boolean = { false },
     var onPairingCommitted: (() -> Unit)? = null,
     private val consultsConfirmation: () -> Boolean = { app.solstone.core.identity.JournalConfirmationPolicy.consults },
+    /** Whether the phone has any network at all. No network is the one hard drop a phone gets. */
+    private val hasNetwork: () -> Boolean = { true },
 ) {
 
     var desiredOn: Boolean
@@ -141,7 +143,7 @@ class HarnessController(
             if (pairingFact() != PairingFact.PAIRED) {
                 blockers += ReasonCode.UNPAIRED
             }
-            if (blockers.isEmpty() && routinePlStatus() !is HarnessPlStatus.Reachable) {
+            if (blockers.isEmpty() && currentPlStatus() !is HarnessPlStatus.Reachable) {
                 blockers += ReasonCode.TRANSPORT_UNAVAILABLE
             }
         }
@@ -439,33 +441,97 @@ class HarnessController(
         }
     }
 
+    /** A fresh check, never the cache: an owner's own connection check and a pairing preflight. */
     fun probePlStatus(): HarnessPlStatus {
         val key = routineProbeKey()
-        lastPlStatus = plStatusProbe.probe()
-        routineProbe = RoutineProbe(key, monotonicMs(), lastPlStatus)
-        return lastPlStatus
+        val startedAt = monotonicMs()
+        val status = plStatusProbe.probe()
+        val finishedAt = monotonicMs()
+        lastPlStatus = status
+        routineProbe = RoutineProbe(key, startedAt, finishedAt, status)
+        synchronized(connection) {
+            followPairing(key, finishedAt)
+            if (status.journalHeard()) connection.heard(finishedAt) else connection.unheard(finishedAt)
+        }
+        return status
     }
 
     /**
-     * Reachability for a routine refresh: the last probe, while it is younger than
-     * [ROUTINE_PROBE_MAX_AGE_MS] and the pairing it was taken under has not changed, else a fresh one.
-     *
-     * ⛔ Not a fresh probe per refresh. The 5 s status poll probed twice a tick (start readiness,
-     * then the status read), a new TLS session to the journal every 2.5 s for as long as the app
-     * ran. An owner's own connection check and a pairing preflight still call [probePlStatus].
+     * The last check for the current pairing, without dialling. Only a pairing with no check yet is
+     * checked here, so a status read never waits on the network otherwise.
      */
-    fun routinePlStatus(): HarnessPlStatus {
-        val cached = routineProbe
-        val age = cached?.let { monotonicMs() - it.atMs }
-        if (cached != null && age != null && age in 0 until ROUTINE_PROBE_MAX_AGE_MS && cached.key == routineProbeKey()) {
-            return cached.status
+    fun currentPlStatus(): HarnessPlStatus {
+        val key = routineProbeKey()
+        routineProbe?.takeIf { it.key == key }?.let { return it.status }
+        return synchronized(checkLock) {
+            routineProbe?.takeIf { it.key == key }?.status ?: probePlStatus()
         }
-        return probePlStatus()
+    }
+
+    /**
+     * Checks the journal when one is due. Returns whether the connection may have changed: it
+     * checked, or the network came or went. With the app in the
+     * foreground a check may start [FOREGROUND_CHECK_SPACING_MS] after the previous one started.
+     * In the background it starts [ROUTINE_PROBE_MAX_AGE_MS] after the previous one finished, the
+     * same budget the status tick always had. A new pairing is checked at once. With no network at
+     * all there is nothing to dial, and the presenter already reads offline.
+     *
+     * ⛔ Not a fresh check per status read. The 5 s status tick once probed twice a tick, a new TLS
+     * session to the journal every 2.5 s for as long as the app ran.
+     */
+    fun checkIfDue(): Boolean = synchronized(checkLock) {
+        val now = monotonicMs()
+        val networkPresent = hasNetwork()
+        val networkChanged = networkPresent != lastNetworkPresent
+        lastNetworkPresent = networkPresent
+        synchronized(connection) { connection.network(networkPresent, now) }
+        if (!networkPresent) return networkChanged
+        val last = routineProbe
+        val due = last == null || last.key != routineProbeKey() || if (foreground) {
+            now - last.startedMs !in 0 until FOREGROUND_CHECK_SPACING_MS
+        } else {
+            now - last.finishedMs !in 0 until ROUTINE_PROBE_MAX_AGE_MS
+        }
+        if (due) probePlStatus()
+        due || networkChanged
+    }
+
+    /** The app came to the foreground or left it. Coming forward starts a new connecting episode. */
+    fun onForeground(inForeground: Boolean) {
+        foreground = inForeground
+        synchronized(connection) { connection.foreground(inForeground, monotonicMs()) }
+    }
+
+    /** What every status surface shows about the connection now, and the waiting count beside it. */
+    fun presentConnection(pendingCount: Int): PresentedStatus {
+        val key = routineProbeKey()
+        val now = monotonicMs()
+        return synchronized(connection) {
+            followPairing(key, now)
+            connection.present(now, pendingCount)
+        }
+    }
+
+    /** How long until the presented connection changes on its own, or null when only evidence changes it. */
+    fun connectionChangeInMs(): Long? {
+        val now = monotonicMs()
+        return synchronized(connection) { connection.nextChangeAt(now) }?.let { it - now }
+    }
+
+    private fun followPairing(key: Any, nowMs: Long) {
+        if (connectionKey == key) return
+        connectionKey = key
+        connection.reset(nowMs)
     }
 
     @Volatile private var routineProbe: RoutineProbe? = null
+    @Volatile private var foreground = false
+    private var lastNetworkPresent = true
+    private val checkLock = Any()
+    private val connection = ConnectionPresenter(monotonicMs())
+    private var connectionKey: Any? = null
 
-    private data class RoutineProbe(val key: Any, val atMs: Long, val status: HarnessPlStatus)
+    private data class RoutineProbe(val key: Any, val startedMs: Long, val finishedMs: Long, val status: HarnessPlStatus)
 
     private fun routineProbeKey(): Any =
         identityStore.load().let { Triple(pairingFact(), it?.instanceId, it?.clientCertFingerprint) }
@@ -619,5 +685,8 @@ fun sourceRuntimeSnapshotOf(
         engineStartIssued = engineStartIssued,
     )
 
-/** How long a routine refresh may reuse a reachability probe. */
+/** In the background, how long after a check finishes the next one may start. */
 const val ROUTINE_PROBE_MAX_AGE_MS = 60_000L
+
+/** With the app in the foreground, how long after a check starts the next one may start. */
+const val FOREGROUND_CHECK_SPACING_MS = 15_000L

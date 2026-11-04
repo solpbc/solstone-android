@@ -57,6 +57,16 @@ fun HarnessPlStatus.journalRefusesThisDevice(): Boolean = when (this) {
     is HarnessPlStatus.Reachable -> status == 401 || status == 403
 }
 
+/**
+ * The paired journal answered this check: any HTTP status, 5xx and 401/403 included, or a verdict
+ * of its own on a leg. A journal that answers is there, even when it is unwell or refuses this phone.
+ */
+fun HarnessPlStatus.journalHeard(): Boolean = when (this) {
+    HarnessPlStatus.NotPaired -> false
+    is HarnessPlStatus.PairedButUnreachable -> journalAnswered
+    is HarnessPlStatus.Reachable -> true
+}
+
 fun plStatusText(status: HarnessPlStatus): String =
     when (status) {
         HarnessPlStatus.NotPaired -> "Not paired"
@@ -98,6 +108,9 @@ data class HarnessBacklogStatus(
     val journalVersion: JournalVersionReading? = null,
     val imports: HarnessImportBacklog? = null,
     val calendarHeldForJournal: Boolean = false,
+    /** What the status surfaces say about the connection; the app reads it from [ConnectionPresenter]. */
+    val connection: PresentedConnection =
+        if (plStatus.journalHeard()) PresentedConnection.CONNECTED else PresentedConnection.OFFLINE,
 )
 
 /**

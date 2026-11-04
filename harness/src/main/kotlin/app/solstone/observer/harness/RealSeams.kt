@@ -450,6 +450,10 @@ class AndroidNetworkAvailability(context: Context) : NetworkAvailability {
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    // ⚠ Not [isUsableNow]: a journal on a LAN with no internet sits behind a network Android never
+    // validates. Only no default network at all (airplane mode, no signal, a blocked app) is no network.
+    override fun hasNetwork(): Boolean = connectivityManager?.activeNetwork != null
+
     private fun signalIfUsable(capabilities: NetworkCapabilities?, onUsableNetwork: () -> Unit) {
         if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
             onUsableNetwork()
@@ -501,6 +505,7 @@ class RealBacklogStatusReader(
     private val imports: (() -> HarnessImportBacklog)? = null,
     private val calendarCapability: (String, String) -> Int? = { _, _ -> null },
     private val pendingCalendarImports: () -> Int = { 0 },
+    private val present: ((Int) -> PresentedStatus)? = null,
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
         val status = plStatus()
@@ -515,14 +520,17 @@ class RealBacklogStatusReader(
         val calendarHeldForJournal = identity != null &&
             calendarCapability(identity.instanceId, identity.caChainFingerprint) == 0 &&
             calendarPending > 0
-        return HarnessBacklogStatus(
+        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + (importBacklog?.pendingCount ?: 0)
+        val presented = present?.invoke(pendingCount)
+        val backlog = HarnessBacklogStatus(
             plStatus = status,
-            pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + (importBacklog?.pendingCount ?: 0),
+            pendingCount = presented?.pendingCount ?: pendingCount,
             pendingSourceIds = (dao.pendingSourceIds(MAIN_STREAM) + dao.pendingSourceIds(CALENDAR_STREAM) + if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()).distinct(),
             journalVersion = journalVersion,
             imports = importBacklog,
             calendarHeldForJournal = calendarHeldForJournal,
         )
+        return if (presented != null) backlog.copy(connection = presented.connection) else backlog
     }
 }
 

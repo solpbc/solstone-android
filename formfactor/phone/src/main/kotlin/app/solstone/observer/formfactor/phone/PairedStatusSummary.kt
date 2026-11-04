@@ -57,7 +57,7 @@ fun pairedStatusSummary(
         subLine = true,
         action = false,
     )
-    StatusPillKind.OFFLINE -> PairedStatusSummary(
+    StatusPillKind.CONNECTING, StatusPillKind.OFFLINE -> PairedStatusSummary(
         lead = PairedStatusLead.COUNT,
         markLineFollowsCount = false,
         subLine = true,

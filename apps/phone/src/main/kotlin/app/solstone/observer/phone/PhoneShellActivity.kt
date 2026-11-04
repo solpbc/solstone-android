@@ -1694,6 +1694,7 @@ class PhoneShellActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         activityStarted = true
+        container.onOwnerForeground(true)
         (application as? PhoneApplication)?.addStatusListener(statusListener)
         if (::statusHost.isInitialized) statusHost.onStart()
         attachCalendarUi()
@@ -1756,6 +1757,7 @@ class PhoneShellActivity : ComponentActivity() {
         activityStarted = false
         mainHandler.removeCallbacks(midnightTick)
         if (::statusHost.isInitialized) statusHost.onStop(isChangingConfigurations)
+        if (!isChangingConfigurations) container.onOwnerForeground(false)
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
         CalendarRuntimes.current?.setOnChanged {}
         connectionCheck = null

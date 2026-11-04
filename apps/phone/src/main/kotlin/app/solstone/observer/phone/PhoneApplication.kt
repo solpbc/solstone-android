@@ -13,14 +13,12 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
-import app.solstone.core.spool.GAP_HEADLINE
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.core.spool.ownerMaterialExists
 import app.solstone.core.spool.formatGapTechnicalDetails
 import app.solstone.observer.formfactor.phone.PhoneGapLoss
 import app.solstone.observer.formfactor.phone.PhoneGapStatus
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
-import app.solstone.observer.formfactor.phone.STATUS_UNKNOWN_RECOVERY_LEAD
 import app.solstone.observer.formfactor.phone.syncGapAlarm
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.SourcesReadModel
@@ -438,15 +436,14 @@ class PhoneApplication : ObserverApplication(
     }
 
     /**
-     * What this process knows about the connection is about one pairing: its unknown-journal
-     * sightings, and the widget's last known line. Neither outlives that pairing, whichever surface
-     * changed it.
+     * What this process knows about unknown-journal sightings is about one pairing, and does not
+     * outlive it, whichever surface changed it.
      */
     private fun followPairing() {
         val publisher = syncStores(applicationContext).publisher
         DialDiagnostics.sightings.followPairing(publisher.currentSnapshot())
         publisher.subscribe { next ->
-            if (DialDiagnostics.sightings.followPairing(next)) forgetWidgetSyncText(filesDir)
+            DialDiagnostics.sightings.followPairing(next)
         }
     }
 
@@ -533,7 +530,8 @@ class PhoneApplication : ObserverApplication(
                 ).status
             }
         }
-        val statusModel = statusRead?.getOrNull() ?: emptyPhoneStatus()
+        // A status read that failed knows nothing about the link, which is not the same as not paired.
+        val statusModel = statusRead?.getOrNull() ?: coldPhoneStatus(filesDir, cacheDir, now, zone)
         syncGapAlarm(PhoneGapWindowScheduler(this), statusModel, now, zone)
         val notice = audioOffNotices.read()
         val presentedReadModel = presentAudioOffNotice(readModel, notice)
@@ -543,9 +541,6 @@ class PhoneApplication : ObserverApplication(
             startOutcome = widgetStartOutcomes.read(),
             notice = notice,
         )
-        if (statusRead?.isSuccess == true) {
-            rememberWidgetSyncText(filesDir, cachedWidgetModel.syncText)
-        }
     }
 
     private fun startCaptureAction(
@@ -645,6 +640,7 @@ internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, z
     return PhoneStatusModel(
         paired = coldPaired(filesDir),
         online = false,
+        connecting = true,
         pendingCount = 0,
         hasContentPending = false,
         awaitingMarkConfirmation = false,
@@ -657,7 +653,6 @@ internal fun coldPhoneStatus(filesDir: File, cacheDir: File, nowEpochMs: Long, z
         gateOpen = gaps.gateOpen,
         gapTechnicalDetails = gaps.technicalDetails,
         connectivityKnown = false,
-        rememberedSyncText = rememberedWidgetSyncText(filesDir),
     )
 }
 
@@ -681,21 +676,6 @@ private fun coldGapStatus(filesDir: File, nowEpochMs: Long, zone: ZoneId): Phone
         if (snapshot.unknownItems.isEmpty()) "" else "\nunknown items kept=${snapshot.unknownItems.size} unseen=${snapshot.unknownItems.count { it !in snapshot.unknownSeen }}"
     if (!snapshot.opened) return PhoneGapStatus(technicalDetails = technical)
     return gapStatusOf(snapshot, technical, gateOpen = true)
-}
-
-/** Last status line drawn while connectivity was known. A gap line is not stored; it is read from the gap record. */
-internal const val WIDGET_SYNC_LINE = "widget-sync-line"
-
-internal fun rememberedWidgetSyncText(filesDir: File): String? =
-    runCatching { File(filesDir, WIDGET_SYNC_LINE).readText() }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
-
-internal fun forgetWidgetSyncText(filesDir: File) {
-    runCatching { File(filesDir, WIDGET_SYNC_LINE).delete() }
-}
-
-internal fun rememberWidgetSyncText(filesDir: File, syncText: String) {
-    if (syncText.isEmpty() || syncText == GAP_HEADLINE || syncText == STATUS_UNKNOWN_RECOVERY_LEAD) return
-    runCatching { File(filesDir, WIDGET_SYNC_LINE).writeText(syncText) }
 }
 
 private fun gapStatusOf(

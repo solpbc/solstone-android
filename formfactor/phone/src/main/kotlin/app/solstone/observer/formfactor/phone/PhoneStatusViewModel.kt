@@ -220,7 +220,9 @@ class PhoneStatusViewModel(
         readInFlight = true
         asyncLoad.load({ snapshotOf(read()) }) { incoming ->
             if (incoming is LoadState.Loading) {
-                if (generation == requestedGeneration) statusState = incoming
+                // A status already on screen stays until the new read lands: dropping it to loading
+                // took the pill off the bar for every return to the app.
+                if (generation == requestedGeneration && statusState !is LoadState.Loaded) statusState = incoming
                 return@load
             }
             readInFlight = false

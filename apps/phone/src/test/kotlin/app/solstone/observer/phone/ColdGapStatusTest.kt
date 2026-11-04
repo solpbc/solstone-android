@@ -10,6 +10,7 @@ import app.solstone.core.spool.GAP_TODAY
 import app.solstone.core.spool.GapNoticeStore
 import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
+import app.solstone.observer.formfactor.phone.STATUS_CONNECTING
 import app.solstone.observer.formfactor.phone.statusPillText
 import java.time.Instant
 import app.solstone.observer.harness.ObserverStatus
@@ -77,7 +78,7 @@ class ColdGapStatusTest {
             )
             val clean = coldPhoneStatus(files, cache, now, zone)
             val rendered = render(clean)
-            assertEquals("", rendered.syncText)
+            assertEquals(STATUS_CONNECTING, rendered.syncText, "a cold redraw has heard nothing, so it is connecting")
             assertNull(rendered.syncDetail)
             assertFalse(rendered.needsAttention)
             assertFalse(rendered.syncText.contains("syncing"))
@@ -123,7 +124,7 @@ class ColdGapStatusTest {
     }
 
     @Test
-    fun aColdRedrawKeepsTheLastStatusLineAndDropsTheGapWhenTheWindowEnds() {
+    fun aColdRedrawIsConnectingUntilHeardAndDropsTheGapWhenTheWindowEnds() {
         val root = Files.createTempDirectory("cold-remembered").toFile()
         try {
             val files = File(root, "files")
@@ -136,12 +137,8 @@ class ColdGapStatusTest {
             val store = GapNoticeStore(File(files, "gap").toPath(), clock = { clock }, zone = { zone })
             assertTrue(store.recordLoss("audio", "undeliverable", "rec-old", found))
             File(files, "gap/opened").writeBytes(ByteArray(0))
-            rememberWidgetSyncText(files, "3 syncing")
-            rememberWidgetSyncText(files, GAP_HEADLINE)
-            assertEquals("3 syncing", File(files, WIDGET_SYNC_LINE).readText())
             val later = coldPhoneStatus(files, cache, now, zone)
-            assertEquals("3 syncing", statusPillText(later, now, zone))
-            assertFalse(statusPillText(later, now, zone) == GAP_HEADLINE)
+            assertEquals(STATUS_CONNECTING, statusPillText(later, now, zone))
 
             clock = now
             assertTrue(store.recordLoss("audio", "undeliverable", "rec-new", now))
@@ -244,17 +241,4 @@ class ColdGapStatusTest {
             statusModel = status,
             startOutcome = PhoneWidgetStartOutcome.None,
         )
-
-    // Falsified by a cold redraw reading the old pairing's offline or pair again over a new pairing.
-    @Test
-    fun aForgottenLineIsNotRemembered() {
-        val files = java.nio.file.Files.createTempDirectory("remembered").toFile()
-        try {
-            rememberWidgetSyncText(files, "3 syncing")
-            forgetWidgetSyncText(files)
-            assertEquals(null, rememberedWidgetSyncText(files))
-        } finally {
-            files.deleteRecursively()
-        }
-    }
 }

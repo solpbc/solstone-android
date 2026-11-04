@@ -111,10 +111,11 @@ fun buildObserverFlavor(
         identityMutator = stores.identityMutator,
         publisher = stores.publisher,
         declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
+        hasNetwork = networkAvailability::hasNetwork,
     )
     val backlogStatus = RealBacklogStatusReader(
         dao = database.segmentDao(),
-        plStatus = controller::routinePlStatus,
+        plStatus = controller::currentPlStatus,
         identityStore = stores.identityStore,
         coordinator = stores.journalVersionCoordinator,
         imports = realImportBacklog(context, database, stores, controller::pairingFact),
@@ -122,6 +123,7 @@ fun buildObserverFlavor(
             database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
         },
         pendingCalendarImports = { database.calendarDao().pendingImportCount() },
+        present = controller::presentConnection,
     )
     return SharedObserverFlavor(
         controller = controller,

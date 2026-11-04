@@ -8,6 +8,7 @@ import app.solstone.core.model.SourceState
 import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.harness.PresentedConnection
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.journalRefusesThisDevice
@@ -26,13 +27,12 @@ fun phoneStatusSnapshotOf(
     gaps: PhoneGapStatus = PhoneGapStatus(),
     unknownJournals: List<UnknownJournalSighting> = emptyList(),
 ): PhoneStatusSnapshot {
-    val (paired, online) = when (val plStatus = backlog.plStatus) {
-        HarnessPlStatus.NotPaired -> false to false
-        is HarnessPlStatus.PairedButUnreachable -> true to false
-        // Online only after a successful check. A refused or unauthorized answer (401, 403) means
-        // the journal answered but did not accept this device, which is not connected.
-        is HarnessPlStatus.Reachable -> true to (plStatus.status == 200)
-    }
+    val paired = backlog.plStatus != HarnessPlStatus.NotPaired
+    val refused = backlog.plStatus.journalRefusesThisDevice()
+    // The connection is the presenter's, the one every surface shows. A journal that answers is
+    // heard, a 503 included. One that refuses this phone (401, 403, a stop) has not accepted it, so
+    // it is never connected: the refusal shows instead.
+    val online = paired && !refused && backlog.connection == PresentedConnection.CONNECTED
     val registeredById = registered.associateBy { it.sourceId }
     val pendingIds = backlog.pendingSourceIds.toSet()
     val waiting = buildList {
@@ -47,7 +47,8 @@ fun phoneStatusSnapshotOf(
         status = PhoneStatusModel(
             paired = paired,
             online = online,
-            refused = backlog.plStatus.journalRefusesThisDevice(),
+            connecting = paired && !refused && backlog.connection == PresentedConnection.CONNECTING,
+            refused = refused,
             pendingCount = backlog.pendingCount,
             hasContentPending = backlog.pendingSourceIds.isNotEmpty(),
             awaitingMarkConfirmation = awaitingMarkConfirmation,

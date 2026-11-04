@@ -9,6 +9,7 @@ import app.solstone.core.pl.ClaimedJournalMark
 import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.harness.PresentedConnection
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.UnknownJournalAnswer
@@ -25,13 +26,38 @@ class PhoneStatusSnapshotTest {
         assertEquals(true to true, flagsFor(HarnessPlStatus.Reachable(200)))
     }
 
-    // Online only after a successful check. Falsified by reading any HTTP answer as connected: a
-    // journal answering 401 or 403 has not accepted this device.
+    // Falsified by reading any HTTP answer as connected: a journal answering 401 or 403 has not
+    // accepted this device.
     @Test
     fun aRefusedOrUnauthorizedAnswerIsPairedButNotOnline() {
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(401)))
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(403)))
-        assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(503)))
+    }
+
+    // Falsified by reading an unwell journal as offline: it answered, so it is there, and anything
+    // waiting shows as syncing while it retries.
+    @Test
+    fun aJournalThatAnswersUnwellIsConnectedAndOnlySilenceIsNot() {
+        assertEquals(true to true, flagsFor(HarnessPlStatus.Reachable(503)))
+        assertEquals(true to true, flagsFor(HarnessPlStatus.PairedButUnreachable("alert 46", journalAnswered = true)))
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(modelFor(HarnessPlStatus.Reachable(503)).copy(pendingCount = 2), 0L))
+    }
+
+    @Test
+    fun theSurfacesShowThePresentedConnectionNotTheLastAnswer() {
+        fun modelOf(connection: PresentedConnection) = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 2, emptyList(), connection = connection),
+            registered = emptyList(),
+            awaitingMarkConfirmation = true,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+        ).status
+        assertEquals(StatusPillKind.CONNECTING, statusPillKind(modelOf(PresentedConnection.CONNECTING), 0L), "connecting wins over held")
+        assertEquals(StatusPillKind.OFFLINE, statusPillKind(modelOf(PresentedConnection.OFFLINE), 0L))
+        assertEquals(StatusPillKind.AWAITING_MARK_CONFIRMATION, statusPillKind(modelOf(PresentedConnection.CONNECTED), 0L))
+        val connectingPane = requireNotNull(statusPaneCopy(modelOf(PresentedConnection.CONNECTING), 0L))
+        val offlinePane = requireNotNull(statusPaneCopy(modelOf(PresentedConnection.OFFLINE), 0L))
+        assertEquals(offlinePane, connectingPane, "the pane leads with the count and where it waits, as offline does")
     }
 
     // Falsified by reading any not-online as refused, which tells an owner with a passing outage or a

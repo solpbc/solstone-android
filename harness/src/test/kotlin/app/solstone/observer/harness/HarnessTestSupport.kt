@@ -232,6 +232,7 @@ internal fun fixture(
     foregroundServiceLive: () -> Boolean = { false },
     publisher: app.solstone.core.identity.PairingPublisher? = null,
     consultsConfirmation: () -> Boolean = { true },
+    hasNetwork: () -> Boolean = { true },
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -266,6 +267,7 @@ internal fun fixture(
             foregroundServiceLive = foregroundServiceLive,
             publisher = publisher,
             consultsConfirmation = consultsConfirmation,
+            hasNetwork = hasNetwork,
         ),
         permissions = permissions,
         lifecycle = lifecycle,

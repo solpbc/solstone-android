@@ -115,12 +115,12 @@ fun PhoneStatusPill(
     val calm = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
     val mark = when (kind) {
         StatusPillKind.CONNECTED, StatusPillKind.SYNCING -> TileDotMark.DISC
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> TileDotMark.RING
+        StatusPillKind.CONNECTING, StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> TileDotMark.RING
     }
     val dotColor = when (kind) {
         StatusPillKind.CONNECTED -> LocalStatusOnGreen.current
         StatusPillKind.SYNCING -> MaterialTheme.colorScheme.primaryContainer
-        StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> calm
+        StatusPillKind.CONNECTING, StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> calm
     }
     Box(
         modifier = modifier
