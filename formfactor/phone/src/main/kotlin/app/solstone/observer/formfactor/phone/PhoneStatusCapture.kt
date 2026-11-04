@@ -5,6 +5,9 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.pl.ClaimedJournalMark
+import app.solstone.core.pl.UnknownJournalSighting
+import app.solstone.core.pl.journalMarkFromJid
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
@@ -16,6 +19,7 @@ enum class PhoneStatusCapture {
     PAIRED_OFFLINE,
     PAIRED_CAUGHT_UP,
     PAIRED_AWAITING_MARK,
+    PAIRED_UNKNOWN_JOURNALS,
 }
 
 fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
@@ -25,6 +29,7 @@ fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
     "paired-offline" -> PhoneStatusCapture.PAIRED_OFFLINE
     "paired-caught-up" -> PhoneStatusCapture.PAIRED_CAUGHT_UP
     "paired-awaiting-mark" -> PhoneStatusCapture.PAIRED_AWAITING_MARK
+    "paired-unknown-journals" -> PhoneStatusCapture.PAIRED_UNKNOWN_JOURNALS
     else -> null
 }
 
@@ -49,6 +54,12 @@ fun resolvePhoneStatusCapture(
         PhoneStatusCapture.PAIRED_OFFLINE -> capturedStatusState(paired = true, online = false, pendingCount = 1, awaitingMarkConfirmation = false)
         PhoneStatusCapture.PAIRED_CAUGHT_UP -> capturedStatusState(paired = true, online = true, pendingCount = 0, awaitingMarkConfirmation = false)
         PhoneStatusCapture.PAIRED_AWAITING_MARK -> capturedStatusState(paired = true, online = true, pendingCount = 0, awaitingMarkConfirmation = true)
+        PhoneStatusCapture.PAIRED_UNKNOWN_JOURNALS -> capturedStatusState(
+            paired = true,
+            online = true,
+            pendingCount = 0,
+            unknownJournals = capturedUnknownJournals(),
+        )
         null -> null
     }
 }
@@ -58,6 +69,7 @@ private fun capturedStatusState(
     online: Boolean,
     pendingCount: Int,
     awaitingMarkConfirmation: Boolean = false,
+    unknownJournals: List<UnknownJournalSighting> = emptyList(),
 ): LoadState<PhoneStatusSnapshot> {
     val waiting = if (pendingCount > 0) {
         listOf(SourceStatus("audio", SourceWish.On, SourceState.ON, ReasonCode.NONE))
@@ -74,9 +86,24 @@ private fun capturedStatusState(
                 awaitingMarkConfirmation = awaitingMarkConfirmation,
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
+                unknownJournals = unknownJournals,
             ),
             waiting = waiting,
         ),
+    )
+}
+
+/** One sighting of each shape: a claim at an address, no claim at an address, a claim through the relay. */
+private fun capturedUnknownJournals(): List<UnknownJournalSighting> {
+    val claim = "f30ed159-ef46-8e9c-913f-e49f0fe7d201"
+    val mark: ClaimedJournalMark = runCatching { journalMarkFromJid(claim) }.fold(
+        onSuccess = { ClaimedJournalMark.Derived(it) },
+        onFailure = { ClaimedJournalMark.Unavailable },
+    )
+    return listOf(
+        UnknownJournalSighting("192.0.2.10:21000", claim, mark),
+        UnknownJournalSighting("192.0.2.11:21000", null, ClaimedJournalMark.NotPresented),
+        UnknownJournalSighting(null, claim, mark),
     )
 }
 

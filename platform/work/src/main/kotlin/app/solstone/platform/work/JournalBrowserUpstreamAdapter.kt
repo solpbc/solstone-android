@@ -164,7 +164,7 @@ class JournalBrowserUpstreamAdapter(
                 origin.host to origin.effectivePort
             }
         }
-        log.recordUnknownJournal(host, port, unknown.claimedJournalId)
+        log.recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay = lease is PairingLease.Relay)
     }
 
     /**

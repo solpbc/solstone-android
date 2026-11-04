@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,7 +55,10 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -98,6 +102,7 @@ object JournalMarkTokens {
     const val UNCONFIRMED_ACCESSIBLE_NAME = "your journal, mark not confirmed yet"
     const val LOADING_ACCESSIBLE_NAME = "your journal, mark not read yet"
     const val UNAVAILABLE_ACCESSIBLE_NAME = "your journal's mark, unavailable right now"
+    const val NOT_PRESENTED_ACCESSIBLE_NAME = "no identity presented"
 }
 
 internal fun journalMarkSpokenForm(presentation: JournalMarkPresentation): String = when (presentation) {
@@ -304,13 +309,15 @@ fun JournalMarkChips(
     mark: JournalMark? = null,
     unavailable: Boolean = false,
     modifier: Modifier = Modifier,
+    /** The no-identity slot: the dashed chips, in neutral ink, because nothing here is ours. */
+    neutral: Boolean = false,
 ) {
     val diamondBox = side * 1.4143f
     val icon1 = mark?.icon1
     val icon2 = mark?.icon2
 
-    val color1 = if (unavailable) JournalMarkTokens.unavailableBorder else if (icon1 != null) parseHexColor(icon1.colorHex, JournalMarkTokens.chipOneBorder) else JournalMarkTokens.chipOneBorder
-    val color2 = if (unavailable) JournalMarkTokens.unavailableBorder else if (icon2 != null) parseHexColor(icon2.colorHex, JournalMarkTokens.chipTwoBorder) else JournalMarkTokens.chipTwoBorder
+    val color1 = if (neutral) JournalMarkTokens.middotInk else if (unavailable) JournalMarkTokens.unavailableBorder else if (icon1 != null) parseHexColor(icon1.colorHex, JournalMarkTokens.chipOneBorder) else JournalMarkTokens.chipOneBorder
+    val color2 = if (neutral) JournalMarkTokens.middotInk else if (unavailable) JournalMarkTokens.unavailableBorder else if (icon2 != null) parseHexColor(icon2.colorHex, JournalMarkTokens.chipTwoBorder) else JournalMarkTokens.chipTwoBorder
 
     val rot1 = if (unavailable) 0f else (icon1?.rot ?: 0).toFloat()
     val rot2 = if (unavailable) 0f else (icon2?.rot ?: 45).toFloat()
@@ -396,12 +403,47 @@ fun JournalMarkWords(
 }
 
 /**
+ * The words in a card too narrow to promise one line: one text, so two long words wrap between them
+ * rather than squeezing the second. A line break takes the dot's place: the dot never ends a line or
+ * starts one.
+ */
+@Composable
+private fun JournalMarkWordsWrapping(
+    first: String,
+    second: String,
+    fontSize: TextUnit,
+) {
+    val style = TextStyle(
+        fontFamily = ComfortaaBold,
+        fontWeight = FontWeight.Bold,
+        fontSize = fontSize,
+        textAlign = TextAlign.Center,
+    )
+    var wrapped by remember(first, second) { mutableStateOf(false) }
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = JournalMarkTokens.wordInk)) { append(first) }
+            if (wrapped) {
+                append("\n")
+            } else {
+                withStyle(SpanStyle(color = JournalMarkTokens.middotInk)) { append(" · ") }
+            }
+            withStyle(SpanStyle(color = JournalMarkTokens.wordInk)) { append(second) }
+        },
+        style = style,
+        onTextLayout = { if (it.lineCount > 1) wrapped = true },
+        modifier = Modifier.clearAndSetSemantics { },
+    )
+}
+
+/**
  * Journal mark card with chips and words.
  */
 @Composable
 fun JournalMarkCard(
     presentation: JournalMarkPresentation = JournalMarkPresentation.Generic,
     modifier: Modifier = Modifier,
+    size: JournalMarkCardSize = JournalMarkCardSize.Full,
 ) {
     val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
     val isUnavailable = presentation is JournalMarkPresentation.Unavailable
@@ -409,8 +451,54 @@ fun JournalMarkCard(
     val word1 = mark?.words?.getOrNull(0) ?: if (isUnavailable) "mark" else "your"
     val word2 = mark?.words?.getOrNull(1) ?: if (isUnavailable) "unavailable" else "journal"
 
-    val accessibleName = journalMarkSpokenForm(presentation)
+    JournalMarkCardFrame(journalMarkSpokenForm(presentation), size, modifier) {
+        JournalMarkChips(side = size.chipSide, mark = mark, unavailable = isUnavailable)
+        Spacer(Modifier.height(size.gap))
+        JournalMarkCardWords(word1, word2, size)
+    }
+}
 
+/** The slot for a peer that presented no identity. Same geometry as every mark, in neutral ink. */
+@Composable
+internal fun JournalMarkNotPresentedCard(
+    modifier: Modifier = Modifier,
+    size: JournalMarkCardSize = JournalMarkCardSize.Full,
+) {
+    JournalMarkCardFrame(JournalMarkTokens.NOT_PRESENTED_ACCESSIBLE_NAME, size, modifier) {
+        JournalMarkChips(side = size.chipSide, neutral = true)
+        Spacer(Modifier.height(size.gap))
+        JournalMarkCardWords("not", "presented", size)
+    }
+}
+
+@Composable
+private fun JournalMarkCardWords(first: String, second: String, size: JournalMarkCardSize) {
+    if (size == JournalMarkCardSize.Compact) {
+        JournalMarkWordsWrapping(first, second, size.wordSize)
+    } else {
+        JournalMarkWords(first = first, second = second, fontSize = size.wordSize)
+    }
+}
+
+/** [Compact] puts two cards side by side on a phone. */
+enum class JournalMarkCardSize(
+    internal val chipSide: Dp,
+    internal val gap: Dp,
+    internal val wordSize: TextUnit,
+    internal val horizontalPadding: Dp,
+    internal val verticalPadding: Dp,
+) {
+    Full(48.dp, 12.dp, 18.sp, 22.dp, 18.dp),
+    Compact(36.dp, 8.dp, 13.sp, 8.dp, 12.dp),
+}
+
+@Composable
+private fun JournalMarkCardFrame(
+    accessibleName: String,
+    size: JournalMarkCardSize,
+    modifier: Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
         modifier = modifier
             .shellSurface(
@@ -418,17 +506,14 @@ fun JournalMarkCard(
                 hairline = JournalMarkTokens.cardBorder,
                 shape = RoundedCornerShape(JournalMarkTokens.cardRadius),
             )
-            .padding(horizontal = 22.dp, vertical = 18.dp)
+            .padding(horizontal = size.horizontalPadding, vertical = size.verticalPadding)
             .semantics(mergeDescendants = true) {
                 contentDescription = accessibleName
             }
             .testTag("journalMarkCard"),
         horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        JournalMarkChips(side = 48.dp, mark = mark, unavailable = isUnavailable)
-        Spacer(Modifier.height(12.dp))
-        JournalMarkWords(first = word1, second = word2, fontSize = 18.sp)
-    }
+        content = content,
+    )
 }
 
 internal enum class PairingPromptAction { Confirm, Drop }

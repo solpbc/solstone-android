@@ -5,6 +5,7 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.SourceStatus
@@ -22,6 +23,7 @@ fun phoneStatusSnapshotOf(
     recoveryCompleted: Boolean,
     audioAwaitingCustody: Boolean,
     gaps: PhoneGapStatus = PhoneGapStatus(),
+    unknownJournals: List<UnknownJournalSighting> = emptyList(),
 ): PhoneStatusSnapshot {
     val (paired, online) = when (val plStatus = backlog.plStatus) {
         HarnessPlStatus.NotPaired -> false to false
@@ -57,6 +59,7 @@ fun phoneStatusSnapshotOf(
             gapTechnicalDetails = gaps.technicalDetails,
             journalVersion = backlog.journalVersion,
             calendarHeldForJournal = backlog.calendarHeldForJournal,
+            unknownJournals = unknownJournals,
         ),
         waiting = waiting,
     )

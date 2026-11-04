@@ -16,6 +16,7 @@ import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.JournalRefusalException
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RefusalRecord
+import app.solstone.core.pl.UnknownJournalException
 import app.solstone.platform.identity.file.FileClientCredentialStore
 import app.solstone.platform.identity.file.FileEndpointStore
 import app.solstone.platform.identity.file.FileIdentityStore
@@ -72,6 +73,18 @@ class ProbeRefusalStopTest {
         assertEquals(HarnessPlStatus.PairedButUnreachable("identity not paired"), setup.probe.probe())
         assertEquals(0, dials)
         assertEquals(IdentityState.REVOKED, setup.state())
+    }
+
+    // Falsified by check connection reading "couldn't reach" when something did answer, or by the
+    // relay's sighting losing that it was through the relay.
+    @Test
+    fun aPeerThatIsNotThePairedJournalIsNamedOnTheResult() {
+        val direct = probe { throw UnknownJournalException("10.0.0.1:7657", "claim", java.io.IOException("peer")) }
+        val status = assertIs<HarnessPlStatus.PairedButUnreachable>(direct.probe.probe())
+        assertEquals(UnknownJournalAnswer("10.0.0.1:7657"), status.unknownJournal)
+
+        val ordinary = probe { throw java.io.IOException("no route") }
+        assertEquals(null, assertIs<HarnessPlStatus.PairedButUnreachable>(ordinary.probe.probe()).unknownJournal)
     }
 
     private class Setup(val probe: RealPlStatusProbe, val graph: FilePairingGraph) {

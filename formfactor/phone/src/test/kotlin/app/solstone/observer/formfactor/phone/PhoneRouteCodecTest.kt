@@ -37,6 +37,15 @@ class PhoneRouteCodecTest {
         assertNull(decodePhoneRoute("x/y"))
     }
 
+    // Falsified by a stack restore that loses which sighting was open, or merges relay and direct.
+    @Test
+    fun unknownJournalRoutesRoundTripPerAddressAndRelay() {
+        listOf("192.168.1.20:7657", "[fe80::1%wlan0]:7657", null).forEach { address ->
+            val route = PhoneRoute.UnknownJournal(address)
+            assertEquals(route, decodePhoneRoute(encodePhoneRoute(route)))
+        }
+    }
+
     @Test
     fun decodeGarbageReturnsNull() {
         assertNull(decodePhoneRoute("not-a-route"))

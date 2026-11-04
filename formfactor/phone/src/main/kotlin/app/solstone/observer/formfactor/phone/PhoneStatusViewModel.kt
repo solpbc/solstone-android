@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.LoadState
@@ -23,6 +24,7 @@ class PhoneStatusViewModel(
     private val gapStatus: () -> PhoneGapStatus = { PhoneGapStatus() },
     private val markSeen: (Set<String>, Set<String>) -> Boolean = { _, _ -> false },
     private val onGapSeen: () -> Unit = {},
+    private val unknownJournals: () -> List<UnknownJournalSighting> = { emptyList() },
     private val capturedStatusState: LoadState<PhoneStatusSnapshot>? = null,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val clock: () -> Long = { statusWallNow() },
@@ -202,6 +204,18 @@ class PhoneStatusViewModel(
         }
     }
 
+    /**
+     * Shows the sightings as they stand, without reading status again: reading status dials, and a
+     * dial is what produces a sighting.
+     */
+    fun onUnknownJournalsChanged() {
+        if (capturedStatusState != null) return
+        val loaded = statusState as? LoadState.Loaded ?: return
+        statusState = LoadState.Loaded(
+            loaded.value.copy(status = loaded.value.status.copy(unknownJournals = unknownJournals())),
+        )
+    }
+
     private fun startRead(generation: Long) {
         readInFlight = true
         asyncLoad.load({ snapshotOf(read()) }) { incoming ->
@@ -228,6 +242,7 @@ class PhoneStatusViewModel(
         recoveryCompleted = recoveryCompleted(),
         audioAwaitingCustody = audioAwaitingCustody(),
         gaps = gapStatus(),
+        unknownJournals = unknownJournals(),
     )
 }
 

@@ -74,11 +74,16 @@ private fun isJournalIdText(text: String): Boolean =
  * the same address every few minutes therefore writes nothing, so the capped log keeps room for
  * other events.
  */
-class DialEventLog(private val emit: (String) -> Unit) {
+class DialEventLog(
+    private val sightings: UnknownJournalSightings? = null,
+    private val emit: (String) -> Unit,
+) {
     private val lock = Any()
     private var lastConnected: Pair<String, Int>? = null
 
-    fun record(host: String, port: Int, outcome: DialOutcome) {
+    /** [throughRelay] says [host]:[port] is the relay's own address, not one the journal answers at. */
+    fun record(host: String, port: Int, outcome: DialOutcome, throughRelay: Boolean = false) {
+        if (outcome == DialOutcome.CONNECTED) sightings?.reached(sightingAddress(host, port, throughRelay))
         val line = synchronized(lock) {
             if (outcome == DialOutcome.CONNECTED) {
                 val address = host to port
@@ -92,11 +97,13 @@ class DialEventLog(private val emit: (String) -> Unit) {
         runCatching { emit(line) }
     }
 
-    fun recordFailure(host: String, port: Int, failure: Throwable) {
+    fun recordFailure(host: String, port: Int, failure: Throwable, throughRelay: Boolean = false) {
         val unknown = unknownJournalIn(failure)
         if (unknown != null) {
-            recordUnknownJournal(host, port, unknown.claimedJournalId)
+            recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay)
         } else {
+            // A refusal comes from the paired journal itself, proven against the pinned CA.
+            if (journalRefusalIn(failure) != null) sightings?.reached(sightingAddress(host, port, throughRelay))
             record(host, port, classifyDialFailure(failure))
         }
     }
@@ -105,7 +112,8 @@ class DialEventLog(private val emit: (String) -> Unit) {
      * A peer that is not the paired journal answered at [host]:[port]. [claimedJournalId] is only
      * what that peer presented, and is written as a claim: `claimed-journal=<id>`, or `none`.
      */
-    fun recordUnknownJournal(host: String, port: Int, claimedJournalId: String?) {
+    fun recordUnknownJournal(host: String, port: Int, claimedJournalId: String?, throughRelay: Boolean = false) {
+        sightings?.seen(sightingAddress(host, port, throughRelay), claimedJournalId)
         val line = synchronized(lock) {
             lastConnected = null
             formatDialEvent(host, port, DialOutcome.UNKNOWN_JOURNAL) +
@@ -113,4 +121,7 @@ class DialEventLog(private val emit: (String) -> Unit) {
         }
         runCatching { emit(line) }
     }
+
+    private fun sightingAddress(host: String, port: Int, throughRelay: Boolean): String? =
+        if (throughRelay) null else displayAddress(host, port)
 }

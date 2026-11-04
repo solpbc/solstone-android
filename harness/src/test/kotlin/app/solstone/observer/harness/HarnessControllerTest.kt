@@ -109,6 +109,25 @@ class HarnessControllerTest {
         assertEquals(0, calls)
     }
 
+    // Falsified by the notice's `pair again` hitting "couldn't check": a journal whose identity was
+    // reset answers as an unknown journal, and that owner's only way forward is a new link.
+    @Test
+    fun anUnknownJournalAtTheSavedAddressLetsAFreshLinkReplaceThePairing() {
+        var calls = 0
+        val f = fixture(
+            pairProbe = PairProbe { _, _ -> calls += 1; error("replacing") },
+            plStatusProbe = PlStatusProbe {
+                HarnessPlStatus.PairedButUnreachable("x", "10.0.0.1:7657", UnknownJournalAnswer("10.0.0.1:7657"))
+            },
+        )
+
+        assertNotEquals(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingUnreachable),
+            runCatching { f.controller.dispatchPairLink(validPairLink()) }.getOrNull(),
+        )
+        assertEquals(1, calls)
+    }
+
     @Test
     fun revokedPairingReplacesWithFreshLink() {
         var calls = 0

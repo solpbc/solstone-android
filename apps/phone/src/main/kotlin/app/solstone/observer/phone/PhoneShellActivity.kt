@@ -87,14 +87,14 @@ import app.solstone.core.identity.StoreInspectResult
 import app.solstone.observer.formfactor.phone.MarkConfirmationRoute
 import app.solstone.observer.formfactor.phone.manualMarkConfirmationRoute
 import app.solstone.core.diagnostics.DiagnosticLogRead
+import app.solstone.platform.work.DialDiagnostics
 import app.solstone.platform.work.forgetPushAfterCleared
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.identity.PairingProvenance
 import app.solstone.platform.fgs.ObserverForegroundService
-import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_REACHED
 import app.solstone.observer.formfactor.phone.PhoneTheme
 import app.solstone.observer.formfactor.phone.CHECK_CONNECTION_RUNNING
-import app.solstone.observer.formfactor.phone.checkConnectionUnreached
+import app.solstone.observer.formfactor.phone.checkConnectionResult
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import app.solstone.observer.harness.HarnessPlStatus
 import androidx.compose.runtime.rememberCoroutineScope
@@ -412,6 +412,7 @@ class PhoneShellActivity : ComponentActivity() {
             gapStatus = { phoneGapStatus(this@PhoneShellActivity, container.noticesMayShow) },
             markSeen = { lossIds, unknownKeys -> phoneMarkGapSeen(this@PhoneShellActivity, lossIds, unknownKeys) },
             onGapSeen = { (application as? PhoneApplication)?.refreshWidgetAfterGapSeen() },
+            unknownJournals = DialDiagnostics.sightings::current,
             capturedStatusState = capture.capturedStatusState,
         )
         sourcesViewModel = ViewModelProvider(
@@ -746,6 +747,10 @@ class PhoneShellActivity : ComponentActivity() {
                         val effective = displayedSnapshot()
                         val before = pairingSnapshot
                         pairingSnapshot = effective
+                        // Sightings were measured against the pairing that just left.
+                        if ((before as? PairingGraphSnapshot.Committed)?.pairing != (effective as? PairingGraphSnapshot.Committed)?.pairing) {
+                            DialDiagnostics.sightings.clear()
+                        }
                         if (pairingDiagKey(before) != pairingDiagKey(effective)) {
                             PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(effective)}")
                         }
@@ -772,10 +777,14 @@ class PhoneShellActivity : ComponentActivity() {
                         )
                     }
                 }
+                val removeSightingListener = DialDiagnostics.sightings.addListener {
+                    mainHandler.post { statusViewModel.onUnknownJournalsChanged() }
+                }
                 onDispose {
                     pairingSubscription.cancel()
                     removeMarkListener()
                     removeConfirmationListener()
+                    removeSightingListener()
                 }
             }
             LaunchedEffect(pairingSnapshot.sequenceNumber, journalConfirmed, migrationRefreshEpoch) {
@@ -1029,11 +1038,7 @@ class PhoneShellActivity : ComponentActivity() {
                         )
                         // ⚠ The address is named only when a dial was actually attempted and
                         // failed; a missing credential or identity keeps the plain words.
-                        connectionCheck = if (reachable) {
-                            CHECK_CONNECTION_REACHED
-                        } else {
-                            checkConnectionUnreached((probed as? HarnessPlStatus.PairedButUnreachable)?.address)
-                        }
+                        connectionCheck = checkConnectionResult(probed)
                         statusViewModel.refresh()
                     }
                 },
@@ -1839,6 +1844,7 @@ class PhoneShellActivity : ComponentActivity() {
         private val gapStatus: () -> app.solstone.observer.formfactor.phone.PhoneGapStatus,
         private val markSeen: (Set<String>, Set<String>) -> Boolean,
         private val onGapSeen: () -> Unit,
+        private val unknownJournals: () -> List<app.solstone.core.pl.UnknownJournalSighting>,
         private val capturedStatusState: LoadState<PhoneStatusSnapshot>?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1856,6 +1862,7 @@ class PhoneShellActivity : ComponentActivity() {
                         gapStatus = gapStatus,
                         markSeen = markSeen,
                         onGapSeen = onGapSeen,
+                        unknownJournals = unknownJournals,
                         capturedStatusState = capturedStatusState,
                     ) as T
                 else -> throw IllegalArgumentException("unsupported view model ${modelClass.name}")

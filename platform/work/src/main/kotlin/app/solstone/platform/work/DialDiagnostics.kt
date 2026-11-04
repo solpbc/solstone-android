@@ -6,6 +6,7 @@ package app.solstone.platform.work
 import app.solstone.core.pl.DialEventLog
 import app.solstone.core.pl.DialOutcome
 import app.solstone.core.pl.DirectEndpoint
+import app.solstone.core.pl.UnknownJournalSightings
 import app.solstone.core.pl.parseProductionRelayOrigin
 
 /**
@@ -20,7 +21,10 @@ object DialDiagnostics {
     @JvmStatic
     var sink: ((String) -> Unit)? = null
 
-    val events: DialEventLog = DialEventLog { line -> sink?.invoke(line) }
+    /** Peers that answered and are not the paired journal, as every dial in this process saw them. */
+    val sightings: UnknownJournalSightings = UnknownJournalSightings()
+
+    val events: DialEventLog = DialEventLog(sightings) { line -> sink?.invoke(line) }
 }
 
 /**
@@ -37,12 +41,13 @@ fun SyncTransport.dialAddress(): DirectEndpoint? =
 /** Runs [open] for [transport], recording the dial's outcome in [log]. Rethrows any failure. */
 fun <T> recordDial(log: DialEventLog?, transport: SyncTransport, open: () -> T): T {
     val address = if (log == null) null else transport.dialAddress()
+    val throughRelay = transport is SyncTransport.Relay
     val opened = try {
         open()
     } catch (e: Throwable) {
-        if (address != null) log?.recordFailure(address.host, address.port, e)
+        if (address != null) log?.recordFailure(address.host, address.port, e, throughRelay)
         throw e
     }
-    if (address != null) log?.record(address.host, address.port, DialOutcome.CONNECTED)
+    if (address != null) log?.record(address.host, address.port, DialOutcome.CONNECTED, throughRelay)
     return opened
 }

@@ -5,10 +5,13 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.pl.ClaimedJournalMark
+import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
+import app.solstone.observer.harness.UnknownJournalAnswer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,6 +32,53 @@ class PhoneStatusSnapshotTest {
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(401)))
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(403)))
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(503)))
+    }
+
+    // Falsified by any pill or pane state reading the sightings: the notice is additive.
+    @Test
+    fun aSightingChangesNoStateOfTheConnection() {
+        val sighting = UnknownJournalSighting("10.0.0.1:7657", null, ClaimedJournalMark.NotPresented)
+        listOf(
+            HarnessPlStatus.NotPaired,
+            HarnessPlStatus.PairedButUnreachable("offline"),
+            HarnessPlStatus.Reachable(200),
+        ).forEach { plStatus ->
+            fun model(sightings: List<UnknownJournalSighting>) = phoneStatusSnapshotOf(
+                backlog = HarnessBacklogStatus(plStatus, 1, emptyList()),
+                registered = emptyList(),
+                awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                unknownJournals = sightings,
+            ).status
+            val plain = model(emptyList())
+            val seen = model(listOf(sighting))
+            assertEquals(listOf(sighting), seen.unknownJournals)
+            assertEquals(statusPillKind(plain, 0L), statusPillKind(seen, 0L))
+            assertEquals(statusPillText(plain, 0L), statusPillText(seen, 0L))
+            assertEquals(statusPaneCopy(plain, 0L), statusPaneCopy(seen, 0L))
+        }
+    }
+
+    @Test
+    fun aCheckThatAnUnknownJournalAnsweredNamesWhatAnswered() {
+        assertEquals(
+            unknownJournalRowText("10.0.0.1:7657"),
+            checkConnectionResult(
+                HarnessPlStatus.PairedButUnreachable("x", "10.0.0.1:7657", UnknownJournalAnswer("10.0.0.1:7657")),
+            ),
+        )
+        assertEquals(
+            unknownJournalRowText(null),
+            checkConnectionResult(HarnessPlStatus.PairedButUnreachable("x", "10.0.0.1:7657", UnknownJournalAnswer(null))),
+        )
+        assertEquals(
+            checkConnectionUnreached("10.0.0.1:7657"),
+            checkConnectionResult(HarnessPlStatus.PairedButUnreachable("x", "10.0.0.1:7657")),
+        )
+        assertEquals(CHECK_CONNECTION_UNREACHED, checkConnectionResult(HarnessPlStatus.PairedButUnreachable("x")))
+        assertEquals(CHECK_CONNECTION_UNREACHED, checkConnectionResult(null))
+        assertEquals(CHECK_CONNECTION_REACHED, checkConnectionResult(HarnessPlStatus.Reachable(200)))
     }
 
     @Test

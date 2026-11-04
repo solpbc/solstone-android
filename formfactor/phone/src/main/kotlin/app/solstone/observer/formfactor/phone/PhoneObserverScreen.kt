@@ -337,6 +337,11 @@ internal fun PhoneObserverScreen(
         detailStack = detailStack.showInDetail(PhoneRoute.JournalSetup)
         onConnectJournal()
     }
+    val unknownJournalsBinding = UnknownJournalsBinding(
+        sightings = status?.unknownJournals,
+        onOpen = { address -> detailStack = detailStack.pushInDetail(PhoneRoute.UnknownJournal(address)) },
+        onGone = { popDetail() },
+    )
     LaunchedEffect(drawerState) {
         var previousTarget: DrawerValue? = null
         snapshotFlow { drawerState.targetValue }.collectLatest { target ->
@@ -402,6 +407,10 @@ internal fun PhoneObserverScreen(
                             onOpenImport = {
                                 paneStates = paneStates.close(PhonePane.STATUS)
                                 detailStack = detailStack.showInDetail(PhoneRoute.Import)
+                            },
+                            onOpenUnknownJournal = { address ->
+                                paneStates = paneStates.close(PhonePane.STATUS)
+                                detailStack = detailStack.showInDetail(PhoneRoute.UnknownJournal(address))
                             },
                         )
                     }
@@ -608,6 +617,7 @@ internal fun PhoneObserverScreen(
                                 onSetOneUp = withHaptic(onSetOneUp),
                                 onSendLink = withHaptic(onSendLink),
                                 onAlreadyHaveOne = withHaptic(onAlreadyHaveOne),
+                                unknownJournals = unknownJournalsBinding,
                                 modifier = Modifier.padding(paddingValues),
                                 leadingSlot = if (top != null) {
                                     {
@@ -693,6 +703,7 @@ internal fun PhoneObserverScreen(
                     onSetOneUp = withHaptic(onSetOneUp),
                     onSendLink = withHaptic(onSendLink),
                     onAlreadyHaveOne = withHaptic(onAlreadyHaveOne),
+                    unknownJournals = unknownJournalsBinding,
                     modifier = modifier.padding(paddingValues),
                 )
             }

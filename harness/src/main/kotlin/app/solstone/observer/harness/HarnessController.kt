@@ -360,12 +360,18 @@ class HarnessController(
     /**
      * A revoked pairing is deliberately not treated as current: pairing a fresh link is its repair.
      * A current pairing, however, must prove it is dead before this device changes credentials.
+     *
+     * A peer answering where the paired journal should be, with no leg reaching that journal, is the
+     * one state where an unreachable pairing may be replaced. Only the owner can tell a reset journal
+     * from another device holding the address, and a changed certificate is a re-pair: refusing here
+     * would leave the notice's own `pair again` a dead end. The link and the mark question still apply.
      */
     private fun replacementPreflight(): PairAttemptOutcome? {
         if (pairingFact() != PairingFact.PAIRED) return null
-        return when (probePlStatus()) {
+        return when (val status = probePlStatus()) {
             is HarnessPlStatus.Reachable -> PairAttemptOutcome.ExistingPairingActive
-            is HarnessPlStatus.PairedButUnreachable -> PairAttemptOutcome.ExistingPairingUnreachable
+            is HarnessPlStatus.PairedButUnreachable ->
+                if (status.unknownJournal != null) null else PairAttemptOutcome.ExistingPairingUnreachable
             // The persisted pairing fact and the probe disagree: the current journal record is
             // gone, so this is the same repair path as a journal-side revocation.
             HarnessPlStatus.NotPaired -> null

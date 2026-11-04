@@ -31,6 +31,12 @@ sealed interface PhoneRoute : PhoneSurface {
         override val headingKey: String get() = "heading.source_detail"
     }
 
+    /** One unknown-journal sighting; [address] is null for the one seen through the relay. */
+    data class UnknownJournal(val address: String?) : PhoneRoute {
+        override val paneTitle: String get() = "surface_unknown_journal"
+        override val headingKey: String get() = "heading.unknown_journal"
+    }
+
     data object AboutSolstone : PhoneRoute {
         override val paneTitle: String get() = "surface_about_solstone"
         override val headingKey: String get() = "heading.about_solstone"
@@ -103,6 +109,7 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.RouteC -> "route-c"
     PhoneRoute.RouteCChild -> "route-c-child"
     is PhoneRoute.SourceDetail -> "sd/${route.sourceId}"
+    is PhoneRoute.UnknownJournal -> route.address?.let { "uj/$it" } ?: "uj-relay"
     PhoneRoute.AboutSolstone -> "about-solstone"
     PhoneRoute.Licences -> "licences"
     PhoneRoute.Import -> "import"
@@ -123,7 +130,11 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
     if (parts.size == 2 && parts[0] == "sd" && parts[1].isNotEmpty()) {
         return PhoneRoute.SourceDetail(parts[1])
     }
+    if (parts.size == 2 && parts[0] == "uj" && parts[1].isNotEmpty()) {
+        return PhoneRoute.UnknownJournal(parts[1])
+    }
     return when (key) {
+        "uj-relay" -> PhoneRoute.UnknownJournal(null)
         "route-a" -> PhoneRoute.RouteA
         "route-b" -> PhoneRoute.RouteB
         "route-c" -> PhoneRoute.RouteC

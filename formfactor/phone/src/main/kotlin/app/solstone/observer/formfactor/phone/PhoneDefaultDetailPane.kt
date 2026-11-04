@@ -50,6 +50,7 @@ internal fun PhoneDefaultDetailPane(
     onConfirmMark: () -> Unit,
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onOpenUnknownJournal: (String?) -> Unit = {},
 ) {
     Box(
         modifier = modifier
@@ -84,6 +85,7 @@ internal fun PhoneDefaultDetailPane(
                 snapshot = status.snapshot,
                 onOpenSource = onOpenSource,
                 onConfirmMark = onConfirmMark,
+                onOpenUnknownJournal = onOpenUnknownJournal,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -119,6 +121,7 @@ private fun PhoneDefaultDetailPaired(
     snapshot: PhoneStatusSnapshot,
     onOpenSource: (String) -> Unit,
     onConfirmMark: () -> Unit,
+    onOpenUnknownJournal: (String?) -> Unit,
     modifier: Modifier,
 ) {
     PhoneDefaultStatusPane(modifier = modifier) {
@@ -127,6 +130,7 @@ private fun PhoneDefaultDetailPaired(
             waiting = snapshot.waiting,
             onOpenSource = onOpenSource,
             onConfirmMark = onConfirmMark,
+            onOpenUnknownJournal = onOpenUnknownJournal,
         )
     }
 }

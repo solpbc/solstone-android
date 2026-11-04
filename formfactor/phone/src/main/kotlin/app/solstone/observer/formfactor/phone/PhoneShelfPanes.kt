@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.core.identity.JournalMarkPresentation
 
 @Composable
@@ -297,6 +298,18 @@ const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
  */
 fun checkConnectionUnreached(address: String?): String =
     address?.takeIf(String::isNotBlank)?.let { "couldn't reach your journal at $it" } ?: CHECK_CONNECTION_UNREACHED
+
+/**
+ * What a finished `check connection` says. A peer that is not the paired journal answering is not
+ * "couldn't reach": the check names what the status pane names.
+ */
+fun checkConnectionResult(probed: HarnessPlStatus?): String = when (probed) {
+    is HarnessPlStatus.Reachable -> CHECK_CONNECTION_REACHED
+    is HarnessPlStatus.PairedButUnreachable -> probed.unknownJournal
+        ?.let { unknownJournalRowText(it.address) }
+        ?: checkConnectionUnreached(probed.address)
+    else -> CHECK_CONNECTION_UNREACHED
+}
 
 // ⚠ Three states, not two, and the third is not the one it first looks like. `forget()` clears
 // the identity, credential and endpoint and nothing else — ⛔ **it does not clear the spool or the

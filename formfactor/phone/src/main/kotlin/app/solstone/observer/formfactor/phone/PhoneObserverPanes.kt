@@ -90,6 +90,7 @@ internal fun PhoneDetailPane(
     onSetOneUp: () -> Unit = {},
     onSendLink: () -> Unit = {},
     onAlreadyHaveOne: () -> Unit = onConnectJournal,
+    unknownJournals: UnknownJournalsBinding = UnknownJournalsBinding(),
 ) {
     Column(modifier.fillMaxSize()) {
         leadingSlot?.let { slot ->
@@ -148,6 +149,7 @@ internal fun PhoneDetailPane(
             onSetOneUp = onSetOneUp,
             onSendLink = onSendLink,
             onAlreadyHaveOne = onAlreadyHaveOne,
+            unknownJournals = unknownJournals,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -209,6 +211,7 @@ private fun PhoneDetailContent(
     onSetOneUp: () -> Unit = {},
     onSendLink: () -> Unit = {},
     onAlreadyHaveOne: () -> Unit = onConnectJournal,
+    unknownJournals: UnknownJournalsBinding = UnknownJournalsBinding(),
 ) {
     when (top) {
         null -> PhoneDefaultDetailPane(
@@ -217,6 +220,14 @@ private fun PhoneDetailContent(
             onOpenSource = onOpenSource,
             onConfirmMark = onConfirmMark,
             onRefreshStatus = onRefreshStatus,
+            onOpenUnknownJournal = unknownJournals.onOpen,
+            modifier = modifier,
+        )
+        is PhoneRoute.UnknownJournal -> PhoneUnknownJournalRoute(
+            route = top,
+            binding = unknownJournals,
+            yourJournal = journalMarkPresentation,
+            onPairAgain = onAlreadyHaveOne,
             modifier = modifier,
         )
         PhoneRoute.AboutSolstone -> PhoneAboutPane(

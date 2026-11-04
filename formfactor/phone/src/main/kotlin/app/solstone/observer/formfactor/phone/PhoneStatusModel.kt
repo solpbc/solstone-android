@@ -5,6 +5,7 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionReading
+import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.core.spool.GAP_HEADLINE
 import app.solstone.core.spool.GapDayLoss
 import app.solstone.core.spool.gapDayLine
@@ -58,6 +59,8 @@ data class PhoneStatusModel(
     val connectivityKnown: Boolean = true,
     /** Last status line drawn while those facts were known. A cold redraw keeps it. */
     val rememberedSyncText: String? = null,
+    /** Additive to the connection's own state: nothing here changes the pill. */
+    val unknownJournals: List<UnknownJournalSighting> = emptyList(),
 )
 
 data class PhoneJournalFacts(

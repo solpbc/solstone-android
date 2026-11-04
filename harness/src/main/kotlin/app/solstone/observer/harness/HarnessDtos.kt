@@ -22,13 +22,21 @@ data class HarnessPairProbeResult(
     val connectionMode: PairConnectionMode = PairConnectionMode.PAIRING,
 )
 
+/** A peer that is not the paired journal answered at [address], or through the relay when null. */
+data class UnknownJournalAnswer(val address: String?)
+
 sealed interface HarnessPlStatus {
     data object NotPaired : HarnessPlStatus
     /**
      * [address] is the `host:port` the check actually dialed and failed to reach, or null when no
-     * dial was attempted (a missing credential or identity, say).
+     * dial was attempted (a missing credential or identity, say). [unknownJournal] is set when a
+     * peer that is not the paired journal answered during the check.
      */
-    data class PairedButUnreachable(val reason: String?, val address: String? = null) : HarnessPlStatus
+    data class PairedButUnreachable(
+        val reason: String?,
+        val address: String? = null,
+        val unknownJournal: UnknownJournalAnswer? = null,
+    ) : HarnessPlStatus
     data class Reachable(val status: Int) : HarnessPlStatus
 }
 

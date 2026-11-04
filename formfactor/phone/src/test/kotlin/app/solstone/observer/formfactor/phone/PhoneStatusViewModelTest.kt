@@ -5,6 +5,8 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.pl.ClaimedJournalMark
+import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.BackgroundRunner
 import app.solstone.observer.harness.HarnessBacklogStatus
@@ -865,6 +867,39 @@ class PhoneStatusViewModelTest {
         runner.runNext()
         poster.runNext()
         assertEquals(listOf(setOf("arrived")), marked)
+    }
+
+    // Falsified by reaching for refresh here: reading status dials, a dial sights, and a sighting
+    // would read status again.
+    @Test
+    fun aNewSightingShowsAtOnceWithoutReadingStatus() {
+        val runner = ManualRunner()
+        val poster = ManualPoster()
+        var reads = 0
+        var sightings = emptyList<UnknownJournalSighting>()
+        val viewModel = PhoneStatusViewModel(
+            read = {
+                reads++
+                HarnessBacklogStatus(HarnessPlStatus.Reachable(200), 0, emptyList())
+            },
+            sources = TestSourcesReader,
+            asyncLoad = AsyncLoad(runner, poster),
+            awaitingMarkConfirmation = { false },
+            recoveryCompleted = { true },
+            audioAwaitingCustody = { false },
+            unknownJournals = { sightings },
+        )
+        runner.runNext()
+        poster.runNext()
+        assertEquals(1, reads)
+
+        sightings = listOf(UnknownJournalSighting("10.0.0.1:7657", null, ClaimedJournalMark.NotPresented))
+        viewModel.onUnknownJournalsChanged()
+
+        assertEquals(0, runner.pendingCount)
+        assertEquals(1, reads)
+        val loaded = assertIs<LoadState.Loaded<PhoneStatusSnapshot>>(viewModel.statusState)
+        assertEquals(sightings, loaded.value.status.unknownJournals)
     }
 
     private fun viewModel(

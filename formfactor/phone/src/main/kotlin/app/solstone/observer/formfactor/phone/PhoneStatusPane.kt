@@ -68,6 +68,7 @@ fun PhoneStatusPane(
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
     onOpenTechnicalDetails: () -> Unit = {},
     onOpenImport: (() -> Unit)? = null,
+    onOpenUnknownJournal: (String?) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
@@ -128,6 +129,7 @@ fun PhoneStatusPane(
                         journalFacts = journalFacts,
                         onOpenTechnicalDetails = onOpenTechnicalDetails,
                         onOpenImport = onOpenImport,
+                        onOpenUnknownJournal = onOpenUnknownJournal,
                     )
                 } else {
                     PaneLead("not paired")
@@ -154,11 +156,13 @@ internal fun PhonePairedStatusContent(
     journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
     onOpenTechnicalDetails: () -> Unit = {},
     onOpenImport: (() -> Unit)? = null,
+    onOpenUnknownJournal: (String?) -> Unit = {},
 ) {
     PhonePairedStatusSummary(model, onConfirmMark)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneFactRow(label = "journal version", value = journalFacts.version)
     PaneFactRow(label = "how your phone connects", value = journalFacts.location)
+    PhoneUnknownJournalRows(model.unknownJournals, onOpenUnknownJournal)
     TextButton(
         onClick = onOpenTechnicalDetails,
         modifier = Modifier.testTag("statusTechnicalDetails"),

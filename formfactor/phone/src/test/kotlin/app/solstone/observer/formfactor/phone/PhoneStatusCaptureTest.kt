@@ -18,6 +18,7 @@ class PhoneStatusCaptureTest {
         assertEquals(PhoneStatusCapture.PAIRED_OFFLINE, decodePhoneStatusCapture("paired-offline"))
         assertEquals(PhoneStatusCapture.PAIRED_CAUGHT_UP, decodePhoneStatusCapture("paired-caught-up"))
         assertEquals(PhoneStatusCapture.PAIRED_AWAITING_MARK, decodePhoneStatusCapture("paired-awaiting-mark"))
+        assertEquals(PhoneStatusCapture.PAIRED_UNKNOWN_JOURNALS, decodePhoneStatusCapture("paired-unknown-journals"))
     }
 
     @Test

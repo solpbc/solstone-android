@@ -25,8 +25,8 @@ class PhoneSurfaceTest {
     }
 
     @Test
-    fun surfaceCountIsTwentyTwo() {
-        assertEquals(22, phoneSurfaces().size)
+    fun surfaceCountIsTwentyThree() {
+        assertEquals(23, phoneSurfaces().size)
     }
 
     @Test
@@ -41,6 +41,7 @@ class PhoneSurfaceTest {
         assertTrue(registered(PhoneRoute.RouteC))
         assertTrue(registered(PhoneRoute.RouteCChild))
         assertTrue(registered(PhoneRoute.SourceDetail("audio")))
+        assertTrue(registered(PhoneRoute.UnknownJournal(null)))
         assertTrue(registered(PhoneRoute.AboutSolstone))
         assertTrue(registered(PhoneRoute.Licences))
         assertTrue(registered(PhoneRoute.Import))
@@ -89,6 +90,7 @@ class PhoneSurfaceTest {
         PhoneRoute.Help -> PhoneRoute.Help in phoneSurfaces()
         PhoneRoute.CalendarSetup -> PhoneRoute.CalendarSetup in phoneSurfaces()
         is PhoneRoute.SourceDetail -> phoneSurfaces().any { it is PhoneRoute.SourceDetail }
+        is PhoneRoute.UnknownJournal -> phoneSurfaces().any { it is PhoneRoute.UnknownJournal }
     }
 
     @Test

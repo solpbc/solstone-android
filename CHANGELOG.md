@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- when something other than your journal answers, the app now tells you and shows both marks to compare.
+
 ## [2.1.36] - 2026-11-03
 
 ### Fixed

@@ -350,7 +350,11 @@ class RealPlStatusProbe(
         } else {
             handleReachabilityTransition(false, null, null)
             val err = failure ?: IllegalStateException("probe failed")
-            return HarnessPlStatus.PairedButUnreachable(plFailureDetail(err), dialedAddress)
+            return HarnessPlStatus.PairedButUnreachable(
+                plFailureDetail(err),
+                dialedAddress,
+                attempt.sightings.firstOrNull()?.let { UnknownJournalAnswer(it.address) },
+            )
         }
     }
 
