@@ -368,7 +368,7 @@ fun pairOverRelay(
             state = IdentityState.PAIRED,
         )
         val res = activePublisher.withMutationBoundary {
-            settleBeforeInstall(confirmation)
+            prepareInstall(activePublisher, confirmation, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint))
             activePublisher.installOrReplace(
                 home,
                 credential,
@@ -416,7 +416,7 @@ fun pairOverRelay(
         state = IdentityState.PAIRED,
     )
     val res = activePublisher.withMutationBoundary {
-        settleBeforeInstall(confirmation)
+        prepareInstall(activePublisher, confirmation, app.solstone.core.identity.PairingGeneration(homeInitial.instanceId, homeInitial.clientCertFingerprint))
         activePublisher.installOrReplace(
             homeInitial,
             credential,

@@ -13,6 +13,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - when your journal stops accepting this phone, the app now says so and offers to pair again, instead of showing offline.
+- answering "that doesn't match" while switching journals now keeps your current pairing.
 
 ## [2.1.36] - 2026-11-03
 

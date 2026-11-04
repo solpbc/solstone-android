@@ -4,6 +4,8 @@
 package app.solstone.core.pl
 
 import app.solstone.core.identity.JournalMark
+import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.identity.PairingGraphSnapshot
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -40,6 +42,9 @@ data class UnknownJournalSighting(
  * thread, and again only when the address's claimed journal ID changes. Listeners hear about a change
  * to the list, never about a repeat of a sighting it already holds, so a listener may safely read
  * status without looping.
+ *
+ * Sightings are measured against one pairing. [epoch] moves when that pairing leaves, and a dial that
+ * started before then reports nothing.
  */
 class UnknownJournalSightings(
     private val derive: (String) -> JournalMark = ::journalMarkFromJid,
@@ -50,10 +55,17 @@ class UnknownJournalSightings(
     private val lock = Any()
     private val rows = LinkedHashMap<String?, UnknownJournalSighting>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private var followed: PairingGeneration? = null
+    private var following = false
 
-    fun seen(address: String?, claimedJournalId: String?) {
+    @Volatile
+    var epoch: Long = 0L
+        private set
+
+    fun seen(address: String?, claimedJournalId: String?, startedAt: Long = epoch) {
         val claim = claimedJournalId?.takeIf(String::isNotBlank)
         synchronized(lock) {
+            if (startedAt != epoch) return
             val existing = rows[address]
             if (existing != null && existing.claimedJournalId == claim) return
             rows[address] = UnknownJournalSighting(
@@ -75,11 +87,37 @@ class UnknownJournalSightings(
     /** The pairing these sightings were measured against is gone. */
     fun clear() {
         val removed = synchronized(lock) {
+            epoch += 1
             val any = rows.isNotEmpty()
             rows.clear()
             any
         }
         if (removed) notifyListeners()
+    }
+
+    /**
+     * Follows the pairing authority: a different pairing ends every sighting, and an address that is
+     * no longer saved loses its row, because nothing will dial it to clear it. Returns whether the
+     * pairing changed. An unreadable pairing says nothing either way.
+     */
+    fun followPairing(snapshot: PairingGraphSnapshot): Boolean {
+        if (snapshot is PairingGraphSnapshot.Uncertain) return false
+        val committed = snapshot as? PairingGraphSnapshot.Committed
+        val pairing = committed?.pairing
+        val changed = synchronized(lock) {
+            val differs = following && followed != pairing
+            following = true
+            followed = pairing
+            differs
+        }
+        if (changed) {
+            clear()
+        } else if (committed != null) {
+            val saved = committed.directEndpoints.map { displayAddress(it.host, it.port) }.toSet()
+            val removed = synchronized(lock) { rows.keys.removeAll { it != null && it !in saved } }
+            if (removed) notifyListeners()
+        }
+        return changed
     }
 
     fun current(): List<UnknownJournalSighting> = synchronized(lock) { rows.values.toList() }

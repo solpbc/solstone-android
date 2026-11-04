@@ -219,4 +219,21 @@ interface PairingPublisher {
         endpoint: DirectEndpoint,
         proof: () -> Boolean,
     ): Boolean
+
+    /**
+     * Keep the committed pairing aside, durably, while [replacement] is installed over it and until
+     * the owner answers for it. Replacing an unanswered replacement keeps the same pairing aside.
+     * Throws if it can't be kept, so nothing is replaced without a way back.
+     */
+    fun holdPriorFor(replacement: PairingGeneration) = Unit
+
+    /** Whether a readable pairing is kept aside for [current]. */
+    fun canRestorePrior(current: PairingGeneration): Boolean = false
+
+    /** Put back the pairing kept aside for [current], exactly as it was, revoked state included. */
+    fun restorePrior(current: PairingGeneration): GraphMutationResult =
+        GraphMutationResult.Conflict("unsupported")
+
+    /** The owner answered for [current]: what was kept aside for it is finished with. */
+    fun discardPrior(current: PairingGeneration) = Unit
 }

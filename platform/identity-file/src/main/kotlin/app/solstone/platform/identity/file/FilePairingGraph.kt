@@ -24,6 +24,8 @@ import app.solstone.core.identity.SubscriptionHandle
 import app.solstone.core.model.DirectEndpoint
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.core.pl.parseJson
+import app.solstone.core.pl.toJson
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -50,6 +52,11 @@ class FilePairingGraph(
     private val credentialBakFile = File(credentialFile.parentFile, "${credentialFile.name}.bak")
     private val endpointBakFile = File(endpointFile.parentFile, "${endpointFile.name}.bak")
 
+    private val priorIdentityFile = File(identityFile.parentFile, "${identityFile.name}.prior")
+    private val priorCredentialFile = File(credentialFile.parentFile, "${credentialFile.name}.prior")
+    private val priorEndpointFile = File(endpointFile.parentFile, "${endpointFile.name}.prior")
+    private val priorRecordFile = File(commitMarkerFile.parentFile, "${commitMarkerFile.name}.prior")
+
     private val sequenceGen = AtomicLong(0)
     private var pairingRev = 1L
     private var directRev = 1L
@@ -72,6 +79,7 @@ class FilePairingGraph(
                 PairingGraphSnapshot.Uncertain(sequenceGen.incrementAndGet(), PersistenceIssue.PERSISTENCE_FAILED)
             }
         }
+        synchronized(lock) { dropStalePriorLocked() }
     }
 
     override fun currentSnapshot(): PairingGraphSnapshot = currentSnapshotState
@@ -635,6 +643,7 @@ class FilePairingGraph(
 
             // Step 4: CLEANUP
             cleanBackupAndStagingFiles()
+            deletePriorFilesLocked()
             stepHook?.onStep(DurableTxnStep.CLEANUP, CommitInFlightOp.FORGET.name)
 
             pairingRev++
@@ -649,6 +658,7 @@ class FilePairingGraph(
             val marker = PairingCommitMarker.parse(commitMarkerFile)
             if (marker?.status == CommitMarkerStatus.ABSENT) {
                 cleanBackupAndStagingFiles()
+                deletePriorFilesLocked()
                 pushKeyFile?.delete()
                 identityStore.clear()
                 credentialStore.clear()
@@ -1000,6 +1010,117 @@ class FilePairingGraph(
     private fun writeCommitMarker(marker: PairingCommitMarker) {
         val bytes = marker.toSerializedString().toByteArray()
         fileWriter.write(commitMarkerFile, bytes)
+    }
+
+    private data class PriorRecord(
+        val heldFor: List<PairingGeneration>,
+        val directAssociated: Boolean,
+        val provenance: PairingProvenance,
+    )
+
+    private class Prior(
+        val record: PriorRecord,
+        val home: PairedHome,
+        val credential: ClientCredential,
+        val endpoints: List<DirectEndpoint>,
+    )
+
+    override fun holdPriorFor(replacement: PairingGeneration): Unit = synchronized(lock) {
+        val current = currentSnapshotState as? PairingGraphSnapshot.Committed ?: return
+        if (current.pairing == replacement) return
+        val existing = readPriorRecordLocked()
+        if (existing != null && current.pairing in existing.heldFor) {
+            writePriorRecordLocked(existing.copy(heldFor = existing.heldFor + replacement))
+            return
+        }
+        deletePriorFilesLocked()
+        // The stored bytes as they are: still under the same protection as the live files.
+        fileWriter.write(priorIdentityFile, identityFile.readBytes())
+        fileWriter.write(priorCredentialFile, credentialFile.readBytes())
+        if (endpointFile.exists()) fileWriter.write(priorEndpointFile, endpointFile.readBytes())
+        writePriorRecordLocked(PriorRecord(listOf(replacement), current.directAssociated, current.provenance))
+    }
+
+    override fun canRestorePrior(current: PairingGeneration): Boolean = synchronized(lock) {
+        (currentSnapshotState as? PairingGraphSnapshot.Committed)?.pairing == current && readPriorLocked(current) != null
+    }
+
+    override fun restorePrior(current: PairingGeneration): GraphMutationResult = synchronized(lock) {
+        if ((currentSnapshotState as? PairingGraphSnapshot.Committed)?.pairing != current) {
+            return GraphMutationResult.Conflict("Pairing changed")
+        }
+        val prior = readPriorLocked(current) ?: return GraphMutationResult.Conflict("No prior pairing")
+        val result = installLocked(
+            prior.home,
+            prior.credential,
+            prior.endpoints,
+            prior.record.directAssociated,
+            prior.record.provenance,
+            replacePairing = true,
+        )
+        if (result is GraphMutationResult.Applied) deletePriorFilesLocked()
+        result
+    }
+
+    override fun discardPrior(current: PairingGeneration): Unit = synchronized(lock) {
+        if (readPriorRecordLocked()?.let { current in it.heldFor } == true) deletePriorFilesLocked()
+    }
+
+    /** A record no longer names the committed pairing: its install never landed, or it was restored. */
+    private fun dropStalePriorLocked() {
+        when (val snapshot = currentSnapshotState) {
+            is PairingGraphSnapshot.Uncertain -> Unit
+            is PairingGraphSnapshot.Absent -> deletePriorFilesLocked()
+            is PairingGraphSnapshot.Committed ->
+                if (readPriorRecordLocked()?.let { snapshot.pairing in it.heldFor } != true) deletePriorFilesLocked()
+        }
+    }
+
+    private fun readPriorLocked(current: PairingGeneration): Prior? = runCatching {
+        val record = readPriorRecordLocked()?.takeIf { current in it.heldFor } ?: return null
+        val home = FileIdentityStore(priorIdentityFile, protector, fileWriter = fileWriter).load() ?: return null
+        val credential = FileClientCredentialStore(priorCredentialFile, protector, fileWriter = fileWriter).load() ?: return null
+        val endpoints = if (priorEndpointFile.exists()) {
+            FileEndpointStore(priorEndpointFile, fileWriter = fileWriter).loadAll()
+        } else {
+            emptyList()
+        }
+        Prior(record, home, credential, endpoints)
+    }.getOrNull()
+
+    private fun readPriorRecordLocked(): PriorRecord? {
+        if (!priorRecordFile.exists()) return null
+        return runCatching {
+            val root = parseJson(priorRecordFile.readText(Charsets.UTF_8)) as Map<*, *>
+            PriorRecord(
+                heldFor = (root["held_for"] as List<*>).map { entry ->
+                    val held = entry as Map<*, *>
+                    PairingGeneration(held["instance_id"] as String, held["client_cert_fingerprint"] as String)
+                },
+                directAssociated = root["direct_associated"] as Boolean,
+                provenance = PairingProvenance.valueOf(root["provenance"] as String),
+            )
+        }.getOrNull()
+    }
+
+    private fun writePriorRecordLocked(record: PriorRecord) {
+        val text = toJson(
+            mapOf(
+                "held_for" to record.heldFor.map {
+                    mapOf("instance_id" to it.instanceId, "client_cert_fingerprint" to it.clientCertFingerprint)
+                },
+                "direct_associated" to record.directAssociated,
+                "provenance" to record.provenance.name,
+            ),
+        )
+        fileWriter.write(priorRecordFile, text.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun deletePriorFilesLocked() {
+        priorRecordFile.delete()
+        priorIdentityFile.delete()
+        priorCredentialFile.delete()
+        priorEndpointFile.delete()
     }
 
     private fun cleanBackupAndStagingFiles() {

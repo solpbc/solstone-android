@@ -134,13 +134,8 @@ internal fun PhonePairingOverlay(
                         requestMark = { requestPairingMark(stores) },
                         onConfirmed = {},
                         onMismatch = {
-                            val cleared = displayedPairing != null &&
-                                pairingViewModel.mismatch(displayedPairing, controller, stores)
-                            if (!cleared) {
-                                PairingMismatchResult.LocalFailure
-                            } else {
-                                PairingMismatchResult.Disconnected
-                            }
+                            displayedPairing?.let { pairingViewModel.mismatch(it, controller, stores) }
+                                ?: PairingMismatchResult.LocalFailure
                         },
                         onMismatchCleared = {},
                         cleanupInProgress = pairingViewModel.mismatchInProgress,

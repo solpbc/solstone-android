@@ -748,10 +748,6 @@ class PhoneShellActivity : ComponentActivity() {
                         val effective = displayedSnapshot()
                         val before = pairingSnapshot
                         pairingSnapshot = effective
-                        // Sightings were measured against the pairing that just left.
-                        if ((before as? PairingGraphSnapshot.Committed)?.pairing != (effective as? PairingGraphSnapshot.Committed)?.pairing) {
-                            DialDiagnostics.sightings.clear()
-                        }
                         if (pairingDiagKey(before) != pairingDiagKey(effective)) {
                             PhoneDiagLog.appendRaw("kind=pairing state=${pairingDiagState(effective)}")
                         }

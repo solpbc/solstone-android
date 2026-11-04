@@ -244,4 +244,17 @@ class ColdGapStatusTest {
             statusModel = status,
             startOutcome = PhoneWidgetStartOutcome.None,
         )
+
+    // Falsified by a cold redraw reading the old pairing's offline or pair again over a new pairing.
+    @Test
+    fun aForgottenLineIsNotRemembered() {
+        val files = java.nio.file.Files.createTempDirectory("remembered").toFile()
+        try {
+            rememberWidgetSyncText(files, "3 syncing")
+            forgetWidgetSyncText(files)
+            assertEquals(null, rememberedWidgetSyncText(files))
+        } finally {
+            files.deleteRecursively()
+        }
+    }
 }

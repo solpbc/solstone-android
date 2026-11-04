@@ -64,6 +64,7 @@ import app.solstone.platform.calendar.CalendarRuntimes
 import app.solstone.platform.calendar.CalendarSession
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.installPushRegistration
+import app.solstone.platform.work.syncStores
 
 import android.content.pm.PackageManager
 import app.solstone.platform.fgs.AndroidPermissionStatusReader
@@ -436,8 +437,22 @@ class PhoneApplication : ObserverApplication(
         CalendarRuntimes.current?.onProcessStart()
     }
 
+    /**
+     * What this process knows about the connection is about one pairing: its unknown-journal
+     * sightings, and the widget's last known line. Neither outlives that pairing, whichever surface
+     * changed it.
+     */
+    private fun followPairing() {
+        val publisher = syncStores(applicationContext).publisher
+        DialDiagnostics.sightings.followPairing(publisher.currentSnapshot())
+        publisher.subscribe { next ->
+            if (DialDiagnostics.sightings.followPairing(next)) forgetWidgetSyncText(filesDir)
+        }
+    }
+
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
         inactiveNotificationRequested = false
+        followPairing()
         // ⚠ Installed here rather than passed in, because the container is shared with surfaces that
         // have no stop control. Without it a stopped source reads `setting up / getting ready…`
         // while nothing is getting ready.
@@ -673,6 +688,10 @@ internal const val WIDGET_SYNC_LINE = "widget-sync-line"
 
 internal fun rememberedWidgetSyncText(filesDir: File): String? =
     runCatching { File(filesDir, WIDGET_SYNC_LINE).readText() }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+
+internal fun forgetWidgetSyncText(filesDir: File) {
+    runCatching { File(filesDir, WIDGET_SYNC_LINE).delete() }
+}
 
 internal fun rememberWidgetSyncText(filesDir: File, syncText: String) {
     if (syncText.isEmpty() || syncText == GAP_HEADLINE || syncText == STATUS_UNKNOWN_RECOVERY_LEAD) return

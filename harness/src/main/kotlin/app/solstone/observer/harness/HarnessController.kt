@@ -76,6 +76,7 @@ class HarnessController(
     private val foregroundServiceLive: () -> Boolean = { ObserverForegroundService.heldCaptureForegroundTypes != null },
     var mediaProjectionPromotable: () -> Boolean = { false },
     var onPairingCommitted: (() -> Unit)? = null,
+    private val consultsConfirmation: () -> Boolean = { app.solstone.core.identity.JournalConfirmationPolicy.consults },
 ) {
 
     var desiredOn: Boolean
@@ -308,6 +309,32 @@ class HarnessController(
         cameraLock.release()
     }
 
+    /**
+     * Runs one pairing attempt, and puts back the pairing it replaced unless it [succeeded]. An
+     * attempt that failed before installing anything leaves the committed pairing as it found it, so
+     * there is nothing to put back.
+     */
+    private fun <T> restoringPriorUnless(succeeded: (T) -> Boolean, attempt: () -> T): T {
+        val before = committedPairing()
+        val outcome = try {
+            attempt()
+        } catch (t: Throwable) {
+            restorePriorIfReplaced(before)
+            throw t
+        }
+        if (!succeeded(outcome)) restorePriorIfReplaced(before)
+        return outcome
+    }
+
+    private fun committedPairing(): app.solstone.core.identity.PairingGeneration? =
+        (publisher?.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed)?.pairing
+
+    private fun restorePriorIfReplaced(before: app.solstone.core.identity.PairingGeneration?) {
+        val activePublisher = publisher ?: return
+        val current = committedPairing() ?: return
+        if (current != before && activePublisher.canRestorePrior(current)) activePublisher.restorePrior(current)
+    }
+
     fun onScannedPairLink(rawText: String): HarnessPairProbeResult? {
         if (!looksLikePairLink(rawText)) return null
         val link = parsePairLink(rawText)
@@ -315,9 +342,11 @@ class HarnessController(
             if (replacementPreflight() != null) {
                 null
             } else {
-                when (link) {
-                    is DirectPairLink -> runPairProbe(rawText)
-                    is RelayPairLink -> runRelayPairProbe(link)
+                restoringPriorUnless({ it.pairStatus in 200..299 && it.statusStatus in 200..299 }) {
+                    when (link) {
+                        is DirectPairLink -> runPairProbe(rawText)
+                        is RelayPairLink -> runRelayPairProbe(link)
+                    }
                 }
             }
         }
@@ -331,19 +360,23 @@ class HarnessController(
         if (!looksLikePairLink(rawText)) return PairAttemptOutcome.Retry
         val link = parsePairLink(rawText)
         val outcome = withPairLock {
-            replacementPreflight() ?: when (link) {
-                is RelayPairLink -> try {
-                    PairAttemptOutcome.Linked(runRelayPairProbe(link))
-                } catch (e: Throwable) {
-                    val endpoint = runCatching { relayPairEndpoint(link) }
-                        .getOrElse { DirectEndpoint("", 443) }
-                    classifyPairException(e, endpoint.host, endpoint.port, PairRoute.RELAY, isUsableNetworkPresent)
-                }
-                is DirectPairLink -> try {
-                    PairAttemptOutcome.Linked(runPairProbe(rawText))
-                } catch (e: Throwable) {
-                    val endpoint = link.endpoint()
-                    classifyPairException(e, endpoint.host, endpoint.port, PairRoute.DIRECT, isUsableNetworkPresent)
+            replacementPreflight() ?: restoringPriorUnless({
+                it is PairAttemptOutcome.Linked && it.result.pairStatus in 200..299 && it.result.statusStatus in 200..299
+            }) {
+                when (link) {
+                    is RelayPairLink -> try {
+                        PairAttemptOutcome.Linked(runRelayPairProbe(link))
+                    } catch (e: Throwable) {
+                        val endpoint = runCatching { relayPairEndpoint(link) }
+                            .getOrElse { DirectEndpoint("", 443) }
+                        classifyPairException(e, endpoint.host, endpoint.port, PairRoute.RELAY, isUsableNetworkPresent)
+                    }
+                    is DirectPairLink -> try {
+                        PairAttemptOutcome.Linked(runPairProbe(rawText))
+                    } catch (e: Throwable) {
+                        val endpoint = link.endpoint()
+                        classifyPairException(e, endpoint.host, endpoint.port, PairRoute.DIRECT, isUsableNetworkPresent)
+                    }
                 }
             }
         } ?: return PairAttemptOutcome.Retry
@@ -364,17 +397,23 @@ class HarnessController(
      * A peer answering where the paired journal should be, with no leg reaching that journal, is the
      * one state where an unreachable pairing may be replaced. Only the owner can tell a reset journal
      * from another device holding the address, and a changed certificate is a re-pair: refusing here
-     * would leave the notice's own `pair again` a dead end. The link and the mark question still apply.
-     * A journal refusing this device has proven its pairing dead, the same as a revoked one.
+     * would leave the notice's own `pair again` a dead end. A journal refusing this device has proven
+     * its pairing dead, the same as a revoked one. Both rest on the mark question, which can put the
+     * prior pairing back, so an app that asks no question replaces nothing this way.
      */
     private fun replacementPreflight(): PairAttemptOutcome? {
         if (pairingFact() != PairingFact.PAIRED) return null
         val status = probePlStatus()
-        if (status.journalRefusesThisDevice()) return null
+        val answerable = consultsConfirmation()
+        if (answerable && status.journalRefusesThisDevice()) return null
         return when (status) {
             is HarnessPlStatus.Reachable -> PairAttemptOutcome.ExistingPairingActive
             is HarnessPlStatus.PairedButUnreachable ->
-                if (status.unknownJournal != null) null else PairAttemptOutcome.ExistingPairingUnreachable
+                if (answerable && status.unknownJournal != null && !status.journalAnswered) {
+                    null
+                } else {
+                    PairAttemptOutcome.ExistingPairingUnreachable
+                }
             // The persisted pairing fact and the probe disagree: the current journal record is
             // gone, so this is the same repair path as a journal-side revocation.
             HarnessPlStatus.NotPaired -> null
@@ -428,7 +467,8 @@ class HarnessController(
 
     private data class RoutineProbe(val key: Any, val atMs: Long, val status: HarnessPlStatus)
 
-    private fun routineProbeKey(): Any = pairingFact() to identityStore.load()?.instanceId
+    private fun routineProbeKey(): Any =
+        identityStore.load().let { Triple(pairingFact(), it?.instanceId, it?.clientCertFingerprint) }
 
     fun syncNow(): SyncNowResult {
         val fact = pairingFact()

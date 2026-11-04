@@ -14,6 +14,7 @@ import app.solstone.core.identity.PairingPublisher
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.awaitingMarkConfirmation
 import app.solstone.core.sources.PHONE_STREAM
+import app.solstone.observer.formfactor.phone.PairingMismatchResult
 import app.solstone.platform.work.SyncScheduler
 import app.solstone.platform.work.SyncStores
 import app.solstone.platform.work.JournalRevokeOutcome
@@ -23,8 +24,8 @@ import app.solstone.platform.work.revokeThisDeviceOnJournal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 
-internal suspend fun performPhoneMismatch(stores: SyncStores, expected: PairingGeneration): Boolean =
-    clearMismatchedPairing(
+internal suspend fun performPhoneMismatch(stores: SyncStores, expected: PairingGeneration): PairingMismatchResult =
+    when (clearMismatchedPairing(
         publisher = stores.publisher,
         expected = expected,
         revoke = { revokeThisDeviceOnJournal(stores.publisher, expectedPairing = expected) },
@@ -33,8 +34,16 @@ internal suspend fun performPhoneMismatch(stores: SyncStores, expected: PairingG
             awaitingMarkConfirmation(JournalConfirmationPolicy.consults, stores.publisher.currentSnapshot(), stores.journalConfirmationStore)
         },
         log = PhoneDiagLog::appendRaw,
-    ) is GraphMutationResult.Cleared
+    )) {
+        is GraphMutationResult.Cleared -> PairingMismatchResult.Disconnected
+        is GraphMutationResult.Applied -> PairingMismatchResult.NotChanged
+        else -> PairingMismatchResult.LocalFailure
+    }
 
+/**
+ * Answers no to the pairing [expected]: leaves it on the journal, then goes back to the pairing it
+ * replaced if one was kept, or else to no pairing at all.
+ */
 internal suspend fun clearMismatchedPairing(
     publisher: PairingPublisher,
     expected: PairingGeneration,
@@ -51,6 +60,8 @@ internal suspend fun clearMismatchedPairing(
             val current = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed
             if (current?.pairing != expected || !canClear()) {
                 GraphMutationResult.Conflict("pairing changed")
+            } else if (publisher.canRestorePrior(expected)) {
+                publisher.restorePrior(expected)
             } else {
                 publisher.forget().also { result ->
                     if (result is GraphMutationResult.Cleared) afterCleared()

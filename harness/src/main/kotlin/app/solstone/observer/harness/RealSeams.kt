@@ -99,7 +99,7 @@ class RealPairProbe(
             journalIdentityCoordinator = journalIdentityCoordinator,
             publisher = publisher,
             onDialOutcome = dialEvents?.let { events ->
-                { endpoint, outcome -> events.record(endpoint.host, endpoint.port, outcome) }
+                { endpoint, outcome -> events.recordPairDial(endpoint.host, endpoint.port, outcome) }
             },
             confirmation = confirmation,
         )
@@ -359,6 +359,7 @@ class RealPlStatusProbe(
                 dialedAddress,
                 attempt.sightings.firstOrNull()?.let { UnknownJournalAnswer(it.address) },
                 stopped = attempt.stop != null,
+                journalAnswered = attempt.decided,
             )
         }
     }

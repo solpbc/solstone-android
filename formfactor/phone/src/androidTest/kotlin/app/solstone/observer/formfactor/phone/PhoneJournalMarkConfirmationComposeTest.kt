@@ -440,6 +440,32 @@ class PhoneJournalMarkConfirmationComposeTest {
         coordinator.close()
     }
 
+    // Falsified by telling an owner whose pairing came back that this phone is no longer connected,
+    // or by drawing a mark they just refused beside it.
+    @Test
+    fun aMismatchThatPutTheOldPairingBackSaysNotChanged() {
+        val coordinator = unavailableCoordinator()
+        composeRule.setContent {
+            PhoneTheme {
+                PairingSuccessMark(
+                    coordinator = coordinator,
+                    currentPairing = { pairingP },
+                    onYes = { _ -> true },
+                    onConfirmed = {},
+                    onMismatch = { PairingMismatchResult.NotChanged },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag(PAIRING_NOT_CHANGED_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("journalMarkCard").assertDoesNotExist()
+        composeRule.onNodeWithText("this phone is no longer connected to that journal.").assertDoesNotExist()
+        coordinator.close()
+    }
+
     @Test
     fun unavailableCancelCallsOnMismatchOnceAndNeverOnYes() {
         val coordinator = unavailableCoordinator()

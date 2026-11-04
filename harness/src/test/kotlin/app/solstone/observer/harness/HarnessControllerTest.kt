@@ -143,6 +143,50 @@ class HarnessControllerTest {
         }
     }
 
+    // Falsified by replacing on a sighting when another leg reached the paired journal and it answered
+    // with 46, or a 49 below the limit: that journal is still there.
+    @Test
+    fun anUnknownJournalBesideALegThatReachedTheJournalKeepsThePairing() {
+        var calls = 0
+        val f = fixture(
+            pairProbe = PairProbe { _, _ -> calls += 1; error("must not replace") },
+            plStatusProbe = PlStatusProbe {
+                HarnessPlStatus.PairedButUnreachable(
+                    "x",
+                    "10.0.0.1:7657",
+                    UnknownJournalAnswer("10.0.0.1:7657"),
+                    journalAnswered = true,
+                )
+            },
+        )
+        assertEquals(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingUnreachable),
+            f.controller.dispatchPairLink(validPairLink()),
+        )
+        assertEquals(0, calls)
+    }
+
+    // Falsified by an app that never asks the mark question replacing a pairing on these grounds:
+    // nothing could ever put it back.
+    @Test
+    fun anAppThatAsksNoQuestionReplacesNothingOnASightingOrARefusal() {
+        listOf(
+            HarnessPlStatus.PairedButUnreachable("x", "10.0.0.1:7657", UnknownJournalAnswer("10.0.0.1:7657")) to
+                PairAttemptOutcome.ExistingPairingUnreachable,
+            HarnessPlStatus.Reachable(401) to PairAttemptOutcome.ExistingPairingActive,
+            HarnessPlStatus.Reachable(403) to PairAttemptOutcome.ExistingPairingActive,
+        ).forEach { (status, outcome) ->
+            var calls = 0
+            val f = fixture(
+                pairProbe = PairProbe { _, _ -> calls += 1; error("must not replace") },
+                plStatusProbe = PlStatusProbe { status },
+                consultsConfirmation = { false },
+            )
+            assertEquals(PairLinkDispatchResult.Attempted(outcome), f.controller.dispatchPairLink(validPairLink()))
+            assertEquals(0, calls)
+        }
+    }
+
     // Falsified by treating every non-200 as dead: a journal having a bad moment keeps its pairing.
     @Test
     fun aJournalAnsweringAnythingElseKeepsItsPairing() {

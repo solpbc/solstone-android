@@ -564,6 +564,7 @@ internal const val PAIRING_NO_MATCH_TAG = "pairingNoMatch"
 internal const val PAIRING_TRY_AGAIN_TAG = "pairingTryAgain"
 internal const val PAIRING_ANSWER_NOT_SAVED_TAG = "pairingAnswerNotSaved"
 internal const val PAIRING_SCAN_AGAIN_TAG = "pairingScanAgain"
+internal const val PAIRING_NOT_CHANGED_TAG = "pairingNotChanged"
 internal const val PAIRING_GET_HELP_TAG = "pairingGetHelp"
 
 internal fun pairingPromptRequestsMark(
@@ -804,11 +805,13 @@ fun PairingSuccessMark(
         answerNotSaved = false
         scope.launch {
             mismatchResult = withContext(Dispatchers.IO) { onMismatch() }
-            confirmation = if (mismatchResult == PairingMismatchResult.LocalFailure) {
-                PairingConfirmation.Failed
-            } else {
-                onMismatchCleared()
-                PairingConfirmation.Mismatched
+            confirmation = when (mismatchResult) {
+                PairingMismatchResult.LocalFailure -> PairingConfirmation.Failed
+                PairingMismatchResult.NotChanged -> PairingConfirmation.NotChanged
+                else -> {
+                    onMismatchCleared()
+                    PairingConfirmation.Mismatched
+                }
             }
         }
     }
@@ -817,7 +820,7 @@ fun PairingSuccessMark(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.fillMaxWidth(),
     ) {
-        val card = shape.card
+        val card = shape.card.takeUnless { confirmation == PairingConfirmation.NotChanged }
         if (card != null) {
             JournalMarkCard(presentation = card)
             Spacer(Modifier.height(20.dp))
@@ -946,6 +949,37 @@ fun PairingSuccessMark(
                 Spacer(Modifier.height(8.dp))
                 GetHelpButton(onHelp)
             }
+            // The pairing this one replaced is back, exactly as it was.
+            PairingConfirmation.NotChanged -> {
+                Text(
+                    "not changed",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = bodyColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag(PAIRING_NOT_CHANGED_TAG),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "your current pairing stays in use. nothing this phone has kept went to that journal through this link.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = shellSecondaryInk,
+                    textAlign = TextAlign.Center,
+                )
+                if (onScanAgain != null) {
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = onScanAgain,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag(PAIRING_SCAN_AGAIN_TAG),
+                    ) {
+                        Text("scan again")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                GetHelpButton(onHelp)
+            }
             // The pairing is still in place, so scanning again cannot help; a retry that keeps
             // failing still leaves the owner a way to ask.
             PairingConfirmation.Failed -> {
@@ -994,9 +1028,9 @@ private fun GetHelpButton(onHelp: () -> Unit) {
     }
 }
 
-enum class PairingMismatchResult { Disconnected, LocalFailure }
+enum class PairingMismatchResult { Disconnected, NotChanged, LocalFailure }
 
-private enum class PairingConfirmation { Waiting, Confirmed, Removing, Mismatched, Failed }
+private enum class PairingConfirmation { Waiting, Confirmed, Removing, Mismatched, NotChanged, Failed }
 
 fun createPhonePairingMarkView(
     context: Context,

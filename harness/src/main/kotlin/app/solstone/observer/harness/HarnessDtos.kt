@@ -32,12 +32,15 @@ sealed interface HarnessPlStatus {
      * dial was attempted (a missing credential or identity, say). [unknownJournal] is set when a
      * peer that is not the paired journal answered during the check. [stopped] is set when the
      * journal's own verdict stopped this credential, and nothing dials it until a new pairing.
+     * [journalAnswered] is set when a leg of the check reached the paired journal itself, so whatever
+     * else answered elsewhere, this pairing's journal is still there.
      */
     data class PairedButUnreachable(
         val reason: String?,
         val address: String? = null,
         val unknownJournal: UnknownJournalAnswer? = null,
         val stopped: Boolean = false,
+        val journalAnswered: Boolean = false,
     ) : HarnessPlStatus
     data class Reachable(val status: Int) : HarnessPlStatus
 }

@@ -65,12 +65,7 @@ val phoneSpec = FormFactorSpec(
             currentPairing = { currentPairing(stores) },
             requestMark = { requestPairingMark(stores) },
             onMismatch = {
-                val cleared = displayedPairing != null && performPhoneMismatch(stores, displayedPairing)
-                if (cleared) {
-                    PairingMismatchResult.Disconnected
-                } else {
-                    PairingMismatchResult.LocalFailure
-                }
+                displayedPairing?.let { performPhoneMismatch(stores, it) } ?: PairingMismatchResult.LocalFailure
             },
             onYes = { presented ->
                 performPhoneConfirm(context, stores, presented.clientCertFingerprint)

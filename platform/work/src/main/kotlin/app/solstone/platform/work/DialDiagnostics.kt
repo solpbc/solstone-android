@@ -42,10 +42,11 @@ fun SyncTransport.dialAddress(): DirectEndpoint? =
 fun <T> recordDial(log: DialEventLog?, transport: SyncTransport, open: () -> T): T {
     val address = if (log == null) null else transport.dialAddress()
     val throughRelay = transport is SyncTransport.Relay
+    val startedAt = log?.sightingEpoch()
     val opened = try {
         open()
     } catch (e: Throwable) {
-        if (address != null) log?.recordFailure(address.host, address.port, e, throughRelay)
+        if (address != null) log?.recordFailure(address.host, address.port, e, throughRelay, startedAt)
         throw e
     }
     if (address != null) log?.record(address.host, address.port, DialOutcome.CONNECTED, throughRelay)

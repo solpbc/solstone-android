@@ -81,9 +81,22 @@ class DialEventLog(
     private val lock = Any()
     private var lastConnected: Pair<String, Int>? = null
 
+    /** Where sightings stand now; a dial passes this back, so one overtaken by a re-pair says nothing. */
+    fun sightingEpoch(): Long? = sightings?.epoch
+
     /** [throughRelay] says [host]:[port] is the relay's own address, not one the journal answers at. */
     fun record(host: String, port: Int, outcome: DialOutcome, throughRelay: Boolean = false) {
         if (outcome == DialOutcome.CONNECTED) sightings?.reached(sightingAddress(host, port, throughRelay))
+        recordDial(host, port, outcome)
+    }
+
+    /**
+     * A dial made to pair, to whatever the link names and pinned to that link's CA. It says nothing
+     * about the paired journal, so it neither ends a sighting nor starts one.
+     */
+    fun recordPairDial(host: String, port: Int, outcome: DialOutcome) = recordDial(host, port, outcome)
+
+    private fun recordDial(host: String, port: Int, outcome: DialOutcome) {
         val line = synchronized(lock) {
             if (outcome == DialOutcome.CONNECTED) {
                 val address = host to port
@@ -97,10 +110,16 @@ class DialEventLog(
         runCatching { emit(line) }
     }
 
-    fun recordFailure(host: String, port: Int, failure: Throwable, throughRelay: Boolean = false) {
+    fun recordFailure(
+        host: String,
+        port: Int,
+        failure: Throwable,
+        throughRelay: Boolean = false,
+        startedAt: Long? = sightingEpoch(),
+    ) {
         val unknown = unknownJournalIn(failure)
         if (unknown != null) {
-            recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay)
+            recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay, startedAt)
         } else {
             // A refusal comes from the paired journal itself, proven against the pinned CA.
             if (journalRefusalIn(failure) != null) sightings?.reached(sightingAddress(host, port, throughRelay))
@@ -112,8 +131,14 @@ class DialEventLog(
      * A peer that is not the paired journal answered at [host]:[port]. [claimedJournalId] is only
      * what that peer presented, and is written as a claim: `claimed-journal=<id>`, or `none`.
      */
-    fun recordUnknownJournal(host: String, port: Int, claimedJournalId: String?, throughRelay: Boolean = false) {
-        sightings?.seen(sightingAddress(host, port, throughRelay), claimedJournalId)
+    fun recordUnknownJournal(
+        host: String,
+        port: Int,
+        claimedJournalId: String?,
+        throughRelay: Boolean = false,
+        startedAt: Long? = sightingEpoch(),
+    ) {
+        sightings?.let { it.seen(sightingAddress(host, port, throughRelay), claimedJournalId, startedAt ?: it.epoch) }
         val line = synchronized(lock) {
             lastConnected = null
             formatDialEvent(host, port, DialOutcome.UNKNOWN_JOURNAL) +

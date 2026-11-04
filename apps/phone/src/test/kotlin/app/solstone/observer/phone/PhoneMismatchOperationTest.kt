@@ -5,12 +5,17 @@ package app.solstone.observer.phone
 
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.GraphMutationResult
+import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.awaitingMarkConfirmation
 import app.solstone.core.model.IdentityState
 import app.solstone.core.model.PairedHome
+import app.solstone.platform.identity.file.FileClientCredentialStore
+import app.solstone.platform.identity.file.FileJournalConfirmationStore
 import app.solstone.platform.identity.file.FilePairingGraph
 import app.solstone.platform.identity.file.SecretProtector
 import app.solstone.platform.work.JournalRevokeOutcome
+import app.solstone.platform.work.confirmCurrentJournal
 import app.solstone.platform.work.revokeThisDeviceOnJournal
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -21,6 +26,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -124,6 +130,91 @@ class PhoneMismatchOperationTest {
         )
         assertIs<GraphMutationResult.Conflict>(result)
         assertEquals(a.pairing, assertIs<PairingGraphSnapshot.Committed>(graph.currentSnapshot()).pairing)
+    }
+
+    private fun storedCredential() =
+        FileClientCredentialStore(File(temp.root, "credential.pem"), protector).load()
+
+    /** The way a pairing link replaces a pairing: what it replaces is kept for the owner's answer. */
+    private fun replace(graph: FilePairingGraph, id: String): PairingGraphSnapshot.Committed {
+        val fingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        graph.holdPriorFor(PairingGeneration(id, fingerprint))
+        return install(graph, id)
+    }
+
+    // Falsified by a no that forgets: an owner whose journal was only away ends at not paired, with
+    // the credential that journal still accepts deleted.
+    @Test fun answeringNoToAReplacementPutsBackThePriorCredentialAndTheJournalKeepsNothing() = runBlocking {
+        val graph = graph()
+        val a = install(graph, "a")
+        val prior = storedCredential()
+        val b = replace(graph, "b")
+        assertNotEquals(prior, storedCredential())
+        var revokedWith: Any? = null
+
+        val result = clearMismatchedPairing(graph, b.pairing,
+            revoke = { revokedWith = storedCredential(); JournalRevokeOutcome.REMOVED },
+            afterCleared = { error("the prior pairing's push stays as it was") }, canClear = { true }, log = {},
+        )
+
+        assertIs<GraphMutationResult.Applied>(result)
+        assertEquals(a.pairing, assertIs<PairingGraphSnapshot.Committed>(graph.currentSnapshot()).pairing)
+        assertEquals(prior, storedCredential())
+        assertEquals(a.pairing, assertIs<PairingGraphSnapshot.Committed>(graph().currentSnapshot()).pairing)
+        assertNotEquals(prior, revokedWith)
+    }
+
+    // Falsified by holding the prior pairing only in memory.
+    @Test fun answeringNoAfterAProcessDeathStillPutsItBack() = runBlocking {
+        val first = graph()
+        val a = install(first, "a")
+        val prior = storedCredential()
+        val b = replace(first, "b")
+
+        val relaunched = graph()
+        val result = clearMismatchedPairing(relaunched, b.pairing,
+            revoke = { JournalRevokeOutcome.UNREACHED },
+            afterCleared = { error("must not reset") }, canClear = { true }, log = {},
+        )
+
+        assertIs<GraphMutationResult.Applied>(result)
+        assertEquals(a.pairing, assertIs<PairingGraphSnapshot.Committed>(relaunched.currentSnapshot()).pairing)
+        assertEquals(prior, storedCredential())
+    }
+
+    // Falsified by a confirmation lost in the swap: the restored pairing would be held and asked again.
+    @Test fun theRestoredPairingKeepsItsAnswer() = runBlocking {
+        val graph = graph()
+        val store = FileJournalConfirmationStore(File(temp.root, "confirmation.json"))
+        val a = install(graph, "a")
+        store.confirm(a.home.clientCertFingerprint)
+        store.settle()
+        val b = replace(graph, "b")
+        assertTrue(awaitingMarkConfirmation(true, graph.currentSnapshot(), store))
+
+        clearMismatchedPairing(graph, b.pairing,
+            revoke = { JournalRevokeOutcome.UNREACHED },
+            afterCleared = { error("must not reset") },
+            canClear = { awaitingMarkConfirmation(true, graph.currentSnapshot(), store) },
+            log = {},
+        )
+
+        assertEquals(a.pairing, assertIs<PairingGraphSnapshot.Committed>(graph.currentSnapshot()).pairing)
+        assertFalse(awaitingMarkConfirmation(true, graph.currentSnapshot(), store))
+    }
+
+    // Falsified by holding on past the answer: a later no would have nothing to do with this pairing.
+    @Test fun answeringYesEndsWhatWasKept() {
+        val graph = graph()
+        val store = FileJournalConfirmationStore(File(temp.root, "confirmation.json"))
+        install(graph, "a")
+        val b = replace(graph, "b")
+        assertTrue(graph.canRestorePrior(b.pairing))
+
+        assertTrue(confirmCurrentJournal(graph, store, b.home.clientCertFingerprint))
+
+        assertFalse(graph.canRestorePrior(b.pairing))
     }
 
     @Test fun currentUnconfirmedPairingCanBeCleared() = runBlocking {

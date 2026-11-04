@@ -86,7 +86,9 @@ class ProbeRefusalStopTest {
                     throw JournalRefusalException(HandshakeFailure.TLS_CERTIFICATE_UNKNOWN, 46)
             }
         }
-        assertEquals(false, assertIs<HarnessPlStatus.PairedButUnreachable>(setup.probe.probe()).stopped)
+        val status = assertIs<HarnessPlStatus.PairedButUnreachable>(setup.probe.probe())
+        assertEquals(false, status.stopped)
+        assertEquals(true, status.journalAnswered)
         assertEquals(IdentityState.PAIRED, setup.state())
     }
 
@@ -97,6 +99,7 @@ class ProbeRefusalStopTest {
         val direct = probe { throw UnknownJournalException("10.0.0.1:7657", "claim", java.io.IOException("peer")) }
         val status = assertIs<HarnessPlStatus.PairedButUnreachable>(direct.probe.probe())
         assertEquals(UnknownJournalAnswer("10.0.0.1:7657"), status.unknownJournal)
+        assertEquals(false, status.journalAnswered)
 
         val ordinary = probe { throw java.io.IOException("no route") }
         assertEquals(null, assertIs<HarnessPlStatus.PairedButUnreachable>(ordinary.probe.probe()).unknownJournal)

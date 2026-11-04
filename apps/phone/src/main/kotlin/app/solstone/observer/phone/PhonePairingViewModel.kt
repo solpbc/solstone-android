@@ -23,6 +23,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import app.solstone.observer.formfactor.phone.PairingMismatchResult
 
 class PhonePairingViewModel : ViewModel() {
     var pairingState by mutableStateOf(PhonePairingState())
@@ -38,8 +39,13 @@ class PhonePairingViewModel : ViewModel() {
         expected: app.solstone.core.identity.PairingGeneration,
         controller: HarnessController,
         stores: SyncStores,
-    ): Boolean = runOwnerAction(ActionKind.MISMATCH, expected, controller, stores) {
-        performPhoneMismatch(stores, expected)
+    ): PairingMismatchResult {
+        var result = PairingMismatchResult.LocalFailure
+        runOwnerAction(ActionKind.MISMATCH, expected, controller, stores) {
+            result = performPhoneMismatch(stores, expected)
+            result != PairingMismatchResult.LocalFailure
+        }
+        return result
     }
 
     suspend fun confirm(
@@ -70,9 +76,8 @@ class PhonePairingViewModel : ViewModel() {
                 val current = (snapshot as? PairingGraphSnapshot.Committed)?.pairing
                 if (succeeded && currentHeld != null) {
                     when (kind) {
-                        ActionKind.MISMATCH -> if (snapshot is PairingGraphSnapshot.Absent) {
+                        ActionKind.MISMATCH ->
                             performDispatch(PhonePairingEvent.MismatchFinished(currentHeld.generation, true), controller, stores)
-                        }
                         ActionKind.CONFIRM -> if (current == expected) {
                             performDispatch(PhonePairingEvent.Confirm, controller, stores)
                         }

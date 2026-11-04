@@ -43,4 +43,21 @@ class RoutinePlStatusTest {
         assertIs<HarnessPlStatus.Reachable>(f.controller.routinePlStatus())
         assertEquals(3, probes, "a different pairing is never answered from the old one's probe")
     }
+
+    // Falsified by a key on the journal alone: re-pairing the same journal after a 401 would keep
+    // showing pair again from the old credential's answer.
+    @Test
+    fun aNewCredentialForTheSameJournalProbesFresh() {
+        var probes = 0
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(401) },
+            monotonicMs = { 0L },
+        )
+        f.controller.routinePlStatus()
+
+        f.identityStore.save(pairedHome().copy(clientCertFingerprint = "sha256:client-2"))
+        f.controller.routinePlStatus()
+
+        assertEquals(2, probes)
+    }
 }

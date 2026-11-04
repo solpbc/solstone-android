@@ -4,10 +4,17 @@
 package app.solstone.core.pl
 
 import app.solstone.core.identity.JournalMark
+import app.solstone.core.identity.GraphRevisions
 import app.solstone.core.identity.JournalMarkIcon
+import app.solstone.core.identity.PairingGraphSnapshot
+import app.solstone.core.identity.PersistenceIssue
+import app.solstone.core.model.DirectEndpoint
+import app.solstone.core.model.IdentityState
+import app.solstone.core.model.PairedHome
 import java.util.concurrent.Executor
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -171,6 +178,95 @@ class UnknownJournalSightingsTest {
         store.seen("10.0.0.1:7657", null)
         log.recordFailure("10.0.0.1", 7657, java.net.SocketTimeoutException("timed out"))
         assertEquals(1, store.current().size)
+    }
+
+    // Falsified by a dial made to pair clearing a sighting: it is pinned to the link's CA and says
+    // nothing about the paired journal, wherever it happens to reach.
+    @Test
+    fun aDialMadeToPairNeitherClearsNorStartsASighting() {
+        val store = sightings()
+        val lines = mutableListOf<String>()
+        val log = DialEventLog(store) { lines += it }
+        store.seen("10.0.0.1:7657", null)
+
+        log.recordPairDial("10.0.0.1", 7657, DialOutcome.CONNECTED)
+        log.recordPairDial("10.0.0.2", 7657, DialOutcome.UNKNOWN_JOURNAL)
+
+        assertEquals(listOf<String?>("10.0.0.1:7657"), store.current().map { it.address })
+        assertEquals(2, lines.size)
+    }
+
+    // Falsified by a dial begun under the old pairing writing into the new pairing's list.
+    @Test
+    fun aDialOvertakenByARePairSaysNothing() {
+        val store = sightings()
+        val log = DialEventLog(store) {}
+        val startedAt = log.sightingEpoch()
+
+        store.clear()
+        log.recordFailure("10.0.0.1", 7657, UnknownJournalException("10.0.0.1:7657", null), startedAt = startedAt)
+        assertTrue(store.current().isEmpty())
+
+        log.recordFailure("10.0.0.1", 7657, UnknownJournalException("10.0.0.1:7657", null))
+        assertEquals(1, store.current().size)
+    }
+
+    @Test
+    fun aDifferentPairingEndsEverySightingAndReportsTheChange() {
+        val store = sightings()
+        assertFalse(store.followPairing(committed("a", "sha256:one", "10.0.0.1")))
+        store.seen("10.0.0.1:7657", null)
+        store.seen(null, null)
+
+        assertFalse(store.followPairing(committed("a", "sha256:one", "10.0.0.1")))
+        assertEquals(2, store.current().size)
+
+        assertTrue(store.followPairing(committed("a", "sha256:two", "10.0.0.1")))
+        assertTrue(store.current().isEmpty())
+    }
+
+    @Test
+    fun aPairingThatLeftReportsTheChangeAndAnUnreadableOneSaysNothing() {
+        val store = sightings()
+        store.followPairing(committed("a", "sha256:one", "10.0.0.1"))
+        store.seen(null, null)
+
+        assertFalse(store.followPairing(PairingGraphSnapshot.Uncertain(2, PersistenceIssue.PERSISTENCE_FAILED)))
+        assertEquals(1, store.current().size)
+
+        assertTrue(store.followPairing(PairingGraphSnapshot.Absent(3)))
+        assertTrue(store.current().isEmpty())
+    }
+
+    // Falsified by keeping the row: nothing dials an address no longer saved, so it could never clear.
+    @Test
+    fun anAddressNoLongerSavedLosesItsRowAndTheRelayKeepsItsOwn() {
+        val store = sightings()
+        store.followPairing(committed("a", "sha256:one", "10.0.0.1", "10.0.0.2"))
+        store.seen("10.0.0.1:7657", null)
+        store.seen("10.0.0.2:7657", null)
+        store.seen(null, null)
+        var heard = 0
+        store.addListener { heard++ }
+
+        assertFalse(store.followPairing(committed("a", "sha256:one", "10.0.0.2")))
+
+        assertEquals(listOf("10.0.0.2:7657", null), store.current().map { it.address })
+        assertEquals(1, heard)
+    }
+
+    private fun committed(instance: String, cert: String, vararg hosts: String): PairingGraphSnapshot.Committed {
+        val endpoints = hosts.map { DirectEndpoint(it, 7657) }
+        return PairingGraphSnapshot.Committed(
+            sequenceNumber = 1,
+            revisions = GraphRevisions(1, 1, 1),
+            home = PairedHome(instance, instance, null, "sha256:ca", cert, null, null, null, IdentityState.PAIRED),
+            hasDirectEndpoint = endpoints.isNotEmpty(),
+            directAssociated = endpoints.isNotEmpty(),
+            relayLiveEligible = false,
+            directEndpoint = endpoints.firstOrNull(),
+            directEndpoints = endpoints,
+        )
     }
 
     private fun markOf(claim: String) = JournalMark(

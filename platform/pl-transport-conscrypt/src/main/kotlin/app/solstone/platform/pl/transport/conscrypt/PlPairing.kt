@@ -66,6 +66,19 @@ internal fun settleBeforeInstall(confirmation: JournalConfirmationStore?) {
     store.settle()
 }
 
+/**
+ * Everything that must be true before a pairing is installed. An owner still has to answer for it,
+ * so whatever it replaces is kept to come back to. An app that asks no question has nothing to wait for.
+ */
+internal fun prepareInstall(
+    publisher: app.solstone.core.identity.PairingPublisher,
+    confirmation: JournalConfirmationStore?,
+    replacement: app.solstone.core.identity.PairingGeneration,
+) {
+    settleBeforeInstall(confirmation)
+    if (JournalConfirmationPolicy.consults) publisher.holdPriorFor(replacement)
+}
+
 data class PairProbeResult(
     val handshakePinned: Boolean,
     val pairStatus: Int,
@@ -395,7 +408,7 @@ internal fun persistOrReturnDirectPairResult(
     }
 
     val res = activePublisher.withMutationBoundary {
-        settleBeforeInstall(confirmation)
+        prepareInstall(activePublisher, confirmation, app.solstone.core.identity.PairingGeneration(home.instanceId, home.clientCertFingerprint))
         activePublisher.installOrReplace(
             home = home,
             credential = credential,

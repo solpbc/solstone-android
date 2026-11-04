@@ -126,6 +126,7 @@ class JournalBrowserUpstreamAdapter(
         }
         if (guard?.stopped(pairing) == true) throw JournalBrowserIdentityException()
         val attempt = guard?.begin(pairing) ?: JournalAttempt.untracked(pairing)
+        val sightingsStartedAt = dialEvents?.sightingEpoch()
         val opened = try {
             app.solstone.core.pl.openPairingClient(publisher, nextLegAfter = { true }) { lease ->
                 val upstream = try {
@@ -135,7 +136,7 @@ class JournalBrowserUpstreamAdapter(
                     }
                 } catch (e: Exception) {
                     attempt.legFailed(e)
-                    noteSighting(lease, e)
+                    noteSighting(lease, e, sightingsStartedAt)
                     throw e
                 }
                 RefreshableUpstream(upstream)
@@ -154,7 +155,7 @@ class JournalBrowserUpstreamAdapter(
         return GuardedUpstream(opened, attempt)
     }
 
-    private fun noteSighting(lease: PairingLease, failure: Exception) {
+    private fun noteSighting(lease: PairingLease, failure: Exception, startedAt: Long?) {
         val unknown = app.solstone.core.pl.unknownJournalIn(failure) ?: return
         val log = dialEvents ?: return
         val (host, port) = when (lease) {
@@ -164,7 +165,7 @@ class JournalBrowserUpstreamAdapter(
                 origin.host to origin.effectivePort
             }
         }
-        log.recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay = lease is PairingLease.Relay)
+        log.recordUnknownJournal(host, port, unknown.claimedJournalId, throughRelay = lease is PairingLease.Relay, startedAt = startedAt)
     }
 
     /**

@@ -230,6 +230,8 @@ internal fun fixture(
     diag: (String) -> Unit = {},
     monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
     foregroundServiceLive: () -> Boolean = { false },
+    publisher: app.solstone.core.identity.PairingPublisher? = null,
+    consultsConfirmation: () -> Boolean = { true },
 ): Fixture {
     val permissions = MutablePermissionReader(permissionStatus)
     val lifecycle = FakeLifecycle()
@@ -262,6 +264,8 @@ internal fun fixture(
             diag = diag,
             monotonicMs = monotonicMs,
             foregroundServiceLive = foregroundServiceLive,
+            publisher = publisher,
+            consultsConfirmation = consultsConfirmation,
         ),
         permissions = permissions,
         lifecycle = lifecycle,

@@ -47,6 +47,12 @@ object JournalConfirmationGrandfather {
                 }
             }
             holdPairingWhoseIdIsNotItsCas(publisher, store)
+            // A pairing answered for just before a process died can still have one kept aside.
+            if (snapshot is PairingGraphSnapshot.Committed &&
+                (store.inspect() as? StoreInspectResult.Ready)?.value?.confirmed == snapshot.home.clientCertFingerprint
+            ) {
+                publisher.discardPrior(snapshot.pairing)
+            }
         }
     }
 }
@@ -83,6 +89,7 @@ fun confirmCurrentJournal(
     if (snapshot.home.clientCertFingerprint != fingerprint) return@withMutationBoundary false
     try {
         store.confirm(fingerprint)
+        publisher.discardPrior(snapshot.pairing)
         true
     } catch (_: Exception) {
         false
