@@ -536,7 +536,7 @@ dependencies = [
 [[package]]
 name = "spl-core"
 version = "0.1.0"
-source = "git+https://github.com/solpbc/spl-rust.git?rev=6ecae85c0606896d9ea29d50f3718ae15ed96821#6ecae85c0606896d9ea29d50f3718ae15ed96821"
+source = "git+https://github.com/solpbc/spl-rust.git?rev=df60337f81e2a85d488169944856e4a8a629509f#df60337f81e2a85d488169944856e4a8a629509f"
 dependencies = [
  "argon2",
  "base64",
