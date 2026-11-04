@@ -240,7 +240,10 @@ class RealPlStatusProbe(
         }
         if (identity.state != IdentityState.PAIRED) {
             handleReachabilityTransition(false, null, null)
-            return HarnessPlStatus.PairedButUnreachable("identity not paired")
+            return HarnessPlStatus.PairedButUnreachable(
+                "identity not paired",
+                stopped = identity.state == IdentityState.REVOKED,
+            )
         }
         val relayLiveEligible = access?.relayLiveEligible ?: false
         val transport = selectSyncTransport(identity, endpointStore, relayLiveEligible)
@@ -253,7 +256,7 @@ class RealPlStatusProbe(
         if (handshakeGuard?.stopped(pairing) == true) {
             // The journal stopped accepting this credential: nothing dials it until a re-pair.
             handleReachabilityTransition(false, null, null)
-            return HarnessPlStatus.PairedButUnreachable("identity not paired")
+            return HarnessPlStatus.PairedButUnreachable("identity not paired", stopped = true)
         }
         // One attempt across every leg: each saved address, then the relay.
         val attempt = handshakeGuard?.begin(pairing) ?: JournalAttempt.untracked(pairing)
@@ -332,7 +335,8 @@ class RealPlStatusProbe(
 
         if (mutator != null && !transportAccessStillCurrent(usedTransport, identity, access, mutator)) {
             handleReachabilityTransition(false, null, null)
-            return HarnessPlStatus.PairedButUnreachable("missing identity")
+            // A stop this check produced is also what took the access away.
+            return HarnessPlStatus.PairedButUnreachable("missing identity", stopped = attempt.stop != null)
         }
         if (status != null) {
             val reachable = status == 200
@@ -354,6 +358,7 @@ class RealPlStatusProbe(
                 plFailureDetail(err),
                 dialedAddress,
                 attempt.sightings.firstOrNull()?.let { UnknownJournalAnswer(it.address) },
+                stopped = attempt.stop != null,
             )
         }
     }

@@ -128,6 +128,36 @@ class HarnessControllerTest {
         assertEquals(1, calls)
     }
 
+    // Falsified by pair again answering "already connected to a working journal" on a 401 or 403,
+    // which the owner has no way past from the screen that offered it.
+    @Test
+    fun aJournalRefusingThisDeviceLetsAFreshLinkReplaceThePairing() {
+        listOf(401, 403).forEach { code ->
+            var calls = 0
+            val f = fixture(
+                pairProbe = PairProbe { _, _ -> calls += 1; error("replacing") },
+                plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(code) },
+            )
+            runCatching { f.controller.dispatchPairLink(validPairLink()) }
+            assertEquals(1, calls)
+        }
+    }
+
+    // Falsified by treating every non-200 as dead: a journal having a bad moment keeps its pairing.
+    @Test
+    fun aJournalAnsweringAnythingElseKeepsItsPairing() {
+        var calls = 0
+        val f = fixture(
+            pairProbe = PairProbe { _, _ -> calls += 1; error("must not replace") },
+            plStatusProbe = PlStatusProbe { HarnessPlStatus.Reachable(500) },
+        )
+        assertEquals(
+            PairLinkDispatchResult.Attempted(PairAttemptOutcome.ExistingPairingActive),
+            f.controller.dispatchPairLink(validPairLink()),
+        )
+        assertEquals(0, calls)
+    }
+
     @Test
     fun revokedPairingReplacesWithFreshLink() {
         var calls = 0

@@ -412,6 +412,10 @@ internal fun PhoneObserverScreen(
                                 paneStates = paneStates.close(PhonePane.STATUS)
                                 detailStack = detailStack.showInDetail(PhoneRoute.UnknownJournal(address))
                             },
+                            onPairAgain = {
+                                paneStates = paneStates.close(PhonePane.STATUS)
+                                onAlreadyHaveOne()
+                            },
                         )
                     }
                 }

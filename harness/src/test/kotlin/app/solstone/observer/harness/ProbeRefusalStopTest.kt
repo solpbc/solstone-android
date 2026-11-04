@@ -48,12 +48,13 @@ class ProbeRefusalStopTest {
     fun aStoppedCredentialIsNotDialledByTheProbeInAFreshProcessUntilARepair() {
         var dials = 0
         val first = probe { dials++; refusing(49) }
-        assertIs<HarnessPlStatus.PairedButUnreachable>(first.probe.probe())
+        // The check that produced the stop says so itself, without waiting for the next one.
+        assertEquals(true, assertIs<HarnessPlStatus.PairedButUnreachable>(first.probe.probe()).stopped)
         assertEquals(1, dials)
         assertEquals(IdentityState.REVOKED, first.state())
 
         val relaunched = probe { dials++; answering(200) }
-        assertEquals(HarnessPlStatus.PairedButUnreachable("identity not paired"), relaunched.probe.probe())
+        assertEquals(HarnessPlStatus.PairedButUnreachable("identity not paired", stopped = true), relaunched.probe.probe())
         assertEquals(1, dials)
 
         relaunched.graph.installOrReplace(home("sha256:cert-2"), credential("cert-2"), DirectEndpoint("10.0.0.1", 7657), true)
@@ -70,9 +71,23 @@ class ProbeRefusalStopTest {
             .write(RefusalRecord("sha256:cert-1", 7, 1L, HandshakeStop.REFUSALS_EXHAUSTED))
         var dials = 0
         val setup = probe { dials++; answering(200) }
-        assertEquals(HarnessPlStatus.PairedButUnreachable("identity not paired"), setup.probe.probe())
+        assertEquals(HarnessPlStatus.PairedButUnreachable("identity not paired", stopped = true), setup.probe.probe())
         assertEquals(0, dials)
         assertEquals(IdentityState.REVOKED, setup.state())
+    }
+
+    // Alert 46 means the journal couldn't read its pairing records. Falsified by treating it as a stop:
+    // the owner would be told to re-pair over a journal that is having a bad moment.
+    @Test
+    fun anAlert46KeepsTheCredentialAndIsNotAStop() {
+        val setup = probe {
+            object : PlHttpClient {
+                override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse =
+                    throw JournalRefusalException(HandshakeFailure.TLS_CERTIFICATE_UNKNOWN, 46)
+            }
+        }
+        assertEquals(false, assertIs<HarnessPlStatus.PairedButUnreachable>(setup.probe.probe()).stopped)
+        assertEquals(IdentityState.PAIRED, setup.state())
     }
 
     // Falsified by check connection reading "couldn't reach" when something did answer, or by the

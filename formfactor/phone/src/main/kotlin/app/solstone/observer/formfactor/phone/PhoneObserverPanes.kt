@@ -221,6 +221,7 @@ private fun PhoneDetailContent(
             onConfirmMark = onConfirmMark,
             onRefreshStatus = onRefreshStatus,
             onOpenUnknownJournal = unknownJournals.onOpen,
+            onPairAgain = onAlreadyHaveOne,
             modifier = modifier,
         )
         is PhoneRoute.UnknownJournal -> PhoneUnknownJournalRoute(

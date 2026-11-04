@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.harness.journalRefusesThisDevice
 import app.solstone.core.identity.JournalMarkPresentation
 
 @Composable
@@ -303,7 +304,12 @@ fun checkConnectionUnreached(address: String?): String =
  * What a finished `check connection` says. A peer that is not the paired journal answering is not
  * "couldn't reach": the check names what the status pane names.
  */
-fun checkConnectionResult(probed: HarnessPlStatus?): String = when (probed) {
+fun checkConnectionResult(probed: HarnessPlStatus?): String = when {
+    probed?.journalRefusesThisDevice() == true -> STATUS_REFUSED_LEAD
+    else -> checkConnectionAnswer(probed)
+}
+
+private fun checkConnectionAnswer(probed: HarnessPlStatus?): String = when (probed) {
     is HarnessPlStatus.Reachable -> CHECK_CONNECTION_REACHED
     is HarnessPlStatus.PairedButUnreachable -> probed.unknownJournal
         ?.let { unknownJournalRowText(it.address) }

@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - when something other than your journal answers, the app now tells you and shows both marks to compare.
 
+### Fixed
+
+- when your journal stops accepting this phone, the app now says so and offers to pair again, instead of showing offline.
+
 ## [2.1.36] - 2026-11-03
 
 ### Fixed

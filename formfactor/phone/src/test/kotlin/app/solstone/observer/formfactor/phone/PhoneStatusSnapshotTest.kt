@@ -34,6 +34,53 @@ class PhoneStatusSnapshotTest {
         assertEquals(true to false, flagsFor(HarnessPlStatus.Reachable(503)))
     }
 
+    // Falsified by reading any not-online as refused, which tells an owner with a passing outage or a
+    // journal answering 500 to re-pair.
+    @Test
+    fun onlyAStoppedCredentialOrA401Or403IsARefusal() {
+        fun refused(plStatus: HarnessPlStatus) = modelFor(plStatus).refused
+        assertTrue(refused(HarnessPlStatus.PairedButUnreachable("identity not paired", stopped = true)))
+        assertTrue(refused(HarnessPlStatus.Reachable(401)))
+        assertTrue(refused(HarnessPlStatus.Reachable(403)))
+
+        assertFalse(refused(HarnessPlStatus.NotPaired))
+        assertFalse(refused(HarnessPlStatus.PairedButUnreachable("offline")))
+        assertFalse(refused(HarnessPlStatus.PairedButUnreachable("x", unknownJournal = UnknownJournalAnswer("10.0.0.1:7657"))))
+        listOf(200, 400, 404, 429, 500, 502, 503).forEach { assertFalse(refused(HarnessPlStatus.Reachable(it)), "HTTP $it") }
+    }
+
+    @Test
+    fun aRefusalSitsAboveOfflineAndHeldAndBelowNotPaired() {
+        val refused = modelFor(HarnessPlStatus.Reachable(403))
+        assertEquals(StatusPillKind.REFUSED, statusPillKind(refused, 0L))
+        assertEquals(StatusPillKind.REFUSED, statusPillKind(refused.copy(awaitingMarkConfirmation = true), 0L))
+        assertEquals(StatusPillKind.NOT_PAIRED, statusPillKind(refused.copy(paired = false), 0L))
+        assertEquals(StatusPillKind.OFFLINE, statusPillKind(refused.copy(refused = false), 0L))
+    }
+
+    @Test
+    fun aRefusalCarriesTheCountOnThePillAndAPaneThatOffersPairAgain() {
+        val refused = modelFor(HarnessPlStatus.Reachable(401))
+        assertEquals(PAIR_AGAIN, statusPillText(refused, 0L))
+        val waiting = statusPillText(refused.copy(pendingCount = 3), 0L)
+        assertTrue(waiting.startsWith(PAIR_AGAIN))
+        assertTrue(waiting.contains("3"))
+
+        val pane = requireNotNull(statusPaneCopy(refused.copy(pendingCount = 3), 0L))
+        assertEquals(STATUS_REFUSED_LEAD, pane.lead)
+        assertFalse(pane.count)
+        assertFalse(pane.confirm)
+        assertTrue(pane.pairAgain)
+        assertEquals(1, pane.lines.size)
+        assertFalse(requireNotNull(statusPaneCopy(modelFor(HarnessPlStatus.Reachable(503)), 0L)).pairAgain)
+    }
+
+    @Test
+    fun aCheckOfARefusingJournalSaysSoNotThatItReachedIt() {
+        assertEquals(STATUS_REFUSED_LEAD, checkConnectionResult(HarnessPlStatus.Reachable(401)))
+        assertEquals(STATUS_REFUSED_LEAD, checkConnectionResult(HarnessPlStatus.PairedButUnreachable("x", stopped = true)))
+    }
+
     // Falsified by any pill or pane state reading the sightings: the notice is additive.
     @Test
     fun aSightingChangesNoStateOfTheConnection() {
@@ -80,6 +127,14 @@ class PhoneStatusSnapshotTest {
         assertEquals(CHECK_CONNECTION_UNREACHED, checkConnectionResult(null))
         assertEquals(CHECK_CONNECTION_REACHED, checkConnectionResult(HarnessPlStatus.Reachable(200)))
     }
+
+    private fun modelFor(plStatus: HarnessPlStatus) = phoneStatusSnapshotOf(
+        backlog = HarnessBacklogStatus(plStatus, 0, emptyList()),
+        registered = emptyList(),
+        awaitingMarkConfirmation = false,
+        recoveryCompleted = true,
+        audioAwaitingCustody = false,
+    ).status
 
     @Test
     fun usesRegisteredOrderThenSortedOrphans() {

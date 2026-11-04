@@ -167,7 +167,7 @@ internal fun PhoneUnknownJournalPane(
             onClick = onPairAgain,
             modifier = Modifier.testTag("unknownJournalPairAgain"),
         ) {
-            Text("pair again")
+            Text(PAIR_AGAIN)
         }
     }
 }

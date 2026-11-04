@@ -4,6 +4,9 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
@@ -94,6 +97,40 @@ class PhoneUnknownJournalComposeTest {
         }
         assertEquals(listOf(JournalMarkTokens.NOT_PRESENTED_ACCESSIBLE_NAME), spokenBeside("unknownJournalWhatAnswered"))
         assertNotNull(unknownJournalCaption(ClaimedJournalMark.NotPresented))
+    }
+
+    @Test
+    fun aRefusingJournalOffersPairAgainInStatusAndAPassingOutageDoesNot() {
+        var pairAgain = 0
+        var model by mutableStateOf(
+            PhoneStatusModel(
+                paired = true,
+                online = false,
+                pendingCount = 1,
+                hasContentPending = true,
+                awaitingMarkConfirmation = false,
+                recoveryCompleted = true,
+                audioAwaitingCustody = false,
+                refused = true,
+            ),
+        )
+        composeRule.setContent {
+            Column {
+                PhonePairedStatusContent(
+                    model = model,
+                    waiting = emptyList(),
+                    onOpenSource = {},
+                    onConfirmMark = {},
+                    onPairAgain = { pairAgain++ },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("statusPairAgain").performClick()
+        assertEquals(1, pairAgain)
+
+        model = model.copy(refused = false)
+        composeRule.waitForIdle()
+        assertEquals(0, composeRule.onAllNodesWithTag("statusPairAgain").fetchSemanticsNodes().size)
     }
 
     @Test

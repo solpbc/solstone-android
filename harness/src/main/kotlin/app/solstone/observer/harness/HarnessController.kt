@@ -365,10 +365,13 @@ class HarnessController(
      * one state where an unreachable pairing may be replaced. Only the owner can tell a reset journal
      * from another device holding the address, and a changed certificate is a re-pair: refusing here
      * would leave the notice's own `pair again` a dead end. The link and the mark question still apply.
+     * A journal refusing this device has proven its pairing dead, the same as a revoked one.
      */
     private fun replacementPreflight(): PairAttemptOutcome? {
         if (pairingFact() != PairingFact.PAIRED) return null
-        return when (val status = probePlStatus()) {
+        val status = probePlStatus()
+        if (status.journalRefusesThisDevice()) return null
+        return when (status) {
             is HarnessPlStatus.Reachable -> PairAttemptOutcome.ExistingPairingActive
             is HarnessPlStatus.PairedButUnreachable ->
                 if (status.unknownJournal != null) null else PairAttemptOutcome.ExistingPairingUnreachable

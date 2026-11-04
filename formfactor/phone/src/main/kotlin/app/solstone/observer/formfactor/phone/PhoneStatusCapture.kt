@@ -20,6 +20,7 @@ enum class PhoneStatusCapture {
     PAIRED_CAUGHT_UP,
     PAIRED_AWAITING_MARK,
     PAIRED_UNKNOWN_JOURNALS,
+    PAIRED_REFUSED,
 }
 
 fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
@@ -30,6 +31,7 @@ fun decodePhoneStatusCapture(raw: String?): PhoneStatusCapture? = when (raw) {
     "paired-caught-up" -> PhoneStatusCapture.PAIRED_CAUGHT_UP
     "paired-awaiting-mark" -> PhoneStatusCapture.PAIRED_AWAITING_MARK
     "paired-unknown-journals" -> PhoneStatusCapture.PAIRED_UNKNOWN_JOURNALS
+    "paired-refused" -> PhoneStatusCapture.PAIRED_REFUSED
     else -> null
 }
 
@@ -60,6 +62,7 @@ fun resolvePhoneStatusCapture(
             pendingCount = 0,
             unknownJournals = capturedUnknownJournals(),
         )
+        PhoneStatusCapture.PAIRED_REFUSED -> capturedStatusState(paired = true, online = false, pendingCount = 2, refused = true)
         null -> null
     }
 }
@@ -70,6 +73,7 @@ private fun capturedStatusState(
     pendingCount: Int,
     awaitingMarkConfirmation: Boolean = false,
     unknownJournals: List<UnknownJournalSighting> = emptyList(),
+    refused: Boolean = false,
 ): LoadState<PhoneStatusSnapshot> {
     val waiting = if (pendingCount > 0) {
         listOf(SourceStatus("audio", SourceWish.On, SourceState.ON, ReasonCode.NONE))
@@ -87,6 +91,7 @@ private fun capturedStatusState(
                 recoveryCompleted = true,
                 audioAwaitingCustody = false,
                 unknownJournals = unknownJournals,
+                refused = refused,
             ),
             waiting = waiting,
         ),

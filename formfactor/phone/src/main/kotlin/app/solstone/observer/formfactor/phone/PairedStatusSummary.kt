@@ -3,7 +3,7 @@
 
 package app.solstone.observer.formfactor.phone
 
-enum class PairedStatusLead { CAUGHT_UP, COUNT, MARK_LINE }
+enum class PairedStatusLead { CAUGHT_UP, COUNT, MARK_LINE, REFUSED }
 
 data class PairedStatusSummary(
     val lead: PairedStatusLead,
@@ -18,6 +18,12 @@ fun pairedStatusSummary(
     zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
 ): PairedStatusSummary? = when (statusPillKind(model, nowEpochMs, zone)) {
     StatusPillKind.NOT_PAIRED -> null
+    StatusPillKind.REFUSED -> PairedStatusSummary(
+        lead = PairedStatusLead.REFUSED,
+        markLineFollowsCount = false,
+        subLine = true,
+        action = false,
+    )
     StatusPillKind.NOTICE -> PairedStatusSummary(
         lead = PairedStatusLead.CAUGHT_UP,
         markLineFollowsCount = false,

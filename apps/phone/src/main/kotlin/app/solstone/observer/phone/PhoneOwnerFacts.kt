@@ -8,6 +8,7 @@ import app.solstone.core.pl.displayAddress
 import app.solstone.core.pl.parseProductionRelayOrigin
 import app.solstone.observer.formfactor.phone.PhoneJournalFacts
 import app.solstone.observer.formfactor.phone.PhoneStatusModel
+import app.solstone.observer.formfactor.phone.STATUS_REFUSED_LEAD
 import app.solstone.observer.formfactor.phone.journalVersionDisplayText
 import app.solstone.observer.harness.WishStoreState
 
@@ -55,6 +56,7 @@ internal fun phoneJournalFacts(
         connection = when {
             committed == null -> "not paired"
             status?.paired != true -> "—"
+            status.refused -> STATUS_REFUSED_LEAD
             status.online -> "connected"
             else -> "offline"
         },

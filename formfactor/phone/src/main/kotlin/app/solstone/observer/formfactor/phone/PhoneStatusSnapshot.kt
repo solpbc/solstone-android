@@ -10,6 +10,7 @@ import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
+import app.solstone.observer.harness.journalRefusesThisDevice
 
 data class PhoneStatusSnapshot(
     val status: PhoneStatusModel,
@@ -46,6 +47,7 @@ fun phoneStatusSnapshotOf(
         status = PhoneStatusModel(
             paired = paired,
             online = online,
+            refused = backlog.plStatus.journalRefusesThisDevice(),
             pendingCount = backlog.pendingCount,
             hasContentPending = backlog.pendingSourceIds.isNotEmpty(),
             awaitingMarkConfirmation = awaitingMarkConfirmation,

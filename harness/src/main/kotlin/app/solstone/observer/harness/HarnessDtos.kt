@@ -30,14 +30,28 @@ sealed interface HarnessPlStatus {
     /**
      * [address] is the `host:port` the check actually dialed and failed to reach, or null when no
      * dial was attempted (a missing credential or identity, say). [unknownJournal] is set when a
-     * peer that is not the paired journal answered during the check.
+     * peer that is not the paired journal answered during the check. [stopped] is set when the
+     * journal's own verdict stopped this credential, and nothing dials it until a new pairing.
      */
     data class PairedButUnreachable(
         val reason: String?,
         val address: String? = null,
         val unknownJournal: UnknownJournalAnswer? = null,
+        val stopped: Boolean = false,
     ) : HarnessPlStatus
     data class Reachable(val status: Int) : HarnessPlStatus
+}
+
+/**
+ * The paired journal itself refuses this device: its verdict stopped the credential, or it answered
+ * 401 or 403. Everything else that keeps a device from the journal is not a refusal and must not ask
+ * the owner to pair again: a journal answering 500 or 503, alert 46 (it couldn't read its pairing
+ * records, so the device retries and keeps the credential), or no answer at all.
+ */
+fun HarnessPlStatus.journalRefusesThisDevice(): Boolean = when (this) {
+    HarnessPlStatus.NotPaired -> false
+    is HarnessPlStatus.PairedButUnreachable -> stopped
+    is HarnessPlStatus.Reachable -> status == 401 || status == 403
 }
 
 fun plStatusText(status: HarnessPlStatus): String =

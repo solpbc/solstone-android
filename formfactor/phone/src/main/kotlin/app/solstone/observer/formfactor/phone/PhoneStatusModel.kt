@@ -18,6 +18,7 @@ enum class StatusPillKind {
     SYNCING,
     OFFLINE,
     NOT_PAIRED,
+    REFUSED,
     AWAITING_MARK_CONFIRMATION,
     NOTICE,
 }
@@ -61,6 +62,8 @@ data class PhoneStatusModel(
     val rememberedSyncText: String? = null,
     /** Additive to the connection's own state: nothing here changes the pill. */
     val unknownJournals: List<UnknownJournalSighting> = emptyList(),
+    /** The journal itself refuses this phone; see [app.solstone.observer.harness.journalRefusesThisDevice]. */
+    val refused: Boolean = false,
 )
 
 data class PhoneJournalFacts(
@@ -87,6 +90,7 @@ fun statusPillKind(
     zone: ZoneId = ZoneId.systemDefault(),
 ): StatusPillKind = when {
     !model.paired -> StatusPillKind.NOT_PAIRED
+    model.refused -> StatusPillKind.REFUSED
     !model.online -> StatusPillKind.OFFLINE
     model.awaitingMarkConfirmation -> StatusPillKind.AWAITING_MARK_CONFIRMATION
     model.pendingCount > 0 -> StatusPillKind.SYNCING
@@ -98,6 +102,9 @@ fun statusPillKind(
 const val STATUS_UNKNOWN_RECOVERY_LEAD = "an unfinished item couldn't be checked"
 const val STATUS_WAITING_TO_SYNC_LEAD = "waiting to sync"
 const val STATUS_ON_THIS_DEVICE = "on this device"
+const val STATUS_REFUSED_LEAD = "your journal stopped accepting this device"
+private const val REFUSED_BODY = "anything waiting stays here until you pair again."
+const val PAIR_AGAIN = "pair again"
 private const val MARK_LINE = "waiting for you to confirm your journal's mark"
 private const val CALENDAR_HELD_SUB = "calendar notes stay on this phone until your journal can take them."
 
@@ -166,6 +173,7 @@ fun statusPillText(
     if (!model.connectivityKnown) return coldStatusLine(model, nowEpochMs, zone)
     return when {
     !model.paired -> "not paired"
+    model.refused -> if (model.pendingCount > 0) "$PAIR_AGAIN · ${model.pendingCount} waiting" else PAIR_AGAIN
     !model.online -> "offline · ${model.pendingCount} waiting"
     model.awaitingMarkConfirmation -> if (model.pendingCount > 0) {
         "confirm the mark · ${model.pendingCount} waiting"
@@ -209,6 +217,7 @@ data class StatusPaneCopy(
     val lead: String?,
     val lines: List<String>,
     val confirm: Boolean,
+    val pairAgain: Boolean = false,
 )
 
 fun statusPaneCopy(
@@ -234,6 +243,7 @@ fun statusPaneCopy(
     val lead = when (summary.lead) {
         PairedStatusLead.COUNT -> null
         PairedStatusLead.MARK_LINE -> MARK_LINE
+        PairedStatusLead.REFUSED -> STATUS_REFUSED_LEAD
         PairedStatusLead.CAUGHT_UP -> caughtUpLead
     }
     val replaced = summary.lead == PairedStatusLead.CAUGHT_UP && lead == null && notice
@@ -249,6 +259,7 @@ fun statusPaneCopy(
             }
             StatusPillKind.SYNCING -> "syncing to your journal…"
             StatusPillKind.OFFLINE -> STATUS_ON_THIS_DEVICE
+            StatusPillKind.REFUSED -> REFUSED_BODY
             StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
             StatusPillKind.NOT_PAIRED -> null
         }
@@ -275,6 +286,12 @@ fun statusPaneCopy(
     return if (replaced && noticeLines.isNotEmpty()) {
         StatusPaneCopy(count = false, lead = noticeLines.first(), lines = noticeLines.drop(1) + lines, confirm = summary.action)
     } else {
-        StatusPaneCopy(count = summary.lead == PairedStatusLead.COUNT, lead = lead, lines = lines + noticeLines, confirm = summary.action)
+        StatusPaneCopy(
+            count = summary.lead == PairedStatusLead.COUNT,
+            lead = lead,
+            lines = lines + noticeLines,
+            confirm = summary.action,
+            pairAgain = kind == StatusPillKind.REFUSED,
+        )
     }
 }
