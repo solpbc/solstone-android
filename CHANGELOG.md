@@ -17,7 +17,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - the connection status in the app and on the widget no longer flips between connected and offline. one slow check no longer shows offline, opening the app checks again right away, and while it's finding your journal it says "connecting…" instead of "offline", or a "connected" left over from before. a journal that answers while it's having trouble now shows as connected, or as syncing when something is waiting.
 - your journal in the app no longer loads one piece at a time while it is showing live updates. on our test phone it opened about a fifth faster, and moving to another view no longer waits for a slow page to finish.
 
-
 ## [2.1.36] - 2026-11-03
 
 ### Fixed
