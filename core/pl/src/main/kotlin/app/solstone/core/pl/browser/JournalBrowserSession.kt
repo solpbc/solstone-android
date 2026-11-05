@@ -880,6 +880,8 @@ class JournalBrowserSession(
         private val idle = ArrayDeque<JournalBrowserUpstream>()
         private val all = mutableListOf<JournalBrowserUpstream>()
         @Volatile private var closed = false
+        /** Carriers being opened outside [lock]: they hold a slot, but not yet a place in [all]. */
+        private var opening = 0
         private var carrierFailureListener: (() -> Unit)? = null
 
         fun setCarrierFailureListener(listener: () -> Unit) {
@@ -890,39 +892,63 @@ class JournalBrowserSession(
             carrierFailureListener?.invoke()
         }
 
-        fun acquire(): JournalBrowserUpstream = lock.withLock {
-
-            if (closed) throw IOException("Pool is closed")
-            while (idle.isNotEmpty()) {
-                val candidate = idle.removeFirst()
-                if (!candidate.isPoisoned) {
-                    return candidate
+        fun acquire(): JournalBrowserUpstream {
+            lock.withLock {
+                if (closed) throw IOException("Pool is closed")
+                while (idle.isNotEmpty()) {
+                    val candidate = idle.removeFirst()
+                    if (!candidate.isPoisoned) {
+                        return candidate
+                    }
+                    all.remove(candidate)
+                    try { candidate.close() } catch (_: Exception) {}
                 }
-                all.remove(candidate)
-                try { candidate.close() } catch (_: Exception) {}
+                if (all.size + opening >= MAX_UPSTREAM_CLIENTS) {
+                    throw IOException("Upstream pool exhausted")
+                }
+                opening++
             }
-            if (all.size >= MAX_UPSTREAM_CLIENTS) {
-                throw IOException("Upstream pool exhausted")
-            }
-            val fresh = factory.open()
-            all.add(fresh)
-            return fresh
+            return openReserved()
         }
 
-        fun acquireFresh(): JournalBrowserUpstream = lock.withLock {
-            if (closed) throw IOException("Pool is closed")
-            if (all.size >= MAX_UPSTREAM_CLIENTS) {
-                // If pool full, evict an idle one
-                if (idle.isNotEmpty()) {
-                    val evict = idle.removeFirst()
-                    all.remove(evict)
-                    try { evict.close() } catch (_: Exception) {}
-                } else {
-                    throw IOException("Upstream pool exhausted for fresh client")
+        fun acquireFresh(): JournalBrowserUpstream {
+            lock.withLock {
+                if (closed) throw IOException("Pool is closed")
+                if (all.size + opening >= MAX_UPSTREAM_CLIENTS) {
+                    // If pool full, evict an idle one
+                    if (idle.isNotEmpty()) {
+                        val evict = idle.removeFirst()
+                        all.remove(evict)
+                        try { evict.close() } catch (_: Exception) {}
+                    } else {
+                        throw IOException("Upstream pool exhausted for fresh client")
+                    }
                 }
+                opening++
             }
-            val fresh = factory.open()
-            all.add(fresh)
+            return openReserved()
+        }
+
+        /**
+         * Opens a carrier for a reserved slot, outside [lock]. An open can take seconds on the relay
+         * or at an address that no longer answers, and holding the lock through it would stop every
+         * other request from opening, reusing or even returning a carrier until it finished.
+         */
+        private fun openReserved(): JournalBrowserUpstream {
+            val fresh = try {
+                factory.open()
+            } catch (t: Throwable) {
+                lock.withLock { opening-- }
+                throw t
+            }
+            lock.withLock {
+                opening--
+                if (closed) {
+                    try { fresh.close() } catch (_: Exception) {}
+                    throw IOException("Pool is closed")
+                }
+                all.add(fresh)
+            }
             return fresh
         }
 
