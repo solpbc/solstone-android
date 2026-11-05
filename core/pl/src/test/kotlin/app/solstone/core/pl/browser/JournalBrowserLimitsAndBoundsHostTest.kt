@@ -24,7 +24,7 @@ class JournalBrowserLimitsAndBoundsHostTest {
     @Test
     fun enforcesFifoQueueAndRejectsAboveCapacity() {
         val blockUpstreamLatch = CountDownLatch(1)
-        val activeThreadsLatch = CountDownLatch(2)
+        val activeThreadsLatch = CountDownLatch(6)
 
         val session = JournalBrowserSession(
             pairing = { pairingGen },
@@ -32,11 +32,28 @@ class JournalBrowserLimitsAndBoundsHostTest {
             upstreamFactory = {
                 object : JournalBrowserUpstream {
                     override val isPoisoned: Boolean get() = false
-                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse {
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                        error("Not used")
+
+                    override fun requestStreaming(
+                        method: String,
+                        path: String,
+                        headers: List<Pair<String, String>>,
+                        bodySource: BrowserRequestBodySource?,
+                        responseSink: BrowserResponseSink,
+                    ) {
                         activeThreadsLatch.countDown()
                         blockUpstreamLatch.await(5, TimeUnit.SECONDS)
-                        return BrowserHttpResponse(200, listOf("Content-Type" to "text/plain"), "OK".encodeToByteArray())
+                        val body = "OK".toByteArray(Charsets.US_ASCII)
+                        responseSink.onStatusAndHeaders(
+                            200,
+                            "OK",
+                            listOf("Content-Type" to "text/plain", "Content-Length" to body.size.toString()),
+                        )
+                        responseSink.onBodyChunk(body, 0, body.size)
+                        responseSink.onComplete()
                     }
+
                     override fun close() {}
                 }
             },
@@ -48,9 +65,9 @@ class JournalBrowserLimitsAndBoundsHostTest {
         val port = uri.port
         val host = uri.host
 
-        // 1. Launch 4 active requests
+        // 1. Launch 6 active requests
         val activeSockets = mutableListOf<Socket>()
-        repeat(4) {
+        repeat(6) {
             val s = Socket("127.0.0.1", port)
             activeSockets.add(s)
             val out = BufferedOutputStream(s.getOutputStream())
@@ -70,18 +87,18 @@ class JournalBrowserLimitsAndBoundsHostTest {
             out.flush()
         }
 
-        // 3. 13th connection exceeds 4 active + 8 waiters -> 503 Service Unavailable
-        val s13 = Socket("127.0.0.1", port)
-        val out13 = BufferedOutputStream(s13.getOutputStream())
-        val in13 = BufferedInputStream(s13.getInputStream())
-        out13.write("GET /excess HTTP/1.1\r\nHost: $host:$port\r\n\r\n".toByteArray(Charsets.US_ASCII))
-        out13.flush()
+        // 3. 15th connection exceeds 6 active + 8 waiters -> 503 Service Unavailable
+        val s15 = Socket("127.0.0.1", port)
+        val out15 = BufferedOutputStream(s15.getOutputStream())
+        val in15 = BufferedInputStream(s15.getInputStream())
+        out15.write("GET /excess HTTP/1.1\r\nHost: $host:$port\r\n\r\n".toByteArray(Charsets.US_ASCII))
+        out15.flush()
 
         val buf = ByteArray(1024)
-        val read13 = in13.read(buf)
-        val res13 = if (read13 > 0) String(buf, 0, read13, Charsets.UTF_8) else ""
-        assertTrue(res13.startsWith("HTTP/1.1 503 Service Unavailable"))
-        s13.close()
+        val read15 = in15.read(buf)
+        val res15 = if (read15 > 0) String(buf, 0, read15, Charsets.UTF_8) else ""
+        assertTrue(res15.startsWith("HTTP/1.1 503 Service Unavailable"))
+        s15.close()
 
         // Unblock active requests
         blockUpstreamLatch.countDown()

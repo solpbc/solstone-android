@@ -189,6 +189,9 @@ class ProgressiveBrowserResponseParser(
                     State.BODY_TRAILERS -> {
                         val b = data[pos++]
                         trailersBuffer.write(b.toInt())
+                        if (trailersBuffer.size() > 64 * 1024) {
+                            throw IOException("Response header fields too large")
+                        }
                         val bytes = trailersBuffer.toByteArray()
                         if (bytes.size >= 2 && bytes[bytes.size - 2] == '\r'.code.toByte() && bytes[bytes.size - 1] == '\n'.code.toByte()) {
                             if (bytes.size == 2 || (bytes.size >= 4 && bytes[bytes.size - 4] == '\r'.code.toByte() && bytes[bytes.size - 3] == '\n'.code.toByte())) {

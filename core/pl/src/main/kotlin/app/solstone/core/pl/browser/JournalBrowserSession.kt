@@ -175,7 +175,6 @@ class JournalBrowserSession(
 
     // Concurrency controls
     private val activeClientSemaphore = Semaphore(MAX_ACTIVE_CLIENTS, true)
-    private val responseBudgetSemaphore = Semaphore(RESPONSE_BUDGET_SLOTS, true) // 2 slots of 16 MiB = 32 MiB
 
     private val inFlightConnections = AtomicInteger(0)
 
@@ -351,7 +350,7 @@ class JournalBrowserSession(
                 val client = ss.accept()
                 val currentInFlight = inFlightConnections.incrementAndGet()
 
-                // MAX_FIFO_WAITERS = 8, MAX_ACTIVE_CLIENTS = 4 -> max 12 in-flight
+                // MAX_FIFO_WAITERS = 8, MAX_ACTIVE_CLIENTS = 6 -> max 14 in-flight
                 if (currentInFlight > MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS) {
                     inFlightConnections.decrementAndGet()
                     diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
@@ -484,7 +483,7 @@ class JournalBrowserSession(
             if (uri.isAbsolute) {
                 if (!isValidHostAdmission(uri.host, expectedToken, serverSocket?.localPort ?: 0)) {
                     diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
-                    sendErrorAndClose(client, outputStream, 400, "Bad Request")
+                    sendRefusalAndClose(client, outputStream, "mismatch")
                     return
                 }
                 targetPath = uri.rawPath.ifEmpty { "/" } + if (uri.rawQuery != null) "?${uri.rawQuery}" else ""
@@ -502,7 +501,8 @@ class JournalBrowserSession(
 
         if (!validAdmission) {
             diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
-            sendErrorAndClose(client, outputStream, 400, "Bad Request")
+            val reason = if (hostHeader.isNullOrBlank()) "missing" else "mismatch"
+            sendRefusalAndClose(client, outputStream, reason)
             return
         }
         diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "ok"))
@@ -514,21 +514,12 @@ class JournalBrowserSession(
             return
         }
 
-        var acquiredResponseBudget = false
         try {
             // Verify pairing generation and access snapshot before upstream work
             val curGen = pairing()
             if (curGen == null || curGen != expectedGen || !accessStillCurrent()) {
                 triggerTerminalForEpoch(expectedEpoch, eventClass = "pairing", outcome = "invalidated")
                 sendErrorAndClose(client, outputStream, 502, "Bad Gateway")
-                return
-            }
-
-            // Acquire response memory reservation (16 MiB slot from 32 MiB budget)
-            acquiredResponseBudget = responseBudgetSemaphore.tryAcquire(REQUEST_DEADLINE_MS.toLong(), TimeUnit.MILLISECONDS)
-            if (!acquiredResponseBudget) {
-                diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
-                sendErrorAndClose(client, outputStream, 503, "Service Unavailable")
                 return
             }
 
@@ -622,12 +613,15 @@ class JournalBrowserSession(
                         triggerTerminalForEpoch(expectedEpoch, eventClass = "pairing", outcome = "invalidated")
                         throw JournalBrowserIdentityException()
                     }
-                    val formatted = filterAndFormatResponseHeaders(
+                    val (formatted, fallbackAppended) = filterAndFormatResponseHeaders(
                         upstreamHeaders = resHeaders,
                         responseBodySize = null,
                         localOriginUrl = localOrigin,
                         statusCode = status,
                     ) ?: throw IOException("Redirect rebase rejected")
+                    if (fallbackAppended) {
+                        diag(DiagEvent.JournalBrowser(eventClass = "csp", outcome = "fallback"))
+                    }
 
                     emitChunkedFraming = method != "HEAD" && formatted.any {
                         it.first.equals("transfer-encoding", ignoreCase = true) &&
@@ -713,16 +707,31 @@ class JournalBrowserSession(
                 upstream = null
                 if (isIdempotent && !browserSinkAcceptedBytes && pairing() == expectedGen && accessStillCurrent()) {
                     // Retry idempotent once with a fresh client before any browser sink byte
+                    var freshUpstream: JournalBrowserUpstream? = null
                     try {
-                        val freshUpstream = requestPool.acquireFresh()
-                        freshUpstream.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
-                        requestPool.release(freshUpstream)
+                        val fresh = requestPool.acquireFresh()
+                        freshUpstream = fresh
+                        fresh.requestStreaming(method, targetPath, filteredHeaders, bodySource, responseSink)
+                        requestPool.release(fresh)
+                        freshUpstream = null
                         diag(DiagEvent.JournalBrowser(eventClass = "retry", outcome = "ok"))
                     } catch (ie: JournalBrowserIdentityException) {
                         isIdentityFailure = true
+                        freshUpstream?.let {
+                            requestPool.discard(it)
+                            freshUpstream = null
+                        }
                     } catch (te: SocketTimeoutException) {
                         isTimeoutFailure = true
+                        freshUpstream?.let {
+                            requestPool.discard(it)
+                            freshUpstream = null
+                        }
                     } catch (_: Exception) {
+                        freshUpstream?.let {
+                            requestPool.discard(it)
+                            freshUpstream = null
+                        }
                     }
                 } else if (!isIdempotent && !browserSinkAcceptedBytes) {
                     isAmbiguousFailure = true
@@ -762,9 +771,6 @@ class JournalBrowserSession(
             }
         } finally {
             try { client.close() } catch (_: Exception) {}
-            if (acquiredResponseBudget) {
-                responseBudgetSemaphore.release()
-            }
             activeClientSemaphore.release()
         }
     }
@@ -789,6 +795,16 @@ class JournalBrowserSession(
             }
         }
         return -1
+    }
+
+    private fun sendRefusalAndClose(client: Socket, out: BufferedOutputStream, reason: String) {
+        val headers = listOf(
+            "X-SPL-Loopback-Refused: $reason",
+            "Content-Type: text/plain; charset=utf-8",
+            "Referrer-Policy: no-referrer",
+        )
+        val body = "Forbidden\n".toByteArray(Charsets.UTF_8)
+        sendResponseHeadersAndClose(client, out, 403, "Forbidden", headers, body)
     }
 
     private fun sendErrorAndClose(client: Socket, out: BufferedOutputStream, status: Int, message: String) {
@@ -936,10 +952,38 @@ class JournalBrowserSession(
     }
 
     companion object {
-        const val MAX_ACTIVE_CLIENTS = 4
+        // Six active browsers and six pooled upstreams. MAX_UPSTREAM_CLIENTS is at least
+        // MAX_ACTIVE_CLIENTS because pool exhaustion throws and the request becomes an
+        // immediate 502, and the pool does not queue.
+        //
+        // Relay carrier, the larger one, times 6. OkHttpWebSocketDuplex.DEFAULT_BUFFER_BYTES
+        // (256 KiB) plus the TLS ledger root on ConscryptPlHttpClient.capacity (64 KiB)
+        // plus the two TlsEngineDuplex session buffers. Those sizes are packetBufferSize
+        // and applicationBufferSize, not a constant in this repo; charge 64 KiB for each
+        // as a ceiling, not a measured size. Plus MuxSession.capacity, which is
+        // 2 * MAX_DATA_CHUNK_BYTES (128 KiB). That is 256 + 64 + 64 + 64 + 128 = 576 KiB
+        // per carrier, 3456 KiB for six. A direct carrier omits the 256 KiB queue.
+        //
+        // Request term, times MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS (14). The request head
+        // is at most 64 KiB, plus the 1024-byte read buffer in processClient, plus the
+        // parser header buffer (64 KiB), the chunk-size line (1 KiB), and the trailer
+        // buffer (64 KiB once it uses the header buffer's cap). About 193 KiB each, about
+        // 2702 KiB for fourteen. A waiter that passed the in-flight check is already
+        // inside processClient and can hold a request head before it holds an upstream.
+        //
+        // Combined ceiling about 6.0 MiB, under MemoryLedger.MAX_CAPACITY_BYTES (52 MiB).
+        // INITIAL_RECEIVE_WINDOW (1 MiB) is wire credit, not heap. The interface default
+        // requestStreaming buffers a whole body; that buffer is not in this sum. The bound
+        // holds only because every production JournalBrowserUpstream overrides that
+        // buffering default.
+        //
+        // A browser that drops its socket holds its active-client slot until the next
+        // write to that socket fails. A live stream discovers the drop on the journal's
+        // next write, at most the journal's 15 s stream keep-alive. There is no timer
+        // on the slot.
+        const val MAX_ACTIVE_CLIENTS = 6
         const val MAX_FIFO_WAITERS = 8
-        const val RESPONSE_BUDGET_SLOTS = 2 // 2 x 16 MiB = 32 MiB
-        const val MAX_UPSTREAM_CLIENTS = 4
+        const val MAX_UPSTREAM_CLIENTS = 6
         const val MAX_REQUEST_LINE_BYTES = 8 * 1024 // 8 KiB
         const val MAX_REQUEST_HEADERS_BYTES = 64 * 1024 // 64 KiB
         const val MAX_REQUEST_HEADERS_COUNT = 100

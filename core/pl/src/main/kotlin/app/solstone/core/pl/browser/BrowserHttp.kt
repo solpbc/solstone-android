@@ -71,6 +71,7 @@ val REQUEST_ALLOWED_HEADERS: Set<String> = setOf(
     "cache-control",
     "pragma",
     "user-agent",
+    "last-event-id",
 )
 
 val RESPONSE_ALLOWED_HEADERS: Set<String> = setOf(
@@ -88,6 +89,9 @@ val RESPONSE_ALLOWED_HEADERS: Set<String> = setOf(
     "set-cookie",
     "www-authenticate",
     "date",
+    "retry-after",
+    "server-timing",
+    "content-security-policy",
 )
 
 fun parseBrowserHttpResponse(raw: ByteArray): BrowserHttpResponse {
@@ -309,17 +313,34 @@ fun stripCookieDomain(cookieHeaderValue: String): String {
     return remaining.joinToString("; ")
 }
 
+private const val CSP_FLOOR_POLICY =
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+
+private fun isConfiningCsp(policy: String): Boolean {
+    val sections = policy.split(';')
+    for (sec in sections) {
+        val trimmed = sec.trim()
+        if (trimmed.isEmpty()) continue
+        val firstToken = trimmed.split(Regex("\\s+"), limit = 2)[0].lowercase(Locale.US)
+        if (firstToken == "default-src" || firstToken == "connect-src") {
+            return true
+        }
+    }
+    return false
+}
+
 fun filterAndFormatResponseHeaders(
     upstreamHeaders: List<Pair<String, String>>,
     responseBodySize: Int? = null,
     localOriginUrl: String,
     statusCode: Int,
-): List<Pair<String, String>>? {
+): Pair<List<Pair<String, String>>, Boolean>? {
     val out = mutableListOf<Pair<String, String>>()
     var hasLocation = false
     var locationRebased: String? = null
     var upstreamContentLength: String? = null
     var isChunked = false
+    var anyCspConfines = false
 
     for ((name, value) in upstreamHeaders) {
         val lower = name.lowercase(Locale.US)
@@ -355,6 +376,14 @@ fun filterAndFormatResponseHeaders(
             "www-authenticate" -> out.add("WWW-Authenticate" to value)
             "date" -> out.add("Date" to value)
             "digest" -> out.add("Digest" to value)
+            "retry-after" -> out.add("Retry-After" to value)
+            "server-timing" -> out.add("Server-Timing" to value)
+            "content-security-policy" -> {
+                out.add("Content-Security-Policy" to value)
+                if (isConfiningCsp(value)) {
+                    anyCspConfines = true
+                }
+            }
         }
     }
 
@@ -364,15 +393,21 @@ fun filterAndFormatResponseHeaders(
     }
 
     out.add("Referrer-Policy" to "no-referrer")
-    // The loopback authority is the browser's complete network boundary. This applies to every
-    // proxied response so redirected/late HTML documents cannot loosen the root document's policy.
-    out.add(
-        "Content-Security-Policy" to
-            "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; " +
-            "form-action 'self'; frame-src 'self'; img-src 'self' data:; media-src 'self'; " +
-            "object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-            "style-src 'self' 'unsafe-inline'; child-src 'none'; worker-src 'none'",
-    )
+    // Every proxied response carries a policy with default-src 'self', either the
+    // journal's or this floor appended once. Page fetch and XHR are also checked by
+    // JournalWebPolicy (JournalSheet.shouldInterceptRequest). WebSocket, worker, and
+    // service-worker requests are confined by the policy alone, because a service
+    // worker's fetches bypass shouldInterceptRequest and the app sets no
+    // service-worker client. What loosens is that same-origin workers become
+    // possible. No journal page registers a service worker today. A service worker's
+    // registration and cache storage would outlive the session origin in the WebView
+    // profile, so introducing one is a security review question, not a dashboard
+    // change.
+    var floorAppended = false
+    if (!anyCspConfines) {
+        out.add("Content-Security-Policy" to CSP_FLOOR_POLICY)
+        floorAppended = true
+    }
     if (statusCode == 204 || statusCode == 304) {
         // No Content-Length or Transfer-Encoding on 204/304
     } else if (statusCode == 205) {
@@ -384,7 +419,7 @@ fun filterAndFormatResponseHeaders(
     } else if (isChunked) {
         out.add("Transfer-Encoding" to "chunked")
     }
-    return out
+    return out to floorAppended
 }
 
 fun rebaseRedirectLocation(location: String, localOriginUrl: String): String? {

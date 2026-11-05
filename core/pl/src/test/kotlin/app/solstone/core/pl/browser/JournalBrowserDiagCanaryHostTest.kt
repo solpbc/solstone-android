@@ -86,8 +86,8 @@ class JournalBrowserDiagCanaryHostTest {
 
         assertTrue(diagEvents.isNotEmpty())
 
-        val validClasses = setOf("admission", "lifecycle", "proxy", "redirect", "retry", "pairing", "teardown", "limit")
-        val validOutcomes = setOf("ok", "rejected", "timeout", "ambiguous", "invalidated", "bound", "stopped", "capacity")
+        val validClasses = setOf("admission", "lifecycle", "proxy", "redirect", "retry", "pairing", "teardown", "limit", "csp")
+        val validOutcomes = setOf("ok", "rejected", "timeout", "ambiguous", "invalidated", "bound", "stopped", "capacity", "fallback")
 
         for (event in diagEvents) {
             val formatted = formatDiagEvent(event)

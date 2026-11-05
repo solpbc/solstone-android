@@ -74,7 +74,7 @@ class JournalBrowserLifecycleHostTest {
         val host1 = uri1.host
         session.stop()
 
-        // AC3 same port: bind on same port, verify new authority generated and old host rejected with 400
+        // AC3 same port: bind on same port, verify new authority generated and old host rejected with 403
         val origin2 = session.start(bindPort = port1)
         val uri2 = URI(origin2.url)
         val host2 = uri2.host
@@ -93,7 +93,8 @@ class JournalBrowserLifecycleHostTest {
             val buf = ByteArray(1024)
             val read = inStream.read(buf)
             val response = if (read > 0) String(buf, 0, read) else ""
-            assertTrue(response.startsWith("HTTP/1.1 400"), "Expected 400 Bad Request for stale token on same port: $response")
+            assertTrue(response.startsWith("HTTP/1.1 403"), "Expected 403 Forbidden for stale token on same port: $response")
+            assertTrue(response.contains("X-SPL-Loopback-Refused: mismatch"), "Expected marker mismatch: $response")
         }
 
         session.stop()
