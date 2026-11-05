@@ -120,6 +120,7 @@ class JournalBrowserStreamConcurrencyHostTest {
         val releaseSix = Array(6) { CountDownLatch(1) }
         val entriesCount = AtomicInteger(0)
         val sevenAdmissions = CountDownLatch(7)
+        val sixEntered = CountDownLatch(6)
 
         val session = JournalBrowserSession(
             pairing = { pairingGen },
@@ -139,6 +140,7 @@ class JournalBrowserStreamConcurrencyHostTest {
                     ) {
                         val idx = entriesCount.getAndIncrement()
                         if (idx < 6) {
+                            sixEntered.countDown()
                             responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Type" to "text/plain"))
                             if (!releaseSix[idx].await(15, TimeUnit.SECONDS)) {
                                 throw IOException("releaseSix[$idx] timed out")
@@ -194,6 +196,8 @@ class JournalBrowserStreamConcurrencyHostTest {
             sockets.add(s7)
 
             assertTrue(sevenAdmissions.await(5, TimeUnit.SECONDS), "7 admissions did not occur")
+            // Admission comes before the upstream: wait for the six to arrive, not just to be admitted.
+            assertTrue(sixEntered.await(5, TimeUnit.SECONDS), "6 requests did not reach the upstream")
             assertEquals(6, entriesCount.get(), "entry count should still be 6 before completing one")
 
             releaseSix[0].countDown()
