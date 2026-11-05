@@ -213,6 +213,39 @@ class JournalBrowserUpstreamAdapterTest {
         assertEquals(2, directTries)
     }
 
+    // The app's own sync has usually just found which leg answers, so the first carrier starts there.
+    @Test
+    fun theFirstCarrierStartsAtTheLastSuccessfulDial() {
+        val events = DialDiagnostics.events
+        events.record("link.solstone.app", 443, app.solstone.core.pl.DialOutcome.CONNECTED, throughRelay = true)
+        try {
+            val identityStore = FakeIdentityStore(identity(state = IdentityState.PAIRED, relayOrigin = "https://link.solstone.app", deviceToken = "tok"))
+            var directTries = 0
+            var relayTries = 0
+            val adapter = JournalBrowserUpstreamAdapter(
+                endpointStore = FakeEndpointStore(DirectEndpoint("192.0.2.1", 7657)),
+                credentialStore = FakeCredentialStore(credential()),
+                identityStore = identityStore,
+                mutator = FileIdentityMutator(identityStore),
+                directClientOpener = { _, _, _ ->
+                    directTries++
+                    throw java.io.IOException("no answer")
+                },
+                relayClientOpener = { _, _, _, _, _ ->
+                    relayTries++
+                    FakeJournalBrowserUpstream()
+                },
+            )
+
+            adapter.open().close()
+
+            assertEquals(0, directTries)
+            assertEquals(1, relayTries)
+        } finally {
+            events.record("link.solstone.app", 443, app.solstone.core.pl.DialOutcome.NO_ANSWER)
+        }
+    }
+
     private class FakeJournalBrowserUpstream : JournalBrowserUpstream {
         override val isPoisoned: Boolean = false
         override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse {

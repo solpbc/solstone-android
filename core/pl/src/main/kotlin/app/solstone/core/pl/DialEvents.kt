@@ -81,6 +81,9 @@ class DialEventLog(
     private val lock = Any()
     private var lastConnected: Pair<String, Int>? = null
 
+    /** The address this process last connected to, unless a dial has failed since. */
+    fun lastConnectedAddress(): Pair<String, Int>? = synchronized(lock) { lastConnected }
+
     /** Where sightings stand now; a dial passes this back, so one overtaken by a re-pair says nothing. */
     fun sightingEpoch(): Long? = sightings?.epoch
 

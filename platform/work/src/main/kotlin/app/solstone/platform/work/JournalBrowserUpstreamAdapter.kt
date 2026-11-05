@@ -123,13 +123,25 @@ class JournalBrowserUpstreamAdapter(
      * The leg this session's last carrier opened on. A page opens several carriers, and each one
      * walking addresses that don't answer would cost a connect timeout per address, per carrier.
      * The rest of the walk stays behind it, so a leg that stops answering only costs its own try.
+     * Before this session has opened anything, the app's last successful dial stands in for it.
      */
     @Volatile private var answeredLeg: PairingLease? = null
 
     private fun answeredLegFirst(leases: List<PairingLease>): List<PairingLease> {
-        val answered = answeredLeg ?: return leases
-        val (first, rest) = leases.partition { sameLeg(it, answered) }
+        val answered = answeredLeg
+        val (first, rest) = leases.partition { lease ->
+            if (answered != null) sameLeg(lease, answered) else isLastConnected(lease)
+        }
         return first + rest
+    }
+
+    private fun isLastConnected(lease: PairingLease): Boolean {
+        val (host, port) = dialEvents?.lastConnectedAddress() ?: return false
+        return when (lease) {
+            is PairingLease.Direct -> lease.endpoint.host == host && lease.endpoint.port == port
+            is PairingLease.Relay -> app.solstone.core.pl.parseProductionRelayOrigin(lease.relayOrigin)
+                ?.let { it.host == host && it.effectivePort == port } == true
+        }
     }
 
     private fun sameLeg(a: PairingLease, b: PairingLease): Boolean = when (a) {
