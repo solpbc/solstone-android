@@ -16,7 +16,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; now += 8_000; HarnessPlStatus.Reachable(200) },
-            monotonicMs = { now },
+            awakeMs = { now },
         )
 
         assertTrue(f.controller.checkIfDue())
@@ -33,7 +33,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; now += 8_000; HarnessPlStatus.Reachable(200) },
-            monotonicMs = { now },
+            awakeMs = { now },
         )
         f.controller.onForeground(true)
 
@@ -51,7 +51,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(200) },
-            monotonicMs = { now },
+            awakeMs = { now },
         )
 
         f.controller.currentPlStatus()
@@ -67,7 +67,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(200) },
-            monotonicMs = { 0L },
+            awakeMs = { 0L },
             hasNetwork = { network },
         )
         f.controller.checkIfDue()
@@ -83,7 +83,7 @@ class RoutinePlStatusTest {
     @Test
     fun aJournalThatAnswersUnwellIsHeardAndOneThatIsSilentIsNot() {
         var answer: HarnessPlStatus = HarnessPlStatus.Reachable(503)
-        val f = fixture(plStatusProbe = PlStatusProbe { answer }, monotonicMs = { 0L })
+        val f = fixture(plStatusProbe = PlStatusProbe { answer }, awakeMs = { 0L })
         f.controller.probePlStatus()
         assertEquals(PresentedConnection.CONNECTED, f.controller.presentConnection(0).connection)
 
@@ -98,7 +98,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(200) },
-            monotonicMs = { 0L },
+            awakeMs = { 0L },
         )
         f.controller.checkIfDue()
 
@@ -118,7 +118,7 @@ class RoutinePlStatusTest {
         var probes = 0
         val f = fixture(
             plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(401) },
-            monotonicMs = { 0L },
+            awakeMs = { 0L },
         )
         f.controller.checkIfDue()
 
@@ -126,5 +126,130 @@ class RoutinePlStatusTest {
         f.controller.checkIfDue()
 
         assertEquals(2, probes)
+    }
+
+    /** A phone on two clocks: [sleep] moves only real time, [awake] moves both. */
+    private class Phone {
+        var awakeNow = 0L
+        var realNow = 0L
+        var answer: HarnessPlStatus = HarnessPlStatus.Reachable(200)
+        var probes = 0
+        var screenOn = false
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { probes += 1; answer },
+            awakeMs = { awakeNow },
+            realtimeMs = { realNow },
+            screenOn = { screenOn },
+        )
+
+        fun awake(ms: Long) = apply { awakeNow += ms; realNow += ms }
+        fun sleep(ms: Long) = apply { realNow += ms }
+        fun shown() = f.controller.presentConnection(0).connection
+    }
+
+    @Test
+    fun anAnswerFromBeforeADeepSleepNoLongerReadsConnected() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+        assertEquals(PresentedConnection.CONNECTED, phone.shown())
+
+        phone.sleep(ONE_HOUR)
+        assertEquals(PresentedConnection.CONNECTED, phone.shown(), "held for the half second a check gets")
+        assertEquals(PresentedConnection.CONNECTING, phone.awake(500).shown())
+    }
+
+    @Test
+    fun openingTheAppAfterADeepSleepChecksAtOnceAndNeverBlinks() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+        assertEquals(PresentedConnection.CONNECTED, phone.shown())
+        phone.awake(5_000).sleep(ONE_HOUR)
+
+        phone.f.controller.onForeground(true)
+        assertEquals(PresentedConnection.CONNECTED, phone.shown(), "held while the fresh check answers")
+        assertTrue(phone.f.controller.checkIfDue(), "only 5 s awake since the last check, but an hour has passed")
+        assertEquals(2, phone.probes)
+        assertEquals(PresentedConnection.CONNECTED, phone.awake(600).shown())
+    }
+
+    @Test
+    fun aDeepSleepAddsNoBackgroundChecks() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+
+        // Twelve 5 s wakes, each after five minutes asleep: one minute awake in an hour.
+        repeat(12) {
+            phone.sleep(5 * 60_000L).awake(5_000)
+            phone.f.controller.checkIfDue()
+        }
+
+        assertEquals(2, phone.probes, "one check for the minute it was awake")
+    }
+
+    @Test
+    fun theScreenComingOnAfterASleepChecksOnceAndTheWidgetNeverBlinks() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+        assertEquals(PresentedConnection.CONNECTED, phone.shown())
+        phone.awake(5_000).sleep(ONE_HOUR)
+        phone.screenOn = true
+
+        assertTrue(phone.f.controller.checkIfDue(), "only 5 s awake since the last check, but the owner can see it")
+        assertEquals(2, phone.probes)
+        assertEquals(PresentedConnection.CONNECTED, phone.shown())
+        assertEquals(PresentedConnection.CONNECTED, phone.awake(600).shown())
+
+        phone.awake(5_000)
+        assertFalse(phone.f.controller.checkIfDue(), "the next tick waits its minute")
+        assertEquals(2, phone.probes)
+    }
+
+    @Test
+    fun aScreenLeftOnAddsNoChecks() {
+        val phone = Phone()
+        phone.screenOn = true
+        phone.f.controller.checkIfDue()
+
+        repeat(120) {
+            phone.awake(5_000)
+            phone.f.controller.checkIfDue()
+        }
+
+        assertEquals(11, phone.probes, "the first check and one a minute for ten minutes")
+    }
+
+    @Test
+    fun oneFailedCheckAfterAWakeReadsConnectingAndOfflineWaitsItsTurn() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+        phone.awake(ROUTINE_PROBE_MAX_AGE_MS - 1).sleep(ONE_HOUR).awake(1)
+
+        phone.answer = HarnessPlStatus.PairedButUnreachable("down")
+        assertTrue(phone.f.controller.checkIfDue(), "the check the awake minute had already earned")
+        assertEquals(2, phone.probes)
+        assertEquals(PresentedConnection.CONNECTING, phone.shown(), "not offline from one check after an hour's sleep")
+
+        phone.awake(WAKE_GAP_MS - 1)
+        assertEquals(PresentedConnection.CONNECTING, phone.shown())
+        phone.awake(1)
+        assertEquals(PresentedConnection.OFFLINE, phone.shown())
+    }
+
+    @Test
+    fun aJournalAnsweringAfterAWakeReadsConnectedStraightAway() {
+        val phone = Phone()
+        phone.f.controller.checkIfDue()
+        phone.shown()
+        phone.awake(ROUTINE_PROBE_MAX_AGE_MS - 1).sleep(ONE_HOUR)
+        phone.shown()
+        assertEquals(PresentedConnection.CONNECTING, phone.awake(500).shown())
+
+        phone.awake(1_000)
+        phone.f.controller.checkIfDue()
+        assertEquals(PresentedConnection.CONNECTED, phone.shown())
+    }
+
+    private companion object {
+        const val ONE_HOUR = 3_600_000L
     }
 }

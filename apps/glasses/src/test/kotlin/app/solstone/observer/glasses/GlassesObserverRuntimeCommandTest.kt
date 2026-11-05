@@ -449,6 +449,7 @@ class GlassesObserverRuntimeCommandTest {
             null
         }
         return HarnessController(
+            realtimeMs = { 0L },
             permissionStatusReader = MutablePermissionReader(permissionStatus),
             desiredObservingStore = desiredStore,
             cameraLock = RecordingCameraLock(),

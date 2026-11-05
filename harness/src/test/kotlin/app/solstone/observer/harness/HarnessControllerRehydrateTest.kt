@@ -51,7 +51,7 @@ class HarnessControllerRehydrateTest {
                 storageOk = true,
                 silenced = SilencedFact.UNKNOWN,
             ),
-            monotonicMs = { now },
+            awakeMs = { now },
         )
         f.desiredStore.setDesiredOn(true)
 

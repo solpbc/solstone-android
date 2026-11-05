@@ -208,6 +208,28 @@ class ConnectionPresenterTest {
     }
 
     @Test
+    fun aDropShownBeforeComingForwardIsNotHeld() {
+        val t = Trace(foreground = false).heard()
+        t.show()
+        t.at(120_000).unheard()
+        assertEquals(OFFLINE, t.show())
+        t.presenter.foreground(true, t.now)
+        assertEquals(CONNECTING, t.show(), "from the first frame, never the old offline for the grace")
+    }
+
+    @Test
+    fun aLongSleepStartsANewEpisodeSoOneFailedCheckIsNotOffline() {
+        val t = Trace(foreground = false).heard()
+        t.show()
+        t.at(3_600_000).presenter.woke(t.now)
+        assertEquals(CONNECTED, t.show(), "held while a fresh check answers")
+        assertEquals(CONNECTING, t.at(3_600_500).show())
+        t.at(3_600_000).unheard()
+        assertEquals(CONNECTING, t.at(3_629_999).show())
+        assertEquals(OFFLINE, t.at(3_630_000).show())
+    }
+
+    @Test
     fun anAnswerJustBeforeComingForwardStillCounts() {
         val t = Trace(foreground = false)
         assertEquals(CONNECTING, t.at(1_000).show())

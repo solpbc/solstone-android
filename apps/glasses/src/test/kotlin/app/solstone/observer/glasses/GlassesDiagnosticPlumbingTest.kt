@@ -162,6 +162,7 @@ class GlassesDiagnosticPlumbingTest {
 
     private fun controller(diag: (String) -> Unit): HarnessController =
         HarnessController(
+            realtimeMs = { 0L },
             permissionStatusReader = PermissionStatusReader { revokedMicrophonePermissions() },
             desiredObservingStore = MemoryDesiredStore(initial = true),
             cameraLock = NoopCameraLock(),

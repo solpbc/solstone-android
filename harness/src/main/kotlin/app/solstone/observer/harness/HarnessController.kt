@@ -3,6 +3,7 @@
 
 package app.solstone.observer.harness
 
+import android.os.SystemClock
 import app.solstone.core.diagnostics.PairingFact
 import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.identity.ClientCredentialStore
@@ -71,7 +72,13 @@ class HarnessController(
         CaptureForegroundType.LOCATION,
         CaptureForegroundType.CAMERA,
     ),
-    private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    // Stops in deep sleep. Only the background check spacing runs on it, so a sleeping phone spends
+    // what it always has: one check per minute it is actually awake.
+    private val awakeMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    // Keeps counting in deep sleep. How long ago the journal answered is real time.
+    private val realtimeMs: () -> Long = SystemClock::elapsedRealtime,
+    /** Whether the screen is on, so a status drawn in the background can be seen. */
+    private val screenOn: () -> Boolean = { false },
     // Whether the foreground service is up and holding its capture types — intake that started.
     private val foregroundServiceLive: () -> Boolean = { ObserverForegroundService.heldCaptureForegroundTypes != null },
     var mediaProjectionPromotable: () -> Boolean = { false },
@@ -444,12 +451,13 @@ class HarnessController(
     /** A fresh check, never the cache: an owner's own connection check and a pairing preflight. */
     fun probePlStatus(): HarnessPlStatus {
         val key = routineProbeKey()
-        val startedAt = monotonicMs()
+        val startedAt = realtimeMs()
         val status = plStatusProbe.probe()
-        val finishedAt = monotonicMs()
+        val finishedAwake = awakeMs()
         lastPlStatus = status
-        routineProbe = RoutineProbe(key, startedAt, finishedAt, status)
+        routineProbe = RoutineProbe(key, startedAt, realtimeMs(), finishedAwake, status)
         synchronized(connection) {
+            val finishedAt = connectionNow()
             followPairing(key, finishedAt)
             if (status.journalHeard()) connection.heard(finishedAt) else connection.unheard(finishedAt)
         }
@@ -471,26 +479,30 @@ class HarnessController(
     /**
      * Checks the journal when one is due. Returns whether the connection may have changed: it
      * checked, or the network came or went. With the app in the
-     * foreground a check may start [FOREGROUND_CHECK_SPACING_MS] after the previous one started.
-     * In the background it starts [ROUTINE_PROBE_MAX_AGE_MS] after the previous one finished, the
-     * same budget the status tick always had. A new pairing is checked at once. With no network at
-     * all there is nothing to dial, and the presenter already reads offline.
+     * foreground a check may start [FOREGROUND_CHECK_SPACING_MS] after the previous one started, in
+     * real time, so opening the app after a sleep checks at once. In the background it starts
+     * [ROUTINE_PROBE_MAX_AGE_MS] of awake time after the previous one finished, the same budget the
+     * status tick always had, so a phone that wakes briefly and often dials no more than before.
+     * The one addition: with the screen on and the background lease run out, which only a sleep can
+     * cause, it checks at once, so a widget the owner can see doesn't wait out that minute. A new
+     * pairing is checked at once. With no network at all there is nothing to dial, and the presenter
+     * already reads offline.
      *
      * ⛔ Not a fresh check per status read. The 5 s status tick once probed twice a tick, a new TLS
      * session to the journal every 2.5 s for as long as the app ran.
      */
     fun checkIfDue(): Boolean = synchronized(checkLock) {
-        val now = monotonicMs()
         val networkPresent = hasNetwork()
         val networkChanged = networkPresent != lastNetworkPresent
         lastNetworkPresent = networkPresent
-        synchronized(connection) { connection.network(networkPresent, now) }
+        synchronized(connection) { connection.network(networkPresent, connectionNow()) }
         if (!networkPresent) return networkChanged
         val last = routineProbe
         val due = last == null || last.key != routineProbeKey() || if (foreground) {
-            now - last.startedMs !in 0 until FOREGROUND_CHECK_SPACING_MS
+            realtimeMs() - last.startedMs !in 0 until FOREGROUND_CHECK_SPACING_MS
         } else {
-            now - last.finishedMs !in 0 until ROUTINE_PROBE_MAX_AGE_MS
+            awakeMs() - last.finishedAwakeMs !in 0 until ROUTINE_PROBE_MAX_AGE_MS ||
+                (screenOn() && realtimeMs() - last.finishedMs >= connectionTiming.backgroundLeaseMs)
         }
         if (due) probePlStatus()
         due || networkChanged
@@ -499,14 +511,14 @@ class HarnessController(
     /** The app came to the foreground or left it. Coming forward starts a new connecting episode. */
     fun onForeground(inForeground: Boolean) {
         foreground = inForeground
-        synchronized(connection) { connection.foreground(inForeground, monotonicMs()) }
+        synchronized(connection) { connection.foreground(inForeground, connectionNow()) }
     }
 
     /** What every status surface shows about the connection now, and the waiting count beside it. */
     fun presentConnection(pendingCount: Int): PresentedStatus {
         val key = routineProbeKey()
-        val now = monotonicMs()
         return synchronized(connection) {
+            val now = connectionNow()
             followPairing(key, now)
             connection.present(now, pendingCount)
         }
@@ -514,8 +526,17 @@ class HarnessController(
 
     /** How long until the presented connection changes on its own, or null when only evidence changes it. */
     fun connectionChangeInMs(): Long? {
-        val now = monotonicMs()
+        val now = realtimeMs()
         return synchronized(connection) { connection.nextChangeAt(now) }?.let { it - now }
+    }
+
+    /** The time for the presenter. A sleep that outlasted [WAKE_GAP_MS] starts a new episode first. */
+    private fun connectionNow(): Long {
+        val now = realtimeMs()
+        val slept = now - awakeMs()
+        if (slept - lastSleptMs >= WAKE_GAP_MS) connection.woke(now)
+        lastSleptMs = slept
+        return now
     }
 
     private fun followPairing(key: Any, nowMs: Long) {
@@ -528,10 +549,18 @@ class HarnessController(
     @Volatile private var foreground = false
     private var lastNetworkPresent = true
     private val checkLock = Any()
-    private val connection = ConnectionPresenter(monotonicMs())
+    private val connectionTiming = ConnectionTiming()
+    private val connection = ConnectionPresenter(realtimeMs(), connectionTiming)
+    private var lastSleptMs = realtimeMs() - awakeMs()
     private var connectionKey: Any? = null
 
-    private data class RoutineProbe(val key: Any, val startedMs: Long, val finishedMs: Long, val status: HarnessPlStatus)
+    private data class RoutineProbe(
+        val key: Any,
+        val startedMs: Long,
+        val finishedMs: Long,
+        val finishedAwakeMs: Long,
+        val status: HarnessPlStatus,
+    )
 
     private fun routineProbeKey(): Any =
         identityStore.load().let { Triple(pairingFact(), it?.instanceId, it?.clientCertFingerprint) }
@@ -685,8 +714,11 @@ fun sourceRuntimeSnapshotOf(
         engineStartIssued = engineStartIssued,
     )
 
-/** In the background, how long after a check finishes the next one may start. */
+/** In the background, how long awake after a check finishes the next one may start. */
 const val ROUTINE_PROBE_MAX_AGE_MS = 60_000L
 
 /** With the app in the foreground, how long after a check starts the next one may start. */
 const val FOREGROUND_CHECK_SPACING_MS = 15_000L
+
+/** A deep sleep at least this long counts as a wake: as long as a drop takes to read offline. */
+const val WAKE_GAP_MS = 30_000L

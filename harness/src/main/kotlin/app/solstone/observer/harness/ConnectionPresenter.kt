@@ -29,7 +29,7 @@ data class ConnectionTiming(
     val downDwellMs: Long = 1_000L,
     /** Not reaching the journal for this long, with a check failing in that time, reads offline. */
     val offlineAfterMs: Long = 30_000L,
-    /** Coming to the foreground holds the last shown state at most this long while a check answers. */
+    /** Coming to the foreground or waking holds connected at most this long while a check answers. */
     val foregroundGraceMs: Long = 500L,
     /** Syncing stays this long after the queue drains, so consecutive items don't strobe. */
     val syncingLingerMs: Long = 1_500L,
@@ -37,7 +37,8 @@ data class ConnectionTiming(
 
 /**
  * The one place this phone decides connected, connecting or offline. Pure: every call takes the
- * time on one monotonic clock, and nothing here reads a clock, a network or a file.
+ * time on one clock that keeps counting while the phone sleeps, and nothing here reads a clock, a
+ * network or a file.
  *
  * Evidence is [heard] (the journal answered a check, with any HTTP status or a verdict of its own)
  * and [unheard] (a check got no answer from it). Connected needs something heard within the lease,
@@ -45,7 +46,8 @@ data class ConnectionTiming(
  * while the lease stands. No network at all is a hard drop and reads offline at once. Otherwise a
  * drop reads connecting, and offline only once the journal has not been reached for
  * [ConnectionTiming.offlineAfterMs] and a check has failed in that time. A new episode, connecting
- * again, starts at launch, when the network comes back, and when the app comes to the foreground.
+ * again, starts at launch, when the network comes back, when the app comes to the foreground, and
+ * when the phone wakes.
  */
 class ConnectionPresenter(
     startMs: Long,
@@ -78,13 +80,13 @@ class ConnectionPresenter(
         networkPresent = present
     }
 
+    /** The phone woke from a long sleep: a new episode, and what's shown holds while a check answers. */
+    fun woke(nowMs: Long) {
+        comingBack(nowMs)
+    }
+
     fun foreground(inForeground: Boolean, nowMs: Long) {
-        if (inForeground && !foreground) {
-            // An answer that landed just before, and no read has applied yet, still counts.
-            truth(nowMs)
-            graceUntilMs = nowMs + timing.foregroundGraceMs
-            newEpisode(nowMs)
-        }
+        if (inForeground && !foreground) comingBack(nowMs)
         foreground = inForeground
     }
 
@@ -105,7 +107,8 @@ class ConnectionPresenter(
         val truth = truth(nowMs)
         val graceUntil = graceUntilMs
         val held = lastShown
-        val shown = if (graceUntil != null && nowMs < graceUntil && held != null && networkPresent && truth != PresentedConnection.CONNECTED) {
+        // Only connected is held. A drop shown from before coming forward says nothing about now.
+        val shown = if (graceUntil != null && nowMs < graceUntil && held == PresentedConnection.CONNECTED && networkPresent) {
             held
         } else {
             truth
@@ -176,6 +179,13 @@ class ConnectionPresenter(
     private fun failedSince(sinceMs: Long): Boolean = lastUnheardMs?.let { it >= sinceMs } ?: false
 
     private fun lease(): Long = if (foreground) timing.foregroundLeaseMs else timing.backgroundLeaseMs
+
+    private fun comingBack(nowMs: Long) {
+        // An answer that landed just before, and no read has applied yet, still counts.
+        truth(nowMs)
+        graceUntilMs = nowMs + timing.foregroundGraceMs
+        newEpisode(nowMs)
+    }
 
     /** A connected state carries on; anything else starts counting toward offline again from now. */
     private fun newEpisode(nowMs: Long) {

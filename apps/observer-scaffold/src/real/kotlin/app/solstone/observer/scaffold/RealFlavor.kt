@@ -112,6 +112,7 @@ fun buildObserverFlavor(
         publisher = stores.publisher,
         declaredCaptureForegroundTypes = captureForegroundTypesFromTokens(spec.declaredCaptureForegroundTypes),
         hasNetwork = networkAvailability::hasNetwork,
+        screenOn = { context.getSystemService(android.os.PowerManager::class.java)?.isInteractive == true },
     )
     val backlogStatus = RealBacklogStatusReader(
         dao = database.segmentDao(),

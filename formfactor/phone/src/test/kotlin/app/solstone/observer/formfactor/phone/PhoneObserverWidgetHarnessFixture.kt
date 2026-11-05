@@ -53,6 +53,7 @@ internal class PhoneObserverWidgetHarnessFixture(
         silenced = SilencedFact.NOT_SILENCED,
     )
     private val controller = HarnessController(
+        realtimeMs = { 0L },
         permissionStatusReader = StaticPermissionReader,
         desiredObservingStore = OnDesiredStore,
         cameraLock = NoopCameraLock,
