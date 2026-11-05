@@ -22,6 +22,7 @@ import app.solstone.observer.formfactor.phone.PhoneStatusModel
 import app.solstone.observer.formfactor.phone.statusPillText
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
+import app.solstone.observer.harness.PresentedConnection
 import app.solstone.observer.harness.SourceWish
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.fgs.ObserverNotification
@@ -163,6 +164,38 @@ class PhoneObserverNotificationRuntimeTest {
             assertFalse(title.contains(syncText))
         } finally {
             PhoneStatusSupplier.override = null
+        }
+    }
+
+    @Test
+    fun widgetSaysConnectedOnlyWhileTheForegroundServiceRuns() {
+        // A visible start requires a visible capture owner, as in the stop test above.
+        ActivityScenario.launch(app.solstone.observer.scaffold.ObserverActivity::class.java).use {
+            val container = obtainObserverContainer()
+            assertTrue(waitForRecovery(container))
+            assertTrue(container.controller.onScannedPairLink(validDirectPairLink()) != null)
+            PhoneStatusSupplier.override = {
+                HarnessBacklogStatus(
+                    plStatus = HarnessPlStatus.Reachable(200),
+                    pendingCount = 0,
+                    pendingSourceIds = emptyList(),
+                    connection = PresentedConnection.CONNECTED,
+                )
+            }
+            try {
+                assertNull(ObserverForegroundService.heldCaptureForegroundTypes)
+                application.refreshWidgetModel(container)
+                assertNull(application.widgetModel().syncText)
+
+                container.controller.start()
+                waitUntil("service held") { ObserverForegroundService.heldCaptureForegroundTypes != null }
+                waitUntil("widget says connected") { application.widgetModel().syncText == "connected" }
+
+                context.sendBroadcast(Intent(context, PhoneObserverStopReceiver::class.java))
+                waitUntil("widget stops saying connected") { application.widgetModel().syncText == null }
+            } finally {
+                PhoneStatusSupplier.override = null
+            }
         }
     }
 

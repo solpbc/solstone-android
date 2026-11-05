@@ -217,7 +217,10 @@ class PhoneApplication : ObserverApplication(
         if (runtime.containerIfInitialized != null) return cachedWidgetModel
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
-        val status = coldPhoneStatus(filesDir, cacheDir, now, zone)
+        val status = coldPhoneStatus(filesDir, cacheDir, now, zone).copy(
+            awaitingMarkConfirmation = runCatching { phoneAwaitingMarkConfirmation(this) }.getOrDefault(false),
+            refused = runCatching { storedRefusal() }.getOrDefault(false),
+        )
         syncGapAlarm(PhoneGapWindowScheduler(this), status, now, zone)
         return renderPhoneObserverWidget(
             readModel = SourcesReadModel(
@@ -227,7 +230,14 @@ class PhoneApplication : ObserverApplication(
             statusModel = status,
             startOutcome = PhoneWidgetStartOutcome.None,
             notice = audioOffNotices.read(),
+            keptCurrent = ObserverForegroundService.heldCaptureForegroundTypes != null,
         )
+    }
+
+    private fun storedRefusal(): Boolean {
+        val stores = syncStores(applicationContext)
+        val pairing = stores.identityMutator.currentPairingGeneration() ?: return false
+        return stores.pairingRefusalStore?.refusedFor(pairing) == true
     }
 
     internal fun refreshWidgetAfterGapSeen() {
@@ -532,7 +542,13 @@ class PhoneApplication : ObserverApplication(
         }
         // A status read that failed knows nothing about the link, which is not the same as not paired.
         val statusModel = statusRead?.getOrNull() ?: coldPhoneStatus(filesDir, cacheDir, now, zone)
-        syncGapAlarm(PhoneGapWindowScheduler(this), statusModel, now, zone)
+        // The alarm follows the line the widget shows, which leaves the link out with no service running.
+        syncGapAlarm(
+            PhoneGapWindowScheduler(this),
+            if (fgsLive) statusModel else statusModel.copy(connectivityKnown = false),
+            now,
+            zone,
+        )
         val notice = audioOffNotices.read()
         val presentedReadModel = presentAudioOffNotice(readModel, notice)
         cachedWidgetModel = renderPhoneObserverWidget(
@@ -540,6 +556,7 @@ class PhoneApplication : ObserverApplication(
             statusModel = statusModel,
             startOutcome = widgetStartOutcomes.read(),
             notice = notice,
+            keptCurrent = fgsLive,
         )
     }
 

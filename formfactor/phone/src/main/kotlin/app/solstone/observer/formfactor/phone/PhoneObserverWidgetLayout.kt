@@ -55,7 +55,7 @@ fun phoneWidgetCandidateLines(model: PhoneObserverWidgetModel, sourceLabel: Stri
     buildList {
         add(PhoneWidgetLine(PhoneWidgetLineKind.HEADER, phoneWidgetHeaderText(model, sourceLabel)))
         model.diagnosis?.let { add(PhoneWidgetLine(PhoneWidgetLineKind.DIAGNOSIS, it)) }
-        add(PhoneWidgetLine(PhoneWidgetLineKind.SYNC, model.syncText))
+        model.syncText?.let { add(PhoneWidgetLine(PhoneWidgetLineKind.SYNC, it)) }
         model.syncDetail
             ?.split('\n')
             ?.filter { it.isNotBlank() }

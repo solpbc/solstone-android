@@ -38,7 +38,8 @@ data class PhoneObserverWidgetModel(
     val awaitingMarkConfirmation: Boolean,
     val diagnosis: String? = null,
     val pendingCount: Int,
-    val syncText: String,
+    /** Null when the widget has nothing it can stand behind: see [renderPhoneObserverWidget]. */
+    val syncText: String?,
     val syncDetail: String? = null,
     val colors: Set<PhoneObserverWidgetColorRole>,
 )
@@ -72,11 +73,19 @@ fun presentAudioOffNotice(
     )
 }
 
+/**
+ * [keptCurrent] is whether a foreground service holds the app's process, the one thing that keeps
+ * redrawing the widget while the owner is looking at it. Without one Android freezes or kills the
+ * process, and whatever was drawn last stays up with nothing to correct it. A word about the link
+ * can't stay honest there, so the widget doesn't say one, on any redraw in that state, app window
+ * included: a widget is seen when the app is closed, so the line never appears just to vanish.
+ */
 fun renderPhoneObserverWidget(
     readModel: SourcesReadModel?,
     statusModel: PhoneStatusModel,
     startOutcome: PhoneWidgetStartOutcome,
     notice: ReasonCode = ReasonCode.NONE,
+    keptCurrent: Boolean = true,
 ): PhoneObserverWidgetModel {
     val audio = readModel?.sources?.singleOrNull { it.sourceId == "audio" }
     val audioWish = audio?.wish
@@ -131,7 +140,7 @@ fun renderPhoneObserverWidget(
             presentation.reason !in setOf(ReasonCode.NONE, ReasonCode.MICROPHONE_SILENCED)
     }
     val diagnosis = reasonDiagnosis(presentation.reason)
-    val syncText = statusPillText(statusModel)
+    val syncText = if (keptCurrent) statusPillText(statusModel) else linkFreeStatusLine(statusModel)
     val custody = audioCustodyLines(statusModel)
     val remainingCustody = custody.filter { it != syncText }
     val syncDetail = if (remainingCustody.isNotEmpty()) remainingCustody.joinToString("\n") else null

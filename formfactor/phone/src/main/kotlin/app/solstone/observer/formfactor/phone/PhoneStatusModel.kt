@@ -197,14 +197,25 @@ fun statusPillText(
  * waiting count, so it does not invent a connection or a waiting number: until this process hears
  * the journal it is connecting, never a remembered connected.
  */
-private fun coldStatusLine(model: PhoneStatusModel, nowEpochMs: Long, zone: ZoneId): String {
-    if (!model.paired) return "not paired"
-    if (model.audioAwaitingCustody) return STATUS_WAITING_TO_SYNC_LEAD
-    if (model.gateOpen && model.unknownUnseen) return STATUS_UNKNOWN_RECOVERY_LEAD
-    if (model.gateOpen && unseenGapInWindow(model, nowEpochMs, zone) && !model.calendarHeldForJournal) {
-        return GAP_HEADLINE
-    }
-    return STATUS_CONNECTING
+private fun coldStatusLine(model: PhoneStatusModel, nowEpochMs: Long, zone: ZoneId): String =
+    linkFreeStatusLine(model, nowEpochMs, zone) ?: STATUS_CONNECTING
+
+/**
+ * The line that stays true however long it sits on a surface nothing redraws: what the phone itself
+ * holds, never a word about the link. Null when the phone has nothing of the kind to say.
+ */
+fun linkFreeStatusLine(
+    model: PhoneStatusModel,
+    nowEpochMs: Long = statusWallNow(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): String? = when {
+    !model.paired -> "not paired"
+    model.refused -> PAIR_AGAIN
+    model.awaitingMarkConfirmation -> "confirm the mark"
+    model.audioAwaitingCustody -> STATUS_WAITING_TO_SYNC_LEAD
+    model.gateOpen && model.unknownUnseen -> STATUS_UNKNOWN_RECOVERY_LEAD
+    model.gateOpen && unseenGapInWindow(model, nowEpochMs, zone) && !model.calendarHeldForJournal -> GAP_HEADLINE
+    else -> null
 }
 
 fun PhoneStatusModel.clearedForSupport(): PhoneStatusModel = copy(

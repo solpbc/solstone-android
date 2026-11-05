@@ -81,8 +81,21 @@ class ColdGapStatusTest {
             assertEquals(STATUS_CONNECTING, rendered.syncText, "a cold redraw has heard nothing, so it is connecting")
             assertNull(rendered.syncDetail)
             assertFalse(rendered.needsAttention)
-            assertFalse(rendered.syncText.contains("syncing"))
+            assertFalse(rendered.syncText.orEmpty().contains("syncing"))
             assertFalse(rendered.syncText == "connected")
+            // Redrawn with no process behind it (a reboot, an app update), nothing is connecting,
+            // and that word would stay up for as long as nothing else runs.
+            assertNull(
+                renderPhoneObserverWidget(
+                    readModel = SourcesReadModel(
+                        observer = ObserverStatus(SourceState.OFF, ReasonCode.NONE),
+                        sources = emptyList(),
+                    ),
+                    statusModel = clean,
+                    startOutcome = PhoneWidgetStartOutcome.None,
+                    keptCurrent = false,
+                ).syncText,
+            )
         } finally {
             root.deleteRecursively()
         }

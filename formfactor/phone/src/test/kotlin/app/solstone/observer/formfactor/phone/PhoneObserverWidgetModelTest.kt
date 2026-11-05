@@ -127,6 +127,49 @@ class PhoneObserverWidgetModelTest {
     }
 
     @Test
+    fun aWidgetNothingKeepsCurrentSaysNothingAboutTheLink() {
+        val linkWords = mapOf(
+            "connected" to status(),
+            "2 syncing" to status(pendingCount = 2),
+            STATUS_CONNECTING to status().copy(online = false, connecting = true),
+            "offline · 2 waiting" to status(pendingCount = 2).copy(online = false),
+        )
+        linkWords.forEach { (word, status) ->
+            val kept = render(status, keptCurrent = true)
+            assertEquals(word, kept.syncText)
+
+            val unattended = render(status, keptCurrent = false)
+            assertEquals(null, unattended.syncText, "$word left on a widget nothing redraws")
+            assertEquals(
+                listOf(PhoneWidgetLineKind.HEADER),
+                phoneWidgetCandidateLines(unattended, "audio").map { it.kind },
+                "$word left a line behind",
+            )
+        }
+    }
+
+    @Test
+    fun aWidgetNothingKeepsCurrentStillSaysWhatThePhoneItselfHolds() {
+        val held = mapOf(
+            "not paired" to status().copy(paired = false),
+            "pair again" to status(pendingCount = 3).copy(refused = true),
+            "confirm the mark" to status(awaitingMarkConfirmation = true, pendingCount = 3),
+            "waiting to sync" to status(audioAwaitingCustody = true),
+        )
+        held.forEach { (line, status) ->
+            assertEquals(line, render(status, keptCurrent = false).syncText)
+        }
+    }
+
+    private fun render(status: PhoneStatusModel, keptCurrent: Boolean) =
+        renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = status,
+            startOutcome = PhoneWidgetStartOutcome.None,
+            keptCurrent = keptCurrent,
+        )
+
+    @Test
     fun lightAndDarkPaletteUseOnlyNamedSolstoneRoles() {
         val normal = renderPhoneObserverWidget(
             readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
