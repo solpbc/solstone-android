@@ -6,15 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.37] - 2026-11-04
+
 ### Added
 
 - when something other than your journal answers, the app now tells you and shows both marks to compare.
-- you can now pair again when something other than your journal answers at its address. answering "that doesn't match" keeps your current pairing.
+- you can now pair again when something other than your journal answers at its address. if you do, answering "that doesn't match" keeps your current pairing.
 
 ### Fixed
 
 - when your journal stops accepting this phone, the app now says so and offers to pair again, instead of showing offline.
-- the connection status in the app and on the widget no longer flips between connected and offline. one slow check no longer shows offline, opening the app checks again right away, and while it's finding your journal it says "connecting…" instead of "offline", or a "connected" left over from before. a journal that answers while it's having trouble now shows as connected, or as syncing when something is waiting.
+- the connection status in the app and on the widget no longer flips between connected and offline. one slow check no longer shows offline, opening the app checks again, and while it's finding your journal it says "connecting…" instead of "offline". a journal that answers while it's having trouble now shows as connected, or as syncing when something is waiting.
 - your journal in the app no longer loads one piece at a time while it is showing live updates. on our test phone it opened about a fifth faster, and moving to another view no longer waits for a slow page to finish.
 
 ## [2.1.36] - 2026-11-03
