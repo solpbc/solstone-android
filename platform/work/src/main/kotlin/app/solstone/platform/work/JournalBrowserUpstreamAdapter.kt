@@ -119,6 +119,24 @@ class JournalBrowserUpstreamAdapter(
         relayClientOpener = relayClientOpener,
     )
 
+    /**
+     * The leg this session's last carrier opened on. A page opens several carriers, and each one
+     * walking addresses that don't answer would cost a connect timeout per address, per carrier.
+     * The rest of the walk stays behind it, so a leg that stops answering only costs its own try.
+     */
+    @Volatile private var answeredLeg: PairingLease? = null
+
+    private fun answeredLegFirst(leases: List<PairingLease>): List<PairingLease> {
+        val answered = answeredLeg ?: return leases
+        val (first, rest) = leases.partition { sameLeg(it, answered) }
+        return first + rest
+    }
+
+    private fun sameLeg(a: PairingLease, b: PairingLease): Boolean = when (a) {
+        is PairingLease.Direct -> b is PairingLease.Direct && a.endpoint == b.endpoint
+        is PairingLease.Relay -> b is PairingLease.Relay
+    }
+
     override fun open(): JournalBrowserUpstream {
         val pairing = (publisher.currentSnapshot() as? PairingGraphSnapshot.Committed)?.pairing
         if (pairing == null || (publisher.acquireDirectLeases().isEmpty() && publisher.acquireRelayLease() == null)) {
@@ -127,8 +145,9 @@ class JournalBrowserUpstreamAdapter(
         if (guard?.stopped(pairing) == true) throw JournalBrowserIdentityException()
         val attempt = guard?.begin(pairing) ?: JournalAttempt.untracked(pairing)
         val sightingsStartedAt = dialEvents?.sightingEpoch()
+        var dialed: PairingLease? = null
         val opened = try {
-            app.solstone.core.pl.openPairingClient(publisher, nextLegAfter = { true }) { lease ->
+            app.solstone.core.pl.openPairingClient(publisher, nextLegAfter = { true }, order = ::answeredLegFirst) { lease ->
                 val upstream = try {
                     when (lease) {
                         is PairingLease.Direct -> directClientOpener(DirectEndpoint(lease.endpoint.host, lease.endpoint.port), lease.credential, attempt)
@@ -139,6 +158,7 @@ class JournalBrowserUpstreamAdapter(
                     noteSighting(lease, e, sightingsStartedAt)
                     throw e
                 }
+                dialed = lease
                 RefreshableUpstream(upstream)
             }.upstream
         } catch (t: Throwable) {
@@ -152,6 +172,7 @@ class JournalBrowserUpstreamAdapter(
             if (attempt.stop != null) throw JournalBrowserIdentityException()
             throw java.io.IOException("journal refused this device")
         }
+        answeredLeg = dialed
         return GuardedUpstream(opened, attempt)
     }
 

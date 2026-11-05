@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- your journal opens faster away from home, and no longer takes half a minute when an address the app saved stops answering.
+
 ## [2.1.37] - 2026-11-04
 
 ### Added

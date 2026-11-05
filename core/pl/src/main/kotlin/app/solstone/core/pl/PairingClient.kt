@@ -14,14 +14,15 @@ import javax.net.ssl.SSLException
  * Open each saved address in order, then relay, authenticating each attempt.
  *
  * [nextLegAfter] decides whether a failed open moves on to the next lease; by default a TLS
- * failure ends the walk.
+ * failure ends the walk. [order] may change which lease is tried first; it never removes one.
  */
 fun <T> openPairingClient(
     publisher: PairingPublisher,
     nextLegAfter: (IOException) -> Boolean = { !isPairingTrustRefusal(it) },
+    order: (List<PairingLease>) -> List<PairingLease> = { it },
     opener: (PairingLease) -> T,
 ): T where T : PlHttpClient, T : Closeable {
-    val candidates = publisher.acquireDirectLeases() + listOfNotNull(publisher.acquireRelayLease())
+    val candidates = order(publisher.acquireDirectLeases() + listOfNotNull(publisher.acquireRelayLease()))
     var last: IOException? = null
     for (lease in candidates) {
         if (!leaseStillAuthorized(publisher, lease)) throw IOException("pairing changed")

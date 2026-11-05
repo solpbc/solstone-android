@@ -151,6 +151,68 @@ class JournalBrowserUpstreamAdapterTest {
         assertTrue(failure !is JournalBrowserIdentityException)
     }
 
+    // A page opens several carriers. Only the first may spend a connect timeout at a saved address
+    // that doesn't answer; the rest start where it got through.
+    @Test
+    fun laterCarriersStartAtTheLegThatAnswered() {
+        val identityStore = FakeIdentityStore(identity(state = IdentityState.PAIRED, relayOrigin = "https://relay.example", deviceToken = "tok"))
+        var directTries = 0
+        var relayTries = 0
+        val adapter = JournalBrowserUpstreamAdapter(
+            endpointStore = FakeEndpointStore(DirectEndpoint("192.0.2.1", 7657)),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = identityStore,
+            mutator = FileIdentityMutator(identityStore),
+            directClientOpener = { _, _, _ ->
+                directTries++
+                throw java.io.IOException("no answer")
+            },
+            relayClientOpener = { _, _, _, _, _ ->
+                relayTries++
+                FakeJournalBrowserUpstream()
+            },
+        )
+
+        adapter.open().close()
+        adapter.open().close()
+        adapter.open().close()
+
+        assertEquals(1, directTries)
+        assertEquals(3, relayTries)
+    }
+
+    // The leg that answered is only tried first. When it stops answering, the address comes back.
+    @Test
+    fun aLegThatStopsAnsweringFallsBackToTheRestOfTheWalk() {
+        val identityStore = FakeIdentityStore(identity(state = IdentityState.PAIRED, relayOrigin = "https://relay.example", deviceToken = "tok"))
+        var directAnswers = false
+        var relayAnswers = true
+        var directTries = 0
+        val adapter = JournalBrowserUpstreamAdapter(
+            endpointStore = FakeEndpointStore(DirectEndpoint("192.0.2.1", 7657)),
+            credentialStore = FakeCredentialStore(credential()),
+            identityStore = identityStore,
+            mutator = FileIdentityMutator(identityStore),
+            directClientOpener = { _, _, _ ->
+                directTries++
+                if (!directAnswers) throw java.io.IOException("no answer")
+                FakeJournalBrowserUpstream()
+            },
+            relayClientOpener = { _, _, _, _, _ ->
+                if (!relayAnswers) throw java.io.IOException("relay gone")
+                FakeJournalBrowserUpstream()
+            },
+        )
+        adapter.open().close()
+        assertEquals(1, directTries)
+
+        directAnswers = true
+        relayAnswers = false
+        adapter.open().close()
+
+        assertEquals(2, directTries)
+    }
+
     private class FakeJournalBrowserUpstream : JournalBrowserUpstream {
         override val isPoisoned: Boolean = false
         override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse {
