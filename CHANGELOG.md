@@ -6,11 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.38] - 2026-11-05
+
 ### Fixed
 
 - your journal opens faster away from home, and no longer takes half a minute when an address the app saved stops answering.
-- after your phone has been asleep, the connection status in the app no longer shows a "connected" left over from before. opening the app checks your journal right away, and the status says "connecting…" until your journal answers.
-- the home-screen widget no longer keeps saying "connected" or "connecting…" when no source is on. it shows the connection while any source is on, and the app still shows it.
+- after your phone has been asleep, the connection status in the app no longer shows a "connected" left over from before. opening the app checks your journal right away, instead of trusting an answer from before the sleep.
+- the home-screen widget no longer keeps saying "connected" or "connecting…" when no source is on. it shows the connection while audio, location, camera or screen is on, and the app still shows it.
 
 ## [2.1.37] - 2026-11-04
 
