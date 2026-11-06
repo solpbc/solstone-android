@@ -334,7 +334,9 @@ internal fun PhoneObserverScreen(
     }
     val popsDetail = resolveBack(paneStates, detailStack, widthClass).popsDetail
     val navigateToJournalSetup = withHaptic {
-        detailStack = detailStack.showInDetail(PhoneRoute.JournalSetup)
+        detailStack = detailStack.showInDetail(
+            if (journalPaired) PhoneRoute.JournalSetup else PhoneRoute.YourJournal,
+        )
         onConnectJournal()
     }
     val unknownJournalsBinding = UnknownJournalsBinding(

@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- before you connect a journal, the app shows one setup screen: set up a journal, or connect the one you already have. it says what happens to what you share until you do.
+- the empty "your · journal" mark is now easy to see on any background.
+
 ## [2.1.38] - 2026-11-05
 
 ### Fixed

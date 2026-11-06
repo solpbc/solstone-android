@@ -42,7 +42,7 @@ appId: app.solstone.observer.phone
 
 # --- The generic journal pill opens the journal pane when tapped unpaired. ---
 - tapOn: "your journal, not set up yet"
-- assertVisible: "connect a journal"
+- assertVisible: "i already have one"
 - pressKey: Back
 - assertVisible: "import"
 
@@ -102,9 +102,9 @@ appId: app.solstone.observer.phone
 - assertVisible: "privacy"
 - takeScreenshot: artifacts/hitl/shelf
 
-# The journal-pane pairing row (yourJournalConnect), distinct from the generic home pill earlier.
+# The journal pane's doors, distinct from the generic home pill earlier.
 - tapOn: "your journal"
-- assertVisible: "connect a journal"
+- assertVisible: "i already have one"
 - takeScreenshot: artifacts/hitl/your-journal
 - pressKey: Back
 

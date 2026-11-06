@@ -40,13 +40,18 @@ appId: app.solstone.observer.phone
     timeout: 20000
 
 # 🔴 The A1 path. Connecting a journal you already have must reach the system camera prompt —
-# not a camera. Since 2.1.26 (`74028cd`, H8) "set one up" is the main button and "i already have
-# one" first explains what to scan, with nothing asked yet; the prompt comes only from "scan a
-# code". So this leg proves both: the explainer is up with no system prompt over it, and the
-# prompt follows the tap. (Before H8 the tap went straight to the prompt; against H8 the old wait
-# could be met by the deck's own "camera" card behind the overlay, with no prompt.)
+# not a camera. Since 2.1.26 (`74028cd`, H8) "open the setup page" is the main button and the
+# "i already have one" door's "connect" first explains what to scan, with nothing asked yet; the
+# prompt comes only from "scan a code". So this leg proves both: the explainer is up with no system
+# prompt over it, and the prompt follows the tap. (Before H8 the tap went straight to the prompt;
+# against H8 the old wait could be met by the deck's own "camera" card behind the overlay, with no
+# prompt.)
+- scrollUntilVisible:
+    element:
+      text: "connect"
+    direction: DOWN
 - tapOn:
-    text: "i already have one"
+    text: "connect"
 
 - extendedWaitUntil:
     visible:

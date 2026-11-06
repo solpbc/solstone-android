@@ -77,7 +77,7 @@ class PhoneShellStatusCaptureRuntimeTest {
             .putExtra(CAPTURE_STATUS_EXTRA, "unpaired")
             .putExtra(CAPTURE_WIDTH_EXTRA, "wide")
         ActivityScenario.launch<PhoneShellActivity>(capturedIntent).use {
-            awaitTag("yourJournalConnect")
+            awaitTag("journalSetupSetOneUp")
         }
         val readsAfterCapturedLaunch = reads.get()
 
@@ -87,7 +87,7 @@ class PhoneShellStatusCaptureRuntimeTest {
             awaitTag("phoneDefaultDetail")
             awaitTag("phoneDefaultStatusHeading")
             awaitText("all caught up")
-            composeRule.onNodeWithTag("yourJournalConnect").assertDoesNotExist()
+            composeRule.onNodeWithTag("journalSetupSetOneUp").assertDoesNotExist()
             assertTrue(reads.get() > readsAfterCapturedLaunch)
         }
     }

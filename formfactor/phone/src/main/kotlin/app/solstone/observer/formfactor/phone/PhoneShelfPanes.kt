@@ -42,6 +42,9 @@ fun PhoneYourJournalPane(
     onConnectJournal: () -> Unit,
     onForgetJournal: () -> Unit = {},
     mutationFailed: Boolean = false,
+    onSetOneUp: () -> Unit = {},
+    onSendLink: () -> Unit = {},
+    onAlreadyHaveOne: () -> Unit = onConnectJournal,
     modifier: Modifier = Modifier,
 ) {
     var confirmingForget by remember { mutableStateOf(false) }
@@ -54,10 +57,18 @@ fun PhoneYourJournalPane(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             JournalMarkCard(presentation)
+            if (!paired) {
+                Spacer(Modifier.height(ShellMetrics.sectionGap))
+                PhoneJournalSetup(
+                    onSetOneUp = onSetOneUp,
+                    onSendLink = onSendLink,
+                    onAlreadyHaveOne = onAlreadyHaveOne,
+                )
+            }
         }
-        Spacer(Modifier.height(ShellMetrics.sectionGap))
-        PaneCard {
-            if (paired) {
+        if (paired) {
+            Spacer(Modifier.height(ShellMetrics.sectionGap))
+            PaneCard {
                 // ⛔ No `fingerprint` row here. `mobile-shell-android.md` § 3.3.1 already ruled it
                 // out of the glance — *"minus fingerprint (a verification detail — see technical
                 // details below)"* — and `PhoneTechnicalDetailsPane` carries it. Rendering it in
@@ -78,14 +89,6 @@ fun PhoneYourJournalPane(
                     onClick = { confirmingForget = true },
                     modifier = Modifier.testTag("yourJournalForget"),
                 )
-            } else {
-                PaneFactRow(label = "status", value = "not paired")
-                PaneRowDivider()
-                PaneNavRow(
-                    label = "connect a journal",
-                    onClick = onConnectJournal,
-                    modifier = Modifier.testTag("yourJournalConnect"),
-                )
             }
         }
         // ⚠ `mutationFailed` reaches this pane only when the owner pressed THIS pane's control.
@@ -95,16 +98,9 @@ fun PhoneYourJournalPane(
         // The subject register: the solstone app takes in what you share with it, and
         // the verb carries its object. `what this phone takes in` made the hardware the
         // perceiving subject and dropped the object -- never-list rule 1.
-        PaneNote(
-            if (paired) {
-                "your journal holds what you share with the solstone app on this device."
-            } else {
-                // ⛔ Not the paired sentence plus a caveat. Nothing from this phone is in a
-                // journal yet, so a present-tense `your journal holds…` is false on the one
-                // screen where the owner is deciding whether to pair.
-                "until a journal is connected, everything stays on this device."
-            },
-        )
+        if (paired) {
+            PaneNote("your journal holds what you share with the solstone app on this device.")
+        }
     }
     if (confirmingForget) {
         AlertDialog(

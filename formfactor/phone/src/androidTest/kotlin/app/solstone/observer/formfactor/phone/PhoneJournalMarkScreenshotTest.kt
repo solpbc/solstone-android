@@ -76,6 +76,8 @@ class PhoneJournalMarkScreenshotTest {
             JournalMarkCard(presentation = JournalMarkPresentation.Unavailable)
             Spacer(Modifier.height(12.dp))
             JournalMarkCard(presentation = JournalMarkPresentation.Unconfirmed)
+            Spacer(Modifier.height(12.dp))
+            JournalMarkCard(presentation = JournalMarkPresentation.Generic)
         }
         capture("mark-pills.png") {
             PhoneJournalMarkPill(onClick = {}, paired = true, presentation = rotated)
@@ -85,6 +87,8 @@ class PhoneJournalMarkScreenshotTest {
             PhoneJournalMarkPill(onClick = {}, paired = true, presentation = JournalMarkPresentation.Unavailable)
             Spacer(Modifier.height(12.dp))
             PhoneJournalMarkPill(onClick = {}, paired = true, presentation = JournalMarkPresentation.Unconfirmed)
+            Spacer(Modifier.height(12.dp))
+            PhoneJournalMarkPill(onClick = {}, paired = false, presentation = JournalMarkPresentation.Generic)
         }
     }
 }

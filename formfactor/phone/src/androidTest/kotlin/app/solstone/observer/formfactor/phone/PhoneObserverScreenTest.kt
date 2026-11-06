@@ -928,7 +928,7 @@ class PhoneObserverScreenTest {
         }
         composeRule.onNodeWithTag("journalMarkPill").performClick()
         assertEquals(0, connectCalls)
-        composeRule.onNodeWithTag("yourJournalConnect").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("journalSetupAlreadyHave").assertIsDisplayed().performClick()
         assertEquals(1, connectCalls)
     }
 

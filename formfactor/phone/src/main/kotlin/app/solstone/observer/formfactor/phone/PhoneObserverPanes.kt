@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -223,6 +224,9 @@ private fun PhoneDetailContent(
             onOpenUnknownJournal = unknownJournals.onOpen,
             onPairAgain = onAlreadyHaveOne,
             modifier = modifier,
+            onSetOneUp = onSetOneUp,
+            onSendLink = onSendLink,
+            onAlreadyHaveOne = onAlreadyHaveOne,
         )
         is PhoneRoute.UnknownJournal -> PhoneUnknownJournalRoute(
             route = top,
@@ -251,17 +255,24 @@ private fun PhoneDetailContent(
             onConnectJournal = onConnectJournal,
             onForgetJournal = onForgetJournal,
             mutationFailed = journalMutationFailed && !journalMutationFromThisDevice,
+            onSetOneUp = onSetOneUp,
+            onSendLink = onSendLink,
+            onAlreadyHaveOne = onAlreadyHaveOne,
             modifier = modifier,
         )
+        // Reached from `pair a new journal`. With no journal, every door leads to `your journal`.
         PhoneRoute.JournalSetup -> PhonePaneScaffold(
             modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.JournalSetup) },
         ) {
             Spacer(Modifier.height(ShellMetrics.sectionGap))
-            PhoneJournalSetup(
-                onSetOneUp = onSetOneUp,
-                onSendLink = onSendLink,
-                onAlreadyHaveOne = onAlreadyHaveOne,
-            )
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                PhoneJournalSetup(
+                    onSetOneUp = onSetOneUp,
+                    onSendLink = onSendLink,
+                    onAlreadyHaveOne = onAlreadyHaveOne,
+                    showsDataLine = !journalPaired,
+                )
+            }
         }
         PhoneRoute.ThisDevice -> PhoneThisDevicePane(
             version = version,

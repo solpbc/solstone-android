@@ -114,23 +114,14 @@ object SolstoneColors {
     // because this module allows exactly one home for a colour literal, not because
     // they belong to the scheme -- and they stay out of `palette` for the same reason.
 
-    /**
-     * `journal-mark.md` section 4.3 -- the generic mark's upright chip, dashed.
-     *
-     * Reads [solOrange], NOT the `#E8923A` the mark spec prints. That hex is the
-     * retired 260629 pair: CMO G1 moved sol orange to `#E8913A` on 2026-08-19, and G5
-     * the next day ruled that everything derived from the mark palette follows it --
-     * naming the journal mark's chip 1 explicitly in its own decision table
-     * (`#E8923A` -> `#E8913A`). The icon GENERATOR was swept then; the mark spec's
-     * prose in sections 4.3 and 8.5 was not, so it still prints the old value.
-     *
-     * Do not "restore" the literal from the document. One green-channel unit apart and
-     * visually identical, which is exactly why it survived the sweep.
-     */
-    val markGenericChipOne = solOrange
+    /** The generic mark's upright chip: its dashes clear 3:1 on the paper below. */
+    val markGenericChipOne = Color(0xFFB06A1A)
 
-    /** `journal-mark.md` section 4.3 -- the generic mark's 45 degree chip: mark-palette gold. */
-    val markGenericChipTwo = Color(0xFFD4A017)
+    /** The generic mark's 45 degree chip: its dashes clear 3:1 on the paper below. */
+    val markGenericChipTwo = Color(0xFFA57F0E)
+
+    /** The generic mark's paper: fills both chips and runs under their dashes, on any ground. */
+    val markGenericPaper = Color(0xFFFEFCF8)
 
     /** `journal-mark.md` section 2.2 -- `mark.words.sep`, the middot's muted warm ink. */
     val markMiddotInk = Color(0xFF6E6453)

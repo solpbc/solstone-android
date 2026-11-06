@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -253,29 +254,37 @@ private fun PhoneWelcomeCard(
     onSendLink: () -> Unit,
     onAlreadyHaveOne: () -> Unit,
 ) {
+    // The doors are tiles of their own, so they sit beside the welcome card rather than in it.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shellSurface(shellSurface, shellHairline, ShellMetrics.cardShape)
-            .padding(ShellMetrics.surfacePadding)
             .testTag("welcomeCard"),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ShellMetrics.gutter),
     ) {
-        Text(
-            text = "solstone",
-            style = MaterialTheme.typography.headlineSmall,
-            fontFamily = ComfortaaBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text("welcome to solstone.", style = MaterialTheme.typography.bodyLarge)
-        Text(
-            "the solstone app takes in what you share with it, and all of it goes into your journal.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "your journal is always private, only yours.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shellSurface(shellSurface, shellHairline, ShellMetrics.cardShape)
+                .padding(ShellMetrics.surfacePadding),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "solstone",
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = ComfortaaBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text("welcome to solstone.", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "the solstone app takes in what you share with it, and all of it goes into your journal.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "your journal is always private, only yours.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         PhoneJournalSetup(
             onSetOneUp = onSetOneUp,
             onSendLink = onSendLink,

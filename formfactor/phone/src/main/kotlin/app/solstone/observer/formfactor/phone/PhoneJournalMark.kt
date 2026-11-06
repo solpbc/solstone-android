@@ -77,9 +77,10 @@ import kotlinx.coroutines.withContext
  * Journal mark design tokens.
  */
 object JournalMarkTokens {
-    val chipOneBorder = SolstoneColors.markGenericChipOne      // dashed sol orange
-    val chipTwoBorder = SolstoneColors.markGenericChipTwo      // dashed mark-palette gold
-    const val GENERIC_TINT_ALPHA = 0.07f
+    val chipOneBorder = SolstoneColors.markGenericChipOne      // dashed, on paper
+    val chipTwoBorder = SolstoneColors.markGenericChipTwo      // dashed, on paper
+    val genericPaper = SolstoneColors.markGenericPaper         // fills the chip and runs under the dashes
+    const val GENERIC_BACKING_RATIO = 3f                       // the paper under the dashes, in border widths
     const val IDENTIFIED_TINT_ALPHA = 0.12f                    // § 2.1; identified only
     const val RADIUS_RATIO = 0.25f                             // 0.25 × side
     const val BORDER_RATIO = 2f / 48f                          // above fixedBorderMaxSide
@@ -243,22 +244,24 @@ private fun JournalMarkChip(
             val boxSize = Size(s - strokeWidth, s - strokeWidth)
             val topLeft = Offset(inset, inset)
             drawRoundRect(
-                color = if (isUnavailable) {
-                    JournalMarkTokens.unavailableFill
-                } else {
-                    border.copy(
-                        alpha = if (isGeneric) {
-                            JournalMarkTokens.GENERIC_TINT_ALPHA
-                        } else {
-                            JournalMarkTokens.IDENTIFIED_TINT_ALPHA
-                        },
-                    )
+                color = when {
+                    isUnavailable -> JournalMarkTokens.unavailableFill
+                    isGeneric -> JournalMarkTokens.genericPaper
+                    else -> border.copy(alpha = JournalMarkTokens.IDENTIFIED_TINT_ALPHA)
                 },
                 topLeft = topLeft,
                 size = boxSize,
                 cornerRadius = radius,
             )
             if (isGeneric) {
+                // Paper under the dashes too, so the gaps never show the ground behind the mark.
+                drawRoundRect(
+                    color = JournalMarkTokens.genericPaper,
+                    topLeft = topLeft,
+                    size = boxSize,
+                    cornerRadius = radius,
+                    style = Stroke(width = strokeWidth * JournalMarkTokens.GENERIC_BACKING_RATIO),
+                )
                 drawRoundRect(
                     color = border,
                     topLeft = topLeft,

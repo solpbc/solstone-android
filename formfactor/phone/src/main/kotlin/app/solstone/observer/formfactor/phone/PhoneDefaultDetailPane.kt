@@ -52,6 +52,9 @@ internal fun PhoneDefaultDetailPane(
     modifier: Modifier = Modifier,
     onOpenUnknownJournal: (String?) -> Unit = {},
     onPairAgain: () -> Unit = {},
+    onSetOneUp: () -> Unit = {},
+    onSendLink: () -> Unit = {},
+    onAlreadyHaveOne: () -> Unit = onConnectJournal,
 ) {
     Box(
         modifier = modifier
@@ -80,6 +83,9 @@ internal fun PhoneDefaultDetailPane(
             )
             PhoneDefaultDetailStatus.Unpaired -> PhoneYourJournalPane(
                 onConnectJournal = onConnectJournal,
+                onSetOneUp = onSetOneUp,
+                onSendLink = onSendLink,
+                onAlreadyHaveOne = onAlreadyHaveOne,
                 modifier = Modifier.fillMaxSize(),
             )
             is PhoneDefaultDetailStatus.Paired -> PhoneDefaultDetailPaired(

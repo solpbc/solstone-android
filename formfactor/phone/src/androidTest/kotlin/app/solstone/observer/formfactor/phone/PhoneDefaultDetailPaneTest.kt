@@ -152,7 +152,7 @@ class PhoneDefaultDetailPaneTest {
         )
 
         composeRule.onNodeWithTag("deck").assertIsDisplayed()
-        composeRule.onNodeWithTag("yourJournalConnect").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("journalSetupAlreadyHave").assertIsDisplayed().performClick()
         assertEquals(1, connections)
     }
 
@@ -233,7 +233,7 @@ class PhoneDefaultDetailPaneTest {
 
         Espresso.pressBack()
 
-        composeRule.onNodeWithTag("yourJournalConnect").assertIsDisplayed()
+        composeRule.onNodeWithTag("journalSetupAlreadyHave").assertIsDisplayed()
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
     }
 
