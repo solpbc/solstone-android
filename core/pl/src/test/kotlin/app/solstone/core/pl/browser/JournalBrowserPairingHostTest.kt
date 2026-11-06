@@ -7,8 +7,12 @@ import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.PairingGeneration
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.net.ConnectException
+import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -53,14 +57,21 @@ class JournalBrowserPairingHostTest {
         assertTrue(res2.startsWith("HTTP/1.1 502 Bad Gateway") || res2.isEmpty())
         assertTrue(diagEvents.any { it is DiagEvent.JournalBrowser && it.eventClass == "pairing" && it.outcome == "invalidated" })
 
-        // 4. Port is now closed
+        // 4. Port closes. On a busy host it can still answer for a moment after the response,
+        // so this waits for it.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         var closed = false
-        try {
-            Socket("127.0.0.1", port).use {}
-        } catch (_: Exception) {
-            closed = true
+        while (!closed && System.nanoTime() < deadline) {
+            try {
+                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 500) }
+                Thread.sleep(10)
+            } catch (_: ConnectException) {
+                closed = true
+            } catch (_: SocketTimeoutException) {
+                // A full accept queue is a listener still open, not a closed port.
+            }
         }
-        assertTrue(closed)
+        assertTrue(closed, "the port kept answering after the session ended")
     }
 
     @Test

@@ -306,9 +306,14 @@ class JournalIdentityRefreshCoordinatorTest {
     fun aStoredPairingThatWasGenericBecomesIdentified() {
         val store = FakeMarkStore()
         store.savedRecord = JournalMarkRecord(pairingA.instanceId, null, pairingA)
-        val coordinator = coordinator(store, FakePairingPublisher(home())) { mark("computed") }
+        val release = CountDownLatch(1)
+        val coordinator = coordinator(store, FakePairingPublisher(home())) {
+            release.await()
+            mark("computed")
+        }
 
         assertIs<JournalMarkPresentation.Loading>(coordinator.currentPresentation())
+        release.countDown()
         coordinator.awaitPresentation { it == JournalMarkPresentation.Identified(mark("computed")) }
     }
 

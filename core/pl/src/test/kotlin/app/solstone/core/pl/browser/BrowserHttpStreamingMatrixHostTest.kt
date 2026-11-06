@@ -95,6 +95,16 @@ class BrowserHttpStreamingMatrixHostTest {
                     override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse = error("Not used")
                     override fun requestStreaming(method: String, path: String, headers: List<Pair<String, String>>, bodySource: BrowserRequestBodySource?, responseSink: BrowserResponseSink) {
                         upstreamCalled = true
+                        // Answer only once the body arrives, as a journal does: the client sends
+                        // it after reading 100, so the two responses can never share a read.
+                        val body = ByteArray(4)
+                        var received = 0
+                        while (received < body.size) {
+                            val n = bodySource!!.readChunk(body, received, body.size - received)
+                            if (n < 0) break
+                            received += n
+                        }
+                        assertEquals("test", String(body, 0, received, Charsets.US_ASCII))
                         responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Length" to "4"))
                         responseSink.onBodyChunk("done".toByteArray(Charsets.US_ASCII), 0, 4)
                         responseSink.onComplete()
