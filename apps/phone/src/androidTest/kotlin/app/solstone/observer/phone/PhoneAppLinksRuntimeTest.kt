@@ -151,8 +151,11 @@ class PhoneAppLinksRuntimeTest {
         implicitView(uri).setClass(application, PhoneShellActivity::class.java)
 
     private fun assertInvalidPasteEntry() {
+        // A link delivered to the running shell pauses it, and a paused shell has no compose
+        // root for the rule to read, so no root yet means the entry is not showing yet.
         composeRule.waitUntil(15_000) {
-            composeRule.onAllNodesWithTag("pairingLinkField").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("pairingLinkField")
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
         }
         composeRule.onNodeWithTag("pairingLinkField").assertIsDisplayed()
         composeRule.onNodeWithText("enter a valid pairing link from your journal.").assertIsDisplayed()

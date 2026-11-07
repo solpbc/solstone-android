@@ -87,9 +87,11 @@ class PhoneShellActivityRuntimeTest {
         try {
             repeat(2) {
                 pending.send()
+                // Delivering the intent pauses the shell, and a paused shell has no compose
+                // root for the rule to read, so no root yet means the detail is not open yet.
                 composeRule.waitUntil(10_000) {
                     composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("sourceDetailVerdict"))
-                        .fetchSemanticsNodes().isNotEmpty()
+                        .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
                 }
                 composeRule.onNodeWithTag("sourceDetailVerdict").assertIsDisplayed()
                 composeRule.onNode(SemanticsMatcher("audio heading") { node ->
