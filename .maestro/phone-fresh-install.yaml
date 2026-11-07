@@ -97,6 +97,12 @@ appId: app.solstone.observer.phone
     visible:
       text: "welcome to solstone."
     timeout: 15000
+# Since 2.1.39 the two doors sit between the welcome card and the source cards, so on a
+# 1080x2340 phone the camera card starts below the fold: scroll to it, then assert it.
+- scrollUntilVisible:
+    element:
+      text: "camera"
+    direction: DOWN
 - assertVisible:
     text: "camera"
 
