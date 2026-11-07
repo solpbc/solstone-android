@@ -10,13 +10,9 @@ import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.net.Socket
-import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URI
-import java.security.SecureRandom
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
@@ -122,6 +118,11 @@ class JournalBrowserSession(
     private val accessStillCurrent: () -> Boolean = { publisher == null || publisher.currentSnapshot() is app.solstone.core.identity.PairingGraphSnapshot.Committed },
     private val upstreamFactory: JournalBrowserUpstreamFactory,
     private val diag: (DiagEvent) -> Unit,
+    /**
+     * This pairing's kept origin, one per process. With none, every session binds its own port and
+     * mints its own origin, and lets the port go when it stops.
+     */
+    private val originKeeper: JournalBrowserOriginKeeper? = null,
 ) {
     constructor(
         publisher: app.solstone.core.identity.PairingPublisher,
@@ -136,7 +137,6 @@ class JournalBrowserSession(
     )
 
     private val lock = ReentrantLock()
-    private val secureRandom = SecureRandom()
     private var pool: UpstreamPool? = null
 
     private val epochCounter = AtomicLong(0)
@@ -164,19 +164,29 @@ class JournalBrowserSession(
     }
 
     @Volatile private var running = false
-    @Volatile private var serverSocket: ServerSocket? = null
+    @Volatile private var listener: JournalBrowserListener? = null
+    private var listenerHandler: ((Socket) -> Unit)? = null
     @Volatile private var activeToken: String? = null
     @Volatile private var activeOrigin: JournalBrowserOrigin? = null
     @Volatile private var pairingSnapshot: PairingGeneration? = null
     @Volatile private var publisherSub: app.solstone.core.identity.SubscriptionHandle? = null
 
-    private var acceptThread: Thread? = null
     private var workerExecutor = Executors.newCachedThreadPool()
 
     // Concurrency controls
     private val activeClientSemaphore = Semaphore(MAX_ACTIVE_CLIENTS, true)
 
     private val inFlightConnections = AtomicInteger(0)
+
+    /**
+     * Connections this session has accepted that have not sent a request yet.
+     *
+     * 🔴 Closed when the session stops. The browser keeps connections it opened ahead of need, and
+     * idle ones, in a pool shared by every web view in the app and keyed by host and port, so with
+     * an origin that outlives the session the next page would send its first requests down a
+     * connection the stopped session still holds, and be refused. A closed one it simply replaces.
+     */
+    private val awaitingRequest = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
 
     fun start(bindPort: Int = 0): JournalBrowserOrigin = lock.withLock {
         if (running && activeOrigin != null) {
@@ -220,18 +230,24 @@ class JournalBrowserSession(
         val epoch = BrowserEpoch(epochCounter.incrementAndGet())
         setLifecycle(JournalBrowserLifecycle.Starting(epoch))
 
-        val tokenBytes = ByteArray(16)
-        secureRandom.nextBytes(tokenBytes)
-        val token = tokenBytes.joinToString("") { "%02x".format(it) }
-
-        val ss = try {
-            ServerSocket(bindPort, 50, InetAddress.getByName("127.0.0.1"))
+        val token: String
+        val ln: JournalBrowserListener
+        try {
+            val kept = originKeeper?.acquire(currentGen)
+            if (kept != null) {
+                diag(DiagEvent.JournalBrowser(eventClass = "origin", outcome = kept.outcome))
+                token = kept.record.token
+                ln = kept.listener
+            } else {
+                ln = JournalBrowserListener(bindJournalBrowserLoopback(bindPort) ?: throw IOException("bind failed"))
+                token = mintJournalBrowserToken()
+            }
         } catch (e: Exception) {
             setLifecycle(JournalBrowserLifecycle.Terminal(epoch, BrowserTerminalReason(BrowserTerminalClass.BIND_FAILURE)))
             throw e
         }
 
-        serverSocket = ss
+        listener = ln
         pool = UpstreamPool(upstreamFactory).also { newPool ->
             newPool.setCarrierFailureListener {
                 triggerTerminalForEpoch(epoch, BrowserTerminalReason(BrowserTerminalClass.SESSION_CARRIER_LOSS))
@@ -239,7 +255,7 @@ class JournalBrowserSession(
         }
         activeToken = token
         pairingSnapshot = currentGen
-        val origin = JournalBrowserOrigin("http://$token.localhost:${ss.localPort}/")
+        val origin = JournalBrowserOrigin("http://$token.localhost:${ln.port}/")
         activeOrigin = origin
         running = true
         setLifecycle(JournalBrowserLifecycle.Live(epoch))
@@ -267,11 +283,9 @@ class JournalBrowserSession(
             }
         }
 
-        acceptThread = Thread({
-            acceptLoop(ss, token, currentGen, origin.url, epoch)
-        }, "JournalBrowserSession-accept")
-        acceptThread?.isDaemon = true
-        acceptThread?.start()
+        val handler: (Socket) -> Unit = { client -> admit(client, token, currentGen, origin.url, epoch, ln.port) }
+        listenerHandler = handler
+        ln.handler = handler
 
         return origin
     }
@@ -288,16 +302,20 @@ class JournalBrowserSession(
         publisherSub?.cancel()
         publisherSub = null
         diag(DiagEvent.JournalBrowser(eventClass = "lifecycle", outcome = "stopped"))
-        try {
-            serverSocket?.close()
-        } catch (_: Exception) {}
-        serverSocket = null
+        // A kept origin's listener keeps the port and closes whatever arrives: the page may still be asking.
+        listener?.let { ln ->
+            if (ln.handler === listenerHandler) ln.handler = null
+            if (originKeeper == null) ln.close()
+        }
+        listener = null
+        listenerHandler = null
+        for (client in awaitingRequest) {
+            try { client.close() } catch (_: Exception) {}
+        }
+        awaitingRequest.clear()
         activeToken = null
         activeOrigin = null
         pairingSnapshot = null
-
-        acceptThread?.interrupt()
-        acceptThread = null
 
         workerExecutor.shutdownNow()
         workerExecutor = Executors.newCachedThreadPool()
@@ -338,44 +356,53 @@ class JournalBrowserSession(
 
 
 
-    private fun acceptLoop(
-        ss: ServerSocket,
+    private fun admit(
+        client: Socket,
         expectedToken: String,
         expectedGen: PairingGeneration,
         localOrigin: String,
         expectedEpoch: BrowserEpoch,
+        boundPort: Int,
     ) {
-        while (running) {
+        val currentInFlight = inFlightConnections.incrementAndGet()
+
+        // MAX_FIFO_WAITERS = 8, MAX_ACTIVE_CLIENTS = 6 -> max 14 in-flight
+        if (currentInFlight > MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS) {
+            inFlightConnections.decrementAndGet()
+            diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
             try {
-                val client = ss.accept()
-                val currentInFlight = inFlightConnections.incrementAndGet()
-
-                // MAX_FIFO_WAITERS = 8, MAX_ACTIVE_CLIENTS = 6 -> max 14 in-flight
-                if (currentInFlight > MAX_ACTIVE_CLIENTS + MAX_FIFO_WAITERS) {
-                    inFlightConnections.decrementAndGet()
-                    diag(DiagEvent.JournalBrowser(eventClass = "limit", outcome = "capacity"))
-                    try {
-                        val out = BufferedOutputStream(client.getOutputStream())
-                        sendErrorAndClose(client, out, 503, "Service Unavailable")
-                    } catch (_: Exception) {
-                        try { client.close() } catch (_: Exception) {}
-                    }
-                    continue
-                }
-
-                workerExecutor.submit {
-                    try {
-                        processClient(client, expectedToken, expectedGen, localOrigin, expectedEpoch)
-                    } catch (_: Exception) {
-                    } finally {
-                        inFlightConnections.decrementAndGet()
-                    }
-                }
-            } catch (_: SocketException) {
-                break
+                val out = BufferedOutputStream(client.getOutputStream())
+                sendErrorAndClose(client, out, 503, "Service Unavailable")
             } catch (_: Exception) {
-                if (!running) break
+                try { client.close() } catch (_: Exception) {}
             }
+            return
+        }
+
+        awaitingRequest.add(client)
+        if (!running || currentLifecycle.epoch != expectedEpoch) {
+            // Handed over just as the session stopped: closed, never answered for a dead session.
+            awaitingRequest.remove(client)
+            inFlightConnections.decrementAndGet()
+            try { client.close() } catch (_: Exception) {}
+            return
+        }
+        try {
+            workerExecutor.submit {
+                try {
+                    processClient(client, expectedToken, expectedGen, localOrigin, expectedEpoch, boundPort)
+                } catch (_: Exception) {
+                } finally {
+                    awaitingRequest.remove(client)
+                    try { client.close() } catch (_: Exception) {}
+                    inFlightConnections.decrementAndGet()
+                }
+            }
+        } catch (e: Exception) {
+            // The session stopped between the hand-off and the submit.
+            awaitingRequest.remove(client)
+            inFlightConnections.decrementAndGet()
+            throw e
         }
     }
 
@@ -385,6 +412,7 @@ class JournalBrowserSession(
         expectedGen: PairingGeneration,
         localOrigin: String,
         expectedEpoch: BrowserEpoch,
+        boundPort: Int,
     ) {
         val inputStream = BufferedInputStream(client.getInputStream())
         val outputStream = BufferedOutputStream(client.getOutputStream())
@@ -417,6 +445,8 @@ class JournalBrowserSession(
             return
         }
 
+        // A request has arrived: from here this connection is answered, even if the session stops.
+        awaitingRequest.remove(client)
         val allHeaderBytes = headerStream.toByteArray()
         val headerText = String(allHeaderBytes, 0, headerEnd, Charsets.US_ASCII)
         val lines = headerText.split("\r\n")
@@ -481,7 +511,7 @@ class JournalBrowserSession(
         try {
             val uri = URI(rawPath)
             if (uri.isAbsolute) {
-                if (!isValidHostAdmission(uri.host, expectedToken, serverSocket?.localPort ?: 0)) {
+                if (!isValidHostAdmission(uri.host, expectedToken, boundPort)) {
                     diag(DiagEvent.JournalBrowser(eventClass = "admission", outcome = "rejected"))
                     sendRefusalAndClose(client, outputStream, "mismatch")
                     return
@@ -496,7 +526,6 @@ class JournalBrowserSession(
         }
 
         val hostHeader = headers.firstOrNull { it.first.equals("host", ignoreCase = true) }?.second
-        val boundPort = serverSocket?.localPort ?: 0
         val validAdmission = isValidHostAdmission(hostHeader, expectedToken, boundPort)
 
         if (!validAdmission) {

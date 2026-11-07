@@ -38,6 +38,8 @@ import app.solstone.platform.identity.file.FileJournalConfirmationStore
 import app.solstone.platform.identity.file.FilePairingRefusalStore
 import app.solstone.platform.identity.file.FileRefusalRecordStore
 import app.solstone.core.pl.HandshakeGuard
+import app.solstone.core.pl.browser.FileJournalBrowserOriginStore
+import app.solstone.core.pl.browser.JournalBrowserOriginKeeper
 import app.solstone.core.pl.HandshakeRefusalTracker
 import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
@@ -64,6 +66,8 @@ data class SyncStores(
     val pairingRefusalStore: PairingRefusalStore? = null,
     /** The handshake-refusal rule shared by sync, the status probe and the journal browser. */
     val handshakeGuard: HandshakeGuard? = null,
+    /** The in-app journal's origin for the current pairing, and the port it holds. One per process. */
+    val journalBrowserOrigins: JournalBrowserOriginKeeper? = null,
 ) {
     val pushDeliveryState: PushDeliveryState
         get() = pushRegistration?.deliveryState ?: PushDeliveryState.Off
@@ -185,6 +189,8 @@ fun forgetPushAfterCleared(stores: SyncStores) {
     stores.journalIdentityCoordinator.onIdentityChanged()
     // When the unpair revoke could not reach the journal, that journal's push rows stay until an unpair from the journal side. The local reset still clears this phone.
     stores.pushRegistration?.reset()
+    // The in-app journal's origin goes with the pairing it belonged to.
+    stores.journalBrowserOrigins?.clear()
 }
 
 private object SyncStoresHolder {
@@ -223,6 +229,16 @@ private object SyncStoresHolder {
         journalConfirmationStore ?: synchronized(this) {
             journalConfirmationStore ?: FileJournalConfirmationStore(File(dir, "journal_confirmation.json"))
                 .also { journalConfirmationStore = it }
+        }
+
+    @Volatile
+    private var journalBrowserOrigins: JournalBrowserOriginKeeper? = null
+
+    fun getJournalBrowserOrigins(dir: File): JournalBrowserOriginKeeper =
+        journalBrowserOrigins ?: synchronized(this) {
+            journalBrowserOrigins ?: JournalBrowserOriginKeeper(
+                FileJournalBrowserOriginStore(File(dir, "journal_browser_origin.json")),
+            ).also { journalBrowserOrigins = it }
         }
 
     fun getPairingRefusalStore(dir: File): FilePairingRefusalStore =
@@ -370,5 +386,6 @@ fun syncStores(context: Context): SyncStores {
         pairingMigrationOwner = SyncStoresHolder.getPairingMigrationOwner(graph, File(dir, "pairing_migration.json")),
         pairingRefusalStore = SyncStoresHolder.getPairingRefusalStore(dir),
         handshakeGuard = SyncStoresHolder.getHandshakeGuard(dir, graph, SyncStoresHolder.getPairingRefusalStore(dir)),
+        journalBrowserOrigins = SyncStoresHolder.getJournalBrowserOrigins(dir),
     )
 }

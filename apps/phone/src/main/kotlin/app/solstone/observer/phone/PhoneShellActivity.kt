@@ -1155,6 +1155,7 @@ class PhoneShellActivity : ComponentActivity() {
                                     publisher = stores.publisher,
                                     upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher, stores.handshakeGuard),
                                     diag = { PhoneDiagLog.emit(it) },
+                                    originKeeper = stores.journalBrowserOrigins,
                                 ),
                             )
                     },
