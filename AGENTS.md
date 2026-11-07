@@ -76,7 +76,7 @@ before you commit.
 apps/validation-rogbid/   Parked Rogbid hardware-probe evidence
 apps/observer-scaffold/   Shared phone/watch app scaffold (application, activity, container, capture setup; real/mock flavors)
 apps/watch/               Parked watch observer source: retained historical/experimental evidence
-apps/phone/               Phone observer app: spec + Application over the shared scaffold; beta distribution target
+apps/phone/               Phone observer app: spec + Application over the shared scaffold; distribution target
 apps/glasses/             Parked smart-glasses/RV203 observer source: retained evidence
 harness/                  Form-factor-agnostic observer UI logic (controller, state, seams, async-load)
 core/                     Shared domain/protocol/observer modules
