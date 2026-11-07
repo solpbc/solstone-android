@@ -15,6 +15,8 @@ import app.solstone.core.sources.ContinuousSourceEngine
 import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SealWindowHold
+import app.solstone.core.sources.SealWindowHoldClient
 import app.solstone.core.sources.SourceCondition
 import app.solstone.core.sources.SourceEmission
 import app.solstone.core.spool.GapNoticeStore
@@ -1087,14 +1089,32 @@ class AudioContinuousSourceEngineTest {
         override fun condition() = SourceCondition(true, true, true, false, false, SilencedFact.UNKNOWN)
     }
 
-    private class LaterEmissionEngine : ContinuousSourceEngine {
+    // Stands in for location, which reports a window when it ends and holds nothing: the
+    // window seals by the clock once the seal grace has passed, and on a phone the grace is
+    // the time the queued report has to be fed. A test that moves the clock past the grace at
+    // once must wait for the feed first, or a tick can seal the window before the report is
+    // in it and the report arrives late.
+    private class LaterEmissionEngine : ContinuousSourceEngine, SealWindowHoldClient {
         @Volatile private var sink: EmissionSink? = null
+        @Volatile private var pipeline: SealWindowHold? = null
 
         override fun start(sink: EmissionSink) {
             this.sink = sink
         }
 
-        fun emit(emission: SourceEmission) = checkNotNull(sink).emit(emission)
+        override fun bindSealWindowHold(hold: SealWindowHold) {
+            pipeline = hold
+        }
+
+        // Returns once the pipeline has fed the emission. A hold runs on the pipeline's one
+        // thread after the queued feed and returns when it has run. It names a stream of its
+        // own and is released at once, so it keeps no window open.
+        fun emit(emission: SourceEmission) {
+            checkNotNull(sink).emit(emission)
+            val pipeline = checkNotNull(pipeline)
+            pipeline.hold(FEED_BARRIER_STREAM, 0L)
+            pipeline.release(FEED_BARRIER_STREAM, 0L)
+        }
 
         override fun stop() {}
         override fun condition() = SourceCondition(true, true, true, false, false, SilencedFact.UNKNOWN)
@@ -1226,6 +1246,7 @@ class AudioContinuousSourceEngineTest {
         }
 
         val UTC: ZoneId = ZoneId.of("UTC")
+        const val FEED_BARRIER_STREAM = "feed-barrier"
         const val OFF_BOUNDARY_EPOCH_MS = BASE_CAPTURE_EPOCH_MS + 137_000L
         val AUDIO_BYTES = "fake-adts-bytes".encodeToByteArray()
     }
