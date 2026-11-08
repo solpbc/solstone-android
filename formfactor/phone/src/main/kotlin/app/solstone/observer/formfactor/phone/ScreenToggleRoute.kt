@@ -25,6 +25,8 @@ fun screenToggleRoute(
     if (sourceId != "screen") return ScreenToggleAction.Proceed
     return when (wish) {
         SourceWish.Off -> ScreenToggleAction.TurnOff
+        // Google Play requires an in-app disclosure immediately before this prompt, in normal use
+        // of the app. The source's own page carries it, so the list opens that page first.
         SourceWish.On -> if (fromDetail) ScreenToggleAction.LaunchConsent else ScreenToggleAction.OpenDetail
     }
 }
