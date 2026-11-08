@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.40] - 2026-11-07
+
+### Changed
+
+- your journal in the app now keeps what it loaded last time, even after the app restarts, instead of loading everything fresh each time you open it.
+
 ## [2.1.39] - 2026-11-06
 
 ### Changed
