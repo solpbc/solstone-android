@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The dark half of `values/journal_web_theme.xml`. -->
+<resources>
+    <style name="JournalWebViewTheme" parent="@android:style/Theme.Material.NoActionBar" />
+</resources>

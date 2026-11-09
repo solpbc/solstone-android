@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The theme the in-app journal's WebView is created under.
+
+  WebView answers `prefers-color-scheme` from its context's `isLightTheme`, not from the system
+  setting. The journal lives in a Material bottom sheet, whose dialog window has a dark
+  DeviceDefault parent, so without this the page always reported dark. The pair here lets the
+  system setting decide. It carries no colours, and algorithmic darkening stays off.
+-->
+<resources>
+    <style name="JournalWebViewTheme" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>

@@ -89,6 +89,7 @@ internal fun JournalSheet(
     onClose: () -> Unit,
     onPairingRepair: () -> Unit,
     initialPath: String? = null,
+    onVisitedUrl: (String) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var retryGeneration by remember { mutableIntStateOf(0) }
@@ -145,6 +146,7 @@ internal fun JournalSheet(
                     path = panePath,
                     onRetry = { retryGeneration += 1 },
                     onPairingRepair = onPairingRepair,
+                    onVisitedUrl = onVisitedUrl,
                 )
             }
         }
@@ -163,6 +165,7 @@ private fun JournalBrowserPane(
     path: String? = null,
     onRetry: () -> Unit,
     onPairingRepair: () -> Unit,
+    onVisitedUrl: (String) -> Unit,
 ) {
     val hostView = LocalView.current
     val context = LocalContext.current
@@ -250,6 +253,7 @@ private fun JournalBrowserPane(
                             // accepted only for the current live view, which is cleared before destroy.
                             if (view === liveWebView) {
                                 observedCanGoBack = currentCanGoBack
+                                onVisitedUrl(url)
                                 PhoneJournalTestHooks.onVisitedHistory?.invoke(url, currentCanGoBack)
                             }
                         },
@@ -330,7 +334,7 @@ internal fun createJournalWebView(
             ByteArrayInputStream(ByteArray(0)),
         )
     }
-    return WebView(context).apply {
+    return WebView(journalWebViewContext(context)).apply {
         onLiveView(this)
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -494,6 +498,13 @@ internal fun createJournalWebView(
         loadUrl(loadTarget)
     }
 }
+
+/**
+ * The context the journal's WebView is built on. WebView takes `prefers-color-scheme` from its
+ * context's theme, and the bottom sheet's own context carries a dark dialog theme.
+ */
+internal fun journalWebViewContext(context: android.content.Context): android.content.Context =
+    android.view.ContextThemeWrapper(context, R.style.JournalWebViewTheme)
 
 internal fun journalExternalViewIntent(url: String): Intent =
     Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
