@@ -259,6 +259,9 @@ private fun WatchSourceDetailTemplate(
     PaneNote("session controls are on your watch. this phone cannot tell whether your watch's microphone is receiving audio.")
     pageModel.notice?.let { PaneNote(it) }
     pageModel.oldPlayServicesNotice?.let { PaneNote(it) }
+    if (pageModel.storageLow) {
+        PaneNote("phone storage is almost full. free space in phone settings.")
+    }
     if (!paired) {
         PaneNote("material stays on your devices until you connect a journal and confirm its mark.")
         Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sourceDetailJournalSetup")) {
@@ -270,7 +273,7 @@ private fun WatchSourceDetailTemplate(
             Text(requireNotNull(pageModel.actionLabel))
         }
     }
-    if ((pageModel.waitingCount ?: 0) > 0) {
+    if ((pageModel.waitingCount ?: 0) > 0 || pageModel.storageLow) {
         Button(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("manage phone storage") }
     }
 

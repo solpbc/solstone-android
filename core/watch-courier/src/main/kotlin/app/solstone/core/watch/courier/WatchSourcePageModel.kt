@@ -20,6 +20,7 @@ data class WatchSourcePageModel(
     val isSilenceStale: Boolean = true,
     val watchWaitingCount: Int? = null,
     val notice: String? = null,
+    val storageLow: Boolean = false,
 ) {
     companion object {
         const val STALE_CONTACT_THRESHOLD_MS = 60_000L

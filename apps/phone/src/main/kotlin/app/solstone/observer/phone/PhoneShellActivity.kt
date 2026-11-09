@@ -11,7 +11,6 @@ import app.solstone.observer.formfactor.phone.PhoneCalendarRow
 import app.solstone.observer.formfactor.phone.LocalPhoneWatchSource
 import app.solstone.core.watch.courier.WatchSourcePageModel
 import app.solstone.core.watch.courier.WatchCourierProtocol
-import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
 import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
@@ -457,7 +456,7 @@ class PhoneShellActivity : ComponentActivity() {
                     watchPage = withContext(Dispatchers.IO) {
                         runCatching {
                             val contact = PhoneWatchContactStore(this@PhoneShellActivity).read()
-                            val dao = openSolstonePersistenceDatabase(this@PhoneShellActivity).watchSourceDao()
+                            val dao = container.persistenceDatabase().watchSourceDao()
                             val first = dao.firstReceiptEpochMs()
                             if (contact == null && first == null) null else {
                                 val now = System.currentTimeMillis()
@@ -468,6 +467,7 @@ class PhoneShellActivity : ComponentActivity() {
                                     waitingCount = dao.heldOnPhone(),
                                     watchWaitingCount = contact?.sealedWaiting,
                                     isSilenceStale = stale,
+                                    storageLow = filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES,
                                     oldPlayServicesNotice = if (com.google.android.gms.common.GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(this@PhoneShellActivity) == com.google.android.gms.common.ConnectionResult.SUCCESS) null
                                         else "Google Play services needs attention. enable or update it in phone settings to resume watch delivery.",
                                     notice = when {

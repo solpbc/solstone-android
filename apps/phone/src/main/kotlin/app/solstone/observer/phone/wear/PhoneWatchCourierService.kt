@@ -42,13 +42,16 @@ class PhoneWatchCourierService : WearableListenerService() {
                 val app = applicationContext
                 val spoolDir = app.filesDir.toPath().resolve("spool")
                 val stagingDir = app.filesDir.toPath().resolve("staging")
-                val dao = openSolstonePersistenceDatabase(app).segmentDao()
-                val publisher = WatchCustodyPublisher(spoolDir, stagingDir, dao)
-
-                val result = inputStream.use { stream ->
-                    publisher.publish(stream) {
-                        SyncScheduler.enqueueFollowUp(app, MAIN_STREAM)
+                val database = openSolstonePersistenceDatabase(app)
+                val result = try {
+                    val publisher = WatchCustodyPublisher(spoolDir, stagingDir, database.segmentDao())
+                    inputStream.use { stream ->
+                        publisher.publish(stream) {
+                            SyncScheduler.enqueueFollowUp(app, MAIN_STREAM)
+                        }
                     }
+                } finally {
+                    database.close()
                 }
 
                 when (result) {
