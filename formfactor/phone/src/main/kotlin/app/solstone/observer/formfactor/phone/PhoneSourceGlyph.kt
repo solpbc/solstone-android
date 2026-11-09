@@ -3,6 +3,7 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.watch.courier.WatchCourierStrings
 import androidx.annotation.DrawableRes
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -29,6 +30,7 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
     "camera" -> R.drawable.phone_source_camera
     "screen" -> R.drawable.phone_source_screen
     "calendar" -> R.drawable.phone_source_calendar
+    WatchCourierStrings.WATCH -> R.drawable.phone_source_watch
     else -> R.drawable.phone_add_more
 }
 

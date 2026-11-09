@@ -73,6 +73,7 @@ internal fun PhoneDetailPane(
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
     onCopyAbout: (String) -> Boolean,
+    extraSourceIds: List<String> = emptyList(),
     aboutBlock: String? = null,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
@@ -134,6 +135,7 @@ internal fun PhoneDetailPane(
             onReportProblem = onReportProblem,
             onSaveProblemReport = onSaveProblemReport,
             onCopyAbout = onCopyAbout,
+            extraSourceIds = extraSourceIds,
             aboutBlock = aboutBlock,
             onOpenTechnicalDetails = onOpenTechnicalDetails,
             onOpenEventLog = onOpenEventLog,
@@ -195,6 +197,7 @@ private fun PhoneDetailContent(
     onReportProblem: () -> Unit,
     onSaveProblemReport: () -> Unit,
     onCopyAbout: (String) -> Boolean,
+    extraSourceIds: List<String> = emptyList(),
     aboutBlock: String? = null,
     onOpenTechnicalDetails: () -> Unit,
     onOpenEventLog: () -> Unit,
@@ -247,6 +250,7 @@ private fun PhoneDetailContent(
         PhoneRoute.AddMore -> PhoneAddMorePane(
             onOpenSource = onOpenSource,
             isOnHome = isOnHome,
+            extraSourceIds = extraSourceIds,
             modifier = modifier,
         )
         PhoneRoute.YourJournal -> PhoneYourJournalPane(

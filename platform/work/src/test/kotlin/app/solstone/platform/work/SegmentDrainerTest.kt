@@ -42,6 +42,27 @@ import kotlin.test.assertTrue
 
 class SegmentDrainerTest {
     @Test
+    fun watchDrainDoesNotRegroupALaterReturnToAnEarlierLocalDay() {
+        val fixture = TestFixture()
+        val expected = listOf("first", "middle", "last")
+        fixture.createSegment("first", day = "20261109", stream = "watch", sealedAt = 1)
+        fixture.createSegment("middle", day = "20261110", stream = "watch", sealedAt = 2)
+        fixture.createSegment("last", day = "20261109", stream = "watch", sealedAt = 3)
+        val sent = mutableListOf<String>()
+        val report = drainSegments(
+            store = fixture.store,
+            reconcile = uploadAll,
+            ingest = { manifest, bytes -> sent += manifest.key.segment; acceptedIngest("uploaded")(manifest, bytes) },
+            readPayload = readBytes,
+            now = { NOW },
+            log = fixture.store::log,
+            finisher = fixture.finisher,
+        )
+        assertEquals(expected, sent)
+        assertEquals(SyncOutcome.SUCCESS, report.workOutcome)
+    }
+
+    @Test
     fun holdingCalendarLeavesItSealedWhileObserverFilesDrain() {
         val fixture = TestFixture()
         val (calendar, _) = fixture.createSegment("cal", stream = CALENDAR_STREAM, sealedAt = 1)
@@ -1335,6 +1356,8 @@ class SegmentDrainerTest {
         var finisherRef: ConfirmedCopyFinisher? = null
         var hookPasses = 0
         val dao = object : SegmentDao() {
+            override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+            override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit
@@ -1934,6 +1957,8 @@ class SegmentDrainerTest {
         val spool: Path = root.resolve("spool")
         val store = FakeDrainStore()
         val dao = object : SegmentDao() {
+            override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+            override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit

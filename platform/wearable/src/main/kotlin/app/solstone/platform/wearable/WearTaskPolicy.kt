@@ -6,10 +6,15 @@ package app.solstone.platform.wearable
 import com.google.android.gms.common.internal.RootTelemetryConfigManager
 import com.google.android.gms.common.internal.RootTelemetryConfiguration
 import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
+import java.util.concurrent.TimeUnit
 
 /** Creates Data Layer tasks without SDK invocation or timing telemetry. */
 object WearTaskPolicy {
     private val disabled = RootTelemetryConfiguration(Int.MAX_VALUE, false, false, 0, 0)
+
+    fun <T> await(timeoutSeconds: Long = 10, call: () -> Task<T>): T =
+        Tasks.await(createTask(call), timeoutSeconds, TimeUnit.SECONDS)
 
     fun <T> createTask(call: () -> Task<T>): Task<T> {
         val configuration = RootTelemetryConfigManager.getInstance()

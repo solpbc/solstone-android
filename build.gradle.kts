@@ -2680,6 +2680,50 @@ fun Project.registerRealReleasePushManifestCheck() {
                     "${project.path} realRelease push manifest allowlist check failed.\nExpected:\n$expectedFormatted\n\nActual:\n$actualFormatted",
                 )
             }
+
+            // Verify PhoneWatchCourierService filters
+            val serviceNodes = doc.getElementsByTagName("service")
+            var courierServiceElement: org.w3c.dom.Element? = null
+            for (i in 0 until serviceNodes.length) {
+                val el = serviceNodes.item(i) as? org.w3c.dom.Element ?: continue
+                val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                if (name == "app.solstone.observer.phone.wear.PhoneWatchCourierService") {
+                    courierServiceElement = el
+                    break
+                }
+            }
+            if (courierServiceElement == null) {
+                throw GradleException("PhoneWatchCourierService not found in merged manifest")
+            }
+            val intentFilters = courierServiceElement.getElementsByTagName("intent-filter")
+            if (intentFilters.length != 1) {
+                throw GradleException("PhoneWatchCourierService must have exactly 1 intent-filter, found ${intentFilters.length}")
+            }
+            val filterEl = intentFilters.item(0) as org.w3c.dom.Element
+            val actionNodes = filterEl.getElementsByTagName("action")
+            val actions = (0 until actionNodes.length).map {
+                (actionNodes.item(it) as org.w3c.dom.Element).getAttribute("android:name").ifEmpty {
+                    (actionNodes.item(it) as org.w3c.dom.Element).getAttribute("name")
+                }
+            }.toSet()
+            val expectedActions = setOf(
+                "com.google.android.gms.wearable.CHANNEL_EVENT",
+                "com.google.android.gms.wearable.MESSAGE_RECEIVED",
+            )
+            if (actions != expectedActions) {
+                throw GradleException("PhoneWatchCourierService actions mismatch. Expected $expectedActions, got $actions")
+            }
+            val dataNodes = filterEl.getElementsByTagName("data")
+            if (dataNodes.length != 1) {
+                throw GradleException("PhoneWatchCourierService must have exactly 1 data element, found ${dataNodes.length}")
+            }
+            val dataEl = dataNodes.item(0) as org.w3c.dom.Element
+            val scheme = dataEl.getAttribute("android:scheme").ifEmpty { dataEl.getAttribute("scheme") }
+            val host = dataEl.getAttribute("android:host").ifEmpty { dataEl.getAttribute("host") }
+            val pathPrefix = dataEl.getAttribute("android:pathPrefix").ifEmpty { dataEl.getAttribute("pathPrefix") }
+            if (scheme != "wear" || host != "*" || pathPrefix != "/solstone/courier/") {
+                throw GradleException("PhoneWatchCourierService data mismatch: scheme='$scheme', host='$host', pathPrefix='$pathPrefix'")
+            }
         }
     }
 }
@@ -2744,28 +2788,140 @@ fun Project.registerRealReleasePushDexCheck() {
 
             println("Scanned $totalClasses classes across $dexCount dex files in ${apk.name}")
 
-            val bannedPatterns = listOf(
-                "Lcom/google/firebase",
-                "gms/analytics",
-                "gms/measurement",
-                "crashlytics",
-                "Lcom/google/android/gms/",
+            val allowedGmsCoordinates = setOf(
+                "com.google.android.gms:play-services-wearable:20.0.1",
+                "com.google.android.gms:play-services-base:18.5.0",
+                "com.google.android.gms:play-services-basement:18.9.0",
+                "com.google.android.gms:play-services-tasks:18.2.0",
             )
-            val violations = mutableListOf<String>()
-            for (descriptor in classDescriptors) {
-                for (banned in bannedPatterns) {
-                    if (descriptor.contains(banned)) {
-                        violations += "Banned descriptor found: $descriptor (matches '$banned')"
+            val gmsDep = dependencies.create("com.google.android.gms:play-services-wearable:20.0.1")
+            val detachedConfig = configurations.detachedConfiguration(gmsDep)
+            val resolvedGmsArtifacts = detachedConfig.resolvedConfiguration.resolvedArtifacts
+            val resolvedGmsCoords = mutableSetOf<String>()
+            val gmsArtifactFiles = mutableListOf<File>()
+
+            for (artifact in resolvedGmsArtifacts) {
+                val id = artifact.moduleVersion.id
+                val coord = "${id.group}:${id.name}:${id.version}"
+                if (id.group.startsWith("com.google.android.gms") || id.group.contains("gms") ||
+                    id.group.startsWith("com.google.firebase") || id.group.contains("firebase") ||
+                    id.name.contains("play-services") || id.name.contains("firebase")
+                ) {
+                    resolvedGmsCoords += coord
+                    if (coord !in allowedGmsCoordinates) {
+                        throw GradleException(
+                            "Unapproved GMS/Firebase dependency resolved: $coord. Allowed coordinates: $allowedGmsCoordinates. All resolved GMS: $resolvedGmsCoords"
+                        )
+                    }
+                    gmsArtifactFiles += artifact.file
+                }
+            }
+
+            if (resolvedGmsCoords != allowedGmsCoordinates) {
+                throw GradleException(
+                    "Resolved GMS coordinates did not match required set. Expected: $allowedGmsCoordinates, but resolved: $resolvedGmsCoords"
+                )
+            }
+
+            val bannedTokens = listOf("firebase", "analytics", "measurement", "crashlytics")
+            val realInventory = mutableSetOf<String>()
+
+            fun extractClassDescriptors(file: File): Set<String> {
+                val descriptors = mutableSetOf<String>()
+                fun readJarStream(input: java.io.InputStream) {
+                    val zip = java.util.zip.ZipInputStream(input)
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        if (entry.name.endsWith(".class") && !entry.isDirectory) {
+                            descriptors.add("L" + entry.name.removeSuffix(".class") + ";")
+                        }
+                        entry = zip.nextEntry
+                    }
+                }
+                if (file.name.endsWith(".jar")) {
+                    file.inputStream().use { readJarStream(it) }
+                } else if (file.name.endsWith(".aar")) {
+                    java.util.zip.ZipFile(file).use { aarZip ->
+                        aarZip.entries().asSequence().forEach { entry ->
+                            if (entry.name == "classes.jar" || (entry.name.startsWith("libs/") && entry.name.endsWith(".jar"))) {
+                                aarZip.getInputStream(entry).use { readJarStream(it) }
+                            }
+                        }
+                    }
+                }
+                return descriptors
+            }
+
+            for (file in gmsArtifactFiles) {
+                val descriptors = extractClassDescriptors(file)
+                for (desc in descriptors) {
+                    var hasBanned = false
+                    for (banned in bannedTokens) {
+                        if (desc.contains(banned)) {
+                            hasBanned = true
+                            if (banned != "firebase") {
+                                throw GradleException("Banned token '$banned' found in resolved GMS class: $desc in ${file.name}")
+                            }
+                        }
+                    }
+                    if (!hasBanned) {
+                        realInventory += desc
                     }
                 }
             }
-            if (violations.isNotEmpty()) {
-                throw GradleException("Dex purity check failed:\n${violations.joinToString("\n")}")
+
+            fun classifyDescriptor(descriptor: String, inventory: Set<String>): String? {
+                if (descriptor.contains("crashlytics")) {
+                    return "Banned crashlytics descriptor found: $descriptor"
+                }
+                if (descriptor.startsWith("Lcom/google/android/gms/") || descriptor.contains("firebase")) {
+                    for (banned in bannedTokens) {
+                        if (descriptor.contains(banned)) {
+                            return "Banned descriptor found: $descriptor (matches '$banned')"
+                        }
+                    }
+                    if (descriptor !in inventory) {
+                        return "Unapproved GMS/Firebase descriptor found: $descriptor"
+                    }
+                }
+                return null
             }
 
-            val hasConnector = classDescriptors.any { it.startsWith("Lorg/unifiedpush/android/connector/") }
-            if (!hasConnector) {
-                throw GradleException("Expected UnifiedPush connector classes (Lorg/unifiedpush/android/connector/) not found in dex")
+            // Self-test verifies fixture inventory behavior against required cases
+            val fixtureInventory = setOf("Lcom/google/android/gms/wearable/ChannelClient;")
+            check(classifyDescriptor("Lcom/google/android/gms/internal/measurement/zzfi;", fixtureInventory) != null) {
+                "Self-test failed: Lcom/google/android/gms/internal/measurement/zzfi; was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/internal/firebase/Zz;", fixtureInventory) != null) {
+                "Self-test failed: gms/internal/firebase descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/firebase/FirebaseApp;", fixtureInventory) != null) {
+                "Self-test failed: FirebaseApp descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/analytics/Tracker;", fixtureInventory) != null) {
+                "Self-test failed: gms/analytics descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/measurement/AppMeasurement;", fixtureInventory) != null) {
+                "Self-test failed: gms/measurement descriptor was allowed"
+            }
+            check(classifyDescriptor("com/crashlytics/android/Crashlytics;", fixtureInventory) != null) {
+                "Self-test failed: crashlytics descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/maps/MapView;", fixtureInventory) != null) {
+                "Self-test failed: maps descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/common/api/NotInTheResolvedArtifact;", fixtureInventory) != null) {
+                "Self-test failed: NotInTheResolvedArtifact was allowed"
+            }
+            check(classifyDescriptor("Lcom/google/android/gms/wearable/ChannelClient;", fixtureInventory) == null) {
+                "Self-test failed: ChannelClient in fixture was rejected"
+            }
+
+            check(realInventory.isNotEmpty()) {
+                "Resolved GMS real inventory was empty"
+            }
+            check(realInventory.contains("Lcom/google/android/gms/wearable/ChannelClient;")) {
+                "Resolved GMS real inventory did not contain Lcom/google/android/gms/wearable/ChannelClient;"
             }
 
             // The banned-descriptor scan above identifies third-party code by package, so R8 must
@@ -2775,6 +2931,7 @@ fun Project.registerRealReleasePushDexCheck() {
             if (!mapping.exists()) {
                 throw GradleException("R8 mapping not found at ${mapping.relativeTo(rootProject.projectDir)}: the release build is expected to run R8")
             }
+            val reverseMapping = mutableMapOf<String, String>()
             var mappedClasses = 0
             val moved = mutableListOf<String>()
             mapping.forEachLine { line ->
@@ -2785,6 +2942,9 @@ fun Project.registerRealReleasePushDexCheck() {
                 if (original.substringBeforeLast('.', "") != output.substringBeforeLast('.', "")) {
                     moved += "$original -> $output"
                 }
+                val origDesc = "L" + original.replace('.', '/') + ";"
+                val outDesc = "L" + output.replace('.', '/') + ";"
+                reverseMapping[outDesc] = origDesc
             }
             if (mappedClasses == 0) {
                 throw GradleException("R8 mapping ${mapping.name} lists no classes")
@@ -2796,6 +2956,39 @@ fun Project.registerRealReleasePushDexCheck() {
                 )
             }
             println("R8 kept the package of all $mappedClasses mapped classes")
+
+            val gmsDescriptors = classDescriptors.filter {
+                it.startsWith("Lcom/google/android/gms/") || it.contains("firebase")
+            }
+            check(gmsDescriptors.isNotEmpty()) {
+                "Expected GMS descriptors in realRelease dex"
+            }
+
+            val violations = mutableListOf<String>()
+            for (descriptor in classDescriptors) {
+                val unminified = reverseMapping[descriptor] ?: descriptor
+                val target = if (unminified.contains("\$\$ExternalSynthetic")) {
+                    unminified.substringBefore("\$\$ExternalSynthetic") + ";"
+                } else {
+                    unminified
+                }
+                classifyDescriptor(target, realInventory)?.let { violations += it }
+                if (descriptor != target) {
+                    for (banned in bannedTokens) {
+                        if (descriptor.contains(banned)) {
+                            violations += "Banned descriptor found in dex: $descriptor (matches '$banned')"
+                        }
+                    }
+                }
+            }
+            if (violations.isNotEmpty()) {
+                throw GradleException("Dex purity check failed:\n${violations.joinToString("\n")}")
+            }
+
+            val hasConnector = classDescriptors.any { it.startsWith("Lorg/unifiedpush/android/connector/") }
+            if (!hasConnector) {
+                throw GradleException("Expected UnifiedPush connector classes (Lorg/unifiedpush/android/connector/) not found in dex")
+            }
         }
     }
 }

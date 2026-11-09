@@ -23,8 +23,9 @@ fun PhoneAddMorePane(
     onOpenSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     isOnHome: (String) -> Boolean = { true },
+    extraSourceIds: List<String> = emptyList(),
 ) {
-    val ids = phoneSourceLabels.keys.toList()
+    val ids = (phoneSourceLabels.keys + extraSourceIds).distinct()
     val notOnHome = ids.filterNot(isOnHome)
     val onHome = ids.filter(isOnHome)
     PhonePaneScaffold(

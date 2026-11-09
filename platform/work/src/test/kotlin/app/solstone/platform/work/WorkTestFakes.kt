@@ -180,6 +180,8 @@ internal fun dummyFinisher(
 ): ConfirmedCopyFinisher = ConfirmedCopyFinisher(root, dao)
 
 internal fun dummyDao(): SegmentDao = object : SegmentDao() {
+    override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+    override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
     override fun insertSegment(segment: SegmentRow) = Unit
     override fun insertFiles(files: List<SegmentFileRow>) = Unit
     override fun insertEvents(events: List<EventRow>) = Unit

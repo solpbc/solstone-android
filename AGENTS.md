@@ -4,13 +4,14 @@ Development guidelines for Android solstone observers, clients, and validation t
 
 ## Project Overview
 
-`solstone-android` is the Android family repo for the maintained solstone phone app plus retained Android hardware research and validation evidence.
+`solstone-android` is the Android family repo for the maintained solstone phone app, the unreleased Wear OS app, and retained Android hardware research and validation evidence.
 
 The repo is public open source. Keep all visible files clean of private operational context, internal paths, personal machine names, and unreleasable implementation history.
 
 ## Maintained Target and Parked Sources
 
-- In this repository, `:apps:phone` is the sole maintained Android surface; its [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
+- In this repository, `:apps:phone` is the Android release target; its [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
+- `:apps:wear` is the new Wear OS 3+ app. It is maintained separately and has no release or store listing. its microphone starts only from the watch activity after an owner action.
 - `:apps:validation-rogbid`, `:apps:watch`, and `:apps:glasses` are parked source and hardware evidence. They are retained for historical/experimental reference, not routine-maintenance or release targets.
 
 ## Principles
@@ -75,6 +76,7 @@ before you commit.
 ```text
 apps/validation-rogbid/   Parked Rogbid hardware-probe evidence
 apps/observer-scaffold/   Shared phone/watch app scaffold (application, activity, container, capture setup; real/mock flavors)
+apps/wear/                Wear OS app; phone courier, no journal credentials
 apps/watch/               Parked watch observer source: retained historical/experimental evidence
 apps/phone/               Phone observer app: spec + Application over the shared scaffold; distribution target
 apps/glasses/             Parked smart-glasses/RV203 observer source: retained evidence

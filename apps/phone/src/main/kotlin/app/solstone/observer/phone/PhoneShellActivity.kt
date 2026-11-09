@@ -8,6 +8,10 @@ import app.solstone.platform.calendar.CalendarUiState
 import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
 import app.solstone.observer.formfactor.phone.PhoneCalendarPaneState
 import app.solstone.observer.formfactor.phone.PhoneCalendarRow
+import app.solstone.observer.formfactor.phone.LocalPhoneWatchSource
+import app.solstone.core.watch.courier.WatchSourcePageModel
+import app.solstone.core.watch.courier.WatchCourierProtocol
+import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
 import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
@@ -53,6 +57,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import app.solstone.core.watch.courier.WatchCourierStrings
+import app.solstone.observer.phone.wear.PhoneWatchContactStore
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRoute
@@ -426,6 +432,38 @@ class PhoneShellActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     refreshImports()
+                    kotlinx.coroutines.delay(2_000)
+                }
+            }
+            var watchPage by remember { mutableStateOf<WatchSourcePageModel?>(null) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    watchPage = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val contact = PhoneWatchContactStore(this@PhoneShellActivity).read()
+                            val dao = openSolstonePersistenceDatabase(this@PhoneShellActivity).watchSourceDao()
+                            val first = dao.firstReceiptEpochMs()
+                            if (contact == null && first == null) null else {
+                                val now = System.currentTimeMillis()
+                                val stale = contact == null || now - contact.at !in 0L..WatchSourcePageModel.STALE_CONTACT_THRESHOLD_MS
+                                WatchSourcePageModel(
+                                    firstReceiptEpochMs = first,
+                                    lastContactDisplayText = WatchSourcePageModel.formatLastContact(contact?.at, now),
+                                    waitingCount = dao.heldOnPhone(),
+                                    watchWaitingCount = contact?.sealedWaiting,
+                                    isSilenceStale = stale,
+                                    oldPlayServicesNotice = if (com.google.android.gms.common.GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(this@PhoneShellActivity) == com.google.android.gms.common.ConnectionResult.SUCCESS) null
+                                        else "Google Play services needs attention. enable or update it in phone settings to resume watch delivery.",
+                                    notice = when {
+                                        contact?.version != null && contact.version < WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your watch to continue delivery."
+                                        contact?.version != null && contact.version > WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on this phone to continue delivery."
+                                        stale -> "no recent contact. keep the watch and phone connected, and open solstone on your watch. held material stays on your devices."
+                                        else -> null
+                                    },
+                                )
+                            }
+                        }.getOrElse { watchPage?.copy(waitingCount = null, isSilenceStale = true, notice = "held material could not be read. check storage in phone settings and reopen solstone.") }
+                    }
                     kotlinx.coroutines.delay(2_000)
                 }
             }
@@ -914,10 +952,19 @@ class PhoneShellActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalPhoneImport provides importBinding,
                 LocalPhoneCalendar provides calendarBinding,
+                LocalPhoneWatchSource provides watchPage?.let { page ->
+                    when {
+                        snapshot?.status?.refused == true -> page.copy(notice = "your journal no longer accepts this phone. connect it again and confirm the journal's mark. held material stays on your devices.", actionLabel = "connect again")
+                        currentPairing != null && !journalConfirmed -> page.copy(notice = "confirm your journal's mark to send held material.", actionLabel = "open journal")
+                        snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = "journal delivery is waiting. check the connection from your journal card. material stays on this phone.", actionLabel = "open journal")
+                        else -> page
+                    }
+                },
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
+                extraSourceIds = if (watchPage != null) listOf(WatchCourierStrings.WATCH) else emptyList(),
                 status = heldWhileCovered(snapshot?.status, covered = pairingOpen),
                 paneStatus = paneSnapshot?.status,
                 onStatusContentVisible = statusViewModel::onStatusForeground,

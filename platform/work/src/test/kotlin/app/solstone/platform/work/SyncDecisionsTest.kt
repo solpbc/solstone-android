@@ -14,6 +14,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.WATCH_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import java.io.File
@@ -25,6 +26,23 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SyncDecisionsTest {
+    @Test
+    fun watchRetryingHeadCannotBeBypassedAndPairingMoveReleasesItsBackoff() {
+        val head = segment("head", WATCH_STREAM, QueueState.FAILED,
+            attemptCount = 5, lastAttemptAt = 1_000_000L, lastStatusCode = 500,
+            homeInstanceId = "journal-A").copy(sealedAt = 10L)
+        val younger = segment("younger", WATCH_STREAM, QueueState.SEALED).copy(sealedAt = 20L)
+        assertTrue(selectWatchDrainSegments(listOf(younger, head), 1_000_001L, "journal-A").isEmpty())
+        assertEquals(listOf("head", "younger"), selectWatchDrainSegments(listOf(younger, head), 1_000_001L, "journal-B").map { it.id })
+    }
+
+    @Test
+    fun watchRecordingOrderSurvivesAnOffsetChangeAcrossMidnight() {
+        val first = segment("first", WATCH_STREAM, QueueState.SEALED, day = "20261110", key = "001000_300").copy(sealedAt = 10L)
+        val later = segment("later", WATCH_STREAM, QueueState.SEALED, day = "20261109", key = "231500_300").copy(sealedAt = 20L)
+        assertEquals(listOf("first", "later"), selectWatchDrainSegments(listOf(later, first), 30L).map { it.id })
+    }
+
     @Test
     fun selectDrainSegmentsKeepsDueMainStreamRowsAndExcludesOtherStreams() {
         val now = 2_000_000L

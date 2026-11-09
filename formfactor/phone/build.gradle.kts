@@ -66,6 +66,7 @@ dependencies {
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":core:spool"))
+    implementation(project(":core:watch-courier"))
 
     testImplementation(kotlin("test"))
     // Widget reducer tests construct the real HarnessController/SourceRegistry path. These stay

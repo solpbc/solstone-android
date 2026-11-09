@@ -19,6 +19,7 @@ android {
 }
 
 dependencies {
+    testImplementation(kotlin("test"))
     api("com.google.android.gms:play-services-wearable:20.0.1") {
         version { strictly("20.0.1") }
     }

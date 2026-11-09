@@ -5,6 +5,8 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.model.SourceState
+import app.solstone.core.watch.courier.WatchCourierProtocol
+import app.solstone.core.watch.courier.WatchCourierStrings
 import app.solstone.observer.harness.SourceWish
 
 internal val phoneSourceLabels: Map<String, String> = mapOf(
@@ -15,7 +17,10 @@ internal val phoneSourceLabels: Map<String, String> = mapOf(
     "calendar" to "calendar",
 )
 
-fun sourceLabel(sourceId: String): String = phoneSourceLabels[sourceId] ?: sourceId
+fun sourceLabel(sourceId: String): String = when (sourceId) {
+    WatchCourierStrings.WATCH, WatchCourierProtocol.SOURCE_ID_WATCH_AUDIO -> WatchCourierStrings.WATCH
+    else -> phoneSourceLabels[sourceId] ?: sourceId
+}
 
 fun sourceStateCopy(state: SourceState): String = when (state) {
     SourceState.OFF -> "off"

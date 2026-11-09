@@ -5,6 +5,8 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.watch.courier.WatchCourierProtocol
+import app.solstone.core.watch.courier.WatchCourierStrings
 import app.solstone.core.pl.UnknownJournalSighting
 import app.solstone.observer.harness.HarnessBacklogStatus
 import app.solstone.observer.harness.HarnessPlStatus
@@ -34,7 +36,9 @@ fun phoneStatusSnapshotOf(
     // it is never connected: the refusal shows instead.
     val online = paired && !refused && backlog.connection == PresentedConnection.CONNECTED
     val registeredById = registered.associateBy { it.sourceId }
-    val pendingIds = backlog.pendingSourceIds.toSet()
+    val pendingIds = backlog.pendingSourceIds.map {
+        if (it == WatchCourierProtocol.SOURCE_ID_WATCH_AUDIO) WatchCourierStrings.WATCH else it
+    }.toSet()
     val waiting = buildList {
         registered.forEach { status ->
             if (status.sourceId in pendingIds) add(status)

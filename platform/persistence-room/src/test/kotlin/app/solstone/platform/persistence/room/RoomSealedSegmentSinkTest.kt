@@ -392,6 +392,14 @@ class RoomSealedSegmentSinkTest {
     private class FakeSegmentDao : SegmentDao() {
         val segments = mutableListOf<SegmentRow>()
         val files = mutableListOf<SegmentFileRow>()
+        val receipts = mutableListOf<WatchBundleReceiptRow>()
+
+        override fun insertReceipt(receipt: WatchBundleReceiptRow) {
+            receipts += receipt
+        }
+
+        override fun receiptByBundleId(bundleId: String): WatchBundleReceiptRow? =
+            receipts.firstOrNull { it.bundleId == bundleId }
 
         override fun insertSegment(segment: SegmentRow) {
             segments.removeAll { it.id == segment.id }

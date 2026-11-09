@@ -26,4 +26,5 @@ receiver: org.unifiedpush.android.connector.internal.MessagingReceiverImpl [perm
 receiver: org.unifiedpush.android.embedded_fcm_distributor.impl.FirebaseReceiver [permission: com.google.android.c2dm.permission.SEND]
 service: androidx.glance.appwidget.GlanceRemoteViewsService [permission: android.permission.BIND_REMOTEVIEWS]
 service: androidx.work.impl.background.systemjob.SystemJobService [permission: android.permission.BIND_JOB_SERVICE]
+service: app.solstone.observer.phone.wear.PhoneWatchCourierService [permission: (none)]
 service: org.unifiedpush.android.connector.internal.RaiseToForegroundService [permission: (none)]

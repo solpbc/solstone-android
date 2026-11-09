@@ -20,6 +20,19 @@ import kotlin.test.assertTrue
 
 class PhoneStatusSnapshotTest {
     @Test
+    fun heldWatchMaterialRoutesToTheWatchPage() {
+        val snapshot = phoneStatusSnapshotOf(
+            backlog = HarnessBacklogStatus(HarnessPlStatus.NotPaired, 1, listOf("watch-audio")),
+            registered = emptyList(),
+            awaitingMarkConfirmation = false,
+            recoveryCompleted = true,
+            audioAwaitingCustody = false,
+        )
+        assertEquals(listOf("watch"), snapshot.waiting.map { it.sourceId })
+        assertEquals("watch", sourceLabel(snapshot.waiting.single().sourceId))
+    }
+
+    @Test
     fun mapsEveryPlStatus() {
         assertEquals(false to false, flagsFor(HarnessPlStatus.NotPaired))
         assertEquals(true to false, flagsFor(HarnessPlStatus.PairedButUnreachable("offline")))

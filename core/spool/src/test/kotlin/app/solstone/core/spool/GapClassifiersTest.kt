@@ -16,6 +16,17 @@ class GapClassifiersTest {
     private val zone = ZoneId.of("America/New_York")
 
     @Test
+    fun gapSourceForMapsKnownCaptureIdsAndWatchAudio() {
+        assertEquals("audio", gapSourceFor("audio"))
+        assertEquals("screen", gapSourceFor("screen"))
+        assertEquals("camera", gapSourceFor("camera"))
+        assertEquals("location", gapSourceFor("location"))
+        assertEquals("metadata", gapSourceFor("metadata"))
+        assertEquals("watch-audio", gapSourceFor("watch-audio"))
+        assertEquals("other", gapSourceFor("unrecognized"))
+    }
+
+    @Test
     fun aFailedSweepLeavesTheGateShutUnlessTheInstallAlreadyOpenedIt() {
         assertTrue(gapPassCompleted(sweepSucceeded = true, opened = false))
         assertTrue(gapPassCompleted(sweepSucceeded = true, opened = true))

@@ -4,14 +4,15 @@ the [solstone](https://solstone.app) app for android, with retained android hard
 
 ## Status
 
-The [repository target status](AGENTS.md#maintained-target-and-parked-sources) defines the phone app as the maintained android surface and the watch, Rokid/RV203 glasses, and Rogbid sources as parked historical/experimental evidence. The phone [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
+The phone app is the android release target. the new Wear OS app is maintained in `apps/wear` and is unreleased. the older `apps/watch`, Rokid/RV203 glasses, and Rogbid sources remain parked historical evidence. See [repository target status](AGENTS.md#maintained-target-and-parked-sources). The phone [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
 
 ## Layout
 
 ```text
 apps/
   validation-rogbid/   Parked android 9 watch validation evidence
-  watch/               Parked watch app source
+  wear/                Unreleased Wear OS app
+  watch/               Parked older watch app source
   phone/               Maintained phone app
   glasses/             Parked smart-glasses/RV203 app source
 core/                  Shared app/link/domain modules as they graduate from the validation app
@@ -66,6 +67,16 @@ The maintained phone APK is produced at:
 ```text
 apps/phone/build/outputs/apk/real/debug/phone-real-debug.apk
 ```
+
+## Wear OS development
+
+The Wear OS app requires API 30 or newer. Build it with:
+
+```bash
+./gradlew :apps:wear:assembleDebug
+```
+
+Use the same application ID and signing key on the watch and phone for Data Layer communication. the watch holds sealed material until the phone acknowledges durable receipt; only the phone connects to the journal. a tile, complication, notification, reconnect, or reboot cannot start the microphone. there is no watch store listing.
 
 ## Test
 

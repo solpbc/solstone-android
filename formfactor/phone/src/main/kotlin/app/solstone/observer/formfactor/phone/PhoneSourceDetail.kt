@@ -27,12 +27,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.watch.courier.WatchCourierStrings
+import app.solstone.core.watch.courier.WatchSourcePageModel
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.reasonDiagnosis
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
+
+val LocalPhoneWatchSource = androidx.compose.runtime.staticCompositionLocalOf<WatchSourcePageModel?> { null }
 
 enum class SourceDetailActionKind {
     ENABLE_SOURCE,
@@ -190,18 +194,28 @@ internal fun PhoneSourceDetail(
     val readModel = (loadState as? LoadState.Loaded)?.value
     val paired = readModel?.observer?.paired == true
     PhonePaneScaffold(modifier) {
-        readModel?.let { model ->
-            model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->
-                SourceDetailTemplate(
-                    status = status,
-                    reason = resolveSourceDetailReason(status, model.observer),
-                    paired = paired,
-                    onStartObserving = onStartObserving,
-                    onGrantPermissions = onGrantPermissions,
-                    onConnectJournal = onConnectJournal,
-                    onManageLocalStorage = onManageLocalStorage,
-                    onToggle = onToggle,
-                )
+        if (sourceId == WatchCourierStrings.WATCH) {
+            val pageModel = LocalPhoneWatchSource.current ?: WatchSourcePageModel()
+            WatchSourceDetailTemplate(
+                pageModel = pageModel,
+                paired = paired,
+                onConnectJournal = onConnectJournal,
+                onManageLocalStorage = onManageLocalStorage,
+            )
+        } else {
+            readModel?.let { model ->
+                model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->
+                    SourceDetailTemplate(
+                        status = status,
+                        reason = resolveSourceDetailReason(status, model.observer),
+                        paired = paired,
+                        onStartObserving = onStartObserving,
+                        onGrantPermissions = onGrantPermissions,
+                        onConnectJournal = onConnectJournal,
+                        onManageLocalStorage = onManageLocalStorage,
+                        onToggle = onToggle,
+                    )
+                }
             }
         }
         PaneSectionTitle("on home")
@@ -214,6 +228,71 @@ internal fun PhoneSourceDetail(
                 // not idiomatic, and three independent reads of the same frame stumbled on it.
                 "it just keeps home to the ones you actually look at.",
         )
+    }
+}
+
+@Composable
+private fun WatchSourceDetailTemplate(
+    pageModel: WatchSourcePageModel,
+    paired: Boolean,
+    onConnectJournal: () -> Unit,
+    onManageLocalStorage: () -> Unit,
+) {
+    Spacer(Modifier.height(ShellMetrics.sectionGap))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(VERDICT_TEST_TAG),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = pageModel.startOnWatchInstruction,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(start = 10.dp),
+        )
+    }
+
+    if (pageModel.firstReceiptEpochMs != null) {
+        PaneNote("watch material has reached your phone.")
+    }
+    PaneNote("session controls are on your watch. this phone cannot tell whether your watch's microphone is receiving audio.")
+    pageModel.notice?.let { PaneNote(it) }
+    pageModel.oldPlayServicesNotice?.let { PaneNote(it) }
+    if (!paired) {
+        PaneNote("material stays on your devices until you connect a journal and confirm its mark.")
+        Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sourceDetailJournalSetup")) {
+            Text("connect a journal")
+        }
+    }
+    if (paired && pageModel.actionLabel != null) {
+        Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(requireNotNull(pageModel.actionLabel))
+        }
+    }
+    if ((pageModel.waitingCount ?: 0) > 0) {
+        Button(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("manage phone storage") }
+    }
+
+    Spacer(Modifier.height(ShellMetrics.sectionSpacing))
+    PaneNote(pageModel.relayNoticeShort)
+    PaneNote(pageModel.relayNoticeFull)
+
+    PaneSectionTitle("details")
+    PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
+        PaneFactRow(label = "last contact", value = pageModel.lastContactDisplayText)
+        if (pageModel.firstReceiptEpochMs != null) {
+            PaneRowDivider()
+            PaneFactRow(label = "first received", value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.firstReceiptEpochMs)))
+        }
+        if (pageModel.journalConfirmedEpochMs != null) {
+            PaneRowDivider()
+            PaneFactRow(label = "journal confirmed", value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.journalConfirmedEpochMs)))
+        }
+        PaneRowDivider()
+        PaneFactRow(label = "held on this phone", value = pageModel.waitingCount?.toString() ?: "unknown")
+        PaneRowDivider()
+        PaneFactRow(label = "sealed on your watch", value = if (pageModel.isSilenceStale) "unknown" else pageModel.watchWaitingCount?.let { "$it at last contact" } ?: "unknown")
     }
 }
 
