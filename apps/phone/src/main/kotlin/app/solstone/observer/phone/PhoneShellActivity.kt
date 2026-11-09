@@ -131,6 +131,7 @@ import app.solstone.core.pl.TARGET_UNAVAILABLE_REASON
 import app.solstone.core.push.JournalNotificationRow
 import app.solstone.core.push.journalNotificationRow
 import app.solstone.core.push.journalOpenPath
+import app.solstone.core.push.validJournalOpenPath
 import app.solstone.core.push.journalPushRepair
 import app.solstone.core.push.journalPushPickerResult
 import app.solstone.core.push.JournalPushPickerAction
@@ -188,6 +189,7 @@ class PhoneShellActivity : ComponentActivity() {
     private var journalPath by mutableStateOf<String?>(null)
     private var journalOpen by mutableStateOf(false)
     private var journalOpenSequence by mutableStateOf(0L)
+    private var journalVisitedPath: String? = null
     private var incomingDetail by mutableStateOf<Pair<Long, PhoneRoute>?>(null)
     private var journalPushOn by mutableStateOf(false)
     private var journalDeliveredBy by mutableStateOf<String?>(null)
@@ -369,6 +371,17 @@ class PhoneShellActivity : ComponentActivity() {
         handleIntent(intent, cold = false)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // A rotation or an appearance change rebuilds this activity, and the journal stays open on
+        // the page it was showing. Only then: a journal reopening by itself after the process was
+        // gone is not something the owner asked for.
+        if (isChangingConfigurations && journalOpen) {
+            outState.putBoolean(STATE_JOURNAL_OPEN, true)
+            outState.putString(STATE_JOURNAL_PATH, journalVisitedPath)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -384,6 +397,9 @@ class PhoneShellActivity : ComponentActivity() {
 
         if (savedInstanceState == null) {
             handleIntent(intent, cold = true)
+        } else if (savedInstanceState.getBoolean(STATE_JOURNAL_OPEN)) {
+            journalPath = savedInstanceState.getString(STATE_JOURNAL_PATH)
+            journalOpen = true
         }
 
         if (BuildConfig.PUSH_REGISTRATION) {
@@ -1165,6 +1181,9 @@ class PhoneShellActivity : ComponentActivity() {
                         pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
                     },
                     initialPath = journalPath,
+                    onVisitedUrl = { url ->
+                        journalVisitedPath = validJournalOpenPath(android.net.Uri.parse(url).encodedPath)
+                    },
                 )
                 }
                 }
@@ -1874,6 +1893,8 @@ class PhoneShellActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_MARK = "app.solstone.observer.phone.EXTRA_OPEN_MARK"
         private const val CAMERA_FOR_SCAN_REQUEST = 12
+        private const val STATE_JOURNAL_OPEN = "journal_open"
+        private const val STATE_JOURNAL_PATH = "journal_path"
         internal var promptedConfirmationThisProcess = false
         const val PERMISSION_REQUEST = 10
         // The embedded distributor delivers through Google Play services.

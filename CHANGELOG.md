@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- your journal in the app now follows your phone's light or dark setting. it was always dark, even with the phone in light mode.
+- changing your phone's light or dark setting no longer closes your journal. it stays open on the page you were on.
+
 ## [2.1.40] - 2026-11-07
 
 ### Changed

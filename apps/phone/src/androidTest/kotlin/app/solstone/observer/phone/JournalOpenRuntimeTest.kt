@@ -224,6 +224,37 @@ class JournalOpenRuntimeTest {
     }
 
     @Test
+    fun recreatingTheActivity_keepsTheJournalOpen() {
+        PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+        PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
+
+        val launchIntent = Intent(context, PhoneShellActivity::class.java).apply {
+            putExtra(JournalPushPoster.EXTRA_JOURNAL_OPEN, "/app/health")
+        }
+
+        ActivityScenario.launch<PhoneShellActivity>(launchIntent).use { scenario ->
+            composeRule.waitUntil(10_000) { loadedUrls.size == 1 }
+            scenario.recreate()
+            composeRule.waitUntil(10_000) { loadedUrls.size == 2 }
+        }
+    }
+
+    @Test
+    fun journalWebViewContext_followsTheSystemAppearance() {
+        fun isLight(nightMode: Int): Boolean {
+            val configuration = android.content.res.Configuration(context.resources.configuration)
+            configuration.uiMode = nightMode or
+                (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv())
+            val typed = android.util.TypedValue()
+            journalWebViewContext(context.createConfigurationContext(configuration))
+                .theme.resolveAttribute(android.R.attr.isLightTheme, typed, true)
+            return typed.data != 0
+        }
+        assertTrue(isLight(android.content.res.Configuration.UI_MODE_NIGHT_NO))
+        assertFalse(isLight(android.content.res.Configuration.UI_MODE_NIGHT_YES))
+    }
+
+    @Test
     fun launchWithInvalidPath_doesNotOpenSheetOrLoadTarget() {
         PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
         PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
