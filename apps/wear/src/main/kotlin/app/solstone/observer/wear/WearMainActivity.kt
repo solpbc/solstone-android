@@ -172,7 +172,7 @@ class WearMainActivity : ComponentActivity() {
         val delivery = when {
             peer?.version != null && peer.version < WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your phone to continue delivery."
             peer?.version != null && peer.version > WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your watch to continue delivery."
-            peer?.contactAt == null || System.currentTimeMillis() - peer.contactAt !in 0L..60_000L -> "phone delivery is unconfirmed. keep your phone connected and open solstone there. if it is missing, install the phone app. check Google Play services for updates on both devices. your watch keeps held material."
+            peer?.contactAt == null || System.currentTimeMillis() - peer.contactAt !in 0L..60_000L -> "phone delivery is unconfirmed. keep your phone connected and open solstone there. install or update solstone on your phone if needed. check Google Play services for updates on both devices. your watch keeps held material."
             else -> "your phone replied recently."
         }
         face.show(if (engaged) "stop" else if (failure) "details" else "start", label, attention,
