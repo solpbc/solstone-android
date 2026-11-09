@@ -49,6 +49,9 @@ internal fun PhoneDefaultDetailPane(
     onOpenSource: (String) -> Unit,
     onConfirmMark: () -> Unit,
     onRefreshStatus: (() -> Unit)?,
+    journalFacts: PhoneJournalFacts,
+    onOpenTechnicalDetails: () -> Unit,
+    onOpenImport: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenUnknownJournal: (String?) -> Unit = {},
     onPairAgain: () -> Unit = {},
@@ -90,6 +93,9 @@ internal fun PhoneDefaultDetailPane(
             )
             is PhoneDefaultDetailStatus.Paired -> PhoneDefaultDetailPaired(
                 snapshot = status.snapshot,
+                journalFacts = journalFacts,
+                onOpenTechnicalDetails = onOpenTechnicalDetails,
+                onOpenImport = onOpenImport,
                 onOpenSource = onOpenSource,
                 onConfirmMark = onConfirmMark,
                 onOpenUnknownJournal = onOpenUnknownJournal,
@@ -127,6 +133,9 @@ private fun PhoneDefaultDetailFailure(
 @Composable
 private fun PhoneDefaultDetailPaired(
     snapshot: PhoneStatusSnapshot,
+    journalFacts: PhoneJournalFacts,
+    onOpenTechnicalDetails: () -> Unit,
+    onOpenImport: () -> Unit,
     onOpenSource: (String) -> Unit,
     onConfirmMark: () -> Unit,
     onOpenUnknownJournal: (String?) -> Unit,
@@ -136,6 +145,9 @@ private fun PhoneDefaultDetailPaired(
     PhoneDefaultStatusPane(modifier = modifier) {
         PhonePairedStatusContent(
             model = snapshot.status,
+            journalFacts = journalFacts,
+            onOpenTechnicalDetails = onOpenTechnicalDetails,
+            onOpenImport = onOpenImport,
             waiting = snapshot.waiting,
             onOpenSource = onOpenSource,
             onConfirmMark = onConfirmMark,
