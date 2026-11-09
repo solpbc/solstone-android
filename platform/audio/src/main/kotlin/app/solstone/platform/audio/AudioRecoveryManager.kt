@@ -134,46 +134,6 @@ class AudioRecoveryManager(
         recoverLegacyCache()
     }
 
-    fun sealAudioSegment(
-        stream: String = MAIN_STREAM,
-        sourceId: String = AudioContinuousSourceEngine.SOURCE_ID,
-        finalWireKeys: WireKeys,
-        m4aFile: File,
-        captureStartEpochMs: Long,
-        captureEndEpochMs: Long,
-        spoolWriter: FileSpoolWriter,
-        provider: PayloadBytesProvider? = null,
-    ): Boolean {
-        val payload = SegmentPayload(
-            sourceId = sourceId,
-            ref = PayloadRef(AudioContinuousSourceEngine.PAYLOAD_NAME, AudioContinuousSourceEngine.MEDIA_TYPE, m4aFile.length(), null),
-            captureStartEpochMs = captureStartEpochMs,
-            captureEndEpochMs = captureEndEpochMs,
-        )
-        val segment = SealedSegment(
-            stream = stream,
-            key = SegmentKey(finalWireKeys.day, finalWireKeys.segment),
-            wireKeys = finalWireKeys,
-            payloads = listOf(payload),
-            gaps = emptyList(),
-        )
-        val byteProvider = provider ?: object : PayloadBytesProvider {
-            override fun open(payload: SegmentPayload): InputStream = m4aFile.inputStream()
-            override fun release(payload: SegmentPayload) {}
-        }
-        val sealResult = try {
-            spoolWriter.seal(segment, byteProvider)
-        } catch (_: Throwable) {
-            return false
-        } ?: return false
-        return try {
-            sealedSink.persistSealed(segment, sealResult, nowProvider())
-            true
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
     private fun recoverAttemptDirectories(inFlightIds: Set<String>) {
         if (!audioSourceDir.exists() || !audioSourceDir.isDirectory) return
         val dirs = audioSourceDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("rec-") } ?: return

@@ -87,18 +87,6 @@
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
-        <service
-            android:name=".wear.PhoneWatchCourierService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
-                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                <data
-                    android:scheme="wear"
-                    android:host="*"
-                    android:pathPrefix="/solstone/courier/" />
-            </intent-filter>
-        </service>
         <receiver
             android:name="app.solstone.platform.fgs.ObserverBootReceiver"
             android:exported="false">

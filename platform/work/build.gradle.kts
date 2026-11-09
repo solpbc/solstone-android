@@ -49,8 +49,6 @@ dependencies {
     implementation(project(":core:queue"))
     implementation(project(":core:sources"))
     implementation(project(":core:spool"))
-    implementation(project(":core:segment"))
-    implementation(project(":core:watch-courier"))
 
     testImplementation(kotlin("test"))
     testImplementation(project(":core:spool"))

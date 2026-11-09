@@ -48,43 +48,6 @@ abstract class SegmentDao {
     @Query("SELECT * FROM segment_file WHERE segment_id = :segmentId ORDER BY rowId ASC")
     abstract fun filesBySegmentId(segmentId: String): List<SegmentFileRow>
 
-    @Insert(onConflict = OnConflictStrategy.ABORT)
-    abstract fun insertReceipt(receipt: WatchBundleReceiptRow)
-
-    @Query("SELECT * FROM watch_bundle_receipt WHERE bundle_id = :bundleId")
-    abstract fun receiptByBundleId(bundleId: String): WatchBundleReceiptRow?
-
-    enum class WatchBundleCustodyResult {
-        INSERTED,
-        DUPLICATE_SAME_SHA,
-        CONFLICT_DIFFERENT_SHA,
-    }
-
-    @Transaction
-    open fun insertWatchBundleReceiptTransaction(
-        receipt: WatchBundleReceiptRow,
-        segment: SegmentRow,
-        files: List<SegmentFileRow>,
-    ): WatchBundleCustodyResult {
-        val existing = receiptByBundleId(receipt.bundleId)
-        if (existing != null) {
-            return if (existing.sha256.equals(receipt.sha256, ignoreCase = true)) {
-                WatchBundleCustodyResult.DUPLICATE_SAME_SHA
-            } else {
-                WatchBundleCustodyResult.CONFLICT_DIFFERENT_SHA
-            }
-        }
-        insertReceipt(receipt)
-        if (segmentById(segment.id) == null) {
-            insertSegment(segment)
-        }
-        deleteFilesBySegmentId(segment.id)
-        if (files.isNotEmpty()) {
-            insertFiles(files)
-        }
-        return WatchBundleCustodyResult.INSERTED
-    }
-
     // `home_instance_id` names the journal this attempt went to, so a later drain can tell a
     // back-off earned at a journal the device has since left from one earned at its journal now.
     @Query("UPDATE segment SET attempt_count = :attempts, last_attempt_at = :at, home_instance_id = :homeInstanceId WHERE id = :id")

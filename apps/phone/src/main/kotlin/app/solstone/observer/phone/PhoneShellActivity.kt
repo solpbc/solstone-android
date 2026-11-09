@@ -53,8 +53,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import app.solstone.core.watch.courier.WatchCourierStrings
-import app.solstone.observer.phone.wear.PhoneWatchContactStore
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRoute
@@ -920,7 +918,6 @@ class PhoneShellActivity : ComponentActivity() {
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
-                extraSourceIds = if (PhoneWatchContactStore(this@PhoneShellActivity).hasContact()) listOf(WatchCourierStrings.WATCH) else emptyList(),
                 status = heldWhileCovered(snapshot?.status, covered = pairingOpen),
                 paneStatus = paneSnapshot?.status,
                 onStatusContentVisible = statusViewModel::onStatusForeground,

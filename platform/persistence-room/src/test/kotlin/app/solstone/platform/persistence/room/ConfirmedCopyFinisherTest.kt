@@ -221,14 +221,7 @@ class ConfirmedCopyFinisherTest {
 
     private class InMemorySegmentDao : SegmentDao() {
         private val segments = mutableMapOf<String, SegmentRow>()
-        private val receipts = mutableMapOf<String, WatchBundleReceiptRow>()
         val failUpdateFor = mutableSetOf<String>()
-
-        override fun insertReceipt(receipt: WatchBundleReceiptRow) {
-            receipts[receipt.bundleId] = receipt
-        }
-
-        override fun receiptByBundleId(bundleId: String): WatchBundleReceiptRow? = receipts[bundleId]
 
         override fun insertSegment(segment: SegmentRow) {
             segments[segment.id] = segment

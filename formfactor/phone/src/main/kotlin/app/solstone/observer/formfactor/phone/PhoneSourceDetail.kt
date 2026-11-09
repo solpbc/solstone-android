@@ -27,10 +27,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
-import app.solstone.core.watch.courier.WatchCourierStrings
-import app.solstone.core.watch.courier.WatchSourcePageModel
-import androidx.compose.ui.platform.LocalContext
-import java.io.File
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.reasonDiagnosis
@@ -194,40 +190,18 @@ internal fun PhoneSourceDetail(
     val readModel = (loadState as? LoadState.Loaded)?.value
     val paired = readModel?.observer?.paired == true
     PhonePaneScaffold(modifier) {
-        if (sourceId == WatchCourierStrings.WATCH) {
-            val context = LocalContext.current
-            val contactFile = File(context.noBackupFilesDir, "phone_watch_contact.txt")
-            val lastContact = if (contactFile.exists()) {
-                runCatching { contactFile.readText().trim().toLongOrNull() }.getOrNull()
-            } else null
-            val now = LocalPhoneStatusNow.current.nowEpochMs()
-            val displayText = WatchSourcePageModel.formatLastContact(lastContact, now)
-            val pageModel = WatchSourcePageModel(
-                firstReceiptEpochMs = null,
-                journalConfirmedEpochMs = null,
-                lastContactDisplayText = displayText,
-                waitingCount = 0,
-            )
-            WatchSourceDetailTemplate(
-                pageModel = pageModel,
-                paired = paired,
-                onConnectJournal = onConnectJournal,
-                onManageLocalStorage = onManageLocalStorage,
-            )
-        } else {
-            readModel?.let { model ->
-                model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->
-                    SourceDetailTemplate(
-                        status = status,
-                        reason = resolveSourceDetailReason(status, model.observer),
-                        paired = paired,
-                        onStartObserving = onStartObserving,
-                        onGrantPermissions = onGrantPermissions,
-                        onConnectJournal = onConnectJournal,
-                        onManageLocalStorage = onManageLocalStorage,
-                        onToggle = onToggle,
-                    )
-                }
+        readModel?.let { model ->
+            model.sources.firstOrNull { it.sourceId == sourceId }?.let { status ->
+                SourceDetailTemplate(
+                    status = status,
+                    reason = resolveSourceDetailReason(status, model.observer),
+                    paired = paired,
+                    onStartObserving = onStartObserving,
+                    onGrantPermissions = onGrantPermissions,
+                    onConnectJournal = onConnectJournal,
+                    onManageLocalStorage = onManageLocalStorage,
+                    onToggle = onToggle,
+                )
             }
         }
         PaneSectionTitle("on home")
@@ -240,70 +214,6 @@ internal fun PhoneSourceDetail(
                 // not idiomatic, and three independent reads of the same frame stumbled on it.
                 "it just keeps home to the ones you actually look at.",
         )
-    }
-}
-
-@Composable
-private fun WatchSourceDetailTemplate(
-    pageModel: WatchSourcePageModel,
-    paired: Boolean,
-    onConnectJournal: () -> Unit,
-    onManageLocalStorage: () -> Unit,
-) {
-    Spacer(Modifier.height(ShellMetrics.sectionGap))
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(VERDICT_TEST_TAG),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PhoneTileDot(SourceState.ON)
-        Text(
-            text = pageModel.startOnWatchInstruction,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(start = 10.dp),
-        )
-    }
-
-    if (!paired) {
-        Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-        Text(
-            text = "on this device and not processed until you connect a journal.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = shellSecondaryInk,
-        )
-        Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-        Button(
-            onClick = onConnectJournal,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("sourceDetailJournalSetup"),
-        ) {
-            Text("connect a journal")
-        }
-    }
-
-    Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-    PaneNote(pageModel.relayNoticeShort)
-    PaneNote(pageModel.relayNoticeFull)
-
-    PaneSectionTitle("details")
-    PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "last contact", value = pageModel.lastContactDisplayText)
-        if (pageModel.firstReceiptEpochMs != null) {
-            PaneRowDivider()
-            PaneFactRow(label = "first received", value = pageModel.firstReceiptEpochMs.toString())
-        }
-        if (pageModel.journalConfirmedEpochMs != null) {
-            PaneRowDivider()
-            PaneFactRow(label = "journal confirmed", value = pageModel.journalConfirmedEpochMs.toString())
-        }
-        if (pageModel.waitingCount > 0) {
-            PaneRowDivider()
-            PaneFactRow(label = "waiting", value = pageModel.waitingCount.toString())
-        }
     }
 }
 

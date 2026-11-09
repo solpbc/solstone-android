@@ -63,7 +63,7 @@ private val LOCAL_TIME = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm")
 
 /** A manifest source id outside the named capture ids is `other`. `unknown` is only the converted marker. */
 fun gapSourceFor(sourceId: String): String = when (sourceId) {
-    "audio", "screen", "camera", "location", "metadata", "watch-audio" -> sourceId
+    "audio", "screen", "camera", "location", "metadata" -> sourceId
     else -> "other"
 }
 
