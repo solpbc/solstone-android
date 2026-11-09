@@ -34,7 +34,9 @@ import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
+import app.solstone.core.watch.courier.WatchCourierStrings
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
@@ -61,6 +63,7 @@ fun PhoneDeck(
     hour: Int,
     modifier: Modifier = Modifier,
     isOnHome: (String) -> Boolean = { true },
+    extraSourceIds: List<String> = emptyList(),
 ) {
     val hide = if (paneOpen) Modifier.clearAndSetSemantics { } else Modifier
     val greeting = greetingFor(hour)
@@ -86,13 +89,11 @@ fun PhoneDeck(
             Modifier.padding(start = startInset, end = endInset, top = greetingInset),
         )
         val allSources = readModel?.sources.orEmpty()
-        // ⚠ The deck showed EVERY source unconditionally while `give this a tile on
-        // home` wrote to a store nothing read — a control that could not perform what
-        // it names, which § 2.4 forbids outright. The deck reads the store now.
-        //
-        // The store's default is "on home": a source the owner has is on home until
-        // they hide it, and § 5 is explicit that hiding never turns a source off.
-        val sources = allSources.filter { isOnHome(it.sourceId) }
+        val extraSources = if (extraSourceIds.contains(WatchCourierStrings.WATCH)) {
+            listOf(SourceStatus(sourceId = WatchCourierStrings.WATCH, wish = SourceWish.On, state = SourceState.ON, reason = ReasonCode.NONE))
+        } else emptyList()
+        val combinedSources = allSources + extraSources
+        val sources = combinedSources.filter { isOnHome(it.sourceId) }
         if (loadState is LoadState.Loaded) {
             val attention = allSources.count { it.state == SourceState.NEEDS_ATTENTION }
             if (attention > 0) {

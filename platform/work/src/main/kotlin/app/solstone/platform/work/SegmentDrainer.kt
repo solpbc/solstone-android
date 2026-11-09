@@ -13,6 +13,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.WATCH_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.JournalCachePathRefusal
 import app.solstone.platform.persistence.room.SegmentDao
@@ -53,7 +54,7 @@ interface DrainStore {
 class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun syncState(): SyncStateRow? = dao.syncState()
     override fun segmentsForDrain(): List<SegmentRow> =
-        (dao.segmentsForDrain(MAIN_STREAM) + dao.segmentsForDrain(CALENDAR_STREAM))
+        (dao.segmentsForDrain(MAIN_STREAM) + dao.segmentsForDrain(CALENDAR_STREAM) + dao.segmentsForDrain(WATCH_STREAM))
             .sortedWith(compareBy({ it.sealedAt }, { it.id }))
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = dao.filesBySegmentId(id)
     override fun advanceState(id: String, event: QueueEvent): QueueState = dao.advanceState(id, event)
@@ -234,13 +235,154 @@ internal fun drainSegments(
         if (dueRemaining) break
     }
 
-    val pendingAfter = store.pendingCount(MAIN_STREAM) + store.pendingCount(CALENDAR_STREAM)
-    val cleanDrain = !halted && !failedThisRun && !pairingLeft && pendingAfter == 0
+    var watchFailed = false
+    var watchDueRemaining = false
+    if (!halted && !pairingLeft) {
+        val watchDue = selectWatchDrainSegments(store.segmentsForDrain(), now(), homeInstanceId)
+            .filter { it.id !in taken }
+            .sortedWith(compareBy({ it.day }, { it.segment }))
+
+        val watchSelected = watchDue.take(DRAIN_SEGMENT_CAP)
+        if (watchDue.size > watchSelected.size) watchDueRemaining = true
+        taken += watchSelected.map { it.id }
+
+        for ((day, daySegments) in watchSelected.groupBy { it.day }) {
+            if (!pairingCurrent()) {
+                pairingLeft = true
+                break
+            }
+            val manifests = daySegments.associateWith { segment ->
+                reconstructManifest(segment, store.filesBySegmentId(segment.id))
+            }
+            val verdicts = try {
+                reconcile(manifests.values.toList(), day)
+            } catch (e: RelayWebSocketClosedException) {
+                throw e
+            } catch (e: ReconcileAuthException) {
+                log("reconcile watch auth halt day=$day", e)
+                halted = true
+                watchFailed = true
+                break
+            } catch (e: ReconcileUnavailableException) {
+                log("reconcile watch unavailable day=$day", e)
+                watchFailed = true
+                break
+            } catch (e: IOException) {
+                log("reconcile watch io day=$day", e)
+                watchFailed = true
+                break
+            }
+            val actions = planDayDrain(verdicts, daySegments).associateBy(::drainActionId)
+
+            for (segment in daySegments) {
+                if (!pairingCurrent()) {
+                    pairingLeft = true
+                    break
+                }
+                val manifest = manifests.getValue(segment)
+                if (!claimForUpload(store, segment, log)) {
+                    watchFailed = true
+                    break
+                }
+                store.recordAttempt(segment.id, nextAttemptCount(segment, homeInstanceId), now(), homeInstanceId)
+
+                when (actions.getValue(segment.id)) {
+                    is DrainAction.Skip -> {
+                        confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                            watchFailed = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                        }
+                        if (watchFailed) break
+                    }
+                    is DrainAction.Upload -> {
+                        val stored = readStoredZone(segment)
+                        val uploading = stored?.let {
+                            manifest.copy(zoneId = it.zoneId, utcOffsetSeconds = it.utcOffsetSeconds)
+                        } ?: manifest
+                        val result = try {
+                            resolveIngestOutcomes(
+                                uploading,
+                                ingest(uploading) { file -> readPayload(segment, file) },
+                            )
+                        } catch (e: RelayWebSocketClosedException) {
+                            throw e
+                        } catch (e: FileNotFoundException) {
+                            val reason = "payload missing"
+                            log("watch payload missing ${segment.id}", e)
+                            markPayloadFailed(store, segment, reason)
+                            watchFailed = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                            break
+                        } catch (e: IllegalArgumentException) {
+                            val reason = "payload unreadable"
+                            log("watch payload unreadable ${segment.id}", e)
+                            markPayloadFailed(store, segment, reason)
+                            watchFailed = true
+                            lastFailureAt = now()
+                            lastErrorReason = reason
+                            break
+                        } catch (e: IOException) {
+                            log("watch ingest io ${segment.id}", e)
+                            watchFailed = true
+                            resolveIoError()
+                            break
+                        }
+
+                        when (result) {
+                            is SegmentSyncResult.Uploaded,
+                            is SegmentSyncResult.JournalRemoved -> {
+                                confirmThenRemove(store, finisher, segment, log)?.let { reason ->
+                                    watchFailed = true
+                                    lastFailureAt = now()
+                                    lastErrorReason = reason
+                                }
+                            }
+                            is SegmentSyncResult.Retry -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, result.error)
+                                watchFailed = true
+                                lastFailureAt = now()
+                                lastErrorReason = result.error + (result.status?.let { " ($it)" } ?: "")
+                            }
+                            is SegmentSyncResult.HardFail -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, result.error)
+                                watchFailed = true
+                                lastFailureAt = now()
+                                lastErrorReason = "${result.error} (${result.status})"
+                            }
+                            is SegmentSyncResult.AuthHalt -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, result.status, "auth halted")
+                                watchFailed = true
+                                halted = haltsDrain(result)
+                                lastFailureAt = now()
+                                lastErrorReason = "auth halted (${result.status})"
+                            }
+                            is SegmentSyncResult.NeedsAttention -> {
+                                store.advanceState(segment.id, QueueEvent.MARK_FAILED)
+                                store.recordFailure(segment.id, null, result.error)
+                                watchFailed = true
+                            }
+                        }
+                        if (watchFailed) break
+                    }
+                }
+                if (halted || watchFailed) break
+            }
+            if (halted || pairingLeft || watchFailed) break
+        }
+    }
+
+    val pendingAfter = store.pendingCount(MAIN_STREAM) + store.pendingCount(CALENDAR_STREAM) + store.pendingCount(WATCH_STREAM)
+    val cleanDrain = !halted && !failedThisRun && !watchFailed && !pairingLeft && pendingAfter == 0
     val workOutcome = when {
         halted -> SyncOutcome.FAILURE
-        failedThisRun -> SyncOutcome.RETRY
+        failedThisRun || watchFailed -> SyncOutcome.RETRY
         pairingLeft -> SyncOutcome.RETRY
-        dueRemaining -> SyncOutcome.RETRY
+        dueRemaining || watchDueRemaining -> SyncOutcome.RETRY
         else -> SyncOutcome.SUCCESS
     }
     val lastSuccessAt = advanceLastSuccess(priorLastSuccessAt, cleanDrain, now())

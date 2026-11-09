@@ -16,6 +16,7 @@ import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
+import app.solstone.core.sources.WATCH_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -64,6 +65,15 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long =
 fun selectDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> =
     segments.filter {
         (it.stream == MAIN_STREAM || it.stream == CALENDAR_STREAM) &&
+            (
+                isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
+                    failedAtAnotherJournal(it, homeInstanceId)
+                )
+    }
+
+fun selectWatchDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> =
+    segments.filter {
+        it.stream == WATCH_STREAM &&
             (
                 isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
                     failedAtAnotherJournal(it, homeInstanceId)

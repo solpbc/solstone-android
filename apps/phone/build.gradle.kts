@@ -374,6 +374,10 @@ dependencies {
     implementation(project(":core:observer"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))
+    implementation(project(":core:watch-courier"))
+    implementation("com.google.android.gms:play-services-wearable:20.0.1") {
+        exclude(group = "androidx.fragment", module = "fragment")
+    }
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("androidx.compose.ui:ui:1.10.6")

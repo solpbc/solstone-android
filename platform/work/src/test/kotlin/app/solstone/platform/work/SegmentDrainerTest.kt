@@ -1335,6 +1335,8 @@ class SegmentDrainerTest {
         var finisherRef: ConfirmedCopyFinisher? = null
         var hookPasses = 0
         val dao = object : SegmentDao() {
+            override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+            override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit
@@ -1934,6 +1936,8 @@ class SegmentDrainerTest {
         val spool: Path = root.resolve("spool")
         val store = FakeDrainStore()
         val dao = object : SegmentDao() {
+            override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+            override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit

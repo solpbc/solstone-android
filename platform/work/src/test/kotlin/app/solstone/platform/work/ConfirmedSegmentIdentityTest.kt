@@ -49,6 +49,8 @@ class ConfirmedSegmentIdentityTest {
         var syncStateRow: SyncStateRow? = null
 
         val dao = object : SegmentDao() {
+            override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
+            override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) {
                 val idx = rows.indexOfFirst { it.id == segment.id }
                 if (idx >= 0) rows[idx] = segment else rows.add(segment)
