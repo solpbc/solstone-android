@@ -16,6 +16,16 @@ enum class IntakeKind { DURATION, DISTANCE, PHOTOS, EVENTS, ITEMS }
 fun distanceSystem(measurementSystemName: String): DistanceSystem =
     if (measurementSystemName == "SI") DistanceSystem.KILOMETERS else DistanceSystem.MILES
 
+/**
+ * Miles or kilometers when the platform measurement system is unavailable.
+ * The United States, the United Kingdom, Liberia, and Myanmar use miles.
+ * A locale with no country uses kilometers.
+ */
+fun measurementSystemNameBeforeApi28(country: String): String {
+    val code = country.uppercase(Locale.ROOT)
+    return if (code == "US" || code == "GB" || code == "LR" || code == "MM") "US" else "SI"
+}
+
 fun intakeKind(sourceId: String): IntakeKind = when (sourceId) {
     "audio", "screen" -> IntakeKind.DURATION
     "location" -> IntakeKind.DISTANCE

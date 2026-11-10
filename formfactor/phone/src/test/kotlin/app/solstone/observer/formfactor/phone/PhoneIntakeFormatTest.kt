@@ -41,6 +41,16 @@ class PhoneIntakeFormatTest {
     }
 
     @Test
+    fun olderPhonesUseMilesInTheFourMileCountries() {
+        assertEquals("US", measurementSystemNameBeforeApi28("US"))
+        assertEquals("US", measurementSystemNameBeforeApi28("gb"))
+        assertEquals("US", measurementSystemNameBeforeApi28("LR"))
+        assertEquals("US", measurementSystemNameBeforeApi28("MM"))
+        assertEquals("SI", measurementSystemNameBeforeApi28("FR"))
+        assertEquals("SI", measurementSystemNameBeforeApi28(""))
+    }
+
+    @Test
     fun countsAreSingularAtOneAndGrouped() {
         assertEquals("1 photo", formatTotal(1, IntakeKind.PHOTOS, DistanceSystem.MILES, locale))
         assertEquals("2 photos", formatTotal(2, IntakeKind.PHOTOS, DistanceSystem.MILES, locale))

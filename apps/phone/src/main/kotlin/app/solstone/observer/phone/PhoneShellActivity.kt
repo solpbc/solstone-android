@@ -17,6 +17,7 @@ import app.solstone.observer.formfactor.phone.PhoneIntakeReading
 import app.solstone.observer.formfactor.phone.PhoneIntakeSnapshot
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
 import app.solstone.observer.formfactor.phone.distanceSystem
+import app.solstone.observer.formfactor.phone.measurementSystemNameBeforeApi28
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -932,12 +933,15 @@ class PhoneShellActivity : ComponentActivity() {
                 val locale = resources.configuration.locales.let { listed ->
                     if (listed.isEmpty) java.util.Locale.getDefault() else listed[0]
                 }
-                val system = android.icu.util.LocaleData.getMeasurementSystem(
-                    android.icu.util.ULocale.forLocale(locale),
-                )
-                distanceSystem(
-                    if (system == android.icu.util.LocaleData.MeasurementSystem.SI) "SI" else "US",
-                )
+                val name = if (Build.VERSION.SDK_INT >= 28) {
+                    val system = android.icu.util.LocaleData.getMeasurementSystem(
+                        android.icu.util.ULocale.forLocale(locale),
+                    )
+                    if (system == android.icu.util.LocaleData.MeasurementSystem.SI) "SI" else "US"
+                } else {
+                    measurementSystemNameBeforeApi28(locale.country)
+                }
+                distanceSystem(name)
             }
             val sourceOrder = (sourcesViewModel.sourcesState as? LoadState.Loaded)
                 ?.value?.sources?.map { it.sourceId }.orEmpty()
