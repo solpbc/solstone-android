@@ -25,8 +25,11 @@ import app.solstone.core.model.QueueState
         CalendarCapabilityRow::class,
         CalendarPreviewRow::class,
         WatchBundleReceiptRow::class,
+        SourceIntakeRow::class,
+        SourceIntakeFixRow::class,
+        SourceIntakeSeenRow::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)

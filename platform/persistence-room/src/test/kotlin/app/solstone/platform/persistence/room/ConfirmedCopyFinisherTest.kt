@@ -219,7 +219,7 @@ class ConfirmedCopyFinisherTest {
         )
     }
 
-    private class InMemorySegmentDao : SegmentDao() {
+    private class InMemorySegmentDao : SegmentDaoWithoutIntake() {
         private val segments = mutableMapOf<String, SegmentRow>()
         private val receipts = mutableMapOf<String, WatchBundleReceiptRow>()
         val failUpdateFor = mutableSetOf<String>()

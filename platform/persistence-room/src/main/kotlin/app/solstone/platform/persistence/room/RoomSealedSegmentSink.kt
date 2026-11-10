@@ -14,6 +14,7 @@ class RoomSealedSegmentSink(private val dao: SegmentDao) : SealedSegmentSink {
     override fun persistSealed(segment: SealedSegment, result: SealResult, sealedAtEpochMs: Long) {
         val dirSegment = result.directory?.let { File(it.toString()).name } ?: segment.key.segment
         val segmentId = segment.id(dirSegment)
+        val locationFixes = readLocationFixes(result.directory?.toFile())
         dao.insertSegmentWithFiles(
             segment = SegmentRow(
                 id = segmentId,
@@ -28,6 +29,8 @@ class RoomSealedSegmentSink(private val dao: SegmentDao) : SealedSegmentSink {
                 observerHandle = null,
             ),
             files = result.manifest.files.map { it.toRow(segmentId) },
+            locationFixes = locationFixes,
+            nowEpochMs = sealedAtEpochMs,
         )
     }
 

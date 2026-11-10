@@ -23,11 +23,51 @@ abstract class SegmentDao {
     @Insert
     abstract fun insertEvents(events: List<EventRow>)
 
-    @Transaction
     open fun insertSegmentWithFiles(segment: SegmentRow, files: List<SegmentFileRow>) {
-        if (segmentById(segment.id) == null) insertSegment(segment)
+        insertSegmentWithFiles(segment, files, emptyList(), System.currentTimeMillis())
+    }
+
+    /**
+     * Counts audio, screen, camera, and location only on the first insert of [segment].
+     * A later call refreshes files and does not count again. [locationFixes] are ignored when empty.
+     */
+    @Transaction
+    open fun insertSegmentWithFiles(
+        segment: SegmentRow,
+        files: List<SegmentFileRow>,
+        locationFixes: List<IntakeFix>,
+        nowEpochMs: Long,
+    ) {
+        val first = segmentById(segment.id) == null
+        if (first) insertSegment(segment)
         deleteFilesBySegmentId(segment.id)
         if (files.isNotEmpty()) insertFiles(files)
+        if (first) recordSegmentIntake(files, locationFixes, nowEpochMs)
+    }
+
+    @Query("SELECT * FROM source_intake WHERE source_id = :sourceId")
+    abstract fun intakeBySource(sourceId: String): SourceIntakeRow?
+
+    @Query("SELECT * FROM source_intake")
+    abstract fun allIntake(): List<SourceIntakeRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract fun upsertIntake(row: SourceIntakeRow)
+
+    @Query("SELECT * FROM source_intake_fix WHERE source_id = :sourceId")
+    abstract fun intakeFix(sourceId: String): SourceIntakeFixRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract fun upsertIntakeFix(row: SourceIntakeFixRow)
+
+    private fun recordSegmentIntake(files: List<SegmentFileRow>, fixes: List<IntakeFix>, nowEpochMs: Long) {
+        val anchor = intakeFix(INTAKE_LOCATION)?.toFix()
+        for (delta in segmentIntakeDeltas(files, fixes, anchor)) {
+            val existing = intakeBySource(delta.sourceId)?.toReading()
+            val next = advanceIntake(existing, delta.add, delta.materialAt, nowEpochMs, touch = true) ?: continue
+            upsertIntake(next.toRow(delta.sourceId))
+            if (delta.anchor != null) upsertIntakeFix(delta.anchor.toFixRow(INTAKE_LOCATION))
+        }
     }
 
     @Query("SELECT * FROM segment WHERE state = :state ORDER BY sealed_at ASC, id ASC")

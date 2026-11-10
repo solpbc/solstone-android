@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "badf59374f4f52124341fe4ef8556829",
+    "identityHash": "367db7e3e10462de02a8232b882ebc4d",
     "entities": [
       {
         "tableName": "segment",
@@ -918,36 +918,30 @@
         "foreignKeys": []
       },
       {
-        "tableName": "watch_bundle_receipt",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bundle_id` TEXT NOT NULL, `sha256` TEXT NOT NULL, `seal_generation` INTEGER NOT NULL, `segment_id` TEXT NOT NULL, `committed_at` INTEGER NOT NULL, PRIMARY KEY(`bundle_id`))",
+        "tableName": "source_intake",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`source_id` TEXT NOT NULL, `total` INTEGER NOT NULL, `started_at` INTEGER NOT NULL, `last_at` INTEGER NOT NULL, PRIMARY KEY(`source_id`))",
         "fields": [
           {
-            "fieldPath": "bundleId",
-            "columnName": "bundle_id",
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "sha256",
-            "columnName": "sha256",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "sealGeneration",
-            "columnName": "seal_generation",
+            "fieldPath": "total",
+            "columnName": "total",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "segmentId",
-            "columnName": "segment_id",
-            "affinity": "TEXT",
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "committedAt",
-            "columnName": "committed_at",
+            "fieldPath": "lastAt",
+            "columnName": "last_at",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -955,7 +949,78 @@
         "primaryKey": {
           "autoGenerate": false,
           "columnNames": [
-            "bundle_id"
+            "source_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "source_intake_fix",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`source_id` TEXT NOT NULL, `fix_at` INTEGER NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `accuracy_m` REAL, PRIMARY KEY(`source_id`))",
+        "fields": [
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fixAt",
+            "columnName": "fix_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracy_m",
+            "affinity": "REAL",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "source_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "source_intake_seen",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`source_id` TEXT NOT NULL, `seen_key` TEXT NOT NULL, PRIMARY KEY(`source_id`, `seen_key`))",
+        "fields": [
+          {
+            "fieldPath": "sourceId",
+            "columnName": "source_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seenKey",
+            "columnName": "seen_key",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "source_id",
+            "seen_key"
           ]
         },
         "indices": [],
@@ -965,7 +1030,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'badf59374f4f52124341fe4ef8556829')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '367db7e3e10462de02a8232b882ebc4d')"
     ]
   }
 }

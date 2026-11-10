@@ -29,6 +29,7 @@ import app.solstone.core.watch.courier.WatchLocationRecord
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -49,7 +50,7 @@ import kotlin.test.assertTrue
 
 class WatchComposedProofTest {
 
-    private class InMemorySegmentDao : SegmentDao() {
+    private class InMemorySegmentDao : SegmentDaoWithoutIntake() {
         val segments = mutableMapOf<String, SegmentRow>()
         val files = mutableMapOf<String, MutableList<SegmentFileRow>>()
         val receipts = mutableMapOf<String, WatchBundleReceiptRow>()

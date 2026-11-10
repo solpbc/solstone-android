@@ -92,19 +92,8 @@ fun PhoneDeck(
         val extraSources = if (extraSourceIds.contains(WatchCourierStrings.WATCH)) {
             listOf(SourceStatus(sourceId = WatchCourierStrings.WATCH, wish = SourceWish.On, state = SourceState.ON, reason = ReasonCode.NONE))
         } else emptyList()
-        val combinedSources = allSources + extraSources
+        val combinedSources = (allSources + extraSources).distinctBy { it.sourceId }
         val sources = combinedSources.filter { isOnHome(it.sourceId) }
-        if (loadState is LoadState.Loaded) {
-            val attention = allSources.count { it.state == SourceState.NEEDS_ATTENTION }
-            if (attention > 0) {
-                Text(
-                    text = if (attention == 1) "1 needs attention" else "$attention need attention",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = startInset, end = endInset, top = 4.dp),
-                )
-            }
-        }
         Box(Modifier.fillMaxSize().padding(top = ShellMetrics.sectionSpacing)) {
             PhoneSourceGrid(
                 sources = sources,
@@ -231,6 +220,7 @@ internal fun PhoneSourceGrid(
                 index = sources.size,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "importTile",
+                dashed = false,
                 onOpen = onOpenImport,
             )
         }
@@ -255,6 +245,7 @@ internal fun PhoneSourceGrid(
                 index = sources.size + 1,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "addMoreTile",
+                dashed = true,
                 onOpen = onOpenAddMore,
             )
         }
@@ -334,6 +325,7 @@ private fun PhoneNonSourceTile(
         onClick = onOpen,
         dashed = dashed,
     ) {
+        Box(Modifier.size(0.dp).testTag(if (dashed) "$testTag-dashed" else "$testTag-solid"))
         Icon(
             painter = painterResource(glyph),
             contentDescription = null,

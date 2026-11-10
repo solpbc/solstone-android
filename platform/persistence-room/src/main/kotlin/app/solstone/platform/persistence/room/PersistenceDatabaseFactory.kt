@@ -112,7 +112,22 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/** Intake starts empty. Rows already stored are not reconstructed. */
 val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `source_intake` (`source_id` TEXT NOT NULL, `total` INTEGER NOT NULL, `started_at` INTEGER NOT NULL, `last_at` INTEGER NOT NULL, PRIMARY KEY(`source_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `source_intake_fix` (`source_id` TEXT NOT NULL, `fix_at` INTEGER NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `accuracy_m` REAL, PRIMARY KEY(`source_id`))",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `source_intake_seen` (`source_id` TEXT NOT NULL, `seen_key` TEXT NOT NULL, PRIMARY KEY(`source_id`, `seen_key`))",
+        )
+    }
+}
+
+val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS `watch_bundle_receipt` (`bundle_id` TEXT NOT NULL, `sha256` TEXT NOT NULL, `seal_generation` INTEGER NOT NULL, `segment_id` TEXT NOT NULL, `committed_at` INTEGER NOT NULL, PRIMARY KEY(`bundle_id`))",
@@ -125,6 +140,6 @@ fun openSolstonePersistenceDatabase(
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .build()
 

@@ -154,6 +154,7 @@ private fun PhoneDefaultDetailPaired(
             onOpenUnknownJournal = onOpenUnknownJournal,
             onPairAgain = onPairAgain,
         )
+        PhoneIntakeStatusRows(onOpenSource, onOpenImport)
     }
 }
 

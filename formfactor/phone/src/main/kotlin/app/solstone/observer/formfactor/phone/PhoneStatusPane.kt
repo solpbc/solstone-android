@@ -144,6 +144,7 @@ fun PhoneStatusPane(
                     }
                     PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
                 }
+                PhoneIntakeStatusRows(onOpenSource, onOpenImport)
             }
         }
     }

@@ -114,14 +114,47 @@ interface CalendarDao {
         deleteCalendarsExcept(calendars.map { it.providerId }.ifEmpty { listOf(-1L) })
     }
 
+    @Query("SELECT * FROM source_intake WHERE source_id = :sourceId")
+    fun intakeBySource(sourceId: String): SourceIntakeRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertIntake(row: SourceIntakeRow)
+
+    @Query("SELECT seen_key FROM source_intake_seen WHERE source_id = :sourceId AND seen_key IN (:keys)")
+    fun intakeSeenKeys(sourceId: String, keys: List<String>): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertIntakeSeen(rows: List<SourceIntakeSeenRow>)
+
     @Transaction
-    fun stage(identities: List<CalendarIdentityRow>, intents: List<CalendarIntentRow>, settings: CalendarSettingsRow?, count: CalendarCountRow?, canCommit: () -> Boolean): Boolean {
+    fun stage(
+        identities: List<CalendarIdentityRow>,
+        intents: List<CalendarIntentRow>,
+        settings: CalendarSettingsRow?,
+        count: CalendarCountRow?,
+        canCommit: () -> Boolean,
+        addedKeys: List<String> = emptyList(),
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Boolean {
         if (!canCommit()) return false
         replaceIdentities(identities)
         if (intents.isNotEmpty()) upsertIntents(intents)
         if (settings != null) upsertSettings(settings)
         if (count != null) upsertCount(count)
+        recordCalendarIntake(addedKeys, nowEpochMs)
         return true
+    }
+
+    private fun recordCalendarIntake(addedKeys: List<String>, nowEpochMs: Long) {
+        val distinct = addedKeys.distinct()
+        if (distinct.isEmpty()) return
+        val already = intakeSeenKeys(INTAKE_CALENDAR, distinct).toSet()
+        val fresh = distinct.filter { it !in already }
+        if (fresh.isEmpty()) return
+        insertIntakeSeen(fresh.map { SourceIntakeSeenRow(INTAKE_CALENDAR, it) })
+        val existing = intakeBySource(INTAKE_CALENDAR)?.toReading()
+        val next = advanceIntake(existing, fresh.size.toLong(), nowEpochMs, nowEpochMs, touch = true) ?: return
+        upsertIntake(next.toRow(INTAKE_CALENDAR))
     }
 
     @Transaction

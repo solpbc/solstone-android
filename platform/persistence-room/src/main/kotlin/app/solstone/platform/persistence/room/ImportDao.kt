@@ -7,6 +7,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 
 @Dao
@@ -32,4 +33,21 @@ interface ImportDao {
 
     @Query("SELECT * FROM import_delivery WHERE id = 0")
     fun delivery(): ImportDeliveryRow?
+
+    @Query("SELECT * FROM source_intake WHERE source_id = :sourceId")
+    fun intakeBySource(sourceId: String): SourceIntakeRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertIntake(row: SourceIntakeRow)
+
+    /** Inserts [row] and counts it once. A row already stored is left as it is. */
+    @Transaction
+    fun insertIfNew(row: ImportItemRow, nowEpochMs: Long): Boolean {
+        if (byId(row.id) != null) return false
+        insert(row)
+        val existing = intakeBySource(INTAKE_IMPORT)?.toReading()
+        val next = advanceIntake(existing, add = 1, materialAt = row.createdAt, now = nowEpochMs, touch = true) ?: return true
+        upsertIntake(next.toRow(INTAKE_IMPORT))
+        return true
+    }
 }

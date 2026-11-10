@@ -21,6 +21,7 @@ import app.solstone.core.spool.serializeManifest
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -451,7 +452,7 @@ class SyncWithTransportTest {
             segmentRow,
             files = mapOf(segmentId to listOf(fileRow)),
         )
-        val dao = object : SegmentDao() {
+        val dao = object : SegmentDaoWithoutIntake() {
             override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
             override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit
@@ -548,7 +549,7 @@ class SyncWithTransportTest {
             segmentRow,
             files = mapOf(segmentId to listOf(fileRow)),
         )
-        val dao = object : SegmentDao() {
+        val dao = object : SegmentDaoWithoutIntake() {
             override fun insertReceipt(receipt: app.solstone.platform.persistence.room.WatchBundleReceiptRow) = Unit
             override fun receiptByBundleId(bundleId: String): app.solstone.platform.persistence.room.WatchBundleReceiptRow? = null
             override fun insertSegment(segment: SegmentRow) = Unit

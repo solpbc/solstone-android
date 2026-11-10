@@ -11,6 +11,7 @@ import java.nio.file.Path
 class SpoolRoomReconciler(
     baseDir: Path,
     private val dao: SegmentDao,
+    private val clock: () -> Long = System::currentTimeMillis,
     private val log: (String) -> Unit = {},
 ) {
     private val baseDirFile = File(baseDir.toString())
@@ -46,6 +47,7 @@ class SpoolRoomReconciler(
         val dirSegment = segmentDir.name
         val segmentId = "${parsed.manifest.key.day}/$stream/$dirSegment"
         if (dao.segmentById(segmentId) != null) return false
+        val locationFixes = readLocationFixes(segmentDir)
         dao.insertSegmentWithFiles(
             SegmentRow(
                 id = segmentId,
@@ -71,6 +73,8 @@ class SpoolRoomReconciler(
                     captureEndEpochMs = file.captureEndEpochMs,
                 )
             },
+            locationFixes,
+            clock(),
         )
         return true
     }

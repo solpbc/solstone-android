@@ -619,8 +619,8 @@ internal fun PhoneObserverScreen(
                                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                                 },
                                 onConfirmMark = onConfirmMark,
-                                defaultDetailStatus = defaultDetailStatus,
                                 onOpenImport = { detailStack = detailStack.showInDetail(PhoneRoute.Import) },
+                                defaultDetailStatus = defaultDetailStatus,
                                 onRefreshStatus = onRefreshStatus,
                                 version = version,
                                 journalVersion = status?.journalVersion,
