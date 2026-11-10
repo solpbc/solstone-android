@@ -43,6 +43,9 @@ class WatchFaceLayout(context: Context, private val onAction: () -> Unit) : Fram
     private val detailAction = Button(context).apply {
         isAllCaps = false
         textSize = 14f
+        setTextColor(Color.WHITE)
+        background = rounded(0xff303030.toInt(), 24f)
+        setPadding(dp(12), dp(4), dp(12), dp(4))
         minHeight = dp(48)
         minimumHeight = dp(48)
         visibility = View.GONE
