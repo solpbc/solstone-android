@@ -6,6 +6,7 @@ package app.solstone.observer.formfactor.phone
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.Posture
 import androidx.compose.material3.adaptive.WindowAdaptiveInfo
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -265,24 +266,54 @@ class PhoneDefaultDetailPaneTest {
         composeRule.onAllNodesWithText(text)[0].assertIsDisplayed()
     }
 
+    @Test
+    fun pairedDefaultDetailShowsJournalFactsAndOpensTechnicalDetails() {
+        val snapshot = snapshot(paired = true, online = true, pendingCount = 0)
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot),
+            journalFacts = PhoneJournalFacts(version = "2.0.73", location = "straight to your journal"))
+        composeRule.onNodeWithText("2.0.73").assertIsDisplayed()
+        composeRule.onNodeWithText("straight to your journal").assertIsDisplayed()
+        composeRule.onNodeWithTag("statusTechnicalDetails").performClick()
+        composeRule.onNodeWithTag("phoneDefaultDetail").assertDoesNotExist()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+    }
+
+    @Test
+    fun pairedDefaultDetailImportOpensImportPane() {
+        val snapshot = snapshot(paired = true, online = false, pendingCount = 1)
+        setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot),
+            imports = PhoneImportPaneState(rows = listOf(PhoneImportRow("one", "fixture.txt", ImportRowKind.WAITING))))
+        composeRule.onNodeWithTag("waitingRow-import").performClick()
+        composeRule.onNodeWithTag("phoneDefaultDetail").assertDoesNotExist()
+        composeRule.onNodeWithTag("importRow-files").assertIsDisplayed()
+        Espresso.pressBack()
+        composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()
+    }
+
     private fun setWideContent(
+        journalFacts: PhoneJournalFacts = PhoneJournalFacts(),
         status: PhoneStatusModel,
         detailStatus: PhoneDefaultDetailStatus,
         sources: List<SourceStatus> = emptyList(),
         onConnectJournal: () -> Unit = {},
         onConfirmMark: () -> Unit = {},
+        imports: PhoneImportPaneState = PhoneImportPaneState(),
     ) {
         composeRule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
-                PhoneObserverScreen(
-                    loadState = loadedSources(sources),
-                    status = status,
-                    defaultDetailStatus = detailStatus,
-                    onToggle = { _, _ -> },
-                    onStartObserving = {},
-                    onConnectJournal = onConnectJournal,
-                    onConfirmMark = onConfirmMark,
-                )
+            CompositionLocalProvider(LocalPhoneImport provides PhoneImportBinding(state = imports)) {
+                DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(WIDE_SIZE)) {
+                    PhoneObserverScreen(
+                        loadState = loadedSources(sources),
+                        status = status,
+                        defaultDetailStatus = detailStatus,
+                        journalFacts = journalFacts,
+                        onToggle = { _, _ -> },
+                        onStartObserving = {},
+                        onConnectJournal = onConnectJournal,
+                        onConfirmMark = onConfirmMark,
+                    )
+                }
             }
         }
     }

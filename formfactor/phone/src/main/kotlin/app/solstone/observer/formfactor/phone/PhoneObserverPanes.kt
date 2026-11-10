@@ -82,6 +82,7 @@ internal fun PhoneDetailPane(
     onOpenSource: (String) -> Unit,
     onConfirmMark: () -> Unit,
     defaultDetailStatus: PhoneDefaultDetailStatus,
+    onOpenImport: () -> Unit,
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier = Modifier,
     leadingSlot: (@Composable () -> Unit)? = null,
@@ -144,6 +145,7 @@ internal fun PhoneDetailPane(
             onOpenSource = onOpenSource,
             onConfirmMark = onConfirmMark,
             defaultDetailStatus = defaultDetailStatus,
+            onOpenImport = onOpenImport,
             onRefreshStatus = onRefreshStatus,
             version = version,
             journalVersion = journalVersion,
@@ -206,6 +208,7 @@ private fun PhoneDetailContent(
     onOpenSource: (String) -> Unit,
     onConfirmMark: () -> Unit,
     defaultDetailStatus: PhoneDefaultDetailStatus,
+    onOpenImport: () -> Unit,
     onRefreshStatus: (() -> Unit)?,
     modifier: Modifier,
     version: String = "",
@@ -220,6 +223,9 @@ private fun PhoneDetailContent(
     when (top) {
         null -> PhoneDefaultDetailPane(
             status = defaultDetailStatus,
+            journalFacts = journalFacts,
+            onOpenTechnicalDetails = onOpenTechnicalDetails,
+            onOpenImport = onOpenImport,
             onConnectJournal = onConnectJournal,
             onOpenSource = onOpenSource,
             onConfirmMark = onConfirmMark,
