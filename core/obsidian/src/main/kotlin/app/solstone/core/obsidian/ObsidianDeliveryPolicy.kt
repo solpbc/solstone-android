@@ -40,3 +40,10 @@ fun parseOtherObsidianVaults(status: Int, body: String): List<ExistingObsidianVa
 /** A source-only resume can acknowledge one global stop, never a later stop. */
 fun obsidianOwnerStopHolds(currentWitness: String?, acknowledgedWitness: String?): Boolean =
     currentWitness != null && currentWitness != acknowledgedWitness
+
+/** The vault list is an ingest read route and requires the same protocol header as segments. */
+fun fetchOtherObsidianVaults(client: app.solstone.core.pl.PlHttpClient): List<ExistingObsidianVault>? {
+    val response = client.request("GET", "/app/devices/ingest/obsidian/vaults",
+        mapOf("X-Solstone-Protocol-Version" to "3"), null, maxResponseBytes = 64 * 1024)
+    return parseOtherObsidianVaults(response.status, response.bodyText())
+}

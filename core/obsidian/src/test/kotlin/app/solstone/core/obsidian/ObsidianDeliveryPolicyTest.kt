@@ -5,6 +5,24 @@ package app.solstone.core.obsidian
 import kotlin.test.*
 
 class ObsidianDeliveryPolicyTest {
+    @Test fun vaultListUsesTheIngestReadProtocolBeforeAuthorizingDelivery() {
+        val journal = object : app.solstone.core.pl.PlHttpClient {
+            override fun request(method: String, path: String, headers: Map<String, String>,
+                body: ByteArray?, maxResponseBytes: Int): app.solstone.core.pl.HttpResponse {
+                assertEquals("GET", method)
+                assertEquals("/app/devices/ingest/obsidian/vaults", path)
+                assertNull(body)
+                assertTrue(maxResponseBytes <= 64 * 1024)
+                // Journal validate_protocol rejects this read route without protocol 3.
+                return if (headers["X-Solstone-Protocol-Version"] == "3")
+                    app.solstone.core.pl.HttpResponse(200, emptyMap(), """{"vaults":[]}""".toByteArray())
+                else app.solstone.core.pl.HttpResponse(400, emptyMap(), """{"reason_code":"protocol_version_required"}""".toByteArray())
+            }
+        }
+        assertEquals(400, journal.request("GET", "/app/devices/ingest/obsidian/vaults", emptyMap(), null, 64 * 1024).status)
+        assertEquals(emptyList(), fetchOtherObsidianVaults(journal))
+    }
+
     @Test fun capabilityDistinguishesOlderFromFailed() {
         assertEquals(true, parseObsidianCapability(200, """{"capabilities":["segments","obsidian_notes"]}"""))
         assertEquals(false, parseObsidianCapability(200, """{"capabilities":["segments"]}"""))

@@ -53,12 +53,12 @@ private fun rowFrom(text: String): NoteRow {
         number("reported"), number("missing"), m["removed"] as Boolean, m["sent"] as String?)
 }
 
-private data class Pending(val line: ObsidianChange, val first: Boolean, val initial: Boolean) {
-    fun encode(): String = toJson(linkedMapOf("line" to line.encode(), "first" to first, "initial" to initial))
+private data class Pending(val line: ObsidianChange, val first: Boolean, val initial: Boolean, val zoneId: String? = null) {
+    fun encode(): String = toJson(linkedMapOf("line" to line.encode(), "first" to first, "initial" to initial, "zone" to zoneId))
 }
 private fun pendingFrom(text: String): Pending {
     val m = parseJson(text) as Map<*, *>
-    return Pending(decodeObsidianChange(m["line"] as String), m["first"] as Boolean, m["initial"] as Boolean)
+    return Pending(decodeObsidianChange(m["line"] as String), m["first"] as Boolean, m["initial"] as Boolean, m["zone"] as? String)
 }
 private fun pendingKey(window: String, path: String) = "$window/$path"
 
@@ -143,7 +143,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                                 tooLarge++; progress(index + 1, notes.size); continue
                             }
                             val first = prior?.lastReportedMs == null
-                            emit(root, Pending(line, first, baseline && first), rows)
+                            emit(root, Pending(line, first, baseline && first, zone.id), rows)
                             val updated = NoteRow(entry.modifiedMs, entry.size, content.fileId, hash,
                                 java.time.OffsetDateTime.parse(stamp).toInstant().toEpochMilli(), priorSentWindow = sent)
                             if (previous != null) {
@@ -175,7 +175,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                 if (sent != null && obsidianWindowId(stamp) <= sent) stamp = obsidianStamp(now, zone)
                 if (sent != null && obsidianWindowId(stamp) <= sent) continue
                 emit(root, Pending(ObsidianChange("removed", stamp, null, obsidianStamp(row.missingMs, zone),
-                    path, null, null, vault), first = false, initial = false), rows)
+                    path, null, null, vault), first = false, initial = false, zoneId = zone.id), rows)
                 save(root, path, row.copy(removed = true, lastReportedMs = java.time.OffsetDateTime.parse(stamp).toInstant().toEpochMilli()))
                 ledger.put(root, "meta", "last_taken", now.toString()); changes++
             }
@@ -256,7 +256,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
             val groups = keys.groupBy { it.substring(0, 19) }
             for ((_, windowKeys) in groups) {
                 val first = pendingFrom(requireNotNull(ledger.get(root, "pending", windowKeys.first())))
-                val window = obsidianWindow(first.line.changedAt)
+                val window = obsidianWindow(first.line.changedAt).copy(zoneId = first.zoneId ?: zone.id)
                 if (window.endEpochMs + OBSIDIAN_CLOSE_GRACE_MS > now) continue
                 var builder = ObsidianFileBuilder(window)
                 var taken = mutableListOf<Pair<String, Pending>>()

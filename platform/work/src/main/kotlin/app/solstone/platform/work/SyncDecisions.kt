@@ -181,8 +181,14 @@ fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome
     return failures.minBy { it.severityRank() }
 }
 
-private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome): SegmentSyncResult =
-    when (outcome) {
+private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome): SegmentSyncResult {
+    // Obsidian's contract acknowledges interpreted note changes. The journal deliberately
+    // retains only its derived transcript, so its descriptors cannot match the input JSONL.
+    if (files.singleOrNull()?.sourceId == OBSIDIAN_STREAM &&
+        (outcome is IngestOutcome.Accepted || outcome is IngestOutcome.Duplicate || outcome is IngestOutcome.Collision)) {
+        return SegmentSyncResult.Uploaded
+    }
+    return when (outcome) {
         is IngestOutcome.Accepted -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Collision -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Duplicate -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
@@ -196,6 +202,7 @@ private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome
         is IngestOutcome.MalformedResponse -> SegmentSyncResult.Retry(null, "retry")
         is IngestOutcome.Rejected -> resolveRejected(outcome.status, outcome.body)
     }
+}
 
 private fun String.toCustodyResult(): SegmentSyncResult =
     when (this) {

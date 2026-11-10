@@ -14,6 +14,16 @@ class ObsidianEngineTest {
         requireNotNull(s.batchBytes(batch.root, batch.name)).toString(Charsets.UTF_8).lineSequence()
             .filter { it.isNotEmpty() }.map(::decodeObsidianChange).toList()
     }
+    @Test fun aWaitingWindowKeepsItsIanaZoneAcrossProcessAndZoneChanges() {
+        val s = MemoryLedger()
+        ObsidianEngine(s, zone).scan("a", "Notes", listOf(entry("a.md")), t,
+            { ObsidianRead.Stable("first") })
+        ObsidianEngine(s, ZoneId.of("Asia/Tokyo")).closeDueWindows(t + 300_000)
+        val keys = s.batches().single().keys
+        assertEquals("America/Denver", keys.zoneId)
+        assertEquals(-7 * 3600, keys.utcOffsetSeconds)
+        assertEquals("094000_300", keys.segment)
+    }
     @Test fun goldenWireBytes() {
         val bytes = requireNotNull(javaClass.getResourceAsStream("/obsidian-notes-v1.jsonl")).readBytes()
         val encoded = bytes.toString(Charsets.UTF_8).lineSequence().filter { it.isNotEmpty() }

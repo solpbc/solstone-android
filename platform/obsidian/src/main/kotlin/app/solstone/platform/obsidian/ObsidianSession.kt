@@ -186,8 +186,7 @@ class ObsidianSession(
         val names = ledger.batches().map { it.vault }.distinct()
         val pending = names.filter { name -> ledger.get(global, "authorizations", authorizationKey(pairingKey, name)) == null }
         if (pending.isNotEmpty()) {
-            val response = client.request("GET", "/app/devices/ingest/obsidian/vaults", emptyMap(), null, maxResponseBytes = 64 * 1024)
-            val listed = parseOtherObsidianVaults(response.status, response.bodyText()) ?: return@blocking false
+            val listed = fetchOtherObsidianVaults(client) ?: return@blocking false
             if (!pairingCurrent()) return@blocking false
             for (name in pending) {
                 val token = authorizationKey(pairingKey, name)
