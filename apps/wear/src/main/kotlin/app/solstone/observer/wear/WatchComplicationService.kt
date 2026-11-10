@@ -3,8 +3,6 @@
 package app.solstone.observer.wear
 
 import app.solstone.core.watch.courier.WatchCourierStrings
-import android.app.PendingIntent
-import android.content.Intent
 import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.*
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
@@ -20,5 +18,5 @@ class WatchComplicationService : SuspendingComplicationDataSourceService() {
         PlainComplicationText.Builder("?").build(),
         PlainComplicationText.Builder("session status unknown. open ${WatchCourierStrings.SOLSTONE}").build()
     ).setMonochromaticImage(MonochromaticImage.Builder(Icon.createWithResource(this,R.drawable.complication_unknown)).build())
-        .setTapAction(PendingIntent.getActivity(this,0,Intent(this,WearMainActivity::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build()
+        .setTapAction(wearOpenFaceIntent(this)).build()
 }

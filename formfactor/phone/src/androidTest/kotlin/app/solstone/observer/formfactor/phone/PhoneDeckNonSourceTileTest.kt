@@ -195,7 +195,7 @@ class PhoneDeckNonSourceTileTest {
             ),
         )
 
-        composeRule.onNodeWithText("needs attention").assertIsDisplayed()
+        composeRule.onNodeWithText("needs attention", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("1 needs attention").assertDoesNotExist()
         composeRule.onNodeWithText("need attention").assertDoesNotExist()
         composeRule.onNodeWithTag("importTile-solid", useUnmergedTree = true).assertIsDisplayed()

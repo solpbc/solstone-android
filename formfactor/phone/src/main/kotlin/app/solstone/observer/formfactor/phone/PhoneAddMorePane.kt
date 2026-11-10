@@ -27,7 +27,7 @@ fun PhoneAddMorePane(
     extraSourceIds: List<String> = emptyList(),
     sources: List<SourceStatus> = emptyList(),
 ) {
-    val ids = ((if (sources.isEmpty()) phoneSourceLabels.keys.toList() else sources.map { it.sourceId }) + extraSourceIds).distinct()
+    val ids = (phoneSourceLabels.keys + sources.map { it.sourceId } + extraSourceIds).distinct()
     val byId = sources.associateBy { it.sourceId }
     val notOnHome = ids.filterNot(isOnHome)
     val onHome = ids.filter(isOnHome)
