@@ -50,8 +50,8 @@ class SourceIntakeInstrumentedTest {
     @Test
     fun aLaterOlderSegmentDoesNotMoveStartedOrLast() {
         val dao = db.segmentDao()
-        dao.insertSegmentWithFiles(segment("new"), listOf(audio("new", end = 10_000L)), emptyList(), now = 9_000L)
-        dao.insertSegmentWithFiles(segment("old"), listOf(audio("old", end = 4_000L)), emptyList(), now = 20_000L)
+        dao.insertSegmentWithFiles(segment("new"), listOf(audio("new", end = 10_000L)), emptyList(), nowEpochMs = 9_000L)
+        dao.insertSegmentWithFiles(segment("old"), listOf(audio("old", end = 4_000L)), emptyList(), nowEpochMs = 20_000L)
 
         val row = dao.intakeBySource(INTAKE_AUDIO)
         assertEquals(14L, row?.total)
@@ -194,7 +194,7 @@ class SourceIntakeInstrumentedTest {
     private fun latitudeDegrees(metres: Double): Double = metres / (6_371_000.0 * Math.PI / 180.0)
 
     private fun assertNear(metres: Double, millimetres: Long?) {
-        assertTrue(millimetres != null)
-        assertTrue(abs(millimetres - metres * 1_000.0) <= 1_000.0)
+        val value = checkNotNull(millimetres)
+        assertTrue(abs(value - metres * 1_000.0) <= 1_000.0)
     }
 }
