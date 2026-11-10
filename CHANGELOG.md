@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- a finished recording shorter than a second now counts. status and the source page say less than a minute, instead of nothing yet.
+- status lists what is waiting, then each source, then the details about your journal. at larger text the list scrolls, so those details stay in reach.
+
 ## [2.1.41] - 2026-11-10
 
 ### Added

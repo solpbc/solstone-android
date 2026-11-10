@@ -120,13 +120,45 @@ class SourceIntakeTest {
     }
 
     @Test
-    fun subSecondAudioDoesNotOpenARow() {
-        val deltas = segmentIntakeDeltas(
-            listOf(file("audio", "audio.m4a", start = 0, end = 999, bytes = 10)),
+    fun aFinishedSubSecondSpanOpensTheRowAndFilesFloorOnce() {
+        val one = segmentIntakeDeltas(
+            listOf(file("audio", "audio.m4a", start = 0, end = 400, bytes = 10)),
             emptyList(),
             anchor = null,
         )
-        assertTrue(deltas.isEmpty())
+        assertEquals(1, one.size)
+        assertEquals(INTAKE_AUDIO, one[0].sourceId)
+        assertEquals(1L, one[0].add)
+        assertEquals(400L, one[0].materialAt)
+
+        val underASecond = segmentIntakeDeltas(
+            listOf(
+                file("audio", "a.m4a", start = 0, end = 400, bytes = 10),
+                file("audio", "b.m4a", start = 400, end = 800, bytes = 10),
+            ),
+            emptyList(),
+            anchor = null,
+        )
+        assertEquals(1L, underASecond.single().add)
+
+        val floored = segmentIntakeDeltas(
+            listOf(
+                file("screen", "a.mp4", start = 0, end = 1_900, bytes = 10),
+                file("screen", "b.mp4", start = 1_900, end = 3_800, bytes = 10),
+            ),
+            emptyList(),
+            anchor = null,
+        )
+        assertEquals(INTAKE_SCREEN, floored.single().sourceId)
+        assertEquals(3L, floored.single().add)
+        assertEquals(3_800L, floored.single().materialAt)
+
+        val empty = segmentIntakeDeltas(
+            listOf(file("audio", "empty.m4a", start = 5, end = 5, bytes = 10)),
+            emptyList(),
+            anchor = null,
+        )
+        assertTrue(empty.isEmpty())
     }
 
     @Test

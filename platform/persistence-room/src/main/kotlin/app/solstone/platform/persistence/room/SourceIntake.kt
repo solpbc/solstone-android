@@ -83,18 +83,23 @@ fun segmentIntakeDeltas(
     return deltas
 }
 
+/**
+ * Sum each file's span in milliseconds, then floor once.
+ * A finished span over zero counts as at least one second.
+ */
 private fun durationDelta(files: List<SegmentFileRow>, sourceId: String): IntakeDelta? {
-    var seconds = 0L
+    var millis = 0L
     var materialAt = Long.MIN_VALUE
     for (row in files) {
         if (row.sourceId != sourceId) continue
         val span = row.captureEndEpochMs - row.captureStartEpochMs
         if (span <= 0L) continue
-        seconds += span / 1000L
+        millis += span
         if (row.captureEndEpochMs > materialAt) materialAt = row.captureEndEpochMs
     }
-    if (seconds <= 0L) return null
-    return IntakeDelta(sourceId, seconds, materialAt, null)
+    if (millis <= 0L) return null
+    val seconds = millis / 1000L
+    return IntakeDelta(sourceId, if (seconds == 0L) 1L else seconds, materialAt, null)
 }
 
 private fun cameraDelta(files: List<SegmentFileRow>): IntakeDelta? {
