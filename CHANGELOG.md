@@ -6,16 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
 - bring notes from an Obsidian vault on android into your journal. choose a vault in device storage; the app checks it when open and in the background. android may delay background checks.
 
 ### Fixed
 
 - after you finish or cancel a pairing link opened from outside the app, updating or reopening the app no longer opens that link again.
 
-- status shows how much each source has taken in so far, and when it last did. the same two lines are on each source, on calendar, and on import.
+## [2.1.41] - 2026-11-09
+
+### Added
+
+- status shows how much each source has taken in so far, and when it last did. the same two lines are on each source's page, on calendar, and on import.
+
+### Changed
+
 - a source that needs attention says so on its tile. that line is no longer repeated under the greeting.
-- import matches the other tiles. each row in add more shows that source, with the same word its tile uses.
-- on a tablet, status shows your journal's version and connection details. technical details and import open from there.
+- the import tile now looks like the other tiles. each row in "add more" now shows its source's icon and state, in the same word its tile uses.
+
+### Fixed
+
+- on a tablet, status shows your journal's version and connection details. technical details and import open from there. before, they read "unknown" and a dash, and technical details didn't open.
 - your journal in the app now follows your phone's light or dark setting. it was always dark, even with the phone in light mode.
 - changing your phone's light or dark setting no longer closes your journal. it stays open on the page you were on.
 
