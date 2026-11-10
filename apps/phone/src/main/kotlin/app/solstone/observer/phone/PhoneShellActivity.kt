@@ -355,6 +355,23 @@ class PhoneShellActivity : ComponentActivity() {
             stores.journalConfirmationStore,
         )
 
+    // Only a newly created root VIEW has the default shell underneath its pairing flow.
+    // Warm arrivals keep their existing task/navigation. Persist this across rotation, not links.
+    private var initialPairingTask = false
+
+    private fun consumeInitialPairingTask() {
+        if (!initialPairingTask || isFinishing || isDestroyed) return
+        val main = Intent(applicationContext, PhoneShellActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        initialPairingTask = false
+        // Clearing activities alone can retain the old task's base VIEW intent.
+        finishAndRemoveTask()
+        applicationContext.startActivity(main)
+    }
+
     private fun handleIntent(intent: Intent?, cold: Boolean) {
         if (intent == null) return
         val rawData = intent.data?.toString()
@@ -399,6 +416,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_INITIAL_PAIRING_TASK, initialPairingTask)
         // A rotation or an appearance change rebuilds this activity, and the journal stays open on
         // the page it was showing. Only then: a journal reopening by itself after the process was
         // gone is not something the owner asked for.
@@ -411,6 +429,8 @@ class PhoneShellActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        initialPairingTask = savedInstanceState?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
+            ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null)
         val app = application as ObserverApplication
         val runtime = ObserverHarnessRuntime.runtime ?: app.runtime.also {
             ObserverHarnessRuntime.runtime = it
@@ -965,6 +985,13 @@ class PhoneShellActivity : ComponentActivity() {
                 null -> "the event log couldn't be read."
             }
             val pairingOpen = pairingViewModel.pairingState.session !is PhonePairingSession.Closed
+            LaunchedEffect(pairingViewModel.pairingState.session, pairingViewModel.inFlightPairAttempts,
+                pairingSnapshot, journalConfirmed) {
+                if (initialPairingTask && !pairingOpen && pairingViewModel.inFlightPairAttempts == 0 &&
+                    !isAwaitingMarkConfirmation()) {
+                    consumeInitialPairingTask()
+                }
+            }
             val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
             val aboutFacts = remember { readAndroidAboutFacts(this) }
             val distanceSystem = remember {
@@ -1982,6 +2009,7 @@ class PhoneShellActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_MARK = "app.solstone.observer.phone.EXTRA_OPEN_MARK"
         private const val CAMERA_FOR_SCAN_REQUEST = 12
+        private const val STATE_INITIAL_PAIRING_TASK = "initial_pairing_task"
         private const val STATE_JOURNAL_OPEN = "journal_open"
         private const val STATE_JOURNAL_PATH = "journal_path"
         internal var promptedConfirmationThisProcess = false
