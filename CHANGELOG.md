@@ -10,6 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- after you finish or cancel a pairing link opened from outside the app, updating or reopening the app no longer opens that link again.
+
 - status shows how much each source has taken in so far, and when it last did. the same two lines are on each source, on calendar, and on import.
 - a source that needs attention says so on its tile. that line is no longer repeated under the greeting.
 - import matches the other tiles. each row in add more shows that source, with the same word its tile uses.

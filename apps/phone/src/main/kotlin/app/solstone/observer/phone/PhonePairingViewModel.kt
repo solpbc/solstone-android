@@ -18,6 +18,7 @@ import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.scaffold.CameraAsk
 import app.solstone.platform.work.SyncStores
 import app.solstone.core.identity.PairingGraphSnapshot
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -30,6 +31,17 @@ class PhonePairingViewModel : ViewModel() {
         private set
 
     var cameraAsk by mutableStateOf(CameraAsk.NotAsked)
+    var inFlightPairAttempts by mutableStateOf(0)
+        private set
+
+    /** UI cancellation does not cancel an owner-approved dial or its durable result. */
+    internal fun launchPairAttempt(operation: suspend () -> Unit): Job {
+        inFlightPairAttempts += 1
+        return viewModelScope.launch {
+            try { operation() } finally { inFlightPairAttempts -= 1 }
+        }
+    }
+
     internal enum class ActionKind { MISMATCH, CONFIRM }
     private data class OwnerAction(val kind: ActionKind, val task: Deferred<Boolean>)
     private var ownerAction by mutableStateOf<OwnerAction?>(null)
@@ -147,11 +159,9 @@ class PhonePairingViewModel : ViewModel() {
         val dial = step.dial
         if (dial != null) {
             val generation = step.state.generation
-            viewModelScope.launch(Dispatchers.IO) {
-                val result = controller.dispatchPairLink(dial)
-                withContext(Dispatchers.Main) {
-                    dispatch(PhonePairingEvent.AttemptFinished(generation, result), controller, stores)
-                }
+            launchPairAttempt {
+                val result = withContext(Dispatchers.IO) { controller.dispatchPairLink(dial) }
+                dispatch(PhonePairingEvent.AttemptFinished(generation, result), controller, stores)
             }
         }
     }
