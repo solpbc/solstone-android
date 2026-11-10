@@ -102,6 +102,12 @@ class ContinuousAudioRecorder(
             device.prepare(onError = {
                 stop(WindowPumpStopReason.SENSOR_FAILURE)
             })
+            // Register before start so the initial native configuration cannot be missed.
+            clientSilenced = device.registerSilenceCallback { silenced ->
+                clientSilenced = silenced
+                onSessionStatusChanged()
+            }
+
             val audioStream = device.start()
             startedAtEpochMs = System.currentTimeMillis()
             startedAtElapsedMs = elapsedClock()
@@ -111,11 +117,6 @@ class ContinuousAudioRecorder(
             startSucceeded = true
             terminalReason = null
             lastInputTimestampEpochMs = null
-
-            clientSilenced = device.registerSilenceCallback { silenced ->
-                clientSilenced = silenced
-                onSessionStatusChanged()
-            }
 
             spoolStore.startOpenSession(ZoneId.systemDefault())
             windowPump.start(System.currentTimeMillis())

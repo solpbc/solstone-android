@@ -26,6 +26,7 @@ class ContinuousAudioRecorderTest {
         var throwOnStart: Throwable? = null,
         var initialSilenced: Boolean = false,
         var customInputStream: InputStream? = null,
+        var silenceReportedDuringStart: Boolean? = null,
     ) : AudioCaptureDevice {
         var prepared = false
         var started = false
@@ -43,6 +44,7 @@ class ContinuousAudioRecorderTest {
         override fun start(): InputStream {
             throwOnStart?.let { throw it }
             this.started = true
+            silenceReportedDuringStart?.let { silenceCallback?.invoke(it) }
             return customInputStream ?: ByteArrayInputStream(ByteArray(0))
         }
 
@@ -92,6 +94,35 @@ class ContinuousAudioRecorderTest {
         header[6] = 0xFC.toByte()
         System.arraycopy(payload, 0, header, 7, payload.size)
         return header
+    }
+
+    @Test
+    fun nativeConfigurationEmittedDuringStartIsNotMissedOrOverwritten() {
+        val tempDir = Files.createTempDirectory("recorder-initial-config").toFile()
+        val input = PipedInputStream(PipedOutputStream())
+        val device = FakeAudioCaptureDevice(
+            initialSilenced = true,
+            customInputStream = input,
+            silenceReportedDuringStart = false,
+        )
+        val recorder = ContinuousAudioRecorder(
+            context = createTestContext(tempDir),
+            spoolStore = WatchSpoolStore(tempDir),
+            captureDeviceFactory = { device },
+            elapsedClock = { System.nanoTime() / 1_000_000L },
+        )
+        try {
+            recorder.start()
+            assertTrue(recorder.snapshot().startSucceeded)
+            assertFalse(recorder.snapshot().clientSilenced, "Native start configuration must replace the unknown initial state")
+            device.triggerSilenceChanged(true)
+            assertTrue(recorder.snapshot().clientSilenced)
+            device.triggerSilenceChanged(false)
+            assertFalse(recorder.snapshot().clientSilenced)
+        } finally {
+            recorder.stop()
+            input.close()
+        }
     }
 
     @Test

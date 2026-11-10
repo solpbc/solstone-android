@@ -64,16 +64,9 @@ class RealAudioCaptureDevice(private val context: Context) : AudioCaptureDevice 
 
         val callback = object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
-                val targetSessionId = try {
-                    mr.activeRecordingConfiguration?.clientAudioSessionId
-                } catch (_: Exception) {
-                    null
-                } ?: return
-
-                val matching = configs?.firstOrNull { it.clientAudioSessionId == targetSessionId }
-                if (matching != null) {
-                    onSilencedChanged(matching.isClientSilenced)
-                }
+                // MediaRecorder delivers only this recorder's configuration. Re-querying
+                // its active configuration here can race the native start notification.
+                onSilencedChanged(configs?.singleOrNull()?.isClientSilenced ?: true)
             }
         }
 
