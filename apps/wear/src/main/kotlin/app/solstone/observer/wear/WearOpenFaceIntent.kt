@@ -4,6 +4,7 @@ package app.solstone.observer.wear
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -23,11 +24,9 @@ internal fun wearOpenFaceIntent(context: Context): PendingIntent {
     } else null
     return PendingIntent.getActivity(
         context,
-        // A distinct key replaces the earlier opener whose cached PendingIntent
-        // has no creator opt-in; UPDATE_CURRENT does not replace its options.
-        1,
-        Intent(context, WearMainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        2,
+        Intent.makeMainActivity(ComponentName(context, WearMainActivity::class.java)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         options,

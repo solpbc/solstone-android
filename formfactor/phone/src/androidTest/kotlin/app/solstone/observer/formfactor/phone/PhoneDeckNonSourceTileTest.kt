@@ -198,8 +198,11 @@ class PhoneDeckNonSourceTileTest {
         composeRule.onNodeWithText("needs attention", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("1 needs attention").assertDoesNotExist()
         composeRule.onNodeWithText("need attention").assertDoesNotExist()
-        composeRule.onNodeWithTag("importTile-solid", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("addMoreTile-dashed", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("importTile").assertIsDisplayed()
+        composeRule.onNodeWithTag("addMoreTile").assertIsDisplayed()
+        // These zero-size markers identify the border drawn by each visible tile.
+        composeRule.onNodeWithTag("importTile-solid", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("addMoreTile-dashed", useUnmergedTree = true).assertExists()
     }
 
     @Test
