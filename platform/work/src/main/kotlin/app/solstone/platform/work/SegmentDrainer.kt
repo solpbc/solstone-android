@@ -12,6 +12,8 @@ import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.JournalCachePathRefusal
@@ -53,7 +55,7 @@ interface DrainStore {
 class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
     override fun syncState(): SyncStateRow? = dao.syncState()
     override fun segmentsForDrain(): List<SegmentRow> =
-        (dao.segmentsForDrain(MAIN_STREAM) + dao.segmentsForDrain(CALENDAR_STREAM))
+        DELIVERY_STREAMS.flatMap(dao::segmentsForDrain)
             .sortedWith(compareBy({ it.sealedAt }, { it.id }))
     override fun filesBySegmentId(id: String): List<SegmentFileRow> = dao.filesBySegmentId(id)
     override fun advanceState(id: String, event: QueueEvent): QueueState = dao.advanceState(id, event)
@@ -78,6 +80,8 @@ internal fun drainSegments(
     pairingCurrent: () -> Boolean = { true },
     homeInstanceId: String? = null,
     postCalendar: Boolean = true,
+    postObsidian: Boolean = true,
+    obsidianCurrent: () -> Boolean = { true },
 ): DrainReport {
     val syncState = store.syncState()
     val priorLastSuccessAt = syncState?.lastSuccessAt
@@ -99,6 +103,7 @@ internal fun drainSegments(
         val due = selectDrainSegments(store.segmentsForDrain(), now(), homeInstanceId)
             .filter { it.id !in taken }
             .filter { postCalendar || it.stream != CALENDAR_STREAM }
+            .filter { it.stream != OBSIDIAN_STREAM || (postObsidian && obsidianCurrent()) }
         if (due.isEmpty()) break
         val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
         if (due.size > selected.size) dueRemaining = true
@@ -139,6 +144,7 @@ internal fun drainSegments(
                     break
                 }
                 val manifest = manifests.getValue(segment)
+                if (segment.stream == OBSIDIAN_STREAM && !obsidianCurrent()) continue
                 if (!claimForUpload(store, segment, log)) {
                     failedThisRun = true
                     continue
@@ -234,7 +240,7 @@ internal fun drainSegments(
         if (dueRemaining) break
     }
 
-    val pendingAfter = store.pendingCount(MAIN_STREAM) + store.pendingCount(CALENDAR_STREAM)
+    val pendingAfter = DELIVERY_STREAMS.sumOf(store::pendingCount)
     val cleanDrain = !halted && !failedThisRun && !pairingLeft && pendingAfter == 0
     val workOutcome = when {
         halted -> SyncOutcome.FAILURE

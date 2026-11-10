@@ -39,6 +39,7 @@ val phoneSpec = FormFactorSpec(
     matchForegroundTypesToWishes = true,
     registerScreenSource = true,
     registerCalendarSource = true,
+    registerObsidianSource = true,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {
             arrayOf(

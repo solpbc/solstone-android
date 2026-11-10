@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":platform:obsidian"))
     api("androidx.work:work-runtime:2.9.1")
     api(project(":core:push"))
     implementation(project(":platform:persistence-room"))

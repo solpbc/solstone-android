@@ -371,6 +371,7 @@ dependencies {
     implementation(project(":platform:work"))
     implementation(project(":platform:persistence-room"))
     implementation(project(":platform:calendar"))
+    implementation(project(":platform:obsidian"))
     implementation(project(":core:observer"))
     implementation(project(":formfactor:phone"))
     implementation(project(":harness"))

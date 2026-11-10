@@ -58,6 +58,10 @@ fun createCaptureSetup(
     registerScreenSource: Boolean = false,
     registerCalendarSource: Boolean = false,
     calendarNeedsAttention: () -> Boolean = { false },
+    registerObsidianSource: Boolean = false,
+    obsidianNeedsAttention: () -> Boolean = { false },
+    obsidianHasAccess: () -> Boolean = { false },
+    obsidianPaused: () -> Boolean = { false },
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
@@ -149,7 +153,7 @@ fun createCaptureSetup(
             )
         } + listOfNotNull(
             if (registerCalendarSource) {
-                val calendar = InertCalendarEngine(storageStatus::isStorageOk, calendarNeedsAttention)
+                val calendar = PassiveSourceEngine(storageStatus::isStorageOk, calendarNeedsAttention)
                 SourceRegistration(
                     sourceId = "calendar",
                     engine = calendar,
@@ -164,6 +168,17 @@ fun createCaptureSetup(
             } else {
                 null
             },
+            if (registerObsidianSource) {
+                val notes = PassiveSourceEngine(storageStatus::isStorageOk, obsidianNeedsAttention, obsidianPaused)
+                SourceRegistration(
+                    sourceId = app.solstone.core.sources.OBSIDIAN_STREAM,
+                    engine = notes,
+                    requiredPermissionsGranted = { obsidianHasAccess() },
+                    captureForegroundType = null,
+                    reasonWhenOff = notes::reasonWhenOff,
+                    runsWithoutObserver = true,
+                )
+            } else null,
             screen?.let { s ->
                 SourceRegistration(
                     sourceId = ScreenConstants.SOURCE_ID,

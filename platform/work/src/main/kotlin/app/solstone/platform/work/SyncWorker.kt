@@ -497,6 +497,13 @@ private fun sync(
                         )
                     }
                 },
+                obsidianCurrent = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.allowsDelivery() == true },
+                prepareObsidian = { connected, pairingNow ->
+                    val source = app.solstone.platform.obsidian.ObsidianRuntimes.current
+                        ?: (context?.applicationContext as? app.solstone.platform.obsidian.ObsidianWorkerHost)?.obsidianSessionForWork()
+                    source?.prepareDelivery(connected,
+                        credentials.identity.instanceId + ":" + credentials.identity.caChainFingerprint, pairingNow) == true
+                },
                 onCalendarCapability = capabilityDb?.let { calendarDb ->
                     { notes ->
                         calendarDb.calendarDao().upsertCapability(

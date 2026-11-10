@@ -21,6 +21,8 @@ import app.solstone.core.pl.fetchCalendarCapability
 import app.solstone.core.pl.journalRefusalIn
 import app.solstone.core.pl.unknownJournalIn
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.DELIVERY_STREAMS
 
 internal fun <C> syncWithTransport(
     transport: SyncTransport,
@@ -41,6 +43,8 @@ internal fun <C> syncWithTransport(
     importStage: ((PlHttpClient, () -> Boolean) -> ImportStageResult)? = null,
     attempt: JournalAttempt? = null,
     onCalendarCapability: ((Boolean) -> Unit)? = null,
+    prepareObsidian: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
+    obsidianCurrent: () -> Boolean = { true },
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val legs = attempt ?: JournalAttempt.untracked(PairingGeneration("", ""))
     val client = try {
@@ -105,6 +109,11 @@ internal fun <C> syncWithTransport(
                         CalendarCapabilityRead.Failed -> false
                     }
                 }
+                val postObsidian = if (dueNow.none { it.stream == OBSIDIAN_STREAM }) false else {
+                    try { prepareObsidian?.invoke(c, pairingCurrent) == true }
+                    catch (e: RelayWebSocketClosedException) { throw e }
+                    catch (e: Exception) { log("Obsidian delivery check failed", e); false }
+                }
                 val report = drainSegments(
                     store = store,
                     reconcile = SegmentReconciler(c)::diff,
@@ -124,6 +133,8 @@ internal fun <C> syncWithTransport(
                     pairingCurrent = pairingCurrent,
                     homeInstanceId = homeInstanceId,
                     postCalendar = postCalendar,
+                    postObsidian = postObsidian,
+                    obsidianCurrent = obsidianCurrent,
                 )
                 if (report.halted) onRefused()
                 if (imports == ImportStageResult.RETRY && report.workOutcome == SyncOutcome.SUCCESS) {

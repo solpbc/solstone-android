@@ -15,6 +15,8 @@ import app.solstone.core.pl.parseJson
 import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
@@ -28,7 +30,7 @@ fun isRetryDue(
     lastError: String? = null,
     now: Long,
 ): Boolean {
-    if (lastError == "removed_in_journal" || lastError == "calendar_note_invalid") return false
+    if (lastError == "removed_in_journal" || lastError == "calendar_note_invalid" || lastError == "obsidian_note_invalid") return false
     return when (state) {
         QueueState.SEALED,
         QueueState.UPLOADING -> true
@@ -61,14 +63,19 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long =
  * recorded) is due at once: the journal the device is paired with now gets its own first try,
  * and no journal the owner has left decides when it comes.
  */
-fun selectDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> =
-    segments.filter {
-        (it.stream == MAIN_STREAM || it.stream == CALENDAR_STREAM) &&
-            (
-                isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
-                    failedAtAnotherJournal(it, homeInstanceId)
-                )
+fun selectDrainSegments(segments: List<SegmentRow>, now: Long, homeInstanceId: String? = null): List<SegmentRow> {
+    // Only the oldest undelivered Obsidian window can run. Backoff on that window
+    // holds later changes; otherwise a later edit can make an earlier rename stale.
+    val obsidianHead = segments.filter { it.stream == OBSIDIAN_STREAM &&
+        it.state in setOf(QueueState.SEALED, QueueState.UPLOADING, QueueState.FAILED) &&
+        it.lastError !in setOf("removed_in_journal", "obsidian_note_invalid") }
+        .minWithOrNull(compareBy({ it.day }, { it.segment }, { it.sealedAt }, { it.id }))?.id
+    return segments.filter {
+        it.stream in DELIVERY_STREAMS && (it.stream != OBSIDIAN_STREAM || it.id == obsidianHead) &&
+            (isRetryDue(it.state, it.attemptCount, it.lastAttemptAt, it.lastStatusCode, it.lastError, now) ||
+                failedAtAnotherJournal(it, homeInstanceId))
     }
+}
 
 /** The attempt count a new attempt at [homeInstanceId] records: back-off starts over at a new journal. */
 fun nextAttemptCount(segment: SegmentRow, homeInstanceId: String?): Int =
@@ -78,6 +85,7 @@ private fun failedAtAnotherJournal(segment: SegmentRow, homeInstanceId: String?)
     segment.state == QueueState.FAILED &&
         segment.lastError != "removed_in_journal" &&
         segment.lastError != "calendar_note_invalid" &&
+        segment.lastError != "obsidian_note_invalid" &&
         segment.homeInstanceId != homeInstanceId
 
 fun reconstructManifest(
@@ -152,7 +160,7 @@ fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): Strin
 
 fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome>): SegmentSyncResult {
     val batches = manifest.files.groupBy(BundleFile::sourceId).flatMap { (sourceId, files) ->
-        if (sourceId == CALENDAR_STREAM) files.map { listOf(it) } else listOf(files)
+        if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM) files.map { listOf(it) } else listOf(files)
     }
     val results = mutableListOf<SegmentSyncResult>()
     for (i in batches.indices) {
@@ -179,8 +187,8 @@ private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome
         is IngestOutcome.Collision -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Duplicate -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Failed ->
-            if (outcome.detail == "calendar_note_invalid") {
-                SegmentSyncResult.NeedsAttention("calendar_note_invalid")
+            if (outcome.detail in setOf("calendar_note_invalid", "obsidian_note_invalid")) {
+                SegmentSyncResult.NeedsAttention(requireNotNull(outcome.detail))
             } else {
                 SegmentSyncResult.HardFail(200, "hard failure")
             }
@@ -205,6 +213,10 @@ private fun resolveRejected(status: Int, body: String): SegmentSyncResult {
     }
     if (status == 500 && root?.get("reason_code") == "segment_removed") {
         return SegmentSyncResult.JournalRemoved(500)
+    }
+    if (root?.get("reason_code") == "obsidian_note_ahead") return SegmentSyncResult.Retry(status, "obsidian_note_ahead")
+    if (root?.get("reason_code") == "obsidian_note_invalid" || root?.get("detail") == "obsidian_note_invalid") {
+        return SegmentSyncResult.NeedsAttention("obsidian_note_invalid")
     }
     if (root != null && calendarNoteInvalid(root)) {
         return SegmentSyncResult.NeedsAttention("calendar_note_invalid")

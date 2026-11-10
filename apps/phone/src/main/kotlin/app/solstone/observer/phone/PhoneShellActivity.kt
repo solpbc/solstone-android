@@ -9,6 +9,10 @@ import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
 import app.solstone.observer.formfactor.phone.PhoneCalendarPaneState
 import app.solstone.observer.formfactor.phone.PhoneCalendarRow
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
+import app.solstone.observer.formfactor.phone.LocalPhoneObsidian
+import app.solstone.observer.formfactor.phone.PhoneObsidianBinding
+import app.solstone.observer.formfactor.phone.PhoneObsidianState
+import app.solstone.platform.obsidian.ObsidianRuntimes
 import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
 
@@ -199,6 +203,42 @@ class PhoneShellActivity : ComponentActivity() {
     private var repairMemory = JournalPushRepairMemory()
     private var importBinding by mutableStateOf(PhoneImportBinding())
     private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
+    private var obsidianPaneState by mutableStateOf(PhoneObsidianState())
+    private val obsidianFolderLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.data?.let { ObsidianRuntimes.current?.choose(it) }
+    }
+    private fun chooseObsidianFolder() {
+        obsidianFolderLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+            putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADocuments"))
+        })
+    }
+    private fun enableObsidian() {
+        val source = ObsidianRuntimes.current
+        if (source == null || !source.ui.configured || source.ui.fault == "access_lost") chooseObsidianFolder()
+        else source.turnOn()
+    }
+    private fun attachObsidianUi() {
+        val source = ObsidianRuntimes.current ?: return
+        fun publish() {
+            val value = source.ui
+            obsidianPaneState = PhoneObsidianState(
+                configured = value.configured, enabled = value.enabled, paused = value.paused,
+                settingUp = value.settingUp, vault = value.vault, lastChecked = value.lastChecked,
+                pending = value.pending, initialDone = value.initialDone, initialTotal = value.initialTotal,
+                tooLarge = value.tooLarge, unavailable = value.unavailable, fault = value.fault,
+                capability = value.capability, warningVault = value.warning?.vault,
+                warningDevice = value.warning?.device, warningDate = value.warning?.lastSynced,
+                soFar = value.soFar, started = value.started, lastTaken = value.lastTaken,
+            )
+        }
+        publish()
+        source.setListener { mainHandler.post { publish() } }
+    }
+
     private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
     private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> takePicked(uris) }
@@ -391,6 +431,8 @@ class PhoneShellActivity : ComponentActivity() {
         }
         container = runtime.container()
         attachCalendarUi()
+        attachObsidianUi()
+        ObsidianRuntimes.current?.onForeground(true)
         stores = syncStores(applicationContext)
         pairingViewModel = ViewModelProvider(this)[PhonePairingViewModel::class.java]
         hasCameraPermission = hasCamera()
@@ -930,6 +972,18 @@ class PhoneShellActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalPhoneImport provides importBinding,
                 LocalPhoneCalendar provides calendarBinding,
+                LocalPhoneObsidian provides PhoneObsidianBinding(
+                    state = obsidianPaneState,
+                    onChoose = { chooseObsidianFolder() }, onEnable = { enableObsidian() },
+                    onOff = { ObsidianRuntimes.current?.turnOff() }, onPause = { ObsidianRuntimes.current?.pause() },
+                    onResume = {
+                        ownerStopped.clear()
+                        ObsidianRuntimes.current?.resume()
+                    },
+                    onRetry = { ObsidianRuntimes.current?.check() },
+                    onContinue = { ObsidianRuntimes.current?.continueWarning() },
+                    onCancel = { ObsidianRuntimes.current?.cancelWarning() },
+                ),
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
             ) {
             PhoneObserverScreen(
@@ -1469,6 +1523,10 @@ class PhoneShellActivity : ComponentActivity() {
      * prompt are one owner action.
      */
     private fun onSourceWish(sourceId: String, wish: SourceWish) {
+        if (sourceId == "obsidian") {
+            if (wish == SourceWish.On) enableObsidian() else ObsidianRuntimes.current?.turnOff()
+            return
+        }
         PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=${wish.name.lowercase()}")
         if (wish == SourceWish.On) {
             val prior = priorWishFor(sourceId)
@@ -1718,6 +1776,8 @@ class PhoneShellActivity : ComponentActivity() {
         (application as? PhoneApplication)?.addStatusListener(statusListener)
         if (::statusHost.isInitialized) statusHost.onStart()
         attachCalendarUi()
+        attachObsidianUi()
+        ObsidianRuntimes.current?.onForeground(true)
         armMidnight()
     }
 
@@ -1780,6 +1840,8 @@ class PhoneShellActivity : ComponentActivity() {
         if (!isChangingConfigurations) container.onOwnerForeground(false)
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
         CalendarRuntimes.current?.setOnChanged {}
+        ObsidianRuntimes.current?.setListener {}
+        if (!isChangingConfigurations) ObsidianRuntimes.current?.onForeground(false)
         connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return

@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- bring notes from an Obsidian vault on android into your journal. choose a vault in device storage; the app checks it when open and in the background. android may delay background checks.
+
 ### Fixed
 
 - on a tablet, status shows your journal's version and connection details. technical details and import open from there.

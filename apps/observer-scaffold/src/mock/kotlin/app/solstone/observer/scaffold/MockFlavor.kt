@@ -48,6 +48,7 @@ fun buildObserverFlavor(
     database: SolstonePersistenceDatabase,
     spoolDir: Path,
     visibleCaptureAuthority: VisibleCaptureAuthority,
+    pendingObsidian: () -> Int = { 0 },
 ): SharedObserverFlavor {
     val endpointStore = MemoryEndpointStore()
     val credentialStore = MemoryCredentialStore()

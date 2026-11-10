@@ -10,12 +10,13 @@ import app.solstone.core.sources.EmissionSink
 import app.solstone.core.sources.SourceCondition
 
 /**
- * Calendar does not capture through the observer service. Start and stop do not query, emit, or
+ * Independent sources do not capture through the observer service. Start and stop do not query, emit, or
  * touch a service. The condition may report running; the wish still decides the tile.
  */
-class InertCalendarEngine(
+class PassiveSourceEngine(
     private val storageOk: () -> Boolean,
     private val needsAttention: () -> Boolean = { false },
+    private val paused: () -> Boolean = { false },
 ) : ContinuousSourceEngine {
     override fun start(sink: EmissionSink) = Unit
 
@@ -26,7 +27,7 @@ class InertCalendarEngine(
         running = true,
         available = true,
         needsAttention = needsAttention(),
-        paused = false,
+        paused = paused(),
         silenced = SilencedFact.NOT_SILENCED,
     )
 

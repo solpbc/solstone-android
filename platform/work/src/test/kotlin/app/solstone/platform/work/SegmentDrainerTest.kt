@@ -42,6 +42,87 @@ import kotlin.test.assertTrue
 
 class SegmentDrainerTest {
     @Test
+    fun obsidianBackoffHoldsLaterWindowsWhileOtherSourcesDrain() {
+        val f = TestFixture()
+        val (old, _) = f.createSegment("090000_300", stream = "obsidian", state = QueueState.FAILED,
+            attemptCount = 20, lastAttemptAt = NOW, lastStatusCode = 503)
+        val (later, _) = f.createSegment("090500_300", stream = "obsidian", sealedAt = 2)
+        val (main, _) = f.createSegment("main", sealedAt = 3)
+        val sent = mutableListOf<String>()
+        drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
+            readBytes, { NOW }, f.store::log, f.finisher)
+        assertEquals(listOf("main"), sent)
+        assertEquals(QueueState.FAILED, f.store.row(old.id).state)
+        assertEquals(QueueState.SEALED, f.store.row(later.id).state)
+        assertEquals(QueueState.EVICTED, f.store.row(main.id).state)
+        drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
+            readBytes, { NOW + 172_800_000L }, f.store::log, f.finisher)
+        assertEquals(listOf("main", "090000_300", "090500_300"), sent)
+        assertEquals(QueueState.EVICTED, f.store.row(later.id).state)
+    }
+
+    @Test
+    fun obsidianFailureDuringDrainCannotBeOvertaken() {
+        val f = TestFixture()
+        val (old, _) = f.createSegment("090000_300", stream = "obsidian")
+        val (later, _) = f.createSegment("090500_300", stream = "obsidian", sealedAt = 2)
+        val sent = mutableListOf<String>()
+        drainSegments(f.store, uploadAll, { m, _ -> sent += m.key.segment; listOf(IngestOutcome.Rejected(503, "")) },
+            readBytes, { NOW }, f.store::log, f.finisher)
+        assertEquals(listOf("090000_300"), sent)
+        assertEquals(QueueState.FAILED, f.store.row(old.id).state)
+        assertEquals(QueueState.SEALED, f.store.row(later.id).state)
+    }
+
+    @Test
+    fun obsidianPauseAfterListingHoldsThePayloadAndOtherSourcesContinue() {
+        val f = TestFixture()
+        val (notes, _) = f.createSegment("090000_300", stream = "obsidian")
+        val (main, _) = f.createSegment("main", sealedAt = 2)
+        var allowed = true
+        val sent = mutableListOf<String>()
+        drainSegments(f.store, { m, day -> allowed = false; uploadAll(m, day) },
+            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, readBytes,
+            { NOW }, f.store::log, f.finisher, obsidianCurrent = { allowed })
+        assertEquals(listOf("main"), sent)
+        assertEquals(QueueState.SEALED, f.store.row(notes.id).state)
+        assertEquals(0, f.store.row(notes.id).attemptCount)
+        assertEquals(QueueState.EVICTED, f.store.row(main.id).state)
+    }
+
+    @Test
+    fun invalidObsidianFileStaysAsideWithoutBlockingTheNextWindow() {
+        val f = TestFixture()
+        val (bad, _) = f.createSegment("090000_300", stream = "obsidian")
+        val (good, _) = f.createSegment("090500_300", stream = "obsidian", sealedAt = 2)
+        drainSegments(f.store, uploadAll, { m, bytes ->
+            if (m.key.segment == "090000_300") listOf(IngestOutcome.Failed("obsidian_note_invalid"))
+            else acceptedIngest("srv")(m, bytes)
+        }, readBytes, { NOW }, f.store::log, f.finisher)
+        assertEquals(QueueState.FAILED, f.store.row(bad.id).state)
+        assertEquals("obsidian_note_invalid", f.store.row(bad.id).lastError)
+        assertEquals(QueueState.EVICTED, f.store.row(good.id).state)
+    }
+
+    @Test
+    fun successfulObsidianStatusStillRequiresExactCustodyDescriptors() {
+        val file = BundleFile("obsidian", "note.jsonl", "digest", 10, "application/x-ndjson", 1, 2)
+        val manifest = BundleManifest(SegmentKey(DAY, "090000_300"), listOf(file), emptyList())
+        fun descriptor(hash: String = "digest", size: Long = 10) = IngestDescriptors.Listed(listOf(
+            IngestFileDescriptor(file.name, file.name, size, hash, "written")))
+        for (outcome in listOf(
+            IngestOutcome.Accepted("srv", IngestDescriptors.Absent),
+            IngestOutcome.Duplicate("srv", descriptor(hash = "wrong")),
+            IngestOutcome.Collision("srv", descriptor(size = 9)),
+        )) assertTrue(resolveIngestOutcomes(manifest, listOf(outcome)) is SegmentSyncResult.Retry)
+        assertEquals(SegmentSyncResult.Uploaded, resolveIngestOutcomes(manifest,
+            listOf(IngestOutcome.Accepted("srv", descriptor()))))
+        assertEquals(SegmentSyncResult.Retry(409, "obsidian_note_ahead"), resolveIngestOutcomes(manifest,
+            listOf(IngestOutcome.Rejected(409, """{"reason_code":"obsidian_note_ahead"}"""))))
+    }
+
+
+    @Test
     fun holdingCalendarLeavesItSealedWhileObserverFilesDrain() {
         val fixture = TestFixture()
         val (calendar, _) = fixture.createSegment("cal", stream = CALENDAR_STREAM, sealedAt = 1)

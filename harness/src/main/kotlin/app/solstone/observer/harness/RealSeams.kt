@@ -32,6 +32,8 @@ import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
 import app.solstone.platform.persistence.room.SegmentDao
@@ -485,7 +487,7 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
             )
         }
 
-    override fun pendingCount(): Int = dao.pendingCount(MAIN_STREAM) + dao.pendingCount(CALENDAR_STREAM)
+    override fun pendingCount(): Int = DELIVERY_STREAMS.sumOf(dao::pendingCount)
 
     override fun syncState(): HarnessSyncState {
         val row = dao.syncState()
@@ -505,6 +507,7 @@ class RealBacklogStatusReader(
     private val imports: (() -> HarnessImportBacklog)? = null,
     private val calendarCapability: (String, String) -> Int? = { _, _ -> null },
     private val pendingCalendarImports: () -> Int = { 0 },
+    private val pendingObsidian: () -> Int = { 0 },
     private val present: ((Int) -> PresentedStatus)? = null,
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
@@ -520,12 +523,15 @@ class RealBacklogStatusReader(
         val calendarHeldForJournal = identity != null &&
             calendarCapability(identity.instanceId, identity.caChainFingerprint) == 0 &&
             calendarPending > 0
-        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + (importBacklog?.pendingCount ?: 0)
+        val obsidianPending = dao.pendingCount(OBSIDIAN_STREAM) + pendingObsidian()
+        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + obsidianPending + (importBacklog?.pendingCount ?: 0)
         val presented = present?.invoke(pendingCount)
         val backlog = HarnessBacklogStatus(
             plStatus = status,
             pendingCount = presented?.pendingCount ?: pendingCount,
-            pendingSourceIds = (dao.pendingSourceIds(MAIN_STREAM) + dao.pendingSourceIds(CALENDAR_STREAM) + if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()).distinct(),
+            pendingSourceIds = (DELIVERY_STREAMS.flatMap(dao::pendingSourceIds) +
+                (if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()) +
+                (if (obsidianPending > 0) listOf(OBSIDIAN_STREAM) else emptyList())).distinct(),
             journalVersion = journalVersion,
             imports = importBacklog,
             calendarHeldForJournal = calendarHeldForJournal,
