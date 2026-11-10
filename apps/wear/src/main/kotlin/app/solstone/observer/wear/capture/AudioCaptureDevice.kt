@@ -58,9 +58,8 @@ class RealAudioCaptureDevice(private val context: Context) : AudioCaptureDevice 
 
     override fun registerSilenceCallback(onSilencedChanged: (Boolean) -> Unit): Boolean {
         val mr = checkNotNull(mediaRecorder) { "Recorder not prepared" }
-        // Unknown initial configuration is attention-worthy until the callback
-        // establishes that this recorder is receiving permitted input.
-        val initialSilenced = mr.activeRecordingConfiguration?.isClientSilenced ?: true
+        // Registered before start: this recorder has no native port yet, so querying
+        // activeRecordingConfiguration can throw. Keep input unknown until its callback.
 
         val callback = object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
@@ -73,7 +72,7 @@ class RealAudioCaptureDevice(private val context: Context) : AudioCaptureDevice 
         mr.registerAudioRecordingCallback(context.mainExecutor, callback)
         audioRecordingCallback = callback
 
-        return initialSilenced
+        return true
     }
 
     override fun unregisterSilenceCallback() {
