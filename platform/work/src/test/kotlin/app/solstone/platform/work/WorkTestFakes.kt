@@ -12,6 +12,7 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -179,7 +180,7 @@ internal fun dummyFinisher(
     dao: SegmentDao = dummyDao(),
 ): ConfirmedCopyFinisher = ConfirmedCopyFinisher(root, dao)
 
-internal fun dummyDao(): SegmentDao = object : SegmentDao() {
+internal fun dummyDao(): SegmentDao = object : SegmentDaoWithoutIntake() {
     override fun insertSegment(segment: SegmentRow) = Unit
     override fun insertFiles(files: List<SegmentFileRow>) = Unit
     override fun insertEvents(events: List<EventRow>) = Unit

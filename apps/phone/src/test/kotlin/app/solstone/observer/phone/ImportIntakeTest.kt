@@ -8,6 +8,7 @@ import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ImportDao
 import app.solstone.platform.persistence.room.ImportDeliveryRow
 import app.solstone.platform.persistence.room.ImportItemRow
+import app.solstone.platform.persistence.room.SourceIntakeRow
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -31,6 +32,8 @@ class ImportIntakeTest {
         override fun all(): List<ImportItemRow> = rows.values.sortedBy { it.createdAt }
         override fun putDelivery(row: ImportDeliveryRow) = Unit
         override fun delivery(): ImportDeliveryRow? = null
+        override fun intakeBySource(sourceId: String): SourceIntakeRow? = null
+        override fun upsertIntake(row: SourceIntakeRow) = Unit
     }
 
     /** Runs work on the calling thread, so a test sees the outcome when submit returns. */

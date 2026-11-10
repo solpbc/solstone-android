@@ -44,6 +44,7 @@ import app.solstone.core.identity.confirmedFor
 import app.solstone.core.model.QueueState
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -317,7 +318,7 @@ private fun sync(
     val (store, finisher) = if (drainStore != null) {
         val f = ConfirmedCopyFinisher(
             spoolRoot = spoolDir.toPath(),
-            dao = object : SegmentDao() {
+            dao = object : SegmentDaoWithoutIntake() {
                 override fun insertSegment(segment: SegmentRow) = Unit
                 override fun insertFiles(files: List<SegmentFileRow>) = Unit
                 override fun insertEvents(events: List<EventRow>) = Unit

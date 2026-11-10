@@ -188,6 +188,34 @@ class PhoneDeckNonSourceTileTest {
     }
 
     @Test
+    fun aFaultStaysOnItsTileAndImportIsSolid() {
+        setScreen(
+            loadState = loaded(
+                SourceStatus("audio", SourceWish.On, SourceState.NEEDS_ATTENTION, ReasonCode.NONE),
+            ),
+        )
+
+        composeRule.onNodeWithText("needs attention").assertIsDisplayed()
+        composeRule.onNodeWithText("1 needs attention").assertDoesNotExist()
+        composeRule.onNodeWithText("need attention").assertDoesNotExist()
+        composeRule.onNodeWithTag("importTile-solid", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("addMoreTile-dashed", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun addMoreRowShowsTheSourceGlyphState() {
+        setScreen(
+            loadState = loaded(
+                SourceStatus("audio", SourceWish.On, SourceState.NEEDS_ATTENTION, ReasonCode.NONE),
+            ),
+            initial = PhoneRoute.AddMore,
+        )
+
+        composeRule.onNodeWithTag("addMoreRow-audio").assertIsDisplayed()
+        composeRule.onNodeWithText("needs attention").assertIsDisplayed()
+    }
+
+    @Test
     fun nonSourceTilesRemainDisplayedAfterFailure() {
         setScreen(loadState = LoadState.Failed(IllegalStateException("boom")))
 

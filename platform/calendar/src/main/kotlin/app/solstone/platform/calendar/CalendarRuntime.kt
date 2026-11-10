@@ -6,6 +6,7 @@ package app.solstone.platform.calendar
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 import java.time.LocalDate
+import app.solstone.core.calendar.CalendarChange
 import app.solstone.core.calendar.CalendarFileBytes
 import app.solstone.core.calendar.CalendarIdentityRecord
 import app.solstone.core.calendar.CalendarIntentRecord
@@ -29,6 +30,7 @@ import app.solstone.core.calendar.reopenSteps
 import app.solstone.core.calendar.routineReadWindow
 import app.solstone.core.calendar.stageNotes
 import app.solstone.platform.persistence.room.CalendarCalendarRow
+import app.solstone.platform.persistence.room.intakeSeenKey
 import app.solstone.platform.persistence.room.CalendarCountRow
 import app.solstone.platform.persistence.room.CalendarSettingsRow
 import java.time.Instant
@@ -340,7 +342,11 @@ class CalendarRuntime(
         if (!still(token, t)) return false
         val staged = stageNotes(identities, ledger.intents(), notes)
         if (!still(token, t)) return false
-        if (!ledger.stage(staged.identities, staged.intents, next, count) { still(token, t) }) return false
+        val addedKeys = notes
+            .filter { it.change == CalendarChange.ADDED }
+            .map { intakeSeenKey(it.event, it.occurrence) }
+            .distinct()
+        if (!ledger.stage(staged.identities, staged.intents, next, count, { still(token, t) }, addedKeys, clock())) return false
         if (!sealOutstanding(token, t)) { if (still(token, t)) recordFailure(); return false }
         return true
     }

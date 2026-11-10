@@ -9,8 +9,14 @@ import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
 import app.solstone.observer.formfactor.phone.PhoneCalendarPaneState
 import app.solstone.observer.formfactor.phone.PhoneCalendarRow
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
+import app.solstone.observer.formfactor.phone.LocalPhoneDistanceSystem
+import app.solstone.observer.formfactor.phone.LocalPhoneIntake
+import app.solstone.observer.formfactor.phone.LocalPhoneSourceOrder
 import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
+import app.solstone.observer.formfactor.phone.PhoneIntakeReading
+import app.solstone.observer.formfactor.phone.PhoneIntakeSnapshot
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
+import app.solstone.observer.formfactor.phone.distanceSystem
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -198,6 +204,7 @@ class PhoneShellActivity : ComponentActivity() {
     @Volatile private var pushFactsStopped = false
     private var repairMemory = JournalPushRepairMemory()
     private var importBinding by mutableStateOf(PhoneImportBinding())
+    private var intakeSnapshot by mutableStateOf(PhoneIntakeSnapshot())
     private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
     private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
     private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
@@ -255,6 +262,19 @@ class PhoneShellActivity : ComponentActivity() {
                 readImportPane(ImportIntake.get(this), stores, container.controller.pairingFact(), phoneAwaitingMarkConfirmation(this))
             }.getOrNull() ?: return@execute
             runOnUiThread { importBinding = PhoneImportBinding(state, importActions) }
+        }
+    }
+
+    private fun refreshIntake() {
+        if (!::container.isInitialized) return
+        importWork.execute {
+            val rows = runCatching {
+                container.persistenceDatabase().segmentDao().allIntake()
+            }.getOrDefault(emptyList())
+            val next = PhoneIntakeSnapshot(
+                rows.associate { it.sourceId to PhoneIntakeReading(it.total, it.startedAt, it.lastAt) },
+            )
+            runOnUiThread { intakeSnapshot = next }
         }
     }
 
@@ -442,6 +462,7 @@ class PhoneShellActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     refreshImports()
+                    refreshIntake()
                     kotlinx.coroutines.delay(2_000)
                 }
             }
@@ -907,6 +928,19 @@ class PhoneShellActivity : ComponentActivity() {
             val pairingOpen = pairingViewModel.pairingState.session !is PhonePairingSession.Closed
             val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
             val aboutFacts = remember { readAndroidAboutFacts(this) }
+            val distanceSystem = remember {
+                val locale = resources.configuration.locales.let { listed ->
+                    if (listed.isEmpty) java.util.Locale.getDefault() else listed[0]
+                }
+                val system = android.icu.util.LocaleData.getMeasurementSystem(
+                    android.icu.util.ULocale.forLocale(locale),
+                )
+                distanceSystem(
+                    if (system == android.icu.util.LocaleData.MeasurementSystem.SI) "SI" else "US",
+                )
+            }
+            val sourceOrder = (sourcesViewModel.sourcesState as? LoadState.Loaded)
+                ?.value?.sources?.map { it.sourceId }.orEmpty()
             var aboutSnapshotEpoch by remember { mutableStateOf(0L) }
             val aboutBlock = rememberPhoneAboutBlock(
                 aboutFacts, snapshot?.status?.journalVersion, aboutSnapshotEpoch,
@@ -931,6 +965,9 @@ class PhoneShellActivity : ComponentActivity() {
                 LocalPhoneImport provides importBinding,
                 LocalPhoneCalendar provides calendarBinding,
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
+                LocalPhoneIntake provides intakeSnapshot,
+                LocalPhoneDistanceSystem provides distanceSystem,
+                LocalPhoneSourceOrder provides sourceOrder,
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
@@ -1530,6 +1567,7 @@ class PhoneShellActivity : ComponentActivity() {
         // observed. ⛔ Not inside `refreshPermissions()` — that is a query a dozen internal paths
         // call — and ⛔ not inline: it writes a file and can start an engine.
         container.onOwnerResumed()
+        refreshIntake()
         if (::statusHost.isInitialized) statusHost.onResume()
         ObserverNotification.ensureChannel(this)
         notificationsEnabled = ObserverNotification.notificationsEnabled(this)

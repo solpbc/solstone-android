@@ -31,7 +31,15 @@ interface CalendarLedger {
     fun countFor(generation: Long): CalendarCountRow?
     fun saveCount(row: CalendarCountRow)
     fun saveConfiguration(settings: CalendarSettingsRow, calendars: List<CalendarCalendarRow>)
-    fun stage(identities: List<CalendarIdentityRecord>, intents: List<CalendarIntentRecord>, settings: CalendarSettingsRow? = null, count: CalendarCountRow? = null, canCommit: () -> Boolean = { true }): Boolean
+    fun stage(
+        identities: List<CalendarIdentityRecord>,
+        intents: List<CalendarIntentRecord>,
+        settings: CalendarSettingsRow? = null,
+        count: CalendarCountRow? = null,
+        canCommit: () -> Boolean = { true },
+        addedKeys: List<String> = emptyList(),
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Boolean
     fun clearPreview(generation: Long)
     fun appendPreview(generation: Long, rows: List<SeenEvent>)
     fun previewCount(generation: Long): Int
@@ -108,11 +116,19 @@ class RoomCalendarLedger(
 
     private fun storedIntent(row: CalendarIntentRecord): CalendarIntentRow = row.toRow(payloads.put(row.bytes))
 
-    override fun stage(identities: List<CalendarIdentityRecord>, intents: List<CalendarIntentRecord>, settings: CalendarSettingsRow?, count: CalendarCountRow?, canCommit: () -> Boolean): Boolean {
+    override fun stage(
+        identities: List<CalendarIdentityRecord>,
+        intents: List<CalendarIntentRecord>,
+        settings: CalendarSettingsRow?,
+        count: CalendarCountRow?,
+        canCommit: () -> Boolean,
+        addedKeys: List<String>,
+        nowEpochMs: Long,
+    ): Boolean {
         // Every referenced payload is synced before the single metadata transaction.
         val storedIdentities = identities.map(::storedIdentity)
         val storedIntents = intents.map(::storedIntent)
-        return dao.stage(storedIdentities, storedIntents, settings, count, canCommit)
+        return dao.stage(storedIdentities, storedIntents, settings, count, canCommit, addedKeys, nowEpochMs)
     }
 
     override fun clearPreview(generation: Long) = dao.clearPreview(generation)

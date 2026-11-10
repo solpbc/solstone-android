@@ -22,6 +22,7 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SpoolRoomReconciler
@@ -48,7 +49,7 @@ class ConfirmedSegmentIdentityTest {
         val postedManifests = mutableListOf<BundleManifest>()
         var syncStateRow: SyncStateRow? = null
 
-        val dao = object : SegmentDao() {
+        val dao = object : SegmentDaoWithoutIntake() {
             override fun insertSegment(segment: SegmentRow) {
                 val idx = rows.indexOfFirst { it.id == segment.id }
                 if (idx >= 0) rows[idx] = segment else rows.add(segment)

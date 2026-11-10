@@ -55,12 +55,19 @@ class ImportCustodyStoreTest {
             rows.values.sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
 
         var delivery: ImportDeliveryRow? = null
+        val intake = mutableMapOf<String, SourceIntakeRow>()
 
         override fun putDelivery(row: ImportDeliveryRow) {
             delivery = row
         }
 
         override fun delivery(): ImportDeliveryRow? = delivery
+
+        override fun intakeBySource(sourceId: String): SourceIntakeRow? = intake[sourceId]
+
+        override fun upsertIntake(row: SourceIntakeRow) {
+            intake[row.sourceId] = row
+        }
     }
 
     private fun withTempDir(block: (Path) -> Unit) {
@@ -758,6 +765,22 @@ class ImportCustodyStoreTest {
         assertEquals(ImportChange.DONE, store.recordSaved(id, "/p", "20261019_101500", "A"))
         store.endExchange(id)
         assertTrue(store.items("A", "2.0.52").single().hasSavedProgress)
+    }
+
+    @Test
+    fun finishingADeliveredItemDoesNotShrinkTheIntakeTotal() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 1_700_000_000_000L })
+        val id = published(store, root)
+        assertEquals(1L, dao.intake[INTAKE_IMPORT]?.total)
+        assertEquals(1_700_000_000_000L, dao.intake[INTAKE_IMPORT]?.startedAt)
+        store.markDelivered(id)
+        store.finish()
+        assertNull(dao.byId(id))
+        assertEquals(1L, dao.intake[INTAKE_IMPORT]?.total)
+        val again = published(store, root)
+        assertEquals(2L, dao.intake[INTAKE_IMPORT]?.total)
+        assertTrue(store.publish(again, "again", "application/pdf", 1L).not())
     }
 
     private fun createRow(
