@@ -16,6 +16,7 @@ import app.solstone.core.queue.RetryDecision
 import app.solstone.core.queue.classify
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
@@ -30,12 +31,17 @@ fun isRetryDue(
     lastError: String? = null,
     now: Long,
 ): Boolean {
-    if (lastError == "removed_in_journal" || lastError == "calendar_note_invalid" || lastError == "obsidian_note_invalid") return false
+    if (lastError == "removed_in_journal" || lastError == "calendar_note_invalid" || lastError == "obsidian_note_invalid" || lastError in SCREENSHOT_TERMINAL) return false
     return when (state) {
         QueueState.SEALED,
         QueueState.UPLOADING -> true
         QueueState.FAILED -> {
-            val decision = classify(lastStatusCode, ioError = lastStatusCode == null)
+            // A day the journal has not reached yet is a hold, not a refusal of the bytes.
+            val decision = if (lastError == "screenshot_ahead") {
+                RetryDecision.RETRY
+            } else {
+                classify(lastStatusCode, ioError = lastStatusCode == null)
+            }
             now - (lastAttemptAt ?: 0L) >= retryBackoffMs(attemptCount, decision)
         }
         else -> false
@@ -86,6 +92,7 @@ private fun failedAtAnotherJournal(segment: SegmentRow, homeInstanceId: String?)
         segment.lastError != "removed_in_journal" &&
         segment.lastError != "calendar_note_invalid" &&
         segment.lastError != "obsidian_note_invalid" &&
+        segment.lastError !in SCREENSHOT_TERMINAL &&
         segment.homeInstanceId != homeInstanceId
 
 fun reconstructManifest(
@@ -160,7 +167,7 @@ fun receiptError(files: List<BundleFile>, descriptors: IngestDescriptors): Strin
 
 fun resolveIngestOutcomes(manifest: BundleManifest, outcomes: List<IngestOutcome>): SegmentSyncResult {
     val batches = manifest.files.groupBy(BundleFile::sourceId).flatMap { (sourceId, files) ->
-        if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM) files.map { listOf(it) } else listOf(files)
+        if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM || sourceId == SCREENSHOTS_STREAM) files.map { listOf(it) } else listOf(files)
     }
     val results = mutableListOf<SegmentSyncResult>()
     for (i in batches.indices) {
@@ -193,7 +200,7 @@ private fun resolveSingleOutcome(files: List<BundleFile>, outcome: IngestOutcome
         is IngestOutcome.Collision -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Duplicate -> receiptError(files, outcome.descriptors)?.toCustodyResult() ?: SegmentSyncResult.Uploaded
         is IngestOutcome.Failed ->
-            if (outcome.detail in setOf("calendar_note_invalid", "obsidian_note_invalid")) {
+            if (outcome.detail in setOf("calendar_note_invalid", "obsidian_note_invalid") || outcome.detail in SCREENSHOT_TERMINAL) {
                 SegmentSyncResult.NeedsAttention(requireNotNull(outcome.detail))
             } else {
                 SegmentSyncResult.HardFail(200, "hard failure")
@@ -222,6 +229,11 @@ private fun resolveRejected(status: Int, body: String): SegmentSyncResult {
         return SegmentSyncResult.JournalRemoved(500)
     }
     if (root?.get("reason_code") == "obsidian_note_ahead") return SegmentSyncResult.Retry(status, "obsidian_note_ahead")
+    if (root?.get("reason_code") == "screenshot_ahead") return SegmentSyncResult.Retry(status, "screenshot_ahead")
+    val screenshotTerminal = listOf("detail", "reason_code").mapNotNull { key ->
+        if (root?.containsKey(key) != true) null else root[key]
+    }.filterIsInstance<String>().firstOrNull { it in SCREENSHOT_TERMINAL }
+    if (screenshotTerminal != null) return SegmentSyncResult.NeedsAttention(screenshotTerminal)
     if (root?.get("reason_code") == "obsidian_note_invalid" || root?.get("detail") == "obsidian_note_invalid") {
         return SegmentSyncResult.NeedsAttention("obsidian_note_invalid")
     }
@@ -244,6 +256,8 @@ private fun SegmentSyncResult.severityRank(): Int =
         is SegmentSyncResult.NeedsAttention -> 4
         SegmentSyncResult.Uploaded -> 5
     }
+
+private val SCREENSHOT_TERMINAL = setOf("screenshot_invalid", "multipart_part_too_large")
 
 private fun calendarNoteInvalid(root: Map<*, *>): Boolean {
     val fields = listOf("detail", "reason_code").mapNotNull { key ->

@@ -20,6 +20,8 @@ data class BundleManifest(
     val gaps: List<GapEvent>,
     val zoneId: String? = null,
     val utcOffsetSeconds: Int? = null,
+    val screenshotCapturedAt: String? = null,
+    val screenshotTakenFrom: String? = null,
 )
 open class DirectEndpoint(open val host: String, open val port: Int) {
     operator fun component1(): String = host

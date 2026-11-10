@@ -126,7 +126,7 @@ class PhoneDeckNonSourceTileTest {
     fun importPanePickersAreActionsAndTheRecentLineIsNot() {
         setScreen(initial = PhoneRoute.Import)
 
-        listOf("importRow-photos", "importRow-files").forEach { tag ->
+        listOf("importRow-files", "importRow-screenshots").forEach { tag ->
             val node = composeRule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
             assertTrue("$tag is not actionable", node.config.getOrNull(SemanticsActions.OnClick) != null)
         }

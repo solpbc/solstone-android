@@ -30,6 +30,7 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
     "screen" -> R.drawable.phone_source_screen
     "calendar" -> R.drawable.phone_source_calendar
     "obsidian" -> R.drawable.phone_source_obsidian
+    "screenshots" -> R.drawable.phone_source_screenshots
     else -> R.drawable.phone_add_more
 }
 

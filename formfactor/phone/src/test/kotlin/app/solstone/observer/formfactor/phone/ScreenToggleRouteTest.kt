@@ -41,6 +41,18 @@ class ScreenToggleRouteTest {
     }
 
     @Test
+    fun screenshotsOnOpensTheSourcePage() {
+        assertEquals(ScreenToggleAction.OpenScreenshotsSetup, screenToggleRoute("screenshots", SourceWish.On, fromDetail = false))
+        assertEquals(ScreenToggleAction.OpenScreenshotsSetup, screenToggleRoute("screenshots", SourceWish.On, fromDetail = true))
+    }
+
+    @Test
+    fun screenshotsOffTurnsTheSourceOff() {
+        assertEquals(ScreenToggleAction.TurnOffScreenshots, screenToggleRoute("screenshots", SourceWish.Off, fromDetail = false))
+        assertEquals(ScreenToggleAction.TurnOffScreenshots, screenToggleRoute("screenshots", SourceWish.Off, fromDetail = true))
+    }
+
+    @Test
     fun screenOffTurnsOffFromDeckAndDetail() {
         assertEquals(ScreenToggleAction.TurnOff, screenToggleRoute("screen", SourceWish.Off, fromDetail = false))
         assertEquals(ScreenToggleAction.TurnOff, screenToggleRoute("screen", SourceWish.Off, fromDetail = true))

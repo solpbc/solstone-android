@@ -138,6 +138,7 @@ class PhoneImportActions(
     val onDismissInterrupted: () -> Unit = {},
     /** The finished intake's result has been shown; it is cleared once the owner leaves it. */
     val onIntakeSeen: () -> Unit = {},
+    val onOpenScreenshots: () -> Unit = {},
 )
 
 /** The import pane's state and actions, provided once by the activity that hosts the shell. */
@@ -194,13 +195,18 @@ fun PhoneImportPane(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Import) },
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
-        PaneNote("adds PDFs, audio, images, and text you choose here or send from the share sheet.")
+        PaneNote("adds PDFs, audio and text you choose here, and the photos and files you send from the share sheet.")
         PhoneIntakeFactRows("import")
         PaneCard {
-            PaneNavRow(label = "photos", onClick = actions.onPickPhotos, modifier = Modifier.testTag("importRow-photos"))
-            PaneRowDivider()
             PaneNavRow(label = "files", onClick = actions.onPickFiles, modifier = Modifier.testTag("importRow-files"))
         }
+        val screenshotsOn = LocalPhoneScreenshots.current.state.enabled
+        PaneNavRow(
+            label = "screenshots come in on their own.",
+            value = if (screenshotsOn) "open screenshots" else "set up screenshots",
+            onClick = actions.onOpenScreenshots,
+            modifier = Modifier.testTag("importRow-screenshots"),
+        )
         state.intake?.let { line ->
             IntakeResult(line, Modifier.testTag("importIntake"))
             if (line is PhoneIntakeLine.Finished) {

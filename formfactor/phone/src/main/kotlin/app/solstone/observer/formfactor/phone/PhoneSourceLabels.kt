@@ -14,6 +14,7 @@ internal val phoneSourceLabels: Map<String, String> = mapOf(
     "screen" to "screen",
     "calendar" to "calendar",
     "obsidian" to "Obsidian",
+    "screenshots" to "screenshots",
 )
 
 fun sourceLabel(sourceId: String): String = phoneSourceLabels[sourceId] ?: sourceId

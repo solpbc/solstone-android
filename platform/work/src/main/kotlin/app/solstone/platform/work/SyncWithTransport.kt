@@ -22,6 +22,7 @@ import app.solstone.core.pl.journalRefusalIn
 import app.solstone.core.pl.unknownJournalIn
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
 
 internal fun <C> syncWithTransport(
@@ -45,6 +46,7 @@ internal fun <C> syncWithTransport(
     onCalendarCapability: ((Boolean) -> Unit)? = null,
     prepareObsidian: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
     obsidianCurrent: () -> Boolean = { true },
+    prepareScreenshots: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val legs = attempt ?: JournalAttempt.untracked(PairingGeneration("", ""))
     val client = try {
@@ -114,6 +116,11 @@ internal fun <C> syncWithTransport(
                     catch (e: RelayWebSocketClosedException) { throw e }
                     catch (e: Exception) { log("Obsidian delivery check failed", e); false }
                 }
+                val postScreenshots = if (dueNow.none { it.stream == SCREENSHOTS_STREAM }) false else {
+                    try { prepareScreenshots?.invoke(c, pairingCurrent) == true }
+                    catch (e: RelayWebSocketClosedException) { throw e }
+                    catch (e: Exception) { log("Screenshots delivery check failed", e); false }
+                }
                 val report = drainSegments(
                     store = store,
                     reconcile = SegmentReconciler(c)::diff,
@@ -134,6 +141,7 @@ internal fun <C> syncWithTransport(
                     homeInstanceId = homeInstanceId,
                     postCalendar = postCalendar,
                     postObsidian = postObsidian,
+                    postScreenshots = postScreenshots,
                     obsidianCurrent = obsidianCurrent,
                 )
                 if (report.halted) onRefused()

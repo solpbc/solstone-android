@@ -249,13 +249,16 @@ class ExpressedWishStoreTest {
             f.controller,
             fakes.map { (id, engine) ->
                 SourceRegistration(id, engine, { capturePermissionGranted(types.getValue(id), it) }, types.getValue(id))
-            } + calendarRegistration(),
+            } + calendarRegistration() + screenshotsRegistration(),
             MainPoster { it() },
             store,
         )
         val calendar = registry.snapshot().sources.first { it.sourceId == "calendar" }
         assertEquals(SourceWish.Off, calendar.wish)
         assertFalse(calendar.wishExpressed)
+        val screenshots = registry.snapshot().sources.first { it.sourceId == "screenshots" }
+        assertEquals(SourceWish.Off, screenshots.wish)
+        assertFalse(screenshots.wishExpressed)
         registry.setWish("audio", SourceWish.Off)
         assertEquals(
             listOf(mapOf("audio" to SourceWish.Off, "location" to SourceWish.On, "camera" to SourceWish.On)),
@@ -263,6 +266,7 @@ class ExpressedWishStoreTest {
         )
         assertFalse(store.writes.any { "screen" in it })
         assertFalse(store.writes.any { "calendar" in it })
+        assertFalse(store.writes.any { "screenshots" in it })
     }
 
     @Test
@@ -895,6 +899,14 @@ class ExpressedWishStoreTest {
         assertTrue(observerSnapshot().engineRunning)
         assertEquals(SourceState.ON, registry.snapshot().sources.single { it.sourceId == "calendar" }.state)
     }
+
+    private fun screenshotsRegistration() = SourceRegistration(
+        sourceId = "screenshots",
+        engine = FakeSourceEngine(conditionValue = running()),
+        requiredPermissionsGranted = { true },
+        captureForegroundType = null,
+        runsWithoutObserver = true,
+    )
 
     private fun calendarRegistration() = SourceRegistration(
         sourceId = "calendar",

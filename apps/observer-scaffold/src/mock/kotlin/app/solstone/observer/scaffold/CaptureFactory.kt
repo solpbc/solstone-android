@@ -39,6 +39,9 @@ fun createCaptureSetup(
     obsidianNeedsAttention: () -> Boolean = { false },
     obsidianHasAccess: () -> Boolean = { false },
     obsidianPaused: () -> Boolean = { false },
+    registerScreenshotsSource: Boolean = false,
+    screenshotsHasAccess: () -> Boolean = { false },
+    screenshotsPaused: () -> Boolean = { false },
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val audio = FakeContinuousSource(
@@ -92,6 +95,18 @@ fun createCaptureSetup(
                 SourceRegistration(app.solstone.core.sources.OBSIDIAN_STREAM, notes,
                     requiredPermissionsGranted = { obsidianHasAccess() }, captureForegroundType = null,
                     reasonWhenOff = notes::reasonWhenOff, runsWithoutObserver = true, pauseWithObserver = false)
+            } else null,
+        ) + listOfNotNull(
+            if (registerScreenshotsSource) {
+                val shots = PassiveSourceEngine(calendarStorage::isStorageOk, paused = screenshotsPaused)
+                SourceRegistration(
+                    sourceId = app.solstone.core.sources.SCREENSHOTS_STREAM,
+                    engine = shots,
+                    requiredPermissionsGranted = { screenshotsHasAccess() },
+                    captureForegroundType = null,
+                    reasonWhenOff = shots::reasonWhenOff,
+                    runsWithoutObserver = true,
+                )
             } else null,
         ),
         payloadBytesProvider = object : PayloadBytesProvider {

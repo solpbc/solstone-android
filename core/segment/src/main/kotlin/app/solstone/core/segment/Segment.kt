@@ -70,6 +70,7 @@ data class SealedSegment(
     val wireKeys: WireKeys,
     val payloads: List<SegmentPayload>,
     val gaps: List<GapEvent>,
+    val metadata: Map<String, String> = emptyMap(),
 )
 
 data class SegmenterResult(

@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation(project(":harness"))
     implementation(project(":core:model"))
+    implementation(project(":core:screenshots"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":core:spool"))

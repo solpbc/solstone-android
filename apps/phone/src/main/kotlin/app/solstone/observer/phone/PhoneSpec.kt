@@ -40,6 +40,7 @@ val phoneSpec = FormFactorSpec(
     registerScreenSource = true,
     registerCalendarSource = true,
     registerObsidianSource = true,
+    registerScreenshotsSource = true,
     permissions = { sdkInt ->
         if (sdkInt >= 33) {
             arrayOf(

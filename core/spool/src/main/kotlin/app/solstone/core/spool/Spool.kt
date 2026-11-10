@@ -133,6 +133,8 @@ class FileSpoolWriter(
             key = segment.key,
             files = files,
             gaps = segment.gaps.sortedWith(gapComparator),
+            screenshotCapturedAt = segment.metadata["screenshotCapturedAt"],
+            screenshotTakenFrom = segment.metadata["screenshotTakenFrom"],
         )
         val manifestPath = draftDir.resolve("manifest")
         Files.write(manifestPath, serializeManifest(segment, manifest).toByteArray(StandardCharsets.UTF_8))
@@ -404,7 +406,13 @@ class CountingSpoolWriter : SpoolWriter {
                 captureEndEpochMs = payload.captureEndEpochMs,
             )
         }.sortedWith(bundleFileComparator)
-        val manifest = BundleManifest(segment.key, files, segment.gaps.sortedWith(gapComparator))
+        val manifest = BundleManifest(
+            segment.key,
+            files,
+            segment.gaps.sortedWith(gapComparator),
+            screenshotCapturedAt = segment.metadata["screenshotCapturedAt"],
+            screenshotTakenFrom = segment.metadata["screenshotTakenFrom"],
+        )
         sealedCount += 1
         bytesWritten += files.sumOf { it.byteSize }
         mutableManifests += manifest
@@ -421,6 +429,8 @@ fun serializeManifest(segment: SealedSegment, manifest: BundleManifest): String 
     builder.appendLine("endEpochMs=${segment.wireKeys.endEpochMs}")
     builder.appendLine("zoneId=${escape(segment.wireKeys.zoneId)}")
     builder.appendLine("utcOffsetSeconds=${segment.wireKeys.utcOffsetSeconds}")
+    manifest.screenshotCapturedAt?.let { builder.appendLine("screenshotCapturedAt=${escape(it)}") }
+    manifest.screenshotTakenFrom?.let { builder.appendLine("screenshotTakenFrom=${escape(it)}") }
     builder.appendLine("[files]")
     manifest.files.sortedWith(bundleFileComparator).forEach { file ->
         builder.appendLine(
@@ -493,7 +503,13 @@ fun parseManifest(text: String): ParsedManifest {
     }
 
     return ParsedManifest(
-        manifest = BundleManifest(key = key, files = files, gaps = gaps),
+        manifest = BundleManifest(
+            key = key,
+            files = files,
+            gaps = gaps,
+            screenshotCapturedAt = headers["screenshotCapturedAt"],
+            screenshotTakenFrom = headers["screenshotTakenFrom"],
+        ),
         startEpochMs = header("startEpochMs").toLong(),
         endEpochMs = header("endEpochMs").toLong(),
         zoneId = header("zoneId"),

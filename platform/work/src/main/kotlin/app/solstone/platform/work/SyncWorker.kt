@@ -505,6 +505,11 @@ private fun sync(
                     source?.prepareDelivery(connected,
                         credentials.identity.instanceId + ":" + credentials.identity.caChainFingerprint, pairingNow) == true
                 },
+                prepareScreenshots = { connected, pairingNow ->
+                    val source = app.solstone.platform.screenshots.ScreenshotsRuntimes.current
+                        ?: (context?.applicationContext as? app.solstone.platform.screenshots.ScreenshotsWorkerHost)?.screenshotsSessionForWork()
+                    source?.prepareDelivery(connected, credentials.identity.instanceId, pairingNow) == true
+                },
                 onCalendarCapability = capabilityDb?.let { calendarDb ->
                     { notes ->
                         calendarDb.calendarDao().upsertCapability(
@@ -676,14 +681,24 @@ internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFil
     return payload.readBytes()
 }
 
-internal data class StoredSegmentZone(val zoneId: String, val utcOffsetSeconds: Int)
+internal data class StoredSegmentZone(
+    val zoneId: String,
+    val utcOffsetSeconds: Int,
+    val screenshotCapturedAt: String? = null,
+    val screenshotTakenFrom: String? = null,
+)
 
 internal fun readStoredZoneFor(spoolDir: File, segment: SegmentRow): StoredSegmentZone? {
     val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.dirSegment)
     val manifest = File(segmentDir, "manifest")
     return try {
         val parsed = parseManifest(manifest.readText())
-        StoredSegmentZone(parsed.zoneId, parsed.utcOffsetSeconds)
+        StoredSegmentZone(
+            parsed.zoneId,
+            parsed.utcOffsetSeconds,
+            parsed.manifest.screenshotCapturedAt,
+            parsed.manifest.screenshotTakenFrom,
+        )
     } catch (_: Exception) {
         null
     }

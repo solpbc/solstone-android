@@ -117,6 +117,23 @@ class SourceIntakeTest {
         assertNear(1_000.0, deltas.getValue(INTAKE_LOCATION).add)
         assertNull(deltas[INTAKE_CALENDAR])
         assertNull(deltas[INTAKE_SCREEN])
+        assertNull(deltas[INTAKE_SCREENSHOTS])
+    }
+
+    @Test
+    fun aScreenshotFileCountsOnceAndAnEmptyOneDoesNot() {
+        val deltas = segmentIntakeDeltas(
+            listOf(
+                file("screenshots", "screenshot_screen.png", start = 1_000, end = 2_000, bytes = 40),
+                file("screenshots", "screenshot_screen.jpg", start = 1_000, end = 1_500, bytes = 0),
+            ),
+            emptyList(),
+            anchor = null,
+        )
+        assertEquals(1, deltas.size)
+        assertEquals(INTAKE_SCREENSHOTS, deltas.single().sourceId)
+        assertEquals(1L, deltas.single().add)
+        assertEquals(2_000L, deltas.single().materialAt)
     }
 
     @Test

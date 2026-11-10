@@ -83,7 +83,7 @@ class PhoneApplication : ObserverApplication(
     gapListener = { kind, source, reason, material ->
         PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
     },
-), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost {
+), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost, app.solstone.platform.screenshots.ScreenshotsWorkerHost {
     override fun obsidianSessionForWork(): app.solstone.platform.obsidian.ObsidianSession? {
         runtime.container()
         return app.solstone.platform.obsidian.ObsidianRuntimes.current
@@ -91,6 +91,10 @@ class PhoneApplication : ObserverApplication(
     override fun calendarSessionForWork(): CalendarSession? {
         runtime.container()
         return CalendarRuntimes.current
+    }
+    override fun screenshotsSessionForWork(): app.solstone.platform.screenshots.ScreenshotSession? {
+        runtime.container()
+        return app.solstone.platform.screenshots.ScreenshotsRuntimes.current
     }
 
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
@@ -414,6 +418,7 @@ class PhoneApplication : ObserverApplication(
         val stopSaved = OwnerStoppedStore(this).recordStopped()
         CalendarRuntimes.current?.onOwnerStopped()
         app.solstone.platform.obsidian.ObsidianRuntimes.current?.onOwnerStopRequested(stopSaved)
+        app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.onOwnerStopRequested()
         ObserverForegroundService.clearScreenConsent()
         runtime.containerIfInitialized?.controller?.stop()
     }
@@ -440,6 +445,39 @@ class PhoneApplication : ObserverApplication(
         obsidianStopObservation?.close()
         obsidianStopObservation = OwnerStoppedStore(this).observeStop {
             app.solstone.platform.obsidian.ObsidianRuntimes.current?.onPauseChanged()
+        }
+    }
+
+    private var screenshotsStopObservation: AutoCloseable? = null
+    private fun startScreenshotsSession(container: ObserverAppContainer) {
+        if (app.solstone.platform.screenshots.ScreenshotsRuntimes.current != null) return
+        container.screenshotsHasAccess = { app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.hasAccess() == true }
+        container.screenshotsPaused = { app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.isPaused() == true }
+        val stores = syncStores(this)
+        app.solstone.platform.screenshots.ScreenshotSession(
+            context = this,
+            database = container.persistenceDatabase(),
+            spoolDir = container.spoolDirectory(),
+            wishOn = {
+                container.sources.snapshot().sources.any {
+                    it.sourceId == app.solstone.core.sources.SCREENSHOTS_STREAM && it.wish == SourceWish.On
+                }
+            },
+            setEnabled = { on ->
+                val result = container.sources.setWish(
+                    app.solstone.core.sources.SCREENSHOTS_STREAM,
+                    if (on) SourceWish.On else SourceWish.Off,
+                )
+                result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
+            },
+            ownerStopped = { OwnerStoppedStore(this).ownerStopped() },
+            journalId = { stores.identityStore.load()?.instanceId },
+            onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
+            onChanged = { container.sources.refreshSubscribers() },
+        ).onProcessStart()
+        screenshotsStopObservation?.close()
+        screenshotsStopObservation = OwnerStoppedStore(this).observeStop {
+            app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.onPauseChanged()
         }
     }
 
@@ -500,6 +538,7 @@ class PhoneApplication : ObserverApplication(
             app.phoneResumeHandler = { handlePhoneResume(app) }
             startCalendarSession(app)
             startObsidianSession(app)
+            startScreenshotsSession(app)
         }
         container.controller.onEffectiveCaptureEmpty = {
             applyEffectiveCapture(ownerTurnedSourceOff = false)

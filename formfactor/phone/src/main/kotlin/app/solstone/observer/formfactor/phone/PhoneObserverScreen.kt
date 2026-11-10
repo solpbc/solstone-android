@@ -523,6 +523,9 @@ internal fun PhoneObserverScreen(
                             ScreenToggleAction.OpenCalendarSetup -> {
                                 detailStack = detailStack.showInDetail(PhoneRoute.CalendarSetup)
                             }
+                            ScreenToggleAction.OpenScreenshotsSetup -> {
+                                detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail("screenshots"))
+                            }
                             else -> onToggle(id, wish)
                         }
                     },

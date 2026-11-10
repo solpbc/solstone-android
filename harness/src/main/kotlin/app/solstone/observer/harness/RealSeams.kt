@@ -33,6 +33,7 @@ import app.solstone.core.pl.RelayDialObserver
 import app.solstone.core.pl.RelayPairLink
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.platform.fgs.ObserverForegroundService
@@ -524,14 +525,16 @@ class RealBacklogStatusReader(
             calendarCapability(identity.instanceId, identity.caChainFingerprint) == 0 &&
             calendarPending > 0
         val obsidianPending = dao.pendingCount(OBSIDIAN_STREAM) + pendingObsidian()
-        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + obsidianPending + (importBacklog?.pendingCount ?: 0)
+        val screenshotsPending = dao.pendingCount(SCREENSHOTS_STREAM)
+        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + obsidianPending + screenshotsPending + (importBacklog?.pendingCount ?: 0)
         val presented = present?.invoke(pendingCount)
         val backlog = HarnessBacklogStatus(
             plStatus = status,
             pendingCount = presented?.pendingCount ?: pendingCount,
             pendingSourceIds = (DELIVERY_STREAMS.flatMap(dao::pendingSourceIds) +
                 (if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()) +
-                (if (obsidianPending > 0) listOf(OBSIDIAN_STREAM) else emptyList())).distinct(),
+                (if (obsidianPending > 0) listOf(OBSIDIAN_STREAM) else emptyList()) +
+                (if (screenshotsPending > 0) listOf(SCREENSHOTS_STREAM) else emptyList())).distinct(),
             journalVersion = journalVersion,
             imports = importBacklog,
             calendarHeldForJournal = calendarHeldForJournal,

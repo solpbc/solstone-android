@@ -146,7 +146,7 @@ class SourceRegistry(
                 // early while [storeUnreadable] — so unreadable bytes are never overwritten by a
                 // guess, only by an owner.
                 storeUnreadable = true
-                registrations.filter { it.sourceId != "screen" && it.sourceId != "calendar" }.forEach {
+                registrations.filter { it.sourceId != "screen" && it.sourceId != "calendar" && it.sourceId != "screenshots" }.forEach {
                     expressed.add(it.sourceId)
                     persisted[it.sourceId] = SourceWish.On
                 }

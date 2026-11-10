@@ -345,7 +345,7 @@ private fun PhoneDetailContent(
                     .semantics { paneTitle = spokenPaneTitle(top) },
             )
         }
-        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier) else Box(
+        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier) else if (top.sourceId == "screenshots") PhoneScreenshotsPane(modifier) else Box(
             modifier
                 .fillMaxSize()
                 .semantics { paneTitle = spokenPaneTitle(top) },
