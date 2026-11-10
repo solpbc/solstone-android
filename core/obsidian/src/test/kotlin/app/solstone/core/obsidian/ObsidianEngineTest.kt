@@ -138,7 +138,7 @@ class ObsidianEngineTest {
     }
 }
 
-private class MemoryLedger : ObsidianLedger {
+internal class MemoryLedger : ObsidianLedger {
     private var records = mutableMapOf<Triple<String, String, String>, String>()
     private var prepared = mutableMapOf<Pair<String, String>, Pair<PreparedObsidianBatch, ByteArray>>()
     override fun <T> transaction(action: () -> T): T {
@@ -146,7 +146,11 @@ private class MemoryLedger : ObsidianLedger {
         return try { action() } catch (e: Throwable) { records = old; prepared = oldPrepared; throw e }
     }
     override fun get(root: String, bucket: String, key: String) = records[Triple(root, bucket, key)]
-    override fun put(root: String, bucket: String, key: String, value: String) { records[Triple(root, bucket, key)] = value }
+    var refuseNextBucket: String? = null
+    override fun put(root: String, bucket: String, key: String, value: String) {
+        if (refuseNextBucket == bucket) { refuseNextBucket = null; error("injected storage failure") }
+        records[Triple(root, bucket, key)] = value
+    }
     override fun remove(root: String, bucket: String, key: String) { records.remove(Triple(root, bucket, key)) }
     override fun keys(root: String, bucket: String) = records.keys.filter { it.first == root && it.second == bucket }.map { it.third }
     override fun roots() = records.keys.map { it.first }.distinct()

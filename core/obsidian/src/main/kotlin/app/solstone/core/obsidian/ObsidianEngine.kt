@@ -29,7 +29,7 @@ data class PreparedObsidianBatch(
 
 data class ObsidianEntry(val path: String, val modifiedMs: Long?, val size: Long?, val documentId: String)
 sealed interface ObsidianRead {
-    data class Stable(val text: String, val fileId: String? = null) : ObsidianRead
+    data class Stable(val text: String, val fileId: String? = null, val observedMs: Long? = null) : ObsidianRead
     data object Unavailable : ObsidianRead
     data object TooLarge : ObsidianRead
 }
@@ -64,10 +64,23 @@ private fun pendingKey(window: String, path: String) = "$window/$path"
 
 /** All mutation is serialized by the platform session and each scan is a single ledger transaction. */
 class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneId) {
+    /** Only content work is resumable. Presence and reported state remain a complete-scan transaction. */
+    fun entriesNeedingRead(root: String, entries: List<ObsidianEntry>): List<ObsidianEntry> = entries.filter { entry ->
+        reportableObsidianPath(entry.path) && (entry.size == null || entry.size <= OBSIDIAN_MAX_TEXT_BYTES) &&
+            !unchanged(ledger.get(root, "rows", entry.path)?.let(::rowFrom), entry)
+    }
+    private fun unchanged(old: NoteRow?, entry: ObsidianEntry): Boolean =
+        old != null && !old.removed && old.hash != null && entry.modifiedMs != null && entry.modifiedMs > 0 &&
+            entry.size != null && old.modifiedMs == entry.modifiedMs && old.size == entry.size
+
     fun scan(root: String, vault: String, entries: List<ObsidianEntry>, now: Long,
         read: (ObsidianEntry) -> ObsidianRead, cancelled: () -> Boolean = { false },
-        progress: (Int, Int) -> Unit = { _, _ -> },
+        progress: (Int, Int) -> Unit = { _, _ -> }, readStageToken: String? = null,
     ): ObsidianScanResult = ledger.transaction {
+        if (readStageToken != null && ledger.get(root, "meta", "read_stage_applied") == readStageToken) {
+            return@transaction ObsidianScanResult(ledger.get(root, "meta", "found")?.toInt() ?: 0, 0,
+                ledger.get(root, "meta", "too_large")?.toInt() ?: 0, ledger.get(root, "meta", "unavailable")?.toInt() ?: 0)
+        }
         require(vault.toByteArray(Charsets.UTF_8).size in 1..128 && vault.none { Character.isISOControl(it) })
         val notes = entries.filter { reportableObsidianPath(it.path) }.sortedWith { a, b -> compareObsidianText(a.path, b.path) }
         require(notes.map { it.path }.toSet().size == notes.size) { "duplicate vault path" }
@@ -87,14 +100,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                 old = old.copy(missingMs = null)
                 rows[entry.path] = old; save(root, entry.path, old)
             }
-            if (old != null && !old.removed && old.hash != null && entry.modifiedMs != null && entry.modifiedMs > 0 &&
-                entry.size != null && old.modifiedMs == entry.modifiedMs && old.size == entry.size) {
-                if (old.missingMs != null) {
-                    val restored = old.copy(missingMs = null)
-                    rows[entry.path] = restored; save(root, entry.path, restored)
-                }
-                progress(index + 1, notes.size); continue
-            }
+            if (unchanged(old, entry)) { progress(index + 1, notes.size); continue }
             if (baseline) known(root, entry.path)
             val content = if (entry.size != null && entry.size > OBSIDIAN_MAX_TEXT_BYTES) ObsidianRead.TooLarge else read(entry)
             when (content) {
@@ -105,6 +111,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                     if (bytes.size > OBSIDIAN_MAX_TEXT_BYTES) {
                         tooLarge++
                     } else {
+                        val observed = content.observedMs ?: now
                         val hash = obsidianHash(bytes)
                         if (old != null && !old.removed && old.hash == hash) {
                             val unchanged = old.copy(modifiedMs = entry.modifiedMs, size = entry.size,
@@ -119,19 +126,19 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                             val previous = partner?.key
                             if (previous != null) missing.remove(previous)
                             val pureRename = previous != null && prior?.hash == hash
-                            val modified = if (pureRename) earliest else entry.modifiedMs?.takeIf {
-                                it > 0 && it <= now && (prior?.lastReportedMs == null || it > prior.lastReportedMs)
-                            } ?: now
+                            val modified = if (pureRename) minOf(earliest, observed) else entry.modifiedMs?.takeIf {
+                                it > 0 && it <= observed && (prior?.lastReportedMs == null || it > prior.lastReportedMs)
+                            } ?: observed
                             val sent = listOfNotNull(prior?.priorSentWindow,
                                 ledger.get(root, "sent", entry.path), previous?.let { ledger.get(root, "sent", it) }).maxOrNull()
                             var stamp = obsidianStamp(modified, zone)
-                            if (sent != null && obsidianWindowId(stamp) <= sent) stamp = obsidianStamp(now, zone)
-                            if (sent != null && obsidianWindowId(stamp) == sent) {
+                            if (sent != null && obsidianWindowId(stamp) <= sent) stamp = obsidianStamp(observed, zone)
+                            if (sent != null && obsidianWindowId(stamp) <= sent) {
                                 // Do not acknowledge content that cannot yet occupy a fresh window.
                                 progress(index + 1, notes.size); continue
                             }
                             val line = ObsidianChange(if (previous == null) "changed" else "renamed", stamp, hash,
-                                obsidianStamp(now, zone), entry.path, previous, content.text, vault)
+                                obsidianStamp(observed, zone), entry.path, previous, content.text, vault)
                             if (line.encode().toByteArray(Charsets.UTF_8).size + 1 > OBSIDIAN_MAX_FILE_BYTES) {
                                 tooLarge++; progress(index + 1, notes.size); continue
                             }
@@ -166,7 +173,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                 val sent = listOfNotNull(row.priorSentWindow, ledger.get(root, "sent", path)).maxOrNull()
                 var stamp = obsidianStamp(row.missingMs, zone)
                 if (sent != null && obsidianWindowId(stamp) <= sent) stamp = obsidianStamp(now, zone)
-                if (sent != null && obsidianWindowId(stamp) == sent) continue
+                if (sent != null && obsidianWindowId(stamp) <= sent) continue
                 emit(root, Pending(ObsidianChange("removed", stamp, null, obsidianStamp(row.missingMs, zone),
                     path, null, null, vault), first = false, initial = false), rows)
                 save(root, path, row.copy(removed = true, lastReportedMs = java.time.OffsetDateTime.parse(stamp).toInstant().toEpochMilli()))
@@ -178,6 +185,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
         ledger.put(root, "meta", "found", notes.size.toString())
         ledger.put(root, "meta", "too_large", tooLarge.toString())
         ledger.put(root, "meta", "unavailable", unavailable.toString())
+        if (readStageToken != null) ledger.put(root, "meta", "read_stage_applied", readStageToken)
         ObsidianScanResult(notes.size, changes, tooLarge, unavailable)
     }
 

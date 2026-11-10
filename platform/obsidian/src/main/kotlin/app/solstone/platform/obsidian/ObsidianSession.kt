@@ -211,12 +211,21 @@ class ObsidianSession(
         operation = signal
         val began = SystemClock.elapsedRealtime()
         try {
+            engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
+            stageBatches()
             val vault = reader.validate(Uri.parse(uri))
             val entries = reader.walk(vault, signal)
-            val now = System.currentTimeMillis()
-            val scan = engine.scan(root, vault.name, entries, now, { reader.read(vault, it, signal) },
+            val stage = ObsidianReadStage(ledger, root)
+            val needed = engine.entriesNeedingRead(root, entries)
+            stage.fill(needed, { reader.read(vault, it, signal) }, System::currentTimeMillis,
                 cancelled = { if (stopped() || Thread.currentThread().isInterrupted) signal.cancel(); signal.isCanceled },
                 progress = { done, total -> if (done % 100 == 0) { ui = ui.copy(settingUp = ui.lastChecked == null, initialTotal = total); changed() } })
+            signal.throwIfCanceled()
+            val now = System.currentTimeMillis()
+            val scan = engine.scan(root, vault.name, entries, now, stage::read,
+                cancelled = { if (stopped() || Thread.currentThread().isInterrupted) signal.cancel(); signal.isCanceled },
+                readStageToken = stage.token)
+            stage.clearApplied()
             signal.throwIfCanceled()
             engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
             stageBatches()
