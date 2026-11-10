@@ -10,6 +10,8 @@ import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 import app.solstone.core.sources.CALENDAR_STREAM
+import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.DELIVERY_STREAMS
 import java.io.ByteArrayOutputStream
 
 class ObserverIngestClient(
@@ -25,7 +27,7 @@ class ObserverIngestClient(
         require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
         val outcomes = mutableListOf<IngestOutcome>()
         for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
-            val batches = if (sourceId == CALENDAR_STREAM) files.map { listOf(it) } else listOf(files)
+            val batches = if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM) files.map { listOf(it) } else listOf(files)
             for (batch in batches) {
                 val sourceManifest = manifest.copy(files = batch)
                 val boundary = boundaryProvider()

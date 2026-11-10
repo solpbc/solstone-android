@@ -25,4 +25,5 @@ data class FormFactorSpec(
     val matchForegroundTypesToWishes: Boolean = false,
     val registerScreenSource: Boolean = false,
     val registerCalendarSource: Boolean = false,
+    val registerObsidianSource: Boolean = false,
 )

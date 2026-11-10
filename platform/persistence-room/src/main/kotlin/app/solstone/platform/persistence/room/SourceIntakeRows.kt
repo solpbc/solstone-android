@@ -26,7 +26,7 @@ data class SourceIntakeFixRow(
     @ColumnInfo(name = "accuracy_m") val accuracyM: Double?,
 )
 
-/** Calendar events already counted. Survives the identity table being rewritten. */
+/** Source identities and replay markers already applied. Survives inventory rewrites. */
 @Entity(tableName = "source_intake_seen", primaryKeys = ["source_id", "seen_key"])
 data class SourceIntakeSeenRow(
     @ColumnInfo(name = "source_id") val sourceId: String,

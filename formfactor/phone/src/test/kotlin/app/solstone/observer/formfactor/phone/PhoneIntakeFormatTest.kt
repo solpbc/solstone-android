@@ -11,6 +11,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class PhoneIntakeFormatTest {
+    @org.junit.Test fun obsidianUsesNotesInTheSharedFacts() {
+        kotlin.test.assertEquals(IntakeKind.NOTES, intakeKind("obsidian"))
+        kotlin.test.assertEquals("1 note", formatTotal(1, IntakeKind.NOTES, DistanceSystem.MILES, java.util.Locale.US))
+        kotlin.test.assertEquals("2 notes", formatTotal(2, IntakeKind.NOTES, DistanceSystem.MILES, java.util.Locale.US))
+    }
+
     private val zone = ZoneId.of("America/Denver")
     private val locale = Locale.US
     private val now = LocalDate.of(2026, 11, 9).atStartOfDay(zone).plusHours(15).toInstant().toEpochMilli()

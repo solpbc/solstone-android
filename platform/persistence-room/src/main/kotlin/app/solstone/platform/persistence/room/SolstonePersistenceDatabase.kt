@@ -35,6 +35,7 @@ import app.solstone.core.model.QueueState
 @TypeConverters(QueueStateConverters::class)
 abstract class SolstonePersistenceDatabase : RoomDatabase() {
     abstract fun segmentDao(): SegmentDao
+    abstract fun obsidianIntakeDao(): ObsidianIntakeDao
     abstract fun importDao(): ImportDao
     abstract fun calendarDao(): CalendarDao
     abstract fun watchSourceDao(): WatchSourceDao

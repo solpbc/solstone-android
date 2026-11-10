@@ -61,3 +61,6 @@ data class SourceCondition(
     val paused: Boolean,
     val silenced: SilencedFact,
 )
+
+const val OBSIDIAN_STREAM = "obsidian"
+val DELIVERY_STREAMS = listOf(MAIN_STREAM, CALENDAR_STREAM, OBSIDIAN_STREAM, WATCH_STREAM)

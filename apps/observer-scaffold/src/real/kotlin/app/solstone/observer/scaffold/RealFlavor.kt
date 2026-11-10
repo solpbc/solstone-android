@@ -37,6 +37,7 @@ fun buildObserverFlavor(
     database: SolstonePersistenceDatabase,
     spoolDir: Path,
     visibleCaptureAuthority: VisibleCaptureAuthority,
+    pendingObsidian: () -> Int = { 0 },
 ): SharedObserverFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
@@ -124,6 +125,7 @@ fun buildObserverFlavor(
             database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
         },
         pendingCalendarImports = { database.calendarDao().pendingImportCount() },
+        pendingObsidian = pendingObsidian,
         present = controller::presentConnection,
     )
     return SharedObserverFlavor(

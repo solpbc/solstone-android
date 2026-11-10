@@ -90,12 +90,20 @@ class ObserverAppContainer(
     override val cameraLock = SingleHolderCameraLock()
     override val captureAuthority = VisibleCaptureOwnerRegistry()
     @Volatile var calendarNeedsAttention: () -> Boolean = { false }
+    @Volatile var obsidianNeedsAttention: () -> Boolean = { false }
+    @Volatile var obsidianHasAccess: () -> Boolean = { false }
+    @Volatile var obsidianPaused: () -> Boolean = { false }
+    @Volatile var obsidianPending: () -> Int = { 0 }
     internal val captureSetup = createCaptureSetup(
         context,
         cameraLock,
         spec.registerScreenSource,
         spec.registerCalendarSource,
         { calendarNeedsAttention() },
+        registerObsidianSource = spec.registerObsidianSource,
+        obsidianNeedsAttention = { obsidianNeedsAttention() },
+        obsidianHasAccess = { obsidianHasAccess() },
+        obsidianPaused = { obsidianPaused() },
         gapListener,
     )
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
@@ -185,6 +193,7 @@ class ObserverAppContainer(
         database = database,
         spoolDir = spoolDir,
         visibleCaptureAuthority = captureAuthority,
+        pendingObsidian = { obsidianPending() },
     )
 
     override val controller: HarnessController = flavor.controller
@@ -196,6 +205,7 @@ class ObserverAppContainer(
                 database.calendarDao().capability(instanceId, caFingerprint)?.calendarNotes
             },
             pendingCalendarImports = { database.calendarDao().pendingImportCount() },
+            pendingObsidian = { obsidianPending() },
             present = controller::presentConnection,
         )
     override val sources = SourceRegistry(

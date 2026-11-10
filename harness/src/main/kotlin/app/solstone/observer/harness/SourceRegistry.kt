@@ -543,7 +543,7 @@ class SourceRegistry(
                 // `wishOnWhileNotRunningIsSettingUpAndObserverOff`. The discriminator is an
                 // explicit owner stop, which is a different fact from "not running yet". Same
                 // conflation as `Absent` vs `Unreadable`, one level down.
-                paused = condition?.paused == true || ownerStopped(),
+                paused = condition?.paused == true || (registration.pauseWithObserver && ownerStopped()),
                 foregroundTypeHeld = foregroundTypeHeld,
                 startRefused = controller.lastStartRefused,
                 forcedReason = registration.reasonWhenOff?.invoke(),

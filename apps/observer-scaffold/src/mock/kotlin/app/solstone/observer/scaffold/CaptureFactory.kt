@@ -35,6 +35,10 @@ fun createCaptureSetup(
     registerScreenSource: Boolean = false,
     registerCalendarSource: Boolean = false,
     calendarNeedsAttention: () -> Boolean = { false },
+    registerObsidianSource: Boolean = false,
+    obsidianNeedsAttention: () -> Boolean = { false },
+    obsidianHasAccess: () -> Boolean = { false },
+    obsidianPaused: () -> Boolean = { false },
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val audio = FakeContinuousSource(
@@ -58,7 +62,7 @@ fun createCaptureSetup(
         "location" to (location to { p: app.solstone.platform.fgs.PermissionStatus -> p.locationGranted }),
     )
     val calendarStorage = StorageStatus(FileUsableSpaceProvider(context.filesDir), 50L * 1024L * 1024L)
-    val calendar = if (registerCalendarSource) InertCalendarEngine(calendarStorage::isStorageOk, calendarNeedsAttention) else null
+    val calendar = if (registerCalendarSource) PassiveSourceEngine(calendarStorage::isStorageOk, calendarNeedsAttention) else null
     return CaptureSetup(
         registrations = captureSourceIdentities().map { identity ->
             val (engine, permCheck) = engines.getValue(identity.sourceId)
@@ -82,6 +86,13 @@ fun createCaptureSetup(
                     runsWithoutObserver = true,
                 )
             },
+        ) + listOfNotNull(
+            if (registerObsidianSource) {
+                val notes = PassiveSourceEngine(calendarStorage::isStorageOk, obsidianNeedsAttention, obsidianPaused)
+                SourceRegistration(app.solstone.core.sources.OBSIDIAN_STREAM, notes,
+                    requiredPermissionsGranted = { obsidianHasAccess() }, captureForegroundType = null,
+                    reasonWhenOff = notes::reasonWhenOff, runsWithoutObserver = true, pauseWithObserver = false)
+            } else null,
         ),
         payloadBytesProvider = object : PayloadBytesProvider {
             override fun open(payload: SegmentPayload) =

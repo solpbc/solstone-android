@@ -83,7 +83,11 @@ class PhoneApplication : ObserverApplication(
     gapListener = { kind, source, reason, material ->
         PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
     },
-), app.solstone.platform.calendar.CalendarWorkerHost {
+), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost {
+    override fun obsidianSessionForWork(): app.solstone.platform.obsidian.ObsidianSession? {
+        runtime.container()
+        return app.solstone.platform.obsidian.ObsidianRuntimes.current
+    }
     override fun calendarSessionForWork(): CalendarSession? {
         runtime.container()
         return CalendarRuntimes.current
@@ -346,7 +350,7 @@ class PhoneApplication : ObserverApplication(
 
         if (plan.endSession) {
             if (ownerTurnedSourceOff && container.sources.snapshot().sources.none {
-                    it.sourceId == CALENDAR_STREAM && it.wish == SourceWish.On
+                    (it.sourceId == CALENDAR_STREAM || it.sourceId == app.solstone.core.sources.OBSIDIAN_STREAM) && it.wish == SourceWish.On
                 }) {
                 OwnerStoppedStore(this).recordStopped()
             }
@@ -407,10 +411,36 @@ class PhoneApplication : ObserverApplication(
     internal fun stopObserverFromNotification() {
         // ⚠ Recorded BEFORE the stop, so a process death between the two cannot lose the owner's
         // decision and leave resume free to restart intake.
-        OwnerStoppedStore(this).recordStopped()
+        val stopSaved = OwnerStoppedStore(this).recordStopped()
         CalendarRuntimes.current?.onOwnerStopped()
+        app.solstone.platform.obsidian.ObsidianRuntimes.current?.onOwnerStopRequested(stopSaved)
         ObserverForegroundService.clearScreenConsent()
         runtime.containerIfInitialized?.controller?.stop()
+    }
+
+    private var obsidianStopObservation: AutoCloseable? = null
+    private fun startObsidianSession(container: ObserverAppContainer) {
+        if (app.solstone.platform.obsidian.ObsidianRuntimes.current != null) return
+        container.obsidianNeedsAttention = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.ui?.fault != null }
+        container.obsidianHasAccess = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.hasAccess() == true }
+        container.obsidianPaused = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.isPaused() == true }
+        container.obsidianPending = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.unspooledPending ?: 0 }
+        app.solstone.platform.obsidian.ObsidianSession(
+            context = this, database = container.persistenceDatabase(), spoolDir = container.spoolDirectory(),
+            wishOn = { container.sources.snapshot().sources.any { it.sourceId == app.solstone.core.sources.OBSIDIAN_STREAM && it.wish == SourceWish.On } },
+            setEnabled = { on ->
+                val result = container.sources.setWish(app.solstone.core.sources.OBSIDIAN_STREAM, if (on) SourceWish.On else SourceWish.Off)
+                val accepted = result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
+                accepted
+            },
+            ownerStopWitness = { OwnerStoppedStore(this).stopWitness() },
+            onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
+            onChanged = { container.sources.refreshSubscribers() },
+        ).onProcessStart()
+        obsidianStopObservation?.close()
+        obsidianStopObservation = OwnerStoppedStore(this).observeStop {
+            app.solstone.platform.obsidian.ObsidianRuntimes.current?.onPauseChanged()
+        }
     }
 
     private fun startCalendarSession(container: ObserverAppContainer) {
@@ -469,6 +499,7 @@ class PhoneApplication : ObserverApplication(
             app.onScreenOwnerStart = { stopped.clear() }
             app.phoneResumeHandler = { handlePhoneResume(app) }
             startCalendarSession(app)
+            startObsidianSession(app)
         }
         container.controller.onEffectiveCaptureEmpty = {
             applyEffectiveCapture(ownerTurnedSourceOff = false)

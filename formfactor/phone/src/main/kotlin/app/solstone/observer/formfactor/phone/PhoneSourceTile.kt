@@ -72,7 +72,8 @@ fun PhoneSourceTile(
     val stateCopy = sourceStateCopy(status.state)
     val earnsSwitch = sourceEarnsSwitch(status.sourceId)
     val wishOn = status.wish == SourceWish.On
-    val subLine = sourceSubLine(status, paired)
+    val obsidianLine = if (status.sourceId == "obsidian") obsidianSourceSubLine(LocalPhoneObsidian.current.state) else null
+    val subLine = obsidianLine ?: sourceSubLine(status, paired)
     PhoneTileSurface(
         modifier = modifier
             .testTag("sourceTile-${status.sourceId}")
@@ -94,7 +95,7 @@ fun PhoneSourceTile(
                 // the release gate had to reach a source through `add more` instead of
                 // off the deck.
                 contentDescription = label
-                stateDescription = sourceStateDescription(status, paired)
+                stateDescription = if (obsidianLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) "$stateCopy. $subLine" else sourceStateDescription(status, paired)
                 role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {

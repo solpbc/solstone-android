@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":platform:obsidian"))
     api("androidx.work:work-runtime:2.9.1")
     api(project(":core:push"))
     implementation(project(":platform:persistence-room"))
@@ -53,6 +54,7 @@ dependencies {
     implementation(project(":core:watch-courier"))
 
     testImplementation(kotlin("test"))
+    testImplementation(project(":core:obsidian"))
     testImplementation(project(":core:spool"))
     testImplementation(project(":testing"))
     androidTestImplementation("androidx.work:work-testing:2.9.1")

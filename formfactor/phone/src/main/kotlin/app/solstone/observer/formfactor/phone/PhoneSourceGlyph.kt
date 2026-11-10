@@ -31,6 +31,7 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
     "screen" -> R.drawable.phone_source_screen
     "calendar" -> R.drawable.phone_source_calendar
     WatchCourierStrings.WATCH -> R.drawable.phone_source_watch
+    "obsidian" -> R.drawable.phone_source_obsidian
     else -> R.drawable.phone_add_more
 }
 

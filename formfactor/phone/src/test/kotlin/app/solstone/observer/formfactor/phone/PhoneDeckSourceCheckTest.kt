@@ -69,6 +69,7 @@ class PhoneDeckSourceCheckTest {
                 "camera" to "camera",
                 "screen" to "screen",
                 "calendar" to "calendar",
+                "obsidian" to "Obsidian",
             ),
             phoneSourceLabels,
         )

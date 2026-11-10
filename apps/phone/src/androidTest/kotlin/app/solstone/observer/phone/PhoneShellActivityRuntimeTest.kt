@@ -69,7 +69,8 @@ class PhoneShellActivityRuntimeTest {
             composeRule.onNodeWithTag("sourceTile-audio").assertIsDisplayed()
             composeRule.onNodeWithTag("sourceTile-location").assertIsDisplayed()
             composeRule.onNodeWithTag("sourceTile-calendar").assertIsDisplayed()
-            assertEquals(3, composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().size)
+            composeRule.onNodeWithTag("sourceTile-obsidian").assertIsDisplayed()
+            assertEquals(4, composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().size)
         }
     }
 
