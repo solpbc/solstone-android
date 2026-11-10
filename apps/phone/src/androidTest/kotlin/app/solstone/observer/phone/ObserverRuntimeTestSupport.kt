@@ -46,6 +46,7 @@ internal fun pressSystemBackWhenFocused(activity: Activity, dialog: Boolean = fa
 
 internal fun resetObserverRuntime() {
     app.solstone.platform.calendar.CalendarRuntimes.current?.close()
+    app.solstone.platform.obsidian.ObsidianRuntimes.current?.close()
     val runtime = ObserverHarnessRuntime.runtime
     runtime?.closeForTest()
     val appRuntime = (ApplicationProvider.getApplicationContext<Context>() as ObserverApplication).runtime

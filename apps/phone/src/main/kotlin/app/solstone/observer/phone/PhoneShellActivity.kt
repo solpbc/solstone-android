@@ -13,8 +13,15 @@ import app.solstone.observer.formfactor.phone.LocalPhoneObsidian
 import app.solstone.observer.formfactor.phone.PhoneObsidianBinding
 import app.solstone.observer.formfactor.phone.PhoneObsidianState
 import app.solstone.platform.obsidian.ObsidianRuntimes
+import app.solstone.observer.formfactor.phone.LocalPhoneDistanceSystem
+import app.solstone.observer.formfactor.phone.LocalPhoneIntake
+import app.solstone.observer.formfactor.phone.LocalPhoneSourceOrder
 import app.solstone.observer.formfactor.phone.LocalPhoneStatusNow
+import app.solstone.observer.formfactor.phone.PhoneIntakeReading
+import app.solstone.observer.formfactor.phone.PhoneIntakeSnapshot
 import app.solstone.observer.formfactor.phone.PhoneStatusNow
+import app.solstone.observer.formfactor.phone.distanceSystem
+import app.solstone.observer.formfactor.phone.measurementSystemNameBeforeApi28
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -202,6 +209,7 @@ class PhoneShellActivity : ComponentActivity() {
     @Volatile private var pushFactsStopped = false
     private var repairMemory = JournalPushRepairMemory()
     private var importBinding by mutableStateOf(PhoneImportBinding())
+    private var intakeSnapshot by mutableStateOf(PhoneIntakeSnapshot())
     private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
     private var obsidianPaneState by mutableStateOf(PhoneObsidianState())
     private val obsidianFolderLauncher = registerForActivityResult(
@@ -232,7 +240,6 @@ class PhoneShellActivity : ComponentActivity() {
                 tooLarge = value.tooLarge, unavailable = value.unavailable, fault = value.fault,
                 capability = value.capability, warningVault = value.warning?.vault,
                 warningDevice = value.warning?.device, warningDate = value.warning?.lastSynced,
-                soFar = value.soFar, started = value.started, lastTaken = value.lastTaken,
             )
         }
         publish()
@@ -295,6 +302,19 @@ class PhoneShellActivity : ComponentActivity() {
                 readImportPane(ImportIntake.get(this), stores, container.controller.pairingFact(), phoneAwaitingMarkConfirmation(this))
             }.getOrNull() ?: return@execute
             runOnUiThread { importBinding = PhoneImportBinding(state, importActions) }
+        }
+    }
+
+    private fun refreshIntake() {
+        if (!::container.isInitialized) return
+        importWork.execute {
+            val rows = runCatching {
+                container.persistenceDatabase().segmentDao().allIntake()
+            }.getOrDefault(emptyList())
+            val next = PhoneIntakeSnapshot(
+                rows.associate { it.sourceId to PhoneIntakeReading(it.total, it.startedAt, it.lastAt) },
+            )
+            runOnUiThread { intakeSnapshot = next }
         }
     }
 
@@ -484,6 +504,7 @@ class PhoneShellActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     refreshImports()
+                    refreshIntake()
                     kotlinx.coroutines.delay(2_000)
                 }
             }
@@ -949,6 +970,22 @@ class PhoneShellActivity : ComponentActivity() {
             val pairingOpen = pairingViewModel.pairingState.session !is PhonePairingSession.Closed
             val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
             val aboutFacts = remember { readAndroidAboutFacts(this) }
+            val distanceSystem = remember {
+                val locale = resources.configuration.locales.let { listed ->
+                    if (listed.isEmpty) java.util.Locale.getDefault() else listed[0]
+                }
+                val name = if (Build.VERSION.SDK_INT >= 28) {
+                    val system = android.icu.util.LocaleData.getMeasurementSystem(
+                        android.icu.util.ULocale.forLocale(locale),
+                    )
+                    if (system == android.icu.util.LocaleData.MeasurementSystem.SI) "SI" else "US"
+                } else {
+                    measurementSystemNameBeforeApi28(locale.country)
+                }
+                distanceSystem(name)
+            }
+            val sourceOrder = (sourcesViewModel.sourcesState as? LoadState.Loaded)
+                ?.value?.sources?.map { it.sourceId }.orEmpty()
             var aboutSnapshotEpoch by remember { mutableStateOf(0L) }
             val aboutBlock = rememberPhoneAboutBlock(
                 aboutFacts, snapshot?.status?.journalVersion, aboutSnapshotEpoch,
@@ -976,15 +1013,15 @@ class PhoneShellActivity : ComponentActivity() {
                     state = obsidianPaneState,
                     onChoose = { chooseObsidianFolder() }, onEnable = { enableObsidian() },
                     onOff = { ObsidianRuntimes.current?.turnOff() }, onPause = { ObsidianRuntimes.current?.pause() },
-                    onResume = {
-                        ownerStopped.clear()
-                        ObsidianRuntimes.current?.resume()
-                    },
+                    onResume = { ObsidianRuntimes.current?.resume() },
                     onRetry = { ObsidianRuntimes.current?.check() },
                     onContinue = { ObsidianRuntimes.current?.continueWarning() },
                     onCancel = { ObsidianRuntimes.current?.cancelWarning() },
                 ),
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
+                LocalPhoneIntake provides intakeSnapshot,
+                LocalPhoneDistanceSystem provides distanceSystem,
+                LocalPhoneSourceOrder provides sourceOrder,
             ) {
             PhoneObserverScreen(
                 loadState = sourcesViewModel.sourcesState,
@@ -1588,6 +1625,7 @@ class PhoneShellActivity : ComponentActivity() {
         // observed. ⛔ Not inside `refreshPermissions()` — that is a query a dozen internal paths
         // call — and ⛔ not inline: it writes a file and can start an engine.
         container.onOwnerResumed()
+        refreshIntake()
         if (::statusHost.isInitialized) statusHost.onResume()
         ObserverNotification.ensureChannel(this)
         notificationsEnabled = ObserverNotification.notificationsEnabled(this)

@@ -14,6 +14,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SourceRegistryFactsTest {
+    @Test fun anIndependentPauseCannotResumeOtherSources() {
+        val f = fixture(snapshot = snapshot())
+        val notes = FakeSourceEngine(conditionValue = runningCondition())
+        var stopped = true
+        val registrations = listOf(
+            SourceRegistration("calendar", FakeSourceEngine(conditionValue = runningCondition()), runsWithoutObserver = true),
+            SourceRegistration("obsidian", notes, runsWithoutObserver = true, pauseWithObserver = false),
+        )
+        assertTrue(registrations.first().pauseWithObserver)
+        val registry = SourceRegistry(f.controller, registrations, MainPoster { it() },
+            InMemorySourceWishStore(mapOf("calendar" to SourceWish.On, "obsidian" to SourceWish.On)), ownerStopped = { stopped })
+        fun state(id: String) = registry.snapshot().sources.single { it.sourceId == id }.state
+        assertEquals(SourceState.PAUSED, state("calendar"))
+        assertEquals(SourceState.ON, state("obsidian"))
+        notes.conditionValue = notes.conditionValue.copy(paused = true)
+        assertEquals(SourceState.PAUSED, state("obsidian"))
+        stopped = false
+        assertEquals(SourceState.ON, state("calendar"))
+        assertEquals(SourceState.PAUSED, state("obsidian"))
+        notes.conditionValue = notes.conditionValue.copy(paused = false)
+        assertEquals(SourceState.ON, state("obsidian"))
+        stopped = true
+        assertEquals(SourceState.PAUSED, state("calendar"))
+        assertEquals(SourceState.ON, state("obsidian"))
+    }
+
     @Test
     fun failedAudioRetriesOnlyOnExplicitOnAndLeavesScreenRunning() {
         val f = fixture(snapshot = snapshot())

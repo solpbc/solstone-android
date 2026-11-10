@@ -91,7 +91,7 @@ fun createCaptureSetup(
                 val notes = PassiveSourceEngine(calendarStorage::isStorageOk, obsidianNeedsAttention, obsidianPaused)
                 SourceRegistration(app.solstone.core.sources.OBSIDIAN_STREAM, notes,
                     requiredPermissionsGranted = { obsidianHasAccess() }, captureForegroundType = null,
-                    reasonWhenOff = notes::reasonWhenOff, runsWithoutObserver = true)
+                    reasonWhenOff = notes::reasonWhenOff, runsWithoutObserver = true, pauseWithObserver = false)
             } else null,
         ),
         payloadBytesProvider = object : PayloadBytesProvider {

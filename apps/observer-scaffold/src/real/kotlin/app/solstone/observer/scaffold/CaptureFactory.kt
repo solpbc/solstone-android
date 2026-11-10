@@ -172,6 +172,7 @@ fun createCaptureSetup(
                 val notes = PassiveSourceEngine(storageStatus::isStorageOk, obsidianNeedsAttention, obsidianPaused)
                 SourceRegistration(
                     sourceId = app.solstone.core.sources.OBSIDIAN_STREAM,
+                    pauseWithObserver = false,
                     engine = notes,
                     requiredPermissionsGranted = { obsidianHasAccess() },
                     captureForegroundType = null,

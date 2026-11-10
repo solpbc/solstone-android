@@ -43,14 +43,13 @@ data class ObsidianUi(
     val pending: Int = 0, val initialDone: Int = 0, val initialTotal: Int = 0,
     val tooLarge: Int = 0, val unavailable: Int = 0, val fault: String? = null,
     val capability: Boolean? = null, val warning: ObsidianWarning? = null,
-    val soFar: Long = 0, val started: Long? = null, val lastTaken: Long? = null,
 )
 
 /** One actor owns the private ledger, provider scans and the handoff to the normal spool. */
 class ObsidianSession(
     context: Context, private val database: SolstonePersistenceDatabase, private val spoolDir: Path,
     private val wishOn: () -> Boolean, private val setEnabled: (Boolean) -> Boolean,
-    private val ownerPaused: () -> Boolean, private val onSealed: () -> Unit,
+    private val ownerStopWitness: () -> String?, private val onSealed: () -> Unit,
     private val onChanged: () -> Unit,
 ) {
     private val appContext = context.applicationContext
@@ -64,6 +63,8 @@ class ObsidianSession(
     @Volatile private var listener: () -> Unit = {}
     @Volatile private var pauseRequested = false
     @Volatile private var offRequested = false
+    @Volatile private var stopRequested = false
+    @Volatile private var acknowledgedStop: String? = null
     @Volatile var unspooledPending = 0; private set
     @Volatile var ui = ObsidianUi(); private set
     private var capability: Boolean? = null
@@ -76,18 +77,31 @@ class ObsidianSession(
     init { ObsidianRuntimes.current = this; submit { refresh() } }
     fun setListener(next: () -> Unit) { listener = next }
     fun hasAccess(): Boolean = ui.configured && ui.fault != "access_lost"
-    fun isPaused(): Boolean = ui.paused
-    fun allowsDelivery(): Boolean = !pauseRequested && !offRequested && !ui.paused && !ownerPaused() && wishOn()
-    fun onProcessStart() = submit { schedule(); refresh() }
+    fun isPaused(): Boolean = ui.paused || ownerStopHolds() || stopRequested
+    private fun ownerStopHolds() = obsidianOwnerStopHolds(ownerStopWitness(), acknowledgedStop)
+    fun allowsDelivery(): Boolean = !pauseRequested && !offRequested && !stopRequested && !ui.paused && !ownerStopHolds() && wishOn()
+    fun onProcessStart() = submit { applyCounters(); schedule(); refresh() }
     fun onForeground(value: Boolean) = submit {
         foreground = value
         timer?.cancel(false); timer = null
         if (value) checkNow()
         scheduleTimer()
     }
-    fun onPauseChanged() = submit { globalPause = ownerPaused(); refresh() }
+    fun onPauseChanged() {
+        if (ownerStopWitness() == null) stopRequested = false
+        submit { refresh() }
+    }
+    fun onOwnerStopRequested(saved: Boolean) {
+        stopRequested = true
+        submit { if (!saved) fault = "wish_not_saved"; refresh() }
+    }
+    private fun acknowledgeOwnerStop(token: String?) {
+        if (token == null) ledger.remove(global, "settings", "owner_stop_ack")
+        else ledger.put(global, "settings", "owner_stop_ack", token)
+    }
     fun check() = submit { checkNow(); scheduleTimer() }
     fun choose(uri: Uri) {
+        val acceptedStop = ownerStopWitness()
         operation?.cancel()
         submit {
             ui = ui.copy(settingUp = true, fault = null); changed()
@@ -101,8 +115,8 @@ class ObsidianSession(
                     ledger.put(chosen.root, "meta", "uri", uri.toString())
                     ledger.put(chosen.root, "meta", "vault", chosen.name)
                     ledger.put(global, "settings", "root", chosen.root)
-                    if (ledger.get(global, "settings", "started") == null) ledger.put(global, "settings", "started", System.currentTimeMillis().toString())
                     ledger.remove(global, "settings", "paused")
+                    acknowledgeOwnerStop(acceptedStop)
                 }
                 published = true
                 if (!setEnabled(true)) throw VaultAccessException("wish_not_saved")
@@ -111,21 +125,25 @@ class ObsidianSession(
                         runCatching { appContext.contentResolver.releasePersistableUriPermission(Uri.parse(old), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     }
                 }
-                offRequested = false; pauseRequested = false
-                fault = null; warning = null; schedule(); checkNow(); scheduleTimer()
+                offRequested = false; pauseRequested = false; stopRequested = false
+                fault = null; warning = null; refresh(); schedule(); checkNow(); scheduleTimer()
             } catch (e: Exception) {
                 if (!alreadyGranted && !published) runCatching { appContext.contentResolver.releasePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 recordFailure(e)
             }
         }
     }
-    fun turnOn() = submit {
+    fun turnOn() {
+        val acceptedStop = ownerStopWitness()
+        submit {
         val root = ledger.get(global, "settings", "root") ?: return@submit
         val uri = ledger.get(root, "meta", "uri") ?: return@submit
         reader.validate(Uri.parse(uri))
         if (!setEnabled(true)) throw VaultAccessException("wish_not_saved")
-        offRequested = false; pauseRequested = false
-        fault = null; warning = null; schedule(); checkNow(); scheduleTimer()
+        ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
+        offRequested = false; pauseRequested = false; stopRequested = false
+        fault = null; warning = null; refresh(); schedule(); checkNow(); scheduleTimer()
+        }
     }
     fun turnOff() {
         offRequested = true
@@ -141,9 +159,13 @@ class ObsidianSession(
         pauseRequested = true
         submit { ledger.put(global, "settings", "paused", "1"); refresh() }
     }
-    fun resume() = submit {
-        ledger.remove(global, "settings", "paused"); pauseRequested = false; globalPause = ownerPaused()
+    fun resume() {
+        val acceptedStop = ownerStopWitness()
+        submit {
+        ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
+        pauseRequested = false; stopRequested = false; refresh()
         checkNow(); onSealed(); scheduleTimer()
+        }
     }
     fun continueWarning() = submit {
         warning?.let { ledger.put(global, "authorizations", it.token, "1") }
@@ -211,6 +233,7 @@ class ObsidianSession(
         operation = signal
         val began = SystemClock.elapsedRealtime()
         try {
+            applyCounters { stopped() || signal.isCanceled }
             engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
             stageBatches()
             val vault = reader.validate(Uri.parse(uri))
@@ -225,6 +248,7 @@ class ObsidianSession(
             val scan = engine.scan(root, vault.name, entries, now, stage::read,
                 cancelled = { if (stopped() || Thread.currentThread().isInterrupted) signal.cancel(); signal.isCanceled },
                 readStageToken = stage.token)
+            applyCounters { stopped() || signal.isCanceled }
             stage.clearApplied()
             signal.throwIfCanceled()
             engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
@@ -233,6 +257,15 @@ class ObsidianSession(
             refresh()
         } finally {
             operation = null; lastDuration = SystemClock.elapsedRealtime() - began
+        }
+    }
+    private fun applyCounters(stopped: () -> Boolean = { false }) {
+        while (true) {
+            if (stopped()) throw CancellationException("Obsidian counter apply cancelled")
+            val ops = pendingObsidianCounters(ledger)
+            if (ops.isEmpty()) return
+            database.obsidianIntakeDao().apply(ops, System.currentTimeMillis()) { !stopped() }
+            retireObsidianCounters(ledger, ops)
         }
     }
     private fun stageBatches() {
@@ -282,7 +315,8 @@ class ObsidianSession(
         val root = ledger.get(global, "settings", "root")
         val roots = ledger.roots(); val batches = ledger.batches()
         fun meta(key: String): String? = root?.let { ledger.get(it, "meta", key) }
-        globalPause = ownerPaused()
+        acknowledgedStop = ledger.get(global, "settings", "owner_stop_ack")
+        globalPause = ownerStopHolds() || stopRequested
         unspooledPending = roots.sumOf { ledger.keys(it, "pending").size } + batches.filter { !it.spooled }.sumOf { it.lines }
         val invalid = database.segmentDao().segmentsForDrain("obsidian").any { it.lastError == "obsidian_note_invalid" }
         ui = ObsidianUi(configured = root != null, enabled = wishOn(), paused = globalPause || ledger.get(global, "settings", "paused") == "1",
@@ -291,9 +325,7 @@ class ObsidianSession(
             initialDone = meta("initial_sent")?.toInt() ?: 0, initialTotal = meta("initial_total")?.toInt() ?: 0,
             tooLarge = meta("too_large")?.toInt() ?: 0, unavailable = meta("unavailable")?.toInt() ?: 0,
             fault = fault ?: if (invalid) "invalid_note" else null, capability = capability, warning = warning,
-            soFar = roots.sumOf { ledger.get(it, "meta", "notes_total")?.toLong() ?: 0 },
-            started = ledger.get(global, "settings", "started")?.toLong(),
-            lastTaken = roots.mapNotNull { ledger.get(it, "meta", "last_taken")?.toLong() }.maxOrNull())
+)
         changed()
     }
     private fun recordFailure(error: Exception) {
@@ -308,5 +340,10 @@ class ObsidianSession(
     }
     private fun submit(action: () -> Unit) { actor.execute { try { action() } catch (e: Exception) { recordFailure(e) } } }
     private fun changed() { onChanged(); listener() }
-    fun close() { operation?.cancel(); timer?.cancel(false); actor.shutdownNow(); ledger.close(); if (ObsidianRuntimes.current === this) ObsidianRuntimes.current = null }
+    fun close() {
+        if (ObsidianRuntimes.current === this) ObsidianRuntimes.current = null
+        operation?.cancel(); timer?.cancel(false); actor.shutdownNow()
+        check(actor.awaitTermination(10, TimeUnit.SECONDS)) { "Obsidian reads did not stop" }
+        ledger.close()
+    }
 }

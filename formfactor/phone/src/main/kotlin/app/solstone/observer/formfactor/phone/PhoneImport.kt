@@ -195,6 +195,7 @@ fun PhoneImportPane(
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneNote("adds PDFs, audio, images, and text you choose here or send from the share sheet.")
+        PhoneIntakeFactRows("import")
         PaneCard {
             PaneNavRow(label = "photos", onClick = actions.onPickPhotos, modifier = Modifier.testTag("importRow-photos"))
             PaneRowDivider()

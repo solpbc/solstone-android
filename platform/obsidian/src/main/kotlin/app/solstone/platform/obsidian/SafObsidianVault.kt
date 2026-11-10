@@ -74,8 +74,9 @@ class SafObsidianVault(private val resolver: ContentResolver) {
             if (before.modified != entry.modifiedMs || before.size != entry.size) return ObsidianRead.Unavailable
             if (before.size != null && before.size > OBSIDIAN_MAX_TEXT_BYTES) return ObsidianRead.TooLarge
             val descriptor = resolver.openFileDescriptor(uri, "r", signal) ?: return ObsidianRead.Unavailable
-            val first = Os.fstat(descriptor.fileDescriptor)
             ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                val first = Os.fstat(descriptor.fileDescriptor)
+                if (!android.system.OsConstants.S_ISREG(first.st_mode)) return ObsidianRead.Unavailable
                 val out = ByteArrayOutputStream()
                     val buffer = ByteArray(16 * 1024)
                     while (true) {

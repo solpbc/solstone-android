@@ -376,6 +376,8 @@ private fun SourceDetailTemplate(
             PaneRowDivider()
         }
         PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
+        PaneRowDivider()
+        PhoneIntakeFactRows(status.sourceId)
     }
 }
 

@@ -52,6 +52,7 @@ ksp {
 dependencies {
     api(project(":core:queue"))
     implementation(project(":core:model"))
+    implementation(project(":core:obsidian"))
     implementation(project(":core:spool"))
     implementation(project(":core:segment"))
     api("androidx.room:room-runtime:2.6.1")

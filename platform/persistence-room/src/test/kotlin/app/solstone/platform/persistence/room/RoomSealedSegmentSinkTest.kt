@@ -389,7 +389,7 @@ class RoomSealedSegmentSinkTest {
             captureEndEpochMs = BASE_EPOCH_MS + 1,
         )
 
-    private class FakeSegmentDao : SegmentDao() {
+    private class FakeSegmentDao : SegmentDaoWithoutIntake() {
         val segments = mutableListOf<SegmentRow>()
         val files = mutableListOf<SegmentFileRow>()
 

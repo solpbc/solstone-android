@@ -98,6 +98,7 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier) {
         }
         PaneFactRow("calendar", if (!state.permissionGranted && state.resume) "needs permission"
             else if (state.enabled) "on" else if (state.resume) "paused" else "off")
+        PhoneIntakeFactRows("calendar")
         PaneNote("history, with one year ahead")
         PaneCard {
             historyChoices.forEach { (kind, label) ->

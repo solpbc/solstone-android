@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import app.solstone.observer.harness.SourceStatus
 
 /**
  * `add more` (§ 3): *"sources not on home first, the ones already on home below. Every
@@ -23,8 +24,10 @@ fun PhoneAddMorePane(
     onOpenSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     isOnHome: (String) -> Boolean = { true },
+    sources: List<SourceStatus> = emptyList(),
 ) {
-    val ids = phoneSourceLabels.keys.toList()
+    val ids = (phoneSourceLabels.keys + sources.map { it.sourceId }).distinct()
+    val byId = sources.associateBy { it.sourceId }
     val notOnHome = ids.filterNot(isOnHome)
     val onHome = ids.filter(isOnHome)
     PhonePaneScaffold(
@@ -35,11 +38,7 @@ fun PhoneAddMorePane(
             PaneCard {
                 notOnHome.forEachIndexed { index, id ->
                     if (index > 0) PaneRowDivider()
-                    PaneNavRow(
-                        label = sourceLabel(id),
-                        onClick = { onOpenSource(id) },
-                        modifier = Modifier.testTag("addMoreRow-$id"),
-                    )
+                    AddMoreRow(id, byId[id], onOpenSource)
                 }
             }
         }
@@ -48,14 +47,21 @@ fun PhoneAddMorePane(
             PaneCard {
                 onHome.forEachIndexed { index, id ->
                     if (index > 0) PaneRowDivider()
-                    PaneNavRow(
-                        label = sourceLabel(id),
-                        onClick = { onOpenSource(id) },
-                        modifier = Modifier.testTag("addMoreRow-$id"),
-                    )
+                    AddMoreRow(id, byId[id], onOpenSource)
                 }
             }
         }
         PaneNote("open any source to change what it does, and to add or remove its tile.")
     }
+}
+
+@Composable
+private fun AddMoreRow(id: String, status: SourceStatus?, onOpenSource: (String) -> Unit) {
+    PaneNavRow(
+        label = sourceLabel(id),
+        subLine = status?.let { sourceStateCopy(it.state) },
+        leadingGlyph = sourceGlyph(id),
+        onClick = { onOpenSource(id) },
+        modifier = Modifier.testTag("addMoreRow-$id"),
+    )
 }

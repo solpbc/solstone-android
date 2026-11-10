@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
@@ -93,17 +92,6 @@ fun PhoneDeck(
         // The store's default is "on home": a source the owner has is on home until
         // they hide it, and § 5 is explicit that hiding never turns a source off.
         val sources = allSources.filter { isOnHome(it.sourceId) }
-        if (loadState is LoadState.Loaded) {
-            val attention = allSources.count { it.state == SourceState.NEEDS_ATTENTION }
-            if (attention > 0) {
-                Text(
-                    text = if (attention == 1) "1 needs attention" else "$attention need attention",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = startInset, end = endInset, top = 4.dp),
-                )
-            }
-        }
         Box(Modifier.fillMaxSize().padding(top = ShellMetrics.sectionSpacing)) {
             PhoneSourceGrid(
                 sources = sources,
@@ -218,6 +206,7 @@ internal fun PhoneSourceGrid(
                 index = sources.size,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "importTile",
+                dashed = false,
                 onOpen = onOpenImport,
             )
         }
@@ -242,6 +231,7 @@ internal fun PhoneSourceGrid(
                 index = sources.size + 1,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
                 testTag = "addMoreTile",
+                dashed = true,
                 onOpen = onOpenAddMore,
             )
         }
@@ -309,6 +299,7 @@ private fun PhoneNonSourceTile(
     index: Int,
     count: Int,
     testTag: String,
+    dashed: Boolean,
     onOpen: () -> Unit,
 ) {
     PhoneTileSurface(
@@ -318,8 +309,9 @@ private fun PhoneNonSourceTile(
             }
             .testTag(testTag),
         onClick = onOpen,
-        dashed = true,
+        dashed = dashed,
     ) {
+        Box(Modifier.size(0.dp).testTag(if (dashed) "$testTag-dashed" else "$testTag-solid"))
         Icon(
             painter = painterResource(glyph),
             contentDescription = null,

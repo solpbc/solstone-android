@@ -32,9 +32,23 @@ class OwnerStoppedStore(context: Context) {
 
     fun ownerStopped(): Boolean = preferences.getBoolean(KEY_STOPPED, false)
 
+    fun stopWitness(): String? {
+        val snapshot = preferences.all
+        return if (snapshot[KEY_STOPPED] == true) snapshot[KEY_WITNESS] as? String ?: "legacy-stop" else null
+    }
+
+    fun observeStop(listener: () -> Unit): AutoCloseable {
+        val change = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_STOPPED || key == KEY_WITNESS) listener()
+        }
+        preferences.registerOnSharedPreferenceChangeListener(change)
+        return AutoCloseable { preferences.unregisterOnSharedPreferenceChangeListener(change) }
+    }
+
     fun recordStopped(): Boolean {
         // ⚠ `commit`: the process is being asked to stop capturing and may be killed right after.
-        return preferences.edit().putBoolean(KEY_STOPPED, true).commit()
+        return preferences.edit().putBoolean(KEY_STOPPED, true)
+            .putString(KEY_WITNESS, java.util.UUID.randomUUID().toString()).commit()
     }
 
     fun clear() {
@@ -44,5 +58,6 @@ class OwnerStoppedStore(context: Context) {
     private companion object {
         const val PREFERENCES_NAME = "phone_owner_stopped"
         const val KEY_STOPPED = "stopped"
+        const val KEY_WITNESS = "stop_witness"
     }
 }

@@ -57,6 +57,8 @@ data class SourceRegistration(
     val captureForegroundType: CaptureForegroundType? = null,
     val reasonWhenOff: (() -> ReasonCode?)? = null,
     val runsWithoutObserver: Boolean = false,
+    /** False only when the source implements its own durable response to the global stop. */
+    val pauseWithObserver: Boolean = true,
 )
 
 sealed interface SourceToggleResult {

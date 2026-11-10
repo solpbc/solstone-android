@@ -208,7 +208,10 @@ class ImportCustodyStore(
                     attentionInstanceId = null,
                     attentionJournalVersion = null,
                 )
-                dao.insert(row)
+                if (!dao.insertIfNew(row, row.createdAt)) {
+                    kindMap.remove(key)
+                    return@withLock false
+                }
                 kindMap.remove(key)
                 true
             } catch (_: Exception) {

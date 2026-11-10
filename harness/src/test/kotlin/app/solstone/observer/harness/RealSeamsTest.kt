@@ -20,6 +20,7 @@ import app.solstone.core.pl.JournalVersionRefreshCoordinator
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
@@ -610,7 +611,7 @@ class RealSeamsTest {
         }
     }
 
-    private class TestSegmentDao : SegmentDao() {
+    private class TestSegmentDao : SegmentDaoWithoutIntake() {
         override fun insertSegment(segment: SegmentRow) = Unit
         override fun insertFiles(files: List<SegmentFileRow>) = Unit
         override fun insertEvents(events: List<EventRow>) = Unit

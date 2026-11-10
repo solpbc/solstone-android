@@ -36,3 +36,7 @@ fun parseOtherObsidianVaults(status: Int, body: String): List<ExistingObsidianVa
         }
     }.getOrNull()
 }
+
+/** A source-only resume can acknowledge one global stop, never a later stop. */
+fun obsidianOwnerStopHolds(currentWitness: String?, acknowledgedWitness: String?): Boolean =
+    currentWitness != null && currentWitness != acknowledgedWitness

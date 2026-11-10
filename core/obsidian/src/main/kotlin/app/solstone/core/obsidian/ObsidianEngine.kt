@@ -101,7 +101,7 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                 rows[entry.path] = old; save(root, entry.path, old)
             }
             if (unchanged(old, entry)) { progress(index + 1, notes.size); continue }
-            if (baseline) known(root, entry.path)
+            if (baseline) known(root, entry.path, "baseline", 0)
             val content = if (entry.size != null && entry.size > OBSIDIAN_MAX_TEXT_BYTES) ObsidianRead.TooLarge else read(entry)
             when (content) {
                 ObsidianRead.Unavailable -> { unavailable++; if (old == null || old.removed) uncertainNewcomer = true }
@@ -148,11 +148,11 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
                                 java.time.OffsetDateTime.parse(stamp).toInstant().toEpochMilli(), priorSentWindow = sent)
                             if (previous != null) {
                                 ledger.remove(root, "rows", previous); rows.remove(previous); missing.remove(previous)
-                                moveKnown(root, previous, entry.path)
+                                moveKnown(root, previous, entry.path, observed)
                             }
                             rows[entry.path] = updated; save(root, entry.path, updated)
                             if (!baseline && !isKnown(root, entry.path)) {
-                                known(root, entry.path)
+                                known(root, entry.path, "new", observed)
                                 increment(root, "notes_total", 1)
                             }
                             ledger.put(root, "meta", "last_taken", now.toString())
@@ -190,11 +190,19 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
     }
 
     private fun save(root: String, path: String, row: NoteRow) = ledger.put(root, "rows", path, row.encode())
-    private fun known(root: String, path: String) = ledger.put(root, "known", obsidianHash(path.toByteArray(Charsets.UTF_8)), "1")
+    private fun known(root: String, path: String, kind: String, observed: Long) {
+        val hash = obsidianHash(path.toByteArray(Charsets.UTF_8))
+        if (ledger.get(root, "known", hash) != null) return
+        ledger.put(root, "known", hash, "1")
+        enqueueObsidianCounter(ledger, root, kind, hash, observedMs = observed)
+    }
     private fun isKnown(root: String, path: String) = ledger.get(root, "known", obsidianHash(path.toByteArray(Charsets.UTF_8))) != null
-    private fun moveKnown(root: String, from: String, to: String) {
-        if (isKnown(root, from)) {
-            ledger.remove(root, "known", obsidianHash(from.toByteArray(Charsets.UTF_8))); known(root, to)
+    private fun moveKnown(root: String, from: String, to: String, observed: Long) {
+        val oldHash = obsidianHash(from.toByteArray(Charsets.UTF_8))
+        if (ledger.get(root, "known", oldHash) != null) {
+            val newHash = obsidianHash(to.toByteArray(Charsets.UTF_8))
+            ledger.remove(root, "known", oldHash); ledger.put(root, "known", newHash, "1")
+            enqueueObsidianCounter(ledger, root, "rename", newHash, oldHash, observed)
         }
     }
     private fun increment(root: String, key: String, n: Int) {

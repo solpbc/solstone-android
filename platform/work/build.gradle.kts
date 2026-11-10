@@ -52,6 +52,7 @@ dependencies {
     implementation(project(":core:spool"))
 
     testImplementation(kotlin("test"))
+    testImplementation(project(":core:obsidian"))
     testImplementation(project(":core:spool"))
     testImplementation(project(":testing"))
     androidTestImplementation("androidx.work:work-testing:2.9.1")

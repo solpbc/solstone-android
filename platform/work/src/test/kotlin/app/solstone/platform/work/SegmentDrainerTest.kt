@@ -25,6 +25,7 @@ import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.DirectoryRemovalResult
 import app.solstone.platform.persistence.room.EventRow
 import app.solstone.platform.persistence.room.SegmentDao
+import app.solstone.platform.persistence.room.SegmentDaoWithoutIntake
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SpoolDirectoryRemover
@@ -41,6 +42,27 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SegmentDrainerTest {
+    @Test fun aNewStopWitnessHoldsBytesWithoutAnySourceCallback() {
+        val f = TestFixture()
+        val (notes, _) = f.createSegment("090000_300", stream = "obsidian")
+        var witness: String? = "stop-one"
+        val acknowledged = "stop-one"
+        val sent = mutableListOf<String>()
+        fun allowed() = !app.solstone.core.obsidian.obsidianOwnerStopHolds(witness, acknowledged)
+        drainSegments(f.store, { manifests, day -> witness = "stop-two"; uploadAll(manifests, day) },
+            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, readBytes,
+            { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
+        assertTrue(sent.isEmpty()); assertEquals(0, f.store.row(notes.id).attemptCount)
+        // Cold sender reads the same persisted witness; no Activity or source callback is needed.
+        drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
+            readBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
+        assertTrue(sent.isEmpty())
+        witness = null // a global resume releases a purely global hold
+        drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
+            readBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
+        assertEquals(listOf("090000_300"), sent)
+    }
+
     @Test
     fun obsidianBackoffHoldsLaterWindowsWhileOtherSourcesDrain() {
         val f = TestFixture()
@@ -1415,7 +1437,7 @@ class SegmentDrainerTest {
 
         var finisherRef: ConfirmedCopyFinisher? = null
         var hookPasses = 0
-        val dao = object : SegmentDao() {
+        val dao = object : SegmentDaoWithoutIntake() {
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit
@@ -2014,7 +2036,7 @@ class SegmentDrainerTest {
     ) {
         val spool: Path = root.resolve("spool")
         val store = FakeDrainStore()
-        val dao = object : SegmentDao() {
+        val dao = object : SegmentDaoWithoutIntake() {
             override fun insertSegment(segment: SegmentRow) = Unit
             override fun insertFiles(files: List<SegmentFileRow>) = Unit
             override fun insertEvents(events: List<EventRow>) = Unit

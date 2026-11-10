@@ -24,13 +24,17 @@ import app.solstone.core.model.QueueState
         CalendarIntentRow::class,
         CalendarCapabilityRow::class,
         CalendarPreviewRow::class,
+        SourceIntakeRow::class,
+        SourceIntakeFixRow::class,
+        SourceIntakeSeenRow::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)
 abstract class SolstonePersistenceDatabase : RoomDatabase() {
     abstract fun segmentDao(): SegmentDao
+    abstract fun obsidianIntakeDao(): ObsidianIntakeDao
     abstract fun importDao(): ImportDao
     abstract fun calendarDao(): CalendarDao
 }

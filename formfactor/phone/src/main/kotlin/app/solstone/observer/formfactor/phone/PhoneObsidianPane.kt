@@ -11,10 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import java.text.NumberFormat
-import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class PhoneObsidianState(
     val configured: Boolean = false, val enabled: Boolean = false, val paused: Boolean = false,
@@ -23,7 +20,6 @@ data class PhoneObsidianState(
     val tooLarge: Int = 0, val unavailable: Int = 0, val fault: String? = null,
     val capability: Boolean? = null, val warningVault: String? = null,
     val warningDevice: String? = null, val warningDate: String? = null,
-    val soFar: Long = 0, val started: Long? = null, val lastTaken: Long? = null,
 )
 data class PhoneObsidianBinding(
     val state: PhoneObsidianState = PhoneObsidianState(),
@@ -68,20 +64,17 @@ internal fun PhoneObsidianPane(modifier: Modifier = Modifier) {
             TextButton(onClick = binding.onChoose) { Text("choose a folder") }
         }
         s.vault?.let { PaneFactRow("vault", it) }
-        s.lastChecked?.let { PaneFactRow("last checked", obsidianRelative(it, now)) }
+        s.lastChecked?.let { PaneFactRow("last checked", formatRelative(it, now, ZoneId.systemDefault())) }
         if (s.pending > 0) PaneFactRow("waiting to sync", countNotes(s.pending.toLong(), "change", "changes"))
         if (s.initialTotal > s.initialDone) PaneFactRow("first sync", "${s.initialDone} of ${s.initialTotal} notes")
-        PaneFactRow("so far", if (s.soFar == 0L) "nothing yet" else {
-            countNotes(s.soFar, "note", "notes") + (s.started?.let { ", since ${obsidianDate(it, now)}" } ?: "")
-        })
-        if (s.soFar > 0) s.lastTaken?.let { PaneFactRow("last taken in", obsidianRelative(it, now)) }
+        PhoneIntakeFactRows("obsidian")
         if (s.tooLarge > 0) PaneNote("${countNotes(s.tooLarge.toLong(), "note is", "notes are")} too large to bring in.")
         if (s.unavailable > 0) PaneFactRow("not available", countNotes(s.unavailable.toLong(), "note", "notes"))
         if (s.enabled && s.capability == false) {
             PaneNote("your journal needs an update before these notes can go in. changes wait on this phone.")
         }
         if (s.warningVault != null) {
-            PaneNote("a vault named \"${s.warningVault}\" was last synced from ${s.warningDevice ?: "another device"} on ${s.warningDate?.let { obsidianDate(java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli(), now) } ?: "an earlier date"}. continue from this phone too?")
+            PaneNote("a vault named \"${s.warningVault}\" was last synced from ${s.warningDevice ?: "another device"} on ${s.warningDate?.let { formatStarted(java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli(), now, ZoneId.systemDefault()) } ?: "an earlier date"}. continue from this phone too?")
             TextButton(onClick = binding.onContinue) { Text("continue") }
             TextButton(onClick = binding.onCancel) { Text("cancel") }
         }
@@ -113,22 +106,3 @@ internal fun PhoneObsidianPane(modifier: Modifier = Modifier) {
 }
 
 private fun countNotes(n: Long, one: String, many: String): String = "${NumberFormat.getIntegerInstance().format(n)} ${if (n == 1L) one else many}"
-private fun obsidianDate(at: Long, now: Long): String {
-    val zone = ZoneId.systemDefault()
-    val day = Instant.ofEpochMilli(at).atZone(zone)
-    val today = Instant.ofEpochMilli(now).atZone(zone)
-    return day.format(DateTimeFormatter.ofPattern(if (day.year == today.year) "MMMM d" else "MMMM d, yyyy", Locale.getDefault())).lowercase(Locale.getDefault())
-}
-private fun obsidianRelative(at: Long, now: Long): String {
-    val seconds = ((now - at) / 1000).coerceAtLeast(0)
-    val zone = ZoneId.systemDefault()
-    val day = Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
-    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    return when {
-        seconds < 60 -> "just now"
-        seconds < 3600 -> "${seconds / 60} min ago"
-        seconds < 86400 && day == today -> "${seconds / 3600} ${if (seconds / 3600 == 1L) "hour" else "hours"} ago"
-        day == today.minusDays(1) -> "yesterday"
-        else -> obsidianDate(at, now)
-    }
-}

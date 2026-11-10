@@ -177,12 +177,14 @@ internal fun PaneNavRow(
     modifier: Modifier = Modifier,
     value: String? = null,
     subLine: String? = null,
+    leadingGlyph: Int? = null,
 ) {
     PaneActionRow(
         label = label,
         value = value,
         subLine = subLine,
         glyph = R.drawable.phone_chevron_right,
+        leadingGlyph = leadingGlyph,
         onClick = onClick,
         modifier = modifier,
     )
@@ -214,6 +216,7 @@ private fun PaneActionRow(
     glyph: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    leadingGlyph: Int? = null,
 ) {
     Row(
         modifier = modifier
@@ -225,6 +228,15 @@ private fun PaneActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        if (leadingGlyph != null) {
+            Icon(
+                painter = painterResource(leadingGlyph),
+                contentDescription = null,
+                tint = shellSecondaryInk,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 text = label,

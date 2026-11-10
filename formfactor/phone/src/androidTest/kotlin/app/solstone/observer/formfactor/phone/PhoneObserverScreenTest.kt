@@ -256,7 +256,9 @@ class PhoneObserverScreenTest {
         }
         composeRule.onNodeWithTag("statusPill").performClick()
         composeRule.onNodeWithTag("statusPane").assertIsDisplayed()
-        composeRule.onNodeWithText("audio", useUnmergedTree = false).assertDoesNotExist()
+        // The status pane can name audio in its intake rows. The deck's tile must
+        // disappear from the merged accessibility tree while that pane is open.
+        composeRule.onNodeWithTag("sourceTile-audio").assertDoesNotExist()
     }
 
     @Test
@@ -677,6 +679,7 @@ class PhoneObserverScreenTest {
         assertEquals("app bar moved after deck scroll", appBarBottom, appBarBottomAfterScroll, 0f)
         val sourceTiles = composeRule.onAllNodes(sourceTileMatcher(), useUnmergedTree = true)
             .fetchSemanticsNodes()
+            .filterNot { it.boundsInRoot.isEmpty }
         assertTrue("expected rendered source tiles after scroll", sourceTiles.isNotEmpty())
         val minTop = sourceTiles.minOf { it.boundsInRoot.top }
         assertTrue(

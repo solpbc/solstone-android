@@ -342,7 +342,7 @@ class CalendarRuntimeTest {
         override fun saveConfiguration(settings: CalendarSettingsRow, calendars: List<CalendarCalendarRow>) {
             saveSettings(settings); saveCalendars(calendars)
         }
-        override fun stage(identities: List<CalendarIdentityRecord>, intents: List<CalendarIntentRecord>, settings: CalendarSettingsRow?, count: CalendarCountRow?, canCommit: () -> Boolean): Boolean {
+        override fun stage(identities: List<CalendarIdentityRecord>, intents: List<CalendarIntentRecord>, settings: CalendarSettingsRow?, count: CalendarCountRow?, canCommit: () -> Boolean, addedKeys: List<String>, nowEpochMs: Long): Boolean {
             if (!canCommit()) return false
             saveIdentities(identities); saveIntents(intents); settings?.let(::saveSettings); count?.let(::saveCount)
             return true

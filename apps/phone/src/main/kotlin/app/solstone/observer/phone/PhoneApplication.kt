@@ -411,13 +411,14 @@ class PhoneApplication : ObserverApplication(
     internal fun stopObserverFromNotification() {
         // ⚠ Recorded BEFORE the stop, so a process death between the two cannot lose the owner's
         // decision and leave resume free to restart intake.
-        OwnerStoppedStore(this).recordStopped()
+        val stopSaved = OwnerStoppedStore(this).recordStopped()
         CalendarRuntimes.current?.onOwnerStopped()
-        app.solstone.platform.obsidian.ObsidianRuntimes.current?.onPauseChanged()
+        app.solstone.platform.obsidian.ObsidianRuntimes.current?.onOwnerStopRequested(stopSaved)
         ObserverForegroundService.clearScreenConsent()
         runtime.containerIfInitialized?.controller?.stop()
     }
 
+    private var obsidianStopObservation: AutoCloseable? = null
     private fun startObsidianSession(container: ObserverAppContainer) {
         if (app.solstone.platform.obsidian.ObsidianRuntimes.current != null) return
         container.obsidianNeedsAttention = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.ui?.fault != null }
@@ -430,13 +431,16 @@ class PhoneApplication : ObserverApplication(
             setEnabled = { on ->
                 val result = container.sources.setWish(app.solstone.core.sources.OBSIDIAN_STREAM, if (on) SourceWish.On else SourceWish.Off)
                 val accepted = result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
-                if (accepted && on) OwnerStoppedStore(this).clear()
                 accepted
             },
-            ownerPaused = { OwnerStoppedStore(this).ownerStopped() },
+            ownerStopWitness = { OwnerStoppedStore(this).stopWitness() },
             onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
             onChanged = { container.sources.refreshSubscribers() },
         ).onProcessStart()
+        obsidianStopObservation?.close()
+        obsidianStopObservation = OwnerStoppedStore(this).observeStop {
+            app.solstone.platform.obsidian.ObsidianRuntimes.current?.onPauseChanged()
+        }
     }
 
     private fun startCalendarSession(container: ObserverAppContainer) {
