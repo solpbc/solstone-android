@@ -7,11 +7,13 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Bundle
+import android.os.Build
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationListenerCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.location.LocationRequestCompat
 import app.solstone.core.segment.wireKeys
 import app.solstone.core.watch.courier.CompletedWatchWindow
 import app.solstone.core.watch.courier.CourierBundleHeader
@@ -55,7 +57,7 @@ class ContinuousAudioRecorder(
     private var readerThread: Thread? = null
     private val remuxExecutor = Executors.newSingleThreadExecutor()
 
-    private var locationListener: LocationListener? = null
+    private var locationListener: LocationListenerCompat? = null
     @Volatile private var latestLocationFix: WatchLocationFix? = null
 
     private val sessionLock = Any()
@@ -169,31 +171,28 @@ class ContinuousAudioRecorder(
             if (!hasFine && !hasCoarse) return
 
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
-            val listener = object : LocationListener {
-                override fun onLocationChanged(loc: Location) {
-                    recordLocationFix(loc)
-                }
-                override fun onProviderEnabled(provider: String) {}
-                override fun onProviderDisabled(provider: String) {}
-                @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
-                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            // As on the Apple Watch: about 100 m accuracy and a 100 m filter. Fused, with the network
+            // provider as the fallback, at balanced power; never a GPS-only subscription.
+            val provider = when {
+                Build.VERSION.SDK_INT >= 31 && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER) -> LocationManager.FUSED_PROVIDER
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                else -> return
             }
+            val listener = LocationListenerCompat { loc -> recordLocationFix(loc) }
             locationListener = listener
-            val providers = lm.getProviders(true) ?: return
-            for (provider in providers) {
-                try {
-                    lm.requestLocationUpdates(provider, 10_000L, 5f, listener, Looper.getMainLooper())
-                } catch (_: SecurityException) {
-                } catch (_: Exception) {
-                }
-                try {
-                    val last = lm.getLastKnownLocation(provider)
-                    if (last != null) {
-                        recordLocationFix(last)
-                    }
-                } catch (_: SecurityException) {
-                } catch (_: Exception) {
-                }
+            val request = LocationRequestCompat.Builder(LOCATION_INTERVAL_MS)
+                .setQuality(LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY)
+                .setMinUpdateDistanceMeters(LOCATION_MIN_DISTANCE_M)
+                .build()
+            try {
+                LocationManagerCompat.requestLocationUpdates(lm, provider, request, listener, Looper.getMainLooper())
+            } catch (_: SecurityException) {
+            } catch (_: Exception) {
+            }
+            try {
+                lm.getLastKnownLocation(provider)?.let { recordLocationFix(it) }
+            } catch (_: SecurityException) {
+            } catch (_: Exception) {
             }
         } catch (_: SecurityException) {
         } catch (_: Throwable) {
@@ -341,9 +340,9 @@ class ContinuousAudioRecorder(
     }
 
     private fun handleCompletedWindow(window: CompletedWatchWindow, sessionId: String) {
-        val locationAtCompletion = latestLocationFix?.takeIf {
-            it.timestampEpochMs >= window.startEpochMs && it.timestampEpochMs <= window.endEpochMs
-        }
+        // As on the Apple Watch, a segment with no fresh fix carries the session's last one. With a
+        // 100 m filter a still owner gets few new fixes. The fix keeps its true time and age.
+        val locationAtCompletion = carriedLocationFix(latestLocationFix, window.endEpochMs)
         remuxExecutor.execute {
             val stagingDir = File(context.cacheDir, "wear_staging").apply { mkdirs() }
             val tempAdts = File(stagingDir, "window_${window.startEpochMs}.adts")
@@ -481,3 +480,10 @@ class ContinuousAudioRecorder(
         onSessionStatusChanged()
     }
 }
+
+/** The fix a completed segment carries: the latest one at or before the segment's end, unchanged. */
+internal fun carriedLocationFix(latest: WatchLocationFix?, windowEndEpochMs: Long): WatchLocationFix? =
+    latest?.takeIf { it.timestampEpochMs <= windowEndEpochMs }
+
+internal const val LOCATION_INTERVAL_MS = 10_000L
+internal const val LOCATION_MIN_DISTANCE_M = 100f
