@@ -40,8 +40,8 @@ internal data class WatchFaceFacts(
 )
 
 internal object WatchFacePresenter {
-    /** The phone is asked every 15 minutes while anything waits; past this, silence is worth a word. */
-    const val QUIET_PHONE_MS = 20 * 60_000L
+    /** The watch checks in about every 15 minutes; past this, silence is worth a word. */
+    const val QUIET_PHONE_MS = 30 * 60_000L
 
     fun present(f: WatchFaceFacts, clock: (Long) -> String): WatchFaceModel {
         val r = f.reduction
@@ -66,7 +66,7 @@ internal object WatchFacePresenter {
         val heardAgo = f.peerContactAt?.let { f.nowMs - it }?.takeIf { it >= 0 }
         val rows = listOf(
             "saved on your watch" to (f.savedCount?.toString() ?: "couldn't check"),
-            "phone replied" to when {
+            "phone checked in" to when {
                 heardAgo == null -> "not yet"
                 heardAgo < 2 * 60_000L -> "just now"
                 heardAgo < 60 * 60_000L -> "${heardAgo / 60_000L} min ago"
@@ -75,8 +75,8 @@ internal object WatchFacePresenter {
         )
 
         val delivery = when {
-            phoneTooOld -> "update solstone on your phone to keep sending."
-            watchTooOld -> "update solstone on your watch to keep sending."
+            phoneTooOld -> "update solstone on your phone so what's saved can move."
+            watchTooOld -> "update solstone on your watch so what's saved can move."
             heardAgo == null -> "solstone on your phone takes what your watch saves. install or open it there."
             (f.savedCount ?: 1) > 0 && heardAgo > QUIET_PHONE_MS ->
                 "what's saved stays here until your phone takes it. keep your phone nearby with solstone on it."
@@ -84,9 +84,9 @@ internal object WatchFacePresenter {
         }
         val sessionStep = when (r.endReason) {
             WatchSessionEndReason.PERMISSION_FAILURE -> "allow microphone access in settings, then start again."
-            WatchSessionEndReason.STORAGE_FULL -> "free space in watch settings, or bring your phone back so saved audio can move. then start again."
-            WatchSessionEndReason.SENSOR_FAILURE -> "try a new session. if the microphone stops again, restart your watch."
-            WatchSessionEndReason.PROCESS_LOSS -> "the app closed or your watch restarted. the last few minutes may be incomplete. start again when you're ready."
+            WatchSessionEndReason.STORAGE_FULL -> "free space in watch settings, or open solstone on your phone so saved audio can move. then start again."
+            WatchSessionEndReason.SENSOR_FAILURE -> "start again. if the microphone stops a second time, restart your watch."
+            WatchSessionEndReason.PROCESS_LOSS -> "the app closed or your watch restarted. the last few minutes may be incomplete."
             else -> if (audioTrouble) "another app may be using the microphone. this session keeps trying until you stop it." else null
         }
         val nextStep = listOfNotNull(sessionStep, delivery).joinToString("\n\n").ifEmpty { null }
@@ -97,7 +97,7 @@ internal object WatchFacePresenter {
                 add("if nothing moves, update solstone and Google Play services on both devices.")
             }
             if (f.notificationsOff && f.notificationsAsked) add("notifications are off, so solstone may not show on your watch face while it runs.")
-            if (f.locationOff && f.locationAsked) add("location is off. audio still runs.")
+            if (f.locationOff && f.locationAsked) add("location is off. sessions still work without it.")
             add(WatchCourierStrings.RELAY_NOTICE_SHORT)
         }
 

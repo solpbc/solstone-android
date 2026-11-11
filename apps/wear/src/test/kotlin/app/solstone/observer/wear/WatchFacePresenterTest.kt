@@ -52,8 +52,8 @@ class WatchFacePresenterTest {
 
     @Test fun aRecentReplyIsNotAnAlarmAndALongSilenceWithSavedAudioNamesTheNextStep() {
         assertNull(present(facts(savedCount = 3, peerContactAt = now - 10 * 60_000L)).nextStep)
-        assertNotNull(present(facts(savedCount = 3, peerContactAt = now - 40 * 60_000L)).nextStep)
-        assertNull(present(facts(savedCount = 0, peerContactAt = now - 40 * 60_000L)).nextStep)
+        assertNotNull(present(facts(savedCount = 3, peerContactAt = now - 45 * 60_000L)).nextStep)
+        assertNull(present(facts(savedCount = 0, peerContactAt = now - 45 * 60_000L)).nextStep)
         assertNotNull(present(facts(peerContactAt = null)).nextStep, "a phone never heard from names how to reach it")
     }
 

@@ -172,7 +172,7 @@ class WearMainActivity : ComponentActivity() {
                 peerContactAt = peer?.contactAt,
                 nowMs = System.currentTimeMillis(),
             ),
-        ) { at -> android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(at)) }
+        ) { at -> android.text.format.DateUtils.formatSameDayTime(at, System.currentTimeMillis(), java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).toString() }
         face.show(model)
         when {
             reduction.endReason == WatchSessionEndReason.PERMISSION_FAILURE && !has(Manifest.permission.RECORD_AUDIO) -> face.setDetailAction("open settings") { settings() }

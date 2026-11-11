@@ -56,7 +56,7 @@ class WatchTileService : TileService() {
             .addContent(gap(6f))
             .addContent(text(WatchCourierStrings.SOLSTONE,18f,CREAM,bold=true))
             .addContent(gap(4f))
-            .addContent(text("start on your watch",13f,CALM))
+            .addContent(text("start a session",13f,CALM))
             .addContent(gap(12f))
             .addContent(chip).build()
         val root=LayoutElementBuilders.Box.Builder()
@@ -66,7 +66,7 @@ class WatchTileService : TileService() {
             .setModifiers(ModifiersBuilders.Modifiers.Builder()
                 .setBackground(ModifiersBuilders.Background.Builder().setColor(ColorBuilders.argb(0xff000000.toInt())).build())
                 .setClickable(clickable)
-                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription("${WatchCourierStrings.SOLSTONE}. start on your watch. open").build()).build())
+                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription("${WatchCourierStrings.SOLSTONE}. start a session. open").build()).build())
             .addContent(content).build()
         val layout=LayoutElementBuilders.Layout.Builder().setRoot(root).build()
         return immediate(TileBuilders.Tile.Builder().setResourcesVersion(RESOURCES_VERSION).setTileTimeline(
