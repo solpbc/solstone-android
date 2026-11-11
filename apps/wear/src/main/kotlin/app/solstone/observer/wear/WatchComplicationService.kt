@@ -8,7 +8,10 @@ import androidx.wear.watchface.complications.data.*
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 
-/** A complication never claims to be a live microphone indicator. */
+/**
+ * A complication never claims to be a live microphone indicator. The sun says whose it is;
+ * the question mark is the unknown state, by shape.
+ */
 class WatchComplicationService : SuspendingComplicationDataSourceService() {
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? =
         if(request.complicationType==ComplicationType.SHORT_TEXT)unknown() else null
@@ -17,6 +20,6 @@ class WatchComplicationService : SuspendingComplicationDataSourceService() {
     private fun unknown():ShortTextComplicationData = ShortTextComplicationData.Builder(
         PlainComplicationText.Builder("?").build(),
         PlainComplicationText.Builder("session status unknown. open ${WatchCourierStrings.SOLSTONE}").build()
-    ).setMonochromaticImage(MonochromaticImage.Builder(Icon.createWithResource(this,R.drawable.complication_unknown)).build())
+    ).setMonochromaticImage(MonochromaticImage.Builder(Icon.createWithResource(this,R.drawable.ic_sun_mono)).build())
         .setTapAction(wearOpenFaceIntent(this)).build()
 }

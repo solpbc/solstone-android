@@ -11,12 +11,12 @@ internal object WatchSessionCopy {
         WatchSessionState.INTERRUPTED -> "audio interrupted"
         WatchSessionState.ATTENTION -> "audio needs attention"
         WatchSessionState.ENDED -> when (state.endReason) {
-            WatchSessionEndReason.OWNER_STOP -> "you stopped the session"
-            WatchSessionEndReason.PERMISSION_FAILURE -> "microphone permission needed"
+            WatchSessionEndReason.OWNER_STOP -> "stopped"
+            WatchSessionEndReason.PERMISSION_FAILURE -> "microphone access needed"
             WatchSessionEndReason.STORAGE_FULL -> "watch storage is full"
             WatchSessionEndReason.SENSOR_FAILURE -> "microphone stopped"
-            WatchSessionEndReason.PROCESS_LOSS -> "the session ended when the app closed or the watch restarted"
-            null -> "ready on your watch"
+            WatchSessionEndReason.PROCESS_LOSS -> "session ended unexpectedly"
+            null -> "ready"
         }
     }
 }

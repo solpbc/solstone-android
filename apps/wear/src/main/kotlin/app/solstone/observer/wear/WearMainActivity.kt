@@ -71,6 +71,7 @@ class WearMainActivity : ComponentActivity() {
         super.onResume()
         handler.removeCallbacks(tick)
         handler.post(tick)
+        WatchTransferWorker.enqueue(applicationContext)
     }
     override fun onPause() {
         handler.removeCallbacks(tick)
@@ -149,43 +150,35 @@ class WearMainActivity : ComponentActivity() {
         val reduction = currentReduction()
         val engaged = WearCaptureForegroundService.isRunning || pendingStartUntil > SystemClock.elapsedRealtime()
         val failure = reduction.endReason != null && reduction.endReason != WatchSessionEndReason.OWNER_STOP
-        val label = WatchSessionCopy.label(reduction)
-        val attention = when {
-            reduction.state == WatchSessionState.INTERRUPTED || reduction.state == WatchSessionState.ATTENTION || failure -> label
-            !NotificationManagerCompat.from(this).areNotificationsEnabled() -> "notifications are off"
-            else -> ""
-        }
         val started = WearCaptureForegroundService.recorderSnapshot.startedAtElapsedMs
-        val duration = if (engaged && started != null) "session: ${((SystemClock.elapsedRealtime() - started).coerceAtLeast(0L) / 60_000L)} min\n" else ""
         val held = runCatching {
             val store = WatchSpoolStore(applicationContext)
             store.listPendingFiles().size to store.hasLostMarker()
         }.getOrNull()
-        val holding = held?.first?.let { "$it sealed segments held on your watch" } ?: "held material needs attention"
-        val recovery = if (held?.second == true) "\nsome audio could not be prepared for delivery. saved material stays on your watch." else ""
-        val next = when (reduction.endReason) {
-            WatchSessionEndReason.PERMISSION_FAILURE -> "allow microphone access in settings, then tap start on your watch."
-            WatchSessionEndReason.STORAGE_FULL -> "free space in watch settings, or bring your phone back so held material can move. then start again."
-            WatchSessionEndReason.SENSOR_FAILURE -> "try a new session. if the microphone still stops, restart your watch."
-            WatchSessionEndReason.PROCESS_LOSS -> "the last segment may be partial. start a new session when you are ready."
-            else -> if (reduction.state == WatchSessionState.INTERRUPTED || reduction.state == WatchSessionState.ATTENTION) "another app may be using the microphone. this session keeps trying; you can stop it below." else ""
-        }
-        val notifications = if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) "\nnotifications are off. the ongoing activity may not appear. allow notifications in settings to make it available." else ""
-        val location = if (!has(Manifest.permission.ACCESS_COARSE_LOCATION) && !has(Manifest.permission.ACCESS_FINE_LOCATION)) "\nlocation access is off. audio intake can still run." else ""
+        val notificationsOff = !NotificationManagerCompat.from(this).areNotificationsEnabled()
         val peer = runCatching { WatchPeerStatusStore(this).read() }.getOrNull()
-        val delivery = when {
-            peer?.version != null && peer.version < WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your phone to continue delivery."
-            peer?.version != null && peer.version > WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your watch to continue delivery."
-            peer?.contactAt == null || System.currentTimeMillis() - peer.contactAt !in 0L..60_000L -> "phone delivery is unconfirmed. keep your phone connected and open solstone there. install or update solstone on your phone if needed. check Google Play services for updates on both devices. your watch keeps held material."
-            else -> "your phone replied recently."
-        }
-        face.show(if (engaged) "stop" else if (failure) "details" else "start", label, attention,
-            "$label\n$duration$holding$recovery\n$next$notifications$location\n\n$delivery\n\n${WatchCourierStrings.RELAY_NOTICE_SHORT}")
+        val model = WatchFacePresenter.present(
+            WatchFaceFacts(
+                reduction = reduction,
+                engaged = engaged,
+                elapsedMs = if (WearCaptureForegroundService.isRunning && started != null) (SystemClock.elapsedRealtime() - started).coerceAtLeast(0L) else null,
+                savedCount = held?.first,
+                lostMarker = held?.second == true,
+                notificationsOff = notificationsOff,
+                notificationsAsked = File(noBackupFilesDir, "notification-permission-asked").exists(),
+                locationOff = !has(Manifest.permission.ACCESS_COARSE_LOCATION) && !has(Manifest.permission.ACCESS_FINE_LOCATION),
+                locationAsked = File(noBackupFilesDir, "location-permission-asked").exists(),
+                peerVersion = peer?.version,
+                peerContactAt = peer?.contactAt,
+                nowMs = System.currentTimeMillis(),
+            ),
+        ) { at -> android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(at)) }
+        face.show(model)
         when {
             reduction.endReason == WatchSessionEndReason.PERMISSION_FAILURE && !has(Manifest.permission.RECORD_AUDIO) -> face.setDetailAction("open settings") { settings() }
             reduction.endReason == WatchSessionEndReason.STORAGE_FULL && filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES -> face.setDetailAction("open watch settings") { startActivity(Intent(Settings.ACTION_SETTINGS)) }
             failure -> face.setDetailAction("start again") { checkAndStart() }
-            !NotificationManagerCompat.from(this).areNotificationsEnabled() -> face.setDetailAction("open settings") { settings() }
+            notificationsOff && File(noBackupFilesDir, "notification-permission-asked").exists() -> face.setDetailAction("open settings") { settings() }
             else -> face.setDetailAction(null)
         }
     }
