@@ -36,7 +36,41 @@ data class ScreenshotBook(
     val staged: List<StagedShot> = emptyList(),
     val marks: List<DocMark> = emptyList(),
     val lastCheckedMs: Long? = null,
+    /** The journal the owner chose how far back for; null until a paired journal is seen. */
+    val journalId: String? = null,
+    /** The owner paused this source on its own page, apart from a pause of the whole app. */
+    val sourcePaused: Boolean = false,
 )
+
+/**
+ * "Already in your journal" is per journal, so pairing a different journal is a fresh start: the
+ * source goes back to asking how far back, as turning it back on does. The first journal seen
+ * after a confirm made while unpaired is that confirm's journal. An unpair changes nothing. S17 is
+ * not shown: a different journal holds none of these screenshots yet.
+ * Returns null when the book is unchanged.
+ */
+fun followJournal(book: ScreenshotBook, current: String?): ScreenshotBook? = when {
+    !book.confirmed || current == null || book.journalId == current -> null
+    book.journalId == null -> book.copy(journalId = current)
+    else -> book.copy(
+        confirmed = false,
+        reconfirm = false,
+        period = book.period + 1,
+        pauses = emptyList(),
+        frozen = emptySet(),
+        marks = emptyList(),
+        journalId = null,
+        sourcePaused = false,
+    )
+}
+
+/**
+ * The background check runs only while the source is on: a folder is granted, the owner has chosen
+ * how far back to start, and the wish is on. Before the confirm nothing is sent, so a background
+ * read would only count screenshots nobody is looking at.
+ */
+fun backgroundCheckWanted(book: ScreenshotBook, wishOn: Boolean): Boolean =
+    book.treeUri != null && book.confirmed && wishOn
 
 fun backfillProgress(book: ScreenshotBook): Pair<Int, Int> {
     val done = book.frozen.count { id -> book.marks.any { it.documentId == id } }
@@ -63,6 +97,8 @@ fun encodeBook(book: ScreenshotBook): String = buildString {
     }
     book.marks.forEach { appendLine("mark\t${enc(it.documentId)}\t${it.end.name}") }
     book.lastCheckedMs?.let { appendLine("checked\t$it") }
+    book.journalId?.let { appendLine("journal\t${enc(it)}") }
+    if (book.sourcePaused) appendLine("paused\t1")
 }
 
 fun decodeBook(text: String): ScreenshotBook {
@@ -79,6 +115,8 @@ fun decodeBook(text: String): ScreenshotBook {
     val staged = mutableListOf<StagedShot>()
     val marks = mutableListOf<DocMark>()
     var checked: Long? = null
+    var journal: String? = null
+    var sourcePaused = false
     for (line in text.lineSequence()) {
         if (line.isEmpty()) continue
         val f = line.split('\t')
@@ -112,9 +150,11 @@ fun decodeBook(text: String): ScreenshotBook {
                 marks += DocMark(dec(f[1]), end)
             }
             "checked" -> checked = f.getOrNull(1)?.toLongOrNull()
+            "journal" -> journal = dec(f.getOrNull(1).orEmpty()).ifEmpty { null }
+            "paused" -> sourcePaused = f.getOrNull(1) == "1"
         }
     }
-    return ScreenshotBook(tree, name, history, confirmed, reconfirm, period, lower, frozen, pauses, received, staged, marks, checked)
+    return ScreenshotBook(tree, name, history, confirmed, reconfirm, period, lower, frozen, pauses, received, staged, marks, checked, journal, sourcePaused)
 }
 
 private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")

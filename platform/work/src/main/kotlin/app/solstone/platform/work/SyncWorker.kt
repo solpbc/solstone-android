@@ -586,6 +586,8 @@ private fun sync(
             }
         }
 
+        // A screenshot just delivered moves the source page's `{d} of {N}` now, not at the next folder read.
+        app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.observeDelivery()
         return outcome
     } catch (e: RelayDialWaitingException) {
         attempt.legFailed(e)

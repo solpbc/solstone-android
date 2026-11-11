@@ -23,6 +23,8 @@ class ScreenshotBookTest {
             staged = listOf(StagedShot("doc/1", "abc", "2026-11-03T14:32:07-07:00", "platform", "20261103/screenshots/leaf", 99L)),
             marks = listOf(DocMark("doc/1", ReceivedEnd.DELIVERED)),
             lastCheckedMs = 50L,
+            journalId = "journal",
+            sourcePaused = true,
         )
         assertEquals(book, decodeBook(encodeBook(book)))
     }
@@ -53,5 +55,61 @@ class ScreenshotBookTest {
             ShotFate.REFUSED_SIZE,
             shotFate(ShotRead.Ended(ShotKind.JPEG, ShotEnd.REFUSED_SIZE), 1_000L, null, null, emptyList(), 0L, emptyList(), true),
         )
+    }
+
+    @Test
+    fun theBackgroundCheckIsWantedOnlyWhileTheSourceIsOn() {
+        val granted = ScreenshotBook(treeUri = "content://folder/Pictures/Screenshots")
+        kotlin.test.assertFalse(backgroundCheckWanted(ScreenshotBook(), wishOn = true))
+        kotlin.test.assertFalse(backgroundCheckWanted(granted, wishOn = true), "granted but how far back not chosen")
+        kotlin.test.assertTrue(backgroundCheckWanted(granted.copy(confirmed = true), wishOn = true))
+        kotlin.test.assertFalse(backgroundCheckWanted(granted.copy(confirmed = true), wishOn = false), "turned off")
+    }
+
+    @Test
+    fun thePickerOpensWhereThisPhoneSavesScreenshots() {
+        assertEquals("DCIM/Screenshots", screenshotsPickerFolder { if (it == "DCIM/Screenshots") 5L else null })
+        assertEquals("Pictures/Screenshots", screenshotsPickerFolder { if (it == "Pictures/Screenshots") 5L else null })
+        assertEquals("Pictures/Screenshots", screenshotsPickerFolder { null })
+        assertEquals("DCIM/Screenshots", screenshotsPickerFolder { if (it == "DCIM/Screenshots") 9L else 2L })
+    }
+
+    @Test
+    fun aDifferentJournalAsksHowFarBackAgainAndAnUnpairDoesNot() {
+        val held = StagedShot("doc/2", "def", "2026-11-03T14:32:07-07:00", "platform", "20261103/screenshots/leaf2", 99L)
+        val on = ScreenshotBook(
+            treeUri = "content://folder",
+            confirmed = true,
+            frozen = setOf("doc/1"),
+            marks = listOf(DocMark("doc/1", ReceivedEnd.DELIVERED)),
+            received = listOf(ReceivedHash("first", "abc", ReceivedEnd.DELIVERED)),
+            staged = listOf(held),
+            journalId = "first",
+        )
+        kotlin.test.assertNull(followJournal(on, "first"))
+        kotlin.test.assertNull(followJournal(on, null), "unpaired")
+        val next = followJournal(on, "second")!!
+        kotlin.test.assertFalse(next.confirmed)
+        kotlin.test.assertFalse(next.reconfirm, "the new journal has none of them, so S17 would not be true")
+        assertEquals(emptySet(), next.frozen)
+        assertEquals(on.received, next.received, "what the first journal received is still remembered")
+        assertEquals(listOf(held), next.staged, "held screenshots survive and go to the journal paired when sent")
+        kotlin.test.assertNull(next.journalId)
+    }
+
+    @Test
+    fun aConfirmMadeUnpairedBelongsToTheFirstJournalPaired() {
+        val unpaired = ScreenshotBook(treeUri = "content://folder", confirmed = true)
+        assertEquals("first", followJournal(unpaired, "first")!!.journalId)
+        kotlin.test.assertTrue(followJournal(unpaired, "first")!!.confirmed)
+        kotlin.test.assertNull(followJournal(ScreenshotBook(treeUri = "content://folder"), "first"), "not on yet")
+    }
+
+    @Test
+    fun theFolderFactNamesThePathInsideStorage() {
+        assertEquals("DCIM › Screenshots", screenshotsFolderPath("primary:DCIM/Screenshots", "Screenshots"))
+        assertEquals("Download › mixed", screenshotsFolderPath("primary:Download/mixed/", "mixed"))
+        assertEquals("Screenshots", screenshotsFolderPath("primary:", "Screenshots"))
+        assertEquals("Screenshots", screenshotsFolderPath(null, "Screenshots"))
     }
 }

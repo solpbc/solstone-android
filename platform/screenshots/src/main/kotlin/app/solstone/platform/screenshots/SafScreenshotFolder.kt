@@ -19,6 +19,23 @@ class SafScreenshotFolder(private val resolver: ContentResolver) {
     fun hasReadGrant(uri: Uri): Boolean =
         resolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
 
+    /**
+     * Whether the granted folder is still there. A grant outlives its folder: a moved or renamed
+     * folder keeps the grant, and listing it returns nothing, which read as a quiet `on`.
+     * A [SecurityException] propagates, so the caller reads it as a lost grant too.
+     */
+    fun reachable(uri: Uri): Boolean {
+        val doc = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+        return try {
+            resolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+                ?.use { it.moveToFirst() } ?: false
+        } catch (e: SecurityException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun persist(uri: Uri) {
         resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }

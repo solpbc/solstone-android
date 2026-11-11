@@ -233,9 +233,21 @@ class PhoneShellActivity : ComponentActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
             putExtra(
                 android.provider.DocumentsContract.EXTRA_INITIAL_URI,
-                android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3APictures%2FScreenshots"),
+                screenshotsPickerUri(),
             )
         })
+    }
+    /** Opens the picker where this phone saves screenshots, so A4's "use this folder" is true. */
+    private fun screenshotsPickerUri(): android.net.Uri {
+        @Suppress("DEPRECATION")
+        val storage = android.os.Environment.getExternalStorageDirectory()
+        val folder = app.solstone.core.screenshots.screenshotsPickerFolder { relative ->
+            runCatching { java.io.File(storage, relative).takeIf { it.isDirectory }?.lastModified() }.getOrNull()
+        }
+        return android.provider.DocumentsContract.buildDocumentUri(
+            "com.android.externalstorage.documents",
+            "primary:$folder",
+        )
     }
     private fun attachScreenshotsUi() {
         val source = ScreenshotsRuntimes.current ?: return
@@ -247,10 +259,13 @@ class PhoneShellActivity : ComponentActivity() {
         accessGranted = accessGranted,
         accessLost = accessLost,
         folderName = folderName,
+        folderPath = folderPath,
         enabled = enabled,
         paused = paused,
+        sourcePaused = sourcePaused,
         confirmed = confirmed,
         reconfirm = reconfirm,
+        firstSetUp = firstSetUp,
         history = history,
         counting = counting,
         countFailed = countFailed,
@@ -1152,6 +1167,8 @@ class PhoneShellActivity : ComponentActivity() {
                     onConfirm = { ScreenshotsRuntimes.current?.confirm() },
                     onOff = { ScreenshotsRuntimes.current?.turnOff() },
                     onRetry = { ScreenshotsRuntimes.current?.retryUnread() },
+                    onPause = { ScreenshotsRuntimes.current?.pause() },
+                    onResume = { ScreenshotsRuntimes.current?.resume() },
                 ),
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
                 LocalPhoneIntake provides intakeSnapshot,

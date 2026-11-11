@@ -55,10 +55,14 @@ data class PhoneScreenshotsState(
     val accessGranted: Boolean = false,
     val accessLost: Boolean = false,
     val folderName: String = "Screenshots",
+    val folderPath: String = "Screenshots",
     val enabled: Boolean = false,
     val paused: Boolean = false,
+    val sourcePaused: Boolean = false,
     val confirmed: Boolean = false,
     val reconfirm: Boolean = false,
+    /** Never turned on yet: the tile's state word is `ready to set up`, not `off`. */
+    val firstSetUp: Boolean = true,
     val history: HistoryChoice = HistoryChoice.LAST_30_DAYS,
     val counting: Boolean = false,
     val countFailed: Boolean = false,
@@ -80,21 +84,43 @@ data class PhoneScreenshotsBinding(
     val onConfirm: () -> Unit = {},
     val onOff: () -> Unit = {},
     val onRetry: () -> Unit = {},
+    val onPause: () -> Unit = {},
+    val onResume: () -> Unit = {},
 )
 
 val LocalPhoneScreenshots = staticCompositionLocalOf { PhoneScreenshotsBinding() }
 
-fun screenshotsSourceSubLine(state: PhoneScreenshotsState, paired: Boolean): String? = when {
-    state.accessLost -> "can't read the ${state.folderName} folder."
-    state.paused && state.enabled -> S16
-    state.enabled && state.capability == false -> S21
-    state.enabled && state.backfillTotal > 0 && state.backfillDone < state.backfillTotal ->
-        "${state.backfillDone} of ${state.backfillTotal} in your journal"
-    state.enabled && !paired -> "the screenshots you take wait on this device until you connect a journal."
-    state.enabled -> "adds the screenshots you take to your journal while this is on."
-    state.accessGranted && !state.confirmed -> S11
+/** Which locked line the tile shows, by its id in the screenshots copy file. */
+enum class ScreenshotsTileLine { A7, S16, S3, S21, S5, S2, S11 }
+
+/**
+ * Unpaired, nothing goes to a journal, so S3 says where screenshots wait before any progress or
+ * journal-version line can.
+ */
+fun screenshotsTileLine(state: PhoneScreenshotsState, paired: Boolean): ScreenshotsTileLine? = when {
+    state.accessLost -> ScreenshotsTileLine.A7
+    state.paused && state.enabled -> ScreenshotsTileLine.S16
+    state.enabled && !paired -> ScreenshotsTileLine.S3
+    state.enabled && state.capability == false -> ScreenshotsTileLine.S21
+    state.enabled && state.backfillTotal > 0 && state.backfillDone < state.backfillTotal -> ScreenshotsTileLine.S5
+    state.enabled -> ScreenshotsTileLine.S2
+    // S11 is the first set-up's line. Once turned off, given a new folder or paired to a different
+    // journal, the tile is `off` and takes the shared off line; the page shows the chooser again.
+    state.accessGranted && !state.confirmed && state.firstSetUp -> ScreenshotsTileLine.S11
     else -> null
 }
+
+fun screenshotsSourceSubLine(state: PhoneScreenshotsState, paired: Boolean): String? =
+    when (screenshotsTileLine(state, paired)) {
+        ScreenshotsTileLine.A7 -> "can't read the ${state.folderName} folder."
+        ScreenshotsTileLine.S16 -> S16
+        ScreenshotsTileLine.S3 -> "the screenshots you take wait on this device until you connect a journal."
+        ScreenshotsTileLine.S21 -> S21
+        ScreenshotsTileLine.S5 -> "${state.backfillDone} of ${state.backfillTotal} in your journal"
+        ScreenshotsTileLine.S2 -> "adds the screenshots you take to your journal while this is on."
+        ScreenshotsTileLine.S11 -> S11
+        null -> null
+    }
 
 @Composable
 internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
@@ -103,7 +129,8 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.SourceDetail("screenshots")) }) {
         PaneNote(A1)
-        if (!s.accessGranted) {
+        // A lost grant has its own reason and button (A8); the first-time setup lines would repeat it.
+        if (!s.accessGranted && !s.accessLost) {
             PaneNote(A2)
             TextButton(onClick = binding.onChoose) { Text(A3) }
             PaneNote(A4)
@@ -138,14 +165,24 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
             val label = if (s.counting || s.previewCount == null) "checking…" else confirmLabel(s.history, s.previewCount)
             TextButton(onClick = binding.onConfirm, enabled = !s.counting && s.previewCount != null) { Text(label) }
         }
+        // A6 is said in every state, so the owner reads when screenshots arrive before turning this on.
+        if (!s.confirmed) PaneNote(A6)
         if (s.confirmed) {
+            // The switch is the owner's on or off; a pause is its own control, as `off` and `paused` differ.
             PaneSwitchRow(
                 label = "screenshots",
-                checked = s.enabled && !s.paused,
+                checked = s.enabled,
                 onCheckedChange = { on -> if (!on) binding.onOff() },
             )
             PaneNote(A6)
             if (s.paused) PaneNote(S16)
+            // Resume is offered only for this source's own pause: under a pause of the whole app it
+            // could not bring screenshots back on its own.
+            if (s.enabled && s.sourcePaused) {
+                TextButton(onClick = binding.onResume) { Text("resume") }
+            } else if (s.enabled && !s.paused && !s.accessLost) {
+                TextButton(onClick = binding.onPause) { Text("pause") }
+            }
             if (s.backfillTotal > 0 && s.backfillDone < s.backfillTotal) {
                 PaneNote("${s.backfillDone} of ${s.backfillTotal} screenshots in your journal")
             }
@@ -159,7 +196,7 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
         if (s.refusedJournal > 0) PaneNote(A11)
         if (s.waiting > 0) PaneFactRow("waiting to go to your journal", s.waiting.toString())
         s.lastChecked?.let { PaneFactRow("last checked", formatRelative(it, now, ZoneId.systemDefault())) }
-        if (s.accessGranted) PaneFactRow("folder", s.folderName)
+        if (s.accessGranted) PaneFactRow("folder", s.folderPath)
         PaneNote(S14)
         PaneNote(S15)
         PaneNote(S23)

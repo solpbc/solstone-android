@@ -137,6 +137,16 @@ class SourceIntakeTest {
     }
 
     @Test
+    fun aScreenshotIsLastTakenInWhenItIsKeptNotWhenItWasCaptured() {
+        val capturedLongAgo = file("screenshots", "screenshot_screen.png", start = 1_000, end = 2_000, bytes = 40)
+        val camera = file("camera", "camera.jpg", start = 0, end = 3_000, bytes = 20)
+        val deltas = segmentIntakeDeltas(listOf(capturedLongAgo, camera), emptyList(), anchor = null, keptAtMs = 9_000_000L)
+            .associateBy { it.sourceId }
+        assertEquals(9_000_000L, deltas.getValue(INTAKE_SCREENSHOTS).materialAt)
+        assertEquals(3_000L, deltas.getValue(INTAKE_CAMERA).materialAt)
+    }
+
+    @Test
     fun aFinishedSubSecondSpanOpensTheRowAndFilesFloorOnce() {
         val one = segmentIntakeDeltas(
             listOf(file("audio", "audio.m4a", start = 0, end = 400, bytes = 10)),

@@ -354,7 +354,8 @@ class PhoneApplication : ObserverApplication(
 
         if (plan.endSession) {
             if (ownerTurnedSourceOff && container.sources.snapshot().sources.none {
-                    (it.sourceId == CALENDAR_STREAM || it.sourceId == app.solstone.core.sources.OBSIDIAN_STREAM) && it.wish == SourceWish.On
+                    (it.sourceId == CALENDAR_STREAM || it.sourceId == app.solstone.core.sources.OBSIDIAN_STREAM ||
+                        it.sourceId == app.solstone.core.sources.SCREENSHOTS_STREAM) && it.wish == SourceWish.On
                 }) {
                 OwnerStoppedStore(this).recordStopped()
             }

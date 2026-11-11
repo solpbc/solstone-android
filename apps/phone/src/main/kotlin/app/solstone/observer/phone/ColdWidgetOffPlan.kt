@@ -107,7 +107,10 @@ fun performAudioOff(
     )
 
     if (plan.endSession) {
-        val stoppedOk = wishesNow[CALENDAR_STREAM] == SourceWish.On || recordOwnerStopped()
+        // Calendar and screenshots take things in with no capture session, so turning the last capture
+        // off is not the owner stopping them.
+        val stoppedOk = wishesNow[CALENDAR_STREAM] == SourceWish.On ||
+            wishesNow[app.solstone.core.sources.SCREENSHOTS_STREAM] == SourceWish.On || recordOwnerStopped()
         val desiredOk = commitDesiredOff()
         stop(true)
         if (!stoppedOk || !desiredOk) {

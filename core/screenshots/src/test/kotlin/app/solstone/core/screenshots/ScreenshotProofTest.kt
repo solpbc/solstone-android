@@ -37,6 +37,20 @@ class ScreenshotProofTest {
     }
 
     @Test
+    fun aHeadRulesOutCameraPhotosAndVideosButNeverAScreenshotOrASilentHead() {
+        val padding = ByteArray(SCREENSHOT_HEAD_BYTES)
+        val cameraHead = (jpeg(software = "HDR+ 1.0", make = "samsung") + padding).copyOf(SCREENSHOT_HEAD_BYTES)
+        assertTrue(headRulesOutScreenshot(cameraHead))
+        val video = byteArrayOf(0, 0, 0, 0x18) + "ftypmp42".toByteArray(Charsets.US_ASCII) + padding
+        assertTrue(headRulesOutScreenshot(video.copyOf(SCREENSHOT_HEAD_BYTES)))
+        val screenshotHead = (png(software = "Android 15") + padding).copyOf(SCREENSHOT_HEAD_BYTES)
+        assertFalse(headRulesOutScreenshot(screenshotHead))
+        assertFalse(headRulesOutScreenshot(jpeg(software = "Android BP4A.251205.006")))
+        val silent = PNG_SIG + chunk("IHDR", ByteArray(13)) + chunk("IDAT", ByteArray(64))
+        assertFalse(headRulesOutScreenshot(silent), "no tags in the head yet: read it whole")
+    }
+
+    @Test
     fun aPngTextSoftwareTagIsEnoughWhenMakeIsAbsent() {
         val shot = classifyScreenshot(pngText(software = "Android 14"))
         assertIs<ShotRead.Shot>(shot)

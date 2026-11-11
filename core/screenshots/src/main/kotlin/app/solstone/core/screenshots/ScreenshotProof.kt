@@ -40,6 +40,27 @@ fun classifyScreenshot(bytes: ByteArray): ShotRead {
     return classifyHeader(bytes)
 }
 
+/** How much of a file is read first, before deciding whether to read it whole. */
+const val SCREENSHOT_HEAD_BYTES = 256 * 1024
+
+/**
+ * True when the first bytes of a file already prove it is not a screenshot: not an image type the
+ * journal keeps (a video, a HEIC photo), or tags that name a camera or another program. A folder of
+ * photos is then never read whole on each check. A head that carries no tags yet rules nothing
+ * out, so a file whose record sits later in it still gets a full read.
+ */
+fun headRulesOutScreenshot(head: ByteArray): Boolean {
+    val kind = sniff(head) ?: return true
+    val tags = when (kind) {
+        ShotKind.JPEG -> jpegTags(head)
+        ShotKind.PNG -> pngTags(head)
+        ShotKind.WEBP -> webpTags(head)
+    } ?: return false
+    if (!tags.make.isNullOrBlank()) return true
+    val software = tags.software?.trim()
+    return software != null && !ANDROID_SOFTWARE.matches(software)
+}
+
 private fun classifyHeader(bytes: ByteArray): ShotRead {
     val kind = sniff(bytes) ?: return ShotRead.NotScreenshot
     val tags = when (kind) {

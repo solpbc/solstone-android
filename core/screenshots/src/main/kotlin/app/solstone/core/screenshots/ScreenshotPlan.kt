@@ -83,3 +83,29 @@ fun shotFate(
 }
 
 fun backfillOpen(done: Int, total: Int): Boolean = total > 0 && done < total
+
+/** Where phones save screenshots: AOSP and Pixel under Pictures, Samsung under DCIM. */
+val SCREENSHOT_FOLDERS = listOf("Pictures/Screenshots", "DCIM/Screenshots")
+
+/**
+ * The folder the system picker opens at. [modifiedAt] answers a folder's last change, or null when
+ * it is not there; the one written to most recently wins, so the picker opens where this phone
+ * saves its screenshots. With neither present it opens at Pictures/Screenshots.
+ */
+fun screenshotsPickerFolder(modifiedAt: (String) -> Long?): String =
+    SCREENSHOT_FOLDERS
+        .mapNotNull { folder -> modifiedAt(folder)?.let { folder to it } }
+        .maxByOrNull { it.second }
+        ?.first
+        ?: SCREENSHOT_FOLDERS.first()
+
+/**
+ * S22's `{path}` from a device-storage tree's document id: `primary:DCIM/Screenshots` reads
+ * `DCIM › Screenshots`. The caller passes null for another provider, whose ids are not paths, and
+ * that, or an id that names no path, reads as [fallback].
+ */
+fun screenshotsFolderPath(treeDocumentId: String?, fallback: String): String {
+    val path = treeDocumentId?.substringAfter(':', "")?.trim('/').orEmpty()
+    if (path.isEmpty()) return fallback
+    return path.split('/').filter { it.isNotEmpty() }.joinToString(" › ")
+}

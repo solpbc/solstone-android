@@ -70,17 +70,22 @@ fun advanceIntake(
 
 fun intakeSeenKey(event: String, occurrence: String?): String = event + "\u0000" + (occurrence ?: "")
 
-/** Per-source adds for one first insert. Calendar files are not counted here. */
+/**
+ * Per-source adds for one first insert. Calendar files are not counted here.
+ * A screenshot's capture time can be years before it is taken in, so its `last taken in` is
+ * [keptAtMs], the moment it is kept on this device, when known.
+ */
 fun segmentIntakeDeltas(
     files: List<SegmentFileRow>,
     fixes: List<IntakeFix>,
     anchor: IntakeFix?,
+    keptAtMs: Long? = null,
 ): List<IntakeDelta> {
     val deltas = ArrayList<IntakeDelta>(4)
     durationDelta(files, INTAKE_AUDIO)?.let { deltas += it }
     durationDelta(files, INTAKE_SCREEN)?.let { deltas += it }
     cameraDelta(files)?.let { deltas += it }
-    countDelta(files, INTAKE_SCREENSHOTS)?.let { deltas += it }
+    countDelta(files, INTAKE_SCREENSHOTS)?.let { deltas += if (keptAtMs == null) it else it.copy(materialAt = keptAtMs) }
     locationDelta(fixes, anchor)?.let { deltas += it }
     return deltas
 }

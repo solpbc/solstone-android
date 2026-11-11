@@ -51,6 +51,26 @@ class AudioOffTurnTest {
     }
 
     @Test
+    fun audioOffLeavesScreenshotsTakingThingsInRatherThanPausingThem() {
+        val before = mapOf("audio" to SourceWish.On, "screenshots" to SourceWish.On)
+        var stoppedSession: Boolean? = null
+        performAudioOff(
+            registrationIds = listOf("audio"),
+            readStore = { WishStoreState.Loaded(before) },
+            saveResolved = { WishSaveOutcome.Committed },
+            commitThroughRegistry = null,
+            microphoneGranted = true, cameraGranted = false, locationGranted = false,
+            declared = setOf(CaptureForegroundType.MICROPHONE), serviceHeld = true,
+            narrowRunningMask = { error("no observer capture type remains") },
+            stop = { stoppedSession = it },
+            recordOwnerStopped = { error("turning audio off is not the owner pausing screenshots") },
+            commitDesiredOff = { true },
+            publishNotice = { error("unexpected notice: $it") }, clearNotice = {},
+        )
+        assertEquals(true, stoppedSession)
+    }
+
+    @Test
     fun audioOffWithNoLiveServicePreservesTheRemainingLocationWish() {
         var saved: Map<String, SourceWish>? = null
         var cleared = false

@@ -62,7 +62,7 @@ abstract class SegmentDao {
 
     private fun recordSegmentIntake(files: List<SegmentFileRow>, fixes: List<IntakeFix>, nowEpochMs: Long) {
         val anchor = intakeFix(INTAKE_LOCATION)?.toFix()
-        for (delta in segmentIntakeDeltas(files, fixes, anchor)) {
+        for (delta in segmentIntakeDeltas(files, fixes, anchor, keptAtMs = nowEpochMs)) {
             val existing = intakeBySource(delta.sourceId)?.toReading()
             val next = advanceIntake(existing, delta.add, delta.materialAt, nowEpochMs, touch = true) ?: continue
             upsertIntake(next.toRow(delta.sourceId))
