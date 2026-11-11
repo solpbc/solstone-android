@@ -57,7 +57,7 @@ PAYLOAD_PREFIXES = (
 )
 
 # The executable surface, where an entry the bundle does not carry is a finding.
-COMPARED_FACTS = ("package", "version_code", "version_name", "min_sdk", "target_sdk", "permissions")
+COMPARED_FACTS = ("package", "version_code", "version_name", "min_sdk", "target_sdk", "permissions", "watch_required")
 
 
 def _digest(archive: zipfile.ZipFile, name: str) -> str:

@@ -11,8 +11,8 @@ android {
         applicationId = "app.solstone.observer.phone"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 51
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val courierStrings = rootProject.file("core/watch-courier/src/main/kotlin/app/solstone/core/watch/courier/WatchCourierStrings.kt").readText()
         val launcherName = Regex("const val SOLSTONE = \"([^\"]+)\"").find(courierStrings)?.groupValues?.get(1)

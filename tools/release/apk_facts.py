@@ -137,6 +137,7 @@ def parse_manifest(buf: bytes) -> dict:
         "min_sdk": None,
         "target_sdk": None,
         "permissions": [],
+        "watch_required": False,
     }
     for name, attributes in elements:
         if name == "manifest":
@@ -146,6 +147,8 @@ def parse_manifest(buf: bytes) -> dict:
         elif name == "uses-sdk":
             facts["min_sdk"] = attributes.get((ANDROID_NS, "minSdkVersion"))
             facts["target_sdk"] = attributes.get((ANDROID_NS, "targetSdkVersion"))
+        elif name == "uses-feature" and attributes.get((ANDROID_NS, "name")) == "android.hardware.type.watch":
+            facts["watch_required"] = attributes.get((ANDROID_NS, "required"), True) not in (False, 0, "false")
         elif name == "uses-permission":
             value = attributes.get((ANDROID_NS, "name"))
             if value is not None:

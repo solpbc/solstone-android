@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.42] - 2026-11-11
+
+### Added
+
+- audio from a session you start on your wear os watch can now reach your journal through this phone.
+- add screenshots as a source to bring the screenshots you take on this phone into your journal.
+
 ### Fixed
 
 - a finished recording shorter than a second now counts. status and the source page say less than a minute, instead of nothing yet.

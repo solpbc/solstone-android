@@ -73,7 +73,7 @@ class WearCaptureForegroundService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, WatchCourierStrings.SOLSTONE, NotificationManager.IMPORTANCE_LOW))
         try {
-            val hasLocation = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION).any {
+            val hasLocation = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION).any {
                 ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
             }
             val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or

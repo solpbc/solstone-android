@@ -35,11 +35,12 @@
 #     [--lane release|staging|dev] [--dry-run]
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 umask 077
 export LC_ALL=C
 
-PRODUCT="solstone-android"
+surface="phone"
 BUCKET="${SOLSTONE_ORIGIN_BUCKET:-solstone-updates}"
 ORIGIN_URL="${SOLSTONE_ORIGIN_URL:-https://updates.solstone.app}"
 
@@ -55,7 +56,7 @@ die() {
 }
 
 usage() {
-    echo "usage: tools/release/publish-origin.sh --version x.y.z --candidate <full 40-hex sha> --apk <apk> [--lane release|staging|dev] [--dry-run]" >&2
+    echo "usage: tools/release/publish-origin.sh --version x.y.z --candidate <full 40-hex sha> --apk <apk> [--surface phone|wear] [--lane release|staging|dev] [--dry-run]" >&2
     exit 2
 }
 
@@ -66,6 +67,11 @@ lane="release"
 dry_run=false
 while (($# > 0)); do
     case "$1" in
+        --surface)
+            (($# >= 2)) || usage
+            surface="$2"
+            shift 2
+            ;;
         --version)
             (($# >= 2)) || usage
             version="$2"
@@ -96,6 +102,11 @@ while (($# > 0)); do
     esac
 done
 [[ -n "$version" && -n "$candidate" && -n "$apk" ]] || usage
+
+config="$SCRIPT_DIR/surface.py"
+PRODUCT=$("$PYTHON_BIN" "$config" config "$surface" product)
+module=$("$PYTHON_BIN" "$config" config "$surface" module)
+tag_prefix=$("$PYTHON_BIN" "$config" config "$surface" tag_prefix)
 
 # Lane vocabulary is the journal's: exactly release, staging, dev. Only
 # `release` is published today (Android's pre-release channel is Firebase App
@@ -151,7 +162,7 @@ status="$("$GIT_BIN" -C "$repo_root" status --porcelain=v1 --untracked-files=nor
 "$GIT_BIN" -C "$repo_root" merge-base --is-ancestor "$candidate" FETCH_HEAD ||
     die "source-unbound: candidate $candidate is not an ancestor of $GIT_REMOTE/$RELEASE_BRANCH"
 
-tag="v$version"
+tag="$tag_prefix$version"
 
 # Annotated tags advertise the tag object at refs/tags/NAME and the commit at
 # refs/tags/NAME^{}. Never compare an unpeeled tag-object SHA to a commit.
@@ -195,8 +206,8 @@ fi
 
 # What the candidate commit declares. Read from the commit, never the worktree:
 # a clean tree proves HEAD is clean, not that HEAD is the candidate.
-gradle_at_candidate="$("$GIT_BIN" -C "$repo_root" show "$candidate:apps/phone/build.gradle.kts")" ||
-    die "source-unbound: candidate $candidate has no apps/phone/build.gradle.kts"
+gradle_at_candidate="$("$GIT_BIN" -C "$repo_root" show "$candidate:apps/$module/build.gradle.kts")" ||
+    die "source-unbound: candidate $candidate has no apps/$module/build.gradle.kts"
 declared_version_name="$(printf '%s\n' "$gradle_at_candidate" |
     sed -nE 's/.*versionName = "([^"]+)".*/\1/p' | head -1)"
 declared_version_code="$(printf '%s\n' "$gradle_at_candidate" |
@@ -220,6 +231,14 @@ apk_version_name="$(fact version_name)"
 apk_version_code="$(fact version_code)"
 apk_package="$(fact package)"
 apk_certificates="$(fact signer_cert_sha256)"
+apk_is_watch="$(fact watch_required)"
+if [[ "$surface" == "wear" ]]; then
+    [[ "$apk_is_watch" == "True" ]] || die "artifact-mismatch: Wear requires the watch hardware feature"
+else
+    [[ "$apk_is_watch" == "False" ]] || die "artifact-mismatch: phone APK requires watch hardware"
+fi
+
+"$PYTHON_BIN" "$config" check-code "$surface" "$apk_version_code" || die "artifact-mismatch: invalid surface versionCode"
 
 [[ "$apk_package" == "app.solstone.observer.phone" ]] ||
     die "artifact-mismatch: apk package is $apk_package, not app.solstone.observer.phone"

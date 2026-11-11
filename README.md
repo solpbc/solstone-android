@@ -4,14 +4,14 @@ the [solstone](https://solstone.app) app for android, with retained android hard
 
 ## Status
 
-The phone app is the android release target. the new Wear OS app is maintained in `apps/wear` and is unreleased. the older `apps/watch`, Rokid/RV203 glasses, and Rogbid sources remain parked historical evidence. See [repository target status](AGENTS.md#maintained-target-and-parked-sources). The phone [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
+the phone and Wear OS apps are maintained release targets. the Wear OS app lives in `apps/wear`. the older `apps/watch`, Rokid/RV203 glasses, and Rogbid sources remain parked historical evidence. See [repository target status](AGENTS.md#maintained-target-and-parked-sources). The phone [build configuration](apps/phone/build.gradle.kts) declares `targetSdk` 36.
 
 ## Layout
 
 ```text
 apps/
   validation-rogbid/   Parked android 9 watch validation evidence
-  wear/                Unreleased Wear OS app
+  wear/                Wear OS app
   watch/               Parked older watch app source
   phone/               Maintained phone app
   glasses/             Parked smart-glasses/RV203 app source
@@ -76,7 +76,7 @@ The Wear OS app requires API 30 or newer. Build it with:
 ./gradlew :apps:wear:assembleDebug
 ```
 
-Use the same application ID and signing key on the watch and phone for Data Layer communication. the watch holds sealed material until the phone acknowledges durable receipt; only the phone connects to the journal. a tile, complication, notification, reconnect, or reboot cannot start the microphone. there is no watch store listing.
+Use the same application ID and signing key on the watch and phone for Data Layer communication. the watch holds sealed material until the phone acknowledges durable receipt; only the phone connects to the journal. a tile, complication, notification, reconnect, or reboot cannot start the microphone. phone and watch must both come from Google Play, or both from the direct download channel.
 
 ## Test
 
@@ -107,3 +107,28 @@ The validation app package is `app.solstone.validation.rogbid`, a retained histo
 ## License
 
 AGPL-3.0-only. See [LICENSE](LICENSE).
+
+## releases
+
+phone release commands default to the phone. use `SURFACE=wear` for the watch's
+changelog and publishers, and the `pull-wear-apk` / `pull-wear-aab` build targets.
+Wear uses its own [changelog](apps/wear/CHANGELOG.md), `wear-vX.Y.Z` tags and
+`solstone-wear/release/` download stream. phone tags and downloads stay unchanged.
+
+```sh
+make wear-bump VERSION=x.y.z
+make changelog-cut SURFACE=wear VERSION=x.y.z
+make pull-wear-apk ANDROID_REMOTE_HOST=build-host
+make pull-wear-aab ANDROID_REMOTE_HOST=build-host
+make verify-bundle-binding SURFACE=wear
+```
+
+future phone version codes are even, starting at 52; Wear codes are odd, starting
+at 51. each surface advances by two. codes 1–50 belong to historical phone builds.
+the direct APK and Play bundle of one release share its code.
+
+`tools/release/play.py --help` describes the controller-side Play rail. set
+`PLAY_SERVICE_ACCOUNT` to a private service-account JSON file on the controller;
+never copy it to the build host. `prepare` stages a hash-checked bundle and a
+single explicit track, then `commit` commits the saved edit while refusing to
+cancel an existing review. credentials and evidence stay outside this repository.

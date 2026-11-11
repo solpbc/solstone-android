@@ -159,19 +159,15 @@ class ContinuousAudioRecorder(
     private fun startLocationSession() {
         latestLocationFix = null
         try {
-            val hasFine = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-            ) == PackageManager.PERMISSION_GRANTED
             val hasCoarse = ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
 
-            if (!hasFine && !hasCoarse) return
+            if (!hasCoarse) return
 
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
-            // As on the Apple Watch: about 100 m accuracy and a 100 m filter. Fused, with the network
+            // Balanced power and a 100 m distance filter; permission controls actual precision. Fused, with the network
             // provider as the fallback, at balanced power; never a GPS-only subscription.
             val provider = when {
                 Build.VERSION.SDK_INT >= 31 && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER) -> LocationManager.FUSED_PROVIDER

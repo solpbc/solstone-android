@@ -166,6 +166,7 @@ def parse_proto_manifest(buf: bytes) -> dict:
         "min_sdk": None,
         "target_sdk": None,
         "permissions": [],
+        "watch_required": False,
     }
 
     for child in _children(root):
@@ -178,6 +179,8 @@ def parse_proto_manifest(buf: bytes) -> dict:
             facts["target_sdk"] = _integer(
                 child_attributes.get(f"{{{ANDROID_NS}}}targetSdkVersion"), "targetSdkVersion"
             )
+        elif tag == "uses-feature" and child_attributes.get(f"{{{ANDROID_NS}}}name") == "android.hardware.type.watch":
+            facts["watch_required"] = child_attributes.get(f"{{{ANDROID_NS}}}required", "true") != "false"
         elif tag == "uses-permission":
             name = child_attributes.get(f"{{{ANDROID_NS}}}name")
             if name:

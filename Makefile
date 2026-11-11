@@ -1,4 +1,4 @@
-.PHONY: install test ci ci-device device-gate-report format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts pull-phone-aab verify-bundle-binding aab-facts android-host-hitl-phone-bundle
+.PHONY: wear-bump pull-wear-apk pull-wear-aab install test ci ci-device device-gate-report format brand-sync clean require-android-remote-host require-gate-source-commit sync-android-host android-host-ci android-host-ci-device android-host-assemble-validation-rogbid assemble-validation-rogbid validate-rogbid-adb validate-rogbid-media validate-rogbid-qr validate-rogbid-pl android-host-hitl-phone-frozen ci-device-experimental hitl-phone hitl-phone-frozen phone-version phone-bump changelog-cut changelog-notes pull-phone-apk pull-released-apk github-release publish-origin test-release apk-facts pull-phone-aab verify-bundle-binding aab-facts android-host-hitl-phone-bundle
 
 GRADLE ?= ./gradlew
 ROGBID_SERIAL ?= 46734915123233
@@ -261,41 +261,54 @@ android-host-hitl-phone-frozen: require-android-remote-host sync-android-host
 # [Unreleased] section to [VERSION] and that section becomes the GitHub release body
 # (which solstone.app/releases/android renders). Full sequence:
 # the release runbook.
+SURFACE ?= phone
+surface_value = $(shell python3 tools/release/surface.py config $(SURFACE) $(1))
+RELEASE_MODULE = $(call surface_value,module)
+RELEASE_VARIANT = $(call surface_value,variant)
+RELEASE_TASK_VARIANT = $(call surface_value,task_variant)
+RELEASE_VARIANT_DIR = $(call surface_value,variant_dir)
+RELEASE_APK_DIR = $(call surface_value,apk_dir)
+RELEASE_PRODUCT = $(call surface_value,product)
+RELEASE_CHANGELOG = $(call surface_value,changelog)
 PHONE_GRADLE := apps/phone/build.gradle.kts
 ARTIFACTS := artifacts
 PHONE_RELEASE_APK_LOCAL := $(ARTIFACTS)/phone-real-release.apk
 PHONE_RELEASE_MAPPING_LOCAL := $(ARTIFACTS)/phone-real-release-mapping.txt
+RELEASE_APK_LOCAL = $(ARTIFACTS)/$(RELEASE_MODULE)-$(RELEASE_VARIANT).apk
+RELEASE_MAPPING_LOCAL = $(ARTIFACTS)/$(RELEASE_MODULE)-$(RELEASE_VARIANT)-mapping.txt
+RELEASE_AAB_LOCAL = $(ARTIFACTS)/$(RELEASE_MODULE)-$(RELEASE_VARIANT).aab
+RELEASE_UNIVERSAL_LOCAL = $(ARTIFACTS)/$(RELEASE_MODULE)-$(RELEASE_VARIANT)-universal.apk
 
 phone-version:
 	@grep -E 'versionName = ' $(PHONE_GRADLE) | sed -E 's/.*versionName = "([^"]+)".*/\1/'
 
 # Set phone versionName=<VERSION> and auto-increment versionCode. Usage: make phone-bump VERSION=0.1.1
 phone-bump:
-	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
-	@code=$$(grep -E 'versionCode = ' $(PHONE_GRADLE) | sed -E 's/.*versionCode = ([0-9]+).*/\1/'); \
-	newcode=$$((code + 1)); \
-	sed -i -E "s/versionCode = [0-9]+/versionCode = $$newcode/" $(PHONE_GRADLE); \
-	sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"$(VERSION)\"/" $(PHONE_GRADLE); \
-	echo "phone -> versionName $(VERSION), versionCode $$newcode"
+	python3 tools/release/surface.py bump phone $(VERSION)
+
+wear-bump:
+	python3 tools/release/surface.py bump wear $(VERSION)
 
 # Cut CHANGELOG [Unreleased] -> [VERSION] - <today>. Usage: make changelog-cut VERSION=0.1.1
 changelog-cut:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
-	tools/release/changelog-cut.sh $(VERSION)
+	CHANGELOG=$(RELEASE_CHANGELOG) tools/release/changelog-cut.sh $(VERSION)
 
 # Print the CHANGELOG section for VERSION (the GitHub release body).
 changelog-notes:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
-	@tools/release/changelog-notes.sh $(VERSION)
+	@CHANGELOG=$(RELEASE_CHANGELOG) tools/release/changelog-notes.sh $(VERSION)
 
 # Build the signed phone APK on the remote host and pull it back to ./artifacts/, with the R8
 # mapping from the same build: published stack traces are obfuscated, and retrace needs it.
 # (The release/sign toolchain lives on the build host; gh + git live on the caller.)
-pull-phone-apk: sync-android-host
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:assembleRealRelease'
+pull-phone-apk: override SURFACE = phone
+pull-wear-apk: override SURFACE = wear
+pull-phone-apk pull-wear-apk: sync-android-host
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:$(RELEASE_MODULE):assemble$(RELEASE_TASK_VARIANT)'
 	mkdir -p $(ARTIFACTS)
-	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk/real/release/phone-real-release.apk $(PHONE_RELEASE_APK_LOCAL)
-	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/mapping/realRelease/mapping.txt $(PHONE_RELEASE_MAPPING_LOCAL)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/$(RELEASE_MODULE)/build/outputs/apk/$(RELEASE_APK_DIR)/$(RELEASE_MODULE)-$(RELEASE_VARIANT).apk $(RELEASE_APK_LOCAL)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/$(RELEASE_MODULE)/build/outputs/mapping/$(RELEASE_VARIANT_DIR)/mapping.txt $(RELEASE_MAPPING_LOCAL)
 
 # Stage the exact bytes an already-published GitHub release carries, verifying
 # the digest GitHub records for the asset. For an origin publish of a release
@@ -306,7 +319,7 @@ pull-phone-apk: sync-android-host
 pull-released-apk:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
 	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
-	tools/release/pull-released-apk.sh $(VERSION) $(PHONE_RELEASE_APK_LOCAL)
+	SURFACE=$(SURFACE) tools/release/pull-released-apk.sh $(VERSION) $(RELEASE_APK_LOCAL)
 
 # Publish the signed APK to the release origin, updates.solstone.app. THIS is
 # the release publish; the GitHub release below is the mirror, and on a new cut
@@ -326,12 +339,13 @@ ORIGIN_LANE ?= release
 publish-origin:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
 	@test -n "$(CANDIDATE)" || { echo "Set CANDIDATE=<full 40-hex commit>; publish-origin never infers a candidate from HEAD or the remote default branch" >&2; exit 2; }
-	@test -f $(PHONE_RELEASE_APK_LOCAL) || { echo "No $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' or 'make pull-released-apk VERSION=$(VERSION)' first" >&2; exit 2; }
+	@test -f $(RELEASE_APK_LOCAL) || { echo "No $(RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' or 'make pull-released-apk VERSION=$(VERSION)' first" >&2; exit 2; }
 	tools/release/publish-origin.sh \
+	  --surface $(SURFACE) \
 	  --lane $(ORIGIN_LANE) \
 	  --version $(VERSION) \
 	  --candidate $(CANDIDATE) \
-	  --apk $(PHONE_RELEASE_APK_LOCAL)
+	  --apk $(RELEASE_APK_LOCAL)
 
 # Read release-binding facts (package, version, signer certificate, the MERGED
 # permission set) straight out of an APK, with no Android SDK. Usage:
@@ -358,23 +372,25 @@ PHONE_UNIVERSAL_APK_LOCAL := $(ARTIFACTS)/phone-real-release-universal.apk
 
 # Build the signed bundle and its universal APK on the build host in ONE Gradle
 # invocation, pull both back, and prove the binding before either is usable.
-pull-phone-aab: sync-android-host
-	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:phone:bundleRealRelease :apps:phone:packageRealReleaseUniversalApk'
+pull-phone-aab: override SURFACE = phone
+pull-wear-aab: override SURFACE = wear
+pull-phone-aab pull-wear-aab: sync-android-host
+	ssh $(ANDROID_REMOTE_HOST) 'cd $(ANDROID_REMOTE_PROJECT) && source ~/android-dev/env.sh && ./gradlew :apps:$(RELEASE_MODULE):bundle$(RELEASE_TASK_VARIANT) :apps:$(RELEASE_MODULE):package$(RELEASE_TASK_VARIANT)UniversalApk'
 	mkdir -p $(ARTIFACTS)
-	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/bundle/realRelease/phone-real-release.aab $(PHONE_RELEASE_AAB_LOCAL)
-	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/phone/build/outputs/apk_from_bundle/realRelease/phone-real-release-universal.apk $(PHONE_UNIVERSAL_APK_LOCAL)
-	@$(MAKE) verify-bundle-binding
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/$(RELEASE_MODULE)/build/outputs/bundle/$(RELEASE_VARIANT_DIR)/$(RELEASE_MODULE)-$(RELEASE_VARIANT).aab $(RELEASE_AAB_LOCAL)
+	scp $(ANDROID_REMOTE_HOST):$(ANDROID_REMOTE_PROJECT)/apps/$(RELEASE_MODULE)/build/outputs/apk_from_bundle/$(RELEASE_VARIANT_DIR)/$(RELEASE_MODULE)-$(RELEASE_VARIANT)-universal.apk $(RELEASE_UNIVERSAL_LOCAL)
+	@$(MAKE) verify-bundle-binding SURFACE=$(SURFACE)
 
 # Prove the frozen universal APK is the frozen bundle: every dex, native
 # library, asset, packaged java resource and baseline-profile entry
 # byte-identical, the manifest facts equal, the signer the pinned release key,
 # and that same certificate carried in the bundle's own JAR signature.
 verify-bundle-binding:
-	@test -f $(PHONE_RELEASE_AAB_LOCAL) || { echo "No $(PHONE_RELEASE_AAB_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
-	@test -f $(PHONE_UNIVERSAL_APK_LOCAL) || { echo "No $(PHONE_UNIVERSAL_APK_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@test -f $(RELEASE_AAB_LOCAL) || { echo "No $(RELEASE_AAB_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@test -f $(RELEASE_UNIVERSAL_LOCAL) || { echo "No $(RELEASE_UNIVERSAL_LOCAL) — run 'make pull-phone-aab ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
 	python3 tools/release/verify-bundle-binding.py \
-	  --aab $(PHONE_RELEASE_AAB_LOCAL) \
-	  --apk $(PHONE_UNIVERSAL_APK_LOCAL)
+	  --aab $(RELEASE_AAB_LOCAL) \
+	  --apk $(RELEASE_UNIVERSAL_LOCAL)
 
 # Read release-binding facts out of a bundle, with no Android SDK. The AAB twin
 # of apk-facts; an AAB keeps its manifest as protobuf, not binary AXML. Usage:
@@ -399,13 +415,14 @@ github-release:
 	@test -n "$(VERSION)" || { echo "Set VERSION=x.y.z" >&2; exit 2; }
 	@test -n "$(CANDIDATE)" || { echo "Set CANDIDATE=<full 40-hex commit>; github-release never infers a candidate from HEAD or the remote default branch" >&2; exit 2; }
 	@$(MAKE) require-gate-source-commit GATE_SOURCE_COMMIT=$(CANDIDATE)
-	@test -f $(PHONE_RELEASE_APK_LOCAL) || { echo "No $(PHONE_RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
+	@test -f $(RELEASE_APK_LOCAL) || { echo "No $(RELEASE_APK_LOCAL) — run 'make pull-phone-apk ANDROID_REMOTE_HOST=<host>' first" >&2; exit 2; }
 	@command -v gh >/dev/null 2>&1 || { echo "gh CLI not found / not authenticated" >&2; exit 2; }
 	mkdir -p $(ARTIFACTS)
-	tools/release/changelog-notes.sh $(VERSION) > $(ARTIFACTS)/notes-$(VERSION).md
-	cp $(PHONE_RELEASE_APK_LOCAL) $(ARTIFACTS)/solstone-android-$(VERSION).apk
+	CHANGELOG=$(RELEASE_CHANGELOG) tools/release/changelog-notes.sh $(VERSION) > $(ARTIFACTS)/notes-$(SURFACE)-$(VERSION).md
+	cp $(RELEASE_APK_LOCAL) $(ARTIFACTS)/$(RELEASE_PRODUCT)-$(VERSION).apk
 	tools/release/github-release.sh \
+	  --surface $(SURFACE) \
 	  --version $(VERSION) \
 	  --candidate $(CANDIDATE) \
-	  --apk $(ARTIFACTS)/solstone-android-$(VERSION).apk \
-	  --notes $(ARTIFACTS)/notes-$(VERSION).md
+	  --apk $(ARTIFACTS)/$(RELEASE_PRODUCT)-$(VERSION).apk \
+	  --notes $(ARTIFACTS)/notes-$(SURFACE)-$(VERSION).md

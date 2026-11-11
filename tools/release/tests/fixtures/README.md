@@ -59,3 +59,9 @@ Payload entries in `aab_fixture.py` (dex, native libraries, assets) are
 synthetic on purpose. `verify-bundle-binding.py` compares them **byte for byte**
 and never parses them, so a real dex would test nothing a four-byte string does
 not — while the manifests and the signatures **are** parsed, and those are real.
+
+
+The `wear-1.0.0-*` manifest fixtures were extracted from the first signed Wear
+1.0.0 (51) APK and AAB on 2026-11-11, built with target API 36 and minimum API 30.
+The required watch hardware feature is present; location is coarse only. They
+exercise form-factor rejection with all package/version/signer facts held fixed.

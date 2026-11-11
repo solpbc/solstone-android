@@ -100,9 +100,9 @@ class WearMainActivity : ComponentActivity() {
     }
     private fun requestOptionalLocation() {
         val asked = File(noBackupFilesDir, "location-permission-asked")
-        if (!asked.exists() && !has(Manifest.permission.ACCESS_COARSE_LOCATION) && !has(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        if (!asked.exists() && !has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
             runCatching { asked.createNewFile() }
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION), 102)
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 102)
         } else requestOptionalNotification()
     }
     private fun requestOptionalNotification() {
@@ -166,7 +166,7 @@ class WearMainActivity : ComponentActivity() {
                 lostMarker = held?.second == true,
                 notificationsOff = notificationsOff,
                 notificationsAsked = File(noBackupFilesDir, "notification-permission-asked").exists(),
-                locationOff = !has(Manifest.permission.ACCESS_COARSE_LOCATION) && !has(Manifest.permission.ACCESS_FINE_LOCATION),
+                locationOff = !has(Manifest.permission.ACCESS_COARSE_LOCATION),
                 locationAsked = File(noBackupFilesDir, "location-permission-asked").exists(),
                 peerVersion = peer?.version,
                 peerContactAt = peer?.contactAt,

@@ -2,7 +2,7 @@
 
 `solstone-android` is structured as one repo with multiple app artifacts.
 
-the phone is the Android release target. `apps/wear` is the unreleased Wear OS app. the older `apps/watch`, glasses/Rokid, and Rogbid artifacts remain parked historical evidence.
+the phone and `apps/wear` are separate maintained release targets. the older `apps/watch`, glasses/Rokid, and Rogbid artifacts remain parked historical evidence.
 
 ## Shape
 

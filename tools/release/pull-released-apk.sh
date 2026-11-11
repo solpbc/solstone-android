@@ -14,6 +14,7 @@
 # Usage: tools/release/pull-released-apk.sh <version> <destination>
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
 
 GH_BIN="${GH_BIN:-gh}"
@@ -36,7 +37,12 @@ destination="$2"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
     die "version-invalid: expected strict SemVer (got $version)"
 
-tag="v$version"
+surface="${SURFACE:-phone}"
+config="$SCRIPT_DIR/surface.py"
+tag_prefix=$("$PYTHON_BIN" "$config" config "$surface" tag_prefix)
+product=$("$PYTHON_BIN" "$config" config "$surface" product)
+if [[ "$surface" == "wear" ]]; then ASSET_NAME="$product-$version.apk"; fi
+tag="$tag_prefix$version"
 
 recorded="$("$GH_BIN" release view "$tag" --repo "$GH_REPO" --json assets)" ||
     die "release-unreadable: could not read $tag from $GH_REPO"

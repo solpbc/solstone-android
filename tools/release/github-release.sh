@@ -15,6 +15,7 @@
 #     --apk artifacts/phone-real-release.apk \
 #     --notes artifacts/notes-x.y.z.md
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GIT_BIN="${GIT_BIN:-git}"
 GH_BIN="${GH_BIN:-gh}"
@@ -26,14 +27,20 @@ VERSION=""
 CANDIDATE=""
 APK=""
 NOTES=""
+SURFACE="phone"
 
 usage() {
-  echo "usage: tools/release/github-release.sh --version x.y.z --candidate <full 40-hex sha> --apk <apk> --notes <file>" >&2
+  echo "usage: tools/release/github-release.sh --version x.y.z --candidate <full 40-hex sha> --apk <apk> --notes <file> [--surface phone|wear]" >&2
   exit 2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --surface)
+      [[ $# -ge 2 ]] || usage
+      SURFACE="$2"
+      shift 2
+      ;;
     --version)
       [[ $# -ge 2 ]] || usage
       VERSION="$2"
@@ -112,8 +119,11 @@ if ! "$GIT_BIN" merge-base --is-ancestor "$CANDIDATE" FETCH_HEAD; then
   exit 2
 fi
 
-TAG="v${VERSION}"
-TITLE="solstone for Android v${VERSION}"
+CONFIG="$SCRIPT_DIR/surface.py"
+TAG_PREFIX=$(python3 "$CONFIG" config "$SURFACE" tag_prefix)
+RELEASE_TITLE=$(python3 "$CONFIG" config "$SURFACE" title)
+TAG="${TAG_PREFIX}${VERSION}"
+TITLE="${RELEASE_TITLE} v${VERSION}"
 
 sha256_file() {
   python3 -c 'import hashlib, sys
@@ -241,7 +251,7 @@ if "$GH_BIN" release view "$TAG" --repo "$GH_REPO" --json tagName,name,targetCom
   verify_release_json
   download_and_match
   if python3 -c 'import json,sys; print("1" if json.load(open(sys.argv[1])).get("isDraft") else "0")' "$RELEASE_JSON" | grep -qx 1; then
-    "$GH_BIN" release edit "$TAG" --repo "$GH_REPO" --draft=false
+    "$GH_BIN" release edit "$TAG" --repo "$GH_REPO" --draft=false --latest="$([[ "$SURFACE" == "phone" ]] && echo true || echo false)"
     "$GH_BIN" release view "$TAG" --repo "$GH_REPO" --json tagName,name,targetCommitish,isDraft,assets >"$RELEASE_JSON"
     verify_release_json
     download_and_match
@@ -268,7 +278,7 @@ fi
 verify_release_json
 download_and_match
 
-"$GH_BIN" release edit "$TAG" --repo "$GH_REPO" --draft=false
+"$GH_BIN" release edit "$TAG" --repo "$GH_REPO" --draft=false --latest="$([[ "$SURFACE" == "phone" ]] && echo true || echo false)"
 
 "$GH_BIN" release view "$TAG" --repo "$GH_REPO" --json tagName,name,targetCommitish,isDraft,assets >"$RELEASE_JSON"
 verify_release_json

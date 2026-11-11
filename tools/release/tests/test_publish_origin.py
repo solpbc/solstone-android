@@ -167,6 +167,39 @@ class PublishOriginTest(unittest.TestCase):
         self.assertIn(marker, result.stdout + result.stderr)
         self.assertEqual(self.puts(), [], "a refusal must never write to the origin")
 
+    def _wear_fixture(self):
+        manifest = (pathlib.Path(__file__).parent / "fixtures" / "wear-1.0.0-AndroidManifest.xml").read_bytes()
+        gradle = self.src / "apps" / "wear"
+        gradle.mkdir(parents=True)
+        (gradle / "build.gradle.kts").write_text(GRADLE.format(code=51, name="1.0.0"))
+        (self.src / "apps" / "phone" / "build.gradle.kts").write_text(GRADLE.format(code=51, name="1.0.0"))
+        run(["git", "-C", str(self.src), "add", "apps"])
+        run(["git", "-C", str(self.src), "commit", "-m", "matching version form-factor fixture"])
+        self.candidate = self._rev("HEAD")
+        run(["git", "-C", str(self.src), "push", "origin", "main"])
+        apk_fixture.make_apk(self.apk, manifest=manifest)
+        return manifest
+
+    def test_wear_and_phone_are_distinguished_when_all_version_facts_match(self):
+        self._wear_fixture()
+        result = self.publish(version="1.0.0", lane="staging")
+        self.assertRefused(result, "phone APK requires watch hardware")
+        result = self.publish(version="1.0.0", lane="staging", extra_args=("--surface", "wear"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("solstone-wear/staging/1.0.0/solstone-wear-1.0.0.apk", result.stdout)
+        self.assertIsNone(self.stored("solstone-android/staging/latest"))
+
+    def test_wear_refuses_phone_feature_with_same_package_version_code_and_signer(self):
+        manifest = self._wear_fixture()
+        # The captured UTF-16 feature name is changed in place, leaving every
+        # version and signing-block byte identical.
+        watch = "android.hardware.type.watch".encode("utf-16le")
+        self.assertTrue(watch in manifest, "captured watch feature missing")
+        manifest = manifest.replace(watch, "android.hardware.type.phone".encode("utf-16le"))
+        apk_fixture.make_apk(self.apk, manifest=manifest)
+        result = self.publish(version="1.0.0", lane="staging", extra_args=("--surface", "wear"))
+        self.assertRefused(result, "Wear requires the watch hardware feature")
+
     # --- argument refusals ------------------------------------------------
 
     def test_short_candidate_is_refused(self):
