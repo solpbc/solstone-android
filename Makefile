@@ -38,10 +38,10 @@ device-gate-report:
 # default GMD GPU path segfaults on the headless build box. Kept separate from `ci`
 # so `ci` stays fast.
 #
-# PHONE-ONLY, deliberately. The phone is the sole maintained quality target.
-# Watch, glasses/Rokid, and Rogbid sources are parked historical/experimental
-# evidence, not routine-maintenance or release targets. A red here must always mean
-# "the shipping app is broken"; the retained manual hardware command is not a gate.
+# PHONE-ONLY, deliberately. Wear (apps/wear) has its own ordinary hardware
+# smoke in the Wear release runbook. The older apps/watch, glasses/Rokid and
+# Rogbid modules remain parked historical/experimental evidence. A red here
+# concerns the shipping phone app; those modules stay outside this gate.
 ci-device:
 	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host \
 	  :platform:persistence-room:pixel5api35DebugAndroidTest \
