@@ -101,14 +101,11 @@ fun PhoneStatusPill(
     val zone = ZoneId.systemDefault()
     val kind = statusPillKind(model, now, zone)
     val text = statusPillText(model, now, zone)
-    val pulse = kind == StatusPillKind.SYNCING
-    val infinite: InfiniteTransition = rememberInfiniteTransition(label = "statusPulse")
-    val pulseAlpha by infinite.animateFloat(
-        initialValue = 1f,
-        targetValue = if (pulse) 0.35f else 1f,
-        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-        label = "statusPulseAlpha",
-    )
+    val pulse = statusPillPulses(kind)
+    // 🔴 The infinite transition exists only while the pill pulses. Running it from 1 to 1 still
+    // asked for a frame every vsync, so the app redrew all the time it was open (battery, and a
+    // screen that never settles for an accessibility service).
+    val pulseAlpha = if (pulse) statusPulseAlpha() else 1f
     // A calm dot is the state having nothing to celebrate and nothing to alarm about:
     // the ring shape at reduced ink. Derived from the scheme so it holds in both
     // appearances rather than pinning a light-ground grey.
@@ -158,4 +155,19 @@ fun PhoneStatusPill(
             )
         }
     }
+}
+
+/** Only `syncing` pulses; every other state is still. */
+internal fun statusPillPulses(kind: StatusPillKind): Boolean = kind == StatusPillKind.SYNCING
+
+@Composable
+private fun statusPulseAlpha(): Float {
+    val infinite: InfiniteTransition = rememberInfiniteTransition(label = "statusPulse")
+    val alpha by infinite.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "statusPulseAlpha",
+    )
+    return alpha
 }

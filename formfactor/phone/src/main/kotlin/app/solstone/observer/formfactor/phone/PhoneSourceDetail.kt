@@ -322,24 +322,7 @@ private fun SourceDetailTemplate(
     val subLine = sourceSubLine(status, paired)
     Spacer(Modifier.height(ShellMetrics.sectionGap))
     // The verdict: the state, said once, in the words the deck tile used.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(VERDICT_TEST_TAG),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PhoneTileDot(status.state)
-        Text(
-            text = sourceStateCopy(status.state),
-            style = MaterialTheme.typography.headlineSmall,
-            color = if (status.state == SourceState.NEEDS_ATTENTION) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onBackground
-            },
-            modifier = Modifier.padding(start = 10.dp),
-        )
-    }
+    SourceVerdict(status.state)
     val activeLine = sourceActiveLine(status.sourceId)
     // The active line is said once on this page, under the switch, so it is not repeated here.
     if (subLine != null && subLine != rule.diagnosis && subLine != activeLine) {
@@ -549,3 +532,31 @@ internal const val FACTS_TEST_TAG = "sourceDetailFacts"
 internal const val HOME_TILE_CONTROL_TEST_TAG = "sourceDetailHomeTile"
 internal const val SOURCE_SWITCH_TEST_TAG = "sourceDetailSwitch"
 internal const val ACTIVE_LINE_TEST_TAG = "sourceDetailActiveLine"
+
+/**
+ * The verdict a source page leads with (§ 3, source detail: verdict, reason, one action, facts):
+ * the tile's dot and state word, said once. Every source page carries it, the generic one and the
+ * sources with their own pages (calendar, Obsidian, screenshots) alike.
+ */
+@Composable
+internal fun SourceVerdict(state: SourceState, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(VERDICT_TEST_TAG),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhoneTileDot(state)
+        Text(
+            text = sourceStateCopy(state),
+            style = MaterialTheme.typography.headlineSmall,
+            color = if (state == SourceState.NEEDS_ATTENTION) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onBackground
+            },
+            modifier = Modifier.padding(start = 10.dp),
+        )
+    }
+}
+

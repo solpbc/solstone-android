@@ -2,6 +2,9 @@
 // Copyright (c) 2026 sol pbc
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.model.SourceState
+import androidx.compose.foundation.layout.padding
+
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,12 +55,14 @@ fun obsidianSourceSubLine(state: PhoneObsidianState): String? = when {
 }
 
 @Composable
-internal fun PhoneObsidianPane(modifier: Modifier = Modifier) {
+internal fun PhoneObsidianPane(modifier: Modifier = Modifier, verdict: SourceState? = null) {
     val binding = LocalPhoneObsidian.current
     val s = binding.state
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     LaunchedEffect(Unit) { binding.onRetry() }
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.SourceDetail("obsidian")) }) {
+        // The verdict leads, as on every source page (mobile-shell § 3).
+        verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
         PaneNote("markdown notes from the vault you choose go into your journal. the vault stays unchanged.")
         if (!s.configured && s.fault == null) {
             PaneNote("choose a vault in device storage. vaults kept only inside Obsidian aren't available here.")

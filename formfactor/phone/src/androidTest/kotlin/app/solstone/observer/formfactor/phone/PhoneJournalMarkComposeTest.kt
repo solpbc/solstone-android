@@ -341,11 +341,13 @@ class PhoneJournalMarkComposeTest {
         }
         composeRule.onNodeWithTag("journalMarkPill")
             .assertContentDescriptionEquals(JournalMarkTokens.GENERIC_ACCESSIBLE_NAME)
-        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithText("journal", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("your", substring = true, useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("journal", substring = true, useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("connect a journal", useUnmergedTree = true).assertDoesNotExist()
     }
 
+    // The pill's two words are one text now, so it wraps at the space and never inside a word;
+    // each word is found within it.
     // The held and pending forms draw the generic mark, but neither journal is unset.
     @Test
     fun heldAndPendingDrawTheGenericFormButSayWhatIsTrue() {
@@ -359,13 +361,13 @@ class PhoneJournalMarkComposeTest {
         }
         composeRule.onNodeWithTag("journalMarkPill")
             .assertContentDescriptionEquals(JournalMarkTokens.UNCONFIRMED_ACCESSIBLE_NAME)
-        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("your", substring = true, useUnmergedTree = true).assertExists()
 
         presentation = JournalMarkPresentation.Loading
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("journalMarkPill")
             .assertContentDescriptionEquals(JournalMarkTokens.LOADING_ACCESSIBLE_NAME)
-        composeRule.onNodeWithText("your", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("your", substring = true, useUnmergedTree = true).assertExists()
     }
 
     private fun assertImagesDiffer(image1: ImageBitmap, image2: ImageBitmap) {

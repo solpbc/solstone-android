@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.model.SourceState
+
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -124,11 +126,13 @@ fun screenshotsSourceSubLine(state: PhoneScreenshotsState, paired: Boolean): Str
     }
 
 @Composable
-internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
+internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: SourceState? = null) {
     val binding = LocalPhoneScreenshots.current
     val s = binding.state
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.SourceDetail("screenshots")) }) {
+        // The verdict leads, as on every source page (mobile-shell § 3).
+        verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
         PaneNote(A1)
         // A lost grant has its own reason and button (A8); the first-time setup lines would repeat it.
         if (!s.accessGranted && !s.accessLost) {

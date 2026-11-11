@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.LoadState
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.core.identity.JournalMarkPresentation
@@ -330,7 +331,7 @@ private fun PhoneDetailContent(
             journalDeliveredBy = journalDeliveredBy,
             modifier = modifier,
         )
-        PhoneRoute.CalendarSetup -> PhoneCalendarPane(modifier = modifier)
+        PhoneRoute.CalendarSetup -> PhoneCalendarPane(modifier = modifier, verdict = sourceStateIn(loadState, "calendar"))
         PhoneRoute.Help -> PhoneHelpPane(
             reading = journalVersion,
             status = defaultDetailStatus,
@@ -349,7 +350,7 @@ private fun PhoneDetailContent(
                     .semantics { paneTitle = spokenPaneTitle(top) },
             )
         }
-        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier) else if (top.sourceId == "screenshots") PhoneScreenshotsPane(modifier) else Box(
+        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier, sourceStateIn(loadState, "calendar")) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier, sourceStateIn(loadState, "obsidian")) else if (top.sourceId == "screenshots") PhoneScreenshotsPane(modifier, sourceStateIn(loadState, "screenshots")) else Box(
             modifier
                 .fillMaxSize()
                 .semantics { paneTitle = spokenPaneTitle(top) },
@@ -367,3 +368,8 @@ private fun PhoneDetailContent(
         }
     }
 }
+
+/** The state word a source page leads with, from the same read model the deck tile draws from. */
+internal fun sourceStateIn(loadState: LoadState<SourcesReadModel>, sourceId: String): SourceState? =
+    (loadState as? LoadState.Loaded)?.value?.sources?.firstOrNull { it.sourceId == sourceId }?.state
+

@@ -4,6 +4,12 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.Box
@@ -99,8 +105,12 @@ fun PhoneShell(
             ) { paddingValues ->
                 // The pill floats over the content slot, so the Scaffold's own padding does not
                 // account for it. Reserve its band here, once, rather than in each surface.
+                // The band is the pill's measured height, never less than its usual slot: under
+                // large text the pill grows, and a fixed band let it cover the deck's last row.
+                val density = LocalDensity.current
+                var pillHeight by remember { mutableStateOf(0.dp) }
                 val contentPadding = remember(paddingValues) {
-                    JournalPillBandPadding(paddingValues, ShellMetrics.journalPillSlot)
+                    JournalPillBandPadding(paddingValues) { journalPillBand(pillHeight, ShellMetrics.journalPillSlot) }
                 }
                 Box(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxSize()) {
@@ -110,7 +120,8 @@ fun PhoneShell(
                     PhoneJournalPill(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .windowInsetsPadding(gestureInsets),
+                            .windowInsetsPadding(gestureInsets)
+                            .onSizeChanged { pillHeight = with(density) { it.height.toDp() } },
                         hideSemantics = shelfOpen,
                         mark = journalMark,
                     )
@@ -132,7 +143,7 @@ fun PhoneShell(
  */
 private class JournalPillBandPadding(
     private val base: PaddingValues,
-    private val band: Dp,
+    private val band: () -> Dp,
 ) : PaddingValues {
     override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
         base.calculateLeftPadding(layoutDirection)
@@ -142,8 +153,11 @@ private class JournalPillBandPadding(
     override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
         base.calculateRightPadding(layoutDirection)
 
-    override fun calculateBottomPadding(): Dp = base.calculateBottomPadding() + band
+    override fun calculateBottomPadding(): Dp = base.calculateBottomPadding() + band()
 }
+
+/** The bottom band the floating journal pill needs: its measured height, never less than [slot]. */
+internal fun journalPillBand(measured: Dp, slot: Dp): Dp = if (measured > slot) measured else slot
 
 @Composable
 internal fun PhoneShellDefaultContent() {

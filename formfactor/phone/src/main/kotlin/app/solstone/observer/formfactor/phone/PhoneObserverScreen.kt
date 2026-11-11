@@ -367,7 +367,8 @@ internal fun PhoneObserverScreen(
         title = {
             val text = top?.let(::headingText)
             if (text != null) {
-                Text(
+                // A page title never breaks inside a word (`scre/ens/hots` at the largest sizes).
+                WholeWordText(
                     text = text,
                     modifier = Modifier.semantics { heading() },
                 )

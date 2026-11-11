@@ -22,7 +22,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.solstone.core.identity.JournalMarkPresentation
@@ -91,8 +94,17 @@ fun PhoneJournalMarkPill(
         // Two roles, never one whole-line colour (§ 2.2): the words are the claim, the
         // middot is its quiet join. The pill sits on the shell surface rather than the
         // mark card, so both inks come from the theme.
-        Text(text = wordPair.first, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
-        Text(text = " · ", style = wordStyle, color = shellSecondaryInk)
-        Text(text = wordPair.second, style = wordStyle, color = MaterialTheme.colorScheme.onSurface)
+        // One text, so under large text the pair wraps at its spaces and never inside a word
+        // (three texts in a row squeezed the last word into a column of letters).
+        val ink = MaterialTheme.colorScheme.onSurface
+        val quiet = shellSecondaryInk
+        Text(
+            text = buildAnnotatedString {
+                withStyle(SpanStyle(color = ink)) { append(wordPair.first) }
+                withStyle(SpanStyle(color = quiet)) { append(" · ") }
+                withStyle(SpanStyle(color = ink)) { append(wordPair.second) }
+            },
+            style = wordStyle,
+        )
     }
 }

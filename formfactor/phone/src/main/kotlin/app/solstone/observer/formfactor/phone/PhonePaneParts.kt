@@ -4,6 +4,7 @@
 package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,35 +105,40 @@ internal fun PaneFactRow(
     modifier: Modifier = Modifier,
     valueContent: (@Composable () -> Unit)? = null,
 ) {
-    Row(
+    // Side by side while both fit; under large text the value takes the next line, so no word
+    // breaks inside itself (`last check/ed`).
+    LabelValueRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .padding(horizontal = ShellMetrics.surfacePadding, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.width(12.dp))
-        if (valueContent == null) {
+        start = {
             Text(
-                text = value,
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.End,
-                style = MaterialTheme.typography.bodyMedium,
-                color = shellSecondaryInk,
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-        } else {
-            Box(Modifier.weight(1f)) { valueContent() }
-        }
-    }
+        },
+        end = {
+            if (valueContent == null) {
+                Text(
+                    text = value,
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = shellSecondaryInk,
+                )
+            } else {
+                Box { valueContent() }
+            }
+        },
+    )
 }
 
+/**
+ * A labelled switch. 🔴 One TalkBack stop that says the label and the state together, and the
+ * whole row toggles: the switch itself carries no separate click, so it is never an unlabelled
+ * extra stop. Under large text the switch moves to the end of the next line, as a tile's does.
+ */
 @Composable
 internal fun PaneSwitchRow(
     label: String,
@@ -140,38 +146,42 @@ internal fun PaneSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     subLine: String? = null,
+    /** Applied to the toggling row, which is what TalkBack and a test reach. */
     switchModifier: Modifier = Modifier,
 ) {
-    Row(
+    LabelValueRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = ShellMetrics.rowMinHeight)
+            // A test tag meant for the switch lands on the row: the row is the toggle now.
+            .then(switchModifier)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(horizontal = ShellMetrics.surfacePadding, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            if (subLine != null) {
+        stackedEndAtEnd = true,
+        start = {
+            Column {
                 Text(
-                    text = subLine,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = shellSecondaryInk,
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
+                if (subLine != null) {
+                    Text(
+                        text = subLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = shellSecondaryInk,
+                    )
+                }
             }
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = solstoneSwitchColors(),
-            modifier = switchModifier,
-        )
-    }
+        },
+        end = {
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                colors = solstoneSwitchColors(),
+            )
+        },
+    )
 }
 
 /** A row that opens something inside the app. */

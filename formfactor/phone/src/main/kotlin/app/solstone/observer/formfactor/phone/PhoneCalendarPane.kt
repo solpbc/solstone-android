@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.model.SourceState
+
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -75,7 +77,7 @@ private val historyChoices = listOf(
 )
 
 @Composable
-internal fun PhoneCalendarPane(modifier: Modifier = Modifier) {
+internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceState? = null) {
     val binding = LocalPhoneCalendar.current
     val state = binding.state
     LaunchedEffect(Unit) {
@@ -86,6 +88,8 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier) {
         onDispose { binding.onAbandon() }
     }
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.CalendarSetup) }) {
+        // The verdict leads, as on every source page (mobile-shell § 3).
+        verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
         PaneNote("calendar brings in events this phone can read, including notes, places, invitees, holidays, and birthdays. they go to your journal.")
         PaneNote("while calendar is on, the solstone app checks it in the background. android may delay those checks.")
         if (!state.permissionGranted) {
@@ -96,8 +100,11 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier) {
         if (state.emptyCalendars) {
             PaneNote("this phone has no calendars the solstone app can read.")
         }
-        PaneFactRow("calendar", if (!state.permissionGranted && state.resume) "needs permission"
-            else if (state.enabled) "on" else if (state.resume) "paused" else "off")
+        // The verdict above says the state; this row is kept only where no verdict is drawn.
+        if (verdict == null) {
+            PaneFactRow("calendar", if (!state.permissionGranted && state.resume) "needs permission"
+                else if (state.enabled) "on" else if (state.resume) "paused" else "off")
+        }
         PhoneIntakeFactRows("calendar")
         PaneNote("history, with one year ahead")
         PaneCard {

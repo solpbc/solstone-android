@@ -3,6 +3,10 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.foundation.layout.width
+
+import androidx.compose.foundation.layout.Spacer
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,7 +165,9 @@ fun PhoneSourceTile(
                 }
             }
         }
-        Text(
+        // The source name never breaks inside itself or clips: when its word is wider than the
+        // tile under the largest text and display size, it is set smaller (§ source-name layout).
+        WholeWordText(
             text = label,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
@@ -172,7 +178,9 @@ fun PhoneSourceTile(
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             PhoneTileDot(status.state)
-            Text(
+            Spacer(Modifier.width(8.dp))
+            // The state word wraps at its spaces (`ready to / set up`), never inside a word.
+            WholeWordText(
                 text = stateCopy,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (status.state == SourceState.NEEDS_ATTENTION) {
@@ -180,11 +188,10 @@ fun PhoneSourceTile(
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
-                modifier = Modifier.padding(start = 8.dp),
             )
         }
         if (subLine != null) {
-            Text(
+            WholeWordText(
                 text = subLine,
                 style = MaterialTheme.typography.bodySmall,
                 color = shellSecondaryInk,

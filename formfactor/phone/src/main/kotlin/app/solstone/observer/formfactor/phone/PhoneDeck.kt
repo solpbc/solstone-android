@@ -332,13 +332,13 @@ private fun PhoneNonSourceTile(
             tint = shellSecondaryInk,
             modifier = Modifier.size(22.dp),
         )
-        Text(
+        WholeWordText(
             text = label,
             modifier = Modifier.padding(top = 6.dp),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Text(
+        WholeWordText(
             text = subLine,
             style = MaterialTheme.typography.bodySmall,
             color = shellSecondaryInk,
