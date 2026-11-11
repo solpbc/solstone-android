@@ -94,6 +94,8 @@ class ObserverAppContainer(
     @Volatile var obsidianHasAccess: () -> Boolean = { false }
     @Volatile var obsidianPaused: () -> Boolean = { false }
     @Volatile var obsidianPending: () -> Int = { 0 }
+    @Volatile var screenshotsHasAccess: () -> Boolean = { false }
+    @Volatile var screenshotsPaused: () -> Boolean = { false }
     internal val captureSetup = createCaptureSetup(
         context,
         cameraLock,
@@ -104,7 +106,10 @@ class ObserverAppContainer(
         obsidianNeedsAttention = { obsidianNeedsAttention() },
         obsidianHasAccess = { obsidianHasAccess() },
         obsidianPaused = { obsidianPaused() },
-        gapListener,
+        registerScreenshotsSource = spec.registerScreenshotsSource,
+        screenshotsHasAccess = { screenshotsHasAccess() },
+        screenshotsPaused = { screenshotsPaused() },
+        gapListener = gapListener,
     )
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
     private val spoolDir = context.filesDir.toPath().resolve("spool")

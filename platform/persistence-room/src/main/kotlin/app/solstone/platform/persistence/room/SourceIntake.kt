@@ -17,6 +17,7 @@ const val INTAKE_CAMERA = "camera"
 const val INTAKE_LOCATION = "location"
 const val INTAKE_CALENDAR = "calendar"
 const val INTAKE_IMPORT = "import"
+const val INTAKE_SCREENSHOTS = "screenshots"
 const val LOCATION_PAYLOAD_NAME = "location.jsonl"
 
 private const val EARTH_RADIUS_METRES = 6_371_000.0
@@ -79,28 +80,36 @@ fun segmentIntakeDeltas(
     durationDelta(files, INTAKE_AUDIO)?.let { deltas += it }
     durationDelta(files, INTAKE_SCREEN)?.let { deltas += it }
     cameraDelta(files)?.let { deltas += it }
+    countDelta(files, INTAKE_SCREENSHOTS)?.let { deltas += it }
     locationDelta(fixes, anchor)?.let { deltas += it }
     return deltas
 }
 
+/**
+ * Sum each file's span in milliseconds, then floor once.
+ * A finished span over zero counts as at least one second.
+ */
 private fun durationDelta(files: List<SegmentFileRow>, sourceId: String): IntakeDelta? {
-    var seconds = 0L
+    var millis = 0L
     var materialAt = Long.MIN_VALUE
     for (row in files) {
         if (row.sourceId != sourceId) continue
         val span = row.captureEndEpochMs - row.captureStartEpochMs
         if (span <= 0L) continue
-        seconds += span / 1000L
+        millis += span
         if (row.captureEndEpochMs > materialAt) materialAt = row.captureEndEpochMs
     }
-    if (seconds <= 0L) return null
-    return IntakeDelta(sourceId, seconds, materialAt, null)
+    if (millis <= 0L) return null
+    val seconds = millis / 1000L
+    return IntakeDelta(sourceId, if (seconds == 0L) 1L else seconds, materialAt, null)
 }
 
-private fun cameraDelta(files: List<SegmentFileRow>): IntakeDelta? {
-    val photos = files.filter { it.sourceId == INTAKE_CAMERA && it.byteSize > 0L }
-    if (photos.isEmpty()) return null
-    return IntakeDelta(INTAKE_CAMERA, photos.size.toLong(), photos.maxOf { it.captureEndEpochMs }, null)
+private fun cameraDelta(files: List<SegmentFileRow>): IntakeDelta? = countDelta(files, INTAKE_CAMERA)
+
+private fun countDelta(files: List<SegmentFileRow>, sourceId: String): IntakeDelta? {
+    val kept = files.filter { it.sourceId == sourceId && it.byteSize > 0L }
+    if (kept.isEmpty()) return null
+    return IntakeDelta(sourceId, kept.size.toLong(), kept.maxOf { it.captureEndEpochMs }, null)
 }
 
 /**

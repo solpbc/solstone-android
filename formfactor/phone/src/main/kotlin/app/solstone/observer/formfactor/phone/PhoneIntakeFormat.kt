@@ -10,7 +10,7 @@ import java.util.Locale
 
 enum class DistanceSystem { MILES, KILOMETERS }
 
-enum class IntakeKind { DURATION, DISTANCE, PHOTOS, EVENTS, NOTES, ITEMS }
+enum class IntakeKind { DURATION, DISTANCE, PHOTOS, EVENTS, NOTES, SCREENSHOTS, ITEMS }
 
 /** SI measures in kilometers. US and UK both measure in miles. */
 fun distanceSystem(measurementSystemName: String): DistanceSystem =
@@ -32,6 +32,7 @@ fun intakeKind(sourceId: String): IntakeKind = when (sourceId) {
     "camera" -> IntakeKind.PHOTOS
     "calendar" -> IntakeKind.EVENTS
     "obsidian" -> IntakeKind.NOTES
+    "screenshots" -> IntakeKind.SCREENSHOTS
     else -> IntakeKind.ITEMS
 }
 
@@ -83,6 +84,7 @@ fun formatTotal(total: Long, kind: IntakeKind, system: DistanceSystem, locale: L
         IntakeKind.PHOTOS -> countPhrase(total, "photo", "photos", locale)
         IntakeKind.EVENTS -> countPhrase(total, "event", "events", locale)
         IntakeKind.NOTES -> countPhrase(total, "note", "notes", locale)
+        IntakeKind.SCREENSHOTS -> countPhrase(total, "screenshot", "screenshots", locale)
         IntakeKind.ITEMS -> countPhrase(total, "item", "items", locale)
     }
 

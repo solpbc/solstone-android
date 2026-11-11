@@ -5,6 +5,7 @@ package app.solstone.observer.formfactor.phone
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
@@ -112,6 +114,7 @@ internal fun PaneFactRow(
     ) {
         Text(
             text = label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -119,11 +122,13 @@ internal fun PaneFactRow(
         if (valueContent == null) {
             Text(
                 text = value,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
                 style = MaterialTheme.typography.bodyMedium,
                 color = shellSecondaryInk,
             )
         } else {
-            valueContent()
+            Box(Modifier.weight(1f)) { valueContent() }
         }
     }
 }

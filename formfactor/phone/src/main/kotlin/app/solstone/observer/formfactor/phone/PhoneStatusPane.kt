@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -109,7 +111,19 @@ fun PhoneStatusPane(
             // ground rather than a hairline alone.
             shadowElevation = 8.dp,
         ) {
-            Column(Modifier.padding(ShellMetrics.surfacePadding).fillMaxWidth()) {
+            // The popup is its own window, and the platform clips that window to the
+            // screen instead of scrolling it. A full source list at large text is
+            // taller than the room under the status pill, so the rows at the bottom
+            // (the journal facts, technical details) never arrive. Cap the column
+            // and scroll inside it. The cap sits above the pane's height at normal
+            // text, so that size still shows the whole list.
+            Column(
+                Modifier
+                    .heightIn(max = statusPaneMaxHeight)
+                    .verticalScroll(rememberScrollState())
+                    .padding(ShellMetrics.surfacePadding)
+                    .fillMaxWidth(),
+            ) {
                 headingText(PhonePane.STATUS)?.let { heading ->
                     Text(
                         text = heading,
@@ -143,8 +157,8 @@ fun PhoneStatusPane(
                         Text("connect a journal")
                     }
                     PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
+                    PhoneIntakeStatusRows(onOpenSource, onOpenImport)
                 }
-                PhoneIntakeStatusRows(onOpenSource, onOpenImport)
             }
         }
     }
@@ -162,7 +176,10 @@ internal fun PhonePairedStatusContent(
     onOpenUnknownJournal: (String?) -> Unit = {},
     onPairAgain: () -> Unit = {},
 ) {
+    // Count, then what is waiting, then one row per source, then the journal facts.
     PhonePairedStatusSummary(model, onConfirmMark, onPairAgain)
+    PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
+    PhoneIntakeStatusRows(onOpenSource, onOpenImport)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneFactRow(label = "journal version", value = journalFacts.version)
     PaneFactRow(label = "how your phone connects", value = journalFacts.location)
@@ -173,7 +190,6 @@ internal fun PhonePairedStatusContent(
     ) {
         Text("technical details")
     }
-    PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
 }
 
 @Composable
@@ -317,6 +333,9 @@ private fun PaneSubLine(text: String) {
  * grow over the anchor. § 2.3 wants the pane to come from where its control is and
  * expand downward, which is a position, not an alignment.
  */
+/** Above the full list at normal text; inside the room under the pill at large text. */
+private val statusPaneMaxHeight = 640.dp
+
 private class AnchoredBelowPositionProvider(
     private val gapPx: Int,
     private val screenMarginPx: Int,

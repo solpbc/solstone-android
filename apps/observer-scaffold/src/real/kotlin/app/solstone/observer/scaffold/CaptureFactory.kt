@@ -62,6 +62,9 @@ fun createCaptureSetup(
     obsidianNeedsAttention: () -> Boolean = { false },
     obsidianHasAccess: () -> Boolean = { false },
     obsidianPaused: () -> Boolean = { false },
+    registerScreenshotsSource: Boolean = false,
+    screenshotsHasAccess: () -> Boolean = { false },
+    screenshotsPaused: () -> Boolean = { false },
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val storageStatus = StorageStatus(FileUsableSpaceProvider(context.filesDir), MIN_FREE_BYTES)
@@ -177,6 +180,17 @@ fun createCaptureSetup(
                     requiredPermissionsGranted = { obsidianHasAccess() },
                     captureForegroundType = null,
                     reasonWhenOff = notes::reasonWhenOff,
+                    runsWithoutObserver = true,
+                )
+            } else null,
+            if (registerScreenshotsSource) {
+                val shots = PassiveSourceEngine(storageStatus::isStorageOk, paused = screenshotsPaused)
+                SourceRegistration(
+                    sourceId = app.solstone.core.sources.SCREENSHOTS_STREAM,
+                    engine = shots,
+                    requiredPermissionsGranted = { screenshotsHasAccess() },
+                    captureForegroundType = null,
+                    reasonWhenOff = shots::reasonWhenOff,
                     runsWithoutObserver = true,
                 )
             } else null,

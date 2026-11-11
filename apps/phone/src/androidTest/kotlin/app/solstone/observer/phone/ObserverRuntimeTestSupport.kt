@@ -47,6 +47,7 @@ internal fun pressSystemBackWhenFocused(activity: Activity, dialog: Boolean = fa
 internal fun resetObserverRuntime() {
     app.solstone.platform.calendar.CalendarRuntimes.current?.close()
     app.solstone.platform.obsidian.ObsidianRuntimes.current?.close()
+    app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.close()
     val runtime = ObserverHarnessRuntime.runtime
     runtime?.closeForTest()
     val appRuntime = (ApplicationProvider.getApplicationContext<Context>() as ObserverApplication).runtime
@@ -60,6 +61,7 @@ internal fun resetObserverRuntime() {
 internal fun resetPersistence(context: Context) {
     context.deleteDatabase(TEST_DATABASE_NAME)
     context.filesDir.resolve("spool").deleteRecursively()
+    context.filesDir.resolve("screenshots").deleteRecursively()
     context.filesDir.resolve("mock-export").deleteRecursively()
     context.filesDir.resolve("source-wishes").delete()
     context.getSharedPreferences("desired-observing-persistence-test", Context.MODE_PRIVATE)

@@ -15,6 +15,9 @@ class PhoneIntakeFormatTest {
         kotlin.test.assertEquals(IntakeKind.NOTES, intakeKind("obsidian"))
         kotlin.test.assertEquals("1 note", formatTotal(1, IntakeKind.NOTES, DistanceSystem.MILES, java.util.Locale.US))
         kotlin.test.assertEquals("2 notes", formatTotal(2, IntakeKind.NOTES, DistanceSystem.MILES, java.util.Locale.US))
+        kotlin.test.assertEquals(IntakeKind.SCREENSHOTS, intakeKind("screenshots"))
+        kotlin.test.assertEquals("1 screenshot", formatTotal(1, IntakeKind.SCREENSHOTS, DistanceSystem.MILES, java.util.Locale.US))
+        kotlin.test.assertEquals("2 screenshots", formatTotal(2, IntakeKind.SCREENSHOTS, DistanceSystem.MILES, java.util.Locale.US))
     }
 
     private val zone = ZoneId.of("America/Denver")

@@ -15,6 +15,7 @@ import app.solstone.core.queue.RetryDecision
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.WATCH_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import java.io.File
@@ -114,6 +115,9 @@ class SyncDecisionsTest {
         assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "calendar_note_invalid", now = now))
         assertFalse(isRetryDue(QueueState.SEALED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, lastError = "removed_in_journal", now = now))
         assertFalse(isRetryDue(QueueState.UPLOADED, attemptCount = 0, lastAttemptAt = null, lastStatusCode = null, now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = null, lastError = "screenshot_invalid", now = now))
+        assertFalse(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = 0, lastStatusCode = null, lastError = "multipart_part_too_large", now = now))
+        assertTrue(isRetryDue(QueueState.FAILED, attemptCount = 1, lastAttemptAt = now - 15 * MINUTE_MS, lastStatusCode = 409, lastError = "screenshot_ahead", now = now))
     }
 
     @Test
@@ -384,6 +388,35 @@ class SyncDecisionsTest {
                 manifest,
                 listOf(IngestOutcome.Rejected(422, """{"detail":"calendar_note_invalid","reason_code":"other"}""")),
             ),
+        )
+    }
+
+    @Test
+    fun screenshotRefusalsEndAndAnAheadDayIsHeld() {
+        val manifest = BundleManifest(
+            SegmentKey("20261103", "143207_1"),
+            listOf(BundleFile(SCREENSHOTS_STREAM, "screenshot_screen.png", "sha-s", 4, "image/png", 1, 2)),
+            emptyList(),
+        )
+        assertEquals(
+            SegmentSyncResult.NeedsAttention("screenshot_invalid"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(400, """{"reason_code":"screenshot_invalid"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.NeedsAttention("multipart_part_too_large"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(400, """{"reason_code":"multipart_part_too_large"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.Retry(409, "screenshot_ahead"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(409, """{"reason_code":"screenshot_ahead"}"""))),
+        )
+        assertEquals(
+            SegmentSyncResult.Retry(503, "retry"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(503, ""))),
+        )
+        assertEquals(
+            SegmentSyncResult.Retry(500, "retry"),
+            resolveIngestOutcomes(manifest, listOf(IngestOutcome.Rejected(500, ""))),
         )
     }
 

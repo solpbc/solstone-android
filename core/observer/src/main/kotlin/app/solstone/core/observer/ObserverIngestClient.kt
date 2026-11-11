@@ -11,6 +11,7 @@ import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
 import java.io.ByteArrayOutputStream
 
@@ -27,7 +28,11 @@ class ObserverIngestClient(
         require(manifest.files.isNotEmpty()) { "an ingest manifest requires at least one file" }
         val outcomes = mutableListOf<IngestOutcome>()
         for ((sourceId, files) in manifest.files.groupBy(BundleFile::sourceId)) {
-            val batches = if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM) files.map { listOf(it) } else listOf(files)
+            val batches = if (sourceId == CALENDAR_STREAM || sourceId == OBSIDIAN_STREAM || sourceId == SCREENSHOTS_STREAM) {
+                files.map { listOf(it) }
+            } else {
+                listOf(files)
+            }
             for (batch in batches) {
                 val sourceManifest = manifest.copy(files = batch)
                 val boundary = boundaryProvider()
@@ -88,6 +93,19 @@ class ObserverIngestClient(
             "files" to manifest.files.map { file -> linkedMapOf("submitted" to file.name) },
         )
         if (sourceId.isNotBlank()) root["source"] = sourceId
+        if (sourceId == SCREENSHOTS_STREAM) {
+            val captured = manifest.screenshotCapturedAt
+            val taken = manifest.screenshotTakenFrom
+            require(captured != null && (taken == "platform" || taken == "file")) { "screenshot meta missing" }
+            root["meta"] = linkedMapOf(
+                "screenshot" to linkedMapOf(
+                    "captured_at" to captured,
+                    "taken_from" to taken,
+                    "v" to 1,
+                ),
+            )
+            return toJson(root)
+        }
         val meta = linkedMapOf<String, Any?>().apply {
             if (host != null) put("host", host)
             if (platform != null) put("platform", platform)

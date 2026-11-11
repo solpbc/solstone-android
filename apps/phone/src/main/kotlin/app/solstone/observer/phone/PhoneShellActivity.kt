@@ -13,9 +13,14 @@ import app.solstone.core.watch.courier.WatchSourcePageModel
 import app.solstone.core.watch.courier.WatchCourierProtocol
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
 import app.solstone.observer.formfactor.phone.LocalPhoneObsidian
+import app.solstone.observer.formfactor.phone.LocalPhoneScreenshots
 import app.solstone.observer.formfactor.phone.PhoneObsidianBinding
 import app.solstone.observer.formfactor.phone.PhoneObsidianState
+import app.solstone.observer.formfactor.phone.PhoneScreenshotsBinding
+import app.solstone.observer.formfactor.phone.PhoneScreenshotsState
 import app.solstone.platform.obsidian.ObsidianRuntimes
+import app.solstone.platform.screenshots.ScreenshotUi
+import app.solstone.platform.screenshots.ScreenshotsRuntimes
 import app.solstone.observer.formfactor.phone.LocalPhoneDistanceSystem
 import app.solstone.observer.formfactor.phone.LocalPhoneIntake
 import app.solstone.observer.formfactor.phone.LocalPhoneSourceOrder
@@ -217,6 +222,51 @@ class PhoneShellActivity : ComponentActivity() {
     private var intakeSnapshot by mutableStateOf(PhoneIntakeSnapshot())
     private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
     private var obsidianPaneState by mutableStateOf(PhoneObsidianState())
+    private var screenshotsPaneState by mutableStateOf(PhoneScreenshotsState())
+    private val screenshotsFolderLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.data?.let { ScreenshotsRuntimes.current?.choose(it) }
+    }
+    private fun chooseScreenshotsFolder() {
+        screenshotsFolderLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+            putExtra(
+                android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3APictures%2FScreenshots"),
+            )
+        })
+    }
+    private fun attachScreenshotsUi() {
+        val source = ScreenshotsRuntimes.current ?: return
+        fun publish() { screenshotsPaneState = source.ui.toPane() }
+        publish()
+        source.setListener { mainHandler.post { publish() } }
+    }
+    private fun ScreenshotUi.toPane() = PhoneScreenshotsState(
+        accessGranted = accessGranted,
+        accessLost = accessLost,
+        folderName = folderName,
+        enabled = enabled,
+        paused = paused,
+        confirmed = confirmed,
+        reconfirm = reconfirm,
+        history = history,
+        counting = counting,
+        countFailed = countFailed,
+        previewCount = previewCount,
+        backfillDone = backfillDone,
+        backfillTotal = backfillTotal,
+        lastChecked = lastChecked,
+        waiting = waiting,
+        capability = capability,
+        refusedSize = refusedSize,
+        refusedUnread = refusedUnread,
+        refusedJournal = refusedJournal,
+    )
+    private fun openScreenshots() {
+        incomingDetail = ((incomingDetail?.first ?: 0L) + 1L) to app.solstone.observer.formfactor.phone.PhoneRoute.SourceDetail("screenshots")
+    }
     private val obsidianFolderLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -285,6 +335,7 @@ class PhoneShellActivity : ComponentActivity() {
                 ImportIntake.get(this).consumeFinished()
                 refreshImports()
             },
+            onOpenScreenshots = { openScreenshots() },
         )
     }
 
@@ -477,7 +528,9 @@ class PhoneShellActivity : ComponentActivity() {
         container = runtime.container()
         attachCalendarUi()
         attachObsidianUi()
+        attachScreenshotsUi()
         ObsidianRuntimes.current?.onForeground(true)
+        ScreenshotsRuntimes.current?.onForeground(true)
         stores = syncStores(applicationContext)
         pairingViewModel = ViewModelProvider(this)[PhonePairingViewModel::class.java]
         hasCameraPermission = hasCamera()
@@ -1091,6 +1144,14 @@ class PhoneShellActivity : ComponentActivity() {
                     onContinue = { ObsidianRuntimes.current?.continueWarning() },
                     onCancel = { ObsidianRuntimes.current?.cancelWarning() },
                 ),
+                LocalPhoneScreenshots provides PhoneScreenshotsBinding(
+                    state = screenshotsPaneState,
+                    onChoose = { chooseScreenshotsFolder() },
+                    onHistory = { choice -> ScreenshotsRuntimes.current?.setHistory(choice) },
+                    onConfirm = { ScreenshotsRuntimes.current?.confirm() },
+                    onOff = { ScreenshotsRuntimes.current?.turnOff() },
+                    onRetry = { ScreenshotsRuntimes.current?.retryUnread() },
+                ),
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
                 LocalPhoneIntake provides intakeSnapshot,
                 LocalPhoneDistanceSystem provides distanceSystem,
@@ -1133,6 +1194,12 @@ class PhoneShellActivity : ComponentActivity() {
                         }
                         ScreenToggleAction.TurnOffCalendar -> {
                             CalendarRuntimes.current?.turnOff()
+                            sourcesViewModel.refresh()
+                            wishStoreState = wishStore.read()
+                        }
+                        ScreenToggleAction.OpenScreenshotsSetup -> openScreenshots()
+                        ScreenToggleAction.TurnOffScreenshots -> {
+                            ScreenshotsRuntimes.current?.turnOff()
                             sourcesViewModel.refresh()
                             wishStoreState = wishStore.read()
                         }
@@ -1638,6 +1705,10 @@ class PhoneShellActivity : ComponentActivity() {
             if (wish == SourceWish.On) enableObsidian() else ObsidianRuntimes.current?.turnOff()
             return
         }
+        if (sourceId == "screenshots") {
+            if (wish == SourceWish.On) openScreenshots() else ScreenshotsRuntimes.current?.turnOff()
+            return
+        }
         PhoneDiagLog.appendRaw("kind=source id=$sourceId wish=${wish.name.lowercase()}")
         if (wish == SourceWish.On) {
             val prior = priorWishFor(sourceId)
@@ -1889,7 +1960,9 @@ class PhoneShellActivity : ComponentActivity() {
         if (::statusHost.isInitialized) statusHost.onStart()
         attachCalendarUi()
         attachObsidianUi()
+        attachScreenshotsUi()
         ObsidianRuntimes.current?.onForeground(true)
+        ScreenshotsRuntimes.current?.onForeground(true)
         armMidnight()
     }
 
@@ -1953,7 +2026,9 @@ class PhoneShellActivity : ComponentActivity() {
         (application as? PhoneApplication)?.removeStatusListener(statusListener)
         CalendarRuntimes.current?.setOnChanged {}
         ObsidianRuntimes.current?.setListener {}
+        ScreenshotsRuntimes.current?.setListener {}
         if (!isChangingConfigurations) ObsidianRuntimes.current?.onForeground(false)
+        if (!isChangingConfigurations) ScreenshotsRuntimes.current?.onForeground(false)
         connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return

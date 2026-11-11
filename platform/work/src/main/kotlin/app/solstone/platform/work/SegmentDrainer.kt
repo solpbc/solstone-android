@@ -13,6 +13,7 @@ import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
+import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
 import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.sources.WATCH_STREAM
@@ -82,6 +83,7 @@ internal fun drainSegments(
     homeInstanceId: String? = null,
     postCalendar: Boolean = true,
     postObsidian: Boolean = true,
+    postScreenshots: Boolean = true,
     obsidianCurrent: () -> Boolean = { true },
 ): DrainReport {
     val syncState = store.syncState()
@@ -105,6 +107,7 @@ internal fun drainSegments(
             .filter { it.id !in taken }
             .filter { postCalendar || it.stream != CALENDAR_STREAM }
             .filter { it.stream != OBSIDIAN_STREAM || (postObsidian && obsidianCurrent()) }
+            .filter { postScreenshots || it.stream != SCREENSHOTS_STREAM }
         if (due.isEmpty()) break
         val selected = due.take(DRAIN_SEGMENT_CAP - taken.size)
         if (due.size > selected.size) dueRemaining = true
@@ -163,7 +166,12 @@ internal fun drainSegments(
                     is DrainAction.Upload -> {
                         val stored = readStoredZone(segment)
                         val uploading = stored?.let {
-                            manifest.copy(zoneId = it.zoneId, utcOffsetSeconds = it.utcOffsetSeconds)
+                            manifest.copy(
+                                zoneId = it.zoneId,
+                                utcOffsetSeconds = it.utcOffsetSeconds,
+                                screenshotCapturedAt = it.screenshotCapturedAt,
+                                screenshotTakenFrom = it.screenshotTakenFrom,
+                            )
                         } ?: manifest
                         val result = try {
                             resolveIngestOutcomes(

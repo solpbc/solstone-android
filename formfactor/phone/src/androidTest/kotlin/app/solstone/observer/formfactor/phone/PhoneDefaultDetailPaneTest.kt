@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
@@ -271,9 +272,11 @@ class PhoneDefaultDetailPaneTest {
         val snapshot = snapshot(paired = true, online = true, pendingCount = 0)
         setWideContent(status = snapshot.status, detailStatus = PhoneDefaultDetailStatus.Paired(snapshot),
             journalFacts = PhoneJournalFacts(version = "2.0.73", location = "straight to your journal"))
-        composeRule.onNodeWithText("2.0.73").assertIsDisplayed()
-        composeRule.onNodeWithText("straight to your journal").assertIsDisplayed()
-        composeRule.onNodeWithTag("statusTechnicalDetails").performClick()
+        // The source rows sit above the journal facts, so an 800dp pane clips
+        // the lower lines until the test scrolls them into view.
+        composeRule.onNodeWithText("2.0.73").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("straight to your journal").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("statusTechnicalDetails").performScrollTo().performClick()
         composeRule.onNodeWithTag("phoneDefaultDetail").assertDoesNotExist()
         Espresso.pressBack()
         composeRule.onNodeWithTag("phoneDefaultDetail").assertIsDisplayed()

@@ -26,4 +26,5 @@ data class FormFactorSpec(
     val registerScreenSource: Boolean = false,
     val registerCalendarSource: Boolean = false,
     val registerObsidianSource: Boolean = false,
+    val registerScreenshotsSource: Boolean = false,
 )
