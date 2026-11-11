@@ -61,7 +61,7 @@ private fun AddMoreRow(id: String, status: SourceStatus?, onOpenSource: (String)
     PaneNavRow(
         label = sourceLabel(id),
         subLine = if (id == app.solstone.core.watch.courier.WatchCourierStrings.WATCH) {
-            if (LocalPhoneWatchSource.current?.isSilenceStale != false) "no recent contact" else "heard from your watch"
+            watchTileSubLine(LocalPhoneWatchSource.current)
         } else status?.let { sourceStateCopy(it.state) },
         leadingGlyph = sourceGlyph(id),
         onClick = { onOpenSource(id) },

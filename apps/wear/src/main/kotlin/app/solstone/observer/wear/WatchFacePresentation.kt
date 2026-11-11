@@ -65,7 +65,7 @@ internal object WatchFacePresenter {
 
         val heardAgo = f.peerContactAt?.let { f.nowMs - it }?.takeIf { it >= 0 }
         val rows = listOf(
-            "saved on your watch" to (f.savedCount?.toString() ?: "couldn't check"),
+            "held on your watch" to (f.savedCount?.toString() ?: "couldn't check"),
             "phone checked in" to when {
                 heardAgo == null -> "not yet"
                 heardAgo < 2 * 60_000L -> "just now"

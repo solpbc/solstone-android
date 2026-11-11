@@ -71,7 +71,7 @@ class WearMainActivity : ComponentActivity() {
         super.onResume()
         handler.removeCallbacks(tick)
         handler.post(tick)
-        WatchTransferWorker.enqueue(applicationContext)
+        WatchTransferWorker.checkIn(applicationContext)
     }
     override fun onPause() {
         handler.removeCallbacks(tick)

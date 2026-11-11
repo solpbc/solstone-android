@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -231,6 +232,10 @@ internal fun PhoneSourceDetail(
     }
 }
 
+/** The watch tile never says off or zero: only when the watch last checked in. */
+internal fun watchTileSubLine(page: WatchSourcePageModel?): String =
+    page?.lastContactShortText?.let { "checked in $it" } ?: "not checked in yet"
+
 @Composable
 private fun WatchSourceDetailTemplate(
     pageModel: WatchSourcePageModel,
@@ -246,16 +251,16 @@ private fun WatchSourceDetailTemplate(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = pageModel.startOnWatchInstruction,
+            text = when {
+                pageModel.firstReceiptEpochMs == null -> pageModel.startOnWatchInstruction
+                pageModel.isSilenceStale -> "waiting for your watch"
+                else -> "heard from your watch"
+            },
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(start = 10.dp),
         )
     }
 
-    if (pageModel.firstReceiptEpochMs != null) {
-        PaneNote("watch material has reached your phone.")
-    }
     PaneNote("session controls are on your watch. this phone cannot tell whether your watch's microphone is receiving audio.")
     pageModel.notice?.let { PaneNote(it) }
     pageModel.oldPlayServicesNotice?.let { PaneNote(it) }
@@ -264,17 +269,20 @@ private fun WatchSourceDetailTemplate(
     }
     if (!paired) {
         PaneNote("material stays on your devices until you connect a journal and confirm its mark.")
+        Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sourceDetailJournalSetup")) {
             Text("connect a journal")
         }
     }
     if (paired && pageModel.actionLabel != null) {
+        Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text(requireNotNull(pageModel.actionLabel))
         }
     }
-    if ((pageModel.waitingCount ?: 0) > 0 || pageModel.storageLow) {
-        Button(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("manage phone storage") }
+    if (pageModel.storageLow) {
+        Spacer(Modifier.height(ShellMetrics.sectionGap))
+        OutlinedButton(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("manage phone storage") }
     }
 
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
@@ -283,7 +291,7 @@ private fun WatchSourceDetailTemplate(
 
     PaneSectionTitle("details")
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "last contact", value = pageModel.lastContactDisplayText)
+        PaneFactRow(label = "last check-in", value = pageModel.lastContactDisplayText)
         if (pageModel.firstReceiptEpochMs != null) {
             PaneRowDivider()
             PaneFactRow(label = "first received", value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.firstReceiptEpochMs)))
@@ -295,7 +303,7 @@ private fun WatchSourceDetailTemplate(
         PaneRowDivider()
         PaneFactRow(label = "held on this phone", value = pageModel.waitingCount?.toString() ?: "unknown")
         PaneRowDivider()
-        PaneFactRow(label = "sealed on your watch", value = if (pageModel.isSilenceStale) "unknown" else pageModel.watchWaitingCount?.let { "$it at last contact" } ?: "unknown")
+        PaneFactRow(label = "held on your watch", value = pageModel.watchWaitingCount?.let { "$it at last check-in" } ?: "unknown")
     }
 }
 

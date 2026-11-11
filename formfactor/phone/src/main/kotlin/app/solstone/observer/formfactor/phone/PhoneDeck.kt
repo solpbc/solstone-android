@@ -190,7 +190,7 @@ internal fun PhoneSourceGrid(
                 val watch = LocalPhoneWatchSource.current
                 PhoneNonSourceTile(
                     label = WatchCourierStrings.WATCH,
-                    subLine = if (watch?.isSilenceStale != false) "no recent contact" else "heard from your watch",
+                    subLine = watchTileSubLine(watch),
                     glyph = R.drawable.phone_source_watch,
                     index = index,
                     count = sources.size + NON_SOURCE_TILE_COUNT,

@@ -600,6 +600,7 @@ class PhoneShellActivity : ComponentActivity() {
                                 WatchSourcePageModel(
                                     firstReceiptEpochMs = first,
                                     lastContactDisplayText = WatchSourcePageModel.formatLastContact(contact?.at, now),
+                                    lastContactShortText = contact?.at?.let { WatchSourcePageModel.formatLastContactShort(it, now) },
                                     waitingCount = dao.heldOnPhone(),
                                     watchWaitingCount = contact?.sealedWaiting,
                                     isSilenceStale = stale,
@@ -1131,7 +1132,7 @@ class PhoneShellActivity : ComponentActivity() {
                     when {
                         snapshot?.status?.refused == true -> page.copy(notice = "your journal no longer accepts this phone. connect it again and confirm the journal's mark. held material stays on your devices.", actionLabel = "connect again")
                         currentPairing != null && !journalConfirmed -> page.copy(notice = "confirm your journal's mark to send held material.", actionLabel = "open journal")
-                        snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = "journal delivery is waiting. check the connection from your journal card. material stays on this phone.", actionLabel = "open journal")
+                        currentPairing != null && snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = "journal delivery is waiting. check the connection from your journal card. material stays on this phone.", actionLabel = "open journal")
                         else -> page
                     }
                 },

@@ -52,6 +52,25 @@ class WatchTransferWorker(
 
         private val transferMutex = Mutex()
 
+        /**
+         * Asks the phone to check in now, without starting or replacing a transfer. The transfer
+         * worker can sit in retry backoff for minutes; the face still wants a current answer.
+         */
+        fun checkIn(context: Context) {
+            val app = context.applicationContext
+            Thread {
+                runCatching {
+                    val staged = WatchSpoolStore(app).listStagedBundles().size
+                    val node = WearTaskPolicy.await(5) { Wearable.getNodeClient(app).connectedNodes }
+                        .sortedWith(compareByDescending<com.google.android.gms.wearable.Node> { it.isNearby }.thenBy { it.id })
+                        .firstOrNull()?.id ?: return@runCatching
+                    WatchPeerStatusStore(app).attempted()
+                    val hello = WatchCourierHello(WatchCourierProtocol.KIND_HEARTBEAT, WatchCourierProtocol.PROTOCOL_VERSION, staged).encode()
+                    WearTaskPolicy.await(5) { Wearable.getMessageClient(app).sendMessage(node, WatchCourierProtocol.MESSAGE_PATH_HEARTBEAT, hello) }
+                }
+            }.apply { isDaemon = true; name = "solstone-check-in" }.start()
+        }
+
         fun enqueue(context: Context, urgent: Boolean = false) {
             // A persisted fallback also recovers an unfinished recording after process loss/reboot.
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
