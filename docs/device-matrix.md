@@ -1,8 +1,8 @@
 # Device Matrix
 
-Phone is the sole maintained Android target. The Rogbid and RV203 entries below
-are retained historical hardware evidence, not routine-maintenance or release
-targets; their recorded properties remain useful source constraints.
+Phone and Wear OS apps are maintained Android targets. The Rogbid and RV203
+entries below remain historical hardware evidence, not routine-maintenance or
+release targets; their recorded properties remain useful source constraints.
 
 ## Rogbid Model X
 
@@ -78,3 +78,11 @@ Reference:
 - Android 16 / API 36 / One UI 8
 - `arm64-v8a`
 - Phone validation target.
+
+
+## Wear OS
+
+- Module: `:apps:wear`, minimum API 30.
+- Release smoke hardware: Galaxy Watch8 (`SM-L330`), Wear OS 6.
+- Gate: one ordinary watch session reaches a journal through the direct-signed phone courier.
+- The phone's GMD gate remains phone-specific.
