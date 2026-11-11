@@ -95,8 +95,11 @@ def binding(aab, apk):
 def prepare(client, args):
     if (args.surface == "wear") != args.track.startswith("wear:"):
         raise ValueError("Wear requires a wear: track; phone requires a phone track")
-    if args.surface == "wear" and args.require_phone_code is None:
-        raise ValueError("Wear requires --require-phone-code for the published courier phone")
+    if args.surface == "wear" and args.listing_json and args.track != "wear:production":
+        raise ValueError("Wear listing patches accompany the wear:production release edit")
+    internal_wear = args.track == "wear:internal"
+    if args.surface == "wear" and not internal_wear and args.require_phone_code is None:
+        raise ValueError("Wear review or listing changes require --require-phone-code for the published courier phone")
     receipt = binding(args.aab, args.apk)
     client.save("bundle-binding", receipt)
     facts = aab_facts(args.aab)
@@ -114,7 +117,7 @@ def prepare(client, args):
     upload_url = f"{UPLOAD}/edits/{edit['id']}"
     tracks = client.call("tracks-before", "GET", f"{edit_url}/tracks")["tracks"]
     if not any(t["track"] == args.track for t in tracks):
-        if not args.track.startswith("wear:") or args.track in ("wear:production", "wear:beta", "wear:qa"):
+        if not args.track.startswith("wear:") or args.track in ("wear:production", "wear:beta", "wear:internal", "wear:qa"):
             raise ValueError("target track does not exist")
         client.call("track-created", "POST", f"{edit_url}/tracks", json={
             "track": args.track, "type": "CLOSED_TESTING", "formFactor": "WEAR"})

@@ -69,3 +69,41 @@ class PublishedCodeAllocationTest(unittest.TestCase):
         for surface, code in (("phone", 51), ("wear", 52), ("wear", 1)):
             with self.assertRaises(ValueError):
                 validate_code(surface, code)
+
+
+class WearInternalUploadPolicyTest(unittest.TestCase):
+    def test_internal_screenshots_can_reach_the_bundle_gate_without_a_published_phone(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import play
+        args = SimpleNamespace(surface="wear", track="wear:internal", require_phone_code=None,
+                               listing_json=None, wear_screenshots=pathlib.Path("approved-images"),
+                               aab=pathlib.Path("bundle.aab"), apk=pathlib.Path("universal.apk"))
+        with patch.object(play, "binding", side_effect=ValueError("fixture bundle refused")) as gate:
+            with self.assertRaisesRegex(ValueError, "fixture bundle refused"):
+                play.prepare(None, args)
+            gate.assert_called_once_with(args.aab, args.apk)
+
+    def test_review_tracks_cannot_reach_an_upload_without_the_phone(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import play
+        for track, listing in (("wear:production", None), ("wear:beta", None),
+                               ("wear:closed", None)):
+            args = SimpleNamespace(surface="wear", track=track, require_phone_code=None, listing_json=listing)
+            with self.subTest(track=track, listing=listing), patch.object(play, "binding") as gate:
+                with self.assertRaisesRegex(ValueError, "published courier phone"):
+                    play.prepare(None, args)
+                gate.assert_not_called()
+
+    def test_internal_listing_patch_is_refused_even_with_a_phone_code(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import play
+        for code in (None, 52):
+            args = SimpleNamespace(surface="wear", track="wear:internal", require_phone_code=code,
+                                   listing_json=pathlib.Path("listing.json"))
+            with self.subTest(phone_code=code), patch.object(play, "binding") as gate:
+                with self.assertRaisesRegex(ValueError, "wear:production release edit"):
+                    play.prepare(None, args)
+                gate.assert_not_called()
