@@ -28,6 +28,7 @@ private const val A2 = "the solstone app reads only the folder you choose."
 private const val A3 = "choose the Screenshots folder"
 private const val A4 = "on the next screen, use this folder and allow access."
 private const val A6 = "the solstone app looks for new screenshots when you open it, so one can take a while to reach your journal."
+private const val A6B = "the solstone app looks for new screenshots when you open it and from time to time in the background, so one can take a while to reach your journal."
 private const val A8_ACTION = "choose the folder"
 private const val A9 = "this screenshot is too big to come in, so it stays in the folder."
 private const val A10 = "this screenshot couldn't be read."
@@ -165,7 +166,7 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
             val label = if (s.counting || s.previewCount == null) "checking…" else confirmLabel(s.history, s.previewCount)
             TextButton(onClick = binding.onConfirm, enabled = !s.counting && s.previewCount != null) { Text(label) }
         }
-        // A6 is said in every state, so the owner reads when screenshots arrive before turning this on.
+        // Before the source is on no background check runs, so the page names only opening the app.
         if (!s.confirmed) PaneNote(A6)
         if (s.confirmed) {
             // The switch is the owner's on or off; a pause is its own control, as `off` and `paused` differ.
@@ -174,7 +175,8 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier) {
                 checked = s.enabled,
                 onCheckedChange = { on -> if (!on) binding.onOff() },
             )
-            PaneNote(A6)
+            // While the source is on, the background check runs too (proven on hardware), so A6b.
+            PaneNote(A6B)
             if (s.paused) PaneNote(S16)
             // Resume is offered only for this source's own pause: under a pause of the whole app it
             // could not bring screenshots back on its own.
