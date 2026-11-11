@@ -107,3 +107,22 @@ class WearInternalUploadPolicyTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "wear:production release edit"):
                     play.prepare(None, args)
                 gate.assert_not_called()
+
+
+class CourierPhonePublicationTest(unittest.TestCase):
+    def test_only_a_published_courier_phone_clears_the_wear_prerequisite(self):
+        from play import Client
+        cases = [(50, 50, "PUBLISHED", False), (52, 52, "PUBLISHED", True),
+                 (52, 52, "IN_REVIEW", False), (52, 54, "PUBLISHED", False),
+                 (54, 54, "PUBLISHED", True), (53, 53, "PUBLISHED", False)]
+        for required, served, state, allowed in cases:
+            reply = {"releases": [{"releaseLifecycleState": "RELEASE_LIFECYCLE_STATE_" + state,
+                                    "activeArtifacts": [{"versionCode": served}]}]}
+            client = Client.__new__(Client)
+            client.lifecycle = lambda name, track: reply
+            with self.subTest(required=required, served=served, state=state):
+                if allowed:
+                    client.require_phone("fixture", required)
+                else:
+                    with self.assertRaises(ValueError):
+                        client.require_phone("fixture", required)

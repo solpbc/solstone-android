@@ -77,6 +77,9 @@ class Client:
         return self.call(name, "GET", f"{BASE}/tracks/{quote(track, safe='')}/releases")
 
     def require_phone(self, name, code):
+        validate_code("phone", code)
+        if code < 52:
+            raise ValueError("the published courier phone must be code 52 or later")
         reply = self.lifecycle(name, "production")
         if not published(reply, code):
             raise ValueError(f"phone {code} is not PUBLISHED; Wear publication must wait")
