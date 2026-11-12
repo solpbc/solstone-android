@@ -2,13 +2,22 @@
 
 Regenerated from the app manifests — when a manifest's service declaration or permission set changes, update this file in the same change.
 
-This is a source-reference matrix. Phone is the sole maintained Android target; the watch, glasses/Rokid, and Rogbid entries document retained parked source and hardware evidence.
+The phone and `apps/wear` are maintained Android targets. The older `apps/watch`, glasses/Rokid and Rogbid entries describe parked source and hardware evidence.
 
 Per-app `foregroundServiceType` (never the data-sync type):
 - `apps/phone`: `microphone|location|camera|mediaProjection`
+- `apps/wear`: `microphone|location`
 - `apps/watch`: `microphone|location|camera`
 - `apps/glasses`: `microphone|camera` (the RV203 has no GPS/network location provider)
 - `apps/validation-rogbid` (hardware-validation target, not an observer app): `camera|microphone`
+
+## Wear OS
+
+`apps/wear` supports API 30 and later. It requests microphone and coarse location from the visible activity and enters foreground with microphone, plus location only when coarse permission is granted. During a session it requests balanced-power location with a 100 m minimum-distance filter, using the fused provider when available and the network provider as fallback; that filter is not an accuracy guarantee. Only an owner action in the visible app starts capture; boot, the tile and complications do not start it.
+
+## Phone and parked targets
+
+The remaining sections describe the shared observer service used by the phone and the parked targets, not the separate Wear capture service.
 
 API 28-32:
 - Required manifest permissions: `FOREGROUND_SERVICE`, `RECORD_AUDIO`, `CAMERA`, plus `ACCESS_COARSE_LOCATION` on phone (`ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` on parked watch).
