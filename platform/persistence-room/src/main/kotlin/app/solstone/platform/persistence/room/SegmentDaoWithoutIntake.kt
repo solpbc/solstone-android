@@ -10,6 +10,7 @@ package app.solstone.platform.persistence.room
 abstract class SegmentDaoWithoutIntake : SegmentDao() {
     private val intake = mutableMapOf<String, SourceIntakeRow>()
     private val fixes = mutableMapOf<String, SourceIntakeFixRow>()
+    private val seen = mutableSetOf<Pair<String, String>>()
 
     override fun intakeBySource(sourceId: String): SourceIntakeRow? = intake[sourceId]
 
@@ -23,5 +24,12 @@ abstract class SegmentDaoWithoutIntake : SegmentDao() {
 
     override fun upsertIntakeFix(row: SourceIntakeFixRow) {
         fixes[row.sourceId] = row
+    }
+
+    override fun intakeSeenKeys(sourceId: String, keys: List<String>): List<String> =
+        keys.filter { (sourceId to it) in seen }
+
+    override fun insertIntakeSeen(rows: List<SourceIntakeSeenRow>) {
+        rows.forEach { seen += it.sourceId to it.seenKey }
     }
 }

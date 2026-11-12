@@ -107,6 +107,29 @@ class SourceIntakeInstrumentedTest {
     }
 
     @Test
+    fun aScreenshotSentAgainCountsOnce() {
+        val dao = db.segmentDao()
+        dao.insertSegmentWithFiles(segment("s1"), listOf(shot("s1", "shot-a.png")), emptyList(), nowEpochMs = 1_000L)
+        // A new pairing brings it in again as a new segment, to each journal paired after.
+        dao.insertSegmentWithFiles(segment("s2"), listOf(shot("s2", "shot-a.png")), emptyList(), nowEpochMs = 2_000L)
+        dao.insertSegmentWithFiles(segment("s3"), listOf(shot("s3", "shot-a.png")), emptyList(), nowEpochMs = 3_000L)
+        dao.insertSegmentWithFiles(segment("s4"), listOf(shot("s4", "shot-b.png")), emptyList(), nowEpochMs = 4_000L)
+
+        assertEquals(2L, dao.intakeBySource(INTAKE_SCREENSHOTS)?.total)
+    }
+
+    @Test
+    fun aScreenshotKeptBeforeTheSeenRecordStillCountsOnce() {
+        val dao = db.segmentDao()
+        // Kept and counted by an earlier version, which recorded no seen key.
+        dao.insertSegment(segment("old"))
+        dao.insertFiles(listOf(shot("old", "shot-a.png")))
+        dao.insertSegmentWithFiles(segment("again"), listOf(shot("again", "shot-a.png")), emptyList(), nowEpochMs = 2_000L)
+
+        assertNull(dao.intakeBySource(INTAKE_SCREENSHOTS))
+    }
+
+    @Test
     fun calendarCountsAnAddedEventOnceAcrossARewrite() {
         val dao = db.calendarDao()
         val first = intakeSeenKey("event-1", null)
@@ -155,6 +178,8 @@ class SourceIntakeInstrumentedTest {
     private fun audio(id: String, end: Long) = file(id, "audio", "audio.m4a", end, 10L)
 
     private fun photo(id: String, name: String, bytes: Long = 10L) = file(id, "camera", name, end = 1_000L, bytes = bytes)
+
+    private fun shot(id: String, name: String) = file(id, INTAKE_SCREENSHOTS, name, end = 1_000L, bytes = 10L)
 
     private fun file(id: String, sourceId: String, name: String, end: Long, bytes: Long) = SegmentFileRow(
         segmentId = id,

@@ -42,7 +42,7 @@ abstract class SegmentDao {
         if (first) insertSegment(segment)
         deleteFilesBySegmentId(segment.id)
         if (files.isNotEmpty()) insertFiles(files)
-        if (first) recordSegmentIntake(files, locationFixes, nowEpochMs)
+        if (first) recordSegmentIntake(segment.id, files, locationFixes, nowEpochMs)
     }
 
     @Query("SELECT * FROM source_intake WHERE source_id = :sourceId")
@@ -60,13 +60,49 @@ abstract class SegmentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract fun upsertIntakeFix(row: SourceIntakeFixRow)
 
-    private fun recordSegmentIntake(files: List<SegmentFileRow>, fixes: List<IntakeFix>, nowEpochMs: Long) {
+    @Query("SELECT seen_key FROM source_intake_seen WHERE source_id = :sourceId AND seen_key IN (:keys)")
+    abstract fun intakeSeenKeys(sourceId: String, keys: List<String>): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract fun insertIntakeSeen(rows: List<SourceIntakeSeenRow>)
+
+    private fun recordSegmentIntake(
+        segmentId: String,
+        files: List<SegmentFileRow>,
+        fixes: List<IntakeFix>,
+        nowEpochMs: Long,
+    ) {
         val anchor = intakeFix(INTAKE_LOCATION)?.toFix()
-        for (delta in segmentIntakeDeltas(files, fixes, anchor, keptAtMs = nowEpochMs)) {
+        val counted = screenshotsNotYetCounted(segmentId, files)
+        for (delta in segmentIntakeDeltas(counted, fixes, anchor, keptAtMs = nowEpochMs)) {
             val existing = intakeBySource(delta.sourceId)?.toReading()
             val next = advanceIntake(existing, delta.add, delta.materialAt, nowEpochMs, touch = true) ?: continue
             upsertIntake(next.toRow(delta.sourceId))
             if (delta.anchor != null) upsertIntakeFix(delta.anchor.toFixRow(INTAKE_LOCATION))
+        }
+    }
+
+    /**
+     * A screenshot counts once, by its bytes. Sending it again after a new pairing, or bringing it
+     * in again after the source is turned back on, keeps a new segment but is not a new screenshot.
+     * One kept before this record existed is known by another segment holding the same bytes.
+     */
+    private fun screenshotsNotYetCounted(segmentId: String, files: List<SegmentFileRow>): List<SegmentFileRow> {
+        val shots = files.filter { it.sourceId == INTAKE_SCREENSHOTS && it.byteSize > 0L }
+        if (shots.isEmpty()) return files
+        val keys = shots.map { it.sha256 }.distinct()
+        val seen = intakeSeenKeys(INTAKE_SCREENSHOTS, keys).toMutableSet()
+        for (key in keys) {
+            if (key in seen) continue
+            val keptElsewhere = duplicateBySha256(key).any {
+                it.sourceId == INTAKE_SCREENSHOTS && it.segmentId != segmentId
+            }
+            if (keptElsewhere) seen += key
+        }
+        insertIntakeSeen(keys.map { SourceIntakeSeenRow(INTAKE_SCREENSHOTS, it) })
+        val fresh = HashSet<String>()
+        return files.filter { row ->
+            row.sourceId != INTAKE_SCREENSHOTS || (row.sha256 !in seen && fresh.add(row.sha256))
         }
     }
 
