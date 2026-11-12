@@ -4,6 +4,7 @@
 package app.solstone.platform.work
 
 import app.solstone.core.identity.ClientCredential
+import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.JournalConfirmation
 import app.solstone.core.identity.JournalConfirmationPolicy
 import app.solstone.core.identity.JournalConfirmationStore
@@ -154,6 +155,62 @@ class JournalConfirmationGrandfatherTest {
         assertTrue(matchResult)
         val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(confirmStore.inspect())
         assertEquals("sha256:match", inspected.value.confirmed)
+    }
+
+    @Test
+    fun aNewPairingStartsEverySourceAgainBeforeItsYesIsSaved() {
+        val graph = createGraph()
+        graph.installOrReplace(testHome(cert = "sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        val store = FileJournalConfirmationStore(File(temp.root, "journal_confirmation.json"))
+        val confirmedAtRestart = mutableListOf<String?>()
+        val restart = { confirmedAtRestart += (store.inspect() as? StoreInspectResult.Ready)?.value?.confirmed }
+
+        assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-1", restart))
+        assertEquals(listOf<String?>(null), confirmedAtRestart, "the restart ran before the yes was saved")
+
+        // Another yes to the pairing already confirmed, as after a link that answers `already connected`.
+        assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-1", restart))
+        assertEquals(1, confirmedAtRestart.size)
+
+        // Unpaired, then paired with the same journal again: a new pairing all the same.
+        assertIs<GraphMutationResult.Cleared>(graph.forget())
+        graph.installOrReplace(testHome(cert = "sha256:cert-2"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-2", restart))
+        assertEquals(listOf(null, "sha256:cert-1"), confirmedAtRestart)
+    }
+
+    @Test
+    fun relaunchTheOneTimeReAskAndAWrongMarkStartNothingAgain() {
+        val graph = createGraph()
+        graph.installOrReplace(testHome(cert = "sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        val store = FileJournalConfirmationStore(File(temp.root, "journal_confirmation.json"))
+        var restarts = 0
+
+        // A pairing from before the mark existed is confirmed on relaunch, not by a yes.
+        JournalConfirmationGrandfather.grandfather(graph, store)
+        assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-1") { restarts++ })
+
+        store.holdToAskAgain("sha256:cert-1")
+        assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-1") { restarts++ })
+
+        assertFalse(confirmCurrentJournal(graph, store, "sha256:other") { restarts++ })
+        assertEquals(0, restarts)
+    }
+
+    @Test
+    fun aSourceThatCannotStartAgainDoesNotLoseTheYes() {
+        val graph = createGraph()
+        graph.installOrReplace(testHome(cert = "sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        val store = FileJournalConfirmationStore(File(temp.root, "journal_confirmation.json"))
+        val oldLogger = workerLog
+        workerLog = { _, _, _ -> }
+        try {
+            assertTrue(confirmCurrentJournal(graph, store, "sha256:cert-1") { error("source unavailable") })
+        } finally {
+            workerLog = oldLogger
+        }
+        val inspected = assertIs<StoreInspectResult.Ready<JournalConfirmation>>(store.inspect())
+        assertEquals("sha256:cert-1", inspected.value.confirmed)
     }
 
     @Test

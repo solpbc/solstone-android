@@ -53,6 +53,16 @@ interface CalendarDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertCapability(row: CalendarCapabilityRow)
 
+    @Query("DELETE FROM calendar_capability")
+    fun clearCapabilities()
+
+    /** Only the journal paired now has a row: what an earlier journal could take is not kept. */
+    @Transaction
+    fun recordCapability(row: CalendarCapabilityRow) {
+        clearCapabilities()
+        upsertCapability(row)
+    }
+
     @Query("DELETE FROM calendar_preview WHERE generation = :generation")
     fun clearPreview(generation: Long)
 

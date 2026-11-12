@@ -77,7 +77,8 @@ internal fun performPhoneConfirm(
     stores: SyncStores,
     clientCertFingerprint: String,
 ): Boolean {
-    if (confirmCurrentJournal(stores.publisher, stores.journalConfirmationStore, clientCertFingerprint)) {
+    val restart: () -> Unit = { (context.applicationContext as? PhoneApplication)?.restartSourcesForNewJournal() }
+    if (confirmCurrentJournal(stores.publisher, stores.journalConfirmationStore, clientCertFingerprint, restart)) {
         SyncScheduler.enqueueAfterConfirm(context.applicationContext, PHONE_STREAM)
         return true
     }

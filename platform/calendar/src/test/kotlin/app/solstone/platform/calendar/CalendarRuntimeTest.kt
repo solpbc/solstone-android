@@ -174,6 +174,37 @@ class CalendarRuntimeTest {
     }
 
     @Test
+    fun aNewPairingAsksHowFarBackAgainKeepsTheCalendarsAndBringsTheEventsInAgain() {
+        val begin = Instant.parse("2026-10-20T15:00:00Z").toEpochMilli()
+        val harness = Harness(instances = listOf(mapOf(CALENDAR_COL_EVENT_ID to 5L, CALENDAR_COL_CALENDAR_ID to 1L,
+            CALENDAR_COL_UID to "standup", CALENDAR_COL_BEGIN to begin, CALENDAR_COL_END to begin + 1_800_000L)))
+        harness.runtime.setHistory(HistoryKind.MONTHS_6)
+        harness.runtime.count()
+        assertTrue(harness.runtime.confirm())
+        assertEquals(1, harness.sealed)
+        assertTrue(harness.wish)
+
+        harness.now += 3_600_000L
+        harness.runtime.restartFirstSetup()
+        val restarted = harness.ledger.settings()
+        assertNull(restarted.confirmedGeneration)
+        assertFalse(restarted.enabled)
+        assertFalse(harness.wish, "nothing new comes in until the owner confirms")
+        assertEquals(HistoryKind.MONTHS_6.name, restarted.historyKind, "the page opens on the last choice")
+        assertEquals(listOf(true), harness.ledger.calendars().map { it.selected }, "the calendars switched on stay")
+        assertTrue(harness.ledger.calendars().none { it.confirmed })
+        assertFalse(harness.runtime.ui.resume, "the page shows the chooser, not resume")
+        assertFalse(harness.runtime.ui.confirmEnabled, "a fresh count comes first")
+        assertFalse(harness.runtime.primary())
+        assertEquals(1, harness.sealed)
+
+        harness.runtime.count()
+        assertEquals(1, harness.runtime.ui.countValue)
+        assertTrue(harness.runtime.confirm())
+        assertEquals(2, harness.sealed, "the event the last journal had comes into this one")
+    }
+
+    @Test
     fun hiddenCalendarsAreReadAndACancelledOrFailedReadIsNotEmpty() {
         val calendars = MapCursor(
             listOf(
@@ -280,25 +311,32 @@ class CalendarRuntimeTest {
         }
     }
 
-    private class Harness(listed: List<Pair<Long, String>> = listOf(1L to "Synthetic")) {
+    private class Harness(
+        listed: List<Pair<Long, String>> = listOf(1L to "Synthetic"),
+        instances: List<Map<String, Any?>> = emptyList(),
+    ) {
         var wish = false
         val enabledCalls = mutableListOf<Boolean>()
         val scheduled = mutableListOf<Boolean>()
         var sealed = 0
+        val sealedNames = mutableSetOf<String>()
+        var now = Instant.parse("2026-10-22T16:00:00Z").toEpochMilli()
         val ledger = MemoryLedger()
         val runtime = CalendarRuntime(
             ledger = ledger,
             reader = CalendarReader(object : CalendarQuerySurface {
                 override fun query(query: CalendarQuery): CalendarCursor? = when (query.target) {
                     CalendarQueryTarget.CALENDARS -> MapCursor(listed.map { (id, name) -> mapOf(CALENDAR_COL_ID to id, CALENDAR_COL_DISPLAY_NAME to name) })
+                    CalendarQueryTarget.INSTANCES -> MapCursor(instances)
                     else -> MapCursor(emptyList())
                 }
             }),
             sealer = {
                 sealed += 1
+                sealedNames += it.name
                 true
             },
-            segmentExists = { false },
+            segmentExists = { intent -> "calendar_${intent.id}.jsonl" in sealedNames },
             permission = { true },
             wishOn = { wish },
             setEnabled = { on ->
@@ -307,7 +345,7 @@ class CalendarRuntimeTest {
                 true
             },
             schedule = { scheduled += it },
-            clock = { Instant.parse("2026-10-22T16:00:00Z").toEpochMilli() },
+            clock = { now },
             zone = { ZoneOffset.UTC },
         )
     }

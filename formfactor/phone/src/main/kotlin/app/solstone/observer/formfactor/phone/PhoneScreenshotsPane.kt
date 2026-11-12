@@ -107,8 +107,9 @@ fun screenshotsTileLine(state: PhoneScreenshotsState, paired: Boolean): Screensh
     state.enabled && state.capability == false -> ScreenshotsTileLine.S21
     state.enabled && state.backfillTotal > 0 && state.backfillDone < state.backfillTotal -> ScreenshotsTileLine.S5
     state.enabled -> ScreenshotsTileLine.S2
-    // S11 is the first set-up's line. Once turned off, given a new folder or paired to a different
-    // journal, the tile is `off` and takes the shared off line; the page shows the chooser again.
+    // S11 is the first set-up's line, and a new pairing starts the first set-up again. Once turned
+    // off or given a new folder, the tile is `off` and takes the shared off line; the page shows the
+    // chooser again.
     state.accessGranted && !state.confirmed && state.firstSetUp -> ScreenshotsTileLine.S11
     else -> null
 }

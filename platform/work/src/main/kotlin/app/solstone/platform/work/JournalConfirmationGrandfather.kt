@@ -80,18 +80,41 @@ fun holdPairingWhoseIdIsNotItsCas(publisher: PairingPublisher, store: JournalCon
     }
 }
 
+/**
+ * The owner's yes to the journal mark. A yes that completes a new pairing (one not already
+ * confirmed, and not the one-time re-ask of a stored pairing) first runs [restartSources], so every
+ * source starts its first setup again for this journal. It runs before the confirmation is saved, and
+ * nothing goes to a journal until then, so no source sends to the new journal on its old record.
+ * It runs outside the mutation boundary: a source finishing a check must never wait on it.
+ */
 fun confirmCurrentJournal(
     publisher: PairingPublisher,
     store: JournalConfirmationStore,
     fingerprint: String,
-): Boolean = publisher.withMutationBoundary {
-    val snapshot = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed ?: return@withMutationBoundary false
-    if (snapshot.home.clientCertFingerprint != fingerprint) return@withMutationBoundary false
-    try {
-        store.confirm(fingerprint)
-        publisher.discardPrior(snapshot.pairing)
-        true
-    } catch (_: Exception) {
-        false
+    restartSources: () -> Unit = {},
+): Boolean {
+    val newPairing = publisher.withMutationBoundary {
+        val snapshot = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed ?: return@withMutationBoundary null
+        if (snapshot.home.clientCertFingerprint != fingerprint) return@withMutationBoundary null
+        val prior = (store.inspect() as? StoreInspectResult.Ready)?.value
+        prior?.confirmed != fingerprint && prior?.reasked != fingerprint
+    } ?: return false
+    if (newPairing) {
+        try {
+            restartSources()
+        } catch (t: Exception) {
+            workerLog("w", "a source did not start its first setup again", t)
+        }
+    }
+    return publisher.withMutationBoundary {
+        val snapshot = publisher.currentSnapshot() as? PairingGraphSnapshot.Committed ?: return@withMutationBoundary false
+        if (snapshot.home.clientCertFingerprint != fingerprint) return@withMutationBoundary false
+        try {
+            store.confirm(fingerprint)
+            publisher.discardPrior(snapshot.pairing)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 }

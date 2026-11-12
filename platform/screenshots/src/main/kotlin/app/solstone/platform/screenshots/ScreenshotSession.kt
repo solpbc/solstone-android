@@ -38,7 +38,7 @@ import app.solstone.core.screenshots.encodeKnown
 import app.solstone.core.screenshots.fileNameFor
 import app.solstone.core.screenshots.headRulesOutScreenshot
 import app.solstone.core.screenshots.knownVerdict
-import app.solstone.core.screenshots.followJournal
+import app.solstone.core.screenshots.firstSetupAgain
 import app.solstone.core.screenshots.historyLowerBound
 import app.solstone.core.screenshots.mediaTypeFor
 import app.solstone.core.screenshots.parseScreenshotsCapability
@@ -111,8 +111,9 @@ data class ScreenshotUi(
 )
 
 /**
- * One actor reads the granted folder, keeps the per-journal record, and hands each screenshot
- * to the ordinary spool. The wish stays off until the owner confirms how far back to start.
+ * One actor reads the granted folder, keeps the record of what the journal paired now has, and
+ * hands each screenshot to the ordinary spool. The wish stays off until the owner confirms how far
+ * back to start.
  */
 class ScreenshotSession(
     context: Context,
@@ -121,7 +122,6 @@ class ScreenshotSession(
     private val wishOn: () -> Boolean,
     private val setEnabled: (Boolean) -> Boolean,
     private val ownerStopped: () -> Boolean,
-    private val journalId: () -> String?,
     private val onSealed: () -> Unit,
     private val onChanged: () -> Unit,
 ) {
@@ -155,7 +155,7 @@ class ScreenshotSession(
     fun isPaused(): Boolean = pausedNow() || book.pauses.any { it.endExclusiveMs == null }
     private fun pausedNow(): Boolean = ownerStopped() || book.sourcePaused
 
-    fun onProcessStart() = submit { followCurrentJournal(); schedule(); refresh() }
+    fun onProcessStart() = submit { schedule(); refresh() }
     fun onForeground(value: Boolean) = submit { if (value) checkNow() }
     fun onOwnerStopRequested() = submit { notePause(stopped = true); refresh() }
     fun onPauseChanged() = submit { notePause(pausedNow()); refresh() }
@@ -180,12 +180,8 @@ class ScreenshotSession(
 
     /** Reads which staged screenshots the journal now holds, without reading the folder. */
     fun observeDelivery() = submit {
-        val changed = followCurrentJournal()
-        if (book.staged.isEmpty()) {
-            if (changed) refresh()
-            return@submit
-        }
-        observeStaged(journalId())
+        if (book.staged.isEmpty()) return@submit
+        observeStaged()
         save()
         refresh()
     }
@@ -208,7 +204,7 @@ class ScreenshotSession(
                 // confirm, as after turning it off: never `on` over a chooser nobody has answered.
                 setEnabled(false)
                 schedule(on = false)
-                book = book.copy(period = book.period + 1, pauses = emptyList(), sourcePaused = false, journalId = null)
+                book = book.copy(period = book.period + 1, pauses = emptyList(), sourcePaused = false)
             }
             accessLost = false
             countFailed = false
@@ -238,7 +234,6 @@ class ScreenshotSession(
             lowerBoundMs = lower,
             frozen = ids,
             marks = emptyList(),
-            journalId = journalId(),
         )
         save()
         if (!setEnabled(true)) {
@@ -260,7 +255,6 @@ class ScreenshotSession(
             pauses = emptyList(),
             frozen = emptySet(),
             marks = emptyList(),
-            journalId = null,
             sourcePaused = false,
         )
         save()
@@ -268,14 +262,44 @@ class ScreenshotSession(
         refresh()
     }
 
+    /**
+     * A new pairing: the page asks how far back again, with a fresh count, and nothing comes in until
+     * the owner confirms. Runs before the pairing is confirmed, so it is saved before anything can go
+     * to the new journal. Returns once saved, or false if that did not happen in time.
+     */
+    fun restartFirstSetup(): Boolean {
+        val saved = actor.submit<Unit> {
+            setEnabled(false)
+            schedule(on = false)
+            book = firstSetupAgain(book)
+            known.values.removeAll { it.verdict == KnownVerdict.InJournal }
+            saveKnown()
+            save()
+            capability = null
+            previewCount = null
+            refusedSize = 0
+            refusedUnread = 0
+            refusedJournal = 0
+            refresh()
+        }
+        val done = try {
+            saved.get(30, TimeUnit.SECONDS)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        // The fresh count for the page.
+        submit { checkNow() }
+        return done
+    }
+
     fun retryUnread() = submit {
         retryUnread = true
         checkNow()
     }
 
-    fun prepareDelivery(client: PlHttpClient, instanceId: String, pairingCurrent: () -> Boolean): Boolean {
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean {
         val ready = actor.submit<Boolean> {
-            followCurrentJournal()
             if (!pairingCurrent() || !wishOn() || isPaused() || !hasAccess()) return@submit false
             val status = client.request(
                 "GET",
@@ -286,7 +310,7 @@ class ScreenshotSession(
             )
             capability = parseScreenshotsCapability(status.status, status.bodyText())
             refresh()
-            capability == true && pairingCurrent() && instanceId.isNotEmpty()
+            capability == true && pairingCurrent()
         }
         return try {
             ready.get(30, TimeUnit.SECONDS)
@@ -317,7 +341,6 @@ class ScreenshotSession(
     }
 
     private fun checkNow() {
-        followCurrentJournal()
         notePause(pausedNow())
         val uri = book.treeUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: run {
             refresh()
@@ -348,19 +371,18 @@ class ScreenshotSession(
         }
         accessLost = false
         val zone = ZoneId.systemDefault()
-        val journal = journalId()
         val seen = mutableSetOf<String>()
         var preview = 0
         var tooBig = 0
         var unread = 0
         var refusedByJournal = 0
         var stagedNow = false
-        observeStaged(journal)
+        observeStaged()
         for (file in files) {
             seen += file.documentId
-            when (val verdict = knownVerdict(known[file.documentId], file.size, file.modifiedMs)) {
+            when (knownVerdict(known[file.documentId], file.size, file.modifiedMs)) {
                 KnownVerdict.NotScreenshot -> continue
-                is KnownVerdict.InJournal -> if (verdict.journalId == journal) {
+                KnownVerdict.InJournal -> {
                     mark(file.documentId, ReceivedEnd.DELIVERED)
                     continue
                 }
@@ -383,7 +405,6 @@ class ScreenshotSession(
                 read = read.classified,
                 atMs = whenShot?.epochMs,
                 sha256 = sha,
-                journalId = journal,
                 received = book.received,
                 lowerBoundMs = if (book.confirmed) book.lowerBoundMs else historyLowerBound(book.history, LocalDate.now(zone), zone),
                 pauses = book.pauses,
@@ -394,11 +415,11 @@ class ScreenshotSession(
                 ShotFate.COUNT -> preview++
                 ShotFate.ALREADY -> {
                     mark(file.documentId, ReceivedEnd.DELIVERED)
-                    if (journal != null && book.received.any { it.journalId == journal && it.sha256 == sha && it.end == ReceivedEnd.DELIVERED }) {
-                        remember(file, KnownVerdict.InJournal(journal))
+                    if (book.received.any { it.sha256 == sha && it.end == ReceivedEnd.DELIVERED }) {
+                        remember(file, KnownVerdict.InJournal)
                     }
-                    if (journal != null && sha != null) {
-                        when (book.received.firstOrNull { it.journalId == journal && it.sha256 == sha }?.end) {
+                    if (sha != null) {
+                        when (book.received.firstOrNull { it.sha256 == sha }?.end) {
                             ReceivedEnd.REFUSED_SIZE -> tooBig++
                             ReceivedEnd.REFUSED_TYPE -> refusedByJournal++
                             else -> Unit
@@ -455,22 +476,6 @@ class ScreenshotSession(
         save()
         if (stagedNow) onSealed()
         refresh()
-    }
-
-    /**
-     * A different journal turns the source back to asking how far back, as turning it off does.
-     * Returns whether anything changed, so a caller that would not otherwise publish does.
-     */
-    private fun followCurrentJournal(): Boolean {
-        val next = followJournal(book, journalId()) ?: return false
-        val reset = book.confirmed && !next.confirmed
-        book = next
-        if (reset) {
-            setEnabled(false)
-            schedule(on = false)
-        }
-        save()
-        return true
     }
 
     private data class ReadShot(
@@ -541,7 +546,7 @@ class ScreenshotSession(
                 if (knownVerdict(known[file.documentId], file.size, file.modifiedMs) == KnownVerdict.NotScreenshot) return@mapNotNull null
                 val shot = readShot(uri, file)?.takeIf { it !== NOT_A_SCREENSHOT } ?: return@mapNotNull null
                 val at = screenshotWhen(shot.localDateTime, file.modifiedMs, zone, shot.offset)?.epochMs ?: return@mapNotNull null
-                val fate = shotFate(shot.classified, at, null, null, emptyList(), lower, book.pauses, confirmed = false)
+                val fate = shotFate(shot.classified, at, null, emptyList(), lower, book.pauses, confirmed = false)
                 if (fate == ShotFate.COUNT || fate == ShotFate.REFUSED_SIZE || fate == ShotFate.REFUSED_TYPE || fate == ShotFate.UNREADABLE) {
                     file.documentId
                 } else {
@@ -587,24 +592,23 @@ class ScreenshotSession(
         return "$leaf".let { "${keys.day}/$SCREENSHOTS_STREAM/$it" }
     }
 
-    private fun observeStaged(journal: String?) {
+    private fun observeStaged() {
         val dao = database.segmentDao()
         val still = mutableListOf<StagedShot>()
         for (staged in book.staged) {
             val row = dao.segmentById(staged.segmentId)
-            val home = row?.homeInstanceId ?: journal
             when {
                 row == null -> still += staged
                 row.state == QueueState.UPLOADED || row.state == QueueState.EVICTED -> {
-                    if (home != null) receive(home, staged.sha256, ReceivedEnd.DELIVERED)
+                    receive(staged.sha256, ReceivedEnd.DELIVERED)
                     mark(staged.documentId, ReceivedEnd.DELIVERED)
                 }
                 row.lastError == "screenshot_invalid" -> {
-                    if (home != null) receive(home, staged.sha256, ReceivedEnd.REFUSED_TYPE)
+                    receive(staged.sha256, ReceivedEnd.REFUSED_TYPE)
                     mark(staged.documentId, ReceivedEnd.REFUSED_TYPE)
                 }
                 row.lastError == "multipart_part_too_large" -> {
-                    if (home != null) receive(home, staged.sha256, ReceivedEnd.REFUSED_SIZE)
+                    receive(staged.sha256, ReceivedEnd.REFUSED_SIZE)
                     mark(staged.documentId, ReceivedEnd.REFUSED_SIZE)
                 }
                 else -> still += staged
@@ -619,9 +623,9 @@ class ScreenshotSession(
         book = book.copy(marks = book.marks + DocMark(documentId, end))
     }
 
-    private fun receive(journal: String, sha: String, end: ReceivedEnd) {
-        if (book.received.any { it.journalId == journal && it.sha256 == sha }) return
-        book = book.copy(received = book.received + ReceivedHash(journal, sha, end))
+    private fun receive(sha: String, end: ReceivedEnd) {
+        if (book.received.any { it.sha256 == sha }) return
+        book = book.copy(received = book.received + ReceivedHash(sha, end))
     }
 
     private fun notePause(stopped: Boolean) {

@@ -15,6 +15,12 @@ fun parseObsidianCapability(status: Int, body: String): Boolean? {
     return "obsidian_notes" in caps
 }
 
+/** The bucket of the owner's yes to a vault whose name the journal already has from another device. */
+const val OBSIDIAN_APPROVALS = "authorizations"
+
+/** One yes per vault name, for the journal paired now: a new pairing clears them all. */
+fun obsidianApprovalKey(vault: String): String = obsidianHash(vault.toByteArray(Charsets.UTF_8))
+
 data class ExistingObsidianVault(val vault: String, val device: String?, val lastSyncedAt: String)
 
 /** null is a failed list, never an empty successful list that permits first delivery. */

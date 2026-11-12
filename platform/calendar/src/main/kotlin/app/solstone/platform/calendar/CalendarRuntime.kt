@@ -231,6 +231,26 @@ class CalendarRuntime(
         publish()
     }
 
+    /**
+     * A new pairing: the page asks how far back again, with a fresh count, and nothing new comes in
+     * until the owner confirms. What was sent before is forgotten, so the confirm brings in every
+     * counted event. The calendars switched on stay chosen, and what is already waiting (a sealed
+     * file, an import still going out) goes to the journal paired now.
+     */
+    fun restartFirstSetup() {
+        invalidate()
+        val s = ledger.settings()
+        // Identities first: a restart cut short still leaves nothing that skips the next first setup.
+        ledger.saveIdentities(emptyList())
+        ledger.saveConfiguration(s.copy(enabled = false, confirmedGeneration = null, confirmedHistoryKind = null,
+            confirmedLowerBoundEpochDay = null, countGeneration = s.countGeneration + 1, consentToken = s.consentToken + 1,
+            importDone = true, importTotal = null, importCompleted = 0, importSliceCursor = null,
+            lastSuccessAt = null, lastReadFailed = false), ledger.calendars().map { it.copy(confirmed = false) })
+        if (wishOn()) setEnabled(false)
+        schedule(ledger.pendingImports().isNotEmpty())
+        publish()
+    }
+
     fun onPermissionResult(granted: Boolean) {
         if (!granted) {
                 val s = ledger.settings()

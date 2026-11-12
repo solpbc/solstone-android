@@ -504,17 +504,16 @@ private fun sync(
                 prepareObsidian = { connected, pairingNow ->
                     val source = app.solstone.platform.obsidian.ObsidianRuntimes.current
                         ?: (context?.applicationContext as? app.solstone.platform.obsidian.ObsidianWorkerHost)?.obsidianSessionForWork()
-                    source?.prepareDelivery(connected,
-                        credentials.identity.instanceId + ":" + credentials.identity.caChainFingerprint, pairingNow) == true
+                    source?.prepareDelivery(connected, pairingNow) == true
                 },
                 prepareScreenshots = { connected, pairingNow ->
                     val source = app.solstone.platform.screenshots.ScreenshotsRuntimes.current
                         ?: (context?.applicationContext as? app.solstone.platform.screenshots.ScreenshotsWorkerHost)?.screenshotsSessionForWork()
-                    source?.prepareDelivery(connected, credentials.identity.instanceId, pairingNow) == true
+                    source?.prepareDelivery(connected, pairingNow) == true
                 },
                 onCalendarCapability = capabilityDb?.let { calendarDb ->
                     { notes ->
-                        calendarDb.calendarDao().upsertCapability(
+                        calendarDb.calendarDao().recordCapability(
                             app.solstone.platform.persistence.room.CalendarCapabilityRow(
                                 instanceId = credentials.identity.instanceId,
                                 caFingerprint = credentials.identity.caChainFingerprint,

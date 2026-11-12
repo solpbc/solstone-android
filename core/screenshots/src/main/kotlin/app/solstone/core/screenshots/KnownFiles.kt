@@ -17,8 +17,8 @@ sealed interface KnownVerdict {
     /** The file carries no screenshot record; that cannot change while the bytes do not. */
     data object NotScreenshot : KnownVerdict
 
-    /** This exact file is already in [journalId]. */
-    data class InJournal(val journalId: String) : KnownVerdict
+    /** This exact file is already in the journal paired now. A new pairing forgets it. */
+    data object InJournal : KnownVerdict
 }
 
 /** The verdict that still holds for a listed file, or null when it must be read. */
@@ -29,9 +29,9 @@ fun knownVerdict(known: KnownFile?, size: Long?, modifiedMs: Long?): KnownVerdic
 
 fun encodeKnown(files: Collection<KnownFile>): String = buildString {
     for (f in files) {
-        val verdict = when (val v = f.verdict) {
+        val verdict = when (f.verdict) {
             KnownVerdict.NotScreenshot -> "not"
-            is KnownVerdict.InJournal -> "in\t${enc(v.journalId)}"
+            KnownVerdict.InJournal -> "in"
         }
         appendLine("${enc(f.documentId)}\t${f.size}\t${f.modifiedMs}\t$verdict")
     }
@@ -46,7 +46,9 @@ fun decodeKnown(text: String): Map<String, KnownFile> {
         val modified = f[2].toLongOrNull() ?: continue
         val verdict = when (f[3]) {
             "not" -> KnownVerdict.NotScreenshot
-            "in" -> f.getOrNull(4)?.let { KnownVerdict.InJournal(dec(it)) } ?: continue
+            // A line written before the record was journal-free names a journal, maybe an earlier
+            // one. It proves nothing about the journal paired now, so that file is read again.
+            "in" -> if (f.size == 4) KnownVerdict.InJournal else continue
             else -> continue
         }
         val id = dec(f[0])

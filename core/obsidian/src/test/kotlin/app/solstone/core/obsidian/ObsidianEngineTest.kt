@@ -137,6 +137,38 @@ class ObsidianEngineTest {
         e.scan("a", "A", listOf(entry("a.md")), t + 400_000, { error("unchanged note must not be read") })
         assertEquals(2, lines(s).size)
     }
+    @Test fun aNewPairingSendsTheVaultAgainAsAFirstSendAndAsksAboutTheNameAgain() {
+        val s = MemoryLedger(); val e = ObsidianEngine(s, zone); val settings = "@settings"
+        val notes = listOf(entry("a.md"), entry("b.md"))
+        e.scan("a", "Notes", notes, t, { ObsidianRead.Stable("first") })
+        e.closeDueWindows(t + 300_000)
+        e.scan("a", "Notes", notes + entry("c.md", t + 399_000), t + 400_000, { ObsidianRead.Stable("first") })
+        s.put(settings, OBSIDIAN_APPROVALS, obsidianApprovalKey("Notes"), "1")
+        val held = s.batches().single()
+        val waiting = s.keys("a", "pending")
+        val counters = s.keys("a", "counter_ops")
+        assertEquals(1, waiting.size)
+
+        e.firstSetupAgain(settings)
+        assertTrue(s.keys(settings, OBSIDIAN_APPROVALS).isEmpty(), "the same-name check runs before the next send")
+        assertEquals(listOf(held), s.batches(), "a frozen batch still goes to the journal paired now")
+        assertEquals(waiting, s.keys("a", "pending"))
+
+        var reads = 0
+        e.scan("a", "Notes", notes + entry("c.md", t + 399_000), t + 1_000_000, { reads++; ObsidianRead.Stable("first") })
+        e.closeDueWindows(t + 1_500_000)
+        assertEquals(3, reads, "every note is read again")
+        val again = s.batches().filter { it.name != held.name }
+        val sent = again.flatMap { b ->
+            requireNotNull(s.batchBytes(b.root, b.name)).toString(Charsets.UTF_8).lineSequence()
+                .filter { it.isNotEmpty() }.map(::decodeObsidianChange).toList()
+        }
+        assertEquals(listOf("a.md", "b.md", "c.md"), sent.map { it.path }.sorted())
+        assertEquals(obsidianStamp(t - 1000, zone), sent.first { it.path == "a.md" }.changedAt, "stamped when the note changed")
+        assertEquals("3", s.get("a", "meta", "initial_total"))
+        assertEquals(3, again.sumOf { it.initialNotes }, "progress counts this journal's first send")
+        assertEquals(counters, s.keys("a", "counter_ops"), "notes taken in are not counted twice")
+    }
     @Test fun cancelledScanRollsBackMetadataAndPendingTogether() {
         val s = MemoryLedger(); val e = ObsidianEngine(s, zone); var stop = false
         assertFails { e.scan("a", "Notes", listOf(entry("a.md"), entry("b.md")), t,

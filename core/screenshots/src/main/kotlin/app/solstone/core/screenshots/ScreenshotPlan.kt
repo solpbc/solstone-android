@@ -34,11 +34,11 @@ fun eligibleCapture(atMs: Long, lowerBoundMs: Long, spans: List<PauseSpan>): Boo
 
 enum class ReceivedEnd { DELIVERED, REFUSED_TYPE, REFUSED_SIZE, UNREADABLE, GONE }
 
-data class ReceivedHash(val journalId: String, val sha256: String, val end: ReceivedEnd)
+data class ReceivedHash(val sha256: String, val end: ReceivedEnd)
 
-/** The record is per journal. Another journal still receives the bytes. */
-fun alreadyWithJournal(rows: List<ReceivedHash>, journalId: String, sha256: String): Boolean =
-    rows.any { it.journalId == journalId && it.sha256 == sha256 }
+/** What the journal paired now already ended. A new pairing clears the record ([firstSetupAgain]). */
+fun alreadyWithJournal(rows: List<ReceivedHash>, sha256: String): Boolean =
+    rows.any { it.sha256 == sha256 }
 
 fun confirmLabel(count: Int): String = when (count) {
     0 -> "start from today"
@@ -54,14 +54,13 @@ enum class ShotFate { SKIP, COUNT, SEND, ALREADY, REFUSED_SIZE, REFUSED_TYPE, UN
 
 /**
  * A file the classifier cannot tell is a screenshot is skipped.
- * One already kept for this journal is not sent again.
+ * One the journal paired now already ended is not sent again.
  * Before the owner confirms, an eligible screenshot is only counted.
  */
 fun shotFate(
     read: ShotRead,
     atMs: Long?,
     sha256: String?,
-    journalId: String?,
     received: List<ReceivedHash>,
     lowerBoundMs: Long,
     pauses: List<PauseSpan>,
@@ -73,7 +72,7 @@ fun shotFate(
         is ShotRead.Shot -> null
     }
     if (atMs == null || !eligibleCapture(atMs, lowerBoundMs, pauses)) return ShotFate.SKIP
-    if (sha256 != null && journalId != null && alreadyWithJournal(received, journalId, sha256)) return ShotFate.ALREADY
+    if (sha256 != null && alreadyWithJournal(received, sha256)) return ShotFate.ALREADY
     return when (ended) {
         ShotEnd.REFUSED_SIZE -> ShotFate.REFUSED_SIZE
         ShotEnd.REFUSED_TYPE -> ShotFate.REFUSED_TYPE

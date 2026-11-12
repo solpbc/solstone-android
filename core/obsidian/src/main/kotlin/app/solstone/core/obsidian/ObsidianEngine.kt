@@ -189,6 +189,24 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
         ObsidianScanResult(notes.size, changes, tooLarge, unavailable)
     }
 
+    /**
+     * A new pairing: the next scan of every tree is a first send again, each note stamped at its own
+     * change time as a first turn-on stamps it, and the same-name approvals kept under [settingsRoot]
+     * are dropped so the check runs before that send. The tree, its grant, pending lines, frozen
+     * batches and the lifetime counters stay: what is held goes to the journal paired now.
+     */
+    fun firstSetupAgain(settingsRoot: String) = ledger.transaction {
+        for (root in ledger.roots().filter { it != settingsRoot }) {
+            for (bucket in listOf("rows", "sent", "read_stage")) {
+                for (key in ledger.keys(root, bucket)) ledger.remove(root, bucket, key)
+            }
+            for (key in listOf("baseline", "last_scan", "initial_total", "initial_sent", "read_stage_active", "read_stage_applied")) {
+                ledger.remove(root, "meta", key)
+            }
+        }
+        for (key in ledger.keys(settingsRoot, OBSIDIAN_APPROVALS)) ledger.remove(settingsRoot, OBSIDIAN_APPROVALS, key)
+    }
+
     private fun save(root: String, path: String, row: NoteRow) = ledger.put(root, "rows", path, row.encode())
     private fun known(root: String, path: String, kind: String, observed: Long) {
         val hash = obsidianHash(path.toByteArray(Charsets.UTF_8))
@@ -217,8 +235,10 @@ class ObsidianEngine(private val ledger: ObsidianLedger, private val zone: ZoneI
         val from = next.line.previousPath?.let { pendingKey(window, it) }
         val previous = from?.let { ledger.get(root, "pending", it)?.let(::pendingFrom) }
         when (next.line.change) {
+            // After a new pairing a waiting line can meet that pairing's first send of the same note:
+            // it is then part of the first send, so the first-send count still closes.
             "changed" -> if (existing != null) {
-                next = next.copy(first = existing.first, initial = existing.initial,
+                next = next.copy(first = existing.first || next.first, initial = existing.initial || next.initial,
                     line = next.line.copy(change = existing.line.change.takeIf { it == "renamed" } ?: "changed",
                         previousPath = existing.line.previousPath))
             }

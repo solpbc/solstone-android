@@ -424,6 +424,26 @@ class PhoneApplication : ObserverApplication(
         runtime.containerIfInitialized?.controller?.stop()
     }
 
+    /**
+     * A new journal gets each source's first setup again. Obsidian sends its
+     * tree once more; calendar and screenshots go back to `ready to set up` and ask how far back.
+     * Blocks until each source has saved its restart, and runs before the pairing is confirmed.
+     */
+    internal fun restartSourcesForNewJournal() {
+        val container = runtime.container()
+        calendarSessionForWork()?.let { session ->
+            if (!session.restartFirstSetup()) PhoneDiagLog.appendRaw("kind=source reason=restart_not_saved source=calendar")
+        }
+        obsidianSessionForWork()?.let { session ->
+            if (!session.restartFirstSetup()) PhoneDiagLog.appendRaw("kind=source reason=restart_not_saved source=obsidian")
+        }
+        screenshotsSessionForWork()?.let { session ->
+            if (!session.restartFirstSetup()) PhoneDiagLog.appendRaw("kind=source reason=restart_not_saved source=screenshots")
+        }
+        container.sources.clearExpressedWish(CALENDAR_STREAM)
+        container.sources.clearExpressedWish(app.solstone.core.sources.SCREENSHOTS_STREAM)
+    }
+
     private var obsidianStopObservation: AutoCloseable? = null
     private fun startObsidianSession(container: ObserverAppContainer) {
         if (app.solstone.platform.obsidian.ObsidianRuntimes.current != null) return
@@ -454,7 +474,6 @@ class PhoneApplication : ObserverApplication(
         if (app.solstone.platform.screenshots.ScreenshotsRuntimes.current != null) return
         container.screenshotsHasAccess = { app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.hasAccess() == true }
         container.screenshotsPaused = { app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.isPaused() == true }
-        val stores = syncStores(this)
         app.solstone.platform.screenshots.ScreenshotSession(
             context = this,
             database = container.persistenceDatabase(),
@@ -472,7 +491,6 @@ class PhoneApplication : ObserverApplication(
                 result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
             },
             ownerStopped = { OwnerStoppedStore(this).ownerStopped() },
-            journalId = { stores.identityStore.load()?.instanceId },
             onSealed = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
             onChanged = { container.sources.refreshSubscribers() },
         ).onProcessStart()

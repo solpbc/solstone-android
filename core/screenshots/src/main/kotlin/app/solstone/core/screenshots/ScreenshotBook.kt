@@ -19,8 +19,8 @@ data class DocMark(val documentId: String, val end: ReceivedEnd)
 
 /**
  * What this device remembers about the folder grant and the screenshots it has already handled.
- * The received rows are per journal, so pairing a different journal does not drop them and does
- * not treat that journal as already having the file.
+ * Nothing here names a journal: a new pairing starts the source's first setup again
+ * ([firstSetupAgain]), so the received rows are only ever about the journal paired now.
  */
 data class ScreenshotBook(
     val treeUri: String? = null,
@@ -36,33 +36,24 @@ data class ScreenshotBook(
     val staged: List<StagedShot> = emptyList(),
     val marks: List<DocMark> = emptyList(),
     val lastCheckedMs: Long? = null,
-    /** The journal the owner chose how far back for; null until a paired journal is seen. */
-    val journalId: String? = null,
     /** The owner paused this source on its own page, apart from a pause of the whole app. */
     val sourcePaused: Boolean = false,
 )
 
 /**
- * "Already in your journal" is per journal, so pairing a different journal is a fresh start: the
- * source goes back to asking how far back, as turning it back on does. The first journal seen
- * after a confirm made while unpaired is that confirm's journal. An unpair changes nothing. S17 is
- * not shown: a different journal holds none of these screenshots yet.
- * Returns null when the book is unchanged.
+ * A new pairing starts this source's first setup again: the page asks how far back, with a fresh
+ * count, and nothing comes in until the owner confirms. What the device already holds stays: the
+ * folder and its grant, the owner's pause, and the screenshots still waiting to go, which go to the
+ * journal paired now. S17 is not shown, as on a first setup.
  */
-fun followJournal(book: ScreenshotBook, current: String?): ScreenshotBook? = when {
-    !book.confirmed || current == null || book.journalId == current -> null
-    book.journalId == null -> book.copy(journalId = current)
-    else -> book.copy(
-        confirmed = false,
-        reconfirm = false,
-        period = book.period + 1,
-        pauses = emptyList(),
-        frozen = emptySet(),
-        marks = emptyList(),
-        journalId = null,
-        sourcePaused = false,
-    )
-}
+fun firstSetupAgain(book: ScreenshotBook): ScreenshotBook = book.copy(
+    confirmed = false,
+    reconfirm = false,
+    period = 1,
+    frozen = emptySet(),
+    marks = emptyList(),
+    received = emptyList(),
+)
 
 /**
  * The background check runs only while the source is on: a folder is granted, the owner has chosen
@@ -90,14 +81,13 @@ fun encodeBook(book: ScreenshotBook): String = buildString {
         appendLine("pause\t${span.startInclusiveMs}\t${span.endExclusiveMs?.toString().orEmpty()}")
     }
     book.received.forEach {
-        appendLine("received\t${enc(it.journalId)}\t${it.sha256}\t${it.end.name}")
+        appendLine("received\t${it.sha256}\t${it.end.name}")
     }
     book.staged.forEach {
         appendLine("staged\t${enc(it.documentId)}\t${it.sha256}\t${enc(it.capturedAt)}\t${it.takenFrom}\t${enc(it.segmentId)}\t${it.epochMs}")
     }
     book.marks.forEach { appendLine("mark\t${enc(it.documentId)}\t${it.end.name}") }
     book.lastCheckedMs?.let { appendLine("checked\t$it") }
-    book.journalId?.let { appendLine("journal\t${enc(it)}") }
     if (book.sourcePaused) appendLine("paused\t1")
 }
 
@@ -112,10 +102,13 @@ fun decodeBook(text: String): ScreenshotBook {
     val frozen = linkedSetOf<String>()
     val pauses = mutableListOf<PauseSpan>()
     val received = mutableListOf<ReceivedHash>()
+    // A book written before the record was journal-free named a journal on each received row and the
+    // journal it was confirmed for. Only that journal's rows still say what the journal paired now holds.
+    val legacyReceived = mutableListOf<Pair<String, ReceivedHash>>()
     val staged = mutableListOf<StagedShot>()
     val marks = mutableListOf<DocMark>()
     var checked: Long? = null
-    var journal: String? = null
+    var confirmedFor: String? = null
     var sourcePaused = false
     for (line in text.lineSequence()) {
         if (line.isEmpty()) continue
@@ -134,11 +127,14 @@ fun decodeBook(text: String): ScreenshotBook {
                 val end = f.getOrNull(2)?.toLongOrNull()
                 pauses += PauseSpan(start, end)
             }
-            "received" -> {
-                val journal = dec(f.getOrNull(1).orEmpty())
-                val sha = f.getOrNull(2).orEmpty()
+            "received" -> if (f.size >= 4) {
+                val legacyJournal = dec(f[1])
                 val end = runCatching { ReceivedEnd.valueOf(f[3]) }.getOrNull() ?: continue
-                if (journal.isNotEmpty() && sha.isNotEmpty()) received += ReceivedHash(journal, sha, end)
+                if (legacyJournal.isNotEmpty() && f[2].isNotEmpty()) legacyReceived += legacyJournal to ReceivedHash(f[2], end)
+            } else {
+                val sha = f.getOrNull(1).orEmpty()
+                val end = runCatching { ReceivedEnd.valueOf(f[2]) }.getOrNull() ?: continue
+                if (sha.isNotEmpty()) received += ReceivedHash(sha, end)
             }
             "staged" -> {
                 if (f.size < 7) continue
@@ -150,11 +146,17 @@ fun decodeBook(text: String): ScreenshotBook {
                 marks += DocMark(dec(f[1]), end)
             }
             "checked" -> checked = f.getOrNull(1)?.toLongOrNull()
-            "journal" -> journal = dec(f.getOrNull(1).orEmpty()).ifEmpty { null }
+            "journal" -> confirmedFor = dec(f.getOrNull(1).orEmpty()).ifEmpty { null }
             "paused" -> sourcePaused = f.getOrNull(1) == "1"
         }
     }
-    return ScreenshotBook(tree, name, history, confirmed, reconfirm, period, lower, frozen, pauses, received, staged, marks, checked, journal, sourcePaused)
+    if (confirmedFor != null) received += legacyReceived.filter { it.first == confirmedFor }.map { it.second }
+    return ScreenshotBook(
+        treeUri = tree, folderName = name, history = history, confirmed = confirmed, reconfirm = reconfirm,
+        period = period, lowerBoundMs = lower, frozen = frozen, pauses = pauses,
+        received = received.distinctBy { it.sha256 }, staged = staged, marks = marks, lastCheckedMs = checked,
+        sourcePaused = sourcePaused,
+    )
 }
 
 private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")

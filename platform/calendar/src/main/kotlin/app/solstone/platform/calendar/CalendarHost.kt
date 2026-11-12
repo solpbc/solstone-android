@@ -156,6 +156,15 @@ class CalendarSession(
         val t = runtime.invalidate()
         submit { runtime.onPermissionResult(granted); if (granted && !runtime.ui.resume && runtime.currentTicket() == t) runtime.count(t) }
     }
+    /**
+     * A new pairing, before it is confirmed: returns once the restart is saved, or false if that did
+     * not happen in time.
+     */
+    fun restartFirstSetup(): Boolean {
+        runtime.invalidate()
+        val saved = executor.submit<Unit> { runtime.restartFirstSetup() }
+        return try { saved.get(30, TimeUnit.SECONDS); true } catch (_: Exception) { false }
+    }
     fun onProcessStart() = submit { runtime.onProcessStart() }
     fun onOwnerStopped() { runtime.invalidate(); submit { runtime.suspendChecks() } }
     fun onResume() {

@@ -113,10 +113,7 @@ class ScreenshotProofTest {
     }
 
     @Test
-    fun theReceivedRecordIsPerJournalAndTheConfirmWordsAreFixed() {
-        val rows = listOf(ReceivedHash("journal-a", "abc", ReceivedEnd.DELIVERED))
-        assertTrue(alreadyWithJournal(rows, "journal-a", "abc"))
-        assertFalse(alreadyWithJournal(rows, "journal-b", "abc"))
+    fun theConfirmWordsAreFixed() {
         assertEquals("start from today", confirmLabel(0))
         assertEquals("bring in 1 screenshot", confirmLabel(1))
         assertEquals("bring in 4 screenshots", confirmLabel(4))

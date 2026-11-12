@@ -68,7 +68,6 @@ class ObsidianSession(
     @Volatile var unspooledPending = 0; private set
     @Volatile var ui = ObsidianUi(); private set
     private var capability: Boolean? = null
-    private var lastPairing: String? = null
     private var warning: ObsidianWarning? = null
     private var fault: String? = null
     private var lastDuration = 0L
@@ -168,14 +167,31 @@ class ObsidianSession(
         }
     }
     fun continueWarning() = submit {
-        warning?.let { ledger.put(global, "authorizations", it.token, "1") }
+        warning?.let { ledger.put(global, OBSIDIAN_APPROVALS, it.token, "1") }
         warning = null; refresh(); onSealed()
     }
     fun cancelWarning() = turnOff()
 
+    /**
+     * A new pairing: the next check sends the tree's current notes once, after the same-name check,
+     * as a first turn-on does. The tree and its grant, the owner's pause, and what is already waiting
+     * stay. Runs before the pairing is confirmed, so it is saved before anything can go to the new
+     * journal. Returns once saved, or false if that did not happen in time.
+     */
+    fun restartFirstSetup(): Boolean {
+        operation?.cancel()
+        val saved = actor.submit<Unit> {
+            engine.firstSetupAgain(global)
+            warning = null; capability = null
+            refresh()
+        }
+        val done = try { saved.get(30, TimeUnit.SECONDS); true } catch (_: Exception) { false }
+        submit { checkNow(); scheduleTimer() }
+        return done
+    }
+
     /** Invoked by the normal authenticated sender, only after mark confirmation. */
-    fun prepareDelivery(client: PlHttpClient, pairingKey: String, pairingCurrent: () -> Boolean): Boolean = blocking {
-        if (lastPairing != pairingKey) { lastPairing = pairingKey; warning = null }
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = blocking {
         capability = null
         refresh()
         if (!allowsDelivery() || !pairingCurrent()) return@blocking false
@@ -184,24 +200,23 @@ class ObsidianSession(
         capability = parseObsidianCapability(status.status, status.bodyText())
         if (capability != true || !pairingCurrent()) { refresh(); return@blocking false }
         val names = ledger.batches().map { it.vault }.distinct()
-        val pending = names.filter { name -> ledger.get(global, "authorizations", authorizationKey(pairingKey, name)) == null }
+        val pending = names.filter { name -> ledger.get(global, OBSIDIAN_APPROVALS, obsidianApprovalKey(name)) == null }
         if (pending.isNotEmpty()) {
             val listed = fetchOtherObsidianVaults(client) ?: return@blocking false
             if (!pairingCurrent()) return@blocking false
             for (name in pending) {
-                val token = authorizationKey(pairingKey, name)
+                val token = obsidianApprovalKey(name)
                 val match = listed.firstOrNull { it.vault == name }
                 if (match != null) {
                     warning = ObsidianWarning(name, match.device, match.lastSyncedAt, token)
                     refresh(); return@blocking false
                 }
-                ledger.put(global, "authorizations", token, "1")
+                ledger.put(global, OBSIDIAN_APPROVALS, token, "1")
             }
         }
         warning = null; refresh(); pairingCurrent() && allowsDelivery()
     } ?: false
 
-    private fun authorizationKey(pairing: String, vault: String) = obsidianHash((pairing + "\n" + vault).toByteArray(Charsets.UTF_8))
     fun runCheckBlocking(stopped: () -> Boolean): Boolean {
         val workSignal = CancellationSignal()
         val result = actor.submit<Boolean> { try { checkNow(stopped, workSignal); true } catch (e: Exception) { recordFailure(e); false } }
