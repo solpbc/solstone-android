@@ -181,6 +181,9 @@ class ObsidianSession(
     fun restartFirstSetup(): Boolean {
         operation?.cancel()
         val saved = actor.submit<Unit> {
+            // A batch the last journal took is settled first, so it does not count toward this
+            // journal's first send.
+            runCatching { stageBatches() }
             engine.firstSetupAgain(global)
             warning = null; capability = null
             refresh()

@@ -269,6 +269,9 @@ class ScreenshotSession(
      */
     fun restartFirstSetup(): Boolean {
         val saved = actor.submit<Unit> {
+            // Anything that reached a journal so far reached the last one: settle it before the
+            // record is cleared, so it is not taken for something the new journal has.
+            observeStaged()
             setEnabled(false)
             schedule(on = false)
             book = firstSetupAgain(book)
