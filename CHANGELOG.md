@@ -6,9 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.43] - 2026-11-12
+
 ### Fixed
 
-- when you pair this phone with a new journal, or with your journal again after unpairing, your Obsidian notes go into it and calendar and screenshots ask again how far back to start, as when you first turned each one on. before, only notes you changed afterwards reached it, and calendar brought in nothing from before you paired.
+- when you pair this phone with a new journal, or with your journal again after unpairing, your Obsidian notes go into it. calendar and screenshots go back to "ready to set up" and bring nothing in until you choose how far back to start, as when you first turned each one on. before, only notes you changed afterwards reached the new journal, and calendar brought in nothing from before you paired.
 
 ## [2.1.42] - 2026-11-11
 
