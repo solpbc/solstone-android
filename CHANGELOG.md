@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- when imports still on this device aren't going to your journal, import now says just that. before, it said they wouldn't go on their own, but an import your journal turned away goes again on its own once your journal is updated.
+
 ## [2.1.43] - 2026-11-12
 
 ### Fixed

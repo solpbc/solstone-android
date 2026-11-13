@@ -169,7 +169,7 @@ internal fun recentText(state: ImportRecentState): String =
         ImportRecentState.JOURNAL_TOO_OLD -> "imports wait until your journal is updated."
         ImportRecentState.SENDING -> "sending to your journal."
         ImportRecentState.WAITING -> "waiting to go to your journal."
-        ImportRecentState.NEEDS_YOU -> "imports here won't go on their own. each one says why."
+        ImportRecentState.NEEDS_YOU -> "not going to your journal right now. each one says why."
         ImportRecentState.DELIVERED -> "in your journal."
         ImportRecentState.NOTHING_YET -> "nothing yet."
     }
