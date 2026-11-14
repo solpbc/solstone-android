@@ -56,6 +56,40 @@ class JournalBrowserRetryReplayHostTest {
     }
 
     @Test
+    fun journalErrorResponsesHaveBridgeProvenanceEvenIfUpstreamTriesToSupplyIt() {
+        for (status in listOf(500, 502, 504)) {
+            val session = JournalBrowserSession(
+                pairing = { pairingGen },
+                accessStillCurrent = { true },
+                upstreamFactory = {
+                    object : JournalBrowserUpstream {
+                        override val isPoisoned: Boolean get() = false
+                        override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?) =
+                            BrowserHttpResponse(
+                                status,
+                                listOf("Content-Type" to "text/html", "x-spl-journal-response" to "forged"),
+                                "journal error page".encodeToByteArray(),
+                            )
+                        override fun close() {}
+                    }
+                },
+                diag = {},
+            )
+            try {
+                val uri = URI(session.start().url)
+                val response = sendRawHttpRequest(uri.port, "GET /app/open/fixture HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n")
+                assertTrue(response.startsWith("HTTP/1.1 $status "))
+                val provenance = response.substringBefore("\r\n\r\n").lineSequence()
+                    .filter { it.startsWith("$JOURNAL_BROWSER_RESPONSE_HEADER:", ignoreCase = true) }.toList()
+                assertEquals(listOf("$JOURNAL_BROWSER_RESPONSE_HEADER: 1"), provenance)
+                assertTrue(response.endsWith("journal error page"))
+            } finally {
+                session.stop()
+            }
+        }
+    }
+
+    @Test
     fun identityExceptionTriggersTerminalWithoutRetryOrAmbiguousDelivery() {
         var openCount = 0
 
@@ -84,6 +118,7 @@ class JournalBrowserRetryReplayHostTest {
 
         assertEquals(1, openCount, "Identity exception must not retry")
         assertTrue(response.startsWith("HTTP/1.1 502 Bad Gateway"))
+        assertFalse(response.contains(JOURNAL_BROWSER_RESPONSE_HEADER, ignoreCase = true))
         assertFalse(response.contains("AMBIGUOUS_DELIVERY"))
         assertTrue(diagEvents.any { it is DiagEvent.JournalBrowser && it.eventClass == "pairing" && it.outcome == "invalidated" })
 

@@ -5,6 +5,9 @@ package app.solstone.observer.phone
 
 import android.Manifest
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,6 +17,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import androidx.test.platform.app.InstrumentationRegistry
 import app.solstone.core.identity.GraphRevisions
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PairingGraphSnapshot
@@ -76,6 +80,7 @@ class JournalSheetOriginRuntimeTest {
     private val latestSession = AtomicReference<JournalBrowserSession?>()
     private val streamsOpened = AtomicInteger(0)
     private val keeper = JournalBrowserOriginKeeper(MemoryOriginStore())
+    private var upstreamFactory: () -> JournalBrowserUpstream = { LiveChannelUpstream(streamsOpened) }
 
     private class MemoryOriginStore : JournalBrowserOriginStore {
         @Volatile var record: JournalBrowserOriginRecord? = null
@@ -95,7 +100,7 @@ class JournalSheetOriginRuntimeTest {
             val session = JournalBrowserSession(
                 pairing = { PairingGeneration("inst1", "sha256:cert") },
                 accessStillCurrent = { true },
-                upstreamFactory = { LiveChannelUpstream(streamsOpened) },
+                upstreamFactory = { upstreamFactory() },
                 diag = {},
                 originKeeper = keeper,
             )
@@ -160,6 +165,103 @@ class JournalSheetOriginRuntimeTest {
             }
             closeSheet()
         }
+    }
+
+    @Test
+    fun journalErrorPagesRemainVisibleWhateverTheirHttpStatus() {
+        for (status in listOf(404, 500, 502, 504)) {
+            launchErrorPage(status).use {
+                composeRule.waitUntil(10_000) {
+                    val view = findDialogWebView() ?: return@waitUntil false
+                    var rendered = false
+                    InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                        rendered = view.progress == 100 && view.title == "journal-response-$status"
+                    }
+                    rendered
+                }
+                assertEquals(0, composeRule.onAllNodesWithText("try again").fetchSemanticsNodes().size)
+                closeSheet()
+            }
+        }
+    }
+
+    @Test
+    fun transportFailureStillShowsTheAppsRetryAction() {
+        launchErrorPage(null).use {
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText("try again").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(null, findDialogWebView())
+            closeSheet()
+        }
+    }
+
+    private fun launchErrorPage(status: Int?): ActivityScenario<PhoneShellActivity> {
+        upstreamFactory = {
+            object : JournalBrowserUpstream {
+                override val isPoisoned: Boolean get() = false
+                override fun request(
+                    method: String,
+                    path: String,
+                    headers: Map<String, String>,
+                    body: ByteArray?,
+                ): BrowserHttpResponse {
+                    val isLink = path.startsWith("/app/open/")
+                    if (isLink && status == null) throw IOException("fixture transport failure")
+                    val code = if (isLink) requireNotNull(status) else 200
+                    return BrowserHttpResponse(
+                        status = code,
+                        headers = listOf("Content-Type" to "text/html; charset=utf-8"),
+                        body = "<!doctype html><title>journal-response-$code</title><p>fixture page</p>".encodeToByteArray(),
+                    )
+                }
+                override fun close() {}
+            }
+        }
+        val scenario = ActivityScenario.launch(PhoneShellActivity::class.java)
+        try {
+            val urlsBefore = loadedUrls.size
+            composeRule.onNodeWithTag("journalMarkPill").performClick()
+            composeRule.waitUntil(10_000) {
+                if (loadedUrls.size <= urlsBefore) return@waitUntil false
+                val view = findDialogWebView() ?: return@waitUntil false
+                var ready = false
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    ready = view.progress == 100 && view.title == "journal-response-200"
+                }
+                ready
+            }
+            val webView = requireNotNull(findDialogWebView())
+            scenario.onActivity {
+                webView.evaluateJavascript("location.assign('/app/open/fixture')", null)
+            }
+            return scenario
+        } catch (failure: Throwable) {
+            scenario.close()
+            throw failure
+        }
+    }
+
+    private fun findDialogWebView(): WebView? {
+        var target: WebView? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val global = Class.forName("android.view.WindowManagerGlobal").getMethod("getInstance").invoke(null)
+            val viewsField = global.javaClass.getDeclaredField("mViews").apply { isAccessible = true }
+            val roots = when (val raw = viewsField.get(global)) {
+                is List<*> -> raw.filterIsInstance<View>()
+                is Array<*> -> raw.filterIsInstance<View>()
+                else -> emptyList()
+            }
+            fun find(view: View): WebView? {
+                if (view is WebView && view.isAttachedToWindow && view.width > 0 && view.height > 0) return view
+                if (view is ViewGroup) {
+                    for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+                }
+                return null
+            }
+            for (root in roots) find(root)?.let { target = it }
+        }
+        return target
     }
 
     private fun openAndAwaitLiveChannel(): URI {

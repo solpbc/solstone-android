@@ -64,6 +64,7 @@ import app.solstone.core.pl.browser.BrowserTerminalClass
 import app.solstone.core.pl.browser.JournalBrowserLifecycle
 import app.solstone.core.pl.browser.JournalBrowserLifecycleListener
 import app.solstone.core.pl.browser.JournalBrowserSession
+import app.solstone.core.pl.browser.JOURNAL_BROWSER_RESPONSE_HEADER
 import app.solstone.observer.formfactor.phone.PhoneJournalMarkPill
 import app.solstone.observer.formfactor.phone.PhonePane
 import app.solstone.observer.formfactor.phone.spokenPaneTitle
@@ -443,7 +444,12 @@ internal fun createJournalWebView(
                 request: WebResourceRequest,
                 errorResponse: WebResourceResponse,
             ) {
-                if (request.isForMainFrame && errorResponse.statusCode >= 500) {
+                // The journal owns its response page, including honest 5xx link errors.
+                // Only a bridge-generated failure belongs to the app's retry view.
+                val fromJournal = errorResponse.responseHeaders?.any { (name, value) ->
+                    name.equals(JOURNAL_BROWSER_RESPONSE_HEADER, ignoreCase = true) && value == "1"
+                } == true
+                if (request.isForMainFrame && errorResponse.statusCode >= 500 && !fromJournal) {
                     onRetryableFailure()
                 }
             }

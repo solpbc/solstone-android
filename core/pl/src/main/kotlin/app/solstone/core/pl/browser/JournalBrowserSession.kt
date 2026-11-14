@@ -24,6 +24,10 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+// Added only after an upstream journal response passes the bridge's header policy.
+// Upstream headers cannot supply it: the response allow-list drops unknown names.
+const val JOURNAL_BROWSER_RESPONSE_HEADER = "X-SPL-Journal-Response"
+
 data class JournalBrowserOrigin(val url: String) {
     override fun toString(): String = "JournalBrowserOrigin(REDACTED)"
 }
@@ -663,6 +667,7 @@ class JournalBrowserSession(
                     for ((k, v) in formatted) {
                         sb.append("$k: $v\r\n")
                     }
+                    sb.append("$JOURNAL_BROWSER_RESPONSE_HEADER: 1\r\n")
                     sb.append("\r\n")
                     outputStream.write(sb.toString().toByteArray(Charsets.US_ASCII))
                     outputStream.flush()
