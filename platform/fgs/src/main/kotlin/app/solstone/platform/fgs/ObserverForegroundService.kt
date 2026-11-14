@@ -411,7 +411,14 @@ class ObserverForegroundService : Service() {
 
         @Volatile internal var runningInstance: ObserverForegroundService? = null
         @Volatile var declaredCaptureForegroundTypes: Set<CaptureForegroundType>? = null
+        // Every assignment follows a foreground entry that posted the notification itself, or the
+        // end of one that cancelled it, so the next refresh posts whatever it has.
         @Volatile var heldCaptureForegroundTypes: Set<CaptureForegroundType>? = null
+            set(value) {
+                field = value
+                shownNotifications.forget(ObserverNotification.SERVICE_NOTIFICATION_ID)
+            }
+        private val shownNotifications = NotificationPostGate()
         @Volatile var captureWishTypes: (() -> Set<CaptureForegroundType>?)? = null
         @Volatile var rehydrator: ObserverServiceRehydrator? = null
         @Volatile var widgetStartHandler: ObserverWidgetStartHandler? = null
@@ -577,11 +584,13 @@ class ObserverForegroundService : Service() {
                 return@onNotificationThread
             }
             val manager = context.getSystemService(NotificationManager::class.java) ?: return@onNotificationThread
-            manager.notify(
-                ObserverNotification.SERVICE_NOTIFICATION_ID,
-                ObserverNotification.ongoing(context, needsAttention = needsAttention, decorate = true, requestPromotion = true),
-            )
+            val notification = ObserverNotification.ongoing(context, needsAttention = needsAttention, decorate = true, requestPromotion = true)
+            val shown = ObserverNotification.shownContent(notification)
+            if (!shownNotifications.shouldPost(ObserverNotification.SERVICE_NOTIFICATION_ID, shown)) return@onNotificationThread
+            manager.notify(ObserverNotification.SERVICE_NOTIFICATION_ID, notification)
+            shownNotifications.posted(ObserverNotification.SERVICE_NOTIFICATION_ID, shown)
             manager.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
+            shownNotifications.forget(ObserverNotification.BOOT_NOTIFICATION_ID)
         }
 
         fun postAttentionNotification(context: Context) = postInactiveNotification(context, stopped = false)
@@ -589,9 +598,18 @@ class ObserverForegroundService : Service() {
         fun postStoppedNotification(context: Context) = postInactiveNotification(context, stopped = true)
 
         fun refreshInactiveNotification(context: Context, stopped: Boolean) =
-            postInactiveNotification(context, stopped, onlyIfPresent = true)
+            postInactiveNotification(context, stopped, onlyIfPresent = true, unlessShown = true)
 
-        private fun postInactiveNotification(context: Context, stopped: Boolean, onlyIfPresent: Boolean = false) =
+        /** The attention or stopped notification as a status refresh: posts only what it doesn't already show. */
+        fun refreshAttentionNotification(context: Context, stopped: Boolean) =
+            postInactiveNotification(context, stopped, unlessShown = true)
+
+        private fun postInactiveNotification(
+            context: Context,
+            stopped: Boolean,
+            onlyIfPresent: Boolean = false,
+            unlessShown: Boolean = false,
+        ) =
             onNotificationThread {
                 if (heldCaptureForegroundTypes != null || !ObserverNotification.notificationsPermitted(context)) {
                     return@onNotificationThread
@@ -600,21 +618,25 @@ class ObserverForegroundService : Service() {
                 if (onlyIfPresent && manager.activeNotifications.none { it.id == ObserverNotification.BOOT_NOTIFICATION_ID }) {
                     return@onNotificationThread
                 }
-                manager.notify(
-                    ObserverNotification.BOOT_NOTIFICATION_ID,
-                    ObserverNotification.ongoing(
-                        context,
-                        needsAttention = !stopped,
-                        stopped = stopped,
-                        decorate = true,
-                        includeStopAction = false,
-                        contentIntent = launchPendingIntent(context),
-                    ),
+                val notification = ObserverNotification.ongoing(
+                    context,
+                    needsAttention = !stopped,
+                    stopped = stopped,
+                    decorate = true,
+                    includeStopAction = false,
+                    contentIntent = launchPendingIntent(context),
                 )
+                val shown = ObserverNotification.shownContent(notification)
+                if (unlessShown && !shownNotifications.shouldPost(ObserverNotification.BOOT_NOTIFICATION_ID, shown)) {
+                    return@onNotificationThread
+                }
+                manager.notify(ObserverNotification.BOOT_NOTIFICATION_ID, notification)
+                shownNotifications.posted(ObserverNotification.BOOT_NOTIFICATION_ID, shown)
             }
 
         fun cancelAttentionNotification(context: Context) = onNotificationThread {
             context.getSystemService(NotificationManager::class.java)?.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
+            shownNotifications.forget(ObserverNotification.BOOT_NOTIFICATION_ID)
         }
 
         private fun handleStartFailure(context: Context, exceptionClassName: String) {

@@ -82,6 +82,14 @@ object ObserverNotification {
         }
     }
 
+    /** What an owner sees of [notification]: its text, its actions and where a tap goes. */
+    fun shownContent(notification: Notification): String = buildString {
+        append(notification.extras.getCharSequence(Notification.EXTRA_TITLE)).append('\u0000')
+        append(notification.extras.getCharSequence(Notification.EXTRA_TEXT)).append('\u0000')
+        notification.actions.orEmpty().forEach { append(it.title).append('\u0000') }
+        append(notification.contentIntent?.hashCode()).append('\u0000').append(notification.flags)
+    }
+
     fun notificationsPermitted(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

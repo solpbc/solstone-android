@@ -142,7 +142,6 @@ class ObserverAppContainer(
 
     @Volatile private var activePipeline: CapturePipeline? = null
     private var previousDiagnostics: HarnessDiagnostics? = null
-    private var lastPostedSignature: String? = null
     @Volatile private var backgroundStatusRefreshListener: (() -> Unit)? = null
 
     /**
@@ -559,16 +558,11 @@ class ObserverAppContainer(
         )
 
     fun refreshServiceNotification(current: HarnessDiagnostics = controller.diagnostics()) {
-        if (!controller.desiredOn || ObserverForegroundService.heldCaptureForegroundTypes == null) {
-            lastPostedSignature = null
-            return
-        }
+        if (!controller.desiredOn || ObserverForegroundService.heldCaptureForegroundTypes == null) return
         val snapshot = sources.snapshot()
         val needsAttention = snapshot.sources.any { it.wish == SourceWish.On && it.state == SourceState.NEEDS_ATTENTION } || current.state == SourceState.NEEDS_ATTENTION
-        val signature = "${snapshot.sources.map { "${it.sourceId}:${it.wish}:${it.state}:${it.reason}" }}:$needsAttention"
-        if (signature == lastPostedSignature) return
+        // The service posts only when what the notification shows changes.
         ObserverForegroundService.refreshOngoingNotification(context, needsAttention)
-        lastPostedSignature = signature
     }
 
     private fun sourceSnapshot(): SourceRuntimeSnapshot {

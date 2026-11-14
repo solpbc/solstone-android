@@ -607,8 +607,7 @@ class PhoneApplication : ObserverApplication(
         if (fgsLive) {
             ObserverForegroundService.refreshOngoingNotification(applicationContext, cachedIntakeModel.stateWord == "needs attention")
         } else if (inactiveNotificationRequested) {
-            if (desiredOn) ObserverForegroundService.postAttentionNotification(applicationContext)
-            else ObserverForegroundService.postStoppedNotification(applicationContext)
+            ObserverForegroundService.refreshAttentionNotification(applicationContext, stopped = !desiredOn)
         } else {
             ObserverForegroundService.refreshInactiveNotification(applicationContext, stopped = !desiredOn)
         }
