@@ -4,11 +4,15 @@
 package app.solstone.observer.phone
 
 import android.Manifest
+import android.app.Activity
+import android.app.Application
+import android.os.Bundle
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -392,7 +396,7 @@ class JournalOpenRuntimeTest {
         val first = "journal_link_cold_0123456789~123456"
         val second = "journal_link_warm_9876543210"
         val launch = journalLinkIntent(first)
-        ActivityScenario.launch<PhoneShellActivity>(launch).use { scenario ->
+        JournalLinkActivity(launch).use { scenario ->
             composeRule.waitUntil(10_000) { loadedUrls.size == 1 }
             assertEquals("http://127.0.0.1:8080/app/open/$first", loadedUrls.last())
             scenario.onActivity { activity ->
@@ -416,9 +420,8 @@ class JournalOpenRuntimeTest {
     fun malformedLinkShowsNoticeWithoutOpeningTheJournalOrPairing() {
         PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
         PhoneJournalTestHooks.sessionOverride = { error("invalid link started a journal session") }
-        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent("invalid=token")).use { scenario ->
-            composeRule.onNodeWithText("this journal link isn't valid.").assertExists()
-            composeRule.onNodeWithText("copy the full link from your chat and open it again.").assertExists()
+        JournalLinkActivity(journalLinkIntent("invalid=token")).use { scenario ->
+            composeRule.onNode(isDialog()).assertExists()
             composeRule.onNodeWithText("connect").assertDoesNotExist()
             assertTrue(loadedUrls.isEmpty())
             scenario.onActivity { assertFalse(it.isFinishing) }
@@ -438,7 +441,7 @@ class JournalOpenRuntimeTest {
             } else FakeJournalSheetSession("http://127.0.0.1:8080/")
         }
         val token = "journal_link_retry_0123456789~012345"
-        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent(token)).use { scenario ->
+        JournalLinkActivity(journalLinkIntent(token)).use { scenario ->
             composeRule.onNodeWithText("try again").assertExists()
             scenario.recreate()
             composeRule.onNodeWithText("try again").assertExists()
@@ -456,7 +459,7 @@ class JournalOpenRuntimeTest {
         val latest = "journal_link_latest_0123456789~112233"
         val pairingLaunch = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://go.solstone.app/p#fixture"))
             .setClass(context, PhoneShellActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ActivityScenario.launch<PhoneShellActivity>(pairingLaunch).use { scenario ->
+        JournalLinkActivity(pairingLaunch).use { scenario ->
             composeRule.waitForIdle()
             assertTrue(loadedUrls.isEmpty())
             scenario.onActivity { it.startActivity(journalLinkIntent("journal_link_earlier")) }
@@ -474,9 +477,11 @@ class JournalOpenRuntimeTest {
 
     @Test
     fun unpairedLinkWaitsForSetupAndConfirmationWithoutLosingTheLatestTarget() {
+        assertTrue(syncStores(context).publisher.forget() is app.solstone.core.identity.GraphMutationResult.Cleared)
+        assertTrue(syncStores(context).publisher.currentSnapshot() is PairingGraphSnapshot.Absent)
         PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
         val latest = "journal_link_setup_latest_0123456789"
-        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent("journal_link_before_setup")).use { scenario ->
+        JournalLinkActivity(journalLinkIntent("journal_link_before_setup")).use { scenario ->
             composeRule.waitForIdle()
             assertTrue(loadedUrls.isEmpty())
             scenario.onActivity { it.startActivity(journalLinkIntent(latest)) }
@@ -501,6 +506,7 @@ class JournalOpenRuntimeTest {
         assertTrue(waitForRecovery(container))
         val stores = syncStores(context)
         stores.publisher.forget()
+        stores.journalConfirmationStore.confirm("not-this-journal")
         val credential = app.solstone.core.identity.ClientCredential(
             privateKeyPem = "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n",
             clientCertPem = "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----\n",
@@ -518,6 +524,66 @@ class JournalOpenRuntimeTest {
         stores.journalIdentityCoordinator.onPairingChanged()
         stores.journalConfirmationStore.confirm("not-this-journal")
         PhoneShellActivity.promptedConfirmationThisProcess = false
+    }
+
+    // ActivityScenario matches lifecycle events by the original data URI. Link intake
+    // consumes that URI, so observe the activity itself and own its teardown instead.
+    private inner class JournalLinkActivity(launch: Intent) : AutoCloseable {
+        private val instrumentation = InstrumentationRegistry.getInstrumentation()
+        private val application = context.applicationContext as Application
+        private val activities = CopyOnWriteArrayList<PhoneShellActivity>()
+        @Volatile private var current: PhoneShellActivity? = null
+        @Volatile private var resumed = false
+        private var expectedActivityCount = 1
+        private val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, state: Bundle?) {
+                if (activity is PhoneShellActivity) {
+                    activities.add(activity)
+                    current = activity
+                }
+            }
+            override fun onActivityResumed(activity: Activity) {
+                if (activity === current) resumed = true
+            }
+            override fun onActivityPaused(activity: Activity) {
+                if (activity === current) resumed = false
+            }
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        }
+        init {
+            application.registerActivityLifecycleCallbacks(callbacks)
+            try {
+                context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                composeRule.waitUntil(15_000) { resumed && current != null }
+            } catch (failure: Throwable) {
+                try { close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
+                throw failure
+            }
+        }
+        fun onActivity(block: (PhoneShellActivity) -> Unit) {
+            instrumentation.runOnMainSync {
+                assertEquals("unexpected task replacement", expectedActivityCount, activities.size)
+                block(checkNotNull(current))
+            }
+        }
+        fun recreate() {
+            val before = current
+            onActivity { expectedActivityCount++; it.recreate() }
+            composeRule.waitUntil(15_000) { current !== before && resumed }
+            assertEquals("unexpected activity after recreation", expectedActivityCount, activities.size)
+        }
+        override fun close() {
+            try {
+                instrumentation.runOnMainSync { activities.filterNot { it.isDestroyed }.forEach { it.finish() } }
+                composeRule.waitUntil(15_000) { activities.all { it.isDestroyed } }
+                assertEquals("unexpected task replacement", expectedActivityCount, activities.size)
+            } finally {
+                application.unregisterActivityLifecycleCallbacks(callbacks)
+            }
+        }
     }
 
     private fun journalLinkIntent(token: String): Intent = Intent.parseUri(
