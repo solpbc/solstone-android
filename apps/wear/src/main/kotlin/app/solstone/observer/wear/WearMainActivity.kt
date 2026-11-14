@@ -30,6 +30,7 @@ class WearMainActivity : ComponentActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingStartUntil = 0L
     private var ambient = false
+    private val spool by lazy { WatchSpoolStore(applicationContext) }
     private val tick = object : Runnable {
         override fun run() {
             render()
@@ -151,10 +152,7 @@ class WearMainActivity : ComponentActivity() {
         val engaged = WearCaptureForegroundService.isRunning || pendingStartUntil > SystemClock.elapsedRealtime()
         val failure = reduction.endReason != null && reduction.endReason != WatchSessionEndReason.OWNER_STOP
         val started = WearCaptureForegroundService.recorderSnapshot.startedAtElapsedMs
-        val held = runCatching {
-            val store = WatchSpoolStore(applicationContext)
-            store.listPendingFiles().size to store.hasLostMarker()
-        }.getOrNull()
+        val held = runCatching { spool.heldSummary() }.getOrNull()
         val notificationsOff = !NotificationManagerCompat.from(this).areNotificationsEnabled()
         val peer = runCatching { WatchPeerStatusStore(this).read() }.getOrNull()
         val model = WatchFacePresenter.present(
@@ -162,8 +160,8 @@ class WearMainActivity : ComponentActivity() {
                 reduction = reduction,
                 engaged = engaged,
                 elapsedMs = if (WearCaptureForegroundService.isRunning && started != null) (SystemClock.elapsedRealtime() - started).coerceAtLeast(0L) else null,
-                savedCount = held?.first,
-                lostMarker = held?.second == true,
+                savedCount = held?.bundles,
+                lostMarker = held?.lostMarker == true,
                 notificationsOff = notificationsOff,
                 notificationsAsked = File(noBackupFilesDir, "notification-permission-asked").exists(),
                 locationOff = !has(Manifest.permission.ACCESS_COARSE_LOCATION),

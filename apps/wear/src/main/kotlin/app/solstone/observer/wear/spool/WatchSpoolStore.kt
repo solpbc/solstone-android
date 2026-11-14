@@ -402,6 +402,23 @@ class WatchSpoolStore(
 
     fun hasLostMarker(): Boolean = listLostMarkers().isNotEmpty()
 
+    /**
+     * What the watch face shows about held material: how many sealed bundles wait and whether a
+     * loss is recorded. Read from one directory listing, without opening a bundle or waiting on a
+     * frame being written, because the face asks every second.
+     */
+    fun heldSummary(): HeldSummary {
+        val files = spoolDir.listFiles { f ->
+            (f.name.startsWith("bundle_") && f.name.endsWith(".bin") || f.name.startsWith("loss_") && f.name.endsWith(".marker")) && f.isFile
+        }.orEmpty()
+        return HeldSummary(
+            bundles = files.count { it.name.startsWith("bundle_") },
+            lostMarker = files.any { it.name.startsWith("loss_") },
+        )
+    }
+
+    data class HeldSummary(val bundles: Int, val lostMarker: Boolean)
+
     fun storeBundle(bundleId: String, bundleBytes: ByteArray): File = synchronized(shared.lock) {
         require(bundleId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")))
         val target = File(spoolDir, "bundle_$bundleId.bin")

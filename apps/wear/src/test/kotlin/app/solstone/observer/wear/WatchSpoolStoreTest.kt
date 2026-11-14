@@ -350,6 +350,19 @@ class WatchSpoolStoreTest {
     }
 
     @Test
+    fun theHeldSummaryCountsSealedBundlesAndLossesFromTheListingAlone() {
+        val dir = Files.createTempDirectory("watch-held-summary").toFile()
+        val store = WatchSpoolStore(dir)
+        assertEquals(WatchSpoolStore.HeldSummary(0, false), store.heldSummary())
+        repeat(3) { store.storeBundle("b$it", byteArrayOf(1, 2, 3)) }
+        assertTrue(File(dir, "bundle_dir.bin").mkdir())
+        assertEquals(WatchSpoolStore.HeldSummary(3, false), store.heldSummary())
+        store.recordFailure("gone", "process_loss")
+        assertEquals(WatchSpoolStore.HeldSummary(3, true), store.heldSummary())
+        assertEquals(store.listPendingFiles().size, store.heldSummary().bundles)
+    }
+
+    @Test
     fun deliveryOrderUsesTheRecordingClockInsteadOfPublicationTime() {
         val dir = Files.createTempDirectory("watch-recording-order").toFile()
         val store = WatchSpoolStore(dir)
