@@ -31,9 +31,16 @@ appId: app.solstone.observer.phone
 - extendedWaitUntil:
     visible: "import"
     timeout: 15000
-- assertVisible: "add more"
 - assertVisible: "photos and files"
-- assertVisible: "sources"
+# The deck opens at its top, the owner's own sources first and `add more` last. With audio,
+# location and camera on, `add more` sits below the fold on this phone, so the gate scrolls to it
+# the way an owner would rather than asserting it on the first view. Asserting it unscrolled only
+# passed when a launch happened to open scrolled to the end, which was itself the defect.
+- scrollUntilVisible:
+    element:
+      text: "sources"
+    direction: DOWN
+- assertVisible: "add more"
 # The unpaired journal mark pill now renders as the generic mark ("your journal, not set up yet")
 # rather than "connect a journal", matching the mark card.
 - assertVisible: "your journal, not set up yet"

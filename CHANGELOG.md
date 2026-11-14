@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- the home screen opens at the top, with your sources first. before, it could open scrolled to the end, past them.
+
 ## [2.1.45] - 2026-11-13
 
 ### Added

@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -69,6 +72,32 @@ class PhoneDeckScrollRestorationTest {
         composeRule.waitForIdle()
         val afterRestoreAndPop = sourceGridScrollOffset()
         assertEquals(beforeRoute, afterRestoreAndPop, 0.5f)
+    }
+
+    @Test
+    fun deckOpensAtItsTopWhenSourcesArriveAfterTheFirstFrame() {
+        var loadState by mutableStateOf<LoadState<SourcesReadModel>>(LoadState.Loading)
+        composeRule.setContent {
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 800.dp)),
+            ) {
+                PhoneObserverScreen(
+                    loadState = loadState,
+                    status = connected(),
+                    onToggle = { _, _ -> },
+                    onStartObserving = {},
+                    onConfirmMark = {},
+                )
+            }
+        }
+        // The first frame lays out the two destination tiles before any source exists.
+        composeRule.onNodeWithTag("importTile").assertIsDisplayed()
+
+        loadState = loadedSources()
+        composeRule.waitForIdle()
+
+        assertEquals(0f, sourceGridScrollOffset(), 0.5f)
+        composeRule.onNodeWithTag("sourceTile-source-0", useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun sourceGridScrollOffset(): Float = composeRule

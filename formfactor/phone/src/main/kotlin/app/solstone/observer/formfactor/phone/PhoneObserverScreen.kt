@@ -31,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -304,6 +305,26 @@ internal fun PhoneObserverScreen(
     val directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(windowAdaptiveInfo)
     val deckWidth = deckPaneWidth(widthClass)
     val deckGridState = rememberLazyGridState()
+    // 🔴 The deck opens at its top, or where the owner left it after a restore, never wherever
+    // the load happened to leave it. `import` and `add more` render while the sources load, and a
+    // lazy grid holds its place by the key of the first item it shows: when the sources then
+    // arrived above `import`, the grid kept `import` in view and the deck opened scrolled to its
+    // end, past the owner's own sources. Whether a launch opened at the top or at the end turned
+    // on whether the load beat the first frame. So on the sources' first arrival the grid is sent
+    // back to the place it held before the load began.
+    val deckOpening = remember {
+        Snapshot.withoutReadObservation {
+            DeckOpening(
+                index = deckGridState.firstVisibleItemIndex,
+                offset = deckGridState.firstVisibleItemScrollOffset,
+                awaitingSources = loadState !is LoadState.Loaded,
+            )
+        }
+    }
+    if (deckOpening.awaitingSources && loadState is LoadState.Loaded) {
+        deckOpening.awaitingSources = false
+        deckGridState.requestScrollToItem(deckOpening.index, deckOpening.offset)
+    }
     val renderSplit = widthClass != WidthClass.COMPACT && shouldRenderSplit(
         maxHorizontalPartitions = directive.maxHorizontalPartitions,
         deckPaneWidthDp = deckWidth.value.toInt(),
@@ -737,3 +758,6 @@ internal fun PhoneObserverScreen(
         onDismissPairing = onDismissPairing,
     )
 }
+
+/** Where the deck stood before its sources first arrived, and whether they have yet. */
+private class DeckOpening(val index: Int, val offset: Int, var awaitingSources: Boolean)
