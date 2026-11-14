@@ -481,5 +481,7 @@ class ContinuousAudioRecorder(
 internal fun carriedLocationFix(latest: WatchLocationFix?, windowEndEpochMs: Long): WatchLocationFix? =
     latest?.takeIf { it.timestampEpochMs <= windowEndEpochMs }
 
-internal const val LOCATION_INTERVAL_MS = 10_000L
+// A segment carries one fix, its latest at the end, so a fix a minute keeps that one under a minute old
+// without asking the provider for thirty fixes a segment.
+internal const val LOCATION_INTERVAL_MS = 60_000L
 internal const val LOCATION_MIN_DISTANCE_M = 100f

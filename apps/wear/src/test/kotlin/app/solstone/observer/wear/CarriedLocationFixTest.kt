@@ -2,7 +2,9 @@
 // Copyright (c) 2026 sol pbc
 package app.solstone.observer.wear
 
+import app.solstone.core.watch.courier.WatchCourierProtocol
 import app.solstone.core.watch.courier.WatchLocationFix
+import app.solstone.observer.wear.capture.LOCATION_INTERVAL_MS
 import app.solstone.observer.wear.capture.carriedLocationFix
 import kotlin.test.*
 
@@ -16,6 +18,11 @@ class CarriedLocationFixTest {
 
     @Test fun aFixFromAfterTheSegmentIsNotCarriedBack() {
         assertNull(carriedLocationFix(fix, windowEndEpochMs = 999_999L))
+    }
+
+    @Test fun theWatchAsksForAFewFixesASegmentAndStillGetsOneEach() {
+        val askedPerSegment = WatchCourierProtocol.WINDOW_MS / LOCATION_INTERVAL_MS
+        assertTrue(askedPerSegment in 1..5, "asked for $askedPerSegment fixes per segment, which carries one")
     }
 
     @Test fun noFixMeansNoLocationFile() {
