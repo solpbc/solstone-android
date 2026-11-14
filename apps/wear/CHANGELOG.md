@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- a session on your watch uses less battery.
+
 ## [1.0.0] - 2026-11-11
 
 ### Added

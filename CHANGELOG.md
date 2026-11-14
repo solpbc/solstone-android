@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- solstone uses less battery while it runs in the background.
+
 ### Fixed
 
 - the home screen opens at the top, with your sources first. before, it could open scrolled to the end, past them.
