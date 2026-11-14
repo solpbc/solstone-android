@@ -17,6 +17,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 import java.time.ZoneId
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -145,6 +146,44 @@ class WatchSpoolStoreTest {
         assertEquals("100000_3", header.segment)
         assertEquals("20261109", header.day)
         assertEquals(startEpoch, header.startEpochMs)
+    }
+
+    @Test
+    fun framesAfterTheFirstLeaveTheSessionMetadataUntouchedAndRecoveryStillMeasuresTheAudio() {
+        val tempDir = Files.createTempDirectory("watch-spool-meta-once-test").toFile()
+        val store1 = WatchSpoolStore(tempDir, processGeneration = "p1")
+        val sessionId = store1.startOpenSession(ZoneId.of("UTC"))
+        val startEpoch = Instant.parse("2026-11-09T10:00:00Z").toEpochMilli()
+        fun append(i: Int) = store1.appendOpenFrame(
+            TimestampedAudioFrame(startEpoch + i * 64L, createValidAdtsFrame(payloadSize = 50), 64L),
+            ZoneId.of("UTC"),
+        )
+
+        append(0)
+        val metaFile = File(tempDir, "sessions/$sessionId/session_meta.json")
+        val metaAfterFirst = metaFile.readText()
+        val fileKeyAfterFirst = Files.readAttributes(metaFile.toPath(), BasicFileAttributes::class.java).fileKey()
+        for (i in 1 until 101) append(i)
+
+        assertEquals(metaAfterFirst, metaFile.readText(), "later frames rewrote the session metadata")
+        assertEquals(
+            fileKeyAfterFirst,
+            Files.readAttributes(metaFile.toPath(), BasicFileAttributes::class.java).fileKey(),
+            "later frames replaced the session metadata file",
+        )
+        assertEquals(sessionId, WatchSpoolStore(tempDir, processGeneration = "p1").readLiveSessionId())
+
+        val copyRemuxer = AacAdtsRemuxer { adts, m4a ->
+            m4a.writeBytes(adts.readBytes())
+            AacRemux(sampleDurationMs = 101 * 64L, outputBytes = adts.length())
+        }
+        val store2 = WatchSpoolStore(tempDir, remuxer = copyRemuxer, processGeneration = "p2")
+        store2.recoverAbandonedSessions()
+        val decoded = WatchCourierCodec.decodeBundle(store2.listStagedBundles().single().first.readBytes().inputStream())
+        assertTrue(decoded is CodecResult.Success)
+        assertEquals(startEpoch, decoded.value.header.startEpochMs)
+        assertEquals(startEpoch + 101 * 64L, decoded.value.header.endEpochMs)
+        assertEquals(0, decoded.value.header.utcOffsetSeconds)
     }
 
     @Test

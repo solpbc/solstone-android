@@ -38,7 +38,14 @@ class WatchSpoolStore(
         private class SharedState {
             val lock = Any()
             val recovering = mutableSetOf<String>()
+
+            // The live session as this process last published, closed or read it; null until known.
+            var liveSession: LiveSession? = null
+
+            // The session whose recording clock is already durable in its metadata.
+            var clockWrittenFor: String? = null
         }
+        private class LiveSession(val id: String?)
         private val states = ConcurrentHashMap<String, SharedState>()
     }
 
@@ -67,33 +74,40 @@ class WatchSpoolStore(
         val firstFrameEpochMs: Long?,
         val zoneId: String,
         val utcOffsetSeconds: Int?,
-        val lastFrameEpochMs: Long?,
-        val lastFrameDurationMs: Long?,
-        val frameCount: Int,
     )
 
     fun readLiveSessionId(): String? {
         return synchronized(shared.lock) {
-            if (!liveSessionFile.exists()) return null
-            return try {
-                liveSessionFile.readText(Charsets.UTF_8).trim().ifEmpty { null }
-            } catch (_: Exception) {
+            shared.liveSession?.let { return it.id }
+            val id = if (!liveSessionFile.exists()) {
                 null
+            } else {
+                try {
+                    liveSessionFile.readText(Charsets.UTF_8).trim().ifEmpty { null }
+                } catch (_: Exception) {
+                    return null
+                }
             }
+            shared.liveSession = LiveSession(id)
+            id
         }
     }
 
     fun closeLiveSession() {
         return synchronized(shared.lock) {
             if (liveSessionFile.exists()) {
+                shared.liveSession = null
                 liveSessionFile.delete()
                 syncDirectory(spoolDir)
             }
+            if (!liveSessionFile.exists()) shared.liveSession = LiveSession(null)
         }
     }
 
     private fun publishLiveSession(sessionId: String) {
+        shared.liveSession = null
         atomicWrite(liveSessionFile, sessionId.toByteArray(Charsets.UTF_8))
+        shared.liveSession = LiveSession(sessionId)
     }
 
     fun startOpenSession(zoneId: ZoneId = ZoneId.systemDefault()): String {
@@ -115,9 +129,6 @@ class WatchSpoolStore(
                 firstFrameEpochMs = null,
                 zoneId = zoneId.id,
                 utcOffsetSeconds = offset,
-                lastFrameEpochMs = null,
-                lastFrameDurationMs = null,
-                frameCount = 0,
             )
             writeSessionMeta(sessionDir, meta)
             if (!sessionDir.renameTo(File(sessionsDir, sessionId))) throw IOException("Session publication failed")
@@ -154,12 +165,18 @@ class WatchSpoolStore(
             val sessionDir = File(sessionsDir, liveId)
             if (!sessionDir.exists()) {
                 sessionDir.mkdirs()
+                if (shared.clockWrittenFor == liveId) shared.clockWrittenFor = null
             }
             val framesFile = File(sessionDir, "raw_frames.adts")
             FileOutputStream(framesFile, true).use { fos ->
                 fos.write(frame.data)
                 fos.fd.sync()
             }
+
+            // Recovery reads only the recording clock from the metadata (first frame time, zone,
+            // offset, owner) and measures the length from the frames file itself, so once the
+            // first frame's clock is durable, later frames have nothing to add to it.
+            if (shared.clockWrittenFor == liveId) return
 
             val currentMeta = readSessionMeta(sessionDir) ?: SessionMeta(
                 sessionId = liveId,
@@ -168,9 +185,6 @@ class WatchSpoolStore(
                 firstFrameEpochMs = null,
                 zoneId = zoneId.id,
                 utcOffsetSeconds = zoneId.rules.getOffset(Instant.ofEpochMilli(frame.timestampEpochMs)).totalSeconds,
-                lastFrameEpochMs = null,
-                lastFrameDurationMs = null,
-                frameCount = 0,
             )
 
             val firstEpoch = currentMeta.firstFrameEpochMs ?: frame.timestampEpochMs
@@ -185,11 +199,9 @@ class WatchSpoolStore(
                     utcOffsetSeconds = if (currentMeta.firstFrameEpochMs == null) {
                         zoneId.rules.getOffset(Instant.ofEpochMilli(firstEpoch)).totalSeconds
                     } else offset,
-                    lastFrameEpochMs = frame.timestampEpochMs,
-                    lastFrameDurationMs = frame.durationMs,
-                    frameCount = currentMeta.frameCount + 1,
                 ),
             )
+            shared.clockWrittenFor = liveId
         }
     }
 
@@ -325,7 +337,7 @@ class WatchSpoolStore(
 
     private fun writeSessionMeta(dir: File, meta: SessionMeta) {
         val metaFile = File(dir, "session_meta.json")
-        val json = """{"sessionId":"${meta.sessionId}","ownerGeneration":"${meta.ownerGeneration}","unclean":${meta.unclean},"firstFrameEpochMs":${meta.firstFrameEpochMs},"zoneId":"${meta.zoneId}","utcOffsetSeconds":${meta.utcOffsetSeconds},"lastFrameEpochMs":${meta.lastFrameEpochMs},"lastFrameDurationMs":${meta.lastFrameDurationMs},"frameCount":${meta.frameCount}}"""
+        val json = """{"sessionId":"${meta.sessionId}","ownerGeneration":"${meta.ownerGeneration}","unclean":${meta.unclean},"firstFrameEpochMs":${meta.firstFrameEpochMs},"zoneId":"${meta.zoneId}","utcOffsetSeconds":${meta.utcOffsetSeconds}}"""
         atomicWrite(metaFile, json.toByteArray(Charsets.UTF_8))
     }
 
@@ -340,9 +352,6 @@ class WatchSpoolStore(
             val firstEpoch = Regex(""""firstFrameEpochMs":\s*(\d+)""").find(text)?.groupValues?.get(1)?.toLongOrNull()
             val zoneId = Regex(""""zoneId":\s*"([^"]+)"""").find(text)?.groupValues?.get(1) ?: ZoneId.systemDefault().id
             val utcOffset = Regex(""""utcOffsetSeconds":\s*(-?\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
-            val lastEpoch = Regex(""""lastFrameEpochMs":\s*(\d+)""").find(text)?.groupValues?.get(1)?.toLongOrNull()
-            val lastDuration = Regex(""""lastFrameDurationMs":\s*(\d+)""").find(text)?.groupValues?.get(1)?.toLongOrNull()
-            val frameCount = Regex(""""frameCount":\s*(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             SessionMeta(
                 sessionId = sessionId,
                 ownerGeneration = ownerGeneration,
@@ -350,9 +359,6 @@ class WatchSpoolStore(
                 firstFrameEpochMs = firstEpoch,
                 zoneId = zoneId,
                 utcOffsetSeconds = utcOffset,
-                lastFrameEpochMs = lastEpoch,
-                lastFrameDurationMs = lastDuration,
-                frameCount = frameCount,
             )
         } catch (_: Exception) {
             null
