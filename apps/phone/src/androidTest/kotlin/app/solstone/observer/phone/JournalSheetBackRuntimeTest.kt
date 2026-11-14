@@ -35,6 +35,7 @@ import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.core.pl.browser.JournalBrowserUpstream
 import app.solstone.platform.work.syncStores
 import java.net.URI
+import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
@@ -460,11 +461,8 @@ class JournalSheetBackRuntimeTest {
                     headers = listOf("Content-Type" to "text/html; charset=utf-8"),
                     body = """<!DOCTYPE html><html><body style="margin:0;padding:0;"><button type="button" onclick="history.pushState({s:1},'','#x')" style="position:absolute;left:0;top:0;width:100%;height:50%">push</button><a href="/fail" style="position:absolute;left:0;top:50%;width:100%;height:50%">fail</a></body></html>""".encodeToByteArray(),
                 )
-                "/fail" -> BrowserHttpResponse(
-                    status = 500,
-                    headers = listOf("Content-Type" to "text/plain"),
-                    body = "Server Error".encodeToByteArray(),
-                )
+                // A journal 500 is its own page; this fixture needs a failed transport.
+                "/fail" -> throw IOException("fixture connection failed")
                 "/app/health" -> BrowserHttpResponse(
                     status = 200,
                     headers = listOf("Content-Type" to "text/html; charset=utf-8"),
