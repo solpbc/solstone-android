@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.ServiceCompat
 import app.solstone.core.model.ReasonCode
 import java.util.concurrent.atomic.AtomicBoolean
@@ -586,9 +587,10 @@ class ObserverForegroundService : Service() {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return@onNotificationThread
             val notification = ObserverNotification.ongoing(context, needsAttention = needsAttention, decorate = true, requestPromotion = true)
             val shown = ObserverNotification.shownContent(notification)
-            if (!shownNotifications.shouldPost(ObserverNotification.SERVICE_NOTIFICATION_ID, shown)) return@onNotificationThread
+            val now = SystemClock.elapsedRealtime()
+            if (!shownNotifications.shouldPost(ObserverNotification.SERVICE_NOTIFICATION_ID, shown, now)) return@onNotificationThread
             manager.notify(ObserverNotification.SERVICE_NOTIFICATION_ID, notification)
-            shownNotifications.posted(ObserverNotification.SERVICE_NOTIFICATION_ID, shown)
+            shownNotifications.posted(ObserverNotification.SERVICE_NOTIFICATION_ID, shown, now)
             manager.cancel(ObserverNotification.BOOT_NOTIFICATION_ID)
             shownNotifications.forget(ObserverNotification.BOOT_NOTIFICATION_ID)
         }
@@ -627,11 +629,12 @@ class ObserverForegroundService : Service() {
                     contentIntent = launchPendingIntent(context),
                 )
                 val shown = ObserverNotification.shownContent(notification)
-                if (unlessShown && !shownNotifications.shouldPost(ObserverNotification.BOOT_NOTIFICATION_ID, shown)) {
+                val now = SystemClock.elapsedRealtime()
+                if (unlessShown && !shownNotifications.shouldPost(ObserverNotification.BOOT_NOTIFICATION_ID, shown, now)) {
                     return@onNotificationThread
                 }
                 manager.notify(ObserverNotification.BOOT_NOTIFICATION_ID, notification)
-                shownNotifications.posted(ObserverNotification.BOOT_NOTIFICATION_ID, shown)
+                shownNotifications.posted(ObserverNotification.BOOT_NOTIFICATION_ID, shown, now)
             }
 
         fun cancelAttentionNotification(context: Context) = onNotificationThread {
