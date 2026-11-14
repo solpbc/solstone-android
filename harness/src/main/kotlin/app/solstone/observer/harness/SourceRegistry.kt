@@ -405,6 +405,21 @@ class SourceRegistry(
         notifyListeners()
     }
 
+    private var lastPolledSnapshot: SourcesReadModel? = null
+
+    /**
+     * The status poll's re-read: tell subscribers only when the sources read differently from the
+     * last poll. Every subscriber re-reads in full, and the poll runs every few seconds whether or
+     * not anything moved.
+     */
+    fun refreshSubscribersIfChanged() {
+        val current = snapshot()
+        val changed = synchronized(lock) {
+            (current != lastPolledSnapshot).also { lastPolledSnapshot = current }
+        }
+        if (changed) notifyListeners()
+    }
+
     private fun notifyListeners() {
         val snapshot = synchronized(lock) { listeners.toList() }
         snapshot.forEach { listener ->

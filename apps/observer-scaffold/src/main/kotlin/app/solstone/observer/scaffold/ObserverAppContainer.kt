@@ -296,7 +296,7 @@ class ObserverAppContainer(
                     val current = controller.diagnostics()
                     previousDiagnostics = current
                     backgroundStatusRefreshListener?.invoke()
-                    sources.refreshSubscribers()
+                    sources.refreshSubscribersIfChanged()
                     refreshServiceNotification(current)
                 }
                 scheduleConnectionChange()

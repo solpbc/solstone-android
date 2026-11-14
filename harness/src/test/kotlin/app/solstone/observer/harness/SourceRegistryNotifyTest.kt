@@ -58,4 +58,26 @@ class SourceRegistryNotifyTest {
         registry.refreshSubscribers()
         assertEquals(2, deliveries)
     }
+
+    @Test
+    fun thePollNotifiesOnlyWhenTheSourcesReadDifferently() {
+        var deliveries = 0
+        val engine = FakeSourceEngine()
+        val registry = sourceRegistry(
+            registrations = listOf(SourceRegistration("audio", engine)),
+            main = MainPoster { task -> task() },
+        )
+        registry.subscribe { deliveries += 1 }
+
+        // Every subscriber rebuilds its whole model on a delivery, so an unchanged poll costs them
+        // all a full re-read for nothing.
+        repeat(100) { registry.refreshSubscribersIfChanged() }
+        assertEquals(1, deliveries)
+
+        engine.conditionValue = engine.conditionValue.copy(needsAttention = true)
+        registry.refreshSubscribersIfChanged()
+        assertEquals(2, deliveries)
+        repeat(10) { registry.refreshSubscribersIfChanged() }
+        assertEquals(2, deliveries)
+    }
 }
