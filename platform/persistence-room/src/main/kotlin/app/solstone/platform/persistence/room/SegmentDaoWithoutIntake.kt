@@ -3,6 +3,8 @@
 
 package app.solstone.platform.persistence.room
 
+import app.solstone.core.model.QueueState
+
 /**
  * In-memory intake for a hand-written [SegmentDao] double.
  * The database dao is generated from [SegmentDao] itself and does not use this class.
@@ -31,5 +33,14 @@ abstract class SegmentDaoWithoutIntake : SegmentDao() {
 
     override fun insertIntakeSeen(rows: List<SourceIntakeSeenRow>) {
         rows.forEach { seen += it.sourceId to it.seenKey }
+    }
+
+    override fun evictedWithLocalCopy(): List<SegmentRow> =
+        segmentsByState(QueueState.EVICTED).filterNot { it.localCopyAbsent }
+
+    override fun markLocalCopyAbsent(id: String): Int {
+        val row = segmentById(id)?.takeIf { it.state == QueueState.EVICTED } ?: return 0
+        insertSegment(row.copy(localCopyAbsent = true))
+        return 1
     }
 }

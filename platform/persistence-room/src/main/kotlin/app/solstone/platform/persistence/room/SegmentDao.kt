@@ -109,6 +109,12 @@ abstract class SegmentDao {
     @Query("SELECT * FROM segment WHERE state = :state ORDER BY sealed_at ASC, id ASC")
     abstract fun segmentsByState(state: QueueState): List<SegmentRow>
 
+    @Query("SELECT * FROM segment WHERE state = 'EVICTED' AND local_copy_absent = 0 ORDER BY sealed_at ASC, id ASC")
+    abstract fun evictedWithLocalCopy(): List<SegmentRow>
+
+    @Query("UPDATE segment SET local_copy_absent = 1 WHERE id = :id AND state = 'EVICTED'")
+    abstract fun markLocalCopyAbsent(id: String): Int
+
     @Query("SELECT * FROM segment WHERE stream = :stream AND state IN ('SEALED','UPLOADING','FAILED') ORDER BY sealed_at ASC, id ASC")
     abstract fun segmentsForDrain(stream: String): List<SegmentRow>
 

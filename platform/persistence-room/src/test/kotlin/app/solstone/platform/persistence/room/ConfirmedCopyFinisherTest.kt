@@ -155,6 +155,38 @@ class ConfirmedCopyFinisherTest {
     }
 
     @Test
+    fun anEvictedRowWhoseDirectoryIsGoneIsNotLookedAtByLaterPasses() {
+        val root = Files.createTempDirectory("finisher-test")
+        val spool = root.resolve("spool")
+        val dao = InMemorySegmentDao()
+        var removals = 0
+        val finisher = ConfirmedCopyFinisher(spool, dao, directoryRemover = SpoolDirectoryRemover { path ->
+            removals += 1
+            path.toFile().deleteRecursively()
+            DirectoryRemovalResult.ConfirmedAbsent
+        })
+        val gone = createSegmentFixture(spool, "20260716", "audio", "gone", QueueState.EVICTED)
+        val residual = createSegmentFixture(spool, "20260716", "audio", "residual", QueueState.EVICTED)
+        dao.insertSegment(gone)
+        dao.insertSegment(residual)
+        spool.resolve("20260716/audio/gone").toFile().deleteRecursively()
+
+        finisher.finishPass()
+        assertEquals(1, removals)
+        assertFalse(Files.exists(spool.resolve("20260716/audio/residual")))
+
+        // A pass that found the directory gone has settled the row: a directory appearing at that
+        // name afterwards is not one later passes go looking for.
+        finisher.finishPass()
+        Files.createDirectories(spool.resolve("20260716/audio/gone"))
+        Files.createDirectories(spool.resolve("20260716/audio/residual"))
+        repeat(100) { finisher.finishPass() }
+        assertEquals(1, removals)
+        assertEquals(QueueState.EVICTED, dao.segmentById(gone.id)!!.state)
+        assertEquals(QueueState.EVICTED, dao.segmentById(residual.id)!!.state)
+    }
+
+    @Test
     fun manifestRefusalIsLoggedWithRowAndReason() {
         val root = Files.createTempDirectory("finisher-test")
         val spool = root.resolve("spool")

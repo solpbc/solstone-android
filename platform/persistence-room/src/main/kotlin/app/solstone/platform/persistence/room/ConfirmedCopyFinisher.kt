@@ -59,10 +59,14 @@ class ConfirmedCopyFinisher(
 
     fun finishPass() {
         var residualAttempts = 0
-        dao.segmentsByState(QueueState.EVICTED).forEach { row ->
+        // An evicted row is kept for its directory name; once its directory is gone, later passes
+        // have nothing to look at, so the row is marked and no longer read.
+        dao.evictedWithLocalCopy().forEach { row ->
             val proof = proveSegmentDirectory(spoolRoot, row)
             if (proof is SegmentDirectoryProof.Refused) {
-                if (proof.reason != JournalCachePathRefusal.MISSING_DIRECTORY) {
+                if (proof.reason == JournalCachePathRefusal.MISSING_DIRECTORY) {
+                    finishRow(row.id) { dao.markLocalCopyAbsent(row.id) }
+                } else {
                     log("confirmed copy refused ${row.id} ${proof.reason}")
                 }
                 return@forEach

@@ -5,10 +5,11 @@ package app.solstone.platform.persistence.room
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.solstone.core.model.QueueState
 
-@Entity(tableName = "segment")
+@Entity(tableName = "segment", indices = [Index(value = ["stream", "state"])])
 data class SegmentRow(
     @PrimaryKey val id: String,
     val day: String,
@@ -24,6 +25,8 @@ data class SegmentRow(
     @ColumnInfo(name = "last_status_code") val lastStatusCode: Int? = null,
     @ColumnInfo(name = "last_attempt_at") val lastAttemptAt: Long? = null,
     @ColumnInfo(name = "last_error") val lastError: String? = null,
+    /** An evicted row whose local directory a pass found gone; directory names are never reused. */
+    @ColumnInfo(name = "local_copy_absent", defaultValue = "0") val localCopyAbsent: Boolean = false,
 )
 
 @Entity(tableName = "segment_file")
