@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.45] - 2026-11-13
+
+### Added
+
+- journal links now open in the solstone app.
+
+### Fixed
+
+- try again keeps the page you were opening when your journal couldn't be reached.
+
 ## [2.1.44] - 2026-11-13
 
 ### Fixed

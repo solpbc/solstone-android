@@ -48,6 +48,7 @@
                     android:scheme="https"
                     android:host="go.solstone.app"
                     android:path="/p" />
+                <data android:path="/j" />
             </intent-filter>
         </activity>
         <!-- A share to solstone. It runs in the sharing app's task, and nothing is copied until

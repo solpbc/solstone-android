@@ -10,7 +10,10 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -380,6 +383,147 @@ class JournalOpenRuntimeTest {
             assertFalse("fixture path leaked in logcat", logcatContent.contains(fixturePath))
         }
     }
+
+    @Test
+    fun journalLinksOpenColdAndWarmWithNotificationsOffAndRepeatExactly() {
+        PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+        PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
+        syncStores(context).setJournalPushOn(false)
+        val first = "journal_link_cold_0123456789~123456"
+        val second = "journal_link_warm_9876543210"
+        val launch = journalLinkIntent(first)
+        ActivityScenario.launch<PhoneShellActivity>(launch).use { scenario ->
+            composeRule.waitUntil(10_000) { loadedUrls.size == 1 }
+            assertEquals("http://127.0.0.1:8080/app/open/$first", loadedUrls.last())
+            scenario.onActivity { activity ->
+                assertFalse(activity.isFinishing)
+                assertNull(activity.intent.data)
+                activity.startActivity(journalLinkIntent(second))
+            }
+            composeRule.waitUntil(10_000) { loadedUrls.size == 2 }
+            assertEquals("http://127.0.0.1:8080/app/open/$second", loadedUrls.last())
+            scenario.onActivity { it.startActivity(journalLinkIntent(second)) }
+            composeRule.waitUntil(10_000) { loadedUrls.size == 3 }
+            assertEquals("http://127.0.0.1:8080/app/open/$second", loadedUrls.last())
+            val log = PhoneDiagLog.installedSink()?.readAll().orEmpty()
+            assertTrue(log.contains("kind=journal_link outcome=accepted"))
+            assertFalse(log.contains(first))
+            assertFalse(log.contains(second))
+        }
+    }
+
+    @Test
+    fun malformedLinkShowsNoticeWithoutOpeningTheJournalOrPairing() {
+        PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+        PhoneJournalTestHooks.sessionOverride = { error("invalid link started a journal session") }
+        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent("invalid=token")).use { scenario ->
+            composeRule.onNodeWithText("this journal link isn't valid.").assertExists()
+            composeRule.onNodeWithText("copy the full link from your chat and open it again.").assertExists()
+            composeRule.onNodeWithText("connect").assertDoesNotExist()
+            assertTrue(loadedUrls.isEmpty())
+            scenario.onActivity { assertFalse(it.isFinishing) }
+        }
+    }
+
+    @Test
+    fun retryAfterFailedLoadAndRecreationKeepsOriginalLink() {
+        PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+        var fail = true
+        PhoneJournalTestHooks.sessionOverride = {
+            if (fail) object : JournalSheetSession {
+                override fun addLifecycleListener(listener: JournalBrowserLifecycleListener) {}
+                override fun removeLifecycleListener(listener: JournalBrowserLifecycleListener) {}
+                override fun start(): JournalBrowserOrigin = error("fixture unreachable")
+                override fun stop() {}
+            } else FakeJournalSheetSession("http://127.0.0.1:8080/")
+        }
+        val token = "journal_link_retry_0123456789~012345"
+        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent(token)).use { scenario ->
+            composeRule.onNodeWithText("try again").assertExists()
+            scenario.recreate()
+            composeRule.onNodeWithText("try again").assertExists()
+            fail = false
+            composeRule.onNodeWithText("try again").performClick()
+            composeRule.waitUntil(10_000) { loadedUrls.isNotEmpty() }
+            assertEquals(listOf("http://127.0.0.1:8080/app/open/$token"), loadedUrls)
+        }
+    }
+
+    @Test
+    fun latestLinkWaitsForMarkConfirmationAndSurvivesRecreation() {
+        seedUnconfirmedLinkPairing()
+        PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
+        val latest = "journal_link_latest_0123456789~112233"
+        val pairingLaunch = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://go.solstone.app/p#fixture"))
+            .setClass(context, PhoneShellActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ActivityScenario.launch<PhoneShellActivity>(pairingLaunch).use { scenario ->
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+            scenario.onActivity { it.startActivity(journalLinkIntent("journal_link_earlier")) }
+            composeRule.waitForIdle()
+            scenario.onActivity { it.startActivity(journalLinkIntent(latest)) }
+            composeRule.waitForIdle()
+            scenario.recreate()
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+            composeRule.onNodeWithText("yes, this is my journal").performScrollTo().performClick()
+            composeRule.waitUntil(10_000) { loadedUrls.isNotEmpty() }
+            assertEquals(listOf("http://127.0.0.1:8080/app/open/$latest"), loadedUrls)
+        }
+    }
+
+    @Test
+    fun unpairedLinkWaitsForSetupAndConfirmationWithoutLosingTheLatestTarget() {
+        PhoneJournalTestHooks.sessionOverride = { FakeJournalSheetSession("http://127.0.0.1:8080/") }
+        val latest = "journal_link_setup_latest_0123456789"
+        ActivityScenario.launch<PhoneShellActivity>(journalLinkIntent("journal_link_before_setup")).use { scenario ->
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+            scenario.onActivity { it.startActivity(journalLinkIntent(latest)) }
+            composeRule.waitForIdle()
+            scenario.recreate()
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+            seedUnconfirmedLinkPairing()
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithTag("journalMarkPill").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(loadedUrls.isEmpty())
+            composeRule.onNodeWithTag("journalMarkPill").performClick()
+            composeRule.onNodeWithText("yes, this is my journal").performScrollTo().performClick()
+            composeRule.waitUntil(10_000) { loadedUrls.isNotEmpty() }
+            assertEquals(listOf("http://127.0.0.1:8080/app/open/$latest"), loadedUrls)
+        }
+    }
+
+    private fun seedUnconfirmedLinkPairing() {
+        val container = obtainObserverContainer()
+        assertTrue(waitForRecovery(container))
+        val stores = syncStores(context)
+        stores.publisher.forget()
+        val credential = app.solstone.core.identity.ClientCredential(
+            privateKeyPem = "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n",
+            clientCertPem = "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----\n",
+            caChainPem = listOf("-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n"),
+        )
+        assertTrue(stores.publisher.installOrReplace(committedSnapshot().home, credential, null, false)
+            is app.solstone.core.identity.GraphMutationResult.Applied)
+        val pairing = (stores.publisher.currentSnapshot() as PairingGraphSnapshot.Committed).pairing
+        val mark = app.solstone.core.identity.JournalMark(
+            app.solstone.core.identity.JournalMarkIcon("piano", "<path d=\"M18.5 3H5.5\"/>", "blue", "#3b82f6", 45),
+            app.solstone.core.identity.JournalMarkIcon("key", "<circle cx=\"7.5\" cy=\"15.5\" r=\"5.5\"/>", "purple", "#a855f7", 0),
+            listOf("liquefy", "smock"),
+        )
+        stores.journalMarkStore.save(app.solstone.core.identity.JournalMarkRecord(pairing.instanceId, mark, pairing, derived = true))
+        stores.journalIdentityCoordinator.onPairingChanged()
+        stores.journalConfirmationStore.confirm("not-this-journal")
+        PhoneShellActivity.promptedConfirmationThisProcess = false
+    }
+
+    private fun journalLinkIntent(token: String): Intent = Intent.parseUri(
+        "intent://go.solstone.app/j#$token#Intent;scheme=https;package=app.solstone.observer.phone;end",
+        Intent.URI_INTENT_SCHEME,
+    ).setClass(context, PhoneShellActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     private fun committedSnapshot(): PairingGraphSnapshot.Committed {
         val home = PairedHome(

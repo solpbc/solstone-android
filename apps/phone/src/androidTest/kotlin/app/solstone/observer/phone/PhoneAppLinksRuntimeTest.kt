@@ -55,9 +55,13 @@ class PhoneAppLinksRuntimeTest {
     }
 
     @Test
-    fun packageManagerIncludesPhoneForPairAppLinkOnly() {
+    fun packageManagerIncludesPhoneForPairAndJournalLinksOnly() {
         val pairMatches = application.packageManager.queryIntentActivities(
             implicitView("https://go.solstone.app/p#garbage").setPackage(application.packageName),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        val journalMatches = application.packageManager.queryIntentActivities(
+            implicitView("https://go.solstone.app/j#abc").setPackage(application.packageName),
             PackageManager.MATCH_DEFAULT_ONLY,
         )
         val wrongPathMatches = application.packageManager.queryIntentActivities(
@@ -66,6 +70,7 @@ class PhoneAppLinksRuntimeTest {
         )
 
         assertTrue(pairMatches.any { it.activityInfo.packageName == application.packageName })
+        assertTrue(journalMatches.any { it.activityInfo.packageName == application.packageName })
         assertFalse(wrongPathMatches.any { it.activityInfo.packageName == application.packageName })
     }
 

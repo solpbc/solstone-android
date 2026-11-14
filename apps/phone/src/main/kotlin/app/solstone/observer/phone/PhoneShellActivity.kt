@@ -208,6 +208,8 @@ class PhoneShellActivity : ComponentActivity() {
     private var notificationsEnabled by mutableStateOf(false)
     private var journalNotificationRow by mutableStateOf<PhoneJournalNotificationRow?>(null)
     private var journalPath by mutableStateOf<String?>(null)
+    private var pendingJournalLinkPath by mutableStateOf<String?>(null)
+    private var invalidJournalLink by mutableStateOf(false)
     private var journalOpen by mutableStateOf(false)
     private var journalOpenSequence by mutableStateOf(0L)
     private var journalVisitedPath: String? = null
@@ -481,6 +483,22 @@ class PhoneShellActivity : ComponentActivity() {
         if (intent == null) return
         val rawData = intent.data?.toString()
         if (rawData != null) {
+            when (val link = phoneJournalLink(rawData)) {
+                PhoneJournalLink.Other -> invalidJournalLink = false
+                else -> {
+                    // Consume it in memory; neither history replay nor diagnostics need the URI.
+                    intent.data = null
+                    if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+                    initialPairingTask = false
+                    pendingJournalLinkPath = (link as? PhoneJournalLink.Open)?.path
+                    invalidJournalLink = link is PhoneJournalLink.Invalid
+                    PhoneDiagLog.appendRaw(if (invalidJournalLink) "kind=journal_link outcome=invalid" else "kind=journal_link outcome=accepted")
+                    if (!invalidJournalLink && isAwaitingMarkConfirmation()) {
+                        pairingViewModel.dispatch(PhonePairingEvent.OpenMark, container.controller, stores)
+                    }
+                    return
+                }
+            }
             val step = routePhonePairIntent(pairingViewModel.pairingState, rawData, isAwaitingMarkConfirmation())
             pairingViewModel.applyStep(step, container.controller, stores)
             return
@@ -525,9 +543,13 @@ class PhoneShellActivity : ComponentActivity() {
         // A rotation or an appearance change rebuilds this activity, and the journal stays open on
         // the page it was showing. Only then: a journal reopening by itself after the process was
         // gone is not something the owner asked for.
-        if (isChangingConfigurations && journalOpen) {
-            outState.putBoolean(STATE_JOURNAL_OPEN, true)
-            outState.putString(STATE_JOURNAL_PATH, journalVisitedPath)
+        if (isChangingConfigurations) {
+            outState.putString(STATE_PENDING_JOURNAL_LINK, pendingJournalLinkPath)
+            outState.putBoolean(STATE_INVALID_JOURNAL_LINK, invalidJournalLink)
+            if (journalOpen) {
+                outState.putBoolean(STATE_JOURNAL_OPEN, true)
+                outState.putString(STATE_JOURNAL_PATH, journalVisitedPath ?: journalPath)
+            }
         }
     }
 
@@ -535,7 +557,8 @@ class PhoneShellActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         initialPairingTask = savedInstanceState?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
-            ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null)
+            ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null &&
+                phoneJournalLink(intent?.data?.toString()) is PhoneJournalLink.Other)
         val app = application as ObserverApplication
         val runtime = ObserverHarnessRuntime.runtime ?: app.runtime.also {
             ObserverHarnessRuntime.runtime = it
@@ -552,9 +575,13 @@ class PhoneShellActivity : ComponentActivity() {
 
         if (savedInstanceState == null) {
             handleIntent(intent, cold = true)
-        } else if (savedInstanceState.getBoolean(STATE_JOURNAL_OPEN)) {
-            journalPath = savedInstanceState.getString(STATE_JOURNAL_PATH)
-            journalOpen = true
+        } else {
+            pendingJournalLinkPath = savedInstanceState.getString(STATE_PENDING_JOURNAL_LINK)
+            invalidJournalLink = savedInstanceState.getBoolean(STATE_INVALID_JOURNAL_LINK)
+            if (savedInstanceState.getBoolean(STATE_JOURNAL_OPEN)) {
+                journalPath = savedInstanceState.getString(STATE_JOURNAL_PATH)
+                journalOpen = true
+            }
         }
 
         if (BuildConfig.PUSH_REGISTRATION) {
@@ -1102,6 +1129,16 @@ class PhoneShellActivity : ComponentActivity() {
                     consumeInitialPairingTask()
                 }
             }
+            LaunchedEffect(pendingJournalLinkPath, pairingSnapshot, journalConfirmed, pairingOpen) {
+                val path = pendingJournalLinkPath
+                if (path != null && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed) {
+                    pendingJournalLinkPath = null
+                    journalPath = path
+                    journalVisitedPath = null
+                    journalOpenSequence++
+                    journalOpen = true
+                }
+            }
             val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
             val aboutFacts = remember { readAndroidAboutFacts(this) }
             val distanceSystem = remember {
@@ -1404,6 +1441,16 @@ class PhoneShellActivity : ComponentActivity() {
                 )
                 }
             }
+            }
+            if (invalidJournalLink) {
+                PhoneTheme {
+                    AlertDialog(
+                        onDismissRequest = { invalidJournalLink = false },
+                        title = { Text("this journal link isn't valid.") },
+                        text = { Text("copy the full link from your chat and open it again.") },
+                        confirmButton = { TextButton(onClick = { invalidJournalLink = false }) { Text("close") } },
+                    )
+                }
             }
             if (journalSheetOpenState) {
                 // 🔴 The theme is applied INSIDE `PhoneShell`, and this sheet is a sibling of it
@@ -2163,6 +2210,8 @@ class PhoneShellActivity : ComponentActivity() {
         private const val STATE_INITIAL_PAIRING_TASK = "initial_pairing_task"
         private const val STATE_JOURNAL_OPEN = "journal_open"
         private const val STATE_JOURNAL_PATH = "journal_path"
+        private const val STATE_PENDING_JOURNAL_LINK = "pending_journal_link"
+        private const val STATE_INVALID_JOURNAL_LINK = "invalid_journal_link"
         internal var promptedConfirmationThisProcess = false
         const val PERMISSION_REQUEST = 10
         // The embedded distributor delivers through Google Play services.

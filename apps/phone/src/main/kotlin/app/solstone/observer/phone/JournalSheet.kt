@@ -139,11 +139,9 @@ internal fun JournalSheet(
         // cannot be tapped at all — a tap on `search` reaches the system bar instead.
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
             key(retryGeneration) {
-                // Retry loses the path.
-                val panePath = if (retryGeneration == 0) validatedPath else null
                 JournalBrowserPane(
                     sessionFactory = sessionFactory,
-                    path = panePath,
+                    path = validatedPath,
                     onRetry = { retryGeneration += 1 },
                     onPairingRepair = onPairingRepair,
                     onVisitedUrl = onVisitedUrl,
