@@ -8,10 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- solstone uses less battery while it runs in the background.
+- the solstone app uses less battery while it runs in the background.
 
 ### Fixed
 
+- on android 14 and later, when you dismiss the solstone app's notification, it stays dismissed until what it shows changes. before, it came back within seconds.
 - the home screen opens at the top, with your sources first. before, it could open scrolled to the end, past them.
 
 ## [2.1.45] - 2026-11-13
