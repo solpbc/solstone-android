@@ -206,15 +206,20 @@ class JournalIdentityRefreshCoordinatorTest {
         val store = FakeMarkStore()
         val derived = mark("liquefy")
         val notified = AtomicInteger(0)
+        val notification = CountDownLatch(1)
         val coordinator = JournalIdentityRefreshCoordinator(
             store = store,
             executor = executor,
             publisher = FakePairingPublisher(home()),
-            onMarkUpdated = { notified.incrementAndGet() },
+            onMarkUpdated = {
+                notified.incrementAndGet()
+                notification.countDown()
+            },
             deriveMark = { derived },
         ).also { coordinators += it }
 
         coordinator.awaitPresentation { it is JournalMarkPresentation.Identified }
+        assertTrue(notification.await(5, TimeUnit.SECONDS), "mark update was not delivered")
 
         assertEquals(JournalMarkPresentation.Identified(derived), coordinator.currentPresentation())
         assertEquals(pairingA, coordinator.currentPresentationGeneration())

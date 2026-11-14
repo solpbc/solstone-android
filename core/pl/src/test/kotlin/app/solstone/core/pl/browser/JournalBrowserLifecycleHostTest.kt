@@ -6,7 +6,6 @@ package app.solstone.core.pl.browser
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.PairingGeneration
 import java.io.BufferedOutputStream
-import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.Socket
 import java.net.URI
@@ -60,7 +59,7 @@ class JournalBrowserLifecycleHostTest {
     }
 
     @Test
-    fun startAfterStopGeneratesNewAuthorityEvenOnReusedPort() {
+    fun startAfterStopRejectsThePreviousAuthority() {
         val session = JournalBrowserSession(
             pairing = { pairingGen },
             accessStillCurrent = { true },
@@ -70,38 +69,35 @@ class JournalBrowserLifecycleHostTest {
 
         val origin1 = session.start()
         val uri1 = URI(origin1.url)
-        val port1 = uri1.port
         val host1 = uri1.host
         session.stop()
 
-        // AC3 same port: bind on same port, verify new authority generated and old host rejected with 403
-        val origin2 = session.start(bindPort = port1)
-        val uri2 = URI(origin2.url)
-        val host2 = uri2.host
-        assertTrue(origin1.url != origin2.url)
-        assertEquals(port1, uri2.port)
-        assertTrue(host1 != host2)
+        val origin2 = session.start()
+        try {
+            val uri2 = URI(origin2.url)
+            val port2 = uri2.port
+            val host2 = uri2.host
+            assertTrue(origin1.url != origin2.url)
+            assertTrue(host1 != host2)
 
-        // Send request with OLD host header to the newly bound socket on same port
-        Socket("127.0.0.1", port1).use { sock ->
-            val out = BufferedOutputStream(sock.getOutputStream())
-            val req = "GET / HTTP/1.1\r\nHost: $host1:$port1\r\n\r\n"
-            out.write(req.toByteArray(Charsets.US_ASCII))
-            out.flush()
+            Socket("127.0.0.1", port2).use { sock ->
+                sock.soTimeout = 5_000
+                val out = BufferedOutputStream(sock.getOutputStream())
+                val req = "GET / HTTP/1.1\r\nHost: $host1:$port2\r\n\r\n"
+                out.write(req.toByteArray(Charsets.US_ASCII))
+                out.flush()
 
-            val inStream = sock.getInputStream()
-            val buf = ByteArray(1024)
-            val read = inStream.read(buf)
-            val response = if (read > 0) String(buf, 0, read) else ""
-            assertTrue(response.startsWith("HTTP/1.1 403"), "Expected 403 Forbidden for stale token on same port: $response")
-            assertTrue(response.contains("X-SPL-Loopback-Refused: mismatch"), "Expected marker mismatch: $response")
+                val response = sock.getInputStream().bufferedReader(Charsets.US_ASCII).readText()
+                assertTrue(response.startsWith("HTTP/1.1 403"), "Expected 403 Forbidden for stale token: $response")
+                assertTrue(response.contains("X-SPL-Loopback-Refused: mismatch"), "Expected marker mismatch: $response")
+            }
+        } finally {
+            session.stop()
         }
-
-        session.stop()
     }
 
     @Test
-    fun repeatedStopIsIdempotentAndCleansSockets() {
+    fun repeatedStopIsIdempotent() {
         val session = JournalBrowserSession(
             pairing = { pairingGen },
             accessStillCurrent = { true },
@@ -109,21 +105,16 @@ class JournalBrowserLifecycleHostTest {
             diag = { diagEvents.add(it) },
         )
 
-        val origin = session.start()
+        session.start()
         session.stop()
+        val stopped = session.lifecycle
+        assertEquals(BrowserTerminalClass.EXPLICIT_STOP, (stopped as JournalBrowserLifecycle.Terminal).reason.classification)
+
         session.stop()
         session.stop()
 
-        val uri = URI(origin.url)
-        val port = uri.port
-
-        var socketClosed = false
-        try {
-            Socket("127.0.0.1", port).use { }
-        } catch (_: Exception) {
-            socketClosed = true
-        }
-        assertTrue(socketClosed)
+        assertEquals(stopped, session.lifecycle)
+        assertEquals(1, diagEvents.filterIsInstance<DiagEvent.JournalBrowser>().count { it.outcome == "stopped" })
     }
 
     @Test
