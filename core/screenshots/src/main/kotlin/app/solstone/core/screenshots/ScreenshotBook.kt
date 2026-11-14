@@ -87,7 +87,6 @@ fun encodeBook(book: ScreenshotBook): String = buildString {
         appendLine("staged\t${enc(it.documentId)}\t${it.sha256}\t${enc(it.capturedAt)}\t${it.takenFrom}\t${enc(it.segmentId)}\t${it.epochMs}")
     }
     book.marks.forEach { appendLine("mark\t${enc(it.documentId)}\t${it.end.name}") }
-    book.lastCheckedMs?.let { appendLine("checked\t$it") }
     if (book.sourcePaused) appendLine("paused\t1")
 }
 

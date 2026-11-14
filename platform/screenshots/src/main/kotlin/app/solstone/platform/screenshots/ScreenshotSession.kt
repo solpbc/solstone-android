@@ -22,6 +22,7 @@ import app.solstone.core.screenshots.ReceivedEnd
 import app.solstone.core.screenshots.ReceivedHash
 import app.solstone.core.screenshots.SCREENSHOT_HEAD_BYTES
 import app.solstone.core.screenshots.SCREENSHOT_MAX_BYTES
+import app.solstone.core.screenshots.SavedTextFile
 import app.solstone.core.screenshots.ScreenshotBook
 import app.solstone.core.screenshots.ShotEnd
 import app.solstone.core.screenshots.ShotFate
@@ -57,9 +58,7 @@ import app.solstone.platform.persistence.room.RoomSealedSegmentSink
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.occupiedDirSegments
 import java.io.ByteArrayInputStream
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.ZoneId
@@ -128,9 +127,11 @@ class ScreenshotSession(
     private val appContext = context.applicationContext
     private val folder = SafScreenshotFolder(appContext.contentResolver)
     private val actor = ScheduledThreadPoolExecutor(1) { runnable -> Thread(runnable, "screenshots-read") }
-    private val bookFile = appContext.filesDir.resolve("screenshots").resolve("book.txt")
+    private val bookFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("book.txt"))
+    // The check time has its own record, so a check that finds nothing new rewrites neither the book nor the known list.
+    private val checkedFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("checked.txt"))
     private var book = load()
-    private val knownFile = appContext.filesDir.resolve("screenshots").resolve("known.txt")
+    private val knownFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("known.txt"))
     private var known: MutableMap<String, KnownFile> = loadKnown()
     private var capability: Boolean? = null
     private var accessLost = false
@@ -475,7 +476,9 @@ class ScreenshotSession(
         refusedUnread = unread
         refusedJournal = refusedByJournal
         counting = false
-        book = book.copy(lastCheckedMs = System.currentTimeMillis())
+        val checkedAt = System.currentTimeMillis()
+        book = book.copy(lastCheckedMs = checkedAt)
+        checkedFile.replace(checkedAt.toString())
         save()
         if (stagedNow) onSealed()
         refresh()
@@ -724,36 +727,21 @@ class ScreenshotSession(
     }
 
     private fun loadKnown(): MutableMap<String, KnownFile> =
-        if (!knownFile.isFile) linkedMapOf() else runCatching { decodeKnown(knownFile.readText()).toMutableMap() }.getOrDefault(linkedMapOf())
+        knownFile.read()?.let { text -> runCatching { decodeKnown(text).toMutableMap() }.getOrNull() } ?: linkedMapOf()
 
     private fun saveKnown() {
-        val dir = knownFile.parentFile ?: return
-        dir.mkdirs()
-        val tmp = dir.resolve("known.txt.tmp")
-        tmp.writeText(encodeKnown(known.values))
-        try {
-            Files.move(tmp.toPath(), knownFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(tmp.toPath(), knownFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        knownFile.replace(encodeKnown(known.values))
     }
 
     private fun load(): ScreenshotBook {
-        val file = bookFile
-        if (!file.isFile) return ScreenshotBook()
-        return runCatching { decodeBook(file.readText()) }.getOrDefault(ScreenshotBook())
+        // A book saved before the check time had its own record carries it inline.
+        val saved = bookFile.read()?.let { text -> runCatching { decodeBook(text) }.getOrNull() } ?: ScreenshotBook()
+        val checked = checkedFile.read()?.trim()?.toLongOrNull()
+        return saved.copy(lastCheckedMs = listOfNotNull(saved.lastCheckedMs, checked).maxOrNull())
     }
 
     private fun save() {
-        val dir = bookFile.parentFile ?: return
-        dir.mkdirs()
-        val tmp = dir.resolve("book.txt.tmp")
-        tmp.writeText(encodeBook(book))
-        try {
-            Files.move(tmp.toPath(), bookFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(tmp.toPath(), bookFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        bookFile.replace(encodeBook(book))
     }
 }
 

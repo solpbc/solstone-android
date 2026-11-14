@@ -22,10 +22,17 @@ class ScreenshotBookTest {
             received = listOf(ReceivedHash("abc", ReceivedEnd.REFUSED_TYPE)),
             staged = listOf(StagedShot("doc/1", "abc", "2026-11-03T14:32:07-07:00", "platform", "20261103/screenshots/leaf", 99L)),
             marks = listOf(DocMark("doc/1", ReceivedEnd.DELIVERED)),
-            lastCheckedMs = 50L,
             sourcePaused = true,
         )
         assertEquals(book, decodeBook(encodeBook(book)))
+    }
+
+    @Test
+    fun aCheckTimeAloneLeavesTheBookTextAsItWasAndAnOlderBookStillReadsIt() {
+        val book = ScreenshotBook(treeUri = "content://folder/Pictures/Screenshots", confirmed = true)
+        // A check that finds nothing new changes only the check time, which has its own record.
+        assertEquals(encodeBook(book), encodeBook(book.copy(lastCheckedMs = 50L)))
+        assertEquals(50L, decodeBook(encodeBook(book) + "checked\t50\n").lastCheckedMs)
     }
 
     @Test
