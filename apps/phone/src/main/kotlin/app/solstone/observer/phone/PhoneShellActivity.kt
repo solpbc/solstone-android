@@ -61,8 +61,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -553,6 +555,20 @@ class PhoneShellActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Runs [block] every [periodMs] while this screen is started. A backgrounded activity keeps its
+     * composition, so a loop launched from it without the lifecycle keeps reading after the owner
+     * has left.
+     */
+    private suspend fun everyWhileStarted(periodMs: Long, block: suspend () -> Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                block()
+                kotlinx.coroutines.delay(periodMs)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -622,15 +638,14 @@ class PhoneShellActivity : ComponentActivity() {
         statusHost = PhoneStatusHost(statusViewModel)
         setContent {
             LaunchedEffect(Unit) {
-                while (true) {
+                everyWhileStarted(2_000) {
                     refreshImports()
                     refreshIntake()
-                    kotlinx.coroutines.delay(2_000)
                 }
             }
             var watchPage by remember { mutableStateOf<WatchSourcePageModel?>(null) }
             LaunchedEffect(Unit) {
-                while (true) {
+                everyWhileStarted(2_000) {
                     watchPage = withContext(Dispatchers.IO) {
                         runCatching {
                             val contact = PhoneWatchContactStore(this@PhoneShellActivity).read()
@@ -659,7 +674,6 @@ class PhoneShellActivity : ComponentActivity() {
                             }
                         }.getOrElse { watchPage?.copy(waitingCount = null, isSilenceStale = true, notice = "held material could not be read. check storage in phone settings and reopen solstone.") }
                     }
-                    kotlinx.coroutines.delay(2_000)
                 }
             }
             val statusState = statusViewModel.statusState
