@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.46] - 2026-11-14
+
 ### Changed
 
 - the solstone app uses less battery while it runs in the background.
