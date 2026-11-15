@@ -10,5 +10,5 @@ license = "AGPL-3.0-only"
 [workspace]
 
 [dependencies]
-spl-core = { git = "https://github.com/solpbc/spl-rust.git", rev = "f1f080fa4138f8e1ac703e643b6f3f7c36ec2834" }
+spl-core = { git = "https://github.com/solpbc/spl-rust.git", rev = "c363a00b2f4782bc4476f50bd74ab595991fc2eb" }
 serde_json = "1"
