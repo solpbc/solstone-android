@@ -23,9 +23,8 @@ internal fun phoneJournalLink(raw: String?): PhoneJournalLink {
         return if (raw.startsWith("https://go.solstone.app/j")) PhoneJournalLink.Invalid else PhoneJournalLink.Other
     }
     if (uri.rawPath != "/j") return PhoneJournalLink.Other
-    if (uri.scheme != "https" || uri.rawAuthority != "go.solstone.app" || uri.rawQuery != null) {
-        return PhoneJournalLink.Invalid
-    }
+    // A query carries nothing of ours (chat apps append their own), so it is ignored.
+    if (uri.scheme != "https" || uri.rawAuthority != "go.solstone.app") return PhoneJournalLink.Invalid
     // Read the raw fragment. Decoding here would accept a different wire grammar.
     val token = uri.rawFragment ?: return PhoneJournalLink.Invalid
     if (!journalLinkToken.matches(token)) return PhoneJournalLink.Invalid

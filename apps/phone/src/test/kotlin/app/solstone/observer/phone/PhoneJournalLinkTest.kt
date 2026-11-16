@@ -24,10 +24,18 @@ class PhoneJournalLinkTest {
             "abc~12a456", "abc~123456~123456", "abc#def", "abc\n").forEach { token ->
             assertIs<PhoneJournalLink.Invalid>(phoneJournalLink("https://go.solstone.app/j#$token"))
         }
-        listOf("https://go.solstone.app/j", "https://go.solstone.app/j?x=1#abc",
+        listOf("https://go.solstone.app/j", "https://go.solstone.app/j?x=1#abc=",
             "https://user@go.solstone.app/j#abc", "http://go.solstone.app/j#abc",
             "https://go.solstone.app:443/j#abc", "https://other.test/j#abc").forEach {
             assertIs<PhoneJournalLink.Invalid>(phoneJournalLink(it))
+        }
+    }
+
+    @Test
+    fun aQueryIsIgnoredAndTheFragmentIsKeptExactly() {
+        listOf("?utm_source=chatgpt.com", "?", "?a=1&b=%20").forEach { query ->
+            val result = assertIs<PhoneJournalLink.Open>(phoneJournalLink("https://go.solstone.app/j$query#Ab_-9~090020"))
+            assertEquals("/app/open/Ab_-9~090020", result.path)
         }
     }
 
