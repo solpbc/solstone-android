@@ -101,6 +101,7 @@ class OkHttpWebSocketDuplexTest {
     @Test
     fun heldFirstReadTimesOutToWaitingException() {
         val duplex = OkHttpWebSocketDuplex(FakeWebSocket(), waitingTimeoutMillis = 30L)
+        duplex.receive(ByteString.EMPTY)
         val failure = AtomicReference<Throwable?>()
 
         val reader = thread(start = true) {
@@ -115,6 +116,20 @@ class OkHttpWebSocketDuplexTest {
         assertFalse(reader.isAlive)
         assertTrue(failure.get() is RelayDialWaitingException)
         assertFalse(failure.get() is RelayWebSocketClosedException)
+    }
+
+    @Test(timeout = 2000)
+    fun relayCanTimeOutAfterReceivingInnerData() {
+        OkHttpWebSocketDuplex(
+            FakeWebSocket(),
+            waitingTimeoutMillis = 1000L,
+            readIdleTimeoutMillis = 30L,
+        ).use { duplex ->
+            duplex.receive(byteArrayOf(4, 5).toByteString())
+            assertEquals(4, duplex.input.read())
+            assertEquals(5, duplex.input.read())
+            assertFailsWith<RelayReadIdleTimeoutException> { duplex.input.read() }
+        }
     }
 
     @Test

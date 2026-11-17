@@ -79,6 +79,8 @@ class OkHttpTunnelOpener(
     private val client: OkHttpClient,
     private val request: Request,
     private val waitingTimeoutMillis: Long = 0L,
+    private val readIdleTimeoutMillis: Long = 0L,
 ) : TunnelOpener {
-    override fun open(): ByteDuplex = OkHttpWebSocketDuplex.open(client, request, waitingTimeoutMillis)
+    override fun open(): ByteDuplex =
+        OkHttpWebSocketDuplex.open(client, request, waitingTimeoutMillis, readIdleTimeoutMillis)
 }

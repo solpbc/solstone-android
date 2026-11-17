@@ -37,6 +37,9 @@ class RelayTransportFailedException(message: String, cause: Throwable? = null) :
 class RelayDialWaitingException(waitingTimeoutMillis: Long) :
     IOException("relay dial waiting: home offline (no inner data within ${waitingTimeoutMillis}ms)")
 
+internal class RelayReadIdleTimeoutException(timeoutMillis: Long) :
+    IOException("relay read idle for ${timeoutMillis}ms after inner data"), RelayTransportFailure
+
 class RelayPairWindowUnavailableException(val statusCode: Int, cause: Throwable? = null) :
     IOException("relay pairing window unavailable (HTTP $statusCode)", cause), RelayTransportFailure
 
@@ -44,6 +47,7 @@ class OkHttpWebSocketDuplex internal constructor(
     socket: BinaryWebSocket,
     private val capacityBytes: Int = DEFAULT_BUFFER_BYTES,
     private val waitingTimeoutMillis: Long = 0L,
+    private val readIdleTimeoutMillis: Long = 0L,
 ) : ByteDuplex, LiveRoot {
     override val category: LedgerCategory = LedgerCategory.WS_QUEUED_CURRENT
     override val capacity: Long
@@ -67,7 +71,8 @@ class OkHttpWebSocketDuplex internal constructor(
     internal constructor(
         capacityBytes: Int = DEFAULT_BUFFER_BYTES,
         waitingTimeoutMillis: Long = 0L,
-    ) : this(NoSocket, capacityBytes, waitingTimeoutMillis) {
+        readIdleTimeoutMillis: Long = 0L,
+    ) : this(NoSocket, capacityBytes, waitingTimeoutMillis, readIdleTimeoutMillis) {
         socket = null
     }
 
@@ -82,6 +87,7 @@ class OkHttpWebSocketDuplex internal constructor(
     }
 
     internal fun receive(bytes: ByteString) {
+        if (bytes.size == 0) return
         val data = bytes.toByteArray()
         synchronized(lock) {
             while (!closed && failure == null && bufferedBytes + data.size > capacityBytes) {
@@ -180,28 +186,20 @@ class OkHttpWebSocketDuplex internal constructor(
                 return 0
             }
             synchronized(lock) {
-                var deadlineNanos = 0L
-                var haveDeadline = false
+                val waitingForFirstByte = !inboundEverReceived
+                val timeoutMillis = if (waitingForFirstByte) waitingTimeoutMillis else readIdleTimeoutMillis
+                val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
                 while (current == null && queue.isEmpty() && failure == null && !inboundClosed) {
-                    if (!inboundEverReceived && waitingTimeoutMillis > 0) {
-                        val nowNanos = System.nanoTime()
-                        if (!haveDeadline) {
-                            deadlineNanos = nowNanos + TimeUnit.MILLISECONDS.toNanos(waitingTimeoutMillis)
-                            haveDeadline = true
-                        }
-                        val remainingNanos = deadlineNanos - nowNanos
-                        if (remainingNanos <= 0L) {
-                            throw RelayDialWaitingException(waitingTimeoutMillis)
-                        }
-                        val waitMillis = maxOf(
-                            1L,
-                            TimeUnit.NANOSECONDS.toMillis(remainingNanos) +
-                                if (remainingNanos % 1_000_000L != 0L) 1L else 0L,
-                        )
-                        lock.wait(waitMillis)
-                    } else {
+                    if (timeoutMillis == 0L) {
                         lock.wait()
+                        continue
                     }
+                    val remainingNanos = deadlineNanos - System.nanoTime()
+                    if (remainingNanos <= 0L) {
+                        if (waitingForFirstByte) throw RelayDialWaitingException(timeoutMillis)
+                        throw RelayReadIdleTimeoutException(timeoutMillis)
+                    }
+                    TimeUnit.NANOSECONDS.timedWait(lock, remainingNanos)
                 }
                 failure?.let { throw it }
                 if (current == null) {
@@ -257,8 +255,12 @@ class OkHttpWebSocketDuplex internal constructor(
             client: OkHttpClient,
             request: Request,
             waitingTimeoutMillis: Long = 0L,
+            readIdleTimeoutMillis: Long = 0L,
         ): OkHttpWebSocketDuplex {
-            val duplex = OkHttpWebSocketDuplex(waitingTimeoutMillis = waitingTimeoutMillis)
+            val duplex = OkHttpWebSocketDuplex(
+                waitingTimeoutMillis = waitingTimeoutMillis,
+                readIdleTimeoutMillis = readIdleTimeoutMillis,
+            )
             val opened = CountDownLatch(1)
             val webSocket = client.newWebSocket(
                 request,

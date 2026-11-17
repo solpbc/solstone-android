@@ -542,6 +542,7 @@ fun openRelaySyncClient(
     streamObserver: PlStreamObserver? = null,
     dialObserver: RelayDialObserver? = null,
     verdictListener: app.solstone.core.pl.JournalVerdictListener? = null,
+    readIdleTimeoutMillis: Long = 0L,
 ): ConscryptPlHttpClient {
     val origin = parseProductionRelayOrigin(relayOrigin) ?: error("invalid relay origin: $relayOrigin")
     val request = relayWebSocketRequest(origin, "/session/dial", instanceId, deviceToken)
@@ -562,6 +563,7 @@ fun openRelaySyncClient(
                 .build(),
             request,
             RELAY_SYNC_WAITING_TIMEOUT_MS,
+            readIdleTimeoutMillis,
         ),
         RelayTlsMode.Authenticated(credential),
         streamObserver,

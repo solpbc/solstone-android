@@ -177,7 +177,8 @@ private fun legFailure(
             SyncOutcome.RETRY
         }
         LegOutcome.DECIDED -> {
-            log("journal refused this device $stage; retry", failure)
+            val message = if (attempt.refusal == null) "journal connection interrupted" else "journal refused this device"
+            log("$message $stage; retry", failure)
             SyncOutcome.RETRY
         }
         LegOutcome.STOPPED -> {

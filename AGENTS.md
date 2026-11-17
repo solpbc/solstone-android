@@ -48,9 +48,11 @@ The Rogbid commands and `ROGBID_SERIAL=<serial>` are retained for historical/man
 
 ## CI gates
 
-There are two maintained gates. **`make ci` is the fast gate.** It runs the GitHub-release binding tests (`make test-release`), JVM unit tests, lint, root guards (including the Android API surface check), and assembles, with **no instrumented tests**, and it must stay fast. **`make ci-device` is the slower phone device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for `platform/persistence-room`, `platform/pl-transport-conscrypt`, `platform/calendar`, `formfactor/phone`, and the phone mock flavor, plus one narrowly-gated real-flavor phone test. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host. `ci-device-experimental` is a parked manual command, not a maintained gate.
+**`make ci` is the fast gate.** It runs the GitHub-release binding tests (`make test-release`), JVM unit tests, lint, root guards (including the Android API surface check), and assembles, with **no instrumented tests**, and it must stay fast. **`make ci-device` is the slower phone device gate**: it runs the Gradle Managed Device (`pixel5api35`) instrumented tests for `platform/persistence-room`, `platform/pl-transport-conscrypt`, `platform/calendar`, `formfactor/phone`, and the phone mock flavor, plus one narrowly-gated real-flavor phone test. Never fold the device gate into `make ci`. Run `make ci-device` directly on a machine with a working headless emulator, or `ANDROID_REMOTE_HOST=host.local make android-host-ci-device` to run it on a remote build host. `ci-device-experimental` is a parked manual command, not a maintained gate.
 
-**Run `make ci-device` manually before declaring an on-device change shipped**: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any `src/androidTest`. `dist-phone` does not run this gate. `make ci` does not run Android instrumented tests. It does check every platform reference the pure-JVM `core/*` and `platform/camera-still` modules ship in the app against the Android SDK at the app's `minSdk` (`:apps:phone:checkAndroidApiSurface`), because those modules compile against the host JDK and a JDK API Android lacks would otherwise pass every JVM test and fail on the phone. That check reads API presence only; runtime behaviour still needs the device gate.
+Run `make ci-wear-device` on an Android build host to execute `:apps:wear` instrumented tests on the Wear OS managed device. Run it for Wear releases and changes to the Wear instrumented tests.
+
+**Run `make ci-device` manually before declaring an on-device change shipped**: `core/spool`, `core/segment`, `core/queue`, Room schema or migrations, any `platform/*` adapter, or any phone instrumented test. `dist-phone` does not run this gate. `make ci` does not run Android instrumented tests. It does check every platform reference the pure-JVM `core/*` and `platform/camera-still` modules ship in the app against the Android SDK at the app's `minSdk` (`:apps:phone:checkAndroidApiSurface`), because those modules compile against the host JDK and a JDK API Android lacks would otherwise pass every JVM test and fail on the phone. That check reads API presence only; runtime behaviour still needs the device gate.
 
 **No gate in this repo sends a segment to a journal.** The device gate and the HITL flow never pair, so a build can pass every one of them and send nothing. A change on the path a segment travels (the `core` modules that build, queue and send it, the transport, identity, work and persistence adapters, the phone manifest or build file, or phone code named for pairing or sync) owes an operator-run paired send before it ships: a bench phone pairs with a disposable journal, directly and through the relay, and a segment over the 1 MiB send credit from that exact build has to arrive. `make ci` names this debt at the end of its output when it is owed.
 
@@ -65,8 +67,7 @@ rename from `support site` to `get help` sat red until a release attempt.
 control* rather than a renamed one, and a substring that is still on screen does not satisfy the
 assertion. Selectors are regex — escape `+` (`'Status \+ queue/sync'`, single-quoted in YAML).
 
-⚠ **`make ci-device` does not run it either** — the Maestro flow is not an instrumented test, so
-*both* maintained gates are blind to it.
+⚠ **`make ci-device` does not run it either** — the Maestro flow is not an instrumented test.
 
 ✅ Changed a label, a row, or a pane title an owner sees? `grep` it in `.maestro/phone-smoke.yaml`
 before you commit.

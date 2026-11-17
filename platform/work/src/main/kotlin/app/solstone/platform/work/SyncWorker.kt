@@ -33,7 +33,11 @@ import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import app.solstone.core.push.PushRegistrationCoordinator
@@ -50,6 +54,9 @@ import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.SyncStateRow
 
 private const val TAG = "SyncWorker"
+private const val LONG_SYNC_MS = 60_000L
+// Outer WebSocket pings can still succeed while the inner journal stream makes no progress.
+private const val RELAY_READ_IDLE_MS = 60_000L
 
 fun scheduleOptionalJobsIfPairingCurrent(
     snapshotIdentity: PairedHome,
@@ -119,13 +126,16 @@ internal fun executeSyncRun(
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    setPhase: (String) -> Unit = {},
 ): SyncRunExecutionResult {
     if (!SyncDrainGate.tryAcquire()) {
         workerLog("i", "identity boundary already in use; deferring", null)
         return SyncRunExecutionResult(SyncOutcome.RETRY, false, gateBusy = true)
     }
     try {
+        setPhase("waiting for pairing state")
         val (credentials, allowsOwnerMaterial) = stores.publisher.withMutationBoundary {
+            setPhase("reading pairing state")
             val creds = recoverSyncCredentials(stores.publisher)
             val allows = when (creds) {
                 is SyncCredentials.Ready -> confirmedFor(
@@ -155,6 +165,7 @@ internal fun executeSyncRun(
                     drainStore = drainStore,
                     customOpenClient = openClient,
                     localDescriptionProvider = localDescriptionProvider,
+                    setPhase = setPhase,
                 )
                 val held = outcome == SyncOutcome.SUCCESS && !allowsOwnerMaterial
                 return SyncRunExecutionResult(outcome, held)
@@ -175,6 +186,7 @@ internal fun completeSyncRun(
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    setPhase: (String) -> Unit = {},
 ): SyncOutcome {
     var outcome = SyncOutcome.FAILURE
     var heldUnconfirmed = false
@@ -191,6 +203,7 @@ internal fun completeSyncRun(
             openClient = openClient,
             afterCredentialsFrozen = afterCredentialsFrozen,
             localDescriptionProvider = localDescriptionProvider,
+            setPhase = setPhase,
         )
         outcome = result.outcome
         heldUnconfirmed = result.heldUnconfirmed
@@ -243,20 +256,30 @@ class SyncWorker(
         this.testDeviceLabel = deviceLabel
     }
 
-    override suspend fun doWork(): Result =
-        withContext(Dispatchers.IO) {
-            val outcome = completeSyncRun(
-                openStores = testOpenStores ?: { syncStores(applicationContext) },
-                context = if (testOpenStores != null) null else applicationContext,
-                spoolDir = testSpoolDir,
-                deviceLabel = testDeviceLabel ?: deviceLabel(),
-                drainStore = testDrainStore,
-                openClient = testOpenClient,
-                afterCredentialsFrozen = testAfterCredentialsFrozen,
-                localDescriptionProvider = testLocalDescriptionProvider,
-            )
-            outcome.toWorkResult()
+    override suspend fun doWork(): Result = coroutineScope {
+        val phase = AtomicReference("opening sync stores")
+        val slowRun = launch {
+            delay(LONG_SYNC_MS)
+            workerLog("w", "sync still running after ${LONG_SYNC_MS}ms: ${phase.get()}", null)
         }
+        try {
+            withContext(Dispatchers.IO) {
+                completeSyncRun(
+                    openStores = testOpenStores ?: { syncStores(applicationContext) },
+                    context = if (testOpenStores != null) null else applicationContext,
+                    spoolDir = testSpoolDir,
+                    deviceLabel = testDeviceLabel ?: deviceLabel(),
+                    drainStore = testDrainStore,
+                    openClient = testOpenClient,
+                    afterCredentialsFrozen = testAfterCredentialsFrozen,
+                    localDescriptionProvider = testLocalDescriptionProvider,
+                    setPhase = phase::set,
+                ).toWorkResult()
+            }
+        } finally {
+            slowRun.cancel()
+        }
+    }
 
     private fun SyncOutcome.toWorkResult(): Result =
         when (this) {
@@ -310,7 +333,9 @@ private fun sync(
     customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
     customImportStore: ImportCustodyStore? = null,
+    setPhase: (String) -> Unit,
 ): SyncOutcome {
+    setPhase("opening delivery stores")
     val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
     var shouldCloseDb = false
     var dbToClose: SolstonePersistenceDatabase? = null
@@ -396,6 +421,7 @@ private fun sync(
     val attempt = guard?.begin(attemptPairing) ?: JournalAttempt.untracked(attemptPairing)
     try {
         val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
+            setPhase(if (selectedTransport is SyncTransport.Relay) "syncing over relay" else "syncing directly")
             val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
             val pairingMatches = access.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
             val relayMatches = if (selectedTransport is SyncTransport.Relay) {
@@ -439,12 +465,16 @@ private fun sync(
                             log = { workerLog("w", it, null) },
                         )
                     }
-                    stores.publisher.withMutationBoundary {
-                        val current = stores.publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
-                        val expected = credentials.pairingSnapshot
-                        if (selectedTransport is SyncTransport.Direct && current != null && expected != null && current.pairing == expected.pairing && current.revisions.pairingRevision == expected.revisions.pairingRevision && !current.directAssociated) {
-                            stores.publisher.associateDirectIfProven(current.pairing, selectedTransport.endpoint) { true }
+                    if (selectedTransport is SyncTransport.Direct) {
+                        setPhase("updating direct pairing address")
+                        stores.publisher.withMutationBoundary {
+                            val current = stores.publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+                            val expected = credentials.pairingSnapshot
+                            if (current != null && expected != null && current.pairing == expected.pairing && current.revisions.pairingRevision == expected.revisions.pairingRevision && !current.directAssociated) {
+                                stores.publisher.associateDirectIfProven(current.pairing, selectedTransport.endpoint) { true }
+                            }
                         }
+                        setPhase("syncing directly")
                     }
                     val currentTransport = currentOptionalTransport(selectedTransport, credentials.identity, stores.identityMutator)
                     if (currentTransport == null) {
@@ -537,6 +567,7 @@ private fun sync(
                 attempted
             }
             is SyncTransport.Relay -> {
+                setPhase("checking relay access")
                 val maintained = maintainRelayToken(
                     identity = credentials.identity,
                     transport = transport,
@@ -566,6 +597,7 @@ private fun sync(
                 relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
             )
             if (relayTransport != null) {
+                setPhase("checking relay access")
                 val maintained = maintainRelayToken(
                     identity = credentials.identity,
                     transport = relayTransport,
@@ -639,6 +671,7 @@ private fun openSyncClient(
             transport.deviceToken,
             credential,
             verdictListener = verdictListener,
+            readIdleTimeoutMillis = RELAY_READ_IDLE_MS,
         )
     }
 

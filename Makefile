@@ -65,6 +65,10 @@ ci-device:
 	# checkout that ran it, once the host's gate has returned green.
 	@mkdir -p artifacts/ci-device && git rev-parse HEAD > artifacts/ci-device/$$(git rev-parse HEAD) 2>/dev/null || true
 
+.PHONY: ci-wear-device
+ci-wear-device:
+	$(GRADLE) -Pandroid.testoptions.manageddevices.emulator.gpu=host :apps:wear:wearRoundApi34DebugAndroidTest
+
 format:
 	@echo "No formatter is configured yet."
 

@@ -61,6 +61,18 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        managedDevices {
+            localDevices {
+                create("wearRoundApi34") {
+                    device = "Wear OS Large Round"
+                    apiLevel = 34
+                    systemImageSource = "android-wear"
+                }
+            }
+        }
+    }
 }
 
 dependencies {

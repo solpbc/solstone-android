@@ -59,6 +59,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.nio.file.Files
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
@@ -68,6 +69,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -394,6 +396,67 @@ class SyncWorkerGateTest {
         assertTrue(port == null || port.registeredVapidKeys.isEmpty())
         assertFalse(client.requests.any { it.path == "/api/push/register" })
         assertFalse(client.requests.any { it.path == "/api/push/vapid-key" })
+    }
+
+    @Test
+    fun retryReconcilesAnUploadWhoseAcknowledgmentTimedOutAndDeliversTheRest() {
+        val (stores, graph, _) = createStores(enablePush = false)
+        graph.installOrReplace(testHome(), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
+
+        val spoolDir = temp.newFolder()
+        val (drainStore, segmentIds) = setupSpoolAndDrainStore(spoolDir)
+        val firstId = segmentIds.first()
+        val secondId = segmentIds.last()
+        val firstBytes = byteArrayOf(1, 2, 3)
+        val firstDigest = "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+        drainStore.add(
+            drainStore.row(firstId).copy(sealedAt = 0),
+            drainStore.filesBySegmentId(firstId).map { it.copy(sha256 = firstDigest) },
+        )
+
+        fun run(client: MockPlHttpClient) = completeSyncRun(
+            openStores = { stores },
+            spoolDir = spoolDir,
+            drainStore = drainStore,
+            openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+        )
+
+        var journalHasFirst = false
+        val stalled = MockPlHttpClient { method, path, body ->
+            when {
+                journalHasFirst -> throw SocketTimeoutException("test transport timeout")
+                method == "POST" && path == INGEST_PATH -> {
+                    assertTrue(body!!.decodeToString().contains("a.bin"))
+                    assertTrue(body.asList().windowed(firstBytes.size).contains(firstBytes.toList()))
+                    journalHasFirst = true
+                    throw SocketTimeoutException("test lost acknowledgment")
+                }
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+        assertEquals(SyncOutcome.RETRY, run(stalled))
+        assertTrue(journalHasFirst)
+        assertEquals(QueueState.FAILED, drainStore.row(firstId).state)
+        assertEquals(QueueState.SEALED, drainStore.row(secondId).state)
+        assertContentEquals(firstBytes, File(spoolDir, "$firstId/a.bin").readBytes())
+
+        // Advance past the retry delay without sleeping. The journal proves the first copy by its
+        // segment key, filename, size and hash, so only the second item needs to go over the wire.
+        drainStore.add(drainStore.row(firstId).copy(lastAttemptAt = 0))
+        val recovered = MockPlHttpClient { method, path, body ->
+            if (method == "GET" && path == "$SEGMENTS_PATH/$WORK_TEST_DAY?source=source1") {
+                val inventory = """{"items":[{"key":"seg-1","files":[{"name":"a.bin","size":3,"sha256":"$firstDigest","status":"present"}]}],"total":1,"protocol_version":3}"""
+                HttpResponse(200, emptyMap(), inventory.toByteArray())
+            } else {
+                standardMockResponses(method, path, body)
+            }
+        }
+        assertEquals(SyncOutcome.SUCCESS, run(recovered))
+        val delivered = recovered.requests.single { it.method == "POST" && it.path == INGEST_PATH }
+        assertTrue(delivered.body!!.decodeToString().contains("b.bin"))
+        for (id in segmentIds) assertEquals(QueueState.EVICTED, drainStore.row(id).state)
     }
 
     @Test
