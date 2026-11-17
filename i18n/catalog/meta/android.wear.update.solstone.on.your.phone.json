@@ -1,0 +1,16 @@
+{
+  "description": "update solstone on your phone",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 58,
+  "source_revision": "eff6e6bfb8107e4de8883334c005880c45cc638968e139123f636bc46ccf824c",
+  "risk": "routine",
+  "auto_merge": true
+}

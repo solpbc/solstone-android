@@ -1,0 +1,16 @@
+{
+  "description": "?",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity. Apple Watch/iOS twin: ios.pairing.body2, ios.pairing.body2.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "097506f5ee4852ce44681bb550100b9048fef2b5edf72f1dbce86600c2cb11c6",
+  "risk": "routine",
+  "auto_merge": true
+}

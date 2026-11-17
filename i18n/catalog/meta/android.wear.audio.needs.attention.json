@@ -1,0 +1,16 @@
+{
+  "description": "audio needs attention",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 42,
+  "source_revision": "45d724b5b396697cd5da8cb62a05cddbaca5c586a3c3aad90f503c91495e2e01",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,17 @@
+{
+  "description": "watch-to-phone delivery may use Google's encrypted relay when Bluetooth is unavailable.",
+  "context": "Shared courier notice: Wear details and the phone source model. Source: core/watch-courier/WatchCourierStrings.kt.",
+  "surfaces": [
+    "wear",
+    "phone"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 174,
+  "source_revision": "13f5d78929bee15ff1486f1fc651aa812993444ed70101c689566c591b2d15a5",
+  "risk": "routine",
+  "auto_merge": true
+}

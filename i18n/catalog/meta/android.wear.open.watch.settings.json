@@ -1,0 +1,16 @@
+{
+  "description": "open watch settings",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 38,
+  "source_revision": "3db1698f6b618e1a0c843abf256689e8c9faa92b80ae99d4bca60449a266ae2f",
+  "risk": "routine",
+  "auto_merge": true
+}

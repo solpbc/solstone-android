@@ -1,0 +1,16 @@
+{
+  "description": "session ended unexpectedly",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 52,
+  "source_revision": "c6e1a32fb5d996558f73d90fa9c1dd973478d9d887e06ecff6d7f8c4354bf5c7",
+  "risk": "routine",
+  "auto_merge": true
+}

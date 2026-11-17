@@ -1,0 +1,16 @@
+{
+  "description": "stop",
+  "context": "Shown by WatchFacePresentation.kt. Apple Watch/iOS twin: ios.app.stop.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "6c180d33471ea7c00596419062765675f3e825b724d46ca69a92b2b15734f08f",
+  "risk": "routine",
+  "auto_merge": true
+}

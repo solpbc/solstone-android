@@ -1,0 +1,25 @@
+{
+  "description": "{ $hours } { $minutes }",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "hours",
+      "type": "string"
+    },
+    {
+      "name": "minutes",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 46,
+  "source_revision": "fa99d7ac2002627774f9d30eee30143cba9826a51894ddc7cbbf7269a86dd1cc",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,16 @@
+{
+  "description": "phone checked in",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 32,
+  "source_revision": "afcaf1777d851c489a6c312a899987c18f7284940fadc849df53cf89e9d5be76",
+  "risk": "routine",
+  "auto_merge": true
+}

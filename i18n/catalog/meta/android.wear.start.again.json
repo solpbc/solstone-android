@@ -1,0 +1,16 @@
+{
+  "description": "start again",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "7f815c56d174cebd8d2cac8b0b87299102a6bbf9249dd0162359a4e475ffecc0",
+  "risk": "routine",
+  "auto_merge": true
+}

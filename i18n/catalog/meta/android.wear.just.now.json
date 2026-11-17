@@ -1,0 +1,16 @@
+{
+  "description": "just now",
+  "context": "Shown by WatchFacePresentation.kt. Apple Watch/iOS twin: ios.app.watchrelativejustnow.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "95d31b7ca8349d7453fae3cd77f41a7476baa262a222237aa2dfb2b4d2cc9f86",
+  "risk": "routine",
+  "auto_merge": true
+}

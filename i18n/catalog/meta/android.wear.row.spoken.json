@@ -1,0 +1,25 @@
+{
+  "description": "{ $label }: { $value }",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity. Apple Watch/iOS twin: ios.watch.appendexportsection, ios.watch.appendexportsection.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "label",
+      "type": "string"
+    },
+    {
+      "name": "value",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 44,
+  "source_revision": "042ca3bf6edb35c81241d02fd2617336c352637225bb5cf225224c732e7d35d3",
+  "risk": "routine",
+  "auto_merge": true
+}

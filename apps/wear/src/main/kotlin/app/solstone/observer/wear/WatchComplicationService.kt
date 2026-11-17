@@ -2,7 +2,6 @@
 // Copyright (c) 2026 sol pbc
 package app.solstone.observer.wear
 
-import app.solstone.core.watch.courier.WatchCourierStrings
 import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.*
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
@@ -18,8 +17,8 @@ class WatchComplicationService : SuspendingComplicationDataSourceService() {
     override fun getPreviewData(type:ComplicationType):ComplicationData? =
         if(type==ComplicationType.SHORT_TEXT)unknown() else null
     private fun unknown():ShortTextComplicationData = ShortTextComplicationData.Builder(
-        PlainComplicationText.Builder("?").build(),
-        PlainComplicationText.Builder("session status unknown. open ${WatchCourierStrings.SOLSTONE}").build()
+        PlainComplicationText.Builder(AndroidWatchCopy(resources).text(WatchMessage.COMPLICATION_UNKNOWN)).build(),
+        PlainComplicationText.Builder(AndroidWatchCopy(resources).text(WatchMessage.COMPLICATION_SPOKEN)).build()
     ).setMonochromaticImage(MonochromaticImage.Builder(Icon.createWithResource(this,R.drawable.ic_sun_mono)).build())
         .setTapAction(wearOpenFaceIntent(this)).build()
 }

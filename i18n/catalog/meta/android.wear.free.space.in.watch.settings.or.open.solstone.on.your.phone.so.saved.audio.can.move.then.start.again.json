@@ -1,0 +1,16 @@
+{
+  "description": "free space in watch settings, or open solstone on your phone so saved audio can move. then start again.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 206,
+  "source_revision": "93e5dac1b904f14e5fd9d66c4c8f27260ac8a06111945a3a96f3a2a1a633eeb4",
+  "risk": "routine",
+  "auto_merge": true
+}

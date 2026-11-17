@@ -1,0 +1,22 @@
+{
+  "description": "{ $count }",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity. Apple Watch/iOS twin: ios.liveactivity.text, ios.liveactivity.text.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "b70c338b8b1e7ee88e5c1434c27cb3935c39d5368a8dd458c63b31c6b6d5b9d1",
+  "risk": "routine",
+  "auto_merge": true
+}

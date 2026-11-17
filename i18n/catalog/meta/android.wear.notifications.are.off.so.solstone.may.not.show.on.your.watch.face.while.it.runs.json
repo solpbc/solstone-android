@@ -1,0 +1,16 @@
+{
+  "description": "notifications are off, so solstone may not show on your watch face while it runs.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 162,
+  "source_revision": "a97f6648beb227c4237e3fee591132115d689dfe2f44da3eb5ad9765bb49c937",
+  "risk": "routine",
+  "auto_merge": true
+}

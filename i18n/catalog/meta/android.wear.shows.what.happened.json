@@ -1,0 +1,16 @@
+{
+  "description": "shows what happened",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 38,
+  "source_revision": "e26da58614f2769446a068edee32d69b00ea4673e02b83721ad1d90148e39fae",
+  "risk": "routine",
+  "auto_merge": true
+}

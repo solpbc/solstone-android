@@ -14,10 +14,21 @@ android {
         versionCode = 53
         versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val courierStrings = rootProject.file("core/watch-courier/src/main/kotlin/app/solstone/core/watch/courier/WatchCourierStrings.kt").readText()
-        val launcherName = Regex("const val SOLSTONE = \"([^\"]+)\"").find(courierStrings)?.groupValues?.get(1)
-            ?: error("Missing named watch launcher string")
-        resValue("string", "app_name", launcherName)
+    }
+
+    sourceSets {
+        getByName("main") {
+            res.srcDir(rootProject.file("i18n/generated/android/android-wear"))
+            res.srcDir(rootProject.file("i18n/previews/res"))
+            java.srcDir(rootProject.file("i18n/generated/kotlin"))
+        }
+        getByName("test").java.srcDir(rootProject.file("i18n/generated/test"))
+        getByName("androidTest").java.srcDir(rootProject.file("i18n/generated/test"))
+    }
+    androidResources {
+        localeFilters += rootProject.file("i18n/generated/android/android-wear").listFiles()!!
+            .filter { it.isDirectory && it.name.startsWith("values-") }
+            .map { it.name.removePrefix("values-") }
     }
 
     signingConfigs {

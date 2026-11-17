@@ -1,0 +1,16 @@
+{
+  "description": "taking it in",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "51f47e45110938d157f638454ee7f6115bb151095808afb929dad58e751baa63",
+  "risk": "routine",
+  "auto_merge": true
+}

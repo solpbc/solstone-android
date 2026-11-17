@@ -19,6 +19,8 @@ import androidx.core.content.ContextCompat
 import app.solstone.core.watch.courier.*
 import app.solstone.observer.wear.WearOngoingActivity
 import app.solstone.observer.wear.WatchSessionCopy
+import app.solstone.observer.wear.AndroidWatchCopy
+import app.solstone.observer.wear.WatchMessage
 import app.solstone.observer.wear.capture.ContinuousAudioRecorder
 import app.solstone.observer.wear.spool.WatchSpoolStore
 import app.solstone.observer.wear.worker.WatchTransferWorker
@@ -56,6 +58,20 @@ class WearCaptureForegroundService : Service() {
         statusStore = WatchCaptureStatusStore(noBackupFilesDir)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.getNotificationChannel(CHANNEL_ID)?.let { channel ->
+            channel.name = AndroidWatchCopy(resources).text(WatchMessage.APP_NAME)
+            manager.createNotificationChannel(channel)
+        }
+        if (isRunning && !ending) {
+            val state = previousState ?: WatchSessionState.STARTING
+            manager.notify(NOTIFICATION_ID, WearOngoingActivity.build(this, CHANNEL_ID, NOTIFICATION_ID,
+                WatchSessionCopy.label(WatchSessionReduction(state), AndroidWatchCopy(resources))))
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -71,14 +87,14 @@ class WearCaptureForegroundService : Service() {
     private fun startCapture() {
         ending = false
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, WatchCourierStrings.SOLSTONE, NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, AndroidWatchCopy(resources).text(WatchMessage.APP_NAME), NotificationManager.IMPORTANCE_LOW))
         try {
             val hasLocation = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION).any {
                 ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
             }
             val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
                 if (hasLocation) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
-            startForeground(NOTIFICATION_ID, WearOngoingActivity.build(this, CHANNEL_ID, NOTIFICATION_ID, "starting"), type)
+            startForeground(NOTIFICATION_ID, WearOngoingActivity.build(this, CHANNEL_ID, NOTIFICATION_ID, AndroidWatchCopy(resources).text(WatchMessage.STARTING)), type)
             isRunning = true
             recorderSnapshot = WatchRecorderSnapshot(startSucceeded = true, startedAtEpochMs = System.currentTimeMillis(), startedAtElapsedMs = SystemClock.elapsedRealtime())
             statusStore.write(WatchSessionState.STARTING, null, recorderSnapshot.startedAtEpochMs)
@@ -116,7 +132,7 @@ class WearCaptureForegroundService : Service() {
             }
             previousState = reduction.state
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,
-                WearOngoingActivity.build(this, CHANNEL_ID, NOTIFICATION_ID, WatchSessionCopy.label(reduction)))
+                WearOngoingActivity.build(this, CHANNEL_ID, NOTIFICATION_ID, WatchSessionCopy.label(reduction, AndroidWatchCopy(resources))))
         }
     }
 

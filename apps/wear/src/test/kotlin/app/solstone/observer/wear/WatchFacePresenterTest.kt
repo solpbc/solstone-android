@@ -18,7 +18,7 @@ class WatchFacePresenterTest {
         elapsedMs: Long? = null,
     ) = WatchFaceFacts(reduction, engaged, elapsedMs, savedCount, false, notificationsOff, notificationsAsked,
         locationOff = false, locationAsked = false, peerVersion = peerVersion, peerContactAt = peerContactAt, nowMs = now)
-    private fun present(f: WatchFaceFacts) = WatchFacePresenter.present(f) { "clock" }
+    private fun present(f: WatchFaceFacts) = WatchFacePresenter.present(f, EnglishWatchCopy) { "clock" }
 
     @Test fun aFreshInstallShowsNoAttentionBeforeTheOwnerHasBeenAskedAnything() {
         val m = present(facts(peerContactAt = null, peerVersion = null))
@@ -63,13 +63,13 @@ class WatchFacePresenterTest {
 
     @Test fun theRelayNoticeIsAlwaysTheLastLine() {
         listOf(facts(), facts(notificationsAsked = true), facts(peerContactAt = null)).forEach {
-            assertSame(WatchCourierStrings.RELAY_NOTICE_SHORT, present(it).notes.last())
+            assertEquals(WatchCourierStrings.RELAY_NOTICE_SHORT, present(it).notes.last())
         }
     }
 
     @Test fun elapsedFollowsTheAppleWatchForm() {
-        assertEquals("59s", WatchFacePresenter.elapsedDisplay(59))
-        assertEquals("1h 5m", WatchFacePresenter.elapsedDisplay(3_900))
-        assertEquals("1 hour 5 minutes", WatchFacePresenter.elapsedSpoken(3_900))
+        assertEquals("59s", WatchFacePresenter.elapsedDisplay(59, EnglishWatchCopy))
+        assertEquals("1h 5m", WatchFacePresenter.elapsedDisplay(3_900, EnglishWatchCopy))
+        assertEquals("1 hour 5 minutes", WatchFacePresenter.elapsedSpoken(3_900, EnglishWatchCopy))
     }
 }

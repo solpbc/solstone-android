@@ -1,0 +1,16 @@
+{
+  "description": "open settings",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity. Apple Watch/iOS twin: ios.home.opensettings.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 26,
+  "source_revision": "33374347f1a911a0c05f2b7613b89ffbfcf5d4ca37138429f8e5e044b9e45795",
+  "risk": "routine",
+  "auto_merge": true
+}

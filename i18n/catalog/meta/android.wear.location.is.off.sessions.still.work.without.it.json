@@ -1,0 +1,16 @@
+{
+  "description": "location is off. sessions still work without it.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 96,
+  "source_revision": "eb2453957e1f03cb8107b14d28323ccd34d128f8365bea3093ffe2d84a8f1e7c",
+  "risk": "routine",
+  "auto_merge": true
+}

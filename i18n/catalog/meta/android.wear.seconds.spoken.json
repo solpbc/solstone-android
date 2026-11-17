@@ -1,0 +1,26 @@
+{
+  "description": "Spoken second count.",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 24,
+  "source_revision": "adefa71f0cc21fa8857111bc6cd299d7b9c21dd0fd8c07b25f2aee7f6f5d961b",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

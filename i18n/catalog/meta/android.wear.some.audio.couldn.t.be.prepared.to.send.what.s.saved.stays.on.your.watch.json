@@ -1,0 +1,16 @@
+{
+  "description": "some audio couldn't be prepared to send. what's saved stays on your watch.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 148,
+  "source_revision": "648714080ad9e874aeea1e6b67862a69a98d4aa78d5f57a4dbb96be4291addc4",
+  "risk": "routine",
+  "auto_merge": true
+}

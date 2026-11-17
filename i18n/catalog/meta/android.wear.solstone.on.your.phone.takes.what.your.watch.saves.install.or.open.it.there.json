@@ -1,0 +1,16 @@
+{
+  "description": "solstone on your phone takes what your watch saves. install or open it there.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 154,
+  "source_revision": "a17147b974f887bc0c686786e61dbb6c674b804432fb0f30ba83cc0e92b55b61",
+  "risk": "routine",
+  "auto_merge": true
+}

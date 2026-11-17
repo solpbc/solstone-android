@@ -1,0 +1,16 @@
+{
+  "description": "solstone. start a session. open",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 62,
+  "source_revision": "43d07ab0039ef236196ce2a8d82ccd22624a0371da74282b7d7acb96441b2259",
+  "risk": "routine",
+  "auto_merge": true
+}

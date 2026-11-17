@@ -15,14 +15,19 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:supportsRtl="true">
+        android:label="@string/m616e64726f69642e776561722e6170702e6e616d65"
+        android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config">
 
         <uses-library android:name="com.google.android.wearable" android:required="true" />
 
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="false" />
+
+        <receiver android:name=".WearLocaleChangedReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.LOCALE_CHANGED" /></intent-filter>
+        </receiver>
 
         <activity
             android:name="app.solstone.observer.wear.WearMainActivity"
@@ -41,7 +46,7 @@
 
         <service
             android:name=".WatchTileService"
-            android:label="@string/app_name"
+            android:label="@string/m616e64726f69642e776561722e6170702e6e616d65"
             android:icon="@drawable/ic_sun_mono"
             android:exported="true"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
@@ -64,7 +69,7 @@
 
         <service
             android:name=".WatchComplicationService"
-            android:label="@string/app_name"
+            android:label="@string/m616e64726f69642e776561722e6170702e6e616d65"
             android:icon="@drawable/ic_sun_mono"
             android:exported="true"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">

@@ -25,6 +25,7 @@ import app.solstone.observer.wear.worker.WatchPeerStatusStore
 import java.io.File
 
 class WearMainActivity : ComponentActivity() {
+    private val copy get() = AndroidWatchCopy(resources)
     private lateinit var face: WatchFaceLayout
     private lateinit var statusStore: WatchCaptureStatusStore
     private val handler = Handler(Looper.getMainLooper())
@@ -170,13 +171,14 @@ class WearMainActivity : ComponentActivity() {
                 peerContactAt = peer?.contactAt,
                 nowMs = System.currentTimeMillis(),
             ),
+            copy,
         ) { at -> android.text.format.DateUtils.formatSameDayTime(at, System.currentTimeMillis(), java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).toString() }
         face.show(model)
         when {
-            reduction.endReason == WatchSessionEndReason.PERMISSION_FAILURE && !has(Manifest.permission.RECORD_AUDIO) -> face.setDetailAction("open settings") { settings() }
-            reduction.endReason == WatchSessionEndReason.STORAGE_FULL && filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES -> face.setDetailAction("open watch settings") { startActivity(Intent(Settings.ACTION_SETTINGS)) }
-            failure -> face.setDetailAction("start again") { checkAndStart() }
-            notificationsOff && File(noBackupFilesDir, "notification-permission-asked").exists() -> face.setDetailAction("open settings") { settings() }
+            reduction.endReason == WatchSessionEndReason.PERMISSION_FAILURE && !has(Manifest.permission.RECORD_AUDIO) -> face.setDetailAction(copy.text(WatchMessage.OPEN_SETTINGS)) { settings() }
+            reduction.endReason == WatchSessionEndReason.STORAGE_FULL && filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES -> face.setDetailAction(copy.text(WatchMessage.OPEN_WATCH_SETTINGS)) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+            failure -> face.setDetailAction(copy.text(WatchMessage.START_AGAIN)) { checkAndStart() }
+            notificationsOff && File(noBackupFilesDir, "notification-permission-asked").exists() -> face.setDetailAction(copy.text(WatchMessage.OPEN_SETTINGS)) { settings() }
             else -> face.setDetailAction(null)
         }
     }

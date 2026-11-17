@@ -1,0 +1,16 @@
+{
+  "description": "details",
+  "context": "Shown by WatchFacePresentation.kt. Apple Watch/iOS twin: ios.app.details.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "f8af685e4ac251a0ea489721de141cc7a58e3da955668f2b343bf45b0a2321f5",
+  "risk": "routine",
+  "auto_merge": true
+}

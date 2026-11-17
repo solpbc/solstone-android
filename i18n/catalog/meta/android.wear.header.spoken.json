@@ -1,0 +1,25 @@
+{
+  "description": "{ $status }, { $duration }",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "status",
+      "type": "string"
+    },
+    {
+      "name": "duration",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 52,
+  "source_revision": "2ee84a2f1af6747ea81ebddc26ee825a94381cc4e009b649a5bb5b87dd252dbd",
+  "risk": "routine",
+  "auto_merge": true
+}

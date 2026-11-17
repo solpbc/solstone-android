@@ -2,7 +2,6 @@
 // Copyright (c) 2026 sol pbc
 package app.solstone.observer.wear
 
-import app.solstone.core.watch.courier.WatchCourierStrings
 import androidx.wear.tiles.TileService
 import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
@@ -26,6 +25,7 @@ class WatchTileService : TileService() {
             .build())
 
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): com.google.common.util.concurrent.ListenableFuture<TileBuilders.Tile> {
+        val copy = AndroidWatchCopy(resources)
         val open=ActionBuilders.LaunchAction.Builder().setAndroidActivity(
             ActionBuilders.AndroidActivity.Builder().setPackageName(packageName).setClassName(WearMainActivity::class.java.name).build()
         ).build()
@@ -47,16 +47,16 @@ class WatchTileService : TileService() {
                 .setBackground(ModifiersBuilders.Background.Builder().setColor(ColorBuilders.argb(ORANGE))
                     .setCorner(ModifiersBuilders.Corner.Builder().setRadius(DimensionBuilders.dp(24f)).build()).build())
                 .setClickable(clickable)
-                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription("open ${WatchCourierStrings.SOLSTONE}").build())
+                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription(copy.text(WatchMessage.OPEN_SOLSTONE)).build())
                 .build())
-            .addContent(text("open",15f,ORANGE_INK,bold=true)).build()
+            .addContent(text(copy.text(WatchMessage.OPEN),15f,ORANGE_INK,bold=true)).build()
         val content=LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
             .addContent(sun)
             .addContent(gap(6f))
-            .addContent(text(WatchCourierStrings.SOLSTONE,18f,CREAM,bold=true))
+            .addContent(text(copy.text(WatchMessage.APP_NAME),18f,CREAM,bold=true))
             .addContent(gap(4f))
-            .addContent(text("start a session",13f,CALM))
+            .addContent(text(copy.text(WatchMessage.START_A_SESSION),13f,CALM))
             .addContent(gap(12f))
             .addContent(chip).build()
         val root=LayoutElementBuilders.Box.Builder()
@@ -66,7 +66,7 @@ class WatchTileService : TileService() {
             .setModifiers(ModifiersBuilders.Modifiers.Builder()
                 .setBackground(ModifiersBuilders.Background.Builder().setColor(ColorBuilders.argb(0xff000000.toInt())).build())
                 .setClickable(clickable)
-                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription("${WatchCourierStrings.SOLSTONE}. start a session. open").build()).build())
+                .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription(copy.text(WatchMessage.TILE_SPOKEN)).build()).build())
             .addContent(content).build()
         val layout=LayoutElementBuilders.Layout.Builder().setRoot(root).build()
         return immediate(TileBuilders.Tile.Builder().setResourcesVersion(RESOURCES_VERSION).setTileTimeline(

@@ -1,0 +1,16 @@
+{
+  "description": "microphone stopped",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 36,
+  "source_revision": "8083275fb61b28e9be265ae0552b128f985194d62fe3ae41fcfa21a3b61793d8",
+  "risk": "routine",
+  "auto_merge": true
+}

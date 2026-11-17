@@ -1,0 +1,16 @@
+{
+  "description": "the app closed or your watch restarted. the last few minutes may be incomplete.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 158,
+  "source_revision": "95ac7b58d9e3dedebdb327d0c4e926641df7321786445445d4e03c89bdca0f23",
+  "risk": "routine",
+  "auto_merge": true
+}

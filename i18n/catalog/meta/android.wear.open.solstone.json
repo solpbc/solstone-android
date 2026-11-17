@@ -1,0 +1,16 @@
+{
+  "description": "open solstone",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 26,
+  "source_revision": "c1e44291015389f44866fc5cabe42409f0bd36c44d7f0467f15ffc8a890e6fc5",
+  "risk": "routine",
+  "auto_merge": true
+}

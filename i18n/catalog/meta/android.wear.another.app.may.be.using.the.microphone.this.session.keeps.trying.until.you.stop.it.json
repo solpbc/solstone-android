@@ -1,0 +1,16 @@
+{
+  "description": "another app may be using the microphone. this session keeps trying until you stop it.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 170,
+  "source_revision": "d53e57b06da38616b727b7e1ae4253229cf8e5db5fcf681a6fb88653d679dca3",
+  "risk": "routine",
+  "auto_merge": true
+}

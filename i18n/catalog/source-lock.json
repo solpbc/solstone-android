@@ -1,0 +1,432 @@
+{
+  "lock_version": 1,
+  "messages": [
+    {
+      "id": "android.wear.allow.microphone.access.in.settings.then.start.again",
+      "source": "50f98dff421dab3264b92045b11d4b76a2157e350a178cd268d1b06efbebae23",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.another.app.may.be.using.the.microphone.this.session.keeps.trying.until.you.stop.it",
+      "source": "d53e57b06da38616b727b7e1ae4253229cf8e5db5fcf681a6fb88653d679dca3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.app.name",
+      "source": "bf38593db11de7fe3f5a21bc5fad9ba9de265ad0f9c30825d125df8f075566a3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.audio.interrupted",
+      "source": "35bd0e5ee678d80d4957524ea3e3927dd827bfacc9bea7fba2b6d14d4c8e569b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.audio.needs.attention",
+      "source": "45d724b5b396697cd5da8cb62a05cddbaca5c586a3c3aad90f503c91495e2e01",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.complication.spoken",
+      "source": "4012e250c37a6385d540381921b90177756ed88a03edc3a12a7057d2987ec7f9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.complication.unknown",
+      "source": "097506f5ee4852ce44681bb550100b9048fef2b5edf72f1dbce86600c2cb11c6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.couldn.t.check",
+      "source": "9cc948427998e1f7b9e3c8d4cd9e965a5b5a53ced45f0ad9408b60fe77d6ea7d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.count",
+      "source": "b70c338b8b1e7ee88e5c1434c27cb3935c39d5368a8dd458c63b31c6b6d5b9d1",
+      "contract": "7a0191c2aa252430f776b1be1d0caf6e3101c925cf355639b3a1bdf68ebd8c4b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.details",
+      "source": "f8af685e4ac251a0ea489721de141cc7a58e3da955668f2b343bf45b0a2321f5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.free.space.in.watch.settings.or.open.solstone.on.your.phone.so.saved.audio.can.move.then.start.again",
+      "source": "93e5dac1b904f14e5fd9d66c4c8f27260ac8a06111945a3a96f3a2a1a633eeb4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.header.spoken",
+      "source": "2ee84a2f1af6747ea81ebddc26ee825a94381cc4e009b649a5bb5b87dd252dbd",
+      "contract": "689a03fd2315b95edca85e9dcce2a08a8cfb544084dde28b3f110ef963becb77",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.held.on.your.watch",
+      "source": "9cd1e6300037edb66adb62a5e136774d98ed22c6ea7c3aaadb32beca2a0c9651",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.hours.minutes.short",
+      "source": "72d77b9a775987c0afdc33b9c704d766f2c38ea45788a0088e8b398bfbf64b13",
+      "contract": "db30de81269478d17b2e8a6a7888a59e096ce48be6fe794f616c89995efe80d1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.hours.minutes.spoken",
+      "source": "fa99d7ac2002627774f9d30eee30143cba9826a51894ddc7cbbf7269a86dd1cc",
+      "contract": "8bbcab3e4b5a5daacd791fbab8e48d4038c30e0376af2758453d63efaa7c0dc9",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.hours.spoken",
+      "source": "f26b2a7c573bfe7159a87ec2a1424c46409f7e270b7d910f89ac7fe4a053f050",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.if.nothing.moves.update.solstone.and.google.play.services.on.both.devices",
+      "source": "80b425c58cf57c4073af3e10f19033c43ffa450cc81003c61b6c166aa16848f2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.just.now",
+      "source": "95d31b7ca8349d7453fae3cd77f41a7476baa262a222237aa2dfb2b4d2cc9f86",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.location.is.off.sessions.still.work.without.it",
+      "source": "eb2453957e1f03cb8107b14d28323ccd34d128f8365bea3093ffe2d84a8f1e7c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.microphone.access.needed",
+      "source": "4a9b5c3d3f41e910b9399a766ab87bd84b1da73aa7f4a09a43ebc678936199b2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.microphone.stopped",
+      "source": "8083275fb61b28e9be265ae0552b128f985194d62fe3ae41fcfa21a3b61793d8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.minutes.ago",
+      "source": "7e01d160e04b648ad6f9bd0c2b5ae1c8192e1b08449a9cea69cfbf9c25aa0116",
+      "contract": "7a0191c2aa252430f776b1be1d0caf6e3101c925cf355639b3a1bdf68ebd8c4b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.minutes.short",
+      "source": "337206282716c58114b426e165700f652c01d22755ecc6347ad3f904394b3e00",
+      "contract": "7a0191c2aa252430f776b1be1d0caf6e3101c925cf355639b3a1bdf68ebd8c4b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.minutes.spoken",
+      "source": "1f26ef709391e91da080f2dad64fdea2508debc7ebed28f89ea568d1ea6dd2cc",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.next.steps",
+      "source": "9910cbc31bc2f66c350e7e59ab4ffd86dcc1a964f7a08999e112496c1e657939",
+      "contract": "05ae2d6c021690841c34107998f36a5fbd3f1cf4a0042b2a49dd2e9a9107cece",
+      "protected": "dcae68331ae645fb0420bdf01bce36b6b6938ca71f1cbf44b988b8c8954a7eac",
+      "locales": []
+    },
+    {
+      "id": "android.wear.not.yet",
+      "source": "e23cd835d56da49f05f716a7c100f56943c461f343b469927185d28e935753c1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.notifications.are.off.so.solstone.may.not.show.on.your.watch.face.while.it.runs",
+      "source": "a97f6648beb227c4237e3fee591132115d689dfe2f44da3eb5ad9765bb49c937",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.open",
+      "source": "2848aad91eddcf72bd5c7778d30f39efc5106d302fa697b2f016741c99d733c3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.open.settings",
+      "source": "33374347f1a911a0c05f2b7613b89ffbfcf5d4ca37138429f8e5e044b9e45795",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.open.solstone",
+      "source": "c1e44291015389f44866fc5cabe42409f0bd36c44d7f0467f15ffc8a890e6fc5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.open.watch.settings",
+      "source": "3db1698f6b618e1a0c843abf256689e8c9faa92b80ae99d4bca60449a266ae2f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.phone.checked.in",
+      "source": "afcaf1777d851c489a6c312a899987c18f7284940fadc849df53cf89e9d5be76",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.ready",
+      "source": "4be2aa9b54044ad2fe7b7fd45f4446ed82608b0e81e09b1dbdcb91fb66e38d54",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.relay.notice.full",
+      "source": "2861a8c54ba857d9e24f84a0a137f995ca57998598d33e6eb521f9fcdf04ca92",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.relay.notice.short",
+      "source": "13f5d78929bee15ff1486f1fc651aa812993444ed70101c689566c591b2d15a5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.row.spoken",
+      "source": "042ca3bf6edb35c81241d02fd2617336c352637225bb5cf225224c732e7d35d3",
+      "contract": "597f48e76b7c60a4f8688de7299c65a1f28409a0aa9fbbf69e98cea24f360fe3",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.running",
+      "source": "51abeaec6e8e3212204617e760f35cbfecd424023d8adbdc61668b2e60aa24b9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.seconds.short",
+      "source": "6194991ebcd53f02ba642f2befca1138b5bbf5e591a758f4ca4c210b8fd519d7",
+      "contract": "7a0191c2aa252430f776b1be1d0caf6e3101c925cf355639b3a1bdf68ebd8c4b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.seconds.spoken",
+      "source": "adefa71f0cc21fa8857111bc6cd299d7b9c21dd0fd8c07b25f2aee7f6f5d961b",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.session.ended.unexpectedly",
+      "source": "c6e1a32fb5d996558f73d90fa9c1dd973478d9d887e06ecff6d7f8c4354bf5c7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.shows.what.happened",
+      "source": "e26da58614f2769446a068edee32d69b00ea4673e02b83721ad1d90148e39fae",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.solstone.on.your.phone.takes.what.your.watch.saves.install.or.open.it.there",
+      "source": "a17147b974f887bc0c686786e61dbb6c674b804432fb0f30ba83cc0e92b55b61",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.some.audio.couldn.t.be.prepared.to.send.what.s.saved.stays.on.your.watch",
+      "source": "648714080ad9e874aeea1e6b67862a69a98d4aa78d5f57a4dbb96be4291addc4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.start",
+      "source": "47bdd3e1fd57d43740bb1cb835222ae44d90c2b3abea26c229541abf8ef224a9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.start.a.session",
+      "source": "2f31715f506007feeb79741671f427a48585c44b8f1316a3d1ed8cc83e871039",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.start.again",
+      "source": "7f815c56d174cebd8d2cac8b0b87299102a6bbf9249dd0162359a4e475ffecc0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.start.again.if.the.microphone.stops.a.second.time.restart.your.watch",
+      "source": "7231cec25912b9816292bcc64324ae895ab21f39533cc00de6d2d95c56e6ba97",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.starting",
+      "source": "eb439a00fc3d992ef3f472f4461d28085eb26035918d8e261f818e7d3c06bd11",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.starts.a.session",
+      "source": "d7371cf1d30be5f86b4fe8942719c1f60d4013d13c87ff0b4c6bd88355b8c52e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.stop",
+      "source": "6c180d33471ea7c00596419062765675f3e825b724d46ca69a92b2b15734f08f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.stopped",
+      "source": "1c1cc4feaf896a2ffc78fa3585c4b3ab59157702f265adf605758c776ba3b376",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.stops.the.session",
+      "source": "6e1c48f9b5223811db0fc3d1539d5a2578f4e411eca71d1e5d0930788c5248ba",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.taking.it.in",
+      "source": "51f47e45110938d157f638454ee7f6115bb151095808afb929dad58e751baa63",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.the.app.closed.or.your.watch.restarted.the.last.few.minutes.may.be.incomplete",
+      "source": "95ac7b58d9e3dedebdb327d0c4e926641df7321786445445d4e03c89bdca0f23",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.tile.spoken",
+      "source": "43d07ab0039ef236196ce2a8d82ccd22624a0371da74282b7d7acb96441b2259",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.update.solstone.on.your.phone",
+      "source": "eff6e6bfb8107e4de8883334c005880c45cc638968e139123f636bc46ccf824c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.update.solstone.on.your.phone.so.what.s.saved.can.move",
+      "source": "cf0235769001cac6210127d5e47c400f4545635baf8180d2024b613f58e63760",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.update.solstone.on.your.watch",
+      "source": "bc9b8ce9a38da92b397c357b2bf2122fd38ecac12f1af8539f0c5a25c9585761",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.update.solstone.on.your.watch.so.what.s.saved.can.move",
+      "source": "a1fec185805d6e13ec60a973509ccac36daefa432b39bc04595f815b974c0847",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.watch.storage.is.full",
+      "source": "ef6f1150da0998dad1240455a7e2280d92aed4649cb5ab63ac7c5c109fb8f778",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.wear.what.s.saved.stays.here.until.your.phone.takes.it.keep.your.phone.nearby.with.solstone.on.it",
+      "source": "0f6f690d619bbc2f07615f16ac433322b3796c1ac6a6b5ab7f84bcb39d9fda7e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "description": "if nothing moves, update solstone and Google Play services on both devices.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 150,
+  "source_revision": "80b425c58cf57c4073af3e10f19033c43ffa450cc81003c61b6c166aa16848f2",
+  "risk": "routine",
+  "auto_merge": true
+}

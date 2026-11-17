@@ -1,0 +1,16 @@
+{
+  "description": "allow microphone access in settings, then start again.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 108,
+  "source_revision": "50f98dff421dab3264b92045b11d4b76a2157e350a178cd268d1b06efbebae23",
+  "risk": "routine",
+  "auto_merge": true
+}

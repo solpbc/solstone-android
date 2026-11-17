@@ -1,0 +1,16 @@
+{
+  "description": "watch storage is full",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 42,
+  "source_revision": "ef6f1150da0998dad1240455a7e2280d92aed4649cb5ab63ac7c5c109fb8f778",
+  "risk": "routine",
+  "auto_merge": true
+}

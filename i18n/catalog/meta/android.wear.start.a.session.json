@@ -1,0 +1,16 @@
+{
+  "description": "start a session",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 30,
+  "source_revision": "2f31715f506007feeb79741671f427a48585c44b8f1316a3d1ed8cc83e871039",
+  "risk": "routine",
+  "auto_merge": true
+}

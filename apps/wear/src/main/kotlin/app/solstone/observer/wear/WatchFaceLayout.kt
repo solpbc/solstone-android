@@ -179,7 +179,7 @@ class WatchFaceLayout(context: Context, private val onAction: () -> Unit) : Fram
             val line = rows.getChildAt(i) as LinearLayout
             setIfChanged(line.getChildAt(0) as TextView, label)
             setIfChanged(line.getChildAt(1) as TextView, value)
-            line.contentDescription = "$label: $value"
+            line.contentDescription = AndroidWatchCopy(resources).text(WatchMessage.ROW_SPOKEN, label, value)
         }
 
         nextStep.visibility = if (model.nextStep == null) View.GONE else View.VISIBLE

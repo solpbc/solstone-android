@@ -1,0 +1,16 @@
+{
+  "description": "start again. if the microphone stops a second time, restart your watch.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 142,
+  "source_revision": "7231cec25912b9816292bcc64324ae895ab21f39533cc00de6d2d95c56e6ba97",
+  "risk": "routine",
+  "auto_merge": true
+}

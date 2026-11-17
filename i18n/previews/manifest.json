@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "inputs": {
+    "en-US": "70852d521f6dc1a348a722d4c9d094e12213d2265406235d870350ea9a3978d9"
+  },
+  "images": {
+    "res/drawable-en-rUS-nodpi/wear_tile_preview.png": "0ca088d74d0270846e42d7d6bf30c8ebfef92f10d4c9969ba30b943ee5e3157a",
+    "res/drawable-nodpi/wear_tile_preview.png": "0ca088d74d0270846e42d7d6bf30c8ebfef92f10d4c9969ba30b943ee5e3157a"
+  },
+  "renderer": "native Wear OS tile host; 480px to 400px, Lanczos",
+  "pillow": "10.2.0"
+}

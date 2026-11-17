@@ -1,0 +1,16 @@
+{
+  "description": "update solstone on your phone so what's saved can move.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 110,
+  "source_revision": "cf0235769001cac6210127d5e47c400f4545635baf8180d2024b613f58e63760",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,27 @@
+{
+  "description": "{ $hours }h { $minutes }m",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity. Apple Watch/iOS twin: ios.watch.minutes, ios.watch.minutes.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "hours",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    },
+    {
+      "name": "minutes",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 50,
+  "source_revision": "72d77b9a775987c0afdc33b9c704d766f2c38ea45788a0088e8b398bfbf64b13",
+  "risk": "routine",
+  "auto_merge": true
+}

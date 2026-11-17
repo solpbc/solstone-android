@@ -1,0 +1,16 @@
+{
+  "description": "update solstone on your watch",
+  "context": "Shown by WatchFacePresentation.kt. Apple Watch/iOS twin: ios.app.watchappupdatereason.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 58,
+  "source_revision": "bc9b8ce9a38da92b397c357b2bf2122fd38ecac12f1af8539f0c5a25c9585761",
+  "risk": "routine",
+  "auto_merge": true
+}

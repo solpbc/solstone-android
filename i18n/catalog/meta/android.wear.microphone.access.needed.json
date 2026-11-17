@@ -1,0 +1,16 @@
+{
+  "description": "microphone access needed",
+  "context": "Shown by WatchSessionCopy.kt. Apple Watch/iOS twin: ios.app.watchnoticemicrophoneaccesstitle.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 48,
+  "source_revision": "4a9b5c3d3f41e910b9399a766ab87bd84b1da73aa7f4a09a43ebc678936199b2",
+  "risk": "routine",
+  "auto_merge": true
+}

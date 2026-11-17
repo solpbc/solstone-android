@@ -1,0 +1,17 @@
+{
+  "description": "solstone",
+  "context": "App name in the Wear launcher, tile, complication label and notifications, and the shared JVM courier vocabulary. The name is decided per language. Apple Watch/iOS twin: ios.push.test.title, ios.push.test.title.",
+  "surfaces": [
+    "wear",
+    "phone"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "bf38593db11de7fe3f5a21bc5fad9ba9de265ad0f9c30825d125df8f075566a3",
+  "risk": "routine",
+  "auto_merge": true
+}

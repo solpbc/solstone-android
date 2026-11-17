@@ -1,0 +1,16 @@
+{
+  "description": "stops the session",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 34,
+  "source_revision": "6e1c48f9b5223811db0fc3d1539d5a2578f4e411eca71d1e5d0930788c5248ba",
+  "risk": "routine",
+  "auto_merge": true
+}

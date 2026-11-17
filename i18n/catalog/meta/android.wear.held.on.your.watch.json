@@ -1,0 +1,16 @@
+{
+  "description": "held on your watch",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 36,
+  "source_revision": "9cd1e6300037edb66adb62a5e136774d98ed22c6ea7c3aaadb32beca2a0c9651",
+  "risk": "routine",
+  "auto_merge": true
+}

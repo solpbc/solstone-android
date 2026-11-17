@@ -1,0 +1,16 @@
+{
+  "description": "what's saved stays here until your phone takes it. keep your phone nearby with solstone on it.",
+  "context": "Shown by WatchFacePresentation.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 188,
+  "source_revision": "0f6f690d619bbc2f07615f16ac433322b3796c1ac6a6b5ab7f84bcb39d9fda7e",
+  "risk": "routine",
+  "auto_merge": true
+}

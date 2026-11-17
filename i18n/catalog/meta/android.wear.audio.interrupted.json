@@ -1,0 +1,16 @@
+{
+  "description": "audio interrupted",
+  "context": "Shown by WatchSessionCopy.kt.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 34,
+  "source_revision": "35bd0e5ee678d80d4957524ea3e3927dd827bfacc9bea7fba2b6d14d4c8e569b",
+  "risk": "routine",
+  "auto_merge": true
+}

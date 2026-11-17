@@ -1,0 +1,22 @@
+{
+  "description": "{ $count }s",
+  "context": "Wear OS owner interface, including surfaces rendered outside the activity.",
+  "surfaces": [
+    "wear"
+  ],
+  "bundles": [
+    "android-wear"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "6194991ebcd53f02ba642f2befca1138b5bbf5e591a758f4ca4c210b8fd519d7",
+  "risk": "routine",
+  "auto_merge": true
+}
