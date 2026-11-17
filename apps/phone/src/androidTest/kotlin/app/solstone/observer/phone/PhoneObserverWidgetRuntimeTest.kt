@@ -175,8 +175,9 @@ class PhoneObserverWidgetRuntimeTest {
             val baseline = updates.get()
             ObserverForegroundService.dispatchWidgetStartAccepted(PHONE_WIDGET_AUDIO_SOURCE_ID)
             waitUntil("widget-started audio source") { audioStatus(container).state == SourceState.ON }
-            waitUntil("widget start updates") { updates.get() >= baseline + 2 }
-            assertTrue(application.widgetModel().audioChecked)
+            waitUntil("widget shows audio on after refresh") {
+                updates.get() >= baseline + 2 && application.widgetModel().audioChecked
+            }
 
             val updatesBeforeInAppWish = updates.get()
             assertEquals(
@@ -184,9 +185,10 @@ class PhoneObserverWidgetRuntimeTest {
                 container.sources.setWish(PHONE_WIDGET_AUDIO_SOURCE_ID, SourceWish.Off),
             )
             waitUntil("in-app audio source off") { audioStatus(container).state == SourceState.OFF }
-            waitUntil("in-app widget update") { updates.get() > updatesBeforeInAppWish }
-            assertFalse(application.widgetModel().audioChecked)
-            assertFalse(application.widgetModel().audioWishOn)
+            waitUntil("widget shows audio off after in-app change") {
+                val model = application.widgetModel()
+                updates.get() > updatesBeforeInAppWish && !model.audioChecked && !model.audioWishOn
+            }
         } finally {
             PhoneWidgetCoordinator.onUpdateCompleteForTest = null
         }
