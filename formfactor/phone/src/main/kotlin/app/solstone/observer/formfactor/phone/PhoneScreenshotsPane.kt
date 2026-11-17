@@ -166,10 +166,6 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
             }
             PaneNote(S9)
             if (s.reconfirm) PaneNote(S17)
-            if (s.countFailed) {
-                PaneNote(S12)
-                TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
-            }
             val label = if (s.counting || s.previewCount == null) phoneText("android.shelf.checking") else confirmLabel(s.history, s.previewCount)
             TextButton(onClick = binding.onConfirm, enabled = !s.counting && s.previewCount != null) { Text(label) }
         }
@@ -197,10 +193,16 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
             }
             if (s.enabled && s.capability == false) PaneNote(S21)
         }
+        if (s.accessGranted && s.countFailed) {
+            PaneNote(S12)
+            TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
+        }
         if (s.refusedSize > 0) PaneNote(A9)
         if (s.refusedUnread > 0) {
             PaneNote(A10)
-            TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
+            if (!s.countFailed) {
+                TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
+            }
         }
         if (s.refusedJournal > 0) PaneNote(A11)
         if (s.waiting > 0) PaneFactRow(phoneText("android.screenshots.waitinggojournal"), s.waiting.toString())

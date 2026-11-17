@@ -39,11 +39,14 @@ dependencies {
     implementation(project(":core:screenshots"))
     implementation(project(":core:model"))
     implementation(project(":core:segment"))
-    implementation(project(":core:spool"))
     implementation(project(":core:sources"))
     implementation(project(":core:pl"))
     implementation(project(":platform:persistence-room"))
-    implementation("androidx.work:work-runtime:2.9.1")
+    api(project(":platform:folder-sync"))
 
     testImplementation(kotlin("test"))
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }

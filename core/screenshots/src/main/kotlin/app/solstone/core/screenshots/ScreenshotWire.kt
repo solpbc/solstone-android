@@ -4,7 +4,7 @@
 package app.solstone.core.screenshots
 
 import app.solstone.core.model.WireKeys
-import app.solstone.core.pl.parseJson
+import app.solstone.core.pl.parseJournalCapability
 import app.solstone.core.segment.wireKeys
 import app.solstone.core.sources.SCREENSHOTS_STREAM
 import java.time.Instant
@@ -82,11 +82,5 @@ fun screenshotMeta(capturedAt: String, takenFrom: TakenFrom): LinkedHashMap<Stri
 )
 
 /** Unknown on a failed read. False only when a valid status omits the capability. */
-fun parseScreenshotsCapability(status: Int, body: String): Boolean? {
-    if (status != 200) return null
-    val root = runCatching { parseJson(body) as? Map<*, *> }.getOrNull() ?: return null
-    if (!root.containsKey("capabilities")) return false
-    val caps = root["capabilities"] as? List<*> ?: return null
-    if (caps.any { it !is String }) return null
-    return SCREENSHOTS_STREAM in caps
-}
+fun parseScreenshotsCapability(status: Int, body: String): Boolean? =
+    parseJournalCapability(status, body, SCREENSHOTS_STREAM)

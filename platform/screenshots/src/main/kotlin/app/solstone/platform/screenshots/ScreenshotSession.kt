@@ -5,14 +5,11 @@ package app.solstone.platform.screenshots
 
 import android.content.Context
 import android.net.Uri
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequest
-import androidx.work.WorkManager
-import androidx.work.Worker
+import android.os.CancellationSignal
 import androidx.work.WorkerParameters
-import app.solstone.core.model.QueueState
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.fetchJournalCapability
 import app.solstone.core.screenshots.DocMark
 import app.solstone.core.screenshots.HistoryChoice
 import app.solstone.core.screenshots.KnownFile
@@ -42,7 +39,6 @@ import app.solstone.core.screenshots.knownVerdict
 import app.solstone.core.screenshots.firstSetupAgain
 import app.solstone.core.screenshots.historyLowerBound
 import app.solstone.core.screenshots.mediaTypeFor
-import app.solstone.core.screenshots.parseScreenshotsCapability
 import app.solstone.core.screenshots.screenshotKeys
 import app.solstone.core.screenshots.screenshotsFolderPath
 import app.solstone.core.screenshots.screenshotWhen
@@ -51,37 +47,33 @@ import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SCREENSHOTS_STREAM
-import app.solstone.core.spool.FileSpoolWriter
-import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.SealState
-import app.solstone.platform.persistence.room.RoomSealedSegmentSink
+import app.solstone.platform.foldersync.FolderCheckWorker
+import app.solstone.platform.foldersync.FolderChecks
+import app.solstone.platform.foldersync.FolderDelivery
+import app.solstone.platform.foldersync.FolderFile
+import app.solstone.platform.foldersync.FolderRead
+import app.solstone.platform.foldersync.FolderRuntime
+import app.solstone.platform.foldersync.SafFolder
+import app.solstone.platform.foldersync.journalHasSegment
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
-import app.solstone.platform.persistence.room.occupiedDirSegments
-import java.io.ByteArrayInputStream
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.concurrent.ScheduledThreadPoolExecutor
-import java.util.concurrent.TimeUnit
 
 const val SCREENSHOTS_WORK_NAME = "solstone-screenshots-check"
 
-object ScreenshotsRuntimes {
-    @Volatile var current: ScreenshotSession? = null
-}
+object ScreenshotsRuntimes : FolderRuntime<ScreenshotSession>()
 
 interface ScreenshotsWorkerHost {
     fun screenshotsSessionForWork(): ScreenshotSession?
 }
 
-class ScreenshotsCheckWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
-    override fun doWork(): Result {
-        val session = ScreenshotsRuntimes.current
-            ?: (applicationContext as? ScreenshotsWorkerHost)?.screenshotsSessionForWork()
-            ?: return Result.retry()
-        return if (session.runCheckBlocking()) Result.success() else Result.retry()
-    }
+// Keep this class name for WorkManager requests persisted by older installs.
+class ScreenshotsCheckWorker(context: Context, params: WorkerParameters) : FolderCheckWorker(context, params) {
+    override fun runCheck(stopped: () -> Boolean): Boolean =
+        (ScreenshotsRuntimes.current ?: (applicationContext as? ScreenshotsWorkerHost)?.screenshotsSessionForWork())
+            ?.runCheckBlocking(stopped) == true
 }
 
 data class ScreenshotUi(
@@ -114,19 +106,33 @@ data class ScreenshotUi(
  * hands each screenshot to the ordinary spool. The wish stays off until the owner confirms how far
  * back to start.
  */
-class ScreenshotSession(
+class ScreenshotSession internal constructor(
     context: Context,
-    private val database: SolstonePersistenceDatabase,
-    private val spoolDir: Path,
+    database: SolstonePersistenceDatabase,
+    spoolDir: Path,
     private val wishOn: () -> Boolean,
     private val setEnabled: (Boolean) -> Boolean,
     private val ownerStopped: () -> Boolean,
     private val onSealed: () -> Unit,
     private val onChanged: () -> Unit,
+    private val folder: SafFolder,
 ) {
+    constructor(
+        context: Context,
+        database: SolstonePersistenceDatabase,
+        spoolDir: Path,
+        wishOn: () -> Boolean,
+        setEnabled: (Boolean) -> Boolean,
+        ownerStopped: () -> Boolean,
+        onSealed: () -> Unit,
+        onChanged: () -> Unit,
+    ) : this(
+        context, database, spoolDir, wishOn, setEnabled, ownerStopped, onSealed, onChanged,
+        SafFolder(context.applicationContext.contentResolver),
+    )
+
     private val appContext = context.applicationContext
-    private val folder = SafScreenshotFolder(appContext.contentResolver)
-    private val actor = ScheduledThreadPoolExecutor(1) { runnable -> Thread(runnable, "screenshots-read") }
+    private val delivery = FolderDelivery(spoolDir, database.segmentDao())
     private val bookFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("book.txt"))
     // The check time has its own record, so a check that finds nothing new rewrites neither the book nor the known list.
     private val checkedFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("checked.txt"))
@@ -146,9 +152,15 @@ class ScreenshotSession(
         private set
     @Volatile private var listener: () -> Unit = {}
 
+    private val checks = FolderChecks(
+        appContext, SCREENSHOTS_WORK_NAME, ScreenshotsCheckWorker::class.java, "screenshots-read",
+        check = ::checkNow, onFailure = ::recordFailure, backgroundWanted = { backgroundCheckWanted(book, wishOn()) },
+        workerTimeoutMs = 120_000,
+    )
+
     init {
-        ScreenshotsRuntimes.current = this
-        submit { refresh() }
+        ScreenshotsRuntimes.register(this)
+        checks.submit { refresh() }
     }
 
     fun setListener(next: () -> Unit) { listener = next }
@@ -156,13 +168,13 @@ class ScreenshotSession(
     fun isPaused(): Boolean = pausedNow() || book.pauses.any { it.endExclusiveMs == null }
     private fun pausedNow(): Boolean = ownerStopped() || book.sourcePaused
 
-    fun onProcessStart() = submit { schedule(); refresh() }
-    fun onForeground(value: Boolean) = submit { if (value) checkNow() }
-    fun onOwnerStopRequested() = submit { notePause(stopped = true); refresh() }
-    fun onPauseChanged() = submit { notePause(pausedNow()); refresh() }
+    fun onProcessStart() = checks.submit { checks.scheduleBackground(); refresh() }
+    fun onForeground(value: Boolean) = checks.onForeground(value)
+    fun onOwnerStopRequested() = checks.submit { notePause(stopped = true); refresh() }
+    fun onPauseChanged() = checks.submit { notePause(pausedNow()); refresh() }
 
     /** The owner's own pause of this source. A screenshot taken while it holds never comes in. */
-    fun pause() = submit {
+    fun pause() = checks.submit {
         if (!book.confirmed) return@submit
         book = book.copy(sourcePaused = true)
         notePause(true)
@@ -171,26 +183,26 @@ class ScreenshotSession(
     }
 
     /** Resume starts from now: the paused window stays closed to every later folder read. */
-    fun resume() = submit {
+    fun resume() = checks.submit {
         book = book.copy(sourcePaused = false)
         notePause(pausedNow())
         save()
-        checkNow()
+        checks.checkNow()
     }
-    fun check() = submit { checkNow() }
+    fun check() = checks.submit { checks.checkNow() }
 
     /** Reads which staged screenshots the journal now holds, without reading the folder. */
-    fun observeDelivery() = submit {
+    fun observeDelivery() = checks.submit {
         if (book.staged.isEmpty()) return@submit
         observeStaged()
         save()
         refresh()
     }
 
-    fun choose(uri: Uri) = submit {
+    fun choose(uri: Uri) = checks.submit {
         try {
             folder.persist(uri)
-            val name = folder.displayName(uri)
+            val name = folder.root(uri)?.name?.takeIf { it.isNotBlank() } ?: "Screenshots"
             val wasConfirmed = book.confirmed
             book = book.copy(
                 treeUri = uri.toString(),
@@ -204,31 +216,41 @@ class ScreenshotSession(
                 // A new folder asks how far back again, so the source is `ready to set up` until the
                 // confirm, as after turning it off: never `on` over a chooser nobody has answered.
                 setEnabled(false)
-                schedule(on = false)
+                checks.stopScheduling()
                 book = book.copy(period = book.period + 1, pauses = emptyList(), sourcePaused = false)
             }
             accessLost = false
             countFailed = false
             save()
-            checkNow()
+            checks.checkNow()
         } catch (_: SecurityException) {
             accessLost = true
             refresh()
         }
     }
 
-    fun setHistory(choice: HistoryChoice) = submit {
+    fun setHistory(choice: HistoryChoice) = checks.submit {
         if (book.confirmed) return@submit
         book = book.copy(history = choice)
         save()
-        checkNow()
+        checks.checkNow()
     }
 
-    fun confirm() = submit {
-        if (book.treeUri == null || accessLost) return@submit
+    fun confirm() = checks.submit {
+        val uri = book.treeUri?.let(Uri::parse) ?: return@submit
+        if (accessLost || countFailed || book.confirmed) return@submit
         val zone = ZoneId.systemDefault()
         val lower = historyLowerBound(book.history, LocalDate.now(zone), zone)
-        val ids = eligibleIds(lower)
+        if (!folder.hasReadGrant(uri) || folder.root(uri)?.directory != true) {
+            accessLost = true
+            refresh()
+            return@submit
+        }
+        val ids = eligibleIds(uri, lower)
+        if (accessLost) {
+            refresh()
+            return@submit
+        }
         book = book.copy(
             confirmed = true,
             reconfirm = false,
@@ -243,11 +265,11 @@ class ScreenshotSession(
             refresh()
             return@submit
         }
-        schedule(backgroundCheckWanted(book, wishOn = true))
-        checkNow()
+        checks.scheduleBackground(backgroundCheckWanted(book, wishOn = true))
+        checks.checkNow()
     }
 
-    fun turnOff() = submit {
+    fun turnOff() = checks.submit {
         setEnabled(false)
         book = book.copy(
             confirmed = false,
@@ -259,7 +281,7 @@ class ScreenshotSession(
             sourcePaused = false,
         )
         save()
-        schedule(on = false)
+        checks.stopScheduling()
         refresh()
     }
 
@@ -269,12 +291,12 @@ class ScreenshotSession(
      * to the new journal. Returns once saved, or false if that did not happen in time.
      */
     fun restartFirstSetup(): Boolean {
-        val saved = actor.submit<Unit> {
+        return checks.restartFirstSetup {
             // Anything that reached a journal so far reached the last one: settle it before the
             // record is cleared, so it is not taken for something the new journal has.
             observeStaged()
             setEnabled(false)
-            schedule(on = false)
+            checks.stopScheduling()
             book = firstSetupAgain(book)
             known.values.removeAll { it.verdict == KnownVerdict.InJournal }
             saveKnown()
@@ -286,65 +308,28 @@ class ScreenshotSession(
             refusedJournal = 0
             refresh()
         }
-        val done = try {
-            saved.get(30, TimeUnit.SECONDS)
-            true
-        } catch (_: Exception) {
-            false
-        }
-        // The fresh count for the page.
-        submit { checkNow() }
-        return done
     }
 
-    fun retryUnread() = submit {
+    fun retryUnread() = checks.submit {
         retryUnread = true
-        checkNow()
+        checks.checkNow()
     }
 
-    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean {
-        val ready = actor.submit<Boolean> {
-            if (!pairingCurrent() || !wishOn() || isPaused() || !hasAccess()) return@submit false
-            val status = client.request(
-                "GET",
-                "/api/system/status",
-                mapOf("Cache-Control" to "no-cache"),
-                null,
-                maxResponseBytes = 64 * 1024,
-            )
-            capability = parseScreenshotsCapability(status.status, status.bodyText())
-            refresh()
-            capability == true && pairingCurrent()
-        }
-        return try {
-            ready.get(30, TimeUnit.SECONDS)
-        } catch (_: Exception) {
-            false
-        }
-    }
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = checks.blocking(30) {
+        if (!pairingCurrent() || !wishOn() || isPaused() || !hasAccess()) return@blocking false
+        capability = fetchJournalCapability(client, SCREENSHOTS_STREAM)
+        refresh()
+        capability == true && pairingCurrent()
+    } ?: false
 
-    fun runCheckBlocking(): Boolean {
-        val ready = actor.submit<Boolean> {
-            try {
-                if (backgroundCheckWanted(book, wishOn())) checkNow()
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-        return try {
-            ready.get(2, TimeUnit.MINUTES)
-        } catch (_: Exception) {
-            false
-        }
-    }
+    fun runCheckBlocking(stopped: () -> Boolean = { false }): Boolean = checks.runFromWorker(stopped)
 
     fun close() {
-        if (ScreenshotsRuntimes.current === this) ScreenshotsRuntimes.current = null
-        actor.shutdownNow()
+        ScreenshotsRuntimes.unregister(this)
+        checks.close()
     }
 
-    private fun checkNow() {
+    private fun checkNow(signal: CancellationSignal) {
         notePause(pausedNow())
         val uri = book.treeUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: run {
             refresh()
@@ -359,13 +344,13 @@ class ScreenshotSession(
         countFailed = false
         refresh()
         val files = try {
-            if (!folder.reachable(uri)) {
+            if (folder.root(uri, signal)?.directory != true) {
                 accessLost = true
                 counting = false
                 refresh()
                 return
             }
-            folder.list(uri)
+            folder.walk(uri, signal) { document, _ -> document.file }
         } catch (_: SecurityException) {
             accessLost = true
             counting = false
@@ -382,86 +367,97 @@ class ScreenshotSession(
         var refusedByJournal = 0
         var stagedNow = false
         observeStaged()
-        for (file in files) {
-            seen += file.documentId
-            when (knownVerdict(known[file.documentId], file.size, file.modifiedMs)) {
-                KnownVerdict.NotScreenshot -> continue
-                KnownVerdict.InJournal -> {
-                    mark(file.documentId, ReceivedEnd.DELIVERED)
-                    continue
-                }
-                null -> Unit
-            }
-            val read = when (val probe = readShot(uri, file)) {
-                null -> continue
-                NOT_A_SCREENSHOT -> {
-                    remember(file, KnownVerdict.NotScreenshot)
-                    continue
-                }
-                else -> probe
-            }
-            val whenShot = screenshotWhen(read.localDateTime, file.modifiedMs, zone, read.offset)
-            val full = read.bytes
-            val sha = full?.let { sha256(it) }
-            val marked = book.marks.firstOrNull { it.documentId == file.documentId }
-            val retrying = retryUnread && marked?.end == ReceivedEnd.UNREADABLE
-            val fate = shotFate(
-                read = read.classified,
-                atMs = whenShot?.epochMs,
-                sha256 = sha,
-                received = book.received,
-                lowerBoundMs = if (book.confirmed) book.lowerBoundMs else historyLowerBound(book.history, LocalDate.now(zone), zone),
-                pauses = book.pauses,
-                confirmed = book.confirmed,
-            )
-            when (fate) {
-                ShotFate.SKIP -> Unit
-                ShotFate.COUNT -> preview++
-                ShotFate.ALREADY -> {
-                    mark(file.documentId, ReceivedEnd.DELIVERED)
-                    if (book.received.any { it.sha256 == sha && it.end == ReceivedEnd.DELIVERED }) {
-                        remember(file, KnownVerdict.InJournal)
+        try {
+            for (file in files) {
+                signal.throwIfCanceled()
+                seen += file.documentId
+                when (knownVerdict(known[file.documentId], file.size, file.modifiedMs)) {
+                    KnownVerdict.NotScreenshot -> continue
+                    KnownVerdict.InJournal -> {
+                        mark(file.documentId, ReceivedEnd.DELIVERED)
+                        continue
                     }
-                    if (sha != null) {
-                        when (book.received.firstOrNull { it.sha256 == sha }?.end) {
-                            ReceivedEnd.REFUSED_SIZE -> tooBig++
-                            ReceivedEnd.REFUSED_TYPE -> refusedByJournal++
-                            else -> Unit
+                    null -> Unit
+                }
+                val read = when (val probe = readShot(uri, file, signal)) {
+                    null -> continue
+                    NOT_A_SCREENSHOT -> {
+                        remember(file, KnownVerdict.NotScreenshot)
+                        continue
+                    }
+                    else -> probe
+                }
+                val whenShot = screenshotWhen(read.localDateTime, file.modifiedMs, zone, read.offset)
+                val full = read.bytes
+                val sha = full?.let { sha256(it) }
+                val marked = book.marks.firstOrNull { it.documentId == file.documentId }
+                val retrying = retryUnread && marked?.end == ReceivedEnd.UNREADABLE
+                val fate = shotFate(
+                    read = read.classified,
+                    atMs = whenShot?.epochMs,
+                    sha256 = sha,
+                    received = book.received,
+                    lowerBoundMs = if (book.confirmed) book.lowerBoundMs else historyLowerBound(book.history, LocalDate.now(zone), zone),
+                    pauses = book.pauses,
+                    confirmed = book.confirmed,
+                )
+                when (fate) {
+                    ShotFate.SKIP -> Unit
+                    ShotFate.COUNT -> preview++
+                    ShotFate.ALREADY -> {
+                        mark(file.documentId, ReceivedEnd.DELIVERED)
+                        if (book.received.any { it.sha256 == sha && it.end == ReceivedEnd.DELIVERED }) {
+                            remember(file, KnownVerdict.InJournal)
+                        }
+                        if (sha != null) {
+                            when (book.received.firstOrNull { it.sha256 == sha }?.end) {
+                                ReceivedEnd.REFUSED_SIZE -> tooBig++
+                                ReceivedEnd.REFUSED_TYPE -> refusedByJournal++
+                                else -> Unit
+                            }
                         }
                     }
-                }
-                ShotFate.REFUSED_SIZE -> {
-                    tooBig++
-                    if (!book.confirmed) preview++ else mark(file.documentId, ReceivedEnd.REFUSED_SIZE)
-                }
-                ShotFate.REFUSED_TYPE -> {
-                    if (!book.confirmed) preview++ else mark(file.documentId, ReceivedEnd.REFUSED_TYPE)
-                }
-                ShotFate.UNREADABLE -> {
-                    unread++
-                    if (!book.confirmed) preview++ else if (!retrying) mark(file.documentId, ReceivedEnd.UNREADABLE)
-                }
-                ShotFate.SEND -> {
-                    if (full == null || whenShot == null || sha == null) {
+                    ShotFate.REFUSED_SIZE -> {
+                        tooBig++
+                        if (!book.confirmed) preview++ else mark(file.documentId, ReceivedEnd.REFUSED_SIZE)
+                    }
+                    ShotFate.REFUSED_TYPE -> {
+                        if (!book.confirmed) preview++ else mark(file.documentId, ReceivedEnd.REFUSED_TYPE)
+                    }
+                    ShotFate.UNREADABLE -> {
                         unread++
-                        mark(file.documentId, ReceivedEnd.UNREADABLE)
-                    } else if (marked?.end == ReceivedEnd.UNREADABLE && !retrying) {
-                        Unit
-                    } else if (book.staged.any { it.sha256 == sha && it.documentId == file.documentId }) {
-                        Unit
-                    } else {
-                        val segmentId = seal(full, read.classified as ShotRead.Shot, whenShot.capturedAt, whenShot.takenFrom)
-                        if (segmentId != null) {
-                            book = book.copy(
-                                staged = book.staged + StagedShot(
-                                    file.documentId, sha, whenShot.capturedAt, whenShot.takenFrom.name.lowercase(), segmentId, whenShot.epochMs,
-                                ),
-                            )
-                            stagedNow = true
+                        if (!book.confirmed) preview++ else if (!retrying) mark(file.documentId, ReceivedEnd.UNREADABLE)
+                    }
+                    ShotFate.SEND -> {
+                        if (full == null || whenShot == null || sha == null) {
+                            unread++
+                            mark(file.documentId, ReceivedEnd.UNREADABLE)
+                        } else if (marked?.end == ReceivedEnd.UNREADABLE && !retrying) {
+                            Unit
+                        } else if (book.staged.any { it.sha256 == sha && it.documentId == file.documentId }) {
+                            Unit
+                        } else {
+                            val segmentId = seal(full, read.classified as ShotRead.Shot, whenShot.capturedAt, whenShot.takenFrom)
+                            if (segmentId != null) {
+                                book = book.copy(
+                                    staged = book.staged + StagedShot(
+                                        file.documentId, sha, whenShot.capturedAt, whenShot.takenFrom.name.lowercase(), segmentId, whenShot.epochMs,
+                                    ),
+                                )
+                                stagedNow = true
+                            }
                         }
                     }
                 }
             }
+            signal.throwIfCanceled()
+        } catch (error: Exception) {
+            // A cancelled check can already have handed complete items to the spool.
+            if (stagedNow) {
+                save()
+                onSealed()
+            }
+            throw error
         }
         retryUnread = false
         if (book.confirmed) {
@@ -494,35 +490,34 @@ class ScreenshotSession(
     /** Read and proven not to be a screenshot, as against a read that failed (null). */
     private val NOT_A_SCREENSHOT = ReadShot(ShotRead.NotScreenshot, null, null, null)
 
-    private fun readShot(uri: Uri, file: FolderFile): ReadShot? {
-        val cap = SCREENSHOT_MAX_BYTES.toInt()
-        val knownOver = file.size != null && file.size > SCREENSHOT_MAX_BYTES
-        try {
-            // A photo or video is ruled out by its first bytes, so it is never read whole.
-            val first = folder.read(uri, file.documentId, SCREENSHOT_HEAD_BYTES, SCREENSHOT_HEAD_BYTES)
-            val head = first.bytes ?: return null
-            if (!first.oversize) return readShotFrom(classifyScreenshot(head), head, oversize = false)
-            if (headRulesOutScreenshot(head)) return NOT_A_SCREENSHOT
-        } catch (_: SecurityException) {
-            accessLost = true
-            return null
-        } catch (_: Exception) {
-            return null
-        }
+    private fun readShot(uri: Uri, file: FolderFile, signal: CancellationSignal): ReadShot? {
         val read = try {
-            if (knownOver) {
-                folder.read(uri, file.documentId, 256 * 1024, 256 * 1024).let { FolderRead(it.bytes, true) }
-            } else {
-                folder.read(uri, file.documentId, cap, 256 * 1024)
+            // A photo or video is ruled out by its first bytes, so it is never read whole.
+            val first = folder.read(uri, file, signal, SCREENSHOT_HEAD_BYTES, SCREENSHOT_HEAD_BYTES)
+            when (first) {
+                FolderRead.Unavailable -> return null
+                is FolderRead.Stable -> return readShotFrom(classifyScreenshot(first.bytes), first.bytes, oversize = false)
+                is FolderRead.TooLarge -> {
+                    if (headRulesOutScreenshot(first.head)) return NOT_A_SCREENSHOT
+                    if ((file.size ?: 0L) > SCREENSHOT_MAX_BYTES) first
+                    else folder.read(uri, file, signal, SCREENSHOT_MAX_BYTES.toInt(), SCREENSHOT_HEAD_BYTES)
+                }
             }
+        } catch (cancelled: android.os.OperationCanceledException) {
+            throw cancelled
         } catch (_: SecurityException) {
             accessLost = true
             return null
         } catch (_: Exception) {
             return null
         }
-        val head = read.bytes ?: return null
-        val classified = if (read.oversize) {
+        val head = when (read) {
+            FolderRead.Unavailable -> return null
+            is FolderRead.Stable -> read.bytes
+            is FolderRead.TooLarge -> read.head
+        }
+        val oversize = read is FolderRead.TooLarge
+        val classified = if (oversize) {
             when (val probed = classifyScreenshot(head)) {
                 is ShotRead.Shot -> ShotRead.Ended(probed.kind, ShotEnd.REFUSED_SIZE)
                 is ShotRead.Ended -> when (probed.end) {
@@ -535,7 +530,7 @@ class ScreenshotSession(
         } else {
             classifyScreenshot(head)
         }
-        return readShotFrom(classified, head, read.oversize)
+        return readShotFrom(classified, head, oversize)
     }
 
     private fun readShotFrom(classified: ShotRead, bytes: ByteArray, oversize: Boolean): ReadShot? {
@@ -544,24 +539,19 @@ class ScreenshotSession(
         return ReadShot(classified, if (oversize) null else bytes, shot?.localDateTime, shot?.offset)
     }
 
-    private fun eligibleIds(lower: Long): Set<String> {
-        val uri = book.treeUri?.let(Uri::parse) ?: return emptySet()
+    private fun eligibleIds(uri: Uri, lower: Long): Set<String> {
         val zone = ZoneId.systemDefault()
-        return try {
-            folder.list(uri).mapNotNull { file ->
-                if (knownVerdict(known[file.documentId], file.size, file.modifiedMs) == KnownVerdict.NotScreenshot) return@mapNotNull null
-                val shot = readShot(uri, file)?.takeIf { it !== NOT_A_SCREENSHOT } ?: return@mapNotNull null
-                val at = screenshotWhen(shot.localDateTime, file.modifiedMs, zone, shot.offset)?.epochMs ?: return@mapNotNull null
-                val fate = shotFate(shot.classified, at, null, emptyList(), lower, book.pauses, confirmed = false)
-                if (fate == ShotFate.COUNT || fate == ShotFate.REFUSED_SIZE || fate == ShotFate.REFUSED_TYPE || fate == ShotFate.UNREADABLE) {
-                    file.documentId
-                } else {
-                    null
-                }
-            }.toSet()
-        } catch (_: Exception) {
-            emptySet()
-        }
+        val signal = CancellationSignal()
+        return folder.walk(uri, signal) { document, _ -> document.file }.mapNotNull { file ->
+            if (knownVerdict(known[file.documentId], file.size, file.modifiedMs) == KnownVerdict.NotScreenshot) return@mapNotNull null
+            val shot = readShot(uri, file, signal)?.takeIf { it !== NOT_A_SCREENSHOT } ?: return@mapNotNull null
+            val at = screenshotWhen(shot.localDateTime, file.modifiedMs, zone, shot.offset)?.epochMs ?: return@mapNotNull null
+            val fate = shotFate(shot.classified, at, null, emptyList(), lower, book.pauses, confirmed = false)
+            when (fate) {
+                ShotFate.COUNT, ShotFate.REFUSED_SIZE, ShotFate.REFUSED_TYPE, ShotFate.UNREADABLE -> file.documentId
+                else -> null
+            }
+        }.toSet()
     }
 
     private fun seal(bytes: ByteArray, shot: ShotRead.Shot, capturedAt: String, takenFrom: TakenFrom): String? {
@@ -585,27 +575,16 @@ class ScreenshotSession(
                 "screenshotTakenFrom" to takenFrom.name.lowercase(),
             ),
         )
-        val dao = database.segmentDao()
-        val result = FileSpoolWriter(spoolDir, occupiedLeaves = { day, stream -> dao.occupiedDirSegments(day, stream) }).seal(
-            segment,
-            object : PayloadBytesProvider {
-                override fun open(payload: SegmentPayload) = ByteArrayInputStream(bytes)
-            },
-        )
-        if (result.state != SealState.SEALED) return null
-        RoomSealedSegmentSink(dao).persistSealed(segment, result, System.currentTimeMillis())
-        val leaf = result.directory?.fileName?.toString() ?: segment.key.segment
-        return "$leaf".let { "${keys.day}/$SCREENSHOTS_STREAM/$it" }
+        return delivery.seal(segment, bytes)
     }
 
     private fun observeStaged() {
-        val dao = database.segmentDao()
         val still = mutableListOf<StagedShot>()
         for (staged in book.staged) {
-            val row = dao.segmentById(staged.segmentId)
+            val row = delivery.receipt(staged.segmentId)
             when {
                 row == null -> still += staged
-                row.state == QueueState.UPLOADED || row.state == QueueState.EVICTED -> {
+                row.journalHasSegment() -> {
                     receive(staged.sha256, ReceivedEnd.DELIVERED)
                     mark(staged.documentId, ReceivedEnd.DELIVERED)
                 }
@@ -646,25 +625,6 @@ class ScreenshotSession(
             book = book.copy(pauses = next)
             save()
         }
-    }
-
-    /** Keeps the periodic check enqueued exactly while the source is on. */
-    private fun schedule(on: Boolean = backgroundCheckWanted(book, wishOn())) {
-        val manager = WorkManager.getInstance(appContext)
-        if (!on) {
-            manager.cancelUniqueWork(SCREENSHOTS_WORK_NAME)
-            return
-        }
-        val work = PeriodicWorkRequest.Builder(
-            ScreenshotsCheckWorker::class.java,
-            PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS,
-            TimeUnit.MILLISECONDS,
-        ).build()
-        manager.enqueueUniquePeriodicWork(
-            SCREENSHOTS_WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            work,
-        )
     }
 
     private fun refresh() {
@@ -708,16 +668,12 @@ class ScreenshotSession(
         return folder.hasReadGrant(uri)
     }
 
-    private fun submit(action: () -> Unit) {
-        actor.execute {
-            try {
-                action()
-            } catch (_: Exception) {
-                countFailed = true
-                counting = false
-                refresh()
-            }
-        }
+    private fun recordFailure(error: Exception) {
+        if (error is SecurityException) accessLost = true
+        countFailed = error !is android.os.OperationCanceledException
+        if (!book.confirmed && countFailed) previewCount = null
+        counting = false
+        refresh()
     }
 
     private fun remember(file: FolderFile, verdict: KnownVerdict) {

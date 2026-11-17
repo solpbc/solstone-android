@@ -6,34 +6,34 @@ import android.content.Context
 import android.net.Uri
 import android.os.CancellationSignal
 import android.os.SystemClock
-import androidx.work.*
-import app.solstone.core.model.QueueState
+import androidx.work.WorkerParameters
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.obsidian.*
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.fetchJournalCapability
 import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.PayloadRef
-import app.solstone.core.spool.FileSpoolWriter
-import app.solstone.core.spool.PayloadBytesProvider
-import app.solstone.core.spool.SealState
-import app.solstone.platform.persistence.room.*
-import java.io.ByteArrayInputStream
-import java.nio.file.Files
+import app.solstone.platform.foldersync.FolderCheckWorker
+import app.solstone.platform.foldersync.FolderChecks
+import app.solstone.platform.foldersync.FolderDelivery
+import app.solstone.platform.foldersync.FolderRuntime
+import app.solstone.platform.foldersync.IncompleteFolderListing
+import app.solstone.platform.foldersync.journalHasSegment
+import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import java.nio.file.Path
 import java.time.ZoneId
-import java.util.concurrent.*
+import java.util.concurrent.CancellationException
 
 const val OBSIDIAN_WORK_NAME = "solstone-obsidian-check"
-object ObsidianRuntimes { @Volatile var current: ObsidianSession? = null }
+object ObsidianRuntimes : FolderRuntime<ObsidianSession>()
 interface ObsidianWorkerHost { fun obsidianSessionForWork(): ObsidianSession? }
 
-class ObsidianCheckWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
-    override fun doWork(): Result {
-        val session = ObsidianRuntimes.current ?: (applicationContext as? ObsidianWorkerHost)?.obsidianSessionForWork()
-            ?: return Result.retry()
-        return if (session.runCheckBlocking { isStopped }) Result.success() else Result.retry()
-    }
+// Keep this class name for WorkManager requests persisted by older installs.
+class ObsidianCheckWorker(context: Context, params: WorkerParameters) : FolderCheckWorker(context, params) {
+    override fun runCheck(stopped: () -> Boolean): Boolean =
+        (ObsidianRuntimes.current ?: (applicationContext as? ObsidianWorkerHost)?.obsidianSessionForWork())
+            ?.runCheckBlocking(stopped) == true
 }
 
 data class ObsidianWarning(val vault: String, val device: String?, val lastSynced: String, val token: String)
@@ -47,7 +47,7 @@ data class ObsidianUi(
 
 /** One actor owns the private ledger, provider scans and the handoff to the normal spool. */
 class ObsidianSession(
-    context: Context, private val database: SolstonePersistenceDatabase, private val spoolDir: Path,
+    context: Context, private val database: SolstonePersistenceDatabase, spoolDir: Path,
     private val wishOn: () -> Boolean, private val setEnabled: (Boolean) -> Boolean,
     private val ownerStopWitness: () -> String?, private val onSealed: () -> Unit,
     private val onChanged: () -> Unit,
@@ -56,10 +56,7 @@ class ObsidianSession(
     private val ledger = SqliteObsidianLedger(appContext)
     private val reader = SafObsidianVault(appContext.contentResolver)
     private val engine = ObsidianEngine(ledger, ZoneId.systemDefault())
-    private val actor = ScheduledThreadPoolExecutor(1) { r -> Thread(r, "obsidian-read") }.apply { removeOnCancelPolicy = true }
-    private var foreground = false
-    private var timer: ScheduledFuture<*>? = null
-    @Volatile private var operation: CancellationSignal? = null
+    private val delivery = FolderDelivery(spoolDir, database.segmentDao())
     @Volatile private var listener: () -> Unit = {}
     @Volatile private var pauseRequested = false
     @Volatile private var offRequested = false
@@ -73,36 +70,36 @@ class ObsidianSession(
     private var lastDuration = 0L
     private var globalPause = false
     private val global = SqliteObsidianLedger.GLOBAL_ROOT
-    init { ObsidianRuntimes.current = this; submit { refresh() } }
+    private val checks = FolderChecks(
+        appContext, OBSIDIAN_WORK_NAME, ObsidianCheckWorker::class.java, "obsidian-read",
+        check = ::checkNow, onFailure = ::recordFailure, backgroundWanted = ::backgroundWanted,
+        foregroundDelayMs = { if (wishOn()) (lastDuration * 100).coerceIn(60_000L, 900_000L) else null },
+    )
+    init { ObsidianRuntimes.register(this); checks.submit { refresh() } }
     fun setListener(next: () -> Unit) { listener = next }
     fun hasAccess(): Boolean = ui.configured && ui.fault != "access_lost"
     fun isPaused(): Boolean = ui.paused || ownerStopHolds() || stopRequested
     private fun ownerStopHolds() = obsidianOwnerStopHolds(ownerStopWitness(), acknowledgedStop)
     fun allowsDelivery(): Boolean = !pauseRequested && !offRequested && !stopRequested && !ui.paused && !ownerStopHolds() && wishOn()
-    fun onProcessStart() = submit { applyCounters(); schedule(); refresh() }
-    fun onForeground(value: Boolean) = submit {
-        foreground = value
-        timer?.cancel(false); timer = null
-        if (value) checkNow()
-        scheduleTimer()
-    }
+    fun onProcessStart() = checks.submit { applyCounters(); schedule(); refresh() }
+    fun onForeground(value: Boolean) = checks.onForeground(value)
     fun onPauseChanged() {
         if (ownerStopWitness() == null) stopRequested = false
-        submit { refresh() }
+        checks.submit { refresh() }
     }
     fun onOwnerStopRequested(saved: Boolean) {
         stopRequested = true
-        submit { if (!saved) fault = "wish_not_saved"; refresh() }
+        checks.submit { if (!saved) fault = "wish_not_saved"; refresh() }
     }
     private fun acknowledgeOwnerStop(token: String?) {
         if (token == null) ledger.remove(global, "settings", "owner_stop_ack")
         else ledger.put(global, "settings", "owner_stop_ack", token)
     }
-    fun check() = submit { checkNow(); scheduleTimer() }
+    fun check() = checks.submit { checks.checkNow() }
     fun choose(uri: Uri) {
         val acceptedStop = ownerStopWitness()
-        operation?.cancel()
-        submit {
+        checks.cancelCheck()
+        checks.submit {
             ui = ui.copy(settingUp = true, fault = null); changed()
             val alreadyGranted = reader.hasReadGrant(uri)
             var published = false
@@ -121,52 +118,52 @@ class ObsidianSession(
                 if (!setEnabled(true)) throw VaultAccessException("wish_not_saved")
                 if (current != null && current != chosen.root) {
                     ledger.get(current, "meta", "uri")?.let { old ->
-                        runCatching { appContext.contentResolver.releasePersistableUriPermission(Uri.parse(old), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                        runCatching { reader.release(Uri.parse(old)) }
                     }
                 }
                 offRequested = false; pauseRequested = false; stopRequested = false
-                fault = null; warning = null; refresh(); schedule(); checkNow(); scheduleTimer()
+                fault = null; warning = null; refresh(); schedule(); checks.checkNow()
             } catch (e: Exception) {
-                if (!alreadyGranted && !published) runCatching { appContext.contentResolver.releasePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                if (!alreadyGranted && !published) runCatching { reader.release(uri) }
                 recordFailure(e)
             }
         }
     }
     fun turnOn() {
         val acceptedStop = ownerStopWitness()
-        submit {
-        val root = ledger.get(global, "settings", "root") ?: return@submit
-        val uri = ledger.get(root, "meta", "uri") ?: return@submit
-        reader.validate(Uri.parse(uri))
-        if (!setEnabled(true)) throw VaultAccessException("wish_not_saved")
-        ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
-        offRequested = false; pauseRequested = false; stopRequested = false
-        fault = null; warning = null; refresh(); schedule(); checkNow(); scheduleTimer()
+        checks.submit {
+            val root = ledger.get(global, "settings", "root") ?: return@submit
+            val uri = ledger.get(root, "meta", "uri") ?: return@submit
+            reader.validate(Uri.parse(uri))
+            if (!setEnabled(true)) throw VaultAccessException("wish_not_saved")
+            ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
+            offRequested = false; pauseRequested = false; stopRequested = false
+            fault = null; warning = null; refresh(); schedule(); checks.checkNow()
         }
     }
     fun turnOff() {
         offRequested = true
-        operation?.cancel()
-        submit {
+        checks.cancelCheck()
+        checks.submit {
             if (!setEnabled(false)) { fault = "wish_not_saved"; refresh(); return@submit }
-            warning = null; fault = null; timer?.cancel(false); timer = null
-            WorkManager.getInstance(appContext).cancelUniqueWork(OBSIDIAN_WORK_NAME)
+            warning = null; fault = null
+            checks.stopScheduling()
             refresh()
         }
     }
     fun pause() {
         pauseRequested = true
-        submit { ledger.put(global, "settings", "paused", "1"); refresh() }
+        checks.submit { ledger.put(global, "settings", "paused", "1"); refresh() }
     }
     fun resume() {
         val acceptedStop = ownerStopWitness()
-        submit {
-        ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
-        pauseRequested = false; stopRequested = false; refresh()
-        checkNow(); onSealed(); scheduleTimer()
+        checks.submit {
+            ledger.transaction { ledger.remove(global, "settings", "paused"); acknowledgeOwnerStop(acceptedStop) }
+            pauseRequested = false; stopRequested = false; refresh()
+            checks.checkNow(); onSealed()
         }
     }
-    fun continueWarning() = submit {
+    fun continueWarning() = checks.submit {
         warning?.let { ledger.put(global, OBSIDIAN_APPROVALS, it.token, "1") }
         warning = null; refresh(); onSealed()
     }
@@ -179,8 +176,8 @@ class ObsidianSession(
      * journal. Returns once saved, or false if that did not happen in time.
      */
     fun restartFirstSetup(): Boolean {
-        operation?.cancel()
-        val saved = actor.submit<Unit> {
+        checks.cancelCheck()
+        return checks.restartFirstSetup {
             // A batch the last journal took is settled first, so it does not count toward this
             // journal's first send.
             runCatching { stageBatches() }
@@ -188,19 +185,16 @@ class ObsidianSession(
             warning = null; capability = null
             refresh()
         }
-        val done = try { saved.get(30, TimeUnit.SECONDS); true } catch (_: Exception) { false }
-        submit { checkNow(); scheduleTimer() }
-        return done
     }
 
     /** Invoked by the normal authenticated sender, only after mark confirmation. */
-    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = blocking {
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = checks.blocking(
+        60, onFailure = { android.util.Log.w("ObsidianSource", "delivery check failed: ${it.javaClass.simpleName}") },
+    ) {
         capability = null
         refresh()
         if (!allowsDelivery() || !pairingCurrent()) return@blocking false
-        val status = client.request("GET", "/api/system/status", mapOf("Cache-Control" to "no-cache"), null, maxResponseBytes = 64 * 1024)
-        if (status.status != 200) { capability = null; refresh(); return@blocking false }
-        capability = parseObsidianCapability(status.status, status.bodyText())
+        capability = fetchJournalCapability(client, OBSIDIAN_CAPABILITY)
         if (capability != true || !pairingCurrent()) { refresh(); return@blocking false }
         val names = ledger.batches().map { it.vault }.distinct()
         val pending = names.filter { name -> ledger.get(global, OBSIDIAN_APPROVALS, obsidianApprovalKey(name)) == null }
@@ -220,60 +214,42 @@ class ObsidianSession(
         warning = null; refresh(); pairingCurrent() && allowsDelivery()
     } ?: false
 
-    fun runCheckBlocking(stopped: () -> Boolean): Boolean {
-        val workSignal = CancellationSignal()
-        val result = actor.submit<Boolean> { try { checkNow(stopped, workSignal); true } catch (e: Exception) { recordFailure(e); false } }
-        while (true) {
-            if (stopped() || Thread.currentThread().isInterrupted) {
-                workSignal.cancel(); result.cancel(true); return false
-            }
-            try { return result.get(500, TimeUnit.MILLISECONDS) }
-            catch (_: TimeoutException) { /* WorkManager owns cancellation. */ }
-            catch (_: ExecutionException) { return false }
-            catch (_: InterruptedException) { workSignal.cancel(); result.cancel(true); Thread.currentThread().interrupt(); return false }
-        }
-    }
-    private fun <T> blocking(action: () -> T): T? {
-        val result = actor.submit(Callable { action() })
-        return try { result.get(60, TimeUnit.SECONDS) }
-        catch (_: TimeoutException) { result.cancel(true); null }
-        catch (e: ExecutionException) {
-            android.util.Log.w("ObsidianSource", "delivery check failed: ${e.cause?.javaClass?.simpleName ?: e.javaClass.simpleName}")
-            null
-        }
-        catch (_: InterruptedException) { result.cancel(true); Thread.currentThread().interrupt(); null }
-    }
-    private fun checkNow(stopped: () -> Boolean = { false }, signal: CancellationSignal = CancellationSignal()) {
+    fun runCheckBlocking(stopped: () -> Boolean): Boolean = checks.runFromWorker(stopped)
+
+    private fun checkNow(signal: CancellationSignal) {
         if (!wishOn()) { refresh(); return }
         val root = ledger.get(global, "settings", "root") ?: return
         val uri = ledger.get(root, "meta", "uri") ?: return
-        operation = signal
         val began = SystemClock.elapsedRealtime()
         try {
-            applyCounters { stopped() || signal.isCanceled }
-            engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
+            fun cancelled(): Boolean {
+                if (Thread.currentThread().isInterrupted) signal.cancel()
+                return signal.isCanceled
+            }
+            applyCounters(::cancelled)
+            engine.closeDueWindows(System.currentTimeMillis(), ::cancelled)
             stageBatches()
-            val vault = reader.validate(Uri.parse(uri))
+            val vault = reader.validate(Uri.parse(uri), signal = signal)
             val entries = reader.walk(vault, signal)
             val stage = ObsidianReadStage(ledger, root)
             val needed = engine.entriesNeedingRead(root, entries)
             stage.fill(needed, { reader.read(vault, it, signal) }, System::currentTimeMillis,
-                cancelled = { if (stopped() || Thread.currentThread().isInterrupted) signal.cancel(); signal.isCanceled },
+                cancelled = ::cancelled,
                 progress = { done, total -> if (done % 100 == 0) { ui = ui.copy(settingUp = ui.lastChecked == null, initialTotal = total); changed() } })
             signal.throwIfCanceled()
             val now = System.currentTimeMillis()
             val scan = engine.scan(root, vault.name, entries, now, stage::read,
-                cancelled = { if (stopped() || Thread.currentThread().isInterrupted) signal.cancel(); signal.isCanceled },
+                cancelled = ::cancelled,
                 readStageToken = stage.token)
-            applyCounters { stopped() || signal.isCanceled }
+            applyCounters(::cancelled)
             stage.clearApplied()
             signal.throwIfCanceled()
-            engine.closeDueWindows(System.currentTimeMillis()) { stopped() || signal.isCanceled }
+            engine.closeDueWindows(System.currentTimeMillis(), ::cancelled)
             stageBatches()
             fault = if (scan.unavailable > 0) "some_notes_unavailable" else null
             refresh()
         } finally {
-            operation = null; lastDuration = SystemClock.elapsedRealtime() - began
+            lastDuration = SystemClock.elapsedRealtime() - began
         }
     }
     private fun applyCounters(stopped: () -> Boolean = { false }) {
@@ -286,13 +262,10 @@ class ObsidianSession(
         }
     }
     private fun stageBatches() {
-        val dao = database.segmentDao()
         var staged = false
         for (batch in ledger.batches()) {
-            val row = dao.segmentsByDay(batch.keys.day).firstOrNull { r ->
-                r.stream == "obsidian" && dao.filesBySegmentId(r.id).any { it.name == batch.name }
-            }
-            if (row?.state == QueueState.UPLOADED || row?.state == QueueState.EVICTED || row?.lastError == "removed_in_journal") {
+            val row = delivery.receipt(batch.keys.day, "obsidian", batch.name)
+            if (row.journalHasSegment() || row?.lastError == "removed_in_journal") {
                 ledger.transaction {
                     val sent = ledger.get(batch.root, "meta", "initial_sent")?.toInt() ?: 0
                     ledger.put(batch.root, "meta", "initial_sent", (sent + batch.initialNotes).toString())
@@ -301,33 +274,24 @@ class ObsidianSession(
                 continue
             }
             if (row?.lastError == "obsidian_note_invalid") continue
-            val payloadExists = row?.let { r -> Files.isRegularFile(spoolDir.resolve(r.day).resolve(r.stream).resolve(r.dirSegment).resolve(batch.name)) } ?: false
-            if (row == null || !payloadExists) {
+            if (row == null || !delivery.hasPayload(row, batch.name)) {
                 val bytes = ledger.batchBytes(batch.root, batch.name) ?: error("Obsidian bytes unavailable")
                 val segment = SealedSegment("obsidian", SegmentKey(batch.keys.day, batch.keys.segment), batch.keys,
                     listOf(SegmentPayload("obsidian", PayloadRef(batch.name, OBSIDIAN_MEDIA_TYPE, bytes.size.toLong(), batch.name.removePrefix("obsidian_").removeSuffix(".jsonl")),
                         batch.keys.startEpochMs, batch.keys.endEpochMs)), emptyList())
-                val result = FileSpoolWriter(spoolDir, occupiedLeaves = { day, stream -> dao.occupiedDirSegments(day, stream) }).seal(segment,
-                    object : PayloadBytesProvider { override fun open(payload: SegmentPayload) = ByteArrayInputStream(bytes) })
-                check(result.state == SealState.SEALED) { "spool_not_saved" }
-                RoomSealedSegmentSink(dao).persistSealed(segment, result, System.currentTimeMillis())
+                check(delivery.seal(segment, bytes) != null) { "spool_not_saved" }
                 staged = true
             }
             ledger.markSpooled(batch.root, batch.name)
         }
         if (staged) onSealed()
     }
+    private fun backgroundWanted() = wishOn() && ledger.get(global, "settings", "root") != null
+
     private fun schedule() {
-        if (!wishOn() || ledger.get(global, "settings", "root") == null) return
-        val work = PeriodicWorkRequest.Builder(ObsidianCheckWorker::class.java, PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS, TimeUnit.MILLISECONDS).build()
-        WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(OBSIDIAN_WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, work)
+        if (backgroundWanted()) checks.scheduleBackground()
     }
-    private fun scheduleTimer() {
-        timer?.cancel(false); timer = null
-        if (!foreground || !wishOn()) return
-        val delay = if (lastDuration <= 600) 60_000L else (lastDuration * 100).coerceAtMost(900_000L)
-        timer = actor.schedule({ try { checkNow() } catch (e: Exception) { recordFailure(e) }; scheduleTimer() }, delay, TimeUnit.MILLISECONDS)
-    }
+
     private fun refresh() {
         val root = ledger.get(global, "settings", "root")
         val roots = ledger.roots(); val batches = ledger.batches()
@@ -349,18 +313,17 @@ class ObsidianSession(
         if (error is android.os.OperationCanceledException || error is InterruptedException || error is CancellationException) return
         android.util.Log.w("ObsidianSource", "check failed: ${error.javaClass.simpleName}")
         fault = when (error) {
-            is VaultAccessException -> error.message
+            is VaultAccessException, is IncompleteFolderListing -> error.message
             is SecurityException -> "access_lost"
             else -> "read_failed"
         }
         refresh()
     }
-    private fun submit(action: () -> Unit) { actor.execute { try { action() } catch (e: Exception) { recordFailure(e) } } }
     private fun changed() { onChanged(); listener() }
     fun close() {
-        if (ObsidianRuntimes.current === this) ObsidianRuntimes.current = null
-        operation?.cancel(); timer?.cancel(false); actor.shutdownNow()
-        check(actor.awaitTermination(10, TimeUnit.SECONDS)) { "Obsidian reads did not stop" }
+        ObsidianRuntimes.unregister(this)
+        checks.close()
+        check(checks.awaitClosed(10)) { "Obsidian reads did not stop" }
         ledger.close()
     }
 }

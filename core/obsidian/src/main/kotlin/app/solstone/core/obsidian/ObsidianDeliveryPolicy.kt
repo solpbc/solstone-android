@@ -3,17 +3,14 @@
 package app.solstone.core.obsidian
 
 import app.solstone.core.pl.parseJson
+import app.solstone.core.pl.parseJournalCapability
 import java.time.OffsetDateTime
 
+const val OBSIDIAN_CAPABILITY = "obsidian_notes"
+
 /** A failed read is unknown; only a valid older status establishes lack of support. */
-fun parseObsidianCapability(status: Int, body: String): Boolean? {
-    if (status != 200) return null
-    val root = runCatching { parseJson(body) as? Map<*, *> }.getOrNull() ?: return null
-    if (!root.containsKey("capabilities")) return false
-    val caps = root["capabilities"] as? List<*> ?: return null
-    if (caps.any { it !is String }) return null
-    return "obsidian_notes" in caps
-}
+fun parseObsidianCapability(status: Int, body: String): Boolean? =
+    parseJournalCapability(status, body, OBSIDIAN_CAPABILITY)
 
 /** The bucket of the owner's yes to a vault whose name the journal already has from another device. */
 const val OBSIDIAN_APPROVALS = "authorizations"
