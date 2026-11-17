@@ -37,6 +37,7 @@ import app.solstone.core.pl.JournalIdentityRefreshCoordinator
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -304,14 +305,17 @@ class PhoneJournalMarkComposeTest {
 
     @Test
     fun pairingMarkRequiresAnExplicitConfirmationAndDisconnectsOnMismatch() {
-        var confirmed = 0
-        var mismatched = 0
+        val confirmed = AtomicInteger()
+        val mismatched = AtomicInteger()
         composeRule.setContent {
             PhoneTheme {
                 PairingSuccessMark(
                     coordinator = null,
-                    onConfirmed = { confirmed += 1 },
-                    onMismatch = { mismatched += 1; PairingMismatchResult.Disconnected },
+                    onConfirmed = { confirmed.incrementAndGet() },
+                    onMismatch = {
+                        mismatched.incrementAndGet()
+                        PairingMismatchResult.Disconnected
+                    },
                 )
             }
         }
@@ -322,10 +326,10 @@ class PhoneJournalMarkComposeTest {
             useUnmergedTree = true,
         ).assertDoesNotExist()
         composeRule.onNodeWithTag(PAIRING_CANCEL_PAIRING_TAG).performClick()
-        composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 5_000) { confirmed.get() > 0 }
 
-        assertEquals(1, mismatched)
-        assertEquals(1, confirmed)
+        assertEquals(1, mismatched.get())
+        assertEquals(1, confirmed.get())
     }
 
     @Test

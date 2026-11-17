@@ -503,6 +503,7 @@ class JournalBrowserDefaultRouteRelayHostTest {
     fun relayBadSourcesMatrixWithWindowResetNotPoisonedAndFollowupSucceeds() {
         val serverSocket = fixture.createServerSslServerSocket(0, needClientAuth = false).apply { soTimeout = 15000 }
         val serverDone = CountDownLatch(1)
+        val clientDone = CountDownLatch(1)
         val peerError = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
         val declaredLength = INITIAL_SEND_WINDOW + 1000L
 
@@ -575,6 +576,7 @@ class JournalBrowserDefaultRouteRelayHostTest {
 
                         streamId += 2
                     }
+                    assertTrue(clientDone.await(15, TimeUnit.SECONDS), "Client did not finish reading the response")
                 } finally {
                     sslSocket.close()
                 }
@@ -687,10 +689,11 @@ class JournalBrowserDefaultRouteRelayHostTest {
                 val ok3 = client.request("GET", "/ok3", emptyMap(), null)
                 assertEquals(200, ok3.status)
             } finally {
+                clientDone.countDown()
+                client.close()
                 executor.shutdownNow()
             }
 
-            client.close()
             assertTrue(serverDone.await(15, TimeUnit.SECONDS))
             peerError.get()?.let { throw it }
         }
