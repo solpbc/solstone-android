@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-16
+
+### Changed
+
+- internal updates. how you use the solstone app on your watch is unchanged.
+
 ## [1.0.1] - 2026-11-14
 
 ### Changed

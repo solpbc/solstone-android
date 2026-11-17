@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.47] - 2026-11-16
+
 ### Fixed
 
 - a journal link you open from ChatGPT now takes you to that place in your journal. before, the solstone app said the link wasn't valid.
