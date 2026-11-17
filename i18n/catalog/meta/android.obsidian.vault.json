@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.obsidian.vault.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "33f9e7280c0ed1b4c71710ef28808779866fb931a9b7abe662468035cae82b09",
+  "risk": "routine",
+  "auto_merge": true
+}

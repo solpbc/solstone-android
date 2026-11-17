@@ -8,6 +8,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     testImplementation(kotlin("test"))

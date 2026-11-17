@@ -1,11 +1,12 @@
 {
   "description": "your watch → your phone → your journal. Google documents end-to-end encryption for its relay.",
-  "context": "Shared JVM courier notice in the phone source model. Included with the shared copy object so its generated English stays unchanged while the phone awaits migration. Source: core/watch-courier/WatchSourcePageModel.kt.",
+  "context": "Shared JVM courier notice in the phone source model. Included with the shared copy object so its generated English stays unchanged for both phone and watch consumers. Source: core/watch-courier/WatchSourcePageModel.kt.",
   "surfaces": [
     "phone"
   ],
   "bundles": [
-    "android-wear"
+    "android-wear",
+    "android-phone"
   ],
   "arguments": [],
   "format_intent": "text",

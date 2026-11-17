@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.loadfailuremessage.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "19027a512e853744a29aed51a2f2eee9f1b5a8fe424b2dfe6e00494943de12eb",
+  "risk": "routine",
+  "auto_merge": true
+}

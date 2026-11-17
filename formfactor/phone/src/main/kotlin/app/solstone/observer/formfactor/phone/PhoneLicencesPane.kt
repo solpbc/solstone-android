@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -45,9 +47,9 @@ fun PhoneLicencesPane(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val agpl = remember(context) { context.readRawText(R.raw.license_agpl) }
-    val ofl = remember(context) { context.readRawText(R.raw.license_ofl) }
-    val lucide = remember(context) { context.readRawText(R.raw.license_lucide) }
+    val agpl = phoneText("android.legal.license.agpl.exact")
+    val ofl = phoneText("android.legal.license.ofl")
+    val lucide = phoneText("android.legal.license.lucide")
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Licences) },
     ) {
@@ -55,40 +57,38 @@ fun PhoneLicencesPane(
 
         // AGPL § 0's four required notices. Owner-register wording, and each one is
         // making the statement the licence asks for rather than describing it.
-        PaneNote("copyright © 2026 sol pbc")
+        PaneNote(phoneText("android.about.copyright.n2026.sol.pbc.fixed"))
         PaneNote(
-            "solstone comes with no warranty, to the extent the law allows.",
+            phoneText("android.about.solstone.comes.with.no.warranty"),
         )
         PaneNote(
-            "you may share and change it under the terms of the GNU Affero General Public " +
-                "License, version 3. the full text is below.",
+            phoneText("android.about.may.share.change.under.terms"),
         )
 
-        PaneSectionTitle("what is in this app")
+        PaneSectionTitle(phoneText("android.about.what.app"))
         PaneCard {
-            PaneFactRow(label = "solstone", value = "AGPL-3.0-only")
+            PaneFactRow(label = phoneText("android.push.title"), value = phoneText("android.licences.agpl30only"))
             PaneRowDivider()
-            PaneFactRow(label = "Comfortaa", value = "SIL OFL 1.1")
+            PaneFactRow(label = phoneText("android.licences.comfortaa"), value = phoneText("android.about.sil.ofl.n1.n1"))
             PaneRowDivider()
-            PaneFactRow(label = "Lucide", value = "ISC and MIT")
+            PaneFactRow(label = phoneText("android.licences.lucide"), value = phoneText("android.licences.iscmit"))
             PaneRowDivider()
-            PaneFactRow(label = "EFF long wordlist", value = "CC BY 3.0 US")
+            PaneFactRow(label = phoneText("android.licences.efflongwordlist"), value = phoneText("android.licences.cc30us"))
         }
         // Third-party proper names keep their own casing; house lowercase is ours.
-        PaneNote("Comfortaa is the typeface solstone is set in, by Johan Aakerlund.")
-        PaneNote("your journal's mark uses icons from Lucide and words from the EFF long wordlist.")
+        PaneNote(phoneText("android.about.comfortaa.typeface.solstone.set.by"))
+        PaneNote(phoneText("android.licences.markuses"))
         PaneNote(
-            "the EFF long wordlist is by the Electronic Frontier Foundation, under " +
-                "https://creativecommons.org/licenses/by/3.0/us/",
+            phoneText("android.licences.effwordlist"),
         )
 
-        PaneSectionTitle("GNU Affero General Public License v3")
+        PaneSectionTitle(phoneText("android.about.gnu.affero.general.public.license"))
         LicenceText(agpl, "licenceTextAgpl")
 
-        PaneSectionTitle("SIL Open Font License 1.1")
+        PaneSectionTitle(phoneText("android.about.sil.open.font.license.n1"))
         LicenceText(ofl, "licenceTextOfl")
 
-        PaneSectionTitle("Lucide")
+        PaneSectionTitle(phoneText("android.licences.lucide"))
         LicenceText(lucide, "licenceTextLucide")
     }
 }
@@ -103,11 +103,3 @@ private fun LicenceText(text: String, tag: String) {
         modifier = Modifier.testTag(tag),
     )
 }
-
-/**
- * ⚠ Read once and remembered. A licence text is tens of kilobytes and never changes for a given
- * build, so re-reading it on every recomposition would be work with no possible new answer.
- */
-private fun android.content.Context.readRawText(id: Int): String =
-    runCatching { resources.openRawResource(id).bufferedReader().use { it.readText() } }
-        .getOrDefault("")

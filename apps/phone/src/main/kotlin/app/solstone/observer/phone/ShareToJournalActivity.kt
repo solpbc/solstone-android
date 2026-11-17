@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -51,7 +53,7 @@ class ShareToJournalActivity : ComponentActivity() {
             model.begin(share, share.uris.map { uri ->
                 val meta = share.meta.getValue(uri.toString())
                 ShareSheetItem(
-                    name = meta.name ?: "item",
+                    name = meta.name ?: phoneText("android.phone.item"),
                     type = ownerTypeWord(meta.mime),
                     size = meta.size?.let { Formatter.formatShortFileSize(this, it) },
                     refusal = knownRefusal(uri.scheme, meta.mime)?.toLine(),
@@ -146,11 +148,11 @@ class ShareToJournalActivity : ComponentActivity() {
 internal fun ownerTypeWord(mime: String?): String {
     val type = mime?.substringBefore(';')?.trim()?.lowercase().orEmpty()
     return when {
-        type == "application/pdf" -> "PDF"
-        type.startsWith("image/") -> "image"
-        type.startsWith("audio/") -> "audio"
-        type == "text/plain" -> "text"
-        else -> "file"
+        type == "application/pdf" -> phoneText("android.phone.pdf")
+        type.startsWith("image/") -> phoneText("android.phone.image")
+        type.startsWith("audio/") -> phoneText("android.phone.audio")
+        type == "text/plain" -> phoneText("android.phone.text")
+        else -> phoneText("android.phone.file")
     }
 }
 

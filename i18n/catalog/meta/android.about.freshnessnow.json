@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the about line",
+  "context": "the solstone app to the owner, on the about line Exact iPhone English twin: ios.app.watchrelativejustnow.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "95d31b7ca8349d7453fae3cd77f41a7476baa262a222237aa2dfb2b4d2cc9f86",
+  "risk": "routine",
+  "auto_merge": true
+}

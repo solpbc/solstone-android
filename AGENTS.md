@@ -114,10 +114,10 @@ AGPL-3.0-only.
 
 ## String catalog discipline
 
-Wear OS owner-visible copy belongs in `i18n/catalog/`, never in Kotlin literals
+Phone and Wear OS owner-visible copy belongs in `i18n/catalog/`, never in Kotlin literals
 or handwritten string resources. Edit the catalog and sidecars, then regenerate
 with the pinned compiler. See [the catalog guide](i18n/README.md). Preserve
 permanent message identities and use whole messages with arguments and Android
 quantity resources. Keep protocol/source identifiers separate from display text.
 Only `en-US` is approved for production. Pseudolocale proofs stay in scratch
-builds. The phone's own copy and push catalog remain separate until migrated.
+builds. The phone's push catalog stays a separate shared contract. Use native resource selection for both bundles; do not compare translated display names as source identities.

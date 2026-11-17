@@ -3,6 +3,8 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.model.ReasonCode
 
 /**
@@ -21,24 +23,24 @@ import app.solstone.core.model.ReasonCode
  * as a reason is noise, so `DESIRED_OFF` and `NONE` render as the bare state word.
  */
 fun reasonDiagnosis(reason: ReasonCode): String? = when (reason) {
-    ReasonCode.PERMISSION_REVOKED -> "permissions needed"
-    ReasonCode.AUTH_REVOKED -> "access to your journal was revoked"
-    ReasonCode.SERVICE_KILLED -> "intake was stopped by the system"
-    ReasonCode.STORAGE_FULL -> "storage is full"
-    ReasonCode.UNPAIRED -> "not paired with your journal"
-    ReasonCode.PROVIDER_SILENT -> "nothing has come in recently"
-    ReasonCode.REBOOTED -> "this device restarted and intake didn't resume on its own"
-    ReasonCode.TRANSPORT_UNAVAILABLE -> "can't reach your journal"
-    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> "intake couldn't start from the background"
-    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> "this source needs intake to restart"
-    ReasonCode.PERSISTENCE_FAILED -> "couldn't save journal access on this phone"
-    ReasonCode.AUDIO_CHOICE_NOT_SAVED -> "audio off setting may not have saved"
-    ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE -> "audio intake may resume after restart"
-    ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE -> "couldn't confirm the stop was saved"
-    ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY -> "other sources stopped unexpectedly"
-    ReasonCode.MICROPHONE_SILENCED -> "another app has the microphone, or access is off. audio picks up again on its own once the microphone is free or microphone access is back on."
-    ReasonCode.SCREEN_CAPTURE_FAILED -> "the recording couldn't be saved"
-    ReasonCode.AUDIO_START_FAILED -> "intake couldn't start"
+    ReasonCode.PERMISSION_REVOKED -> phoneText("android.source.permissions.needed")
+    ReasonCode.AUTH_REVOKED -> phoneText("android.source.access.journal.was.revoked")
+    ReasonCode.SERVICE_KILLED -> phoneText("android.source.intake.was.stopped.by.system")
+    ReasonCode.STORAGE_FULL -> phoneText("android.source.storage.full")
+    ReasonCode.UNPAIRED -> phoneText("android.source.not.paired.with.journal")
+    ReasonCode.PROVIDER_SILENT -> phoneText("android.source.nothing.has.come.recently")
+    ReasonCode.REBOOTED -> phoneText("android.source.device.restarted.intake.didn.t")
+    ReasonCode.TRANSPORT_UNAVAILABLE -> phoneText("android.migration.can.t.reach.journal")
+    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> phoneText("android.source.intake.couldn.t.start.from")
+    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> phoneText("android.source.source.needs.intake.restart")
+    ReasonCode.PERSISTENCE_FAILED -> phoneText("android.source.couldn.t.save.journal.access")
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED -> phoneText("android.source.audio.off.setting.may.not")
+    ReasonCode.AUDIO_CHOICE_NOT_SAVED_STOP_NOT_DURABLE -> phoneText("android.source.audio.intake.may.resume.after")
+    ReasonCode.AUDIO_CHOICE_SAVED_STOP_NOT_DURABLE -> phoneText("android.source.couldn.t.confirm.stop.was")
+    ReasonCode.INTAKE_STOPPED_UNEXPECTEDLY -> phoneText("android.source.other.sources.stopped.unexpectedly")
+    ReasonCode.MICROPHONE_SILENCED -> phoneText("android.source.another.app.has.microphone.or")
+    ReasonCode.SCREEN_CAPTURE_FAILED -> phoneText("android.source.recording.couldn.t.be.saved")
+    ReasonCode.AUDIO_START_FAILED -> phoneText("android.source.intake.couldn.t.start")
     ReasonCode.DESIRED_OFF,
     ReasonCode.NONE -> null
 }

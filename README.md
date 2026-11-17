@@ -68,7 +68,7 @@ The maintained phone APK is produced at:
 apps/phone/build/outputs/apk/real/debug/phone-real-debug.apk
 ```
 
-See [the string catalog guide](i18n/README.md) before editing Wear OS copy.
+See [the string catalog guide](i18n/README.md) before editing phone or Wear OS copy.
 
 ## Wear OS development
 

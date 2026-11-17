@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.connectionlostmessage.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "abacdd29b71f9f0d2c780f11d8ae78e06b56f3554c63ff5e32957916d3ea6635",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, while replacing a device",
+  "context": "the solstone app to the owner, while replacing a device",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "it",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "1842e72a2c7ca15ad24b2ae69ac7657c695d5f86053b424c45b0d6b3e0f239f4",
+  "risk": "routine",
+  "auto_merge": true
+}

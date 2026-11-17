@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -309,7 +311,7 @@ private fun PhoneDetailContent(
                 ?.snapshot
                 ?.status
                 ?.gapTechnicalDetails
-                ?: "not run",
+                ?: phoneText("android.gap.not.run"),
         )
         PhoneRoute.EventLog -> PhoneEventLogPane(eventLog = eventLog, modifier = modifier)
         PhoneRoute.ProblemReports -> PhoneProblemReportsPane(

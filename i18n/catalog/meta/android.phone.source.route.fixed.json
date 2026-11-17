@@ -1,0 +1,40 @@
+{
+  "description": "the solstone app to the owner, on your journal, the route row",
+  "context": "the solstone app to the owner, on your journal, the route row The company mark sol pbc is fixed and never translated.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "route",
+      "type": "string"
+    }
+  ],
+  "format_intent": "enum",
+  "max_length": 274,
+  "source_revision": "3d2de76838b371cae3bf4160d18663e3606cd899c0f3dc0c911bb1f463467251",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "route",
+    "type": "string",
+    "enum_values": [
+      "direct",
+      "both-sol",
+      "both-other",
+      "relay-sol",
+      "relay-other"
+    ],
+    "enum_default": "relay-other"
+  },
+  "protected_slots": [
+    {
+      "name": "company",
+      "kind": "accepted-input",
+      "value": "sol pbc"
+    }
+  ]
+}

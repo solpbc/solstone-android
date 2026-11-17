@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
@@ -91,27 +93,27 @@ fun sourceDetailRule(state: SourceState, reason: ReasonCode): SourceDetailRule {
     // resumes on its own. A resume control there names an action the screen cannot perform.
     if (reason == ReasonCode.MICROPHONE_SILENCED) return base
     return base.copy(
-        action = SourceDetailAction("resume intake", SourceDetailActionKind.RESUME_INTAKE),
+        action = SourceDetailAction(phoneText("android.source.resume.intake"), SourceDetailActionKind.RESUME_INTAKE),
         retryHonest = true,
     )
 }
 
 private fun reasonAction(reason: ReasonCode): SourceDetailAction? = when (reason) {
     ReasonCode.PERMISSION_REVOKED ->
-        SourceDetailAction("grant permissions", SourceDetailActionKind.GRANT_PERMISSIONS)
+        SourceDetailAction(phoneText("android.source.grant.permissions"), SourceDetailActionKind.GRANT_PERMISSIONS)
     ReasonCode.AUTH_REVOKED ->
-        SourceDetailAction("pair again", SourceDetailActionKind.CONNECT_JOURNAL)
+        SourceDetailAction(phoneText("android.migration.pair.again"), SourceDetailActionKind.CONNECT_JOURNAL)
     ReasonCode.UNPAIRED ->
-        SourceDetailAction("connect a journal", SourceDetailActionKind.CONNECT_JOURNAL)
+        SourceDetailAction(phoneText("android.shelf.connect.journal"), SourceDetailActionKind.CONNECT_JOURNAL)
     ReasonCode.STORAGE_FULL ->
-        SourceDetailAction("manage local storage", SourceDetailActionKind.MANAGE_LOCAL_STORAGE)
+        SourceDetailAction(phoneText("android.source.manage.local.storage"), SourceDetailActionKind.MANAGE_LOCAL_STORAGE)
     ReasonCode.SERVICE_KILLED,
     ReasonCode.REBOOTED,
-    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailAction("start intake again")
-    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailAction("start intake")
-    ReasonCode.PERSISTENCE_FAILED -> SourceDetailAction("try again")
-    ReasonCode.AUDIO_START_FAILED -> SourceDetailAction("try again", SourceDetailActionKind.ENABLE_SOURCE)
-    ReasonCode.SCREEN_CAPTURE_FAILED -> SourceDetailAction("turn this on again", SourceDetailActionKind.ENABLE_SOURCE)
+    ReasonCode.FOREGROUND_TYPE_NOT_HELD -> SourceDetailAction(phoneText("android.source.start.intake.again"))
+    ReasonCode.FOREGROUND_START_NOT_ALLOWED -> SourceDetailAction(phoneText("android.push.start.intake"))
+    ReasonCode.PERSISTENCE_FAILED -> SourceDetailAction(phoneText("android.migration.try.again"))
+    ReasonCode.AUDIO_START_FAILED -> SourceDetailAction(phoneText("android.migration.try.again"), SourceDetailActionKind.ENABLE_SOURCE)
+    ReasonCode.SCREEN_CAPTURE_FAILED -> SourceDetailAction(phoneText("android.source.turn.again"), SourceDetailActionKind.ENABLE_SOURCE)
     // ⛔ No generic retry: a lack of recent input does not establish a restartable stall, and an
     // unreachable journal does not by itself make intake fail.
     ReasonCode.PROVIDER_SILENT,
@@ -219,22 +221,19 @@ internal fun PhoneSourceDetail(
                 }
             }
         }
-        PaneSectionTitle("on home")
+        PaneSectionTitle(phoneText("android.source.home"))
         PaneCard {
             HomeTileControl(sourceId = sourceId, homeTileStore = homeTileStore)
         }
         PaneNote(
-            "taking a tile off home does not turn the source off. " +
-                // ⚠ Was "it just keeps home to what you actually look at." — `keeps home to` is
-                // not idiomatic, and three independent reads of the same frame stumbled on it.
-                "it just keeps home to the ones you actually look at.",
+            phoneText("android.source.taking.tile.off.home.does"),
         )
     }
 }
 
 /** The watch tile never says off or zero: only when the watch last checked in. */
 internal fun watchTileSubLine(page: WatchSourcePageModel?): String =
-    page?.lastContactShortText?.let { "checked in $it" } ?: "not checked in yet"
+    page?.lastContactShortText?.let { phoneText("android.source.checked" , "it" to (it)) } ?: phoneText("android.source.notcheckedyet")
 
 @Composable
 private fun WatchSourceDetailTemplate(
@@ -253,25 +252,25 @@ private fun WatchSourceDetailTemplate(
         Text(
             text = when {
                 pageModel.firstReceiptEpochMs == null -> pageModel.startOnWatchInstruction
-                pageModel.isSilenceStale -> "waiting for your watch"
-                else -> "heard from your watch"
+                pageModel.isSilenceStale -> phoneText("android.source.waitingwatch")
+                else -> phoneText("android.source.heardwatch")
             },
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
     }
 
-    PaneNote("session controls are on your watch. this phone cannot tell whether your watch's microphone is receiving audio.")
+    PaneNote(phoneText("android.source.sessioncontrolswatchphone"))
     pageModel.notice?.let { PaneNote(it) }
     pageModel.oldPlayServicesNotice?.let { PaneNote(it) }
     if (pageModel.storageLow) {
-        PaneNote("phone storage is almost full. free space in phone settings.")
+        PaneNote(phoneText("android.source.phonestoragealmostfull"))
     }
     if (!paired) {
-        PaneNote("material stays on your devices until you connect a journal and confirm its mark.")
+        PaneNote(phoneText("android.source.materialstaysdevicesuntil"))
         Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("sourceDetailJournalSetup")) {
-            Text("connect a journal")
+            Text(phoneText("android.shelf.connect.journal"))
         }
     }
     if (paired && pageModel.actionLabel != null) {
@@ -282,28 +281,28 @@ private fun WatchSourceDetailTemplate(
     }
     if (pageModel.storageLow) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
-        OutlinedButton(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("manage phone storage") }
+        OutlinedButton(onClick = onManageLocalStorage, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(phoneText("android.source.managephonestorage")) }
     }
 
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneNote(pageModel.relayNoticeShort)
     PaneNote(pageModel.relayNoticeFull)
 
-    PaneSectionTitle("details")
+    PaneSectionTitle(phoneText("android.source.details"))
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
-        PaneFactRow(label = "last check-in", value = pageModel.lastContactDisplayText)
+        PaneFactRow(label = phoneText("android.source.lastcheck"), value = pageModel.lastContactDisplayText)
         if (pageModel.firstReceiptEpochMs != null) {
             PaneRowDivider()
-            PaneFactRow(label = "first received", value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.firstReceiptEpochMs)))
+            PaneFactRow(label = phoneText("android.source.firstreceived"), value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.firstReceiptEpochMs)))
         }
         if (pageModel.journalConfirmedEpochMs != null) {
             PaneRowDivider()
-            PaneFactRow(label = "journal confirmed", value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.journalConfirmedEpochMs)))
+            PaneFactRow(label = phoneText("android.source.journalconfirmed"), value = WatchSourcePageModel.formatTime(requireNotNull(pageModel.journalConfirmedEpochMs)))
         }
         PaneRowDivider()
-        PaneFactRow(label = "held on this phone", value = pageModel.waitingCount?.toString() ?: "unknown")
+        PaneFactRow(label = phoneText("android.source.heldphone"), value = pageModel.waitingCount?.toString() ?: phoneText("android.gap.unknown"))
         PaneRowDivider()
-        PaneFactRow(label = "held on your watch", value = pageModel.watchWaitingCount?.let { "$it at last check-in" } ?: "unknown")
+        PaneFactRow(label = phoneText("android.source.heldwatch"), value = pageModel.watchWaitingCount?.let { phoneText("android.source.lastcheck2" , "it" to (it)) } ?: phoneText("android.gap.unknown"))
     }
 }
 
@@ -360,7 +359,7 @@ private fun SourceDetailTemplate(
     if (status.state == SourceState.ON && !paired) {
         Spacer(Modifier.height(ShellMetrics.sectionSpacing))
         Text(
-            text = "on this device and not processed until you connect a journal.",
+            text = phoneText("android.source.device.not.processed.until.connect"),
             style = MaterialTheme.typography.bodyMedium,
             color = shellSecondaryInk,
         )
@@ -372,7 +371,7 @@ private fun SourceDetailTemplate(
                 .heightIn(min = 48.dp)
                 .testTag("sourceDetailJournalSetup"),
         ) {
-            Text("connect a journal")
+            Text(phoneText("android.shelf.connect.journal"))
         }
     }
     if (sourceEarnsSwitch(status.sourceId)) {
@@ -389,7 +388,7 @@ private fun SourceDetailTemplate(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "taking it in",
+                    text = phoneText("android.source.taking"),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -413,13 +412,13 @@ private fun SourceDetailTemplate(
         // In every state, so the owner reads what turning it on does before they do.
         activeLine?.let { PaneNote(it, modifier = Modifier.testTag(ACTIVE_LINE_TEST_TAG)) }
         if (status.sourceId == "screen") {
-            PaneNote("while this is on, the solstone app takes in video of the app or screen you choose, including while you use other apps. it stays on this device until it can reach your journal.")
-            PaneNote("android asks each time you turn this on. audio and camera have their own switches.")
+            PaneNote(phoneText("android.source.while.solstone.app.takes.video"))
+            PaneNote(phoneText("android.source.android.asks.each.time.turn"))
             if (status.wish == SourceWish.Off && status.wishExpressed && status.reason == ReasonCode.NONE) {
-                PaneNote("this session ended. turn this on again to choose what to share.")
+                PaneNote(phoneText("android.source.session.ended.turn.again.choose"))
             }
             if (status.reason == ReasonCode.STORAGE_FULL) {
-                PaneNote("this device is low on storage. free up space before turning this on again.")
+                PaneNote(phoneText("android.source.device.low.storage.free.up"))
             }
         }
     }
@@ -438,17 +437,17 @@ private fun SourceDetailTemplate(
     // is OMITTED rather than filled with a dash, a blank or `not set`. Not merely because there is
     // no value: once `right now` reads `ready to set up`, a wish row restates it, which is the
     // defect that shaped this block. The row below stays.
-    PaneSectionTitle("details")
+    PaneSectionTitle(phoneText("android.source.details"))
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
         // ⛔ Omitted when the owner has expressed nothing: there is no setting to state, and the
         // resolved `Off` behind it is the app's resolution rather than their choice. ⚠ It would also
         // restate `right now`, which already reads `ready to set up` — the exact duplication this
         // block was rebuilt to remove.
         if (status.wishExpressed) {
-            PaneFactRow(label = "your setting", value = sourceWishCopy(status.wish))
+            PaneFactRow(label = phoneText("android.source.setting"), value = sourceWishCopy(status.wish))
             PaneRowDivider()
         }
-        PaneFactRow(label = "right now", value = sourceStateCopy(status.state))
+        PaneFactRow(label = phoneText("android.source.right.now"), value = sourceStateCopy(status.state))
         PaneRowDivider()
         PhoneIntakeFactRows(status.sourceId)
     }
@@ -502,7 +501,7 @@ private fun HomeTileControl(sourceId: String, homeTileStore: PhoneHomeTileStore)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "give this a tile on home",
+            text = phoneText("android.source.give.tile.home"),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )

@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, on a source tile, for the screen reader",
+  "context": "the solstone app to the owner, on a source tile, for the screen reader",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "stateword",
+      "type": "string"
+    },
+    {
+      "name": "subline",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "9af748a22a19d781d2c245d36e1524f4ff7a9c81a35fc053b8631761ac75349e",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Existing AndroidX accessibility label: m3c_dialog",
+  "context": "Preserves the pinned AndroidX default English. Native resource alias used by the current phone UI; verify this resource name when upgrading Compose.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "025286451c9b1a772cfcf4ef542fdd05d128340e6a5bb17013879464153419eb",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.onboarding.journallivespromise.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "4bf0c70d1505e1f0f130b95842c3cab7b27d1db88f3fbb1d29a641728b4a1b0c",
+  "risk": "routine",
+  "auto_merge": true
+}

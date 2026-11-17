@@ -1,0 +1,53 @@
+{
+  "description": "The complete third-party license, verbatim.",
+  "context": "English legal text. A legal review is required before any translation; retain the exact license bytes.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 34524,
+  "source_revision": "710a2b25c27978534cc98f1f9201b8d62db6cbfb8bbb3bcbcc90ec4ec747149e",
+  "risk": "legal",
+  "auto_merge": false,
+  "protected_slots": [
+    {
+      "name": "ending",
+      "kind": "whitespace",
+      "value": "\n"
+    },
+    {
+      "name": "token1",
+      "kind": "accepted-input",
+      "value": "<https://fsf.org/>"
+    },
+    {
+      "name": "token2",
+      "kind": "accepted-input",
+      "value": "    <one line to give the program's name and a brief idea of what it does.>"
+    },
+    {
+      "name": "token3",
+      "kind": "accepted-input",
+      "value": "<year>"
+    },
+    {
+      "name": "token4",
+      "kind": "accepted-input",
+      "value": "<name of author>"
+    },
+    {
+      "name": "token5",
+      "kind": "accepted-input",
+      "value": "<https://www.gnu.org/licenses/>"
+    },
+    {
+      "name": "token6",
+      "kind": "accepted-input",
+      "value": "<https://www.gnu.org/licenses/>"
+    }
+  ]
+}

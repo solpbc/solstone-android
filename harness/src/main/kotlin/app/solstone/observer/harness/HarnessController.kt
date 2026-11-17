@@ -86,6 +86,7 @@ class HarnessController(
     private val consultsConfirmation: () -> Boolean = { app.solstone.core.identity.JournalConfirmationPolicy.consults },
     /** Whether the phone has any network at all. No network is the one hard drop a phone gets. */
     private val hasNetwork: () -> Boolean = { true },
+    private val currentDeviceLabel: () -> String = { deviceLabel },
 ) {
 
     var desiredOn: Boolean
@@ -639,13 +640,13 @@ class HarnessController(
     fun diagnostics(): HarnessDiagnostics = assembleDiagnostics(globalFactInputs())
 
     private fun runPairProbe(rawText: String): HarnessPairProbeResult {
-        val result = pairProbe.pairAndProbe(rawText, deviceLabel)
+        val result = pairProbe.pairAndProbe(rawText, currentDeviceLabel())
         lastPairProbe = result
         return result
     }
 
     private fun runRelayPairProbe(link: RelayPairLink): HarnessPairProbeResult {
-        val result = relayPairProbe.pairOverRelay(link, deviceLabel)
+        val result = relayPairProbe.pairOverRelay(link, currentDeviceLabel())
         lastPairProbe = result
         return result
     }

@@ -5,7 +5,8 @@
     "wear"
   ],
   "bundles": [
-    "android-wear"
+    "android-wear",
+    "android-phone"
   ],
   "arguments": [],
   "format_intent": "text",

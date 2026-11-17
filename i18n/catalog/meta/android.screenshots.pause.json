@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.photolibrary.pause.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "cd1ef0bb5f547aa6f4c366af08d82b1801ca8eb1a9c32b4de5bbd91dbad7f42a",
+  "risk": "routine",
+  "auto_merge": true
+}

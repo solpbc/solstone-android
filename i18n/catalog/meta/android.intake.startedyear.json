@@ -1,0 +1,50 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "month",
+      "type": "string"
+    },
+    {
+      "name": "day",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    },
+    {
+      "name": "year",
+      "type": "integer",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "enum",
+  "max_length": 509,
+  "source_revision": "10d788284b6e8cf1984909f024e0a0fd3eb29eff9eeff86db4c203698c423a44",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "month",
+    "type": "string",
+    "enum_values": [
+      "january",
+      "february",
+      "march",
+      "april",
+      "may",
+      "june",
+      "july",
+      "august",
+      "september",
+      "october",
+      "november",
+      "december"
+    ],
+    "enum_default": "january"
+  }
+}

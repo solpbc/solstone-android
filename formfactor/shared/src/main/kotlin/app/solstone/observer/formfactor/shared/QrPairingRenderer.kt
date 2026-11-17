@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.shared
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.observer.harness.PairAttemptOutcome
 import app.solstone.observer.harness.ConnectivityFailure
 import app.solstone.observer.harness.PairRoute
@@ -21,11 +23,9 @@ import app.solstone.observer.harness.PairLinkDispatchResult
  * ⛔ **Do not add a message here that has no next action.** A pairing failure the owner cannot act
  * on is a diagnosis, and a diagnosis without a step is the shape this file was converged out of.
  */
-private const val PAIR_GENERIC =
-    "pairing didn't go through. show a new pairing code on your journal and try again."
+private val PAIR_GENERIC get() = phoneText("android.pairing.pairing.didn.t.go.through")
 
-private const val PAIR_CODE_EXPIRED =
-    "the pairing window closed. show a new pairing code on your journal, then try again."
+private val PAIR_CODE_EXPIRED get() = phoneText("android.pairing.pairing.window.closed.show.new")
 
 /**
  * The scanner's camera did not start, whatever the platform said about why.
@@ -33,23 +33,18 @@ private const val PAIR_CODE_EXPIRED =
  * ⛔ **The platform's reason goes to the log, never to the owner.** It used to be appended here, and
  * what the owner read was a permission-check function name, a process id and a uid.
  */
-const val CAMERA_COULD_NOT_START =
-    "the camera couldn't start. try again, and if another app is using the camera, close it first."
+val CAMERA_COULD_NOT_START get() = phoneText("android.pairing.camera.couldn.t.start.try")
 
 /** This app's own camera lock refused the scanner: a capture of ours is holding the camera. */
 // ⚠ The still engine acquires this lock per capture and releases it in a `finally`, so the
 // condition clears on its own within one still. ⛔ Do not steer the owner into turning off a
 // source they want on as if it were the only way through.
-const val CAMERA_IN_USE_BY_THIS_APP =
-    "the solstone app is using the camera right now. try again, or turn the camera source off " +
-        "to scan."
+val CAMERA_IN_USE_BY_THIS_APP get() = phoneText("android.pairing.solstone.app.using.camera.right")
 
 /** The owner declined the camera, so the scanner cannot open; the link route still can. */
-const val CAMERA_OFF_FOR_SCAN =
-    "the camera is off for the solstone app, so it can't scan a pairing code. turn it on in " +
-        "android settings, or open your journal's pairing link on this phone instead."
+val CAMERA_OFF_FOR_SCAN get() = phoneText("android.pairing.camera.off.solstone.app.so")
 
-const val OPEN_ANDROID_SETTINGS = "open android settings"
+val OPEN_ANDROID_SETTINGS get() = phoneText("android.pairing.open.android.settings")
 
 /**
  * The scanner's own running state, under the instruction to point the phone at the code.
@@ -57,22 +52,21 @@ const val OPEN_ANDROID_SETTINGS = "open android settings"
  * ⚠ Was `Scanning`, capitalised, which is the only capitalised word on that screen and reads as
  * a machine reporting a mode rather than the app saying what it is doing.
  */
-const val SCANNER_LOOKING = "looking for a code"
+val SCANNER_LOOKING get() = phoneText("android.pairing.looking.code")
 
 /**
  * ⚠ Fallback for a switchboard that could not even run, so nothing was learned about why.
  * Deliberately the same words as [PAIR_GENERIC]: a caller with no information owes the owner the
  * same next step, and inventing a distinct message would imply a distinction we cannot support.
  */
-const val PAIR_DISPATCH_FAILED = PAIR_GENERIC
+val PAIR_DISPATCH_FAILED get() = PAIR_GENERIC
 
 fun pairLinkDispatchText(result: PairLinkDispatchResult): String? =
     when (result) {
         PairLinkDispatchResult.NoLink -> null
         PairLinkDispatchResult.InvalidLink ->
-            "that pairing link isn't one the solstone app can read. show a new pairing code on " +
-                "your journal and try again."
-        PairLinkDispatchResult.Busy -> "already pairing. give it a moment."
+            phoneText("android.pairing.that.pairing.link.isn.t")
+        PairLinkDispatchResult.Busy -> phoneText("android.pairing.already.pairing.give.moment")
         is PairLinkDispatchResult.Attempted -> pairStatusText(result.outcome)
     }
 
@@ -80,20 +74,20 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
     when (outcome) {
         is PairAttemptOutcome.Linked ->
             if (outcome.result.pairStatus in 200..299 && outcome.result.statusStatus in 200..299) {
-                "paired"
+                phoneText("android.pairing.paired")
             } else {
                 PAIR_GENERIC
             }
         PairAttemptOutcome.ExistingPairingActive ->
-            "this phone is already connected to a working journal. unpair this phone, then try again to connect a different journal."
+            phoneText("android.pairing.phone.already.connected.working.journal")
         PairAttemptOutcome.ExistingPairingUnreachable ->
-            "couldn't check the journal this phone is already connected to, so nothing changed. make sure your journal is reachable, then try again."
+            phoneText("android.pairing.couldn.t.check.journal.phone")
         // ⛔ Not a scanner-state word, and ⛔ not `already pairing` either. `withPairLock` returns
         // null on TWO conditions — the camera lock and the sync drain gate — and on the scanner
         // path the camera leg is already held by the scan session, so a draining sync is the only
         // producer there. Naming either cause is wrong about half the time; the honest word is
         // the one that covers both.
-        PairAttemptOutcome.Retry -> "the app is busy. give it a moment."
+        PairAttemptOutcome.Retry -> phoneText("android.pairing.app.busy.give.moment")
         is PairAttemptOutcome.NetworkUnavailable -> networkFailureText(outcome)
         // ⚠ 410 and every other status collapsed into one message. Both mean the code is no longer
         // good and both need the same next step, so splitting them told the owner there was a
@@ -102,33 +96,23 @@ fun pairStatusText(outcome: PairAttemptOutcome): String =
         is PairAttemptOutcome.OtherFailure -> PAIR_GENERIC
         // The first candidate that answered without proving itself is the one named.
         is PairAttemptOutcome.NotVerified ->
-            "something answered at ${authority(outcome.endpointHost, outcome.endpointPort)} " +
-                "but couldn't prove it's your journal. make sure you're connected to your " +
-                "journal's network, directly or over your vpn, then try again."
+            phoneText("android.pairing.something.answered.at.value.but" , "endpointport" to (authority(outcome.endpointHost, outcome.endpointPort)))
     }
 
 private fun networkFailureText(outcome: PairAttemptOutcome.NetworkUnavailable): String =
     when (outcome.failure) {
         ConnectivityFailure.DEVICE_OFFLINE ->
-            "this device isn't on a network. get back on a network and try again. what the " +
-                "solstone app has taken in is on this device, and goes to your journal as soon " +
-                "as it can reach it."
+            phoneText("android.pairing.device.isn.t.network.get")
         ConnectivityFailure.NAME_RESOLUTION ->
-            "couldn't find your journal at ${outcome.endpointHost}. check the address, then try " +
-                "again with a new pairing code."
+            phoneText("android.pairing.couldn.t.find.journal.at" , "endpointhost" to (outcome.endpointHost))
         ConnectivityFailure.HOST_DID_NOT_ANSWER -> when (outcome.route) {
             PairRoute.RELAY ->
-                "couldn't reach your journal at ${authority(outcome)}. " +
-                    "make sure it's running, then try again."
+                phoneText("android.pairing.couldn.t.reach.journal.at" , "outcome" to (authority(outcome)))
             PairRoute.DIRECT ->
                 if (outcome.endpointHost.isPublicAddress()) {
-                    "couldn't reach your journal at ${authority(outcome)}. " +
-                        "make sure it's running, then try again."
+                    phoneText("android.pairing.couldn.t.reach.journal.at" , "outcome" to (authority(outcome)))
                 } else {
-                    "couldn't reach your journal at ${authority(outcome)}. " +
-                        "make sure it's running and on the same wi-fi, then try again. some networks " +
-                        "block devices from connecting directly. you can also switch your journal to " +
-                        "private network to pair from anywhere."
+                    phoneText("android.pairing.couldn.t.reach.journal.at.n2" , "outcome" to (authority(outcome)))
                 }
         }
     }

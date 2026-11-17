@@ -1,0 +1,31 @@
+{
+  "description": "the solstone app to the owner, on calendar",
+  "context": "the solstone app to the owner, on calendar",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "done",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    },
+    {
+      "name": "total",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 106,
+  "source_revision": "758b3b650fad03aeff73953b9dca3edf144b9175de65a8e74fc16b9c2d354bff",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "done",
+    "type": "cardinal"
+  }
+}

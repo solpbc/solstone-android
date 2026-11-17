@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on calendar",
+  "context": "the solstone app to the owner, on calendar Exact iPhone English twin: ios.app.on.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "40d611c1c8b58aebd4ae5eef8a0723365b0d1bcaa7cba752d40a13221a70bdca",
+  "risk": "routine",
+  "auto_merge": true
+}

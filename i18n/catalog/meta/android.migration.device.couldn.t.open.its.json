@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.migration.keyrefused.body.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 128,
+  "source_revision": "1882c08cf2597ebfe81a8488b4e703e7d91408e7ac4f08d4c3ffed7d38b75fac",
+  "risk": "account",
+  "auto_merge": true
+}

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the journal mark",
+  "context": "the solstone app to the owner, on the journal mark Exact iPhone English twin: ios.app.unavailable.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "d7d6eca0ae3dc604cbe3adf1139a4860a3314a82068e6f82289272ebbf93af1e",
+  "risk": "account",
+  "auto_merge": true
+}

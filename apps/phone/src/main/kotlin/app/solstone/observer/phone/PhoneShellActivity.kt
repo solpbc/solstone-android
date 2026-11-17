@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.platform.calendar.CalendarRuntimes
 import app.solstone.platform.calendar.CalendarUiState
 import app.solstone.observer.formfactor.phone.PhoneCalendarBinding
@@ -663,16 +665,16 @@ class PhoneShellActivity : ComponentActivity() {
                                     isSilenceStale = stale,
                                     storageLow = filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES,
                                     oldPlayServicesNotice = if (com.google.android.gms.common.GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(this@PhoneShellActivity) == com.google.android.gms.common.ConnectionResult.SUCCESS) null
-                                        else "Google Play services needs attention. enable or update it in phone settings to resume watch delivery.",
+                                        else phoneText("android.shellactivity.googleplayservicesneeds"),
                                     notice = when {
-                                        contact?.version != null && contact.version < WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on your watch to continue delivery."
-                                        contact?.version != null && contact.version > WatchCourierProtocol.PROTOCOL_VERSION -> "update solstone on this phone to continue delivery."
-                                        stale -> "no recent contact. keep the watch and phone connected, and open solstone on your watch. held material stays on your devices."
+                                        contact?.version != null && contact.version < WatchCourierProtocol.PROTOCOL_VERSION -> phoneText("android.shellactivity.updatesolstonewatchcontinue")
+                                        contact?.version != null && contact.version > WatchCourierProtocol.PROTOCOL_VERSION -> phoneText("android.shellactivity.updatesolstonephonecontinue")
+                                        stale -> phoneText("android.shellactivity.norecentcontactkeep")
                                         else -> null
                                     },
                                 )
                             }
-                        }.getOrElse { watchPage?.copy(waitingCount = null, isSilenceStale = true, notice = "held material could not be read. check storage in phone settings and reopen solstone.") }
+                        }.getOrElse { watchPage?.copy(waitingCount = null, isSilenceStale = true, notice = phoneText("android.shellactivity.heldmaterialcouldnot")) }
                     }
                 }
             }
@@ -1131,9 +1133,9 @@ class PhoneShellActivity : ComponentActivity() {
             )
             val eventLog = when (val log = PhoneDiagLog.installedSink()?.readResult()) {
                 is DiagnosticLogRead.Complete -> log.content
-                is DiagnosticLogRead.Partial -> "some events couldn't be read.\n${log.content}"
-                DiagnosticLogRead.Unreadable -> "the event log couldn't be read."
-                null -> "the event log couldn't be read."
+                is DiagnosticLogRead.Partial -> phoneText("android.phone.some.events.couldn.t.be") + "\n" + log.content
+                DiagnosticLogRead.Unreadable -> phoneText("android.phone.event.log.couldn.t.be")
+                null -> phoneText("android.phone.event.log.couldn.t.be")
             }
             val pairingOpen = pairingViewModel.pairingState.session !is PhonePairingSession.Closed
             LaunchedEffect(pairingViewModel.pairingState.session, pairingViewModel.inFlightPairAttempts,
@@ -1196,9 +1198,9 @@ class PhoneShellActivity : ComponentActivity() {
                 LocalPhoneCalendar provides calendarBinding,
                 LocalPhoneWatchSource provides watchPage?.let { page ->
                     when {
-                        snapshot?.status?.refused == true -> page.copy(notice = "your journal no longer accepts this phone. connect it again and confirm the journal's mark. held material stays on your devices.", actionLabel = "connect again")
-                        currentPairing != null && !journalConfirmed -> page.copy(notice = "confirm your journal's mark to send held material.", actionLabel = "open journal")
-                        currentPairing != null && snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = "journal delivery is waiting. check the connection from your journal card. material stays on this phone.", actionLabel = "open journal")
+                        snapshot?.status?.refused == true -> page.copy(notice = phoneText("android.shellactivity.journalnolongeraccepts"), actionLabel = phoneText("android.shellactivity.connectagain"))
+                        currentPairing != null && !journalConfirmed -> page.copy(notice = phoneText("android.shellactivity.confirmjournalsmark"), actionLabel = phoneText("android.shellactivity.openjournal"))
+                        currentPairing != null && snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = phoneText("android.shellactivity.journaldeliverywaitingcheck"), actionLabel = phoneText("android.shellactivity.openjournal"))
                         else -> page
                     }
                 },
@@ -1402,7 +1404,7 @@ class PhoneShellActivity : ComponentActivity() {
                         osVersion = facts.osVersion,
                         state = supportState(phoneDefaultDetailStatusOf(statusState)),
                         about = aboutBlock,
-                        addresses = journalFacts.address.takeUnless { it == "—" },
+                        addresses = journalFacts.address.takeUnless { it == phoneText("android.ownerfacts.line") },
                     )
                     runCatching { problemReportStore.save(body) }
                         .onSuccess { problemReports = it }
@@ -1410,7 +1412,7 @@ class PhoneShellActivity : ComponentActivity() {
                 onCopyAbout = { text ->
                     runCatching {
                         getSystemService(ClipboardManager::class.java)?.let { clipboard ->
-                            clipboard.setPrimaryClip(ClipData.newPlainText("about", text))
+                            clipboard.setPrimaryClip(ClipData.newPlainText(phoneText("android.phone.about"), text))
                             true
                         } ?: false
                     }.getOrDefault(false)
@@ -1460,9 +1462,9 @@ class PhoneShellActivity : ComponentActivity() {
                 PhoneTheme {
                     AlertDialog(
                         onDismissRequest = { invalidJournalLink = false },
-                        title = { Text("this journal link isn't valid.") },
-                        text = { Text("copy the full link from your chat and open it again.") },
-                        confirmButton = { TextButton(onClick = { invalidJournalLink = false }) { Text("close") } },
+                        title = { Text(phoneText("android.shellactivity.journallinkisnt")) },
+                        text = { Text(phoneText("android.shellactivity.copyfulllinkchat")) },
+                        confirmButton = { TextButton(onClick = { invalidJournalLink = false }) { Text(phoneText("android.journal.close")) } },
                     )
                 }
             }
@@ -1522,7 +1524,7 @@ class PhoneShellActivity : ComponentActivity() {
                                     val generation = expected ?: return@TextButton
                                     migrationListing = null
                                     performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
-                                }) { Text("choose a device") }
+                                }) { Text(phoneText("android.migration.choose.device")) }
                             }
                             if (!migrationBusy && !migrationStoreUnavailable &&
                                 migrationSurface in setOf(MigrationSurface.PICKER, MigrationSurface.PICKER_EMPTY)
@@ -1541,7 +1543,7 @@ class PhoneShellActivity : ComponentActivity() {
                                 TextButton(onClick = {
                                     val generation = expected ?: return@TextButton
                                     performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
-                                }) { Text("choose a device") }
+                                }) { Text(phoneText("android.migration.choose.device")) }
                             }
                         }
                     },
@@ -1552,15 +1554,15 @@ class PhoneShellActivity : ComponentActivity() {
                                     expected?.let { generation ->
                                         performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
                                     }
-                                }) { Text("keep both") }
+                                }) { Text(phoneText("android.phone.keep.both")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER ->
-                                TextButton(onClick = ::deferMigration) { Text("cancel") }
+                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.cancel")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER_EMPTY ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
                                         performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
                                     }
-                                }) { Text("keep both") }
+                                }) { Text(phoneText("android.phone.keep.both")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CONFIRM ->
                                 TextButton(onClick = {
                                     val listing = migrationListing
@@ -1571,54 +1573,54 @@ class PhoneShellActivity : ComponentActivity() {
                                             it.replaceSelected(listing, selected.cid, nativeConfirmed = true)
                                         }
                                     }
-                                }) { Text("replace device") }
+                                }) { Text(phoneText("android.phone.replace.device")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CHECKING ->
                                 TextButton(onClick = {
                                     migrationRecord?.let { record ->
                                         performMigration(MigrationSurface.CHECKING) { it.resume(record.generation) }
                                     }
-                                }) { Text("check again") }
+                                }) { Text(phoneText("android.migration.check.again")) }
                             !migrationBusy && !migrationStoreUnavailable &&
                                 migrationSurface in setOf(MigrationSurface.OFFLINE, MigrationSurface.LIST_UNAVAILABLE) ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
                                         performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
                                     }
-                                }) { Text("try again") }
+                                }) { Text(phoneText("android.migration.try.again")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.UNSUPPORTED ->
                                 TextButton(onClick = {
                                     expected?.let { generation ->
                                         performMigration(MigrationSurface.PREPARING) { it.retryUnsupported(generation) }
                                     }
-                                }) { Text("try again") }
+                                }) { Text(phoneText("android.migration.try.again")) }
                             !migrationBusy && migrationSurface in setOf(MigrationSurface.STORAGE, MigrationSurface.REFUSED) ->
                                 TextButton(onClick = {
                                     migrationDialogOpen = false
                                     technicalDetailsRequest += 1
-                                }) { Text("technical details") }
+                                }) { Text(phoneText("android.migration.technical.details")) }
                             !migrationBusy && migrationSurface == MigrationSurface.KEY_REFUSED ->
                                 TextButton(onClick = {
                                     migrationDialogOpen = false
                                     pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
-                                }) { Text("pair again") }
+                                }) { Text(phoneText("android.migration.pair.again")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
                                 TextButton(onClick = {
                                     expected?.let { generation -> performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) } }
-                                }) { Text("keep both") }
+                                }) { Text(phoneText("android.phone.keep.both")) }
                         }
                     },
                     dismissButton = {
                         when {
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
-                                TextButton(onClick = ::deferMigration) { Text("not now") }
+                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface in setOf(
                                 MigrationSurface.PICKER,
                                 MigrationSurface.PICKER_EMPTY,
                                 MigrationSurface.CONFIRM,
                                 MigrationSurface.PREPARING,
-                            ) -> TextButton(onClick = ::deferMigration) { Text("cancel") }
+                            ) -> TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.cancel")) }
                             !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
-                                TextButton(onClick = ::deferMigration) { Text("not now") }
+                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
                         }
                     },
                 )
@@ -2229,7 +2231,7 @@ class PhoneShellActivity : ComponentActivity() {
         internal var promptedConfirmationThisProcess = false
         const val PERMISSION_REQUEST = 10
         // The embedded distributor delivers through Google Play services.
-        const val EMBEDDED_DISTRIBUTOR_LABEL = "Google Play services"
+        val EMBEDDED_DISTRIBUTOR_LABEL get() = phoneText("android.phone.google.play.services")
         const val NOTIFICATIONS_REQUEST = 11
         const val CALENDAR_PERMISSION_REQUEST = 13
         const val RECOVERY_POLL_INTERVAL_MS = 50L

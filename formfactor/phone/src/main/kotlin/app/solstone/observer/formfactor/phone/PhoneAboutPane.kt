@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -49,7 +51,7 @@ fun PhoneAboutPane(
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             PaneFactRow(
-                label = "about",
+                label = phoneText("android.phone.about"),
                 value = block,
                 valueContent = {
                     SelectionContainer {
@@ -66,30 +68,30 @@ fun PhoneAboutPane(
                 copied = copy(block)
                 copyFailed = !copied
             }) {
-                Text(if (copied) "copied" else "copy")
+                Text(if (copied) phoneText("android.about.copied") else phoneText("android.about.copy"))
             }
             PaneNavRow(
-                label = "licenses",
+                label = phoneText("android.source.licenses"),
                 onClick = onOpenLicences,
                 modifier = Modifier.testTag("licencesRow"),
             )
             PaneRowDivider()
             PaneExternalRow(
-                label = "open source",
-                subLine = "github.com/solpbc/solstone-android",
+                label = phoneText("android.about.open.source"),
+                subLine = phoneText("android.about.github.com.solpbc.solstone.android"),
                 onClick = { context.open(SOURCE_URL) },
                 modifier = Modifier.testTag("aboutSourceRow"),
             )
             PaneRowDivider()
             PaneExternalRow(
-                label = "privacy policy",
-                subLine = "solpbc.org/privacy",
+                label = phoneText("android.about.privacy.policy"),
+                subLine = phoneText("android.about.solpbc.org.privacy"),
                 onClick = { openPrivacyPolicy(context) },
                 modifier = Modifier.testTag("aboutPrivacyRow"),
             )
         }
-        if (copyFailed) PaneNote("couldn't copy. select the text and copy it.")
-        PaneNote("solstone is open source, under the AGPL.")
+        if (copyFailed) PaneNote(phoneText("android.about.couldn.t.copy.select.text"))
+        PaneNote(phoneText("android.about.solstone.open.source.under.agpl"))
     }
 }
 

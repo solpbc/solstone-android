@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "checkedat",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "cd7eb12a25f166f21d68c010e903373fe8fc5e6c5f5584cd608f54cd9e3768a3",
+  "risk": "routine",
+  "auto_merge": true
+}

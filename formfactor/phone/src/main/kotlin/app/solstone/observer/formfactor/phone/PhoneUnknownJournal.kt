@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,22 +36,19 @@ import app.solstone.core.pl.ClaimedJournalMark
 import app.solstone.core.pl.UnknownJournalSighting
 
 fun unknownJournalRowText(address: String?): String =
-    address?.let { "unknown journal seen at $it" } ?: "unknown journal seen through the relay"
+    address?.let { phoneText("android.unknownjournal.seenat" , "it" to (it)) } ?: phoneText("android.unknownjournal.unknownjournalseenthrough")
 
 internal fun unknownJournalBody(address: String?): String =
     if (address != null) {
-        "something answered this device at $address, and it isn't the journal this device is paired with. " +
-            "this could be another device now using that address, or your journal, if its identity was reset. " +
-            "if the mark under \"what answered\" matches the one your journal shows now, pair this device again."
+        phoneText("android.unknownjournal.bodyaddress" , "address" to (address))
     } else {
-        "something answered this device through the relay, and it isn't the journal this device is paired with. " +
-            "this is less certain than a direct connection."
+        phoneText("android.unknownjournal.bodyrelay")
     }
 
 internal fun unknownJournalCaption(mark: ClaimedJournalMark): String? = when (mark) {
-    ClaimedJournalMark.NotPresented -> "no identity presented"
+    ClaimedJournalMark.NotPresented -> phoneText("android.journalmark.noidentity")
     ClaimedJournalMark.Pending -> null
-    is ClaimedJournalMark.Derived, ClaimedJournalMark.Unavailable -> "claimed, not verified"
+    is ClaimedJournalMark.Derived, ClaimedJournalMark.Unavailable -> phoneText("android.unknownjournal.claimednotverified")
 }
 
 /** What the detail route needs from the screen. A null [sightings] means status isn't known yet. */
@@ -81,7 +80,7 @@ internal fun PhoneUnknownJournalRows(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(text = unknownJournalRowText(sighting.address), style = MaterialTheme.typography.bodyLarge)
-                Text(text = "view details", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+                Text(text = phoneText("android.unknownjournal.viewdetails"), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
             }
             Icon(
                 painter = painterResource(R.drawable.phone_chevron_right),
@@ -126,7 +125,7 @@ internal fun PhoneUnknownJournalPane(
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         Text(
-            text = "something answered instead of your journal",
+            text = phoneText("android.unknownjournal.somethingansweredinsteadjournal"),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier
@@ -145,7 +144,7 @@ internal fun PhoneUnknownJournalPane(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MarkColumn(label = "what answered", tag = "unknownJournalWhatAnswered", modifier = Modifier.weight(1f)) {
+            MarkColumn(label = phoneText("android.unknownjournal.whatanswered"), tag = "unknownJournalWhatAnswered", modifier = Modifier.weight(1f)) {
                 ClaimedMarkCard(sighting.mark)
                 unknownJournalCaption(sighting.mark)?.let { caption ->
                     Text(
@@ -158,7 +157,7 @@ internal fun PhoneUnknownJournalPane(
                     )
                 }
             }
-            MarkColumn(label = "your journal", tag = "unknownJournalYourJournal", modifier = Modifier.weight(1f)) {
+            MarkColumn(label = phoneText("android.source.journal"), tag = "unknownJournalYourJournal", modifier = Modifier.weight(1f)) {
                 JournalMarkCard(yourJournal, Modifier.fillMaxWidth(), JournalMarkCardSize.Compact)
             }
         }

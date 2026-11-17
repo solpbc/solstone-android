@@ -3,60 +3,62 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.model.SourceState
 import app.solstone.core.watch.courier.WatchCourierProtocol
 import app.solstone.core.watch.courier.WatchCourierStrings
 import app.solstone.observer.harness.SourceWish
 
-internal val phoneSourceLabels: Map<String, String> = mapOf(
-    "audio" to "audio",
-    "location" to "location",
-    "camera" to "camera",
-    "screen" to "screen",
-    "calendar" to "calendar",
-    "obsidian" to "Obsidian",
-    "screenshots" to "screenshots",
+internal val phoneSourceLabels: Map<String, String> get() = mapOf(
+    "audio" to phoneText("android.phone.audio"),
+    "location" to phoneText("android.gap.location"),
+    "camera" to phoneText("android.gap.camera"),
+    "screen" to phoneText("android.phone.screen"),
+    "calendar" to phoneText("android.phone.calendar"),
+    "obsidian" to phoneText("android.phone.source.obsidian"),
+    "screenshots" to phoneText("android.screenshots.screenshots"),
 )
 
 fun sourceLabel(sourceId: String): String = when (sourceId) {
-    WatchCourierStrings.WATCH, WatchCourierProtocol.SOURCE_ID_WATCH_AUDIO -> WatchCourierStrings.WATCH
+    WatchCourierStrings.WATCH, WatchCourierProtocol.SOURCE_ID_WATCH_AUDIO -> phoneText("android.phone.source.watch")
     else -> phoneSourceLabels[sourceId] ?: sourceId
 }
 
 fun sourceStateCopy(state: SourceState): String = when (state) {
-    SourceState.OFF -> "off"
-    SourceState.READY_TO_SET_UP -> "ready to set up"
-    SourceState.SETTING_UP -> "setting up"
-    SourceState.ON -> "on"
-    SourceState.PAUSED -> "paused"
-    SourceState.NEEDS_ATTENTION -> "needs attention"
+    SourceState.OFF -> phoneText("android.push.off")
+    SourceState.READY_TO_SET_UP -> phoneText("android.source.ready.set.up")
+    SourceState.SETTING_UP -> phoneText("android.push.setting.up")
+    SourceState.ON -> phoneText("android.push.on")
+    SourceState.PAUSED -> phoneText("android.source.paused")
+    SourceState.NEEDS_ATTENTION -> phoneText("android.push.needs.attention")
 }
 
 fun sourceWishCopy(wish: SourceWish): String = when (wish) {
-    SourceWish.Off -> "off"
-    SourceWish.On -> "on"
+    SourceWish.Off -> phoneText("android.push.off")
+    SourceWish.On -> phoneText("android.push.on")
 }
 
 fun headingText(surface: PhoneSurface): String? = when (surface) {
     is PhoneRoute.SourceDetail -> sourceLabel(surface.sourceId)
     else -> when (surface.headingKey) {
-        "heading.pane_status" -> "status"
-        "heading.about_solstone" -> "about solstone"
-        "heading.licences" -> "licenses"
-        "heading.import" -> "import"
-        "heading.add_more" -> "add more"
-        "heading.your_journal" -> "your journal"
-        "heading.journal_setup" -> "your journal"
-        "heading.this_device" -> "this device"
-        "heading.technical_details" -> "technical details"
-        "heading.unknown_journal" -> "unknown journal"
-        "heading.event_log" -> "event log"
-        "heading.problem_reports" -> "problem reports"
-        "heading.notifications" -> "notifications"
-        "heading.help" -> "help"
-        "heading.calendar" -> "calendar"
-        "heading.pane_shelf" -> "settings"
+        "heading.pane_status" -> phoneText("android.shelf.status")
+        "heading.about_solstone" -> phoneText("android.source.about.solstone")
+        "heading.licences" -> phoneText("android.source.licenses")
+        "heading.import" -> phoneText("android.setup.import")
+        "heading.add_more" -> phoneText("android.setup.add.more")
+        "heading.your_journal" -> phoneText("android.source.journal")
+        "heading.journal_setup" -> phoneText("android.source.journal")
+        "heading.this_device" -> phoneText("android.source.device")
+        "heading.technical_details" -> phoneText("android.migration.technical.details")
+        "heading.unknown_journal" -> phoneText("android.source.unknownjournal")
+        "heading.event_log" -> phoneText("android.shelf.event.log")
+        "heading.problem_reports" -> phoneText("android.shelf.problem.reports")
+        "heading.notifications" -> phoneText("android.phone.notifications")
+        "heading.help" -> phoneText("android.phone.help")
+        "heading.calendar" -> phoneText("android.phone.calendar")
+        "heading.pane_shelf" -> phoneText("android.shelf.settings")
         else -> null
     }
 }

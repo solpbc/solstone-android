@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.home.reinstallnoticeforget.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "323a852ca92a7e1e31bd28eb0ca186feafe82b2b667026eeb989608f635a7d89",
+  "risk": "routine",
+  "auto_merge": true
+}

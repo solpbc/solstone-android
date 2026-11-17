@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, on the gap notice",
+  "context": "the solstone app to the owner, on the gap notice",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "day",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "38400e3bb61ae0d58056faab208fe409874cf5bb9b3fa81afbed71edf2db5716",
+  "risk": "routine",
+  "auto_merge": true
+}

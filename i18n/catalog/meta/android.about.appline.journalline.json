@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, on the about screen",
+  "context": "the solstone app to the owner, on the about screen",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "appline",
+      "type": "string"
+    },
+    {
+      "name": "journalline",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "264411f22d01b48de2766ec1fa9f60269b2063d609765b428e158402db53a63c",
+  "risk": "routine",
+  "auto_merge": true
+}

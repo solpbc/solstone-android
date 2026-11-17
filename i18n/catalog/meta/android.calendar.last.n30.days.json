@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on calendar",
+  "context": "the solstone app to the owner, on calendar",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "59111e7f3c6e2a719e74a67fe8c1c5c55d18f4ce8dee403062d83d213d3bd6dd",
+  "risk": "routine",
+  "auto_merge": true
+}

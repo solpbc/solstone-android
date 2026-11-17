@@ -75,6 +75,17 @@ val generateSolstoneGateAndroidTestBuildReceipt = tasks.register<GenerateSolston
 android {
     namespace = "app.solstone.observer.phone"
     compileSdk = 36
+    sourceSets.getByName("main").res.srcDir(rootProject.file("i18n/generated/push-locales/res"))
+
+    sourceSets.getByName("main").res.srcDir(rootProject.file("i18n/generated/phone-native-aliases/res"))
+
+    androidResources {
+        localeFilters += rootProject.file("i18n/generated/android/android-phone").listFiles()!!
+            .filter { it.isDirectory && it.name.startsWith("values-") }.map { it.name.removePrefix("values-") }
+        localeFilters += rootProject.file("i18n/generated/push-locales/res").listFiles()!!
+            .filter { it.isDirectory && it.name.startsWith("values-") }.map { it.name.removePrefix("values-") }
+        generateLocaleConfig = false
+    }
 
     defaultConfig {
         applicationId = "app.solstone.observer.phone"
@@ -360,6 +371,7 @@ tasks.matching { it.name == "compileRealReleaseKotlin" }.configureEach {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     implementation(project(":apps:observer-scaffold"))
     implementation(project(":core:diagnostics"))
     implementation(project(":core:sources"))

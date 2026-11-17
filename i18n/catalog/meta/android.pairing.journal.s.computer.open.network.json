@@ -1,0 +1,28 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 112,
+  "source_revision": "d4b435dc3b6cf4a7312adc667afe5734df71c61d153186d4a17a4a6aa264b330",
+  "risk": "account",
+  "auto_merge": true,
+  "protected_slots": [
+    {
+      "name": "networklabel",
+      "kind": "accepted-input",
+      "value": "network"
+    },
+    {
+      "name": "pairadevice",
+      "kind": "accepted-input",
+      "value": "pair a device"
+    }
+  ]
+}

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,7 +37,7 @@ fun PhoneAddMorePane(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.AddMore) },
     ) {
         if (notOnHome.isNotEmpty()) {
-            PaneSectionTitle("not on home")
+            PaneSectionTitle(phoneText("android.phone.not.home"))
             PaneCard {
                 notOnHome.forEachIndexed { index, id ->
                     if (index > 0) PaneRowDivider()
@@ -44,7 +46,7 @@ fun PhoneAddMorePane(
             }
         }
         if (onHome.isNotEmpty()) {
-            PaneSectionTitle("already on home")
+            PaneSectionTitle(phoneText("android.phone.already.home"))
             PaneCard {
                 onHome.forEachIndexed { index, id ->
                     if (index > 0) PaneRowDivider()
@@ -52,7 +54,7 @@ fun PhoneAddMorePane(
                 }
             }
         }
-        PaneNote("open any source to change what it does, and to add or remove its tile.")
+        PaneNote(phoneText("android.phone.open.any.source.change.what"))
     }
 }
 

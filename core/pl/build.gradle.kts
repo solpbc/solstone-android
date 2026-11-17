@@ -8,6 +8,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     api(project(":core:identity"))
     implementation(project(":core:crypto"))
     api(project(":core:diagnostics"))

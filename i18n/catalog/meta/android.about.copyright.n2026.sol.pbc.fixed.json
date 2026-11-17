@@ -1,0 +1,23 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner The company mark sol pbc is fixed and never translated.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "c0e8d2c5a1c6840531c72ac099f0c049732bb68dc7dd139343f5a021d16d7cd5",
+  "risk": "legal",
+  "auto_merge": false,
+  "protected_slots": [
+    {
+      "name": "company",
+      "kind": "accepted-input",
+      "value": "sol pbc"
+    }
+  ]
+}

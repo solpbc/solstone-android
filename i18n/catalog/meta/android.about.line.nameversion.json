@@ -1,0 +1,25 @@
+{
+  "description": "Phone display text.",
+  "context": "Native phone presentation; preserves source English.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "version",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 500,
+  "source_revision": "2a0c811ad1b20ece1fd438fb3e79a57bea3955d6ae9cf5d4cde9739263098f5d",
+  "risk": "routine",
+  "auto_merge": true
+}

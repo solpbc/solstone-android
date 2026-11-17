@@ -38,6 +38,12 @@ class ObserverForegroundService : Service() {
         handler.post(heartbeat)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        ObserverNotification.ensureChannel(this)
+        refreshOngoingNotification(this, needsAttention = false)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val hook = rehydrator
         val widgetSourceId = widgetSourceId(intent)

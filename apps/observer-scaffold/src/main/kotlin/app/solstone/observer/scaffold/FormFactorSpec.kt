@@ -27,4 +27,5 @@ data class FormFactorSpec(
     val registerCalendarSource: Boolean = false,
     val registerObsidianSource: Boolean = false,
     val registerScreenshotsSource: Boolean = false,
+    val currentDeviceLabel: () -> String = { deviceLabel },
 )

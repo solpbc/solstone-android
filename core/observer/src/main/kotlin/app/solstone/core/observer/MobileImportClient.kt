@@ -3,6 +3,8 @@
 
 package app.solstone.core.observer
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.StreamingBody
 import app.solstone.core.pl.parseJson
@@ -48,7 +50,7 @@ sealed interface MobileImportOutcome {
 private const val SAVE_PATH = "/app/import/api/save"
 private const val START_PATH = "/app/import/api/start"
 private const val IMPORTED_VIA = "mobile_share"
-private const val GENERIC_REFUSAL = "your journal couldn't accept this."
+private val GENERIC_REFUSAL get() = phoneText("android.import.journal.couldn.t.accept")
 private const val HEX_DIGITS = "0123456789abcdef"
 
 class MobileImportClient(private val http: PlHttpClient) {

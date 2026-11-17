@@ -8,6 +8,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     api(project(":core:model"))
     api(project(":core:sources"))
     api(project(":core:segment"))

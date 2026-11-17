@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.pairing.unavailablespokenvalue.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "f277612f15576d37a909d39911c49c05a9ce8a40b9901ab12ac6d8d9d450c07a",
+  "risk": "routine",
+  "auto_merge": true
+}

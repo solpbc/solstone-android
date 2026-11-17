@@ -1,0 +1,16 @@
+{
+  "description": "Existing AndroidX accessibility label: default_popup_window_title",
+  "context": "Preserves the pinned AndroidX default English. Native resource alias used by the current phone UI; verify this resource name when upgrading Compose.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "8d6135af979340772367128d953cdd0c4e65d1581d9ba9c3f074992bcb8a5cfa",
+  "risk": "routine",
+  "auto_merge": true
+}

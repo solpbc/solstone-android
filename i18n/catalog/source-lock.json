@@ -2,6 +2,3989 @@
   "lock_version": 1,
   "messages": [
     {
+      "id": "android.about.android",
+      "source": "c929cc8ab8e4926c1f8f8f38311c8209c98c431399a28313de040bbe84e8d51b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.android.app",
+      "source": "0e4660e1e7fcac9afcb1dda6a237f1ef84aa05ebc7729549adcb083ad4a97f41",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.appline.journalline",
+      "source": "264411f22d01b48de2766ec1fa9f60269b2063d609765b428e158402db53a63c",
+      "contract": "2bcce20f0a5948f0aa87be38aaa04b34020d0ffd28f1b264bce49957ac3c4dc5",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.comfortaa.typeface.solstone.set.by",
+      "source": "3d890948966112d86fbf54d7dc5804a039b2186ab1ae200daabfa07f0e7a97f5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.copied",
+      "source": "67f81d3c65b9266a733b33fe06fe735f692604bb5d79bc206e555902e6dd785e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.copy",
+      "source": "7080b571d8e9a243e0f5ee2d250e53b9578ef07310d7a048d070b490cf45621c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.copyright.n2026.sol.pbc.fixed",
+      "source": "c0e8d2c5a1c6840531c72ac099f0c049732bb68dc7dd139343f5a021d16d7cd5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "b6687c15c7ebad43c387f1e8b1ae4b3c4099faca921d80ed8630608a6bc9a432",
+      "locales": []
+    },
+    {
+      "id": "android.about.couldn.t.copy.select.text",
+      "source": "98e024791b2e15644f81ca3862fc412aafdaba561887b76289994d96c8781699",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.freshnessdays",
+      "source": "dfc00d2afbf0e8b6fe7120594d351f2eb0f997664996d836263aec9a034f3e25",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.freshnesshours",
+      "source": "ed50096e026570cbc02021774a03043b07402a3967706a6a60a5fb692f82b7fe",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.freshnessminutes",
+      "source": "aeddea872d09b0689a0ae8850cd68e03a2aaf377361345486d2543df216b6f77",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.freshnessnow",
+      "source": "95d31b7ca8349d7453fae3cd77f41a7476baa262a222237aa2dfb2b4d2cc9f86",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.github.com.solpbc.solstone.android",
+      "source": "16f75bff09e5d171ab40c10d4b7d65573bca598e2b1a5951df0c9ce73afa945a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "f2f69b32fb25e6a621fd0e708c95ce873f7eab688e289f6c7633b8fb530bcc61",
+      "locales": []
+    },
+    {
+      "id": "android.about.gnu.affero.general.public.license",
+      "source": "1c0649d4dfb2f17b315bfb7b4a2e6a96e2857f145fb526ff6b4a11d230103076",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.journal.name",
+      "source": "a2066fbd38242d700ca044704ab3b2162561180f1e524d0b34c07041ce88978f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.journal.unknown",
+      "source": "caaa00b4547d0856d52aa3735107d7f3ff6fef60404cd3b854f94e014fc2cb30",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.last.seen.phrase",
+      "source": "5dcb6db71348cb7fd24604268fb8a47466c8de226efd033a18489c674a5c703b",
+      "contract": "6979d4d46857d915950df394a8566197077b1e1a3e797b2be0cb5523bc6d69a3",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.arch.exact",
+      "source": "c3087ebf76e7e8fbc8edff6f3b2b70132560c697521033d59e9a7d4d849e4b7a",
+      "contract": "fb4a2bf36583904d325bdd90e20c043e904fe0233ae042835d2aba1dbbb0a8f3",
+      "protected": "43a7ef8d50376a74cce17b569b970887e46285ae91494bbcd253976bbb4f1f29",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.build.exact",
+      "source": "42cb303b40ba033e9612e3103d590e3447c0d08a7306eeb77330a13f5df97db0",
+      "contract": "ce41566cd8b0cdb859c2d6878665f3875cff1bb07c0b1d5eb08f55549bd05f94",
+      "protected": "43a7ef8d50376a74cce17b569b970887e46285ae91494bbcd253976bbb4f1f29",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.nameversion",
+      "source": "2a0c811ad1b20ece1fd438fb3e79a57bea3955d6ae9cf5d4cde9739263098f5d",
+      "contract": "7e5f872e3a674bbe17f66f8a4ac3e955a70d5687913bc1bb320d30db6832ed54",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.os.exact",
+      "source": "f25e6b312ef0dead8695fbf850f82dd6560f35eccbd70921ad0df4801d92a82d",
+      "contract": "e5e016b9baa3deb221b1f2f099625ea42feb757e3e3f0237252d13a1c86350a5",
+      "protected": "43a7ef8d50376a74cce17b569b970887e46285ae91494bbcd253976bbb4f1f29",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.osversion.exact",
+      "source": "e4d8df3b75947bc9ca465271448f8912dfe740ebdbbf0fa2d6eeab95ed9d1213",
+      "contract": "81cede0f9443ef406708f55a6cd8f3a899e1b48c9323b8387721b46dfdc70134",
+      "protected": "43a7ef8d50376a74cce17b569b970887e46285ae91494bbcd253976bbb4f1f29",
+      "locales": []
+    },
+    {
+      "id": "android.about.line.whole",
+      "source": "9ca5d230dbaab83c7e938fa91c8dde2e8744c85132a206046df3bfda101b5dd4",
+      "contract": "286c9517ed9980b60877e93be4851da58d3dd93834c4415674a785697f3332d0",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.may.share.change.under.terms",
+      "source": "1cddf99f5854e93cb33c1e03380962380882a306c62ff239faa399d3bd652ffc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.open.source",
+      "source": "da6cb86faf002b22c991f1ce7280e048ae11f2b56cd95d381bfacea21a0419e8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.privacy.policy",
+      "source": "3522bb1a09ccc9ba879e3f02d04c5e53fa1f431dcfd5d3f38c71fc85a6d1c331",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.sil.ofl.n1.n1",
+      "source": "abf7a977a2637b97eed9f371cee988ed99a78345373f1cab5d736dda12898882",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.sil.open.font.license.n1",
+      "source": "32e611a5a5cfc6de0a23b6ff2165337eac58ff5cea14ae0133926366aac9d785",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.solpbc.org.privacy",
+      "source": "16f75bff09e5d171ab40c10d4b7d65573bca598e2b1a5951df0c9ce73afa945a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "cd5b7af63fccd0b32fdbf323a96b2ed1c245bea95fa2f0a813528855ddc59724",
+      "locales": []
+    },
+    {
+      "id": "android.about.solstone.comes.with.no.warranty",
+      "source": "09422ad3a6539a9dc650043aa689b776d726d6e497af26c3233bc4bd97da15bd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.solstone.open.source.under.agpl",
+      "source": "c8051eadc693aa504fa5e1d7eab3ac558944e59f8ca60d71e838b7bb3b0121a8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.about.what.app",
+      "source": "270477e3c7cd3a04cd5759593b0739c7c526c810992be7dc7ea2c24e1c56f243",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.add.these.journal",
+      "source": "222858899cc380cf85f4a875d3f516a6823b2c8a9b8387c4ca2cd0088cd65443",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.all.only.history.phone.s",
+      "source": "ee651837950c746ae8ef7c2fd4b1cfbabaf6978b80fa761f5c555454a4ae0079",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.all.phone",
+      "source": "92d502dc62c15b16631753b55ae32c45d21180452df5771052d6420f3a5fc1d9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.allow.calendar",
+      "source": "209973c2f0313a07cf38bb766c69e4131433b77eb7e9645d07548a282f5cb75f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.allow.calendar.access.preview.events",
+      "source": "146e2b2e45946b3ed58c4d4bef5d07a237bdd2577b4a4388165b9e652b95147e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.bringing.state.importcompleted.state.importtotal",
+      "source": "758b3b650fad03aeff73953b9dca3edf144b9175de65a8e74fc16b9c2d354bff",
+      "contract": "73e04de3c7856b58c687d55e1007a70758b3453009e5b300fc49d2946b3c0068",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.calendar.brings.events.phone.can",
+      "source": "6e4d7e7cc7c5bcdbbdcf69d8068e05068180136a475e60d44064a7f2a4dfbe12",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.check.now",
+      "source": "b05a174ef7667abfc07de6ca8da426907b89d7384d84fa603b8d54a79b5661d7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.counting.events",
+      "source": "a4256d98af9f44d9c2e0f3c47b546908917fa763860a48f1bb5ecc0e8800f6e1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.dates.preview",
+      "source": "121ced0c834f3bb71d8029b64853e582eaf9fc751724280432bacf8a97833d5d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.events.check",
+      "source": "ff2aa6055a6d09673e416b201647e66e1d2bde316f43d7c2f8295fe5cc0fb30f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.history.with.one.year.ahead",
+      "source": "d4447e01d269219c298b6513c8a14c9aab0dc6474ee3e9dec27479c93ced21da",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.journal.needs.update.before.these",
+      "source": "556947a437c8ed5419e6948fb04fea7b27d73039351e12a0686882a325d786ec",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.last.check.checkedat",
+      "source": "cd7eb12a25f166f21d68c010e903373fe8fc5e6c5f5584cd608f54cd9e3768a3",
+      "contract": "ce177ac12ae9fc96e689cb1069a861b38a7c8600ab3bbce7ae621699c4bf1bae",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.last.check.couldn.t.finish",
+      "source": "c4d09b301b2443745bd8ffbc5331f3e771cfab833fe727d2dafa455a2db89635",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.last.n30.days",
+      "source": "59111e7f3c6e2a719e74a67fe8c1c5c55d18f4ce8dee403062d83d213d3bd6dd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.needs.permission",
+      "source": "e043ca76e92414101fbdcad00d59db1ec5e526e2119767130b1394f9600f381b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.no.complete.check.yet",
+      "source": "779805461252f4203416ca0b06ffac2e231fe0e582c2caedb89a486f2a6d311c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.none.before.today",
+      "source": "5abdf74389c3dbfcd439a42010861dae67978291c2f14f70903d115aebe5b293",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.note.needs.attention.before.can",
+      "source": "28cbec90278b9fa4baafed9754f989a5c2c9df2a71afa40ccb59a1ab5e2e626b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.one.year",
+      "source": "698519a2be03f29dfbcd986f8a47a84349216224782e7b9814971214c5b074fc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.open.app.settings",
+      "source": "e354449df8a678b6a133611700a98dc2726022c772421e1a8425101a5a129ac3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.pause.calendar",
+      "source": "019f20ef7370df97a9ee069ca6c6c779b9285533cf7e39a946c8fb1870a6c4d3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.phone.has.no.calendars.solstone",
+      "source": "b36ee312c37da6699887d1278faba10ac33810a5adfa896c5a3fea3641862d48",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.preview.couldn.t.finish.check",
+      "source": "d8dfb5b280c948130dfc454690c51c5d8312c60b1c476341afafe7cff458792e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.resume.calendar",
+      "source": "2d868d252a7131a82862c446ccc81ade3c3032ee2489ca1644b42e69aa32b510",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.six.months",
+      "source": "1a5c38c2339d1642ac07a55d66e2ab109f97e8e2583346c57dffbdedf746a24f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.what.s.already.journal.stays",
+      "source": "4a190881c83f7613bee5d90328bcdcf4a87d83e2d68f7d36019d2cd0648665f9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.calendar.while.calendar.solstone.app.checks",
+      "source": "5e540a2033672f50d830192bf83d7a31efbd3535fce4edf120b0099c9f22d0e3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.camera",
+      "source": "30dbaea3b1925766042d0cf913ead296598aa9a3849052eed6f2a86509870a4c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.complete.conversion.count",
+      "source": "a423e8b60bdbecc2e4845c7544cf150712ccc74af783134616f9eeed43164fc4",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.failed.conversion.reason",
+      "source": "b5aee35ba8a7b8eff7e791eb7830d70b94913abbc6083778970245b87c2f7ba6",
+      "contract": "59d2e3ecd32f990e4f3aabeb502e32f02d792e3c833c17a9fb91ea02b32115b6",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.friday",
+      "source": "718f73fd9cb9f65f23bf092b55d087a7b6649407022c157c04acc5a65ab08eec",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.location",
+      "source": "25cf10f2c3e02071b3b420b2eb1f8cdfad716c2b2ca1ec3e18d82d9124992374",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.marked.formatgaplocaltime.zone.exact",
+      "source": "dff0251046568680b7b00913f64aa4bf76858df99ec630a72b1e8e405a02f739",
+      "contract": "f3ce587d31c0331c9558aab3a99b03ed5d478df1ddff2e6c3e6e48a93a0b4366",
+      "protected": "43a7ef8d50376a74cce17b569b970887e46285ae91494bbcd253976bbb4f1f29",
+      "locales": []
+    },
+    {
+      "id": "android.gap.monday",
+      "source": "67e6205336dee7cf20618e910fd48b92e7adfda81232ecc1bd345928266c124e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.not.run",
+      "source": "437386b5a13a8c9c7dc678ca70d364ab91a7146e45011384bf99f9067a97bc65",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.saturday",
+      "source": "e3db293700b5070e24f5420c5f5d939ad4f30a85d53634bb7b18260416af867d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.seen",
+      "source": "c2fe923e431bb1d7b3b7d62bb2348aaf92f4fdf4500106c0f30f9c28dde99572",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.didn.t",
+      "source": "167784df66cb21ead102fedae98f03921c8d1385549dcd9e2cc6b414c1f7c659",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.since.weekdayname",
+      "source": "90eae7ae0a3786de0490d2ade2dac157511f7593c54a0a45a798fa38cd0c04be",
+      "contract": "9a164db6c1a1724bb5152e3405553cca53eda708d3bf1624c57709fecfc6ccee",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.since.yesterday",
+      "source": "cc3e4c4a125e0277fc67754d3f37e5ed2ff3d2ff97f234c0427d3b2567d34fbd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.today.didn",
+      "source": "56569110efc350621a7149d5bb7db49a29b81bb39ef37d654cc492ab25f44a5b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.weekdayname.day",
+      "source": "38400e3bb61ae0d58056faab208fe409874cf5bb9b3fa81afbed71edf2db5716",
+      "contract": "460f2592217cc7e5103ae548a926bb7f8a950673ca010f6b0c527d2de0f6eef8",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.some.what.shared.yesterday.didn",
+      "source": "b98c24799b3a496b9fcc9bf85ae021c46ec97246b1858c536b7bda653fee3e26",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.sunday",
+      "source": "24db017f1a59e916c6eb0f108ddb83d58659879f3d354cfd2eae9afd52577653",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.there.s.gap.journal",
+      "source": "544d30ebd5402ede1101e4c6b81110689901797a7b81d692c7ac883ed7ddaacd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.thursday",
+      "source": "57047ad19b6220873f78fc929c01491c2593cef4274de1c84a042477fe43f7d7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.tuesday",
+      "source": "44752ff0d8ed42d66c565d10ff2ff8e4a76d3fc6e75b7a28cd52534854fc3d4d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.unknown",
+      "source": "2642526c3fad2ee76ba9d4b61184c7918fd26f1c4e0c8484492f2e4b15ca7ce4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.unseen",
+      "source": "c16f8b98f1c5aab8eb6324abf181b540ae4cfd81c7956444e0187f56b261e1f4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.value.row.kind.row.source",
+      "source": "a5864d947408c7ed9b0418ae38ed9928b745096d8423f1a7c15a7b227c6bf33d",
+      "contract": "548a45ec28aff58f89cd369faf3d4e4582138e82dd671f2446d8219c9dac88ce",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.gap.wednesday",
+      "source": "5d56818bf189530b69d0b5575bc30647eb1077ca80b4ce9526c855bbb83e108f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.add.journal",
+      "source": "efb371de6bd4099ac948eb63dbcb90eecae43b16bd63e25fad4c0b147c8e5942",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.add.journal.n2",
+      "source": "bc482f80f2cb245df5cc5f12c9221f4ba386b45b185ca88a082d4270043923f4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.adds.pdfs.audio.images.text",
+      "source": "dfedf914004c24fee4e66d70365c0fc5870175e9919c00a3876f6a658e77b00c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.checking.journal",
+      "source": "c7b7e7959cf0949d151c6889308ca94938a17d2421c5a1912b1ba2080dc0dbd5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.copy.already.gone.so.only",
+      "source": "66b139afe15ad2432ee3c51b6b82aa3ed184e31192f21ae1ea242da241fb3b1f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.copy.device.missing",
+      "source": "ded1b19449f6df69cf7a2c6927dddfb86597724ca11e3252519d42761cea0306",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.couldn.t.be.read",
+      "source": "1a53ffae0797d39c2304382b64cfa8a4b22c63080b3927b063cce13e89e8de0e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.couldn.t.be.read.add",
+      "source": "6719e14f791bf1d360e9cea2f55298ac2f0bd0c3133861280072e4651d3d00bf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.device",
+      "source": "56863d43233acf6cb326d192ff09a0dbcacba584ca65d1c71034be7fcad74295",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.device.can.t.convert.photo",
+      "source": "a49333075b0c447aeb57a5428ef244bd8f297f26943b32c45699cc70b7cb4331",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.device.not.paired.with.journal",
+      "source": "54e9cef5b77ff02d536a7c18950961d4f74732801a509ecd38aa0c18299a6227",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.done",
+      "source": "d73e995d8e06641547f0fc9d9da8046932e0d18d65854c93bcd7370fed8f7485",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.files",
+      "source": "36bb3ddfdccd393c99c94353b082eeb1468558f9c9ebed178c71ad3787528bdb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.imports.wait.device.until.connect",
+      "source": "eb5e57ca2fd02d16d96c53cacb1d2beba1bba7153f7778264a4433395a09064f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.imports.wait.until.confirm.journal",
+      "source": "e49899e9879e9e241925ce79c59b08f15d07660534328453ddc5c7e88b0e56a6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.imports.wait.until.journal.updated",
+      "source": "4f6a53939aedfab18bb1a37f96b87c43d59fa5eb0df641519d41e3d2df555c71",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.journal",
+      "source": "5207c25de2fae7ad0229a409681c7a3e02853cbbe3ca8b079b5472d38a34fa90",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.journal.can.t.take.kind",
+      "source": "b3a66eeb1f67961d93144ad189f5088d0eb713a034225cad09898f5feaff482d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.journal.couldn.t.accept",
+      "source": "d435c8631acda1d4319822137cb42e685b303dbbcb653f4fd2928cb8c3fae451",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.journal.stopped.accepting.device.imports",
+      "source": "cea99f832598070e0233a06b3da37ae43727c0405cab4dfe92aec26ebaa91fc9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.keeps.saving.if.close",
+      "source": "393b9a9a59f3b9b725f674deecc6ed5e375495de3feadf6d8da283c89177df37",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.line.label.refusaltext.line.reason",
+      "source": "dabd25995b7732ae383c5a004170d6cc60681fc1a97f84555af10801ed7c9f46",
+      "contract": "8c8c0e34b8bfc53e22f8cbe57a716480b16db4b48295df56d0185a836669c9db",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.notgoingjournalright",
+      "source": "3af4205c367f3d0987fcf43a8a7c7e5400a36ece8cbf9cf140945bbdb9fd80ee",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.nothing.changed.may.have.moved",
+      "source": "8b28dde72897470b486d1e9e8b21ceef1f384dd3290f89e71cb495bd9446a580",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.nothing.yet",
+      "source": "05b6cfed46539237aef77b330e54cfb43485240497b5663d2abad4100582a607",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.nothingwassaved",
+      "source": "070ba994e0922f62e220b04dd78a0210fb19b38670d57b9f74c345b132f08629",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.ok",
+      "source": "7215fe69aa21a2b073c5e6c8c18daaa73b91c9d619b7e8fb38d01d84f8d53a3f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.openscreenshots",
+      "source": "af47ae70ea0a97b436e9a96bf3443fa70d79ab65a6902f6b794eac8df3ae5501",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.recent",
+      "source": "e8ead3b2bad9d13be91b31b4565f52003e4374138f89364e1ec2a02b0125653f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.remove",
+      "source": "d257dacfdc4ab27815b38826a31678bbb77e1a516b0c365afa7277a9515652a1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.remove.row.name",
+      "source": "80462bad3cf9fec9e89a89f36ab4fa236e8ac14e6eb9c474f741f26e33161266",
+      "contract": "85053d723b7e1f28ae28297c665d0d09f73ecf55449bd50a1109e25a8c40f725",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.remove.row.name.n2",
+      "source": "13a02e2eb3fbcb1cc64f8cb1107a9c5b8e0e50171b6ef27574affbe9c73d4c07",
+      "contract": "85053d723b7e1f28ae28297c665d0d09f73ecf55449bd50a1109e25a8c40f725",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.removes.copy.device.journal.may",
+      "source": "f04df4a14c7d6c8b19e083b2f926da6099fcdfb942e73cff819d320271716d1a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.removes.copy.device.so.won",
+      "source": "a0738d4b0613e43d450447fc30dad814e7ac92ae5fa53c7b3df2508a797efe1c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.s.already.gone.from.device",
+      "source": "a7395bc91d560f5394392ab5d0bdcee49050bc9e132b04e01d93962c025af58e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.s.already.journal",
+      "source": "7b2e18ff174e43a78d88190288d99d6501705e3063bdd1bf333224e28a36dfac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.s.larger.than.journal.takes",
+      "source": "138a17fb2479be96cf756aeba0b5507ea3fab67b4ac91953c9cb681a3cff0433",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.s.sending.now.so.nothing",
+      "source": "8633ff2c4258780054697aa0ff5a4211ae41c536b17c8b426f20c21cc7f10224",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.saving.device.line.done.n1",
+      "source": "41045ac1194198388fd116079690add8dbf09cde7c51f177e01d7382b8d57824",
+      "contract": "73e04de3c7856b58c687d55e1007a70758b3453009e5b300fc49d2946b3c0068",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.screenshotscometheirown",
+      "source": "5255eb31d2c15888c901f94863f4b6e6296cd0e6741bc0a79700bf9e37965b93",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.sending",
+      "source": "3b1ccc49ef49cdd061dbf0daff050a6ca3d84b3e58c8523cb0062f65b6206db2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.sending.journal",
+      "source": "bf094c4c36a233d3790bb81be46ae344f7ae0400d10a036d8a1cd3796e1ea17c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.setupscreenshots",
+      "source": "8acbbefdd9489fed3414298c16e3c4d4806772821419d76654fde0c986153985",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.something.were.adding.didn.t",
+      "source": "dfc221838695e852d3111d51823151e73b38348437a254bddb821acddb4b8ad3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.state.items.size.share.sheet",
+      "source": "6326b47eb9838c6d323df1e0dfe37c2e75aa4c3ea9f19681c235e1d6af32cf1b",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.text.sent.along.with.these",
+      "source": "5afd2f904a536041a3d4d31d8007825f3c66437b58dea3bc5742af9f574652cc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.there.isn.t.enough.room",
+      "source": "f777ce5f6cb034722ed3c9240fc3ffb1d20a394ea9afa1d85964135c2516607d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.try.now.row.name",
+      "source": "349a1e50edb4a1ac4bde268c33fd42b7529e4e7cb74fb25b90b71d9cbaba9ef8",
+      "contract": "85053d723b7e1f28ae28297c665d0d09f73ecf55449bd50a1109e25a8c40f725",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.waiting",
+      "source": "adea58b92480187ce7b817fbf69623672e6b89b3ed6c5ee77bbf4dc4b0d68689",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.waiting.go.journal",
+      "source": "fa4f1e681e4d94e0046c73c89b464ebe14ea41310561d129d87a23cfcc765f8d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.events",
+      "source": "5f4a7049c27cef5e30c8a073088ec510ca9cbe40dee8050186ffe46ff5ed77ec",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.hours",
+      "source": "f26b2a7c573bfe7159a87ec2a1424c46409f7e270b7d910f89ac7fe4a053f050",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.items",
+      "source": "cab03722fa36a5da752e22b19597b13325108e5fecedd916d7c360fd163c5923",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.kilometers",
+      "source": "f1c96c8b161f84e5eec25d2b092d0d53ed9e8b04e115199480e8a922ca2d764c",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.lasttaken",
+      "source": "6a5679bb1aa24b027e11e7f13eccc45ce52465cb84c65db986bb74c5e77e617d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.lessthankilometer",
+      "source": "804655854cb4add0e3dee6846042c2195db129ebf421ffbe2919dc47cf99558b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.lessthanmile",
+      "source": "dd91957a92dd8faa586b50ccb2a4843ce9a3bff213534d7fc8609ec131b2f6b8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.lessthanminute",
+      "source": "5c441b5545a3c8c5769b456df4206e481d1a742b75dab807f1e673f487b95cc0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.miles",
+      "source": "d0d5ed92c78f92332da1d4aa6b3489c9a2675ee57b45878d84673e640647d781",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.minago",
+      "source": "368bd40508eaf2fcd1af7768e22a1170df1172dd96c3480bbb576e3c50651ba4",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.minutes",
+      "source": "1f26ef709391e91da080f2dad64fdea2508debc7ebed28f89ea568d1ea6dd2cc",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.notes",
+      "source": "de583363263fd59dc73f7f0028ada8dc079907899acfb0e07fd73128dcdc86bd",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.nothingyet",
+      "source": "b8cc78a7cc82212e26afce2688cfe848b0036c57f7125fd147e407388862783b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.photos",
+      "source": "f6216738c63683fa2e636e44f657dda7adf07e83130bf128ea2fcb7c7b927ed9",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.screenshots",
+      "source": "7893b247e3d463628f068c68fcb98b5df975bb69ee1df8b41790761dd72637ab",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.sofar",
+      "source": "60116d5214b82e4e83135129d4ea5b06dda2d8ed07008d0c33125e8c49e9d61b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.startedthismonth",
+      "source": "e6e09b8db619484d98ef75b192877b38b0e234cb54439502a07161a759152b9a",
+      "contract": "04bdffc24f1b2d736f26420a6a5b9213c517c2f61ca083d36b9c706c74f12c0d",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.startedyear",
+      "source": "10d788284b6e8cf1984909f024e0a0fd3eb29eff9eeff86db4c203698c423a44",
+      "contract": "aa0ae943043df6a52d444d0b5e7c513c37b3be7e7e92c6064fabdd6bfdfceba6",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.totalsince",
+      "source": "3bb5a19cc9dbb661b68a1af538b3e3d8869040cabf67c228b44e8178ad1d5339",
+      "contract": "c5e212243b68db35e95c4ff2ce5480a372269ed4fb3be27d3f68a7780e6a057f",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.intake.yesterday",
+      "source": "823def133635a3b0d655bb9f2266d6a236e2057253451dc6445efda1a59b2579",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.close",
+      "source": "a1f34abf437ec17e427804fd2f06f257c671423b17b647a1bd82dd7ac195af73",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.couldn.t.reach.journal.keep",
+      "source": "19027a512e853744a29aed51a2f2eee9f1b5a8fe424b2dfe6e00494943de12eb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.couldn.t.save.that.try",
+      "source": "8eaf9fde2c761b3b1db41733c01af06a8331bac816d2fa1850005ea58ce9ec60",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.file.selection.isn.t.available",
+      "source": "bafd2c63247fafd2d6b8f00b0e7906c87e91fc54c579bb59ec64b639c5766317",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.lost.connection.journal.keep.solstone",
+      "source": "abacdd29b71f9f0d2c780f11d8ae78e06b56f3554c63ff5e32957916d3ea6635",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journal.that.link.isn.t.available",
+      "source": "3b3fc2d09b55f60562202bfb5f152bb57a6f9fab1a5636bd1b83c7c42407df06",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.cancel.pairing",
+      "source": "af7a6389b2176aa7aec4fdf66bcb7d7d993a59f3759f59e4d47eb02c627a8d12",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.cancel.pairing.discard.attempt",
+      "source": "886615f68cd7253724ee7b7f5b6d84e7f0cb925447e7372e654bbe6660040d98",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.check.journal.s.mark.didn",
+      "source": "af54d0251f61a666d277293e17144e6d08e4a6907bd54e92f5608d2c236cd67a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.connecting",
+      "source": "33171e5be120a0e923e8bac91e88bd2c567f94d7fc08bac62050dfe6836c23a9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.continue.anyway",
+      "source": "4d7fc01c5b267830aaac9620b91dff8e45170e63af3b624cd03d614fe1587419",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.continue.pairing.without.verifying.journal",
+      "source": "ccef24f647270a8516553d0cbd25f5fd0c81fe78dc50039654f6a640951d9b11",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.couldn.t.disconnect.phone.try",
+      "source": "10d122ec0090b07100531cd899b3ced3befd471ac98c4f07622c0d3312e4cae7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.couldn.t.verify",
+      "source": "aa6e7152a854a3961902434044a9def3936433e0aaf787a07211e11baf8e9990",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.couldntsaveanswer",
+      "source": "d2eece5f80a003f9b79635eadf2afbee4748e318653f3f6fe2d57f92fb64c7c7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.disconnecting.phone",
+      "source": "71453a7f526e810927cf8f0b732e957ae1c08378c233dbbc78c72d682f6fdb9d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.does.match.journal",
+      "source": "afcf843a34fd8ce6872f26a4302495734c924013003572b0ed0ba8bc5946478f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.fallbackjournal",
+      "source": "a2066fbd38242d700ca044704ab3b2162561180f1e524d0b34c07041ce88978f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.fallbackmark",
+      "source": "95c257cdb7f88deadb2ec5ff7a1724bd97a142e9c0deb76f66cd4246aa714a2b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.fallbackunavailable",
+      "source": "d7d6eca0ae3dc604cbe3adf1139a4860a3314a82068e6f82289272ebbf93af1e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.fallbackyour",
+      "source": "dcde812c60f1f532094c622a016d1d66334139d212cdf26cec77589a51a4be40",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.journal.not.set.up.yet",
+      "source": "1a1802ba66f1ae2bc23e3356a25a3c0981799da3a35e93469ce59997c1e058ea",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.journal.s.mark.unavailable.right",
+      "source": "f277612f15576d37a909d39911c49c05a9ce8a40b9901ab12ac6d8d9d450c07a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.journal.shows.same.mark.its",
+      "source": "e2114a3894d42de416b30f540c898011753b7fa19a2cfb489210f8912291239e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.noidentity",
+      "source": "fefb5737680e565132678c5353c1054ed84759a22a4bf6e863960f84dcd7b6f5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.notchanged",
+      "source": "fae3f976771e878c0653b969207ca7d0f31afae8204ea729e8d4e74b2a982635",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.notconfirmed",
+      "source": "606190a648eae593e4fdef0c8490f5969c21f441be80937b44e3e6728ba3ab76",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.notreadyet",
+      "source": "b92956c7f1831676c51ad52ae3cef3641e43b468ab047a2bbd9372ad5cbce3c4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.pairingstaysnothingwaiting",
+      "source": "359f7950b212d75125d136b19019bca37d2813a79c60415500789ec8411c2e27",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.phone.connected.journal",
+      "source": "0dcd7c518a5f343fb5629eb370824c336ced8feb11489e28b2b05422d6f3dd58",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.phone.no.longer.connected.that",
+      "source": "faf5d6ce7953dc21668c867309eb4e22cf7513afea691fcbd90f4c26a6810bd1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.scan.again",
+      "source": "b2880b64551b10beb48b967ead5949ca9626ad3cb5ca2f0bf5eaab9728904122",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.that.doesn.t.match",
+      "source": "311b20cc6dbaa380b062357ea4dd033a4f96abe34cc86c296d2cf7b8a15349c5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.wordnot",
+      "source": "035af29aa4ec6e1877c44b30f5882837cf6cad855b68438e45b9e0a60dbb6d2c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.wordpresented",
+      "source": "2bd99baa48b6341570f9b642f431fbb3c0eab7f1c6da53dfb8089a64fc24ff80",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.journalmark.yes.my.journal",
+      "source": "8be4545a9199b8d689b8f95326146a61da0a248962dd8436829981fd6348be59",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.legal.license.agpl.exact",
+      "source": "710a2b25c27978534cc98f1f9201b8d62db6cbfb8bbb3bcbcc90ec4ec747149e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "a9cf54fb1747b27587d5421b187034eeac55f83a02b56feee8afe05b667d10d6",
+      "locales": []
+    },
+    {
+      "id": "android.legal.license.lucide",
+      "source": "7c92511e03c1a319346423987b3962b4f315fdcae6e9785628f756d06619d0d2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "30760a56203fc7addc9c1ef216858ebd6f247cc762c698c36bd6e60b42ba49a8",
+      "locales": []
+    },
+    {
+      "id": "android.legal.license.ofl",
+      "source": "d8860196333ca0d0b9b628ac0091f2f77c1abd82dbb1c08284014a6d83ff58da",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "f0eb8c1095f6665c722ada358ef53caa406b060a34c4ec417abb802aca9e1bd3",
+      "locales": []
+    },
+    {
+      "id": "android.licences.agpl30only",
+      "source": "8ff5d4f03bd4a71e6752616a8ae39b6bf51c8cd8a88a0c994b2a5454da81e4f0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.cc30us",
+      "source": "4e5a77141b2ddd1f6c08ccde0f5c0aab004c38d7b58e2cb18cb15afcb8852242",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.comfortaa",
+      "source": "c5d6ec7496a7dc0f1772521135caa0f73b1819f7ce8430c0aae4ce147919e190",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.efflongwordlist",
+      "source": "a2bf7ffb61db2bece128333c032febc2e1b745365b44a17ea3e31f8216055e1d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.effwordlist",
+      "source": "b0ffb7cf3c904192d1d4e76563650477cd6a029d5795050d6954539448a462d9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "1b9cbf16d17c7602007520fb8f21a3aecd031d1f5c232cbe691124d4ede1ff30",
+      "locales": []
+    },
+    {
+      "id": "android.licences.iscmit",
+      "source": "b5e5a34446d664a26b9396bdbc26575191de20aee7e69f720b0c7749b8ba41e9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.lucide",
+      "source": "2acafc79afc274253d0ae0411180c2c1173227e945683668e8d169563e8a0aac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.licences.markuses",
+      "source": "4e004a1f0c5544fb790f29cde02b6755ac9f40725aa8c406a23b2f7182820b46",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.anything.waiting.send.stays.device",
+      "source": "57c28c720b319e075b0aa88bdb409c53ca63aba086f411474935e7f41d95d9bf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.anything.waiting.send.stays.device.n2",
+      "source": "a80352b820b0083c4516367346119574b4aa64087c83ce102e46654d1fee8579",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.can.keep.both.or.choose",
+      "source": "2879a37d2e554361c10e9def91329b5e322ad6c4ed184b1cead0501f1969d4b5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.can.t.reach.journal",
+      "source": "e1d247ea71783fbcef28a3ee242ad1c0d69bba1febd8a4aae9fb1a2173f49336",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.check.again",
+      "source": "cc48a30e7622ebf74eeeb965c49777bb6f38856c9b0dc4b23387e672453db1d3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.checking.choice",
+      "source": "6231c63527d14e7517a538a2ca18baae3d26bc781596e094279ad9964193e492",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.choice.needs.attention",
+      "source": "0286302de89ad4d115be7b70e7989b172bda2f95f31b2bc56a696fa1c8fb608b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.choose.device",
+      "source": "65029fdf60444f10375d8e0fded41896c5266addfad5b2a5dc9af0bb3d352b5b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.couldn.t.load.devices.journal",
+      "source": "2a3800fb50f60a0db4b2afe5b63ce682c6c9ee78e38d5d84eecb123ebae12da6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.device.continues.its.name.history",
+      "source": "0367884051de386a3be2c5b9e5fc5663be6441835be07911290ebc3840140c83",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.device.couldn.t.open.its",
+      "source": "1882c08cf2597ebfe81a8488b4e703e7d91408e7ac4f08d4c3ffed7d38b75fac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.device.couldn.t.read.its",
+      "source": "974e5f24a18d0f6c48d38f48f5fe1efe8dbfdb3759b79c0f7143432a1025cbab",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.device.no.longer.available",
+      "source": "025f10aedddbbe9378d68786ef7158e3e9623f04f795397dfa6da1dc6204d752",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.devices.unavailable",
+      "source": "37a0ea2aa9e3485cb7bb09df245721d67909c5a2880d281af039a51431c33b0c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.getting.device.ready",
+      "source": "b6e9ec58a531912ed4c93d004d3664536be0bce7232e0a6fcddbc5cc88696f56",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.journal.couldn.t.apply.choice",
+      "source": "97f27503a7c5b1e79e6f2ec9821352948b5e2bd53153c633512a2e0de8684dca",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.journal.doesn.t.support.move",
+      "source": "947bb2bfd934c2eafd7d23d8977f5e95b3d562f17fcbf83e9945977c28e8a582",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.journal.hasn.t.confirmed.result",
+      "source": "483d4e525c92a8b8931899e94dbb3315b8a12e34e07a6dae3c856c630df55ad7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.journal.update.needed",
+      "source": "4e32db4b0fbb56a0394874a564e99cc709f01e08ae9c96e1fe00da207d5df12a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.no.other.paired.devices",
+      "source": "3663e0c4aeabddc784f88ce007e3c0902e8e26b076b2fb7c09ef8eb5390ce821",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.pair.again",
+      "source": "5f600fd084ecae678ff2e974738ae6a3ff615c69396ea291ec89fd1b478462f6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.replace",
+      "source": "1842e72a2c7ca15ad24b2ae69ac7657c695d5f86053b424c45b0d6b3e0f239f4",
+      "contract": "37fa12ff017180d6fce01c8ff44662994b5567bf7f6bf1d5347fcc56d62ea506",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.replace.selected.device",
+      "source": "ffbcaf629f3b538d07a85bc3e1a97756752eb092ddf12297444b5f9f8879fc06",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.replacing.one.devices",
+      "source": "fd0babad8682ccd12546c8baa5bd57c964602bb27d7275cdd204d3b21940e4dc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.saved.connection.unavailable",
+      "source": "a916ed6cb31a842983fb8b2b0564cfc8888b00e37fe8c324a76cfbe8b9d83895",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.saving.choice",
+      "source": "f95030db4a2402c362305309761cfee94ae6485fcd66d31704fc706338476db2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.technical.details",
+      "source": "c3189d69bac6ca72656625cc4d48917defe4b86752e031b227e8455a8a230659",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.that.device.no.longer.listed",
+      "source": "5db3e79d359a4824feaffd5844aed87649bfb70ed54e02349e83f72b4c78a687",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.try.again",
+      "source": "792b970ee1cc04df695b3cc5b2f74194c23593ca0544074d1273612a9894e871",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.close.drawer",
+      "source": "7752edfa053c8bab34d51e34e53a6df7aa602b44fa7ad6902e67cc439206d87f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.close.sheet",
+      "source": "768dc649aabac043405cc9a8d5a2fe583d110e9a0a0f3bc108a996e11a2767a1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.default.popup.window.title",
+      "source": "8d6135af979340772367128d953cdd0c4e65d1581d9ba9c3f074992bcb8a5cfa",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.in.progress",
+      "source": "5a83f741cb1100f5866201dd3d10a8a7441cd2487200ec84060a3e71c7085894",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.m3c.dialog",
+      "source": "025286451c9b1a772cfcf4ef542fdd05d128340e6a5bb17013879464153419eb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.navigation.menu",
+      "source": "dbd1ce09d6fb01b3ab6199163091cb5812c3571237d6906a5b8075fd5c1376e8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.not.selected",
+      "source": "98042c0dace92ab7b77dcd60a3d3ff0c5882f4b8f8ab3ee69c8dcc4d71be69ae",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.selected",
+      "source": "588a85dc70f240551206ebae9bb2a96efc077a313b5cad1a2d15cf572b0a1ed0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.state.off",
+      "source": "5eed9382d0ae4afe657355f347449a040b70d5fc4aed76896e3e6d5b396e29d4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.state.on",
+      "source": "ccb422f8c8c2e32a8e3b90c38db6f24a6e82ccd5feedaa994902083ef2b46274",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.native.switch.role",
+      "source": "1f208e98b64cc7daa390a0d94e1f6ba15b83872f0887904b22f4bd73c47c368e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.accessvaultlostchoose",
+      "source": "f1856de937c9dd9ac76ca85871c7e2a71e1aa2e972fd057307bc5e9d880da5d2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.androidmaydelaybackground",
+      "source": "b77fe5f042a856024f0809a79f37199ace00f8e051c11a2d0c1b9ed365430880",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.anotherdevice",
+      "source": "0291c2ce068e1d66a36e02768dc36f80a6e49d7e7b25416c549aeb8b8359377b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.anotherdevicehassynced",
+      "source": "2b3fccafa4e16dcf50f16ca73df9c31f7cd6642eaeec9f7877aac22d4cd64b57",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.bringingnotes",
+      "source": "18abbfa35f4deeac8568c25aaeb1b6553139605a96511a1db841a5beef8046bc",
+      "contract": "73e04de3c7856b58c687d55e1007a70758b3453009e5b300fc49d2946b3c0068",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.changes",
+      "source": "654abcd200b447927eec7b0bedc4345d26ccd32434a68a56aeb7b152a45bc787",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.checkscontinuechangeswait",
+      "source": "e976c9373ce00162d09f3fc12a90ab37f18f783a2226f24efe5f67ef4574003b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.choicecouldntsaved",
+      "source": "02b215843ec09f9fcf7fa270e2e3712126be27b9d5388b6994bf344ea98288fd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.chooseanotherfolder",
+      "source": "fb0c15da71999ac690f2bc3dece8297affc27bd5d8e08b12d4a2d1e426512e42",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.choosefolder",
+      "source": "9b533da31e3d16705ae08c81a634c4ff36cb01224ab41cfc69b9baf392b0d6e5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.choosevaultagain",
+      "source": "ae060421f52ed03dabe2af26a1a7e09e04df63143375753cea3a23df2a0da961",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.choosevaultdevicestorage",
+      "source": "418770af53024de1d8ff34a2058974bf0eed538501d6668c248703a35f4e3d67",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.continue",
+      "source": "cacd477d0f0714ce579bdb1040df9a4afc7d8a6776827adef662c920b61a4b6f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.earlierdate",
+      "source": "32d3535975a72bc7bc2186a9489a6bbfbafa0a5e61b16ac804ecd8164adfcfeb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.firstsync",
+      "source": "b39af7bdbf85a7ac033b9a6fd7d1d16de487542f7262b5581e3b05372099f142",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.folderisntobsidian",
+      "source": "6031e1135673245e473ddb59337ac2177343b31580a1d6f02a2d8aabcaf485ab",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.journalneedsupdatebefore",
+      "source": "d6ac559c25f1ec2a69a52047fd19c004a76e7e3e02c085b32f4e1cb56cb8a112",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.lastchecked",
+      "source": "5839c17409b0d1123bfe88df304e00f59ce30f8de3a67de8d3065ad4e502faa8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.markdownnotesvaultchoose",
+      "source": "3081f73ec8eb2837f992900dff7c367afd9c3446506634abaca23ea4b40785fb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.notavailable",
+      "source": "38b5d32f27e523ade03f3b3e4b114c50ed76c1ac5b2df81f51a004cef95a6547",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.notes",
+      "source": "de583363263fd59dc73f7f0028ada8dc079907899acfb0e07fd73128dcdc86bd",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.pauseobsidian",
+      "source": "4e98ec8d8990aca2d005d81bdd138edc9e2caea82f295575346d59052a07252f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.resumeobsidian",
+      "source": "4370afe504da82be1c8ca9923c8435fc57634a9b281ed92266362197b2414ec3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.sinitialdonesinitialtotal",
+      "source": "c64874c3a233d96f3636820c422fe30847ba79c6f6ad79298cdb28cde88b97c2",
+      "contract": "8799922b555511917899526d572227af70370389a6c9a3f62240a14b108b9216",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.somechangescouldnt",
+      "source": "95907984b7a98eb4398ad17fcc564be28640c0c9a4185cf135f9f0910e9d1907",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.somenotescouldnt",
+      "source": "57e3bb9ad68804057c9d13a6939d0f25244456954774b5e98c600f12ead464d6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.toolarge",
+      "source": "b77ef7eb0b1ea570d179a1846184d1aa48af7242052dcf959d96ac1e3bd25331",
+      "contract": "fd40782cddfa743465c38a5cf60c981b87c1f3e19b8a1fc15ee94e6db513b44b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.turningoffremovesnothing",
+      "source": "2e8f1247bd688d5a4d44f91bd3f5919d0db57e7d2e5215955b8b6e4d7df67a49",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.turnobsidian",
+      "source": "794a5406fd7b8c099ba5a21893515d4be78e38f74882e2a688da0a8db24036f1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.turnoffbeforechoosing",
+      "source": "13c675f8a6cafa73d9d0434c8d5fa54ac1c696f906c18e3ac382df65e106b634",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.turnoffobsidian",
+      "source": "44873cb28985019047ce782bab4a76b826500f2a8e7d362af72c4f4964df2b07",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.vault",
+      "source": "33f9e7280c0ed1b4c71710ef28808779866fb931a9b7abe662468035cae82b09",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.vaultcouldntchecked",
+      "source": "1bc577fe249e9ef79303ec843219820e2a9fe7a87243df4d26846600c9c4e36e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.vaultsnamecan",
+      "source": "dd61a92b9632578d4ed6fcc10ba3451fffdc384d0f6a2b8932c3e86fb79cbbe6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.waitingjournalupdate",
+      "source": "0b02ea266e2a858dcca1a3f6fd552faf86f4e990836f018bd8d7990a38c13568",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.obsidian.warningvault",
+      "source": "d7747cc0508df0c6dfa6361d902870d632652ba71230983e275d54caa5cac64e",
+      "contract": "d2573b40c69c8d0fe1e75848bf004f3c8c5d82a58d19b058ef335ff210f3f55c",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.ownerfacts.line",
+      "source": "5c03fc5986a47ba4402a39b2f31ec78df4a757e0aa2ac630322adff19d51afaf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.already.pairing.give.moment",
+      "source": "4c0ca9a828c36d93ad12130245d9fbf71dc98e473ed1c505ffc7c76f0836d030",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.app.busy.give.moment",
+      "source": "c210d670e6a8026aabd0bc002b4e16edcd26bd79413f0b4373789c2c6e15cbf3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.camera.couldn.t.start.try",
+      "source": "cf0637d2753f091c8257c1c088f508500e52a1a60ff08fa91ed19ecf0fa9240a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.camera.off.solstone.app.so",
+      "source": "a8cc148bd6921147270d9fbaf325e9dadbdb8255e8673347f723269f92171898",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.connect",
+      "source": "304555481a3c290e070d192fb886dad65835223a3a4b6c2fedfa695850a92d74",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.couldn.t.check.journal.phone",
+      "source": "d98ab64cea06eb8348a49e0b3697ce07950e8a1d03f9762c4acdf629ad00506d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.couldn.t.find.journal.at",
+      "source": "7a9f7d01295e83f637dac6cad670049bb29caa698aeaf3f6a599542572d2bccc",
+      "contract": "1a30b7322a8cd7a885328303c93c8954caabe97dbdb1ee708ab79f8fb8bc00c7",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.couldn.t.reach.journal.at",
+      "source": "dda4464a33c45a1a4dbdfa5898341aff6017c31758b0e295d255836e4a7702f2",
+      "contract": "8938f2eb299819161120eee27fc76e7c8993421d6194e446b723c8b6e62c206b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.couldn.t.reach.journal.at.n2",
+      "source": "5a328a7244aeab2e023a365696a3d1c9e792fa8655d8e9dcd2e6707c84cfd754",
+      "contract": "8938f2eb299819161120eee27fc76e7c8993421d6194e446b723c8b6e62c206b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.device.isn.t.network.get",
+      "source": "3412886adb75c1c840b71869cc2988c694c9f4600a0f756e5bd8f0a253166fff",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.enter.valid.pairing.link.from",
+      "source": "5b6eefb2a1b0fdc6b998f48068a361077f31d856234cf96d1cecee500e4f33c1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.journal.s.computer.open.network",
+      "source": "d4b435dc3b6cf4a7312adc667afe5734df71c61d153186d4a17a4a6aa264b330",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "f878c16d83ef0860a3dad937d94ed9b9cfcee59bf7ed090a458c71787fdb029c",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.looking.code",
+      "source": "382847b7b33e18f196f2fc50bc46a3034e3d2f52b9d3653926e8e05c80bdca09",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.open.android.settings",
+      "source": "220d961037b4e27f429b9feb24a09e49d4add35ccd9a4138775d73cb7c0fc344",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.paired",
+      "source": "f2de9a5ddb2bb22d1ed851ac46170b573b947565243adff677844c7cd1c8c2ac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.pairing.didn.t.go.through",
+      "source": "cc4ef395b7128502f94d36316ce7ecf79a75939a67fa1f0e43c9c9f7cd9ce0a0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.pairing.link",
+      "source": "b42839d232a0383ca48bc748ea3db184d478bb0a06065b89c592cf94ecb25a21",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.pairing.window.closed.show.new",
+      "source": "b403a6d071791180836ef0af592a82bddfb7229e6602509f44f7740e5b379b41",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.paste.link",
+      "source": "defe8e3c37021163e46a5488886d2138114d4fece576d9f7147337c77aa79522",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.phone.already.connected.working.journal",
+      "source": "457a2e3a42a647b143af149436a8469487be806b9f396eef8f31027915936b0b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.scan.code",
+      "source": "6b2b52a4792e41bc0a39bb6179fb1d8fbb23fc38379f3e5290bf6b9ee42285b0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.solstone.app.using.camera.right",
+      "source": "9cbd4f19e9aff00e0ac8c855de590fdd4869fed39498be14cb0e7e98081f9eb8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.something.answered.at.value.but",
+      "source": "a204d06c5056f007ff10674775529bfc77041050c4af838e5daf0fb4db0a245d",
+      "contract": "1f0c17ffa0d7cb39f6d9b6278657a764211308d8678a2e301975a8737e07644b",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.pairing.that.pairing.link.isn.t",
+      "source": "c3bfd65f92aac9f8c0aa22614b7fc8be994d7bf9421ba1162b40b03f04d3e427",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.about",
+      "source": "83010f04eae109d71997d8842b28e5cfea46f295e079bfe0b00fa1dc196a2905",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.already.home",
+      "source": "df041c1fcc68f2cfca37e19949566b5aa86054e1d16a6b971ac047b66c236aaa",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.audio",
+      "source": "929cb175f5d80d0063f1a0bdd273a7c58de76cd63ced85efe22565b9c6b1938f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.calendar",
+      "source": "46279d07211cdbfd7e59a85995475e727014d52d4e072b2d5a20b2e75aa21665",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.cancel",
+      "source": "2fb1b0b4511f744f1f8617c9484ba0385da245221e9a958f185c1f0a1c255879",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.event.log.couldn.t.be",
+      "source": "89581bb26d3527a9f7938491eb1b5e70ef591d028aca54e6291ca67711825086",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.file",
+      "source": "99365b79c66b90e7c4e3d87801a67928c22e881c96b73f315b419d6fcee7eff3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.from.journal",
+      "source": "fea2d4864a71e843e0ff122206c3bd6212364ac4a53ff5ec966de70644218cad",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.google.play.services",
+      "source": "bb923b7f239278136018dd2a4f8b3e815ccd2a3b49822bacd4d09cfd86518f46",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.help",
+      "source": "415751cbf18016f4c7489c82d0ce79d737f2fa01c17a285f4b51320ebb3aac66",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.image",
+      "source": "79947a7ad19c6a801a06a177e1518dab8b2fc5b5e0495b6351ac8b457016f37a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.import.saved",
+      "source": "3ab1e7136fdb81475ef32c30731ca9eaec2ee8bd993ccf40ea2a488fb0985337",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.item",
+      "source": "c125661803e33901c4976efed610cf3af01dcaaf5203ae62a6841ab0a287f5f4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.keep.both",
+      "source": "f28628bc9366c20b18084178d2f1aaefc9547e6b70706c5175f4528eba3f16a4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.not.home",
+      "source": "cdae9d70900447483121f5aeb969c90aca315385d6fcf7327c6876eab0950497",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.not.now",
+      "source": "13ce3043ce9102483422d8a3979481f6c06cc4cbd2a2430cfae05f13a1e7fc32",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.notifications",
+      "source": "1f494307abce4c1b5422e9d978b4479c368c55040275271a87fdca51f609fe4c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.open.any.source.change.what",
+      "source": "b9bd28a31c9198ca14f39657dc7e880e6b27c75f4371ce92da82eb9cd1d47973",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.pdf",
+      "source": "b3b7f19de85a9fd5b0c98bf454330d23aa310a9f9acc8f0dc65fe17809361898",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.replace.device",
+      "source": "800200af9b5acbf1067df3b9e1592f3662ca4e42433bcbf3544da16d5b5559a6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.screen",
+      "source": "f6702f70ff7b2220f024bedf51578531ec8e258bd867d46c90eaefbee8aed882",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.solstone.phone",
+      "source": "526ca97a5fb94c8193a7698acd783a41b3ac87c8a37e84daf624a7b79e57a7ac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.some.events.couldn.t.be",
+      "source": "866a580f285f64f7b79b5233267ae9aa09df914a036e2d9b10f5d006b49e0097",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.source.obsidian",
+      "source": "8c729b41dda9031327f2a05422eb394fd8688dd2a8e3f586966c24b7a41bca3b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.source.route.fixed",
+      "source": "3d2de76838b371cae3bf4160d18663e3606cd899c0f3dc0c911bb1f463467251",
+      "contract": "00fdae0cc86e2b1adb3c23cdec0c99fcec41b166adb91944945e5e35449570f7",
+      "protected": "b6687c15c7ebad43c387f1e8b1ae4b3c4099faca921d80ed8630608a6bc9a432",
+      "locales": []
+    },
+    {
+      "id": "android.phone.source.watch",
+      "source": "5f34e874814d3c26cbd92a557a9a3f32b31a1ab43dff07a702e3c347b9d902d7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.status.unavailable",
+      "source": "079b0d8eec10537ef5dc4d860f4dd410380efc55b89c1f7a3b17fd0b6c59435e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.text",
+      "source": "065e05ff4e2f9f7688719f7946c2df17b2a4eafa86c29a182cde7c0ae6d90d12",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.try.now",
+      "source": "af65ff122149c1e5df9b445d1a9a256d6f41657e1eced81f262376e176bb4a62",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.up",
+      "source": "e2f3bee7e702f48727494c27dced53440137c44de78adf7462083268b5fba240",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.phone.watch.start",
+      "source": "822ddd29fbad1b70e465fb5861a919973bc30904a7775e14c0f121b72a616210",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.fallbackbody",
+      "source": "9a6293ac7b2a4b738aeb799a0813a09410fe69b292e3f847ea786692c2bfa38d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.intake",
+      "source": "0d3d25ad9222096b4ceb605e1149a155e270766b2cbfdacddfb9d60f79bb6941",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.needs.attention",
+      "source": "45cab31c4ee6314bb387731f0a8cec71ce70686b35352a27dab6f2ac88280859",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.off",
+      "source": "586bf5ca34678fde5d5ee91f0d9afc705ee026707d1342de2557fe14bed025a4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.on",
+      "source": "40d611c1c8b58aebd4ae5eef8a0723365b0d1bcaa7cba752d40a13221a70bdca",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.setting.up",
+      "source": "09ecdfded39ba8e5a22e992faf8fb95796991d65e88edaed06cc5d14f643d76f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.short.heads.up.never.content",
+      "source": "e197a5018673614df60791514f1b06c55aeaeeb4bb3d923acbe83677d494a18f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.start.intake",
+      "source": "486e47f430eef9b53b228c7c80a1c147894e7e155086ec8f979bb0bbd0c64a0f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.stop.intake",
+      "source": "c418cd296830f905c60c1f5069490e87d9daa157a9cebc5ce67edb9a1960df9f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.test.notification",
+      "source": "d632f1d1b7b24c32f4370a16612e15c22e2eb20ac77a7925c1f2afba49a3977d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.push.title",
+      "source": "bf38593db11de7fe3f5a21bc5fad9ba9de265ad0f9c30825d125df8f075566a3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.addsscreenshotstakejournal",
+      "source": "d0ccc5c7b84c082dc65243463d203512eceb40cd28d3ac7413dc53d171a63b32",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.all",
+      "source": "01a1a1ba15574a69cb9c8193cbc8f50faf189faae94ed5c28064d7bbe0d4fd3f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.allowaccess",
+      "source": "89a6295d8632199cd2d49859b562d98e8af793acd454ae5131c2720f4f545790",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.backfillinyourjournal",
+      "source": "9b6dab0d51883a77fd0a05c59bbc6fc02537e140c4959fc0b10c2b0b9ea9a6cc",
+      "contract": "73e04de3c7856b58c687d55e1007a70758b3453009e5b300fc49d2946b3c0068",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.backfillscreenshots",
+      "source": "9f5e5c57a401e2452b5f5b31f864fbd1d24cb00d3724f07923090fcae3079f07",
+      "contract": "73e04de3c7856b58c687d55e1007a70758b3453009e5b300fc49d2946b3c0068",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.beforetoday",
+      "source": "76c6b4ec1145483d287ac6ebbb6152bc87840fe035bd96719e14583b818cc958",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.bringin",
+      "source": "61650a6c54abbc832802d6928500d25bc5080ebd8457f358a4f3dcbb24972429",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.cantreadanymore",
+      "source": "a0eece9d1d299983821fb3d3b3a0d586dc49c8f1758c4b6bcf5ae42150be1e32",
+      "contract": "e27f7d2a229e127640f5fc8da267bcae4cc978f07f6a6fabe39d01251de40ce6",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.cantreadfolder",
+      "source": "cc40321d8b11f44c6d348815623fe4f5897a0f03df8ee7a4e5fce162fd5ee170",
+      "contract": "e27f7d2a229e127640f5fc8da267bcae4cc978f07f6a6fabe39d01251de40ce6",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.choosefolder",
+      "source": "c398670c00220c5d7817982427bd15e665357d63221a8498d80f80b4d7c28f0a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "7ffc6ba4f8029ab86d9eea626f05581b66ba354d7a3fa1d3db96057e455fd0ea",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.choosefolder2",
+      "source": "ccb34cf1d2377793cfc30e1656f1b2fa24e3384e33e31ce094847118dfa72345",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.choosehowfarback",
+      "source": "b17f07c0fda259c399f01d16fe0d973e79eb24f6eed797db06e18803e93b7404",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.couldntcountscreenshots",
+      "source": "0690224cfa5639d3339e18b0a4106c87f5272579b02cb01118b12f3cdb2758ee",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.folder",
+      "source": "610ae6938b15c65d59773ea080bdb0bfbb4d0e3a0945fb9e1bdde82f96c506a2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.foldername",
+      "source": "2c1cab46cad18362b01f53a45b89d25d7e3f6659f3f5640e61bacacdcc95e302",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "7ffc6ba4f8029ab86d9eea626f05581b66ba354d7a3fa1d3db96057e455fd0ea",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.foldername2",
+      "source": "2c1cab46cad18362b01f53a45b89d25d7e3f6659f3f5640e61bacacdcc95e302",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "7ffc6ba4f8029ab86d9eea626f05581b66ba354d7a3fa1d3db96057e455fd0ea",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.last30days",
+      "source": "ce1d92fc852e12a7fde24e4485bbdaff2518589a6413fc9243f4852d63e262a8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.last6months",
+      "source": "3925849bdee765543575b424598974a5dfcd585011a3fdee9b56a4e7da3104db",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.lastyear",
+      "source": "456ba3c9118a767bb78bae6d9a3f271d2063012ea2c1f590ffe5db4fd1c925f0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.llseehowmany",
+      "source": "ba13e55fa7b2c9565c7b18841bafa2967a801fee77163ddcd633f3ef3680a48d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.nothingbeforetoday",
+      "source": "ad8e5012845702297025d5f9cc4b1d7dc54eda617e1b659eb0fe7755922e1341",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.onlywhatsolstoneapp",
+      "source": "557462eda1f6800f1aba8a5905d4a2f024d9b6020532e3729a333f2b56ca2de7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.pause",
+      "source": "cd1ef0bb5f547aa6f4c366af08d82b1801ca8eb1a9c32b4de5bbd91dbad7f42a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.pausedscreenshotstakewhile",
+      "source": "e79f322d301a11edd29f8c920b12f586977764c6eabf3ea6b20435e7319f7b9e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.resume",
+      "source": "75aeda114072ab7e6ab458709e2365efcbd8a73062209a37861074f51a5ad149",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshotalreadyjournalstays",
+      "source": "f8bd409b3324255f66453173a200cc340abb2f8afe3cbfb490f5b27dd4e4429a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshotcouldntcome",
+      "source": "9f6fa97b97769b628b1324f8eee9b7e36e9862ae0e61b1739433a593ab7cf828",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshotcouldntread",
+      "source": "e6038ef7f20f7edb96bfe8c705b4ea7a008071249ca63447b8311d19d4820b2f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshots",
+      "source": "07c972d038da2cd88d9f994b8c632c5f1534f6bff6058106c13fe4c9c88edd08",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshotsalreadyjournalaren",
+      "source": "6ee2cb7627fefccff0e4400843ddbe33cdab37c47b5e9687e84607c480c1024e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshotstakewaitdevice",
+      "source": "2b33e0caf088211448177b802b3ed648514397838ad8c6e0b2fffa28aeb0907d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.screenshottoobigcome",
+      "source": "f1b10d5a61d69992588e50468e97dcdd354e13ec93d9ee5eff8f88edaefd2dd3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.solstoneapplooksnew",
+      "source": "14e238e00a05b8fa0eb4277be222e29bd5734fd86351e358d1f491f7f1297818",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.solstoneapplooksnew2",
+      "source": "c1c280c82c23eaa6032477f0cb8c0edbd3c8cdf5799928faeca5563c655ec310",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.solstoneappreadsonly",
+      "source": "aacd6671a3dbe1bab42b2ef928e0665f3bfd09d6ff04e63d65ae0e1cc76f89bb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.startfromtoday",
+      "source": "89d58b75caf7e9f4d93c058e9123e653eaf5e544d0f8f94a36ea403e7bda7bd2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.waitinggojournal",
+      "source": "364835adb846e149608d4ca75b3e6f5f7f974e57b68f83f933140c8abc06667a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.waitingjournalupdatescreenshots",
+      "source": "20dbe6dbbdc4459d8315ebb604070dec0a55143c58a33a4cf28fec1ec14a5985",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.whatsalreadyjournal",
+      "source": "88d091123442517ed9e24a0fc07f81919cb38d25ec542373965970d004011c5b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.screenshots.whilesolstoneapptakes",
+      "source": "22256e145ee3ffe8ed0629790ccf930fe1c1ee60c857be6fbf5b9265049d793a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.add.more",
+      "source": "5efd614940b6e1be58e6e3fcee9bf6305a4f6b4f6b15d219f5c8d22edacd65d4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.good.afternoon",
+      "source": "b6ad3d68389977f2bfbcfaa60320ac6469640c9afbc2d8e59a56894e4a40f5b2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.good.evening",
+      "source": "e3b2ffd624ec0340855653ff431ea00cea6e3617e4b83ec776778853531380b8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.good.morning",
+      "source": "c180bf9673aed66e7278450e60e3d47cc8ee14de6b937edcdcef493f62d0f207",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.i.already.have.one",
+      "source": "62ada20cd5af54512347fb690a96654688b8a97891d397bd134d10649a063b56",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.import",
+      "source": "108227e44552117a92d828981cbd635ddd25dd90680552baf9b2855002ae70fa",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.journal.always.private.only.yours",
+      "source": "4bf0c70d1505e1f0f130b95842c3cab7b27d1db88f3fbb1d29a641728b4a1b0c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.opensetuppage",
+      "source": "b85e80a5177781eb75da7670d7138fba87cadf51dd2b4b74621bbb76219f5e81",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.photos.files",
+      "source": "fd236d4a86f99de0618d988963c248ea709bd3f8a034633fe75a6e561197764b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.scanpairingcode",
+      "source": "1b4e2eef77e8664fd1ab49047f1182f802fcd8a5dbd81f81911c4785bd73b3d1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.send.yourself.link",
+      "source": "f0161080d78c7decb2307d7dfb1bc93c37225a90e36bb8fd343626ae5a0da8ec",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.setupjournal",
+      "source": "cb86952cc5421d1eed5b311c533bf8b004aeac96b84bb7d48bfee47f714e153e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.solstone.app.takes.what.share",
+      "source": "3cad74fd1f0dee4b9f1b2429a347722fff8e231a2721a20ecd42b34484c7ce09",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.sources",
+      "source": "b2335c4ee6c188e52d20665af3f7bbc08b5b16e59cd8ddba3e93638c497eb9d5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.today.journal.lives.computer.own",
+      "source": "e932981ba4c1ec8981dd72c80406d2c359a8f49d1a4895f4a3a52ac4511eb6ca",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.welcome.solstone",
+      "source": "9440e207abcb47ba2c5dced0ecfc2705c9f8f368fd0fc8dfaf39492befee73de",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.setup.what.share.stays.device.isn",
+      "source": "b69310e96a10f77139fe7da2d5f65b53b3705e97c574b0452b252d4d65e32065",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.address",
+      "source": "9848e9ac1e3c466ec1824665beea13819da3b56b397b24d8399bea6634d18a93",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.android.decides.whether.solstone.app",
+      "source": "bca9571c37b74ff0bcb7f8bd7d1c431dcbeac70b59ed75120c90979dc089b8ad",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.app.installed.but.needs.be",
+      "source": "6443f7011ee13ca28583b4afdade13d3cd8624463ed9d458178c041bfa7b9314",
+      "contract": "8c0ace09941da208f855d07d8ff12a35091827fe38fea032666912c56374c7dc",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.app.permissions",
+      "source": "76a31f1713fba31519ecf40b9dfd867626071852708ec9e6f857f19771a3a4e4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.app.that.delivers.notifications.uses",
+      "source": "43bd1a585585733cabec967c31ba0b2f084c43b0488292292149973ca9dc2f4d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "3109746114d76bf276824e74d9a687df3e2bc792c9f8c540cea604cd2ecbe08a",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.check.connection",
+      "source": "c4a9b736ecc8fe6b6f19fabbaa9d82024e49d3024414fbc65912e391d1ca551c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.checking",
+      "source": "83b64f0c6dd04c120aa94a05a8730e94e84e78ae40e51a28cebcd4943e53b278",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.choose.app.deliver.notifications",
+      "source": "8e7b43ba96bb82482310cffd6c0f2c96dbd424863856eb1929db17bc0cd9263d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.connect.journal",
+      "source": "fcd7518187826a73aa525355a48daec05e8301fda665cd3046bb00c52dd218fa",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.connection",
+      "source": "00c84f19116cf703cf67bb4e27545cca9a74b4272625421412c415f8b86fccba",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.couldn.t.forget.journal.try",
+      "source": "9c1545d8bb4f0d6e3306e764e9095e8b0c8c3cb98626ba6081560ff2d277434b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.couldn.t.reach.journal",
+      "source": "e1375ebd660e02321182049126e59bac9e2af3b7f2d847dce2421f228bb453be",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.couldn.t.reach.journal.at",
+      "source": "ef0eb6c533e8f25ef5ce782cbc9925b664a823badb24512eed992ade8dc53feb",
+      "contract": "37fa12ff017180d6fce01c8ff44662994b5567bf7f6bf1d5347fcc56d62ea506",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.couldn.t.send.test.notification",
+      "source": "d5b84f0a378586a14d2c9f47e552540ba3296d80d23d435885e7a8785b34d26d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.couldn.t.unpair.device.try",
+      "source": "5b4ef1afc02ad0167d593a9f7e966c00fe1bff8c40e8e7827f99eebb581c593e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.delivered.by",
+      "source": "280f08a8fb1620c1d10d10d3676579992b754f124c158b868b280771fc836129",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.device.choice",
+      "source": "ecae51a8366a275a137e0b5492e65e23ef155c90b5fe76e84b8c74ee56d73cc5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.email.support",
+      "source": "a855048fd736c870a92c7009da5a222fa762f17f1ec62fbf5675a87a834180a7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.event.log",
+      "source": "00993851f79f2c15694d362bc01e3d269e6416c1ec41032015c2c763f186bb79",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.fingerprint",
+      "source": "ec4acabccc2d8747da2ba0ec9f926814145c266f714bfd80efe95808047012a8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.forget",
+      "source": "5c2f20af1c4713dade17f096eaf3d25dc8e29bbaabec44b4b8492701cd9ecaf8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.forget.journal",
+      "source": "323a852ca92a7e1e31bd28eb0ca186feafe82b2b667026eeb989608f635a7d89",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.forget.journal.n2",
+      "source": "c461fa08b7db489f5807b787beee93d6b26cdc79a741ba6e41002ebef1a9f244",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.free.open.source.from.f",
+      "source": "01340b6cc0963929719f9b1d37a4f9c6e3bda9b47266bc7d829bbd821261cd95",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.gap.record",
+      "source": "06a380cecc7360478bd38dfc228ee0744f11d0c1d9d2e05c33c57f9093921a44",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.get.help",
+      "source": "96e6c458d10fa27638644e6545700e02fd03c077c7e11aea884c0ac401988923",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.get.ntfy",
+      "source": "e094346287dda6b67485a35c1063fbee7d2b7cd2183ab8f76cc5a701a1d2b6c3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.haptics",
+      "source": "8720280e7dad518415a2fd64aab9d056221344a596fed318797e528b0335499c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.journal.holds.what.share.with",
+      "source": "dab9b0920e7ad4c4a37da09ac8d30966617852b9d84b0ee54877e66f424eda19",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.manufacturer.model",
+      "source": "b465a9ba040c5779dd76c13311379e07c0eb78c7912261d7c9da15ff7f809a67",
+      "contract": "0fa0e27b573c686cb657ed65b8c431decd0e78e910c209917193331124afbb73",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.microphone.location.camera.android.settings",
+      "source": "16d18c54d08ab084d91cbe1a55595b07f56339bc1bf08a72b44d031f4cc1ec91",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.more.than.one.app.phone",
+      "source": "2e7a587d7f529d37fd0230696d1a1699a6ed94878df61eac460b03b420d0086c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.name",
+      "source": "b7c2820b0db62f6f00d8b38e58ec128c51962216efaec4eb7e9be0ece4a95a50",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.not.answered",
+      "source": "a63b4585a4819e1961f1dbd363dc81503c597ad14f558dc4e27e3c9a0d8214ff",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.not.reaching.phone",
+      "source": "28cff535bd548a5dbdc921fa41d2164585c6af2a5e4d8381cdcc251a91727d8f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.nothing.more.from.device.goes",
+      "source": "d75eaa3dfad4629f2838bc949bc929cd7131d7d6aa91deeca0136617bdefe793",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.nothing.yet.fills.as.app",
+      "source": "30e2f11db305db0d7b977e7c96a8147af51dc818626930f89065308f3883fa11",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.notifications.from.journal.need.separate",
+      "source": "0904c911e90c4c871bd70db135debc84baff5e1e7725a1c7bdd33cc05092aa30",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.off.until.turn.journal.encrypts",
+      "source": "49127f9a00b9cf4e49e57fa523dbfcd94e500f4c6351f151f2b63ea55b186acf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.open.notification.settings",
+      "source": "06085b79a9e6bd0bf2f856e887c00c5c9ac9260b803bba388c85abb72a08fb03",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.pair.new.journal",
+      "source": "2be44b263eb7f4f8c0f5ff7730999f264887237c8779a4e35eae5d1618a09237",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.privacy",
+      "source": "a00afb9e22b082935b06bc80fd7988993c1cdf32b873699187e19858ac286d4d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.problem.reports",
+      "source": "3ddb6a1938018b83317dc7e2aa2230c998c55cd013e8a4ac5c11734eaccf3d85",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.reached.journal",
+      "source": "724eda10f191511ce438c69c600fc9874429362807f1609c72f116f3167fa2be",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.report.problem",
+      "source": "abac0b78a88eb2bb5c3c236e29dd3b65aa9d0cf3eb4d6e5b65ed29d09e650ce6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.review.send.support.site",
+      "source": "380a748d2665b452b6732586fbfb5e0d11f0453d18a170f8005ffec6d380c83a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.save.problem.report",
+      "source": "8a08863380d0bf3791ffd5bfdc7d0f8016d211ac8bff26dfc5af3444d257ca82",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.saved",
+      "source": "c7d0564e55720a5c7f8ff1537b4086a081d967166e8fcdf5b2c7402349cc2691",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.saved.device",
+      "source": "e063d997ce92ab1dfa3e731e9effdc5e41baade54d57c82b8b91d08aa297677a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.send.test.notification",
+      "source": "d2109f31026234884ee72fb60bf0b3cdb311798cbe6da22d91c16f947eafe0a2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.settings",
+      "source": "febd08eaca1e57ad6125caa5e39476bd228a3d42a631ce920973ec921f7b7c94",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.status",
+      "source": "c9b3aa7f82cce943e5304d5d48675306aeac0ac762c7c85783fa6584eedd123d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.support.solstone.app",
+      "source": "16f75bff09e5d171ab40c10d4b7d65573bca598e2b1a5951df0c9ce73afa945a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "525b9440051751a99c589952963107e8fa083b47021a8c66284036edff8b1921",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.unpair",
+      "source": "3405037a5354f08b74264f1b151e5e41e4d620cfa25d8c3ea269b71f6c9a6df4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.unpair.device",
+      "source": "a926c2ef47f0e8bfa842a1ac080fb46a46f6dfe795bf0b5bc458b9a393dc98d4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shelf.when.there.s.something.worth",
+      "source": "ce1326a930f45d9b0c390499e946592bc650dafa3d77062e261af890d0961f7b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.confirmjournalsmark",
+      "source": "9fc73a749601c9aedbdd4c65a9f5a6e20ab8c583ce27e512b490e96fdebedf30",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.connectagain",
+      "source": "b40c4220b3345bd4b00a8872b095f54de232ff7a698c4279b03ca88bc2148d64",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.copyfulllinkchat",
+      "source": "d69e4ee72ff8900f4932666036a03c469ebd49f7ed63fd8440babfa6da0cacb7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.googleplayservicesneeds",
+      "source": "fd4236dfa6843f8ecd0305ddf0367644c766e573cfcfc1c9274988980ab0d7ab",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.heldmaterialcouldnot",
+      "source": "6a3712f9805ac6bdf0a6a3977e3b050c19654cfbfc1643e62601ae760fd8a017",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.journaldeliverywaitingcheck",
+      "source": "b0f6df7770f13d4c97451588a2adeffa4ccad17158cfaa6b35274ae0704d08a4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.journallinkisnt",
+      "source": "ca0b1de6a6ac7c4c2fa541354811de9169154fe3a5d3095fbd6e1aca48eacc35",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.journalnolongeraccepts",
+      "source": "91698e8496007b9e85800566e689dbd4db71beb49ac5c7e0ada441ec4110e0b5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.norecentcontactkeep",
+      "source": "ba63d195d3f4463abefa1bc03d3ac7747ad3e4c5478cfc74aa1b2432fc74b838",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.openjournal",
+      "source": "0f03674b07ace94a85538ca980cde831b289ddc6f13b1f46878e1b1e3eadd799",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.updatesolstonephonecontinue",
+      "source": "abccb69fd8f3182550dcd6fd6bbf657ab14b01c21ac54099d0b6b94efa7cff2d",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.shellactivity.updatesolstonewatchcontinue",
+      "source": "95a92007ad721946671b06efa5aa268663ee1cc9c93c766e2659b12da9648ad0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.about.solstone",
+      "source": "e2da95a6dab94aa91456a081add79540afc8bad1a044ab13d293496fb0e0d2b3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.access.journal.was.revoked",
+      "source": "061147c52ad997cdba365b22cf4ff62af8b9cd3e0c1f1ee7672d2facfc296968",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.android.asks.each.time.turn",
+      "source": "f31afbfef8f6f5b205c7d187d86726a2b158efc25f82d19573fcd730374546bb",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.another.app.has.microphone.or",
+      "source": "42c181ebdac45778f9bdd35931387a2d24a47f6ac8bc3f948503bb1b1a571833",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.audio.intake.may.resume.after",
+      "source": "9cad6379deebe84652ce7c5df90a098f7153afaaba2498ae747c2a4df5d5712a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.audio.off.setting.may.not",
+      "source": "96e9103bdebe4dd74c1471b38029a724559d1481333ebe77c1543caaa75feac4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.checked",
+      "source": "f09ea3fceaba99199c332a29305520fcfb9d3d63f5ffc0d628c034dcc7c3b0ec",
+      "contract": "37fa12ff017180d6fce01c8ff44662994b5567bf7f6bf1d5347fcc56d62ea506",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.connected",
+      "source": "0fa3d3df46986856c35358f0cc3bcf11834b476f740b1696e356678e3ba4cf99",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.couldn.t.confirm.stop.was",
+      "source": "c9e30adcc0cb7387a3e8bc30d4f03eab039a61660154885323f4222c1592b197",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.couldn.t.save.journal.access",
+      "source": "1a60d0bde36c07c2f879e47e205f5077fbeccb2f6b1640d8ac182d4a1fa6ba20",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.details",
+      "source": "f8af685e4ac251a0ea489721de141cc7a58e3da955668f2b343bf45b0a2321f5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.device",
+      "source": "ef905899d3249effbaf2510b848de07805daa0284d6d80c3d0466e6702fd4125",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.device.low.storage.free.up",
+      "source": "d797ff93e0b78c3e1ddce8a7dba162bd4eda3d540232f3fa08b009b229f4bcae",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.device.not.processed.until.connect",
+      "source": "251e94e0bf8313d91d844d203cbf0321855af2300ca93e36bab0a478fb863862",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.device.restarted.intake.didn.t",
+      "source": "6e717ae92a708466c8c4fffafdffae9b76f37d96717d37bf110453857d39040c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.firstreceived",
+      "source": "2f9337743e695a89be48d40a7ff97e209cd1df745e48746ae967cc80992804ee",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.getting.ready",
+      "source": "bd14b6e4a7384f68f15a6ba92f47b68e931bcda799d44478d301e66603842c26",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.getting.ready.connecting.journal",
+      "source": "38fc6c5503e47dd1214913a826e507273ba21b61e5fefbc855ea3b0a37711be7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.give.tile.home",
+      "source": "e7a6f4539619a6aaa1ed35bc8ceff7fe3fe0d6987a945efd09fba1c9c0149f1c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.grant.permissions",
+      "source": "72f0c33bcf7846d7ad3d11e2f91ab15edd18c668139d21ccc1c820bf7d16b95f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.heardwatch",
+      "source": "02d97bb9d1906aa8ff274dea1a192fee07ace5012a8ce88032c9669d2bf7784b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.heldphone",
+      "source": "fe73b1416ebba88fbb99dac660bc3a9f5b5741d12e9f9badf51172f45bb435c9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.heldwatch",
+      "source": "9cd1e6300037edb66adb62a5e136774d98ed22c6ea7c3aaadb32beca2a0c9651",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.home",
+      "source": "e0f3129d9a40ded8295d8d018ec8892dbb76da4aba00aa15379bff0389a36000",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.intake.couldn.t.start",
+      "source": "4361a149ebe08670b8057c55d4b04ee762fcbd5964657a7be0652e72e7a02f4e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.intake.couldn.t.start.from",
+      "source": "04f82375ec0084ec356eda944d8d30070654729e1c7600cf49890dba84e5982f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.intake.off.turn.any.time",
+      "source": "cd882059dcbbe9c5bbccf9b77f7c0490e47f169ee4e8a40eff2dc47df49658ec",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.intake.was.stopped.by.system",
+      "source": "245b1c825b078fc098f8e23607931f48de1125883afb370ea10f9c0fe4cbe50b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.journal",
+      "source": "f190cff975cfb762322a318d36eb1568178fe94bcd17fdfc8777816d4470dfbf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.journalconfirmed",
+      "source": "0437e3538d4ca26a9bdb3849a53f877f215da678826176f569273012003d72f2",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.lastcheck",
+      "source": "94ccf43fbb0756fb43c44630e467c2239ca1fc10f0d4d16a44485d50f711a814",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.lastcheck2",
+      "source": "57a47ac843b3475d8859fdfe818b316b0cf93d4675db2302f0a0ba7ec8ae61b5",
+      "contract": "37fa12ff017180d6fce01c8ff44662994b5567bf7f6bf1d5347fcc56d62ea506",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.licenses",
+      "source": "a86aeb9991a9a5fe102baee738bfc2a68e2254109f536dbac73cdfe45b437f50",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.manage.local.storage",
+      "source": "0840ec4af230765dfcbc6af3686210a0a9b9b24842067ef9a2ef170f42799a20",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.managephonestorage",
+      "source": "e754b9472425319e08d9cd47ee1b19545df36e19b9a500501aa01763fe815de6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.materialstaysdevicesuntil",
+      "source": "2c09848c7ba93aefc1aa74cd5719837e8c5fa07c881994cd671d4671ee6cf0f7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.not.paired",
+      "source": "91b8fe78249008f9061d0de3420c7ed1676789887a913a210cb62245f58371b7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.not.paired.with.journal",
+      "source": "6617b9af8103f8d7663c8eb1d1e3afa39230f6ca865d3fa7405c394fa6b2155c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.notcheckedyet",
+      "source": "db1c1f4b729ebeaf8979773f5e6446d1f318ef68b830e4c6426cc6031502c244",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.nothing.has.come.recently",
+      "source": "f1ecd01c2a9922713a22c9317c9b51429dc23860f7be31cc75c6f22dde50a989",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.offline",
+      "source": "26c08223707237777e26074e31b245efb7421c2db12eedce46ec68e1784ab3b4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.other.sources.stopped.unexpectedly",
+      "source": "ad4971422cda5cc000420dd4942fa99ebd02b2807b62391d08cf6d9bda6ec454",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.paused",
+      "source": "bd7388c578d50e4a0746e9b352b91bca48827551ef442e581a74a8feea5bf9a4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.paused.resume.start.intake.again",
+      "source": "0dffa0dca3a3f3c2e431b076cbcc6d3070e1766109c40d88508ef8f2276230c7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.permissions.needed",
+      "source": "822094e87bc1316243a83c8fdde23dcb7c8cdcd54121c0cbbdbe2365076ada3b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.phonestoragealmostfull",
+      "source": "2125bd346c7bcafaf60eabc7aefe482d8e8c2522182ed41147bbf9a5b1654c90",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.ready.set.up",
+      "source": "4cc1b74ea3e8d33468614712786377f76d444ecd29f55627f36c204febea024e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.reason.couldn.t.reach.journal",
+      "source": "58371b52d8bc2195992883890accd15665efa618413c29dcd0e9eae06b0be4e8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.recording.couldn.t.be.saved",
+      "source": "02f9e5683dbec3ed5b97a13a3b5c8dee4b9e48181630a05597f735c37d23aa43",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.resume.intake",
+      "source": "9219568b850a0340db395ce8bb91e41fbd2f3b0d56fa8b630641cee28403df83",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.right.now",
+      "source": "0aef5ec0d9496a08f9262b6c3c37d21e8e8785b9a49457c0dc2f56fc4c4e2fd4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.session.ended.turn.again.choose",
+      "source": "b74903f2501d6c944387897d884442662b8ddbb01b71dd4369fdb5d0f4873661",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.sessioncontrolswatchphone",
+      "source": "0f4a1813a5e3efd28d69ef61af41c3e32fd83bca68c3804837ae406e0110e711",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.setting",
+      "source": "2c988f0f9e7105cc060c76d5c7202cd35dcb3d1ac07fceb42b0207feae82594b",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.source.needs.intake.restart",
+      "source": "4b70fb8236398b2f1cf3980d5192c1b24cabe9f49002a39ce80ee19532c50fc5",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.start.intake.again",
+      "source": "c4deeb4c58587134e9bf5bfc730beb2208c2c7e7d2c1ecc2a7034babf038b181",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.state.label",
+      "source": "b864209c330fd37564ad47d7df265b6700f92e5d5d0c89e24ebb9bfdba733a68",
+      "contract": "0f13086c2cc37c2f732d71d09e8f51e44abca9edb66f6eb1400f73db07e9262e",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.statecopysubline",
+      "source": "56e1cd320f24226489a99738eabb8bcd390b287131f588f8d95ee1b9dbd8d99a",
+      "contract": "68beea762efcee2de0e99f2aa098fe54fcaeb4a39dfdea5eee5d4a2ac78ce861",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.stateword.subline",
+      "source": "9af748a22a19d781d2c245d36e1524f4ff7a9c81a35fc053b8631761ac75349e",
+      "contract": "a1013a984e9ec85658a14af714fb8c6136a29942b63ebfa8dc5640b2be33ea56",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.storage.full",
+      "source": "99c228c8a4dfcc8dfdd7b0073e929ef420e5fdb7472a97077a61f2a4265d516f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.taking",
+      "source": "51f47e45110938d157f638454ee7f6115bb151095808afb929dad58e751baa63",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.taking.tile.off.home.does",
+      "source": "12b1fac0c8f06a5ee83d2da6d47a7628a3b944ca02142e7719375eec0fc55556",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.turn.again",
+      "source": "0c06de7346be22bb592bf3f4bcbfee96bc496fc29fba2fa4a80aef5392eda416",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.turn.any.time",
+      "source": "0c37b1ad747673591574ca6e6aed61a52317627c5b1f9f8855d3f1b1242f2ad9",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.unknownjournal",
+      "source": "82bda5df8fd1b2882d524b342660916e2a9fc9b6b269c83a897b153dd4387c73",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.waitingwatch",
+      "source": "478ee42a1942240d5a72fe6268281b500b59e37910d27b50a418d3377e0bbf53",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.while.solstone.app.takes.photo",
+      "source": "d16ff8ae5597aa2067700b30cebbf3b4b1c9c83b57e40308c80b514e2d4eb4c4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.while.solstone.app.takes.video",
+      "source": "82d1a5d4fac1a4f897019c4872a8b1accc9f82b7e5c937048ffd213edb2fd6c7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.all.caught.up",
+      "source": "a46d323846dda1933875664c8b76968391b5c075ca60832744f5b9881f81453c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.anythingwaitingstayshere",
+      "source": "9a54cacbf87f9810955ed7de10584377a05fe06fc1292f3afd863ee6c083fff1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.calendar.notes.stay.phone.until",
+      "source": "c5629fd322ad984cd51d2f84d3c83146edcb4c35cf98af3e8aa0938b3098a4fc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.confirm.mark",
+      "source": "073f21abc0d84175c8103f4f4fe9595b87d1a6459fb03c4930c5ccca8b009a15",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.confirm.mark.model.pendingcount.waiting",
+      "source": "c0aa5cd4f83b30b17f8bde2b4a55fe8a2e4a3ca2dcbcadf35cfd51208602fd1e",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.everything.journal",
+      "source": "7547fa32749a1ca8abaed25e12fa669821212adf3542037d65dee0488c4d86fc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.how.phone.connects",
+      "source": "450500b22e062bc167da9872c86883e46ab95f94bab7b7659f577e69326e37c6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.imports.need",
+      "source": "916fb76ec8ae9602c0a1a55e8ffd28fc4db1d0c72890a43c57ddcfbfb2bc0450",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.journal.needs.update",
+      "source": "bd3c8d08ffddc99bff198a2050316597310ac997b11c1c70ef3d4d9c6d1bd4de",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.journal.version",
+      "source": "2e764cadb3970fcb0c9f14e067a9e80062e9080948b9f5fd26360b026648718a",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.journalstoppedacceptingdevice",
+      "source": "67a2413952bd2ffdaa6b7864fb3681939901e7dada5d9c1612ea2d887bf338e0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.model.pendingcount.syncing",
+      "source": "1204fa29574d7e1cc900b3f5324a2309a23d0e6c099dcfc4d878126699a85da2",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.n0.syncing",
+      "source": "1204fa29574d7e1cc900b3f5324a2309a23d0e6c099dcfc4d878126699a85da2",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.nothing.waiting.goes.into.journal",
+      "source": "06848e5492b9be7592ddb123b55d0e858002dd872bc92e14ba309e42a95604d1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.nothing.waiting.sync",
+      "source": "0463171b32b618779191425fa35463e9190d54c1ec6d98a5d8bcb5bc1e3742b4",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.offline.model.pendingcount.waiting",
+      "source": "53c7d19884bb7c21d5f0452e584f4e3584f2f25240338a580ccfb07f7bd176aa",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.open.import.see.why",
+      "source": "dd295d231d17d9f0e25581327a69d2195b53a759b277eaa48eb5f48ea880729f",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.pairagainwaiting",
+      "source": "86fc09f7dc3ae48a795623e8b46ede87af609eb4d12d6c98073e98cc997a17cc",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.reading.version.last.known",
+      "source": "81119c8286c4497e8c76f085d5e6caceed8ea1d9d837fb0476cf508adaeb3542",
+      "contract": "83c6be959b8dab5d74cc674b9cfe0fb9bb01be4db4e5d7d28f72686d1bafba04",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.syncing.journal",
+      "source": "d8606a4c783fd0d8e3793a5e5787ac1d8bd4e92a9dfd4bd1e4e286d870c5b18e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.unfinished.item.couldn.t.be",
+      "source": "4606d14c65fc453dc68a3643faa5a63a9a92747c61d55fd49545a1d0d69443a7",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.waiting.confirm.journal.s.mark",
+      "source": "941f0be92efba26f40a0c121ad5c599d383b42c1477ce29131b15cf25cf598dd",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.status.waiting.sync",
+      "source": "25bc12192ca1ae39271b247f9043a04e5b97418836564757d82c5d2f4dcf587c",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.bodyaddress",
+      "source": "29873dacdf2e5a29e3f8382bb5b03354162af32d22dd50ca1dace444e731bdc3",
+      "contract": "4ba578967cdbed18901a1b78812ed2877003996df9c1d28420d93869115fb32a",
+      "protected": "7796d8f9f39a1f125fe00d6eb4456f972c5eb29b32b4c8ddddd29489fe189007",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.bodyrelay",
+      "source": "6aaf8315c71820daf38b437a0dc83bafb47688c0e658965b03b71143f9061605",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.claimednotverified",
+      "source": "8a20bfce626e15efa316031bf8f8e5a5d590431b5d135fc3d56385937d874bcc",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.seenat",
+      "source": "9186a12e4c929b55540b28e17824db3a4ff635466dc10e419f9345b9de7822cf",
+      "contract": "37fa12ff017180d6fce01c8ff44662994b5567bf7f6bf1d5347fcc56d62ea506",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.somethingansweredinsteadjournal",
+      "source": "db60a7297e2ca5f6900528d2376a5411b0e25389c48dd628ca359067a48665e6",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.unknownjournalseenthrough",
+      "source": "e5d29e355008f2eea76569c3dda7f4e8d41c0537eb25602838da5d0e6329db14",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.viewdetails",
+      "source": "be7afc21274527bfee987d63deefe0a61b610927ca5e56abc658d7382ef92982",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.unknownjournal.whatanswered",
+      "source": "d4134fa9f47faa60579b7b34afb8dd52289378112162629a9edcbf060fca0c11",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
       "id": "android.wear.allow.microphone.access.in.settings.then.start.again",
       "source": "50f98dff421dab3264b92045b11d4b76a2157e350a178cd268d1b06efbebae23",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
@@ -425,6 +4408,20 @@
       "id": "android.wear.what.s.saved.stays.here.until.your.phone.takes.it.keep.your.phone.nearby.with.solstone.on.it",
       "source": "0f6f690d619bbc2f07615f16ac433322b3796c1ac6a6b5ab7f84bcb39d9fda7e",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.widget.label.model.stateword",
+      "source": "4cb25df5e700c0535c4ea525a131243f69b71c7f22246283099ca117e673060d",
+      "contract": "c7445aa97b9692a77f773f1c50de168589ab80fa5f49bf09885109564f9f7be6",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.widget.sourcelabel.model.stateword",
+      "source": "3aeab6327fd6eab965a4a881686b5dfe4aa7e48d4349d62cb183c3270c082146",
+      "contract": "4f0f3bb9c077e2ceb2e34a7b375f65c3b761708b941d04cb0d028bf8b0a8effc",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []
     }

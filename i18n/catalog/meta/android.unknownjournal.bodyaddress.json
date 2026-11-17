@@ -1,0 +1,28 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.unknownjournal.body.direct.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "address",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 299,
+  "source_revision": "29873dacdf2e5a29e3f8382bb5b03354162af32d22dd50ca1dace444e731bdc3",
+  "risk": "account",
+  "auto_merge": true,
+  "protected_slots": [
+    {
+      "name": "whatanswered",
+      "kind": "accepted-input",
+      "value": "what answered"
+    }
+  ]
+}

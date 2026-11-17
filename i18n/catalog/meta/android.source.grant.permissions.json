@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Permission wording needs review before translation.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "72f0c33bcf7846d7ad3d11e2f91ab15edd18c668139d21ccc1c820bf7d16b95f",
+  "risk": "consent",
+  "auto_merge": false
+}

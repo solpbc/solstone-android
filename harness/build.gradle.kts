@@ -22,6 +22,7 @@ android {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     implementation(project(":core:diagnostics"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))

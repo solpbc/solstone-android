@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.model.SourceState
 
 import androidx.compose.foundation.layout.Row
@@ -68,12 +70,12 @@ data class PhoneCalendarBinding(
 
 val LocalPhoneCalendar = staticCompositionLocalOf { PhoneCalendarBinding() }
 
-private val historyChoices = listOf(
-    "NONE_BEFORE_TODAY" to "none before today",
-    "DAYS_30" to "last 30 days",
-    "MONTHS_6" to "six months",
-    "YEARS_1" to "one year",
-    "ALL" to "all on this phone",
+private val historyChoices get() = listOf(
+    "NONE_BEFORE_TODAY" to phoneText("android.calendar.none.before.today"),
+    "DAYS_30" to phoneText("android.calendar.last.n30.days"),
+    "MONTHS_6" to phoneText("android.calendar.six.months"),
+    "YEARS_1" to phoneText("android.calendar.one.year"),
+    "ALL" to phoneText("android.calendar.all.phone"),
 )
 
 @Composable
@@ -90,23 +92,23 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceSta
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.CalendarSetup) }) {
         // The verdict leads, as on every source page (mobile-shell § 3).
         verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
-        PaneNote("calendar brings in events this phone can read, including notes, places, invitees, holidays, and birthdays. they go to your journal.")
-        PaneNote("while calendar is on, the solstone app checks it in the background. android may delay those checks.")
+        PaneNote(phoneText("android.calendar.calendar.brings.events.phone.can"))
+        PaneNote(phoneText("android.calendar.while.calendar.solstone.app.checks"))
         if (!state.permissionGranted) {
-            PaneNote("allow calendar access to preview your events. nothing is added until you confirm.")
-            TextButton(onClick = binding.onRequestPermission) { Text("allow calendar") }
-            TextButton(onClick = binding.onOpenSettings) { Text("open app settings") }
+            PaneNote(phoneText("android.calendar.allow.calendar.access.preview.events"))
+            TextButton(onClick = binding.onRequestPermission) { Text(phoneText("android.calendar.allow.calendar")) }
+            TextButton(onClick = binding.onOpenSettings) { Text(phoneText("android.calendar.open.app.settings")) }
         }
         if (state.emptyCalendars) {
-            PaneNote("this phone has no calendars the solstone app can read.")
+            PaneNote(phoneText("android.calendar.phone.has.no.calendars.solstone"))
         }
         // The verdict above says the state; this row is kept only where no verdict is drawn.
         if (verdict == null) {
-            PaneFactRow("calendar", if (!state.permissionGranted && state.resume) "needs permission"
-                else if (state.enabled) "on" else if (state.resume) "paused" else "off")
+            PaneFactRow(phoneText("android.phone.calendar"), if (!state.permissionGranted && state.resume) phoneText("android.calendar.needs.permission")
+                else if (state.enabled) phoneText("android.push.on") else if (state.resume) phoneText("android.source.paused") else phoneText("android.push.off"))
         }
         PhoneIntakeFactRows("calendar")
-        PaneNote("history, with one year ahead")
+        PaneNote(phoneText("android.calendar.history.with.one.year.ahead"))
         PaneCard {
             historyChoices.forEach { (kind, label) ->
                 Row(Modifier.fillMaxWidth().selectable(selected = state.history == kind,
@@ -119,7 +121,7 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceSta
             }
         }
         if (state.history == "ALL") {
-            PaneNote("all is only the history this phone's calendar has stored, not everything in the account.")
+            PaneNote(phoneText("android.calendar.all.only.history.phone.s"))
         }
         if (state.rows.isNotEmpty()) {
             PaneCard {
@@ -133,38 +135,38 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceSta
                 }
             }
         }
-        if (state.countStatus == "running") PaneNote("counting events…")
+        if (state.countStatus == "running") PaneNote(phoneText("android.calendar.counting.events"))
         if (state.countStatus == "failed") {
-            PaneNote("the preview couldn't finish. check calendar access and available space, then try again.")
-            TextButton(onClick = binding.onRetry) { Text("try again") }
+            PaneNote(phoneText("android.calendar.preview.couldn.t.finish.check"))
+            TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
         }
-        state.spanLabel?.let { PaneFactRow("dates in this preview", it) }
+        state.spanLabel?.let { PaneFactRow(phoneText("android.calendar.dates.preview"), it) }
         if (state.countValue != null) {
-            PaneFactRow(label = "events in this check", value = state.countValue.toString())
+            PaneFactRow(label = phoneText("android.calendar.events.check"), value = state.countValue.toString())
         }
         if (state.confirmEnabled) {
             TextButton(onClick = binding.onPrimary) {
-                Text(if (state.enabled) "check now" else if (state.resume) "resume calendar" else "add these to your journal")
+                Text(if (state.enabled) phoneText("android.calendar.check.now") else if (state.resume) phoneText("android.calendar.resume.calendar") else phoneText("android.calendar.add.these.journal"))
             }
         }
-        if (state.enabled) TextButton(onClick = binding.onTurnOff) { Text("pause calendar") }
-        PaneNote("what's already in your journal stays when you pause or switch a calendar off.")
+        if (state.enabled) TextButton(onClick = binding.onTurnOff) { Text(phoneText("android.calendar.pause.calendar")) }
+        PaneNote(phoneText("android.calendar.what.s.already.journal.stays"))
         if (state.importing && state.importTotal != null) {
-            PaneNote("bringing in ${state.importCompleted} of ${state.importTotal}")
+            PaneNote(phoneText("android.calendar.bringing.state.importcompleted.state.importtotal", "done" to (state.importCompleted), "total" to (state.importTotal)))
         }
         val checkedAt = state.lastSuccessAt?.let { epoch ->
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(epoch))
         }
-        PaneNote(if (checkedAt == null) "no complete check yet" else "last check $checkedAt")
+        PaneNote(if (checkedAt == null) phoneText("android.calendar.no.complete.check.yet") else phoneText("android.calendar.last.check.checkedat" , "checkedat" to (checkedAt)))
         if (state.readFailed) {
-            PaneNote("the last check couldn't finish. check calendar access and available space, then try again.")
-            TextButton(onClick = binding.onRetry) { Text("try again") }
+            PaneNote(phoneText("android.calendar.last.check.couldn.t.finish"))
+            TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
         }
         if (state.needsAttention) {
-            PaneNote("this note needs attention before it can go to your journal.")
+            PaneNote(phoneText("android.calendar.note.needs.attention.before.can"))
         }
         if (binding.heldForJournal) {
-            PaneNote("your journal needs an update before these notes can go in.")
+            PaneNote(phoneText("android.calendar.journal.needs.update.before.these"))
         }
     }
 }

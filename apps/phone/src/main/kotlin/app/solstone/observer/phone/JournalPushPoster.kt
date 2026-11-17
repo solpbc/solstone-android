@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,7 +21,7 @@ class JournalPushPoster(
 
     companion object {
         const val CHANNEL_ID = "journal_push"
-        const val CHANNEL_NAME = "from your journal"
+        val CHANNEL_NAME get() = phoneText("android.phone.from.journal")
         internal const val EXTRA_JOURNAL_OPEN = "app.solstone.phone.journal_open"
 
         internal fun buildLaunchIntent(context: Context, open: String?): Intent {
@@ -33,17 +35,18 @@ class JournalPushPoster(
         }
     }
 
+    fun ensureChannel() {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val channel = manager.getNotificationChannel(CHANNEL_ID)
+            ?: NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
+        channel.name = CHANNEL_NAME
+        manager.createNotificationChannel(channel)
+    }
+
     override fun post(id: Int, title: String, body: String, open: String?) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
 
-        if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT,
-            )
-            manager.createNotificationChannel(channel)
-        }
+        ensureChannel()
 
         val notificationsEnabled = if (Build.VERSION.SDK_INT >= 24) manager.areNotificationsEnabled() else true
         val channelEnabled = if (Build.VERSION.SDK_INT >= 26) {

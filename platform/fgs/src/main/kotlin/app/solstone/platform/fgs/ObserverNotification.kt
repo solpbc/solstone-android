@@ -3,6 +3,8 @@
 
 package app.solstone.platform.fgs
 
+import app.solstone.core.i18n.phoneText
+
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,17 +17,17 @@ import androidx.core.app.NotificationCompat
 
 object ObserverNotification {
     const val CHANNEL_ID = "solstone_observer"
-    const val TITLE = "intake"
-    const val CHANNEL_NAME = "intake"
+    val TITLE get() = phoneText("android.push.intake")
+    val CHANNEL_NAME get() = phoneText("android.push.intake")
     const val SERVICE_NOTIFICATION_ID = 101
     const val BOOT_NOTIFICATION_ID = 102
     const val TEST_NOTIFICATION_ID = 103
-    const val TEXT_ON = "on"
-    const val TEXT_OFF = "off"
-    const val TEXT_SETTING_UP = "setting up"
-    const val TEXT_NEEDS_ATTENTION = "needs attention"
-    const val TEXT_STOP = "stop intake"
-    const val TEXT_START_INTAKE = "start intake"
+    val TEXT_ON get() = phoneText("android.push.on")
+    val TEXT_OFF get() = phoneText("android.push.off")
+    val TEXT_SETTING_UP get() = phoneText("android.push.setting.up")
+    val TEXT_NEEDS_ATTENTION get() = phoneText("android.push.needs.attention")
+    val TEXT_STOP get() = phoneText("android.push.stop.intake")
+    val TEXT_START_INTAKE get() = phoneText("android.push.start.intake")
 
     @Volatile var decorator: ObserverNotificationDecorator? = null
     @Volatile var startAction: Notification.Action? = null
@@ -40,7 +42,9 @@ object ObserverNotification {
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        val channel = manager.getNotificationChannel(CHANNEL_ID)
+            ?: NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        channel.name = CHANNEL_NAME
         manager.createNotificationChannel(channel)
     }
 
@@ -113,8 +117,8 @@ object ObserverNotification {
                     // ⚠ Not `notifications`. A title is what the notification IS, and in the
                     // shade this one sat under a bare `notifications` that named the settings
                     // row the owner had just pressed rather than the thing that arrived.
-                    .setContentTitle("test notification")
-                    .setContentText("a short heads-up, never the content")
+                    .setContentTitle(phoneText("android.push.test.notification"))
+                    .setContentText(phoneText("android.push.short.heads.up.never.content"))
                     .setSmallIcon(android.R.drawable.stat_notify_sync)
                     .setAutoCancel(true)
                     .build(),

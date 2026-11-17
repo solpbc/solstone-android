@@ -1,0 +1,23 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 242,
+  "source_revision": "43bd1a585585733cabec967c31ba0b2f084c43b0488292292149973ca9dc2f4d",
+  "risk": "routine",
+  "auto_merge": true,
+  "protected_slots": [
+    {
+      "name": "httpsword",
+      "kind": "accepted-input",
+      "value": "https"
+    }
+  ]
+}

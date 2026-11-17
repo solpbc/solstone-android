@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.journalmarkcouldnotverifycontinue.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "4d7fc01c5b267830aaac9620b91dff8e45170e63af3b624cd03d614fe1587419",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -2,6 +2,8 @@
 // Copyright (c) 2026 sol pbc
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.model.SourceState
 import androidx.compose.foundation.layout.padding
 
@@ -33,24 +35,24 @@ data class PhoneObsidianBinding(
 val LocalPhoneObsidian = staticCompositionLocalOf { PhoneObsidianBinding() }
 
 fun obsidianFaultCopy(fault: String?): String? = when (fault) {
-    "device_storage" -> "choose a vault in device storage. vaults kept only inside Obsidian aren't available here."
-    "not_vault" -> "this folder isn't an Obsidian vault. choose your vault's folder."
-    "invalid_name" -> "this vault's name can't be used. choose another vault."
-    "access_lost" -> "access to this vault was lost. choose the vault again."
-    "turn_off_first" -> "turn this off before choosing another vault."
-    "wish_not_saved" -> "your choice couldn't be saved. try again."
-    "invalid_note" -> "some changes couldn't go into your journal. they stay on this phone."
-    "some_notes_unavailable" -> "some notes couldn't be read. they will be checked again."
+    "device_storage" -> phoneText("android.obsidian.choosevaultdevicestorage")
+    "not_vault" -> phoneText("android.obsidian.folderisntobsidian")
+    "invalid_name" -> phoneText("android.obsidian.vaultsnamecan")
+    "access_lost" -> phoneText("android.obsidian.accessvaultlostchoose")
+    "turn_off_first" -> phoneText("android.obsidian.turnoffbeforechoosing")
+    "wish_not_saved" -> phoneText("android.obsidian.choicecouldntsaved")
+    "invalid_note" -> phoneText("android.obsidian.somechangescouldnt")
+    "some_notes_unavailable" -> phoneText("android.obsidian.somenotescouldnt")
     null -> null
-    else -> "the vault couldn't be checked. try again."
+    else -> phoneText("android.obsidian.vaultcouldntchecked")
 }
 
 fun obsidianSourceSubLine(state: PhoneObsidianState): String? = when {
     state.fault != null -> obsidianFaultCopy(state.fault)
-    state.paused && state.enabled -> "checks continue. changes wait on this phone until you resume."
-    state.enabled && state.capability == false -> "waiting for a journal update"
-    state.enabled && state.warningVault != null -> "another device has synced a vault with this name."
-    state.enabled && state.initialTotal > state.initialDone -> "bringing in ${state.initialDone} of ${state.initialTotal} notes"
+    state.paused && state.enabled -> phoneText("android.obsidian.checkscontinuechangeswait")
+    state.enabled && state.capability == false -> phoneText("android.obsidian.waitingjournalupdate")
+    state.enabled && state.warningVault != null -> phoneText("android.obsidian.anotherdevicehassynced")
+    state.enabled && state.initialTotal > state.initialDone -> phoneText("android.obsidian.bringingnotes", "done" to (state.initialDone), "total" to (state.initialTotal))
     else -> null
 }
 
@@ -63,51 +65,49 @@ internal fun PhoneObsidianPane(modifier: Modifier = Modifier, verdict: SourceSta
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.SourceDetail("obsidian")) }) {
         // The verdict leads, as on every source page (mobile-shell § 3).
         verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
-        PaneNote("markdown notes from the vault you choose go into your journal. the vault stays unchanged.")
+        PaneNote(phoneText("android.obsidian.markdownnotesvaultchoose"))
         if (!s.configured && s.fault == null) {
-            PaneNote("choose a vault in device storage. vaults kept only inside Obsidian aren't available here.")
-            TextButton(onClick = binding.onChoose) { Text("choose a folder") }
+            PaneNote(phoneText("android.obsidian.choosevaultdevicestorage"))
+            TextButton(onClick = binding.onChoose) { Text(phoneText("android.obsidian.choosefolder")) }
         }
-        s.vault?.let { PaneFactRow("vault", it) }
-        s.lastChecked?.let { PaneFactRow("last checked", formatRelative(it, now, ZoneId.systemDefault())) }
-        if (s.pending > 0) PaneFactRow("waiting to sync", countNotes(s.pending.toLong(), "change", "changes"))
-        if (s.initialTotal > s.initialDone) PaneFactRow("first sync", "${s.initialDone} of ${s.initialTotal} notes")
+        s.vault?.let { PaneFactRow(phoneText("android.obsidian.vault"), it) }
+        s.lastChecked?.let { PaneFactRow(phoneText("android.obsidian.lastchecked"), formatRelative(it, now, ZoneId.systemDefault())) }
+        if (s.pending > 0) PaneFactRow(phoneText("android.status.waiting.sync"), phoneText("android.obsidian.changes", "count" to (s.pending)))
+        if (s.initialTotal > s.initialDone) PaneFactRow(phoneText("android.obsidian.firstsync"), phoneText("android.obsidian.sinitialdonesinitialtotal" , "initialdone" to (s.initialDone), "initialtotal" to (s.initialTotal)))
         PhoneIntakeFactRows("obsidian")
-        if (s.tooLarge > 0) PaneNote("${countNotes(s.tooLarge.toLong(), "note is", "notes are")} too large to bring in.")
-        if (s.unavailable > 0) PaneFactRow("not available", countNotes(s.unavailable.toLong(), "note", "notes"))
+        if (s.tooLarge > 0) PaneNote(phoneText("android.obsidian.toolarge", "count" to (s.tooLarge)))
+        if (s.unavailable > 0) PaneFactRow(phoneText("android.obsidian.notavailable"), phoneText("android.obsidian.notes", "count" to (s.unavailable)))
         if (s.enabled && s.capability == false) {
-            PaneNote("your journal needs an update before these notes can go in. changes wait on this phone.")
+            PaneNote(phoneText("android.obsidian.journalneedsupdatebefore"))
         }
         if (s.warningVault != null) {
-            PaneNote("a vault named \"${s.warningVault}\" was last synced from ${s.warningDevice ?: "another device"} on ${s.warningDate?.let { formatStarted(java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli(), now, ZoneId.systemDefault()) } ?: "an earlier date"}. continue from this phone too?")
-            TextButton(onClick = binding.onContinue) { Text("continue") }
-            TextButton(onClick = binding.onCancel) { Text("cancel") }
+            PaneNote(phoneText("android.obsidian.warningvault" , "warningvault" to (s.warningVault), "warningdevice" to (s.warningDevice ?: phoneText("android.obsidian.anotherdevice")), "date" to (s.warningDate?.let { formatStarted(java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli(), now, ZoneId.systemDefault()) } ?: phoneText("android.obsidian.earlierdate"))))
+            TextButton(onClick = binding.onContinue) { Text(phoneText("android.obsidian.continue")) }
+            TextButton(onClick = binding.onCancel) { Text(phoneText("android.phone.cancel")) }
         }
         obsidianFaultCopy(s.fault)?.let {
             PaneNote(it)
             if (s.fault in setOf("access_lost", "not_vault", "device_storage", "invalid_name")) {
-                TextButton(onClick = binding.onChoose) { Text("choose the vault again") }
+                TextButton(onClick = binding.onChoose) { Text(phoneText("android.obsidian.choosevaultagain")) }
             } else if (s.fault == "turn_off_first") {
-                TextButton(onClick = binding.onOff) { Text("turn off Obsidian") }
+                TextButton(onClick = binding.onOff) { Text(phoneText("android.obsidian.turnoffobsidian")) }
             } else if (s.fault == "wish_not_saved") {
-                TextButton(onClick = binding.onEnable) { Text("try again") }
+                TextButton(onClick = binding.onEnable) { Text(phoneText("android.migration.try.again")) }
             } else if (s.fault != "invalid_note") {
-                TextButton(onClick = binding.onRetry) { Text("try again") }
+                TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
             }
         }
         if (s.enabled) {
             if (s.paused) {
-                PaneNote("checks continue. changes wait on this phone until you resume.")
-                TextButton(onClick = binding.onResume) { Text("resume Obsidian") }
-            } else TextButton(onClick = binding.onPause) { Text("pause Obsidian") }
-            TextButton(onClick = binding.onOff) { Text("turn off Obsidian") }
+                PaneNote(phoneText("android.obsidian.checkscontinuechangeswait"))
+                TextButton(onClick = binding.onResume) { Text(phoneText("android.obsidian.resumeobsidian")) }
+            } else TextButton(onClick = binding.onPause) { Text(phoneText("android.obsidian.pauseobsidian")) }
+            TextButton(onClick = binding.onOff) { Text(phoneText("android.obsidian.turnoffobsidian")) }
         } else if (s.configured) {
-            TextButton(onClick = binding.onEnable) { Text("turn on Obsidian") }
-            TextButton(onClick = binding.onChoose) { Text("choose another folder") }
-            PaneNote("turning this off removes nothing from your journal. changes already waiting stay on this phone.")
+            TextButton(onClick = binding.onEnable) { Text(phoneText("android.obsidian.turnobsidian")) }
+            TextButton(onClick = binding.onChoose) { Text(phoneText("android.obsidian.chooseanotherfolder")) }
+            PaneNote(phoneText("android.obsidian.turningoffremovesnothing"))
         }
-        PaneNote("android may delay background checks. after force-stopping the app, open it to start checking again.")
+        PaneNote(phoneText("android.obsidian.androidmaydelaybackground"))
     }
 }
-
-private fun countNotes(n: Long, one: String, many: String): String = "${NumberFormat.getIntegerInstance().format(n)} ${if (n == 1L) one else many}"

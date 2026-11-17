@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -101,10 +103,10 @@ private fun ImportWaitingReason.toPane(): ImportWaiting = ImportWaiting.valueOf(
 internal fun importChangeText(change: ImportChange): String? =
     when (change) {
         ImportChange.DONE -> null
-        ImportChange.DELIVERED -> "it's already in your journal."
-        ImportChange.GONE -> "it's already gone from this device."
-        ImportChange.IN_FLIGHT -> "it's sending now, so nothing changed."
-        ImportChange.REFUSED -> "nothing changed. it may have moved on; check the list."
+        ImportChange.DELIVERED -> phoneText("android.import.s.already.journal")
+        ImportChange.GONE -> phoneText("android.import.s.already.gone.from.device")
+        ImportChange.IN_FLIGHT -> phoneText("android.import.s.sending.now.so.nothing")
+        ImportChange.REFUSED -> phoneText("android.import.nothing.changed.may.have.moved")
     }
 
 /** One picked or shared item, described and opened now, while its read grant holds. */

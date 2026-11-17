@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -74,7 +76,7 @@ fun PhoneJournalSetup(
         verticalArrangement = Arrangement.spacedBy(ShellMetrics.gutter),
     ) {
         Text(
-            text = "today, it lives on a computer you own.",
+            text = phoneText("android.setup.today.journal.lives.computer.own"),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
@@ -101,7 +103,7 @@ fun PhoneJournalSetup(
         }
         if (showsDataLine) {
             Text(
-                text = "what you share stays on this device and isn't processed until you connect a journal.",
+                text = phoneText("android.setup.what.share.stays.device.isn"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 textAlign = TextAlign.Center,
@@ -118,7 +120,7 @@ private fun NewJournalDoor(
 ) {
     JournalSetupDoor(
         glyph = R.drawable.phone_source_screen,
-        title = "set up a journal",
+        title = phoneText("android.setup.setupjournal"),
         subLine = null,
         testTag = "journalSetupNewDoor",
         modifier = modifier,
@@ -131,7 +133,7 @@ private fun NewJournalDoor(
                 .testTag("journalSetupSetOneUp")
                 .semantics { this[JournalSetupButtonVariantKey] = JournalSetupButtonVariant.Filled },
         ) {
-            Text("open the setup page")
+            Text(phoneText("android.setup.opensetuppage"))
         }
         OutlinedButton(
             onClick = onSendLink,
@@ -143,7 +145,7 @@ private fun NewJournalDoor(
                 .testTag("journalSetupSendLink")
                 .semantics { this[JournalSetupButtonVariantKey] = JournalSetupButtonVariant.Outlined },
         ) {
-            Text("send yourself the link")
+            Text(phoneText("android.setup.send.yourself.link"))
         }
     }
 }
@@ -155,8 +157,8 @@ private fun HaveOneDoor(
 ) {
     JournalSetupDoor(
         glyph = R.drawable.phone_scan_code,
-        title = "i already have one",
-        subLine = "scan its pairing code",
+        title = phoneText("android.setup.i.already.have.one"),
+        subLine = phoneText("android.setup.scanpairingcode"),
         testTag = "journalSetupHaveOneDoor",
         modifier = modifier,
     ) {
@@ -170,7 +172,7 @@ private fun HaveOneDoor(
                 .testTag("journalSetupAlreadyHave")
                 .semantics { this[JournalSetupButtonVariantKey] = JournalSetupButtonVariant.Outlined },
         ) {
-            Text("connect")
+            Text(phoneText("android.pairing.connect"))
         }
     }
 }

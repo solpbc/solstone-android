@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.Context
 import android.os.Build
 import android.system.Os
@@ -60,10 +62,10 @@ fun phoneAboutBlock(
     now: Long,
 ): String = aboutBlock(
     appLine = renderLine(
-        name = "android app",
+        name = phoneText("android.about.android.app"),
         version = facts.versionName.orEmpty(),
         build = facts.build,
-        os = "android",
+        os = phoneText("android.about.android"),
         osVersion = facts.osVersion.orEmpty(),
         arch = facts.arch.orEmpty(),
     ),

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
@@ -124,9 +126,22 @@ class PhoneApplication : ObserverApplication(
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        ObserverNotification.ensureChannel(this)
+        JournalPushPoster(this).ensureChannel()
+        ObserverNotification.stopAction?.let { action ->
+            ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, action.actionIntent).build()
+        }
         // The widget fits its lines to the text scale and bold-text setting, so a change to either
         // re-fits it; the host would otherwise redraw the old line set at the new size.
-        if (::widgetCoordinator.isInitialized) widgetCoordinator.updateAll()
+        if (::widgetCoordinator.isInitialized) refreshWidgetAndUpdate()
+    }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        app.solstone.observer.formfactor.shared.AndroidPhoneText(this).install()
+        // Field initializers run before attachment; resolve their display placeholders again.
+        cachedWidgetModel = emptyWidgetModel()
+        cachedIntakeModel = derivePhoneIntakeNotification(snapshot = null, fgsLive = false, desiredOn = false)
     }
 
     override fun onCreate() {
@@ -142,6 +157,8 @@ class PhoneApplication : ObserverApplication(
             pushPresentation = true,
         )
         super.onCreate()
+        ObserverNotification.ensureChannel(this)
+        JournalPushPoster(this).ensureChannel()
         ObserverForegroundService.captureWishTypes = {
             val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
             val base = when (val read = store.read()) {
@@ -605,7 +622,7 @@ class PhoneApplication : ObserverApplication(
         // Publish the prepared result even when the source read failed. Neither a
         // second source read nor the journal status read may suppress this update.
         if (fgsLive) {
-            ObserverForegroundService.refreshOngoingNotification(applicationContext, cachedIntakeModel.stateWord == "needs attention")
+            ObserverForegroundService.refreshOngoingNotification(applicationContext, cachedIntakeModel.stateWord == phoneText("android.push.needs.attention"))
         } else if (inactiveNotificationRequested) {
             ObserverForegroundService.refreshAttentionNotification(applicationContext, stopped = !desiredOn)
         } else {

@@ -6,6 +6,10 @@ plugins {
 android {
     namespace = "app.solstone.observer.formfactor.shared"
     compileSdk = 36
+    sourceSets.getByName("main") {
+        res.srcDir(rootProject.file("i18n/generated/android/android-phone"))
+        java.srcDir(rootProject.file("i18n/generated/phone/android"))
+    }
 
     defaultConfig {
         minSdk = 26
@@ -22,6 +26,7 @@ android {
 }
 
 dependencies {
+    api(project(":core:i18n"))
     implementation(project(":harness"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))

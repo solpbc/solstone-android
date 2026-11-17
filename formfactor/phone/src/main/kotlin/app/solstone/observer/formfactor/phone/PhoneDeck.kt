@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -189,7 +191,7 @@ internal fun PhoneSourceGrid(
             if (status.sourceId == WatchCourierStrings.WATCH) {
                 val watch = LocalPhoneWatchSource.current
                 PhoneNonSourceTile(
-                    label = WatchCourierStrings.WATCH,
+                    label = sourceLabel(WatchCourierStrings.WATCH),
                     subLine = watchTileSubLine(watch),
                     glyph = R.drawable.phone_source_watch,
                     index = index,
@@ -209,13 +211,13 @@ internal fun PhoneSourceGrid(
         }
         item(key = "importTile") {
             PhoneNonSourceTile(
-                label = "import",
+                label = phoneText("android.setup.import"),
                 // ⚠ Was `photos, files, anything`. `anything` claims a category the
                 // product does not offer — the import surface names photos and files
                 // and nothing else — and the correction was already ruled for iOS on
                 // 2026-08-23 (mobile-shell.md § "import is a tile"). Android had
                 // carried the retired string since.
-                subLine = "photos and files",
+                subLine = phoneText("android.setup.photos.files"),
                 glyph = R.drawable.phone_import,
                 index = sources.size,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
@@ -226,7 +228,7 @@ internal fun PhoneSourceGrid(
         }
         item(key = "addMoreTile") {
             PhoneNonSourceTile(
-                label = "add more",
+                label = phoneText("android.setup.add.more"),
                 // ⚠ Was `sources and devices`. `devices` is a category the product's
                 // taxonomy has on NEITHER platform -- iOS's watch is a *source* in
                 // § 5.2's source-label table, and `grep '"devices"'` over solstone-swift
@@ -240,7 +242,7 @@ internal fun PhoneSourceGrid(
                 // platform, the sub-line names the CATEGORY. `photos and files`
                 // enumerates because the import paths are shared and fixed; this one
                 // categorizes. The non-parallelism is the rule working.
-                subLine = "sources",
+                subLine = phoneText("android.setup.sources"),
                 glyph = R.drawable.phone_add_more,
                 index = sources.size + 1,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
@@ -274,18 +276,18 @@ private fun PhoneWelcomeCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "solstone",
+                text = phoneText("android.push.title"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontFamily = ComfortaaBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text("welcome to solstone.", style = MaterialTheme.typography.bodyLarge)
+            Text(phoneText("android.setup.welcome.solstone"), style = MaterialTheme.typography.bodyLarge)
             Text(
-                "the solstone app takes in what you share with it, and all of it goes into your journal.",
+                phoneText("android.setup.solstone.app.takes.what.share"),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "your journal is always private, only yours.",
+                phoneText("android.setup.journal.always.private.only.yours"),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

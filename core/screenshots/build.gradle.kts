@@ -4,6 +4,7 @@ plugins {
 }
 kotlin { jvmToolchain(17) }
 dependencies {
+    api(project(":core:i18n"))
     implementation(project(":core:model"))
     implementation(project(":core:sources"))
     implementation(project(":core:segment"))

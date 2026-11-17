@@ -156,7 +156,7 @@ internal fun PhoneObserverWidgetContent(model: PhoneObserverWidgetModel) {
                     // The header carries a fault in words and in the attention ink; the words are
                     // the indicator, the ink the second one. `audio, on` is what TalkBack reads.
                     val modifier = if (header) {
-                        GlanceModifier.semantics { contentDescription = "$label, ${model.stateWord}" }
+                        GlanceModifier.semantics { contentDescription = app.solstone.core.i18n.phoneText("android.widget.label.model.stateword", "label" to label, "stateword" to model.stateWord) }
                     } else {
                         GlanceModifier
                     }

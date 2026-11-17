@@ -1,0 +1,78 @@
+{
+  "description": "The complete third-party license, verbatim.",
+  "context": "English legal text. A legal review is required before any translation; retain the exact license bytes.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 4600,
+  "source_revision": "d8860196333ca0d0b9b628ac0091f2f77c1abd82dbb1c08284014a6d83ff58da",
+  "risk": "legal",
+  "auto_merge": false,
+  "protected_slots": [
+    {
+      "name": "ending",
+      "kind": "whitespace",
+      "value": "\n"
+    },
+    {
+      "name": "token1",
+      "kind": "accepted-input",
+      "value": "<dates>"
+    },
+    {
+      "name": "token2",
+      "kind": "accepted-input",
+      "value": "<Copyright Holder>"
+    },
+    {
+      "name": "token3",
+      "kind": "accepted-input",
+      "value": "<URL|email>"
+    },
+    {
+      "name": "token4",
+      "kind": "accepted-input",
+      "value": "<Reserved Font Name>"
+    },
+    {
+      "name": "token5",
+      "kind": "accepted-input",
+      "value": "<dates>"
+    },
+    {
+      "name": "token6",
+      "kind": "accepted-input",
+      "value": "<additional Copyright Holder>"
+    },
+    {
+      "name": "token7",
+      "kind": "accepted-input",
+      "value": "<URL|email>"
+    },
+    {
+      "name": "token8",
+      "kind": "accepted-input",
+      "value": "<additional Reserved Font Name>"
+    },
+    {
+      "name": "token9",
+      "kind": "accepted-input",
+      "value": "<dates>"
+    },
+    {
+      "name": "token10",
+      "kind": "accepted-input",
+      "value": "<additional Copyright Holder>"
+    },
+    {
+      "name": "token11",
+      "kind": "accepted-input",
+      "value": "<URL|email>"
+    }
+  ]
+}

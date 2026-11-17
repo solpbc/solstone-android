@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.Context
 import android.os.Looper
 import android.view.View
@@ -99,11 +101,11 @@ object JournalMarkTokens {
     val unavailableFill = SolstoneColors.markUnavailableFill
     val unavailableGlyph = SolstoneColors.markUnavailableGlyph
     val cardRadius = 12.dp
-    const val GENERIC_ACCESSIBLE_NAME = "your journal, not set up yet"
-    const val UNCONFIRMED_ACCESSIBLE_NAME = "your journal, mark not confirmed yet"
-    const val LOADING_ACCESSIBLE_NAME = "your journal, mark not read yet"
-    const val UNAVAILABLE_ACCESSIBLE_NAME = "your journal's mark, unavailable right now"
-    const val NOT_PRESENTED_ACCESSIBLE_NAME = "no identity presented"
+    val GENERIC_ACCESSIBLE_NAME get() = phoneText("android.journalmark.journal.not.set.up.yet")
+    val UNCONFIRMED_ACCESSIBLE_NAME get() = phoneText("android.journalmark.notconfirmed")
+    val LOADING_ACCESSIBLE_NAME get() = phoneText("android.journalmark.notreadyet")
+    val UNAVAILABLE_ACCESSIBLE_NAME get() = phoneText("android.journalmark.journal.s.mark.unavailable.right")
+    val NOT_PRESENTED_ACCESSIBLE_NAME get() = phoneText("android.journalmark.noidentity")
 }
 
 internal fun journalMarkSpokenForm(presentation: JournalMarkPresentation): String = when (presentation) {
@@ -451,8 +453,8 @@ fun JournalMarkCard(
     val mark = (presentation as? JournalMarkPresentation.Identified)?.mark
     val isUnavailable = presentation is JournalMarkPresentation.Unavailable
 
-    val word1 = mark?.words?.getOrNull(0) ?: if (isUnavailable) "mark" else "your"
-    val word2 = mark?.words?.getOrNull(1) ?: if (isUnavailable) "unavailable" else "journal"
+    val word1 = mark?.words?.getOrNull(0) ?: if (isUnavailable) phoneText("android.journalmark.fallbackmark") else phoneText("android.journalmark.fallbackyour")
+    val word2 = mark?.words?.getOrNull(1) ?: if (isUnavailable) phoneText("android.journalmark.fallbackunavailable") else phoneText("android.journalmark.fallbackjournal")
 
     JournalMarkCardFrame(journalMarkSpokenForm(presentation), size, modifier) {
         JournalMarkChips(side = size.chipSide, mark = mark, unavailable = isUnavailable)
@@ -470,7 +472,7 @@ internal fun JournalMarkNotPresentedCard(
     JournalMarkCardFrame(JournalMarkTokens.NOT_PRESENTED_ACCESSIBLE_NAME, size, modifier) {
         JournalMarkChips(side = size.chipSide, neutral = true)
         Spacer(Modifier.height(size.gap))
-        JournalMarkCardWords("not", "presented", size)
+        JournalMarkCardWords(phoneText("android.journalmark.wordnot"), phoneText("android.journalmark.wordpresented"), size)
     }
 }
 
@@ -840,7 +842,7 @@ fun PairingSuccessMark(
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = "connecting\u2026",
+                            text = phoneText("android.journalmark.connecting"),
                             style = MaterialTheme.typography.bodyLarge,
                             color = bodyColor,
                             textAlign = TextAlign.Center,
@@ -848,7 +850,7 @@ fun PairingSuccessMark(
                     }
                     is PairingPromptShape.Unverified -> {
                         Text(
-                            text = "couldn't verify",
+                            text = phoneText("android.journalmark.couldn.t.verify"),
                             style = MaterialTheme.typography.titleMedium,
                             color = bodyColor,
                             textAlign = TextAlign.Center,
@@ -856,7 +858,7 @@ fun PairingSuccessMark(
                         if (shape.withBody) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "the check of your journal's mark didn't finish. that doesn't mean the marks disagree.",
+                                text = phoneText("android.journalmark.check.journal.s.mark.didn"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = shellSecondaryInk,
                                 textAlign = TextAlign.Center,
@@ -872,9 +874,9 @@ fun PairingSuccessMark(
                                 .heightIn(min = 48.dp)
                                 .testTag(PAIRING_CONTINUE_ANYWAY_TAG)
                                 .semantics {
-                                    contentDescription = "continue pairing without verifying the journal mark"
+                                    contentDescription = phoneText("android.journalmark.continue.pairing.without.verifying.journal")
                                 },
-                        ) { Text("continue anyway") }
+                        ) { Text(phoneText("android.journalmark.continue.anyway")) }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = onDropClick,
@@ -883,21 +885,20 @@ fun PairingSuccessMark(
                                 .heightIn(min = 48.dp)
                                 .testTag(PAIRING_CANCEL_PAIRING_TAG)
                                 .semantics {
-                                    contentDescription = "cancel pairing and discard this attempt"
+                                    contentDescription = phoneText("android.journalmark.cancel.pairing.discard.attempt")
                                 },
-                        ) { Text("cancel pairing") }
+                        ) { Text(phoneText("android.journalmark.cancel.pairing")) }
                     }
                     is PairingPromptShape.Match -> {
                         Text(
-                            text = "does this match your journal?",
+                            text = phoneText("android.journalmark.does.match.journal"),
                             style = MaterialTheme.typography.titleMedium,
                             color = bodyColor,
                             textAlign = TextAlign.Center,
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "your journal shows this same mark in its network app. it should " +
-                                "match, exactly.",
+                            text = phoneText("android.journalmark.journal.shows.same.mark.its"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = shellSecondaryInk,
                             textAlign = TextAlign.Center,
@@ -908,23 +909,23 @@ fun PairingSuccessMark(
                             onClick = onConfirmClick,
                             enabled = shape.primaryEnabled,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_YES_TAG),
-                        ) { Text("yes, this is my journal") }
+                        ) { Text(phoneText("android.journalmark.yes.my.journal")) }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = onDropClick,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_NO_MATCH_TAG),
-                        ) { Text("that doesn't match") }
+                        ) { Text(phoneText("android.journalmark.that.doesn.t.match")) }
                     }
                 }
             }
             PairingConfirmation.Removing -> Text(
-                "disconnecting this phone…",
+                phoneText("android.journalmark.disconnecting.phone"),
                 style = MaterialTheme.typography.bodyLarge,
                 color = bodyColor,
                 textAlign = TextAlign.Center,
             )
             PairingConfirmation.Confirmed -> Text(
-                "this phone is connected to your journal.",
+                phoneText("android.journalmark.phone.connected.journal"),
                 style = MaterialTheme.typography.bodyLarge,
                 color = bodyColor,
                 textAlign = TextAlign.Center,
@@ -935,7 +936,7 @@ fun PairingSuccessMark(
             // never disconnects a second time.
             PairingConfirmation.Mismatched -> {
                 Text(
-                    "this phone is no longer connected to that journal.",
+                    phoneText("android.journalmark.phone.no.longer.connected.that"),
                     style = MaterialTheme.typography.bodyLarge,
                     color = bodyColor,
                     textAlign = TextAlign.Center,
@@ -949,7 +950,7 @@ fun PairingSuccessMark(
                             .heightIn(min = 48.dp)
                             .testTag(PAIRING_SCAN_AGAIN_TAG),
                     ) {
-                        Text("scan again")
+                        Text(phoneText("android.journalmark.scan.again"))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -958,7 +959,7 @@ fun PairingSuccessMark(
             // The pairing this one replaced is back, exactly as it was.
             PairingConfirmation.NotChanged -> {
                 Text(
-                    "not changed",
+                    phoneText("android.journalmark.notchanged"),
                     style = MaterialTheme.typography.titleMedium,
                     color = bodyColor,
                     textAlign = TextAlign.Center,
@@ -966,7 +967,7 @@ fun PairingSuccessMark(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "your pairing stays as it was. nothing waiting on this phone went to that journal through this link.",
+                    phoneText("android.journalmark.pairingstaysnothingwaiting"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = shellSecondaryInk,
                     textAlign = TextAlign.Center,
@@ -980,7 +981,7 @@ fun PairingSuccessMark(
                             .heightIn(min = 48.dp)
                             .testTag(PAIRING_SCAN_AGAIN_TAG),
                     ) {
-                        Text("scan again")
+                        Text(phoneText("android.journalmark.scan.again"))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -990,7 +991,7 @@ fun PairingSuccessMark(
             // failing still leaves the owner a way to ask.
             PairingConfirmation.Failed -> {
                 Text(
-                    "couldn't disconnect this phone. try again.",
+                    phoneText("android.journalmark.couldn.t.disconnect.phone.try"),
                     style = MaterialTheme.typography.bodyLarge,
                     color = bodyColor,
                     textAlign = TextAlign.Center,
@@ -999,7 +1000,7 @@ fun PairingSuccessMark(
                 Button(
                     onClick = { confirmation = PairingConfirmation.Waiting },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(PAIRING_TRY_AGAIN_TAG),
-                ) { Text("try again") }
+                ) { Text(phoneText("android.migration.try.again")) }
                 Spacer(Modifier.height(8.dp))
                 GetHelpButton(onHelp)
             }
@@ -1011,7 +1012,7 @@ fun PairingSuccessMark(
 private fun AnswerNotSavedLine(color: Color) {
     Spacer(Modifier.height(12.dp))
     Text(
-        text = "couldn't save your answer. try again.",
+        text = phoneText("android.journalmark.couldntsaveanswer"),
         style = MaterialTheme.typography.bodyMedium,
         color = color,
         textAlign = TextAlign.Center,
@@ -1030,7 +1031,7 @@ private fun GetHelpButton(onHelp: () -> Unit) {
             .heightIn(min = 48.dp)
             .testTag(PAIRING_GET_HELP_TAG),
     ) {
-        Text("get help")
+        Text(phoneText("android.shelf.get.help"))
     }
 }
 

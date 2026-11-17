@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "220d961037b4e27f429b9feb24a09e49d4add35ccd9a4138775d73cb7c0fc344",
+  "risk": "account",
+  "auto_merge": true
+}

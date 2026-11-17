@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.sourcevocabularyswift.scanitspairingcode.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "1b4e2eef77e8664fd1ab49047f1182f802fcd8a5dbd81f81911c4785bd73b3d1",
+  "risk": "account",
+  "auto_merge": true
+}

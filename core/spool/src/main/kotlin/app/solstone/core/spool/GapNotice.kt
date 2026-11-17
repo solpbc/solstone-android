@@ -3,6 +3,8 @@
 
 package app.solstone.core.spool
 
+import app.solstone.core.i18n.phoneText
+
 import java.io.FileOutputStream
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
@@ -18,10 +20,10 @@ import java.time.format.DateTimeFormatter
 
 const val GAP_LOSS_FACT = "gap-loss"
 
-const val GAP_HEADLINE = "there's a gap in your journal"
-const val GAP_UNDATED = "some of what you shared didn't reach it."
-const val GAP_TODAY = "some of what you shared today didn't reach it."
-const val GAP_YESTERDAY = "some of what you shared yesterday didn't reach it."
+val GAP_HEADLINE get() = phoneText("android.gap.there.s.gap.journal")
+val GAP_UNDATED get() = phoneText("android.gap.some.what.shared.didn.t")
+val GAP_TODAY get() = phoneText("android.gap.some.what.shared.today.didn")
+val GAP_YESTERDAY get() = phoneText("android.gap.some.what.shared.yesterday.didn")
 
 val GAP_REASONS: Set<String> = setOf(
     "uncommitted window",
@@ -180,27 +182,27 @@ fun gapDayLine(losses: List<GapDayLoss>, nowEpochMs: Long, zone: ZoneId): String
             day == today -> GAP_TODAY
             day == today.minusDays(1) -> GAP_YESTERDAY
             !day.isBefore(today.minusDays(6)) && day.isBefore(today) ->
-                "some of what you shared on ${weekdayName(day)} didn't reach it."
+                phoneText("android.gap.some.what.shared.weekdayname.day" , "day" to (weekdayName(day)))
             else -> GAP_UNDATED
         }
     }
     val earliest = days.first()
     return when {
-        earliest == today.minusDays(1) -> "some of what you shared since yesterday didn't reach it."
+        earliest == today.minusDays(1) -> phoneText("android.gap.some.what.shared.since.yesterday")
         !earliest.isBefore(today.minusDays(6)) && earliest.isBefore(today) ->
-            "some of what you shared since ${weekdayName(earliest)} didn't reach it."
+            phoneText("android.gap.some.what.shared.since.weekdayname" , "earliest" to (weekdayName(earliest)))
         else -> GAP_UNDATED
     }
 }
 
 fun weekdayName(day: LocalDate): String = when (day.dayOfWeek) {
-    DayOfWeek.MONDAY -> "monday"
-    DayOfWeek.TUESDAY -> "tuesday"
-    DayOfWeek.WEDNESDAY -> "wednesday"
-    DayOfWeek.THURSDAY -> "thursday"
-    DayOfWeek.FRIDAY -> "friday"
-    DayOfWeek.SATURDAY -> "saturday"
-    DayOfWeek.SUNDAY -> "sunday"
+    DayOfWeek.MONDAY -> phoneText("android.gap.monday")
+    DayOfWeek.TUESDAY -> phoneText("android.gap.tuesday")
+    DayOfWeek.WEDNESDAY -> phoneText("android.gap.wednesday")
+    DayOfWeek.THURSDAY -> phoneText("android.gap.thursday")
+    DayOfWeek.FRIDAY -> phoneText("android.gap.friday")
+    DayOfWeek.SATURDAY -> phoneText("android.gap.saturday")
+    DayOfWeek.SUNDAY -> phoneText("android.gap.sunday")
 }
 
 data class GapNoticeRow(
@@ -241,9 +243,9 @@ fun formatGapTechnicalDetails(
         .filter { !localDate(it.lastEpochMs, zone).isBefore(cutoff) }
         .sortedWith(compareByDescending<GapNoticeRow> { it.lastEpochMs }.thenByDescending { it.id })
     val header = when (conversion) {
-        GapConversionState.NotRun -> "not run"
-        is GapConversionState.Complete -> "complete ${conversion.count}"
-        is GapConversionState.Failed -> "failed ${conversion.reason}"
+        GapConversionState.NotRun -> phoneText("android.gap.not.run")
+        is GapConversionState.Complete -> phoneText("android.gap.complete.conversion.count", "count" to (conversion.count))
+        is GapConversionState.Failed -> phoneText("android.gap.failed.conversion.reason" , "reason" to (conversion.reason))
     }
     if (shown.isEmpty()) return header
     return buildString {
@@ -257,9 +259,9 @@ fun formatGapTechnicalDetails(
 
 fun formatGapTechnicalRow(row: GapNoticeRow, zone: ZoneId): String {
     val captured = row.capturedEpochMs?.let { formatGapLocalTime(it, zone) } ?: "unknown"
-    val seen = if (row.seen) "seen" else "unseen"
-    val marked = row.markerEpochMs?.let { " marked ${formatGapLocalTime(it, zone)}" }.orEmpty()
-    return "${formatGapLocalTime(row.lastEpochMs, zone)} ${row.kind} ${row.source} ${row.reason} ${row.material} captured $captured $seen count ${row.count}$marked"
+    val seen = if (row.seen) phoneText("android.gap.seen") else phoneText("android.gap.unseen")
+    val marked = row.markerEpochMs?.let { phoneText("android.gap.marked.formatgaplocaltime.zone.exact" , "zone" to (formatGapLocalTime(it, zone))) }.orEmpty()
+    return phoneText("android.gap.value.row.kind.row.source" , "zone" to (formatGapLocalTime(row.lastEpochMs, zone)), "kind" to (row.kind), "source" to (row.source), "reason" to (row.reason), "material" to (row.material), "captured" to (captured), "seen" to (seen), "count" to (row.count), "marked" to (marked))
 }
 
 /**

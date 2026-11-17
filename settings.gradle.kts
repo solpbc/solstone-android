@@ -61,3 +61,5 @@ include(":formfactor:shared")
 include(":formfactor:glasses")
 include(":formfactor:phone")
 include(":platform:wearable")
+
+include(":core:i18n")

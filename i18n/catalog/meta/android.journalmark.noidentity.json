@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.unknownjournal.caption.noidentity.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "fefb5737680e565132678c5353c1054ed84759a22a4bf6e863960f84dcd7b6f5",
+  "risk": "account",
+  "auto_merge": true
+}

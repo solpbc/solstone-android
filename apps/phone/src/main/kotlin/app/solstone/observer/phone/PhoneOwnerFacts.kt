@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.identity.PairingGraphSnapshot
 import app.solstone.core.pl.displayAddress
 import app.solstone.core.pl.parseProductionRelayOrigin
@@ -16,14 +18,6 @@ import app.solstone.observer.harness.WishStoreState
 private val DEFAULT_RELAY_HTTPS_BASE: String? =
     parseProductionRelayOrigin("https://link.solstone.app")?.httpsBase
 
-private fun relayAttributionPhrase(relayOrigin: String?): String {
-    val parsed = relayOrigin?.let(::parseProductionRelayOrigin)
-    return if (parsed != null && parsed.httpsBase == DEFAULT_RELAY_HTTPS_BASE) {
-        "the relay sol pbc runs"
-    } else {
-        "a relay"
-    }
-}
 
 /**
  * The facts `settings > your journal` and `technical details` show, including the journal's identity `label`.
@@ -45,29 +39,29 @@ internal fun phoneJournalFacts(
         // `direct` and `relay` are how the transport is named in code, not how a route is named
         // to the person taking it.
         location = when {
-            committed == null -> "—"
+            committed == null -> phoneText("android.ownerfacts.line")
             // ⚠ Both routes live is the case the app knows MOST about, and it was the one case
             // the row went blank on — a dash reads as "we could not determine this".
             committed.isDirectEligible && committed.isRelayEligible ->
-                "straight to your journal, or through ${relayAttributionPhrase(committed.home.relayOrigin)}"
-            committed.isDirectEligible -> "straight to your journal"
-            committed.isRelayEligible -> "through ${relayAttributionPhrase(committed.home.relayOrigin)}"
-            else -> "—"
+                phoneText("android.phone.source.route.fixed", "route" to if (committed.home.relayOrigin?.let(::parseProductionRelayOrigin)?.httpsBase == DEFAULT_RELAY_HTTPS_BASE) "both-sol" else "both-other")
+            committed.isDirectEligible -> phoneText("android.phone.source.route.fixed", "route" to "direct")
+            committed.isRelayEligible -> phoneText("android.phone.source.route.fixed", "route" to if (committed.home.relayOrigin?.let(::parseProductionRelayOrigin)?.httpsBase == DEFAULT_RELAY_HTTPS_BASE) "relay-sol" else "relay-other")
+            else -> phoneText("android.ownerfacts.line")
         },
         connection = when {
-            committed == null -> "not paired"
-            status?.paired != true -> "—"
+            committed == null -> phoneText("android.source.not.paired")
+            status?.paired != true -> phoneText("android.ownerfacts.line")
             status.refused -> STATUS_REFUSED_LEAD
-            status.online -> "connected"
+            status.online -> phoneText("android.source.connected")
             status.connecting -> STATUS_CONNECTING
-            else -> "offline"
+            else -> phoneText("android.source.offline")
         },
         // This is the journal trust anchor, not this phone's client-certificate fingerprint.
-        fingerprint = committed?.home?.caChainFingerprint ?: "—",
+        fingerprint = committed?.home?.caChainFingerprint ?: phoneText("android.ownerfacts.line"),
         // ⚠ The same two words the ongoing notification uses. `running` here against `on` in the
         // shade gave one state word two vocabularies on one device.
-        intake = if (intakeRunning) "on" else "off",
-        address = committed?.directEndpoints?.takeIf { it.isNotEmpty() }?.joinToString("\n") { displayAddress(it.host, it.port) } ?: "—",
+        intake = if (intakeRunning) phoneText("android.push.on") else phoneText("android.push.off"),
+        address = committed?.directEndpoints?.takeIf { it.isNotEmpty() }?.joinToString("\n") { displayAddress(it.host, it.port) } ?: phoneText("android.ownerfacts.line"),
         check = check,
     )
 }

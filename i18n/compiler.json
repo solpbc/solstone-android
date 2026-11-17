@@ -1,7 +1,7 @@
 {
   "repository": "git@github.com:solpbc/solstone-journal.git",
-  "revision": "02d48c3cdc219a522d2086adf512ea8cde95f849",
-  "registry_sha256": "0c571ec5bf5b36d050a1d9647ce4962514e2d9d56668eea31294454aeffb6c7b",
+  "revision": "de18e58dedd0ef79582f04ce70494a94082ed42d",
+  "registry_sha256": "a53caa91bc9207f213d73596c1c763b9c4e8f5d619a25f21b391b7a45470dabe",
   "targets": [
     "android"
   ],

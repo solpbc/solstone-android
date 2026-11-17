@@ -1,8 +1,7 @@
 # Android string catalog
 
-Wear OS copy is authored in `catalog/source/en-US.ftl`, with translator context
-and argument contracts in `catalog/meta/`. Only `en-US` ships. The phone's own
-copy and its independent push catalog have not been migrated.
+Phone and Wear OS copy are authored in `catalog/source/en-US.ftl`, with translator context
+and argument contracts in `catalog/meta/`. Only `en-US` ships. The phone's push messages remain a separate shared contract in `contracts/push-i18n/`.
 
 ## Edit and regenerate
 
@@ -17,8 +16,7 @@ make ci
 
 Follow the compiler's `tools/i18n/README.md` for source locks, sidecar revisions,
 history and retirement. Identities are permanent; a changed argument contract
-needs a new identity. `messages.json` gives each identity a Kotlin enum name.
-It contains no English copy.
+needs a new identity. `messages.json` names the Wear identities in its generated Kotlin enum. The phone generator builds its message and native resource maps directly from the phone sidecars. These maps contain catalog identities and their argument contracts; generated English comes from the compiled catalog.
 
 `make ci` checks hashes of the catalog, compiler pin, generator and generated
 files. An edit to generated output alone fails. Regenerate with the pinned
@@ -67,12 +65,43 @@ English bytes. Other locales keep the compiler's isolation. Layout inherits
 Android direction, uses start/end spacing, and retains `supportsRtl`. This does
 not qualify a translated or right-to-left layout.
 
-`core/watch-courier` remains a JVM library. Its existing shared English constants
-are generated from the same compiled catalog until the phone's migration.
-`WATCH` remains the source identifier `watch`. The watch uses Android resources
-rather than those English constants. The phone can join this setup by adding
-its messages and bundle, then wiring its resource consumers; it must also move
-the remaining shared presentation defaults and its push locale negotiation.
+The `android-phone` and `android-wear` bundles share this repository catalog.
+The phone's native resources and ID references live in `formfactor/shared`;
+shared JVM modules use `core/i18n` without becoming Android libraries. The phone
+installs the Android reader in its application context before UI rendering.
+The catalog-derived English reader also supports JVM tests and other consumers
+of those shared modules. Source and protocol identifiers stay separate from
+translated display labels, including `watch`.
+
+The phone follows the system language on Android 8 through 12. On Android 13
+and later, Android's per-app language setting can override it. There is no
+separate in-app language picker. Activities retain normal locale recreation;
+Compose and Views resolve fresh text. Both notification channels are renamed
+at startup and after a locale broadcast, and a running service refreshes its
+notification. Existing channel settings and IDs stay intact.
+
+A generated resource marker lets Android choose the best supported locale for
+each bundle. The reader uses that locale for plural selection as well as text:
+an unsupported French configuration cannot give English zero a singular form.
+The independent push bundle uses its own marker, so Android can resolve
+`es-MX` to an admitted `es-419` resource. Its contract and pin are unchanged.
+APK resource filters retain the admitted phone and push locales.
+
+`native-aliases.json` maps the current Compose accessibility resource names to
+catalog identities. App-level aliases preserve their existing English and use
+the selected catalog translation. Verify the names against the pinned Compose
+resources when upgrading dependencies; the aliases keep existing semantics
+and accessibility actions.
+
+Numbers use the selected locale with the catalog's grouped or ungrouped style.
+Byte sizes use Android's formatter. Whole date messages preserve existing
+English presentation and allow another language to reorder dates. Optional
+about-line clauses and their meaningful spaces remain catalog messages;
+English is unchanged. Complete license texts and notices are legal messages,
+verbatim in English. Templates too large for Android’s string pool use generated
+UTF-8 raw resources and the same single formatting pass; this avoids AAPT
+replacing a long license with `STRING_TOO_LARGE`. Permission sidecars call for review before translation.
+Shared sentences name exact iPhone message identities in translator context.
 
 Presenter unit tests use a generated English reader and retain their existing
 English assertions. Instrumented tests exercise real Android resources. Test

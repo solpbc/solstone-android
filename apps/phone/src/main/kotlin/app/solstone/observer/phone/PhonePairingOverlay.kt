@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -183,7 +185,7 @@ internal fun PhonePairingScanning(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "on your journal's computer, open \"network\" and choose \"pair a device\". then scan the code it shows.",
+                    text = phoneText("android.pairing.journal.s.computer.open.network"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
@@ -194,7 +196,7 @@ internal fun PhonePairingScanning(
                         .heightIn(min = 48.dp)
                         .testTag("pairingScanCode"),
                 ) {
-                    Text("scan a code")
+                    Text(phoneText("android.pairing.scan.code"))
                 }
                 Spacer(Modifier.height(16.dp))
                 PasteLinkButton(
@@ -301,7 +303,7 @@ private fun PasteLinkButton(
             .heightIn(min = 48.dp)
             .testTag("pairingPaste"),
     ) {
-        Text("paste a link")
+        Text(phoneText("android.pairing.paste.link"))
     }
 }
 
@@ -331,7 +333,7 @@ private fun PhonePairingEntry(
         TextField(
             value = linkText,
             onValueChange = { linkText = it },
-            label = { Text("pairing link") },
+            label = { Text(phoneText("android.pairing.pairing.link")) },
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
@@ -345,7 +347,7 @@ private fun PhonePairingEntry(
         if (session.invalidSubmit) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "enter a valid pairing link from your journal.",
+                text = phoneText("android.pairing.enter.valid.pairing.link.from"),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -371,13 +373,13 @@ private fun PhonePairingEntry(
                 .heightIn(min = 48.dp)
                 .testTag("pairingConnect"),
         ) {
-            Text("connect")
+            Text(phoneText("android.pairing.connect"))
         }
         OutlinedButton(
             onClick = { dispatch(PhonePairingEvent.OpenScan) },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pairingScan"),
         ) {
-            Text("scan a code")
+            Text(phoneText("android.pairing.scan.code"))
         }
     }
 }

@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, on the home widget",
+  "context": "the solstone app to the owner, on the home widget",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "sourcelabel",
+      "type": "string"
+    },
+    {
+      "name": "stateword",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "3aeab6327fd6eab965a4a881686b5dfe4aa7e48d4349d62cb183c3270c082146",
+  "risk": "routine",
+  "auto_merge": true
+}

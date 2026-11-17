@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, while pairing",
+  "context": "the solstone app to the owner, while pairing",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "endpointport",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 174,
+  "source_revision": "a204d06c5056f007ff10674775529bfc77041050c4af838e5daf0fb4db0a245d",
+  "risk": "account",
+  "auto_merge": true
+}

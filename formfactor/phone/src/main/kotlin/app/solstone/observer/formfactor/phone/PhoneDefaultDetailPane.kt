@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -124,7 +126,7 @@ private fun PhoneDefaultDetailFailure(
                 // ⛔ `try now`, not `try again`: iOS ships this control as `try now`
                     // (SourceVocabulary), and a second word for one control on a
                     // surface § 6 makes shared canon is the exact § 5.1 defect.
-                    Text("try now")
+                    Text(phoneText("android.phone.try.now"))
             }
         }
     }

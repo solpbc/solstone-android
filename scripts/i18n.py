@@ -27,7 +27,7 @@ def native_text(s):
     return re.sub(r'\\(u[0-9a-fA-F]{4}|.)', lambda m: chr(int(m[1][1:],16)) if m[1].startswith('u') else {'n':'\n','t':'\t'}.get(m[1],m[1]), s)
 
 def hashes():
-    paths = [ROOT / 'i18n/compiler.json', ROOT / 'i18n/messages.json', Path(__file__), ROOT / 'scripts/i18n_preview.py', SHARED]
+    paths = [ROOT / 'i18n/compiler.json', ROOT / 'i18n/messages.json', Path(__file__), ROOT / 'scripts/i18n_preview.py', ROOT / 'scripts/i18n_phone.py', ROOT / 'i18n/native-aliases.json', SHARED]
     paths += [p for base in [CAT,GENERATED,ROOT / 'i18n/previews'] for p in base.rglob('*') if p.is_file() and p.name != 'snapshot.json']
     return {str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(paths)}
 
@@ -74,6 +74,8 @@ def main():
     if not compiler: sys.exit('Set I18N_COMPILER to the pinned i18n-catalog executable; see i18n/README.md.')
     pin=json.loads((ROOT/'i18n/compiler.json').read_text())
     subprocess.run([compiler,'targets',str(CAT),'--channel',pin['channel'],'--target','android','--out',str(GENERATED)],check=True,timeout=120)
+    from i18n_phone import generate
+    generate(ROOT, native_text, quote)
     res=GENERATED/'android'/pin['bundle']
     # English byte equality is part of the migration contract. Other locales retain isolation.
     for folder in ['values','values-en-rUS']:

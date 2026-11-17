@@ -1,0 +1,28 @@
+{
+  "description": "the solstone app to the owner, on the gap notice",
+  "context": "the solstone app to the owner, on the gap notice",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "zone",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "dff0251046568680b7b00913f64aa4bf76858df99ec630a72b1e8e405a02f739",
+  "risk": "routine",
+  "auto_merge": true,
+  "protected_slots": [
+    {
+      "name": "space",
+      "kind": "whitespace",
+      "value": " "
+    }
+  ]
+}

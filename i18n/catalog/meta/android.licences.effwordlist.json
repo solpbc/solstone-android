@@ -1,0 +1,23 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 85,
+  "source_revision": "b0ffb7cf3c904192d1d4e76563650477cd6a029d5795050d6954539448a462d9",
+  "risk": "legal",
+  "auto_merge": false,
+  "protected_slots": [
+    {
+      "name": "licenseurl",
+      "kind": "url",
+      "value": "https://creativecommons.org/licenses/by/3.0/us/"
+    }
+  ]
+}

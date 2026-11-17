@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.tunnel.handlestagechange.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "e1375ebd660e02321182049126e59bac9e2af3b7f2d847dce2421f228bb453be",
+  "risk": "routine",
+  "auto_merge": true
+}

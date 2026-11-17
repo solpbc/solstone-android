@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.addmorenotonhome.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "cdae9d70900447483121f5aeb969c90aca315385d6fcf7327c6876eab0950497",
+  "risk": "routine",
+  "auto_merge": true
+}

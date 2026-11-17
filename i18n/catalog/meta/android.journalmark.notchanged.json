@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.pairflow.notchanged.title.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "fae3f976771e878c0653b969207ca7d0f31afae8204ea729e8d4e74b2a982635",
+  "risk": "routine",
+  "auto_merge": true
+}

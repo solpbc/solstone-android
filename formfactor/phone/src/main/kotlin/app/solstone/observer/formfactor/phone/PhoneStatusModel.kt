@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.pl.JournalVersionFreshness
 import app.solstone.core.pl.JournalVersionReading
 import app.solstone.core.pl.UnknownJournalSighting
@@ -37,7 +39,7 @@ data class PhoneGapStatus(
     val unknownUnseen: Boolean = false,
     val unseenUnknownKeys: List<String> = emptyList(),
     val gateOpen: Boolean = false,
-    val technicalDetails: String = "not run",
+    val technicalDetails: String = phoneText("android.gap.not.run"),
 )
 
 data class PhoneStatusModel(
@@ -53,7 +55,7 @@ data class PhoneStatusModel(
     val unknownUnseen: Boolean = false,
     val unseenUnknownKeys: List<String> = emptyList(),
     val gateOpen: Boolean = false,
-    val gapTechnicalDetails: String = "not run",
+    val gapTechnicalDetails: String = phoneText("android.gap.not.run"),
     val wrist: WristShare = WristShare.Unknown,
     val journalVersion: JournalVersionReading? = null,
     val calendarHeldForJournal: Boolean = false,
@@ -68,20 +70,20 @@ data class PhoneStatusModel(
 )
 
 data class PhoneJournalFacts(
-    val version: String = "unknown",
-    val location: String = "—",
-    val connection: String = "—",
-    val fingerprint: String = "—",
-    val intake: String = "—",
+    val version: String = phoneText("android.gap.unknown"),
+    val location: String = phoneText("android.ownerfacts.line"),
+    val connection: String = phoneText("android.ownerfacts.line"),
+    val fingerprint: String = phoneText("android.ownerfacts.line"),
+    val intake: String = phoneText("android.ownerfacts.line"),
     /** The saved direct address, `host:port`, or a dash when none is saved. */
-    val address: String = "—",
+    val address: String = phoneText("android.ownerfacts.line"),
     /** What the last `check connection` found, or null before one has been asked for. */
     val check: String? = null,
 )
 
 fun journalVersionDisplayText(reading: JournalVersionReading?): String = when (reading?.freshness) {
-    null, JournalVersionFreshness.NEVER_OBSERVED -> "unknown"
-    JournalVersionFreshness.LAST_KNOWN -> "${reading.version} (last known)"
+    null, JournalVersionFreshness.NEVER_OBSERVED -> phoneText("android.gap.unknown")
+    JournalVersionFreshness.LAST_KNOWN -> phoneText("android.status.reading.version.last.known", "freshness" to ("last-known"), "version" to (reading.version.orEmpty()))
     JournalVersionFreshness.CURRENT -> reading.version.orEmpty()
 }
 
@@ -100,15 +102,15 @@ fun statusPillKind(
     else -> StatusPillKind.CONNECTED
 }
 
-const val STATUS_CONNECTING = "connecting…"
-const val STATUS_UNKNOWN_RECOVERY_LEAD = "an unfinished item couldn't be checked"
-const val STATUS_WAITING_TO_SYNC_LEAD = "waiting to sync"
-const val STATUS_ON_THIS_DEVICE = "on this device"
-const val STATUS_REFUSED_LEAD = "your journal stopped accepting this device"
-private const val REFUSED_BODY = "anything waiting stays here until you pair again."
-const val PAIR_AGAIN = "pair again"
-private const val MARK_LINE = "waiting for you to confirm your journal's mark"
-private const val CALENDAR_HELD_SUB = "calendar notes stay on this phone until your journal can take them."
+val STATUS_CONNECTING get() = phoneText("android.journalmark.connecting")
+val STATUS_UNKNOWN_RECOVERY_LEAD get() = phoneText("android.status.unfinished.item.couldn.t.be")
+val STATUS_WAITING_TO_SYNC_LEAD get() = phoneText("android.status.waiting.sync")
+val STATUS_ON_THIS_DEVICE get() = phoneText("android.import.device")
+val STATUS_REFUSED_LEAD get() = phoneText("android.status.journalstoppedacceptingdevice")
+private val REFUSED_BODY get() = phoneText("android.status.anythingwaitingstayshere")
+val PAIR_AGAIN get() = phoneText("android.migration.pair.again")
+private val MARK_LINE get() = phoneText("android.status.waiting.confirm.journal.s.mark")
+private val CALENDAR_HELD_SUB get() = phoneText("android.status.calendar.notes.stay.phone.until")
 
 private enum class GapPill { NONE, UNKNOWN, GAP }
 
@@ -174,21 +176,21 @@ fun statusPillText(
 ): String {
     if (!model.connectivityKnown) return coldStatusLine(model, nowEpochMs, zone)
     return when {
-    !model.paired -> "not paired"
-    model.refused -> if (model.pendingCount > 0) "$PAIR_AGAIN · ${model.pendingCount} waiting" else PAIR_AGAIN
+    !model.paired -> phoneText("android.source.not.paired")
+    model.refused -> if (model.pendingCount > 0) phoneText("android.status.pairagainwaiting", "count" to (model.pendingCount)) else PAIR_AGAIN
     !model.online && model.connecting -> STATUS_CONNECTING
-    !model.online -> "offline · ${model.pendingCount} waiting"
+    !model.online -> phoneText("android.status.offline.model.pendingcount.waiting", "count" to (model.pendingCount))
     model.awaitingMarkConfirmation -> if (model.pendingCount > 0) {
-        "confirm the mark · ${model.pendingCount} waiting"
+        phoneText("android.status.confirm.mark.model.pendingcount.waiting", "count" to (model.pendingCount))
     } else {
-        "confirm the mark"
+        phoneText("android.status.confirm.mark")
     }
-    model.pendingCount > 0 -> "${model.pendingCount} syncing"
+    model.pendingCount > 0 -> phoneText("android.status.model.pendingcount.syncing", "count" to (model.pendingCount))
     model.audioAwaitingCustody -> STATUS_WAITING_TO_SYNC_LEAD
-    !model.recoveryCompleted -> "0 syncing"
+    !model.recoveryCompleted -> phoneText("android.status.n0.syncing", "count" to (0))
     gapPill(model, nowEpochMs, zone) == GapPill.UNKNOWN -> STATUS_UNKNOWN_RECOVERY_LEAD
     gapPill(model, nowEpochMs, zone) == GapPill.GAP -> GAP_HEADLINE
-    else -> "connected"
+    else -> phoneText("android.source.connected")
     }
 }
 
@@ -209,9 +211,9 @@ fun linkFreeStatusLine(
     nowEpochMs: Long = statusWallNow(),
     zone: ZoneId = ZoneId.systemDefault(),
 ): String? = when {
-    !model.paired -> "not paired"
+    !model.paired -> phoneText("android.source.not.paired")
     model.refused -> PAIR_AGAIN
-    model.awaitingMarkConfirmation -> "confirm the mark"
+    model.awaitingMarkConfirmation -> phoneText("android.status.confirm.mark")
     model.audioAwaitingCustody -> STATUS_WAITING_TO_SYNC_LEAD
     model.gateOpen && model.unknownUnseen -> STATUS_UNKNOWN_RECOVERY_LEAD
     model.gateOpen && unseenGapInWindow(model, nowEpochMs, zone) && !model.calendarHeldForJournal -> GAP_HEADLINE
@@ -248,11 +250,11 @@ fun statusPaneCopy(
     val kind = statusPillKind(model, nowEpochMs, zone)
     val lines = mutableListOf<String>()
     val caughtUpLead = when {
-        importsNeedYou -> "imports need you"
-        model.calendarHeldForJournal -> "journal needs an update"
+        importsNeedYou -> phoneText("android.status.imports.need")
+        model.calendarHeldForJournal -> phoneText("android.status.journal.needs.update")
         notice -> null
-        model.unknownPresent -> "nothing waiting to sync"
-        else -> "all caught up"
+        model.unknownPresent -> phoneText("android.status.nothing.waiting.sync")
+        else -> phoneText("android.status.all.caught.up")
     }
     val lead = when (summary.lead) {
         PairedStatusLead.COUNT -> null
@@ -265,22 +267,22 @@ fun statusPaneCopy(
     if (summary.subLine) {
         val sub = when (kind) {
             StatusPillKind.CONNECTED, StatusPillKind.NOTICE -> when {
-                importsNeedYou -> "open import to see why"
+                importsNeedYou -> phoneText("android.status.open.import.see.why")
                 model.calendarHeldForJournal -> CALENDAR_HELD_SUB
                 notice -> null
                 model.unknownPresent -> null
-                else -> "everything is in your journal"
+                else -> phoneText("android.status.everything.journal")
             }
-            StatusPillKind.SYNCING -> "syncing to your journal…"
+            StatusPillKind.SYNCING -> phoneText("android.status.syncing.journal")
             StatusPillKind.CONNECTING, StatusPillKind.OFFLINE -> STATUS_ON_THIS_DEVICE
             StatusPillKind.REFUSED -> REFUSED_BODY
-            StatusPillKind.AWAITING_MARK_CONFIRMATION -> "nothing waiting goes into your journal until you do."
+            StatusPillKind.AWAITING_MARK_CONFIRMATION -> phoneText("android.status.nothing.waiting.goes.into.journal")
             StatusPillKind.NOT_PAIRED -> null
         }
         if (sub != null) lines += sub
     }
     if (model.calendarHeldForJournal && kind != StatusPillKind.CONNECTED && kind != StatusPillKind.NOTICE) {
-        lines += "journal needs an update"
+        lines += phoneText("android.status.journal.needs.update")
         lines += CALENDAR_HELD_SUB
     }
     val noticeLines = mutableListOf<String>()
@@ -292,7 +294,7 @@ fun statusPaneCopy(
         noticeLines += GAP_HEADLINE
         noticeLines += day
     }
-    if (model.paired && model.online && notice) noticeLines += "connected"
+    if (model.paired && model.online && notice) noticeLines += phoneText("android.source.connected")
     if (model.audioAwaitingCustody) {
         noticeLines += STATUS_WAITING_TO_SYNC_LEAD
         noticeLines += STATUS_ON_THIS_DEVICE

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.unknownjournal.body.relay.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 149,
+  "source_revision": "6aaf8315c71820daf38b437a0dc83bafb47688c0e658965b03b71143f9061605",
+  "risk": "account",
+  "auto_merge": true
+}

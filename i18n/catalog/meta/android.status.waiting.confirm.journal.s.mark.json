@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.awaitingmarkconfirmationline.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "941f0be92efba26f40a0c121ad5c599d383b42c1477ce29131b15cf25cf598dd",
+  "risk": "routine",
+  "auto_merge": true
+}

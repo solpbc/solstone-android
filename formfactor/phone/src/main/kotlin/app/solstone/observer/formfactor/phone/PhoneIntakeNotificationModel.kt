@@ -3,13 +3,15 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
 import app.solstone.observer.harness.SourceStatus
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
 
-const val STATUS_UNAVAILABLE = "status unavailable"
+val STATUS_UNAVAILABLE get() = phoneText("android.phone.status.unavailable")
 
 data class PhoneIntakeNotificationModel(
     val stateWord: String,
@@ -31,7 +33,7 @@ fun derivePhoneIntakeNotification(
     val enabledSources = snapshot.sources.filter { it.wish == SourceWish.On }
     if (!desiredOn || enabledSources.isEmpty()) {
         return PhoneIntakeNotificationModel(
-            stateWord = "off",
+            stateWord = phoneText("android.push.off"),
             route = null,
         )
     }
@@ -45,7 +47,7 @@ fun derivePhoneIntakeNotification(
     if (attentionSources.isNotEmpty()) {
         val minSourceId = attentionSources.minOf { it.sourceId }
         return PhoneIntakeNotificationModel(
-            stateWord = "needs attention",
+            stateWord = phoneText("android.push.needs.attention"),
             route = PhoneRoute.SourceDetail(minSourceId),
         )
     }
@@ -55,32 +57,32 @@ fun derivePhoneIntakeNotification(
             ReasonCode.REBOOTED,
             ReasonCode.FOREGROUND_START_NOT_ALLOWED,
         )) {
-        return PhoneIntakeNotificationModel("needs attention", null)
+        return PhoneIntakeNotificationModel(phoneText("android.push.needs.attention"), null)
     }
 
     if (enabledSources.any { it.state == SourceState.SETTING_UP }) {
         return PhoneIntakeNotificationModel(
-            stateWord = "setting up",
+            stateWord = phoneText("android.push.setting.up"),
             route = null,
         )
     }
 
     if (enabledSources.any { it.state == SourceState.PAUSED }) {
         return PhoneIntakeNotificationModel(
-            stateWord = "paused",
+            stateWord = phoneText("android.source.paused"),
             route = null,
         )
     }
 
     if (fgsLive && enabledSources.all { it.state == SourceState.ON }) {
         return PhoneIntakeNotificationModel(
-            stateWord = "on",
+            stateWord = phoneText("android.push.on"),
             route = null,
         )
     }
 
     return PhoneIntakeNotificationModel(
-        stateWord = "setting up",
+        stateWord = phoneText("android.push.setting.up"),
         route = null,
     )
 }

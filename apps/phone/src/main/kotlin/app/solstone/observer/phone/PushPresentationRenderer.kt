@@ -52,24 +52,11 @@ class PushPresentationRenderer(
         val configuration = context.resources.configuration
         val localesList = configuration.locales
 
-        var effectiveTag: String? = null
-        for (i in 0 until localesList.size()) {
-            val deviceLocale = localesList[i]
-            for (tag in catalog.locales) {
-                val catLocale = Locale.forLanguageTag(tag)
-                if (deviceLocale.language == catLocale.language && deviceLocale.country == catLocale.country) {
-                    effectiveTag = tag
-                    break
-                }
-            }
-            if (effectiveTag != null) break
-        }
-
-        val finalTag = effectiveTag ?: catalog.sourceLocale
+        val finalTag = context.getString(R.string.push_catalog_locale)
         val targetLocale = Locale.forLanguageTag(finalTag)
         val primary = if (localesList.isEmpty) null else localesList[0]
 
-        return if (primary != null && primary.language == targetLocale.language && primary.country == targetLocale.country) {
+        return if (primary != null && primary == targetLocale) {
             context.resources
         } else {
             val newConfig = Configuration(configuration)

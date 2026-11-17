@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -151,37 +153,37 @@ val LocalPhoneImport = compositionLocalOf { PhoneImportBinding() }
 
 internal fun refusalText(reason: IntakeRefusalReason): String =
     when (reason) {
-        IntakeRefusalReason.UNSUPPORTED_TYPE -> "your journal can't take this kind of file"
-        IntakeRefusalReason.CANNOT_CONVERT -> "this device can't convert this photo"
-        IntakeRefusalReason.NOT_SHAREABLE -> "this couldn't be read"
-        IntakeRefusalReason.UNREADABLE -> "this couldn't be read. add it again"
-        IntakeRefusalReason.TOO_LARGE -> "it's larger than your journal takes"
-        IntakeRefusalReason.NO_SPACE -> "there isn't enough room on this device"
+        IntakeRefusalReason.UNSUPPORTED_TYPE -> phoneText("android.import.journal.can.t.take.kind")
+        IntakeRefusalReason.CANNOT_CONVERT -> phoneText("android.import.device.can.t.convert.photo")
+        IntakeRefusalReason.NOT_SHAREABLE -> phoneText("android.import.couldn.t.be.read")
+        IntakeRefusalReason.UNREADABLE -> phoneText("android.import.couldn.t.be.read.add")
+        IntakeRefusalReason.TOO_LARGE -> phoneText("android.import.s.larger.than.journal.takes")
+        IntakeRefusalReason.NO_SPACE -> phoneText("android.import.there.isn.t.enough.room")
     }
 
 internal fun recentText(state: ImportRecentState): String =
     when (state) {
-        ImportRecentState.UNPAIRED -> "imports wait on this device until you connect a journal."
-        ImportRecentState.AWAITING_CONFIRMATION -> "imports wait until you confirm your journal's mark."
-        ImportRecentState.PAIRING_REFUSED -> "your journal stopped accepting this device. imports wait here until you pair again."
-        ImportRecentState.PAIRING_INCOMPLETE -> "this device is not paired with your journal. imports wait here until you connect a journal."
-        ImportRecentState.CHECKING_JOURNAL -> "checking your journal."
-        ImportRecentState.JOURNAL_TOO_OLD -> "imports wait until your journal is updated."
-        ImportRecentState.SENDING -> "sending to your journal."
-        ImportRecentState.WAITING -> "waiting to go to your journal."
-        ImportRecentState.NEEDS_YOU -> "not going to your journal right now. each one says why."
-        ImportRecentState.DELIVERED -> "in your journal."
-        ImportRecentState.NOTHING_YET -> "nothing yet."
+        ImportRecentState.UNPAIRED -> phoneText("android.import.imports.wait.device.until.connect")
+        ImportRecentState.AWAITING_CONFIRMATION -> phoneText("android.import.imports.wait.until.confirm.journal")
+        ImportRecentState.PAIRING_REFUSED -> phoneText("android.import.journal.stopped.accepting.device.imports")
+        ImportRecentState.PAIRING_INCOMPLETE -> phoneText("android.import.device.not.paired.with.journal")
+        ImportRecentState.CHECKING_JOURNAL -> phoneText("android.import.checking.journal")
+        ImportRecentState.JOURNAL_TOO_OLD -> phoneText("android.import.imports.wait.until.journal.updated")
+        ImportRecentState.SENDING -> phoneText("android.import.sending.journal")
+        ImportRecentState.WAITING -> phoneText("android.import.waiting.go.journal")
+        ImportRecentState.NEEDS_YOU -> phoneText("android.import.notgoingjournalright")
+        ImportRecentState.DELIVERED -> phoneText("android.import.journal")
+        ImportRecentState.NOTHING_YET -> phoneText("android.import.nothing.yet")
     }
 
 internal fun intakeText(line: PhoneIntakeLine): String =
     when (line) {
-        is PhoneIntakeLine.Copying -> "saving on this device: ${line.done + 1} of ${line.total}"
-        is PhoneIntakeLine.Finished -> if (line.accepted == 0) "nothing was saved on this device." else "saved on this device: ${line.accepted}"
+        is PhoneIntakeLine.Copying -> phoneText("android.import.saving.device.line.done.n1", "done" to (line.done + 1), "total" to (line.total))
+        is PhoneIntakeLine.Finished -> if (line.accepted == 0) phoneText("android.import.nothingwassaved") else phoneText("android.phone.import.saved", "count" to (line.accepted))
     }
 
 /** The fallback when the journal refused an item without a sentence of its own. */
-internal const val IMPORT_REFUSED_FALLBACK = "your journal couldn't accept this."
+internal val IMPORT_REFUSED_FALLBACK get() = phoneText("android.import.journal.couldn.t.accept")
 
 /** `import`: what it adds, the two pickers, the recent line, and what is still on this device. */
 @Composable
@@ -195,15 +197,15 @@ fun PhoneImportPane(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Import) },
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
-        PaneNote("adds PDFs, audio and text you choose here, and the photos and files you send from the share sheet.")
+        PaneNote(phoneText("android.import.adds.pdfs.audio.images.text"))
         PhoneIntakeFactRows("import")
         PaneCard {
-            PaneNavRow(label = "files", onClick = actions.onPickFiles, modifier = Modifier.testTag("importRow-files"))
+            PaneNavRow(label = phoneText("android.import.files"), onClick = actions.onPickFiles, modifier = Modifier.testTag("importRow-files"))
         }
         val screenshotsOn = LocalPhoneScreenshots.current.state.enabled
         PaneNavRow(
-            label = "screenshots come in on their own.",
-            value = if (screenshotsOn) "open screenshots" else "set up screenshots",
+            label = phoneText("android.import.screenshotscometheirown"),
+            value = if (screenshotsOn) phoneText("android.import.openscreenshots") else phoneText("android.import.setupscreenshots"),
             onClick = actions.onOpenScreenshots,
             modifier = Modifier.testTag("importRow-screenshots"),
         )
@@ -221,15 +223,15 @@ fun PhoneImportPane(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        "something you were adding didn't finish saving. add it again.",
+                        phoneText("android.import.something.were.adding.didn.t"),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = actions.onDismissInterrupted, modifier = Modifier.testTag("importInterrupted-dismiss")) { Text("ok") }
+                    TextButton(onClick = actions.onDismissInterrupted, modifier = Modifier.testTag("importInterrupted-dismiss")) { Text(phoneText("android.import.ok")) }
                 }
             }
         }
-        PaneSectionTitle("recent")
+        PaneSectionTitle(phoneText("android.import.recent"))
         PaneCard {
             Text(
                 recentText(state.recent),
@@ -244,7 +246,7 @@ fun PhoneImportPane(
             )
         }
         if (state.rows.isNotEmpty()) {
-            PaneSectionTitle("on this device")
+            PaneSectionTitle(phoneText("android.import.device"))
             PaneCard {
                 state.rows.forEachIndexed { index, row ->
                     if (index > 0) PaneRowDivider()
@@ -256,13 +258,13 @@ fun PhoneImportPane(
     confirmingRemove?.let { row ->
         AlertDialog(
             onDismissRequest = { confirmingRemove = null },
-            title = { Text("remove ${row.name}?") },
+            title = { Text(phoneText("android.import.remove.row.name" , "name" to (row.name))) },
             text = {
                 Text(
                     when {
-                        row.kind == ImportRowKind.MISSING_COPY -> "the copy is already gone, so this only clears it from here."
-                        row.savedAtJournal -> "this removes the copy on this device. your journal may still bring in the copy it already has."
-                        else -> "this removes the copy on this device, so it won't reach your journal."
+                        row.kind == ImportRowKind.MISSING_COPY -> phoneText("android.import.copy.already.gone.so.only")
+                        row.savedAtJournal -> phoneText("android.import.removes.copy.device.journal.may")
+                        else -> phoneText("android.import.removes.copy.device.so.won")
                     },
                 )
             },
@@ -273,10 +275,10 @@ fun PhoneImportPane(
                         actions.onRemove(row.id)
                     },
                     modifier = Modifier.testTag("importRemove-confirm"),
-                ) { Text("remove") }
+                ) { Text(phoneText("android.import.remove")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingRemove = null }, modifier = Modifier.testTag("importRemove-cancel")) { Text("cancel") }
+                TextButton(onClick = { confirmingRemove = null }, modifier = Modifier.testTag("importRemove-cancel")) { Text(phoneText("android.phone.cancel")) }
             },
         )
     }
@@ -296,7 +298,7 @@ private fun IntakeResult(line: PhoneIntakeLine, modifier: Modifier = Modifier) {
 private fun RefusalLines(refused: List<IntakeRefusalLine>) {
     refused.forEach { line ->
         Text(
-            "${line.label}: ${refusalText(line.reason)}",
+            phoneText("android.import.line.label.refusaltext.line.reason" , "label" to (line.label), "reason" to (refusalText(line.reason))),
             style = MaterialTheme.typography.bodySmall,
             color = shellSecondaryInk,
         )
@@ -306,10 +308,10 @@ private fun RefusalLines(refused: List<IntakeRefusalLine>) {
 @Composable
 private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAskRemove: (PhoneImportRow) -> Unit) {
     val subLine = when (row.kind) {
-        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> "waiting"
-        ImportRowKind.SENDING -> "sending"
+        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> phoneText("android.import.waiting")
+        ImportRowKind.SENDING -> phoneText("android.import.sending")
         ImportRowKind.REFUSED -> row.error ?: IMPORT_REFUSED_FALLBACK
-        ImportRowKind.MISSING_COPY -> "the copy on this device is missing"
+        ImportRowKind.MISSING_COPY -> phoneText("android.import.copy.device.missing")
     }
     Column(
         Modifier
@@ -333,15 +335,15 @@ private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAs
                         onClick = { actions.onRetry(row.id) },
                         modifier = Modifier
                             .testTag("importItem-${row.id}-retry")
-                            .semantics { contentDescription = "try now, ${row.name}" },
-                    ) { Text("try now") }
+                            .semantics { contentDescription = phoneText("android.import.try.now.row.name" , "name" to (row.name)) },
+                    ) { Text(phoneText("android.phone.try.now")) }
                 }
                 TextButton(
                     onClick = { onAskRemove(row) },
                     modifier = Modifier
                         .testTag("importItem-${row.id}-remove")
-                        .semantics { contentDescription = "remove ${row.name}" },
-                ) { Text("remove") }
+                        .semantics { contentDescription = phoneText("android.import.remove.row.name.n2" , "name" to (row.name)) },
+                ) { Text(phoneText("android.import.remove")) }
             }
         }
     }
@@ -393,7 +395,7 @@ fun PhoneShareSheet(
     ) {
         when (state) {
             is ShareSheetState.Review -> {
-                Text("add to your journal?", style = MaterialTheme.typography.titleMedium)
+                Text(phoneText("android.import.add.journal"), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(12.dp))
                 Column(
                     Modifier
@@ -420,7 +422,7 @@ fun PhoneShareSheet(
                     }
                     if (state.items.size > SHARE_SHEET_LISTED) {
                         Text(
-                            "and ${state.items.size - SHARE_SHEET_LISTED} more",
+                            phoneText("android.import.state.items.size.share.sheet", "count" to (state.items.size - SHARE_SHEET_LISTED)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = shellSecondaryInk,
                             modifier = Modifier.testTag("shareSheet-more"),
@@ -437,16 +439,16 @@ fun PhoneShareSheet(
                     }
                     if (state.textDropped) {
                         Spacer(Modifier.height(8.dp))
-                        Text("text sent along with these isn't added.", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+                        Text(phoneText("android.import.text.sent.along.with.these"), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     if (state.addable) {
-                        TextButton(onClick = onCancel, modifier = Modifier.testTag("shareSheet-cancel")) { Text("cancel") }
-                        TextButton(onClick = onAdd, modifier = Modifier.testTag("shareSheet-add")) { Text("add to your journal") }
+                        TextButton(onClick = onCancel, modifier = Modifier.testTag("shareSheet-cancel")) { Text(phoneText("android.phone.cancel")) }
+                        TextButton(onClick = onAdd, modifier = Modifier.testTag("shareSheet-add")) { Text(phoneText("android.import.add.journal.n2")) }
                     } else {
-                        TextButton(onClick = onCancel, modifier = Modifier.testTag("shareSheet-close")) { Text("close") }
+                        TextButton(onClick = onCancel, modifier = Modifier.testTag("shareSheet-close")) { Text(phoneText("android.journal.close")) }
                     }
                 }
             }
@@ -457,10 +459,10 @@ fun PhoneShareSheet(
                     modifier = Modifier.testTag("shareSheet-copying").semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("it keeps saving if you close this.", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+                Text(phoneText("android.import.keeps.saving.if.close"), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDone, modifier = Modifier.testTag("shareSheet-close")) { Text("close") }
+                    TextButton(onClick = onDone, modifier = Modifier.testTag("shareSheet-close")) { Text(phoneText("android.journal.close")) }
                 }
             }
             is ShareSheetState.Done -> {
@@ -474,7 +476,7 @@ fun PhoneShareSheet(
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDone, modifier = Modifier.testTag("shareSheet-close")) { Text("done") }
+                    TextButton(onClick = onDone, modifier = Modifier.testTag("shareSheet-close")) { Text(phoneText("android.import.done")) }
                 }
             }
         }

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.about.licenses.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "a86aeb9991a9a5fe102baee738bfc2a68e2254109f536dbac73cdfe45b437f50",
+  "risk": "routine",
+  "auto_merge": true
+}

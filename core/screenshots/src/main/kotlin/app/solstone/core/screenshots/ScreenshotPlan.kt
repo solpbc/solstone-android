@@ -3,6 +3,8 @@
 
 package app.solstone.core.screenshots
 
+import app.solstone.core.i18n.phoneText
+
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -41,14 +43,13 @@ fun alreadyWithJournal(rows: List<ReceivedHash>, sha256: String): Boolean =
     rows.any { it.sha256 == sha256 }
 
 fun confirmLabel(count: Int): String = when (count) {
-    0 -> "start from today"
-    1 -> "bring in 1 screenshot"
-    else -> "bring in $count screenshots"
+    0 -> phoneText("android.screenshots.startfromtoday")
+    else -> phoneText("android.screenshots.bringin", "count" to (count))
 }
 
 /** `nothing from before today` names the start, even when today's folder has screenshots. */
 fun confirmLabel(choice: HistoryChoice, count: Int): String =
-    if (choice == HistoryChoice.NOTHING_BEFORE_TODAY || count == 0) "start from today" else confirmLabel(count)
+    if (choice == HistoryChoice.NOTHING_BEFORE_TODAY || count == 0) phoneText("android.screenshots.startfromtoday") else confirmLabel(count)
 
 enum class ShotFate { SKIP, COUNT, SEND, ALREADY, REFUSED_SIZE, REFUSED_TYPE, UNREADABLE }
 

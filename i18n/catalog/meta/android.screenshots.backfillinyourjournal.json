@@ -1,0 +1,31 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "done",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    },
+    {
+      "name": "total",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 114,
+  "source_revision": "9b6dab0d51883a77fd0a05c59bbc6fc02537e140c4959fc0b10c2b0b9ea9a6cc",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "done",
+    "type": "cardinal"
+  }
+}

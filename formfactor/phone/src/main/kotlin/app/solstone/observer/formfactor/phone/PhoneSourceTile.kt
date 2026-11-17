@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.width
 
 import androidx.compose.foundation.layout.Spacer
@@ -103,14 +105,14 @@ fun PhoneSourceTile(
                 // the release gate had to reach a source through `add more` instead of
                 // off the deck.
                 contentDescription = label
-                stateDescription = if (overrideLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) "$stateCopy. $subLine" else sourceStateDescription(status, paired)
+                stateDescription = if (overrideLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) phoneText("android.source.statecopysubline" , "statecopy" to (stateCopy), "subline" to (subLine)) else sourceStateDescription(status, paired)
                 role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {
                     add(CustomAccessibilityAction(label) { onOpen(); true })
                     if (earnsSwitch) {
                         add(
-                            CustomAccessibilityAction(if (wishOn) "off" else "on") {
+                            CustomAccessibilityAction(if (wishOn) phoneText("android.push.off") else phoneText("android.push.on")) {
                                 onToggle(if (wishOn) SourceWish.Off else SourceWish.On)
                                 true
                             },

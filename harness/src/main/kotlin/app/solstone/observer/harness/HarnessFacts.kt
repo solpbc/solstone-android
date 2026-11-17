@@ -3,6 +3,8 @@
 
 package app.solstone.observer.harness
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.diagnostics.SourceFacts
 import app.solstone.core.diagnostics.pairingFactOf
 import app.solstone.core.diagnostics.reduce
@@ -72,16 +74,16 @@ internal fun sourceFactsFor(inputs: HarnessFactInputs): SourceFacts {
 // ⛔ The reason half is NOT written here. It is [reasonDiagnosis]'s, and the local copy this
 // function used to carry is exactly how `open sol to resume observing` outlived the product name.
 fun displayFor(state: SourceState, reason: ReasonCode): String =
-    reasonDiagnosis(reason)?.let { "${state.label()}: $it" } ?: state.label()
+    reasonDiagnosis(reason)?.let { phoneText("android.source.state.label" , "label" to (state.label()), "it" to (it)) } ?: state.label()
 
 // The state words are locked lowercase cross-platform; ⛔ a surface does not get to Title-Case
 // them because it happens to be a diagnostic one.
 private fun SourceState.label(): String =
     when (this) {
-        SourceState.OFF -> "off"
-        SourceState.READY_TO_SET_UP -> "ready to set up"
-        SourceState.SETTING_UP -> "setting up"
-        SourceState.ON -> "on"
-        SourceState.PAUSED -> "paused"
-        SourceState.NEEDS_ATTENTION -> "needs attention"
+        SourceState.OFF -> phoneText("android.push.off")
+        SourceState.READY_TO_SET_UP -> phoneText("android.source.ready.set.up")
+        SourceState.SETTING_UP -> phoneText("android.push.setting.up")
+        SourceState.ON -> phoneText("android.push.on")
+        SourceState.PAUSED -> phoneText("android.source.paused")
+        SourceState.NEEDS_ATTENTION -> phoneText("android.push.needs.attention")
     }

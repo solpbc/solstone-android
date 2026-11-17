@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.app.greetingmorning.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "c180bf9673aed66e7278450e60e3d47cc8ee14de6b937edcdcef493f62d0f207",
+  "risk": "routine",
+  "auto_merge": true
+}

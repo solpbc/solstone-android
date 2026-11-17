@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.liveactivity.waitingtosync.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "25bc12192ca1ae39271b247f9043a04e5b97418836564757d82c5d2f4dcf587c",
+  "risk": "routine",
+  "auto_merge": true
+}

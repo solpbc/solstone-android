@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -148,13 +150,13 @@ fun PhoneStatusPane(
                         onPairAgain = onPairAgain,
                     )
                 } else {
-                    PaneLead("not paired")
+                    PaneLead(phoneText("android.source.not.paired"))
                     Spacer(Modifier.height(4.dp))
                     TextButton(
                         onClick = onConnectJournal,
                         modifier = Modifier.testTag("statusPaneConnect"),
                     ) {
-                        Text("connect a journal")
+                        Text(phoneText("android.shelf.connect.journal"))
                     }
                     PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
                     PhoneIntakeStatusRows(onOpenSource, onOpenImport)
@@ -181,14 +183,14 @@ internal fun PhonePairedStatusContent(
     PhoneStatusWaitingRows(waiting, onOpenSource, onOpenImport)
     PhoneIntakeStatusRows(onOpenSource, onOpenImport)
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-    PaneFactRow(label = "journal version", value = journalFacts.version)
-    PaneFactRow(label = "how your phone connects", value = journalFacts.location)
+    PaneFactRow(label = phoneText("android.status.journal.version"), value = journalFacts.version)
+    PaneFactRow(label = phoneText("android.status.how.phone.connects"), value = journalFacts.location)
     PhoneUnknownJournalRows(model.unknownJournals, onOpenUnknownJournal)
     TextButton(
         onClick = onOpenTechnicalDetails,
         modifier = Modifier.testTag("statusTechnicalDetails"),
     ) {
-        Text("technical details")
+        Text(phoneText("android.migration.technical.details"))
     }
 }
 
@@ -212,7 +214,7 @@ private fun PhonePairedStatusSummary(
             onClick = onConfirmMark,
             modifier = Modifier.testTag("statusConfirmMark"),
         ) {
-            Text("confirm the mark")
+            Text(phoneText("android.status.confirm.mark"))
         }
     }
     if (copy.pairAgain) {
@@ -247,7 +249,7 @@ private fun PhoneStatusWaitingRows(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(text = "import", style = MaterialTheme.typography.bodyLarge)
+                Text(text = phoneText("android.setup.import"), style = MaterialTheme.typography.bodyLarge)
                 Text(text = recentText(imports.recent), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
             }
             // A chevron only where the row really opens the import pane.

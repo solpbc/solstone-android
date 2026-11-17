@@ -1,0 +1,29 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "warningvault",
+      "type": "string"
+    },
+    {
+      "name": "warningdevice",
+      "type": "string"
+    },
+    {
+      "name": "date",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 117,
+  "source_revision": "d7747cc0508df0c6dfa6361d902870d632652ba71230983e275d54caa5cac64e",
+  "risk": "routine",
+  "auto_merge": true
+}

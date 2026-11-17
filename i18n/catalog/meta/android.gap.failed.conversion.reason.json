@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, at the head of the gap technical details",
+  "context": "the solstone app to the owner, at the head of the gap technical details",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "reason",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "b5aee35ba8a7b8eff7e791eb7830d70b94913abbc6083778970245b87c2f7ba6",
+  "risk": "routine",
+  "auto_merge": true
+}

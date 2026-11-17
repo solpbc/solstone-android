@@ -1,0 +1,33 @@
+{
+  "description": "Phone display text.",
+  "context": "Native phone presentation; preserves source English.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "named",
+      "type": "string"
+    },
+    {
+      "name": "built",
+      "type": "string"
+    },
+    {
+      "name": "system",
+      "type": "string"
+    },
+    {
+      "name": "architecture",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 500,
+  "source_revision": "9ca5d230dbaab83c7e938fa91c8dde2e8744c85132a206046df3bfda101b5dd4",
+  "risk": "routine",
+  "auto_merge": true
+}

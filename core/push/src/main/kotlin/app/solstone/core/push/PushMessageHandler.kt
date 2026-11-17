@@ -3,6 +3,8 @@
 
 package app.solstone.core.push
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.PushKeyAccess
 import java.security.SecureRandom
@@ -33,8 +35,8 @@ class PushMessageHandler(
     private val present: (title: String, body: String, presentation: Any?) -> Pair<String, String> = { title, body, _ -> title to body },
 ) {
     companion object {
-        const val FALLBACK_TITLE = "solstone"
-        const val FALLBACK_BODY = "you have a new notification."
+        val FALLBACK_TITLE get() = phoneText("android.push.title")
+        val FALLBACK_BODY get() = phoneText("android.push.fallbackbody")
     }
 
     fun onMessage(content: ByteArray, decrypted: Boolean) {

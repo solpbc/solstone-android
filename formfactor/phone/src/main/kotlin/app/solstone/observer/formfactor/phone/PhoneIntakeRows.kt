@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,11 +45,11 @@ internal fun PhoneIntakeFactRows(sourceId: String) {
     val reading = LocalPhoneIntake.current.bySource[sourceId]
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     val zone = ZoneId.systemDefault()
-    val locale = Locale.getDefault()
+    val locale = app.solstone.core.i18n.phoneLocale()
     val system = LocalPhoneDistanceSystem.current
     val kind = intakeKind(sourceId)
     PaneFactRow(
-        label = "so far",
+        label = phoneText("android.intake.sofar"),
         value = formatSoFar(reading, kind, system, now, zone, locale),
         modifier = Modifier.testTag("intakeSoFar-$sourceId"),
     )
@@ -55,7 +57,7 @@ internal fun PhoneIntakeFactRows(sourceId: String) {
     if (last != null) {
         PaneRowDivider()
         PaneFactRow(
-            label = "last taken in",
+            label = phoneText("android.intake.lasttaken"),
             value = last,
             modifier = Modifier.testTag("intakeLast-$sourceId"),
         )
@@ -72,13 +74,13 @@ internal fun PhoneIntakeStatusRows(
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     Row(Modifier.fillMaxWidth().padding(start = 28.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(
-            text = "so far",
+            text = phoneText("android.intake.sofar"),
             style = MaterialTheme.typography.bodySmall,
             color = shellSecondaryInk,
             modifier = Modifier.weight(1f).testTag("intakeHeading-soFar"),
         )
         Text(
-            text = "last taken in",
+            text = phoneText("android.intake.lasttaken"),
             style = MaterialTheme.typography.bodySmall,
             color = shellSecondaryInk,
             modifier = Modifier.weight(1f).testTag("intakeHeading-last"),
@@ -99,7 +101,7 @@ private fun PhoneIntakeStatusRow(sourceId: String, onOpen: () -> Unit) {
     val reading = LocalPhoneIntake.current.bySource[sourceId]
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     val zone = ZoneId.systemDefault()
-    val locale = Locale.getDefault()
+    val locale = app.solstone.core.i18n.phoneLocale()
     val system = LocalPhoneDistanceSystem.current
     val kind = intakeKind(sourceId)
     val total = formatStatusTotal(reading, kind, system, locale)
@@ -124,7 +126,7 @@ private fun PhoneIntakeStatusRow(sourceId: String, onOpen: () -> Unit) {
             Text(text = sourceLabel(sourceId), style = MaterialTheme.typography.bodyLarge)
             if (total == null || last == null) {
                 Text(
-                    text = "nothing yet",
+                    text = phoneText("android.intake.nothingyet"),
                     style = MaterialTheme.typography.bodySmall,
                     color = shellSecondaryInk,
                     modifier = Modifier.testTag("intakeEmpty-$sourceId"),

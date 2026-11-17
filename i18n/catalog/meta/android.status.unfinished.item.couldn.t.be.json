@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the status line",
+  "context": "the solstone app to the owner, on the status line",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "4606d14c65fc453dc68a3643faa5a63a9a92747c61d55fd49545a1d0d69443a7",
+  "risk": "routine",
+  "auto_merge": true
+}

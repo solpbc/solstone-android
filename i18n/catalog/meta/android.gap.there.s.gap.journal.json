@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the gap notice",
+  "context": "the solstone app to the owner, on the gap notice Exact iPhone English twin: ios.app.journalgapheadline.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "544d30ebd5402ede1101e4c6b81110689901797a7b81d692c7ac883ed7ddaacd",
+  "risk": "routine",
+  "auto_merge": true
+}

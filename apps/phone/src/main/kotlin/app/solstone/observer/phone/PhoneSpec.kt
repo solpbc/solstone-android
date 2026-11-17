@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.Manifest
 import app.solstone.core.sources.PHONE_STREAM
 import app.solstone.observer.formfactor.phone.createPhonePairingMarkView
@@ -29,7 +31,8 @@ val PHONE_DECLARED_CAPTURE_FOREGROUND_TYPES = setOf("microphone", "location", "c
 
 val phoneSpec = FormFactorSpec(
     stream = PHONE_STREAM,
-    deviceLabel = "solstone phone",
+    deviceLabel = phoneText("android.phone.solstone.phone"),
+    currentDeviceLabel = { phoneText("android.phone.solstone.phone") },
     handlesPairLinks = true,
     qrBackend = QrBackend.Camera2,
     previewHeightPx = 480,

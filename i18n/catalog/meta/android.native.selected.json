@@ -1,0 +1,16 @@
+{
+  "description": "Existing AndroidX accessibility label: selected",
+  "context": "Preserves the pinned AndroidX default English. Native resource alias used by the current phone UI; verify this resource name when upgrading Compose.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "588a85dc70f240551206ebae9bb2a96efc077a313b5cad1a2d15cf572b0a1ed0",
+  "risk": "routine",
+  "auto_merge": true
+}

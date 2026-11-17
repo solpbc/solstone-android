@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.model.SourceState
 
 import androidx.compose.foundation.layout.Row
@@ -25,40 +27,40 @@ import app.solstone.core.screenshots.confirmLabel
 import java.time.ZoneId
 
 /** Locked owner copy. The id is the row in the screenshots copy file. */
-private const val A1 = "while this is on, the solstone app takes in the screenshots you take, and your journal keeps each one at the minute you took it."
-private const val A2 = "the solstone app reads only the folder you choose."
-private const val A3 = "choose the Screenshots folder"
-private const val A4 = "on the next screen, use this folder and allow access."
-private const val A6 = "the solstone app looks for new screenshots when you open it, so one can take a while to reach your journal."
-private const val A6B = "the solstone app looks for new screenshots when you open it and from time to time in the background, so one can take a while to reach your journal."
-private const val A8_ACTION = "choose the folder"
-private const val A9 = "this screenshot is too big to come in, so it stays in the folder."
-private const val A10 = "this screenshot couldn't be read."
-private const val A11 = "this screenshot couldn't come in, so it stays in the folder."
-private const val S7 = "from before today"
-private const val S9 = "you'll see how many screenshots there are before any come in."
-private const val S11 = "choose how far back to start, then bring them in."
-private const val S12 = "couldn't count your screenshots."
-private const val S14 = "a screenshot already in your journal stays there if you delete it from the folder."
-private const val S15 = "what's already in your journal stays when you pause or turn this off."
-private const val S16 = "you paused this. screenshots you take while it's paused don't come in."
-private const val S17 = "screenshots already in your journal aren't brought in again."
-private const val S21 = "waiting for a journal update. your screenshots wait on this device."
-private const val S23 = "only what the solstone app can tell is a screenshot comes in."
+private val A1 get() = phoneText("android.screenshots.whilesolstoneapptakes")
+private val A2 get() = phoneText("android.screenshots.solstoneappreadsonly")
+private val A3 get() = phoneText("android.screenshots.choosefolder")
+private val A4 get() = phoneText("android.screenshots.allowaccess")
+private val A6 get() = phoneText("android.screenshots.solstoneapplooksnew")
+private val A6B get() = phoneText("android.screenshots.solstoneapplooksnew2")
+private val A8_ACTION get() = phoneText("android.screenshots.choosefolder2")
+private val A9 get() = phoneText("android.screenshots.screenshottoobigcome")
+private val A10 get() = phoneText("android.screenshots.screenshotcouldntread")
+private val A11 get() = phoneText("android.screenshots.screenshotcouldntcome")
+private val S7 get() = phoneText("android.screenshots.beforetoday")
+private val S9 get() = phoneText("android.screenshots.llseehowmany")
+private val S11 get() = phoneText("android.screenshots.choosehowfarback")
+private val S12 get() = phoneText("android.screenshots.couldntcountscreenshots")
+private val S14 get() = phoneText("android.screenshots.screenshotalreadyjournalstays")
+private val S15 get() = phoneText("android.screenshots.whatsalreadyjournal")
+private val S16 get() = phoneText("android.screenshots.pausedscreenshotstakewhile")
+private val S17 get() = phoneText("android.screenshots.screenshotsalreadyjournalaren")
+private val S21 get() = phoneText("android.screenshots.waitingjournalupdatescreenshots")
+private val S23 get() = phoneText("android.screenshots.onlywhatsolstoneapp")
 
-private val historyChoices = listOf(
-    HistoryChoice.LAST_30_DAYS to "the last 30 days",
-    HistoryChoice.LAST_6_MONTHS to "the last 6 months",
-    HistoryChoice.LAST_YEAR to "the last year",
-    HistoryChoice.ALL to "all of it",
-    HistoryChoice.NOTHING_BEFORE_TODAY to "nothing from before today",
+private val historyChoices get() = listOf(
+    HistoryChoice.LAST_30_DAYS to phoneText("android.screenshots.last30days"),
+    HistoryChoice.LAST_6_MONTHS to phoneText("android.screenshots.last6months"),
+    HistoryChoice.LAST_YEAR to phoneText("android.screenshots.lastyear"),
+    HistoryChoice.ALL to phoneText("android.screenshots.all"),
+    HistoryChoice.NOTHING_BEFORE_TODAY to phoneText("android.screenshots.nothingbeforetoday"),
 )
 
 data class PhoneScreenshotsState(
     val accessGranted: Boolean = false,
     val accessLost: Boolean = false,
-    val folderName: String = "Screenshots",
-    val folderPath: String = "Screenshots",
+    val folderName: String = phoneText("android.screenshots.foldername"),
+    val folderPath: String = phoneText("android.screenshots.foldername2"),
     val enabled: Boolean = false,
     val paused: Boolean = false,
     val sourcePaused: Boolean = false,
@@ -116,12 +118,12 @@ fun screenshotsTileLine(state: PhoneScreenshotsState, paired: Boolean): Screensh
 
 fun screenshotsSourceSubLine(state: PhoneScreenshotsState, paired: Boolean): String? =
     when (screenshotsTileLine(state, paired)) {
-        ScreenshotsTileLine.A7 -> "can't read the ${state.folderName} folder."
+        ScreenshotsTileLine.A7 -> phoneText("android.screenshots.cantreadfolder" , "foldername" to (state.folderName))
         ScreenshotsTileLine.S16 -> S16
-        ScreenshotsTileLine.S3 -> "the screenshots you take wait on this device until you connect a journal."
+        ScreenshotsTileLine.S3 -> phoneText("android.screenshots.screenshotstakewaitdevice")
         ScreenshotsTileLine.S21 -> S21
-        ScreenshotsTileLine.S5 -> "${state.backfillDone} of ${state.backfillTotal} in your journal"
-        ScreenshotsTileLine.S2 -> "adds the screenshots you take to your journal while this is on."
+        ScreenshotsTileLine.S5 -> phoneText("android.screenshots.backfillinyourjournal", "done" to state.backfillDone, "total" to state.backfillTotal)
+        ScreenshotsTileLine.S2 -> phoneText("android.screenshots.addsscreenshotstakejournal")
         ScreenshotsTileLine.S11 -> S11
         null -> null
     }
@@ -142,7 +144,7 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
             PaneNote(A4)
         }
         if (s.accessLost) {
-            PaneNote("the solstone app can't read the ${s.folderName} folder anymore. it may have moved. choose it again to keep screenshots coming in.")
+            PaneNote(phoneText("android.screenshots.cantreadanymore" , "foldername" to (s.folderName)))
             TextButton(onClick = binding.onChoose) { Text(A8_ACTION) }
         }
         if (s.accessGranted && !s.confirmed) {
@@ -166,9 +168,9 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
             if (s.reconfirm) PaneNote(S17)
             if (s.countFailed) {
                 PaneNote(S12)
-                TextButton(onClick = binding.onRetry) { Text("try again") }
+                TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
             }
-            val label = if (s.counting || s.previewCount == null) "checking…" else confirmLabel(s.history, s.previewCount)
+            val label = if (s.counting || s.previewCount == null) phoneText("android.shelf.checking") else confirmLabel(s.history, s.previewCount)
             TextButton(onClick = binding.onConfirm, enabled = !s.counting && s.previewCount != null) { Text(label) }
         }
         // Before the source is on no background check runs, so the page names only opening the app.
@@ -176,7 +178,7 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
         if (s.confirmed) {
             // The switch is the owner's on or off; a pause is its own control, as `off` and `paused` differ.
             PaneSwitchRow(
-                label = "screenshots",
+                label = phoneText("android.screenshots.screenshots"),
                 checked = s.enabled,
                 onCheckedChange = { on -> if (!on) binding.onOff() },
             )
@@ -186,24 +188,24 @@ internal fun PhoneScreenshotsPane(modifier: Modifier = Modifier, verdict: Source
             // Resume is offered only for this source's own pause: under a pause of the whole app it
             // could not bring screenshots back on its own.
             if (s.enabled && s.sourcePaused) {
-                TextButton(onClick = binding.onResume) { Text("resume") }
+                TextButton(onClick = binding.onResume) { Text(phoneText("android.screenshots.resume")) }
             } else if (s.enabled && !s.paused && !s.accessLost) {
-                TextButton(onClick = binding.onPause) { Text("pause") }
+                TextButton(onClick = binding.onPause) { Text(phoneText("android.screenshots.pause")) }
             }
             if (s.backfillTotal > 0 && s.backfillDone < s.backfillTotal) {
-                PaneNote("${s.backfillDone} of ${s.backfillTotal} screenshots in your journal")
+                PaneNote(phoneText("android.screenshots.backfillscreenshots", "done" to s.backfillDone, "total" to s.backfillTotal))
             }
             if (s.enabled && s.capability == false) PaneNote(S21)
         }
         if (s.refusedSize > 0) PaneNote(A9)
         if (s.refusedUnread > 0) {
             PaneNote(A10)
-            TextButton(onClick = binding.onRetry) { Text("try again") }
+            TextButton(onClick = binding.onRetry) { Text(phoneText("android.migration.try.again")) }
         }
         if (s.refusedJournal > 0) PaneNote(A11)
-        if (s.waiting > 0) PaneFactRow("waiting to go to your journal", s.waiting.toString())
-        s.lastChecked?.let { PaneFactRow("last checked", formatRelative(it, now, ZoneId.systemDefault())) }
-        if (s.accessGranted) PaneFactRow("folder", s.folderPath)
+        if (s.waiting > 0) PaneFactRow(phoneText("android.screenshots.waitinggojournal"), s.waiting.toString())
+        s.lastChecked?.let { PaneFactRow(phoneText("android.obsidian.lastchecked"), formatRelative(it, now, ZoneId.systemDefault())) }
+        if (s.accessGranted) PaneFactRow(phoneText("android.screenshots.folder"), s.folderPath)
         PaneNote(S14)
         PaneNote(S15)
         PaneNote(S23)

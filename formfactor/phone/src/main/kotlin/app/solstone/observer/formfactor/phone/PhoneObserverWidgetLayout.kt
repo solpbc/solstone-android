@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 /**
  * What the home-screen widget shows at the size it has: which of its facts survive, in what order.
  *
@@ -48,7 +50,7 @@ fun interface PhoneWidgetTextMeasure {
 
 /** The header: the source label and its state word, in the shape of the notification's `intake · on`. */
 fun phoneWidgetHeaderText(model: PhoneObserverWidgetModel, sourceLabel: String): String =
-    "$sourceLabel · ${model.stateWord}"
+    phoneText("android.widget.sourcelabel.model.stateword" , "sourcelabel" to (sourceLabel), "stateword" to (model.stateWord))
 
 /** Every fact the widget could show, in display order. */
 fun phoneWidgetCandidateLines(model: PhoneObserverWidgetModel, sourceLabel: String): List<PhoneWidgetLine> =

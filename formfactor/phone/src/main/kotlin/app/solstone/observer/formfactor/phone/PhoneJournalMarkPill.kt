@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,8 +63,8 @@ fun PhoneJournalMarkPill(
     // the sheet's own header and the page an owner compares it against.
     val wordPair: Pair<String, String> = when {
         mark != null && mark.words.size >= 2 -> mark.words[0] to mark.words[1]
-        isUnavailable -> "mark" to "unavailable"
-        else -> "your" to "journal"
+        isUnavailable -> phoneText("android.journalmark.fallbackmark") to phoneText("android.journalmark.fallbackunavailable")
+        else -> phoneText("android.journalmark.fallbackyour") to phoneText("android.journalmark.fallbackjournal")
     }
     val accessibleName = journalMarkSpokenForm(presentation)
     // ⚠ `onClick` is nullable because the journal sheet's title is this same unit and must not be

@@ -1,0 +1,13 @@
+{
+  "close_drawer": "android.native.close.drawer",
+  "navigation_menu": "android.native.navigation.menu",
+  "m3c_dialog": "android.native.m3c.dialog",
+  "close_sheet": "android.native.close.sheet",
+  "in_progress": "android.native.in.progress",
+  "switch_role": "android.native.switch.role",
+  "state_on": "android.native.state.on",
+  "state_off": "android.native.state.off",
+  "selected": "android.native.selected",
+  "not_selected": "android.native.not.selected",
+  "default_popup_window_title": "android.native.default.popup.window.title"
+}

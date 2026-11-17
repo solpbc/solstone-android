@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -74,13 +76,11 @@ import kotlin.math.roundToInt
 
 import app.solstone.core.push.validJournalOpenPath
 
-private const val INITIAL_FAILURE =
-    "couldn't reach your journal. keep the solstone app open and try again."
-private const val LOST_CONNECTION =
-    "lost the connection to your journal. keep the solstone app open and try again."
-private const val SAVE_FAILURE = "couldn't save that. try again."
-private const val FILE_SELECTION_UNAVAILABLE = "file selection isn't available in the app."
-private const val LINK_UNAVAILABLE = "that link isn't available in the app."
+private val INITIAL_FAILURE get() = phoneText("android.journal.couldn.t.reach.journal.keep")
+private val LOST_CONNECTION get() = phoneText("android.journal.lost.connection.journal.keep.solstone")
+private val SAVE_FAILURE get() = phoneText("android.journal.couldn.t.save.that.try")
+private val FILE_SELECTION_UNAVAILABLE get() = phoneText("android.journal.file.selection.isn.t.available")
+private val LINK_UNAVAILABLE get() = phoneText("android.journal.that.link.isn.t.available")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,7 +132,7 @@ internal fun JournalSheet(
             // the pill: `weight(1f, fill = false)` caps it at its share of the row, which squeezes
             // a long two-word mark rather than letting `close` move over.
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onClose) { Text("close") }
+            TextButton(onClick = onClose) { Text(phoneText("android.journal.close")) }
         }
         // The sheet asks for no window insets so its surface can paint under the
         // navigation bar, which means the journal itself has to stop above it. Without
@@ -235,7 +235,7 @@ private fun JournalBrowserPane(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(current.message)
-            Button(onClick = onRetry) { Text("try again") }
+            Button(onClick = onRetry) { Text(phoneText("android.migration.try.again")) }
         }
         is BrowserPaneState.Showing -> Box(Modifier.fillMaxSize()) {
             AndroidView(

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,32 +112,32 @@ internal fun PhoneShelfContent(
         )
         Spacer(Modifier.height(12.dp))
         PhoneShelfRow(
-            text = "your journal",
+            text = phoneText("android.source.journal"),
             rowTag = "shelfRow-yourJournal",
             textTag = "shelfRowText-yourJournal",
             onClick = { onNavigate(PhoneRoute.YourJournal) },
             modifier = Modifier.focusRequester(firstRowFocusRequester),
         )
         PhoneShelfRow(
-            text = "this device",
+            text = phoneText("android.source.device"),
             rowTag = "shelfRow-thisDevice",
             textTag = "shelfRowText-thisDevice",
             onClick = { onNavigate(PhoneRoute.ThisDevice) },
         )
         PhoneShelfRow(
-            text = "notifications",
+            text = phoneText("android.phone.notifications"),
             rowTag = "shelfRow-notifications",
             textTag = "shelfRowText-notifications",
             onClick = { onNavigate(PhoneRoute.Notifications) },
         )
         PhoneShelfRow(
-            text = "help",
+            text = phoneText("android.phone.help"),
             rowTag = "shelfRow-help",
             textTag = "shelfRowText-help",
             onClick = { onNavigate(PhoneRoute.Help) },
         )
         PhoneShelfRow(
-            text = "about solstone",
+            text = phoneText("android.source.about.solstone"),
             rowTag = "shelfRow-aboutSolstone",
             textTag = "shelfRowText-aboutSolstone",
             onClick = { onNavigate(PhoneRoute.AboutSolstone) },
@@ -168,13 +170,13 @@ internal fun PhoneShelfContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FooterLink(
-                text = "privacy",
+                text = phoneText("android.shelf.privacy"),
                 tag = "shelfPrivacy",
                 onClick = onOpenPrivacy,
             )
             Text("·", style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
             FooterLink(
-                text = "licenses",
+                text = phoneText("android.source.licenses"),
                 tag = "shelfLicenses",
                 onClick = onOpenLicences,
             )

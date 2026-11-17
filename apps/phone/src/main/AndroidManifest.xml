@@ -22,11 +22,13 @@
     <application
         android:name=".PhoneApplication"
         android:allowBackup="false"
+        android:supportsRtl="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="solstone"
+        android:label="@string/m616e64726f69642e707573682e7469746c65"
+        android:localeConfig="@xml/phone_locales_config"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/PhoneShellTheme">
         <activity
@@ -58,7 +60,7 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:label="add to your journal"
+            android:label="@string/m616e64726f69642e696d706f72742e6164642e6a6f75726e616c2e6e32"
             android:theme="@style/ShareToJournalTheme">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -122,6 +124,9 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/phone_observer_widget_info" />
+        </receiver>
+        <receiver android:name=".PhoneLocaleReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.LOCALE_CHANGED" /></intent-filter>
         </receiver>
     </application>
 </manifest>

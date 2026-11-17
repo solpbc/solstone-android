@@ -106,6 +106,7 @@ fun buildObserverFlavor(
         identityStore = stores.identityStore,
         sourceSnapshot = sourceSnapshot,
         deviceLabel = spec.deviceLabel,
+        currentDeviceLabel = spec.currentDeviceLabel,
         visibleCaptureAuthority = visibleCaptureAuthority,
         isUsableNetworkPresent = networkAvailability::isUsableNow,
         opportunisticSync = opportunisticSync,

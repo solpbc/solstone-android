@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.obsidian.waitingforajournalupdate.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "0b02ea266e2a858dcca1a3f6fd552faf86f4e990836f018bd8d7990a38c13568",
+  "risk": "routine",
+  "auto_merge": true
+}

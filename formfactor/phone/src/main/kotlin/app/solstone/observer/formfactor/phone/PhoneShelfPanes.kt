@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -79,13 +81,13 @@ fun PhoneYourJournalPane(
                 // `how your phone connects`; technical details already show `connection`
                 // and `check connection`.
                 PaneNavRow(
-                    label = "pair a new journal",
+                    label = phoneText("android.shelf.pair.new.journal"),
                     onClick = onConnectJournal,
                     modifier = Modifier.testTag("yourJournalPairNew"),
                 )
                 PaneRowDivider()
                 PaneNavRow(
-                    label = "forget this journal",
+                    label = phoneText("android.shelf.forget.journal"),
                     onClick = { confirmingForget = true },
                     modifier = Modifier.testTag("yourJournalForget"),
                 )
@@ -94,27 +96,27 @@ fun PhoneYourJournalPane(
         // ⚠ `mutationFailed` reaches this pane only when the owner pressed THIS pane's control.
         // Driving both panes off one flag named the other pane's action for something the owner
         // never pressed.
-        if (mutationFailed) PaneNote("couldn't forget this journal. try again.")
+        if (mutationFailed) PaneNote(phoneText("android.shelf.couldn.t.forget.journal.try"))
         // The subject register: the solstone app takes in what you share with it, and
         // the verb carries its object. `what this phone takes in` made the hardware the
         // perceiving subject and dropped the object -- never-list rule 1.
         if (paired) {
-            PaneNote("your journal holds what you share with the solstone app on this device.")
+            PaneNote(phoneText("android.shelf.journal.holds.what.share.with"))
         }
     }
     if (confirmingForget) {
         AlertDialog(
             onDismissRequest = { confirmingForget = false },
-            title = { Text("forget this journal?") },
+            title = { Text(phoneText("android.shelf.forget.journal.n2")) },
             text = { Text(FORGET_JOURNAL_BODY) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingForget = false
                     onForgetJournal()
-                }) { Text("forget") }
+                }) { Text(phoneText("android.shelf.forget")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingForget = false }) { Text("cancel") }
+                TextButton(onClick = { confirmingForget = false }) { Text(phoneText("android.phone.cancel")) }
             },
         )
     }
@@ -146,43 +148,43 @@ fun PhoneThisDevicePane(
         // carried. A pane's FIRST card needs no title; later sections do.
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
-            PaneFactRow(label = "name", value = deviceName())
+            PaneFactRow(label = phoneText("android.shelf.name"), value = deviceName())
             PaneRowDivider()
-            PaneFactRow(label = "android", value = Build.VERSION.RELEASE.orEmpty())
+            PaneFactRow(label = phoneText("android.about.android"), value = Build.VERSION.RELEASE.orEmpty())
             PaneRowDivider()
-            PaneFactRow(label = "solstone", value = version.ifBlank { "—" })
+            PaneFactRow(label = phoneText("android.push.title"), value = version.ifBlank { phoneText("android.ownerfacts.line") })
         }
         // The row, the dialog and the button in this pane all say `unpair`; the failure note
         // is the same action and says it too.
-        if (mutationFailed) PaneNote("couldn't unpair this device. try again.")
-        PaneSectionTitle("settings")
+        if (mutationFailed) PaneNote(phoneText("android.shelf.couldn.t.unpair.device.try"))
+        PaneSectionTitle(phoneText("android.shelf.settings"))
         PaneCard {
             PaneSwitchRow(
-                label = "haptics",
+                label = phoneText("android.shelf.haptics"),
                 checked = hapticsEnabled,
                 onCheckedChange = onHapticsChanged,
                 modifier = Modifier.testTag("thisDeviceHaptics"),
             )
             PaneRowDivider()
             PaneNavRow(
-                label = "app permissions",
-                subLine = "microphone, location and camera, in android settings",
+                label = phoneText("android.shelf.app.permissions"),
+                subLine = phoneText("android.shelf.microphone.location.camera.android.settings"),
                 onClick = { context.openAppSettings() },
                 modifier = Modifier.testTag("thisDevicePermissions"),
             )
             PaneRowDivider()
-            PaneNavRow(label = "technical details", onClick = onOpenTechnicalDetails)
+            PaneNavRow(label = phoneText("android.migration.technical.details"), onClick = onOpenTechnicalDetails)
             PaneRowDivider()
-            PaneNavRow(label = "event log", onClick = onOpenEventLog)
+            PaneNavRow(label = phoneText("android.shelf.event.log"), onClick = onOpenEventLog)
             PaneRowDivider()
-            PaneNavRow(label = "problem reports", onClick = onOpenProblemReports)
+            PaneNavRow(label = phoneText("android.shelf.problem.reports"), onClick = onOpenProblemReports)
             if (paired && deviceChoicePending) {
                 PaneRowDivider()
-                PaneNavRow(label = "device choice", value = "not answered", onClick = onDeviceChoice)
+                PaneNavRow(label = phoneText("android.shelf.device.choice"), value = phoneText("android.shelf.not.answered"), onClick = onDeviceChoice)
             }
             if (paired) {
                 PaneRowDivider()
-                PaneNavRow(label = "unpair", onClick = { confirmingUnpair = true })
+                PaneNavRow(label = phoneText("android.shelf.unpair"), onClick = { confirmingUnpair = true })
             }
         }
     }
@@ -191,16 +193,16 @@ fun PhoneThisDevicePane(
             onDismissRequest = { confirmingUnpair = false },
             // The row says `unpair`, so the question and the button say `unpair` too. Titling it
             // `forget this journal?` over an `unpair` button gave one action three words.
-            title = { Text("unpair this device?") },
+            title = { Text(phoneText("android.shelf.unpair.device")) },
             text = { Text(FORGET_JOURNAL_BODY) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingUnpair = false
                     onUnpair()
-                }) { Text("unpair") }
+                }) { Text(phoneText("android.shelf.unpair")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingUnpair = false }) { Text("cancel") }
+                TextButton(onClick = { confirmingUnpair = false }) { Text(phoneText("android.phone.cancel")) }
             },
         )
     }
@@ -212,28 +214,28 @@ fun PhoneTechnicalDetailsPane(
     onCheckConnection: () -> Unit,
     onOpenEventLog: () -> Unit,
     modifier: Modifier = Modifier,
-    gapDetails: String = "not run",
+    gapDetails: String = phoneText("android.gap.not.run"),
 ) {
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.TechnicalDetails) }) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
-            PaneFactRow(label = "connection", value = facts.connection)
+            PaneFactRow(label = phoneText("android.shelf.connection"), value = facts.connection)
             PaneRowDivider()
-            PaneFactRow(label = "intake", value = facts.intake)
+            PaneFactRow(label = phoneText("android.push.intake"), value = facts.intake)
             PaneRowDivider()
             // ⛔ No `reconnects` / `errors` rows. Nothing ever wrote them, so they read `—`
             // forever, which is a measurement claim with no measurement behind it. The event log
             // below carries the same ground with real events in it.
-            PaneFactRow(label = "fingerprint", value = facts.fingerprint)
+            PaneFactRow(label = phoneText("android.shelf.fingerprint"), value = facts.fingerprint)
             PaneRowDivider()
             // The saved addresses this phone tries before the relay.
-            PaneFactRow(label = "address", value = facts.address)
+            PaneFactRow(label = phoneText("android.shelf.address"), value = facts.address)
             PaneRowDivider()
-            PaneNavRow(label = "check connection", subLine = facts.check, onClick = onCheckConnection)
+            PaneNavRow(label = phoneText("android.shelf.check.connection"), subLine = facts.check, onClick = onCheckConnection)
             PaneRowDivider()
-            PaneNavRow(label = "event log", onClick = onOpenEventLog)
+            PaneNavRow(label = phoneText("android.shelf.event.log"), onClick = onOpenEventLog)
         }
-        PaneSectionTitle("gap record")
+        PaneSectionTitle(phoneText("android.shelf.gap.record"))
         PaneCard {
             Text(
                 text = gapDetails,
@@ -258,24 +260,24 @@ fun PhoneProblemReportsPane(
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             PaneNavRow(
-                label = "save a problem report",
+                label = phoneText("android.shelf.save.problem.report"),
                 onClick = onSaveReport,
                 modifier = Modifier.testTag("problemReportsSave"),
             )
             PaneRowDivider()
             PaneNavRow(
-                label = "report a problem",
-                subLine = "review and send on the support site",
+                label = phoneText("android.shelf.report.problem"),
+                subLine = phoneText("android.shelf.review.send.support.site"),
                 onClick = onReportProblem,
                 modifier = Modifier.testTag("problemReportsSend"),
             )
         }
         if (reports.isNotEmpty()) {
-            PaneSectionTitle("saved on this device")
+            PaneSectionTitle(phoneText("android.shelf.saved.device"))
             PaneCard {
                 reports.forEachIndexed { index, savedAt ->
                     if (index > 0) PaneRowDivider()
-                    PaneFactRow(label = "saved", value = savedAt)
+                    PaneFactRow(label = phoneText("android.shelf.saved"), value = savedAt)
                 }
             }
         }
@@ -284,9 +286,9 @@ fun PhoneProblemReportsPane(
 
 // `check connection` ran a real probe and said nothing about it: no spinner, no result, no
 // timestamp. These are what it says now.
-const val CHECK_CONNECTION_RUNNING = "checking…"
-const val CHECK_CONNECTION_REACHED = "reached your journal"
-const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
+val CHECK_CONNECTION_RUNNING get() = phoneText("android.shelf.checking")
+val CHECK_CONNECTION_REACHED get() = phoneText("android.shelf.reached.journal")
+val CHECK_CONNECTION_UNREACHED get() = phoneText("android.shelf.couldn.t.reach.journal")
 
 /**
  * The failed check, naming the address only when one was actually dialed. A check that stopped
@@ -294,7 +296,7 @@ const val CHECK_CONNECTION_UNREACHED = "couldn't reach your journal"
  * words.
  */
 fun checkConnectionUnreached(address: String?): String =
-    address?.takeIf(String::isNotBlank)?.let { "couldn't reach your journal at $it" } ?: CHECK_CONNECTION_UNREACHED
+    address?.takeIf(String::isNotBlank)?.let { phoneText("android.shelf.couldn.t.reach.journal.at" , "it" to (it)) } ?: CHECK_CONNECTION_UNREACHED
 
 /**
  * What a finished `check connection` says. A peer that is not the paired journal answering is not
@@ -321,16 +323,13 @@ private fun checkConnectionAnswer(probed: HarnessPlStatus?): String = when (prob
 // whichever journal this phone pairs to next. The confirm
 // names that third population — anything still waiting — and says it goes to the journal you
 // pair next.
-internal const val FORGET_JOURNAL_BODY =
-    "nothing more from this device goes into your journal. what already reached it stays " +
-        "there, and anything still waiting goes to the journal you pair next."
+internal val FORGET_JOURNAL_BODY get() = phoneText("android.shelf.nothing.more.from.device.goes")
 
 // ⛔ Deliberately does NOT enumerate the events. Four review rounds each found a different
 // writer missing from the list — the widget's own switch, a sync that threw before its emit
 // point — because an enumeration is a completeness claim and this log's writers are not a
 // closed set. What the owner needs here is that an empty log is normal and what it is for.
-internal const val EVENT_LOG_EMPTY =
-    "nothing yet. this fills as the app runs."
+internal val EVENT_LOG_EMPTY get() = phoneText("android.shelf.nothing.yet.fills.as.app")
 
 @Composable
 fun PhoneEventLogPane(eventLog: String, modifier: Modifier = Modifier) {
@@ -354,24 +353,22 @@ sealed interface PhoneJournalNotificationRow {
     data class DeliveryAppStopped(val appName: String) : PhoneJournalNotificationRow
 }
 
-internal const val JOURNAL_FROM_YOUR_JOURNAL = "from your journal"
-internal const val JOURNAL_NOTIFICATIONS_ON = "on"
-internal const val JOURNAL_SWITCH_SUB = "off until you turn it on. your journal encrypts each one to this phone's own key."
-internal const val JOURNAL_DELIVERED_BY = "delivered by"
-internal const val JOURNAL_NOT_REACHING = "not reaching this phone"
-internal const val JOURNAL_NO_APP_NOTE =
-    "notifications from your journal need a separate app to reach this phone, and none is installed. install ntfy, open it once, then come back here."
-internal const val JOURNAL_GET_NTFY = "get ntfy"
-internal const val JOURNAL_GET_NTFY_SUB = "free and open source, from F-Droid"
+internal val JOURNAL_FROM_YOUR_JOURNAL get() = phoneText("android.phone.from.journal")
+internal val JOURNAL_NOTIFICATIONS_ON get() = phoneText("android.push.on")
+internal val JOURNAL_SWITCH_SUB get() = phoneText("android.shelf.off.until.turn.journal.encrypts")
+internal val JOURNAL_DELIVERED_BY get() = phoneText("android.shelf.delivered.by")
+internal val JOURNAL_NOT_REACHING get() = phoneText("android.shelf.not.reaching.phone")
+internal val JOURNAL_NO_APP_NOTE get() = phoneText("android.shelf.notifications.from.journal.need.separate")
+internal val JOURNAL_GET_NTFY get() = phoneText("android.shelf.get.ntfy")
+internal val JOURNAL_GET_NTFY_SUB get() = phoneText("android.shelf.free.open.source.from.f")
 internal const val JOURNAL_NTFY_URL = "https://f-droid.org/packages/io.heckel.ntfy/"
-internal const val JOURNAL_CHOOSE_VALUE = "choose an app to deliver notifications"
-internal const val JOURNAL_CHOOSE_SUB = "more than one app on this phone can deliver notifications"
+internal val JOURNAL_CHOOSE_VALUE get() = phoneText("android.shelf.choose.app.deliver.notifications")
+internal val JOURNAL_CHOOSE_SUB get() = phoneText("android.shelf.more.than.one.app.phone")
 // Row D's wording is loose for endpoints distributors do not produce.
-internal const val JOURNAL_INSECURE_NOTE =
-    "the app that delivers notifications uses a server address that doesn't start with https, and notifications from your journal only go to addresses that do. change its server to one that starts with https, then come back here."
+internal val JOURNAL_INSECURE_NOTE get() = phoneText("android.shelf.app.that.delivers.notifications.uses")
 
 internal fun journalDeliveryAppStoppedNote(app: String): String =
-    "$app is installed but needs to be opened before it can deliver notifications from your journal. open it once, then come back here."
+    phoneText("android.shelf.app.installed.but.needs.be" , "app" to (app))
 
 /** `settings › notifications` (§ 4), including live permission/channel state. */
 @Composable
@@ -394,18 +391,18 @@ fun PhoneNotificationsPane(
     ) {
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
-            PaneFactRow(label = "notifications", value = if (enabled) "on" else "off")
+            PaneFactRow(label = phoneText("android.phone.notifications"), value = if (enabled) phoneText("android.push.on") else phoneText("android.push.off"))
             PaneRowDivider()
             PaneNavRow(
-                label = "open notification settings",
-                subLine = "android decides whether the solstone app can notify you",
+                label = phoneText("android.shelf.open.notification.settings"),
+                subLine = phoneText("android.shelf.android.decides.whether.solstone.app"),
                 onClick = onOpenSettings,
                 modifier = Modifier.testTag("notificationsOpenSettings"),
             )
             if (enabled) {
                 PaneRowDivider()
                 PaneNavRow(
-                    label = "send test notification",
+                    label = phoneText("android.shelf.send.test.notification"),
                     onClick = onSendTest,
                     modifier = Modifier.testTag("notificationsSendTest"),
                 )
@@ -479,10 +476,10 @@ fun PhoneNotificationsPane(
         }
         // Two locked strings from section 5, verbatim and kept SEPARATE. They are listed
         // there as two lines; joining them with a dash would be authoring a third.
-        PaneNote("when there's something worth a look")
-        PaneNote("a short heads-up, never the content")
+        PaneNote(phoneText("android.shelf.when.there.s.something.worth"))
+        PaneNote(phoneText("android.push.short.heads.up.never.content"))
         if (testFailed) {
-            PaneNote("couldn't send a test notification. check notification settings, then try again.")
+            PaneNote(phoneText("android.shelf.couldn.t.send.test.notification"))
         }
     }
 }
@@ -506,15 +503,15 @@ fun PhoneHelpPane(
         Spacer(Modifier.height(ShellMetrics.sectionGap))
         PaneCard {
             PaneExternalRow(
-                label = "get help",
-                subLine = "support.solstone.app",
+                label = phoneText("android.shelf.get.help"),
+                subLine = phoneText("android.shelf.support.solstone.app"),
                 onClick = { context.openUrl(SUPPORT_SITE_URL) },
                 modifier = Modifier.testTag("helpSupportSite"),
             )
             PaneRowDivider()
             PaneExternalRow(
-                label = "report a problem",
-                subLine = "review and send on the support site",
+                label = phoneText("android.shelf.report.problem"),
+                subLine = phoneText("android.shelf.review.send.support.site"),
                 onClick = {
                     val facts = reportFacts
                     context.openUrl(
@@ -531,7 +528,7 @@ fun PhoneHelpPane(
             )
             PaneRowDivider()
             PaneExternalRow(
-                label = "email support",
+                label = phoneText("android.shelf.email.support"),
                 subLine = SUPPORT_EMAIL,
                 onClick = { context.openMail(SUPPORT_EMAIL) },
                 modifier = Modifier.testTag("helpSupportEmail"),
@@ -547,7 +544,7 @@ private fun deviceName(): String {
         model.isEmpty() -> manufacturer
         manufacturer.isEmpty() -> model
         model.startsWith(manufacturer, ignoreCase = true) -> model
-        else -> "$manufacturer $model"
+        else -> phoneText("android.shelf.manufacturer.model" , "manufacturer" to (manufacturer), "model" to (model))
     }
 }
 

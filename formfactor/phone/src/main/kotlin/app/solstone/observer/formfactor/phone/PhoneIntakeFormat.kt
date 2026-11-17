@@ -3,7 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
-import java.text.NumberFormat
+import app.solstone.core.i18n.phoneText
+
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
@@ -54,10 +55,10 @@ fun formatSoFar(
     zone: ZoneId,
     locale: Locale,
 ): String {
-    reading ?: return "nothing yet"
+    reading ?: return phoneText("android.intake.nothingyet")
     val total = formatTotal(reading.total, kind, system, locale)
     val started = formatStarted(reading.startedAt, nowEpochMs, zone)
-    return "$total, since $started"
+    return phoneText("android.intake.totalsince" , "total" to (total), "started" to (started))
 }
 
 /** The status value under `so far`, or null when the row should read `nothing yet`. */
@@ -81,29 +82,29 @@ fun formatTotal(total: Long, kind: IntakeKind, system: DistanceSystem, locale: L
     when (kind) {
         IntakeKind.DURATION -> formatDuration(total, locale)
         IntakeKind.DISTANCE -> formatDistance(total, system, locale)
-        IntakeKind.PHOTOS -> countPhrase(total, "photo", "photos", locale)
-        IntakeKind.EVENTS -> countPhrase(total, "event", "events", locale)
-        IntakeKind.NOTES -> countPhrase(total, "note", "notes", locale)
-        IntakeKind.SCREENSHOTS -> countPhrase(total, "screenshot", "screenshots", locale)
-        IntakeKind.ITEMS -> countPhrase(total, "item", "items", locale)
+        IntakeKind.PHOTOS -> phoneText("android.intake.photos", "count" to (total), "_locale" to (locale))
+        IntakeKind.EVENTS -> phoneText("android.intake.events", "count" to (total), "_locale" to (locale))
+        IntakeKind.NOTES -> phoneText("android.intake.notes", "count" to (total), "_locale" to (locale))
+        IntakeKind.SCREENSHOTS -> phoneText("android.intake.screenshots", "count" to (total), "_locale" to (locale))
+        IntakeKind.ITEMS -> phoneText("android.intake.items", "count" to (total), "_locale" to (locale))
     }
 
 fun formatDuration(seconds: Long, locale: Locale): String {
-    if (seconds < 60L) return "less than a minute"
+    if (seconds < 60L) return phoneText("android.intake.lessthanminute")
     val minutes = seconds / 60L
-    if (minutes < 60L) return countPhrase(minutes, "minute", "minutes", locale)
-    return countPhrase(minutes / 60L, "hour", "hours", locale)
+    if (minutes < 60L) return phoneText("android.intake.minutes", "count" to (minutes), "_locale" to (locale))
+    return phoneText("android.intake.hours", "count" to (minutes / 60L), "_locale" to (locale))
 }
 
 fun formatDistance(millimetres: Long, system: DistanceSystem, locale: Locale): String {
     val metres = millimetres / 1000.0
     return when (system) {
         DistanceSystem.KILOMETERS -> {
-            if (metres < 1000.0) "less than a kilometer" else countPhrase((metres / 1000.0).toLong(), "kilometer", "kilometers", locale)
+            if (metres < 1000.0) phoneText("android.intake.lessthankilometer") else phoneText("android.intake.kilometers", "count" to ((metres / 1000.0).toLong()), "_locale" to (locale))
         }
         DistanceSystem.MILES -> {
             val miles = metres / 1609.344
-            if (miles < 1.0) "less than a mile" else countPhrase(miles.toLong(), "mile", "miles", locale)
+            if (miles < 1.0) phoneText("android.intake.lessthanmile") else phoneText("android.intake.miles", "count" to (miles.toLong()), "_locale" to (locale))
         }
     }
 }
@@ -113,28 +114,23 @@ fun formatStarted(epochMs: Long, nowEpochMs: Long, zone: ZoneId): String {
     val today = Instant.ofEpochMilli(nowEpochMs).atZone(zone).toLocalDate()
     val month = MONTHS[date.monthValue - 1]
     return if (date.year == today.year) {
-        "$month ${date.dayOfMonth}"
+        phoneText("android.intake.startedthismonth", "month" to (month), "day" to (date.dayOfMonth))
     } else {
-        "$month ${date.dayOfMonth}, ${date.year}"
+        phoneText("android.intake.startedyear", "month" to (month), "day" to (date.dayOfMonth), "year" to (date.year))
     }
 }
 
 fun formatRelative(thenEpochMs: Long, nowEpochMs: Long, zone: ZoneId): String {
     val elapsed = nowEpochMs - thenEpochMs
-    if (elapsed < 60_000L) return "just now"
+    if (elapsed < 60_000L) return phoneText("android.about.freshnessnow")
     val minutes = elapsed / 60_000L
-    if (minutes < 60L) return "$minutes min ago"
+    if (minutes < 60L) return phoneText("android.intake.minago", "count" to (minutes))
     val hours = minutes / 60L
-    if (hours < 24L) return if (hours == 1L) "1 hour ago" else "$hours hours ago"
+    if (hours < 24L) return phoneText("android.about.freshnesshours", "count" to (hours))
     val then = Instant.ofEpochMilli(thenEpochMs).atZone(zone).toLocalDate()
     val today = Instant.ofEpochMilli(nowEpochMs).atZone(zone).toLocalDate()
-    if (then == today.minusDays(1)) return "yesterday"
+    if (then == today.minusDays(1)) return phoneText("android.intake.yesterday")
     return formatStarted(thenEpochMs, nowEpochMs, zone)
-}
-
-private fun countPhrase(count: Long, one: String, many: String, locale: Locale): String {
-    val grouped = NumberFormat.getIntegerInstance(locale).format(count)
-    return if (count == 1L) "$grouped $one" else "$grouped $many"
 }
 
 private val MONTHS = listOf(

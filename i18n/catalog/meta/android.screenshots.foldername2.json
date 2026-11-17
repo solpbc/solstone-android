@@ -1,0 +1,23 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "2c1cab46cad18362b01f53a45b89d25d7e3f6659f3f5640e61bacacdcc95e302",
+  "risk": "routine",
+  "auto_merge": true,
+  "protected_slots": [
+    {
+      "name": "foldername",
+      "kind": "accepted-input",
+      "value": "Screenshots"
+    }
+  ]
+}

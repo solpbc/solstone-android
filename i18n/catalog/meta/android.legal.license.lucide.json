@@ -1,0 +1,23 @@
+{
+  "description": "The complete third-party license, verbatim.",
+  "context": "English legal text. A legal review is required before any translation; retain the exact license bytes.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 3256,
+  "source_revision": "7c92511e03c1a319346423987b3962b4f315fdcae6e9785628f756d06619d0d2",
+  "risk": "legal",
+  "auto_merge": false,
+  "protected_slots": [
+    {
+      "name": "ending",
+      "kind": "whitespace",
+      "value": "\n"
+    }
+  ]
+}

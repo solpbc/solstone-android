@@ -1,0 +1,26 @@
+{
+  "description": "the solstone app to the owner, at the head of the gap technical details",
+  "context": "the solstone app to the owner, at the head of the gap technical details",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 80,
+  "source_revision": "a423e8b60bdbecc2e4845c7544cf150712ccc74af783134616f9eeed43164fc4",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

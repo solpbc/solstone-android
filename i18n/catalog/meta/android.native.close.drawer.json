@@ -1,0 +1,16 @@
+{
+  "description": "Existing AndroidX accessibility label: close_drawer",
+  "context": "Preserves the pinned AndroidX default English. Native resource alias used by the current phone UI; verify this resource name when upgrading Compose.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "7752edfa053c8bab34d51e34e53a6df7aa602b44fa7ad6902e67cc439206d87f",
+  "risk": "routine",
+  "auto_merge": true
+}

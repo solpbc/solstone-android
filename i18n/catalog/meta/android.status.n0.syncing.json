@@ -1,0 +1,26 @@
+{
+  "description": "the solstone app to the owner, on the status line",
+  "context": "the solstone app to the owner, on the status line",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 80,
+  "source_revision": "1204fa29574d7e1cc900b3f5324a2309a23d0e6c099dcfc4d878126699a85da2",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

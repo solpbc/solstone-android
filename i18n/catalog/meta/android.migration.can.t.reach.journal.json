@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner Exact iPhone English twin: ios.migration.offline.title.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "e1d247ea71783fbcef28a3ee242ad1c0d69bba1febd8a4aae9fb1a2173f49336",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,8 +55,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 // INTERIM: owner-facing accessible name for the up control; pending copy ruling.
-private const val UP_CONTENT_DESCRIPTION = "up"
-private const val SHELF_CONTENT_DESCRIPTION = "settings"
+private val UP_CONTENT_DESCRIPTION get() = phoneText("android.phone.up")
+private val SHELF_CONTENT_DESCRIPTION get() = phoneText("android.shelf.settings")
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 private val permanentDeckValue = ThreePaneScaffoldValue(

@@ -3,6 +3,8 @@
 
 package app.solstone.observer.formfactor.phone
 
+import app.solstone.core.i18n.phoneText
+
 import app.solstone.core.watch.courier.WatchCourierStrings
 import androidx.annotation.DrawableRes
 import app.solstone.core.model.ReasonCode
@@ -54,18 +56,18 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
  */
 fun sourceSubLine(status: SourceStatus, paired: Boolean): String? = when (status.state) {
     SourceState.OFF ->
-        if (paired) "intake is off. turn it on any time." else "turn it on any time."
+        if (paired) phoneText("android.source.intake.off.turn.any.time") else phoneText("android.source.turn.any.time")
     SourceState.PAUSED ->
         // The owner's pause and the system's are different facts; only the first is "you".
         if (status.reason == ReasonCode.MICROPHONE_SILENCED) sourceDetailRule(status.reason).diagnosis
-        else "you paused this. resume to start intake again."
+        else phoneText("android.source.paused.resume.start.intake.again")
     SourceState.SETTING_UP ->
-        if (paired) "getting ready. connecting to your journal." else "getting ready…"
+        if (paired) phoneText("android.source.getting.ready.connecting.journal") else phoneText("android.source.getting.ready")
     SourceState.NEEDS_ATTENTION ->
         sourceDetailRule(status.reason).diagnosis
             // § 5.1's locked honest-unknown line. A source that reaches
             // `needs attention` with no diagnosis still owes the owner a sentence.
-            ?: "the reason it couldn't reach your journal isn't clear."
+            ?: phoneText("android.source.reason.couldn.t.reach.journal")
     SourceState.ON -> sourceActiveLine(status.sourceId)
     // § 5.1 gives this state the source's own setup line, and no Android source supplies one,
     // so none renders. ⛔ Do not author one here.
@@ -79,7 +81,7 @@ fun sourceStateDescription(status: SourceStatus, paired: Boolean): String {
     if (!speaksReason) return stateWord
     val subLine = sourceSubLine(status, paired)
     if (subLine.isNullOrEmpty()) return stateWord
-    return "$stateWord. $subLine"
+    return phoneText("android.source.stateword.subline" , "stateword" to (stateWord), "subline" to (subLine))
 }
 
 /**
@@ -96,7 +98,6 @@ fun sourceStateDescription(status: SourceStatus, paired: Boolean): String {
  */
 fun sourceActiveLine(sourceId: String): String? = when (sourceId) {
     "camera" ->
-        "while this is on, the solstone app takes a photo from your rear camera every minute " +
-            "and adds it to your journal."
+        phoneText("android.source.while.solstone.app.takes.photo")
     else -> null
 }
