@@ -1511,119 +1511,121 @@ class PhoneShellActivity : ComponentActivity() {
                 val copy = migrationCopy(migrationSurface, migrationSelected?.displayLabel)
                 val expected = migrationRecord?.generation
                     ?: (pairingSnapshot as? PairingGraphSnapshot.Committed)?.pairing
-                AlertDialog(
-                    onDismissRequest = ::deferMigration,
-                    title = { Text(copy.title) },
-                    text = {
-                        Column {
-                            copy.body?.let { Text(it) }
-                            if (!migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer
-                            ) {
-                                TextButton(onClick = {
-                                    val generation = expected ?: return@TextButton
-                                    migrationListing = null
-                                    performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
-                                }) { Text(phoneText("android.migration.choose.device")) }
-                            }
-                            if (!migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface in setOf(MigrationSurface.PICKER, MigrationSurface.PICKER_EMPTY)
-                            ) {
-                                migrationListing?.clients.orEmpty().forEach { client ->
+                // The theme is applied inside `PhoneShell`, and this dialog is its sibling, like the journal
+                // sheet above: without its own theme it drew on Material's stock lavender and purple.
+                PhoneTheme {
+                    AlertDialog(
+                        onDismissRequest = ::deferMigration,
+                        title = { Text(copy.title) },
+                        text = {
+                            Column {
+                                copy.body?.let { Text(it) }
+                                if (!migrationBusy && !migrationStoreUnavailable &&
+                                    migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer
+                                ) {
                                     TextButton(onClick = {
-                                        val listing = migrationListing ?: return@TextButton
-                                        migrationSelected = client
-                                        performMigration(MigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
-                                    }) { Text(client.displayLabel) }
+                                        val generation = expected ?: return@TextButton
+                                        migrationListing = null
+                                        performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
+                                    }) { Text(phoneText("android.migration.choose.device")) }
+                                }
+                                if (!migrationBusy && !migrationStoreUnavailable &&
+                                    migrationSurface in setOf(MigrationSurface.PICKER, MigrationSurface.PICKER_EMPTY)
+                                ) {
+                                    migrationListing?.clients.orEmpty().forEach { client ->
+                                        TextButton(onClick = {
+                                            val listing = migrationListing ?: return@TextButton
+                                            migrationSelected = client
+                                            performMigration(MigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
+                                        }) { Text(client.displayLabel) }
+                                    }
+                                }
+                                if (migrationSurface == MigrationSurface.TARGET_UNAVAILABLE &&
+                                    !migrationBusy && !migrationStoreUnavailable
+                                ) {
+                                    TextButton(onClick = {
+                                        val generation = expected ?: return@TextButton
+                                        performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
+                                    }) { Text(phoneText("android.migration.choose.device")) }
                                 }
                             }
-                            if (migrationSurface == MigrationSurface.TARGET_UNAVAILABLE &&
-                                !migrationBusy && !migrationStoreUnavailable
-                            ) {
-                                TextButton(onClick = {
-                                    val generation = expected ?: return@TextButton
-                                    performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
-                                }) { Text(phoneText("android.migration.choose.device")) }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        when {
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
-                                TextButton(onClick = {
-                                    expected?.let { generation ->
-                                        performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
-                                    }
-                                }) { Text(phoneText("android.phone.keep.both")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER ->
-                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.cancel")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER_EMPTY ->
-                                TextButton(onClick = {
-                                    expected?.let { generation ->
-                                        performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
-                                    }
-                                }) { Text(phoneText("android.phone.keep.both")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CONFIRM ->
-                                TextButton(onClick = {
-                                    val listing = migrationListing
-                                    val selected = migrationSelected
-                                    if (listing != null && selected != null) {
-                                        migrationSelected = null
-                                        performMigration(MigrationSurface.DECIDING) {
-                                            it.replaceSelected(listing, selected.cid, nativeConfirmed = true)
+                        },
+                        confirmButton = {
+                            when {
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
+                                    TextButton(onClick = {
+                                        expected?.let { generation ->
+                                            performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
                                         }
-                                    }
-                                }) { Text(phoneText("android.phone.replace.device")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CHECKING ->
-                                TextButton(onClick = {
-                                    migrationRecord?.let { record ->
-                                        performMigration(MigrationSurface.CHECKING) { it.resume(record.generation) }
-                                    }
-                                }) { Text(phoneText("android.migration.check.again")) }
-                            !migrationBusy && !migrationStoreUnavailable &&
-                                migrationSurface in setOf(MigrationSurface.OFFLINE, MigrationSurface.LIST_UNAVAILABLE) ->
-                                TextButton(onClick = {
-                                    expected?.let { generation ->
-                                        performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
-                                    }
-                                }) { Text(phoneText("android.migration.try.again")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.UNSUPPORTED ->
-                                TextButton(onClick = {
-                                    expected?.let { generation ->
-                                        performMigration(MigrationSurface.PREPARING) { it.retryUnsupported(generation) }
-                                    }
-                                }) { Text(phoneText("android.migration.try.again")) }
-                            !migrationBusy && migrationSurface in setOf(MigrationSurface.STORAGE, MigrationSurface.REFUSED) ->
-                                TextButton(onClick = {
-                                    migrationDialogOpen = false
-                                    technicalDetailsRequest += 1
-                                }) { Text(phoneText("android.migration.technical.details")) }
-                            !migrationBusy && migrationSurface == MigrationSurface.KEY_REFUSED ->
-                                TextButton(onClick = {
-                                    migrationDialogOpen = false
-                                    pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
-                                }) { Text(phoneText("android.migration.pair.again")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
-                                TextButton(onClick = {
-                                    expected?.let { generation -> performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) } }
-                                }) { Text(phoneText("android.phone.keep.both")) }
-                        }
-                    },
-                    dismissButton = {
-                        when {
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
-                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface in setOf(
-                                MigrationSurface.PICKER,
-                                MigrationSurface.PICKER_EMPTY,
-                                MigrationSurface.CONFIRM,
-                                MigrationSurface.PREPARING,
-                            ) -> TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.cancel")) }
-                            !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
-                                TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
-                        }
-                    },
-                )
+                                    }) { Text(phoneText("android.phone.keep.both")) }
+                                    !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.PICKER_EMPTY ->
+                                    TextButton(onClick = {
+                                        expected?.let { generation ->
+                                            performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) }
+                                        }
+                                    }) { Text(phoneText("android.phone.keep.both")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CONFIRM ->
+                                    TextButton(onClick = {
+                                        val listing = migrationListing
+                                        val selected = migrationSelected
+                                        if (listing != null && selected != null) {
+                                            migrationSelected = null
+                                            performMigration(MigrationSurface.DECIDING) {
+                                                it.replaceSelected(listing, selected.cid, nativeConfirmed = true)
+                                            }
+                                        }
+                                    }) { Text(phoneText("android.phone.replace.device")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.CHECKING ->
+                                    TextButton(onClick = {
+                                        migrationRecord?.let { record ->
+                                            performMigration(MigrationSurface.CHECKING) { it.resume(record.generation) }
+                                        }
+                                    }) { Text(phoneText("android.migration.check.again")) }
+                                !migrationBusy && !migrationStoreUnavailable &&
+                                    migrationSurface in setOf(MigrationSurface.OFFLINE, MigrationSurface.LIST_UNAVAILABLE) ->
+                                    TextButton(onClick = {
+                                        expected?.let { generation ->
+                                            performMigration(MigrationSurface.PREPARING) { it.listClients(generation) }
+                                        }
+                                    }) { Text(phoneText("android.migration.try.again")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.UNSUPPORTED ->
+                                    TextButton(onClick = {
+                                        expected?.let { generation ->
+                                            performMigration(MigrationSurface.PREPARING) { it.retryUnsupported(generation) }
+                                        }
+                                    }) { Text(phoneText("android.migration.try.again")) }
+                                !migrationBusy && migrationSurface in setOf(MigrationSurface.STORAGE, MigrationSurface.REFUSED) ->
+                                    TextButton(onClick = {
+                                        migrationDialogOpen = false
+                                        technicalDetailsRequest += 1
+                                    }) { Text(phoneText("android.migration.technical.details")) }
+                                !migrationBusy && migrationSurface == MigrationSurface.KEY_REFUSED ->
+                                    TextButton(onClick = {
+                                        migrationDialogOpen = false
+                                        pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
+                                    }) { Text(phoneText("android.migration.pair.again")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
+                                    TextButton(onClick = {
+                                        expected?.let { generation -> performMigration(MigrationSurface.DECIDING) { it.keepBoth(generation) } }
+                                    }) { Text(phoneText("android.phone.keep.both")) }
+                            }
+                        },
+                        dismissButton = {
+                            when {
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.OFFER && migrationNeedsAnswer ->
+                                    TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface in setOf(
+                                    MigrationSurface.PICKER,
+                                    MigrationSurface.PICKER_EMPTY,
+                                    MigrationSurface.CONFIRM,
+                                    MigrationSurface.PREPARING,
+                                ) -> TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.cancel")) }
+                                !migrationBusy && !migrationStoreUnavailable && migrationSurface == MigrationSurface.TARGET_UNAVAILABLE ->
+                                    TextButton(onClick = ::deferMigration) { Text(phoneText("android.phone.not.now")) }
+                            }
+                        },
+                    )
+                }
             }
         }
     }
