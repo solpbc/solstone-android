@@ -6,9 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.48] - 2026-11-17
+
 ### Fixed
 
-- if the connection to your journal goes quiet while your phone is syncing over the private network, the app can retry.
+- if the connection to your journal goes quiet while your phone is syncing through the relay sol pbc runs, the solstone app now stops waiting and tries again on its own. before, it could stay stuck there, and everything after that sync stayed waiting on your phone.
 
 ## [2.1.47] - 2026-11-16
 
