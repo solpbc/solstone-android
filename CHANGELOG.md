@@ -9,7 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - the question that asks whether this phone is replacing one of your devices now looks like the rest of the solstone app, with one cancel button where it showed two.
-- the solstone app no longer adds a "from your journal" category to android's notification settings before you turn on notifications from your journal.
+- on a new install, the solstone app no longer adds a "from your journal" category to android's notification settings before you turn on notifications from your journal.
 
 ## [2.1.48] - 2026-11-17
 
