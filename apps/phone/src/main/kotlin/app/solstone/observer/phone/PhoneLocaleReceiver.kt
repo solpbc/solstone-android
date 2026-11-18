@@ -12,6 +12,6 @@ class PhoneLocaleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_LOCALE_CHANGED) return
         ObserverNotification.ensureChannel(context.applicationContext)
-        JournalPushPoster(context.applicationContext).ensureChannel()
+        JournalPushPoster(context.applicationContext).renameChannelIfPresent()
     }
 }

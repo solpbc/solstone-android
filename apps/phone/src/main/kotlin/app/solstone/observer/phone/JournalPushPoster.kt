@@ -35,6 +35,17 @@ class JournalPushPoster(
         }
     }
 
+    /**
+     * Renames the channel for the current language, only if it exists. The channel appears when the
+     * first push is posted, so an owner who never turns push on has no "from your journal" category.
+     */
+    fun renameChannelIfPresent() {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val channel = manager.getNotificationChannel(CHANNEL_ID) ?: return
+        channel.name = CHANNEL_NAME
+        manager.createNotificationChannel(channel)
+    }
+
     fun ensureChannel() {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = manager.getNotificationChannel(CHANNEL_ID)

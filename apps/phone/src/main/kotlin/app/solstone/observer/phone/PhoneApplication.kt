@@ -127,7 +127,7 @@ class PhoneApplication : ObserverApplication(
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         ObserverNotification.ensureChannel(this)
-        JournalPushPoster(this).ensureChannel()
+        JournalPushPoster(this).renameChannelIfPresent()
         ObserverNotification.stopAction?.let { action ->
             ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, action.actionIntent).build()
         }
@@ -158,7 +158,7 @@ class PhoneApplication : ObserverApplication(
         )
         super.onCreate()
         ObserverNotification.ensureChannel(this)
-        JournalPushPoster(this).ensureChannel()
+        JournalPushPoster(this).renameChannelIfPresent()
         ObserverForegroundService.captureWishTypes = {
             val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
             val base = when (val read = store.read()) {
