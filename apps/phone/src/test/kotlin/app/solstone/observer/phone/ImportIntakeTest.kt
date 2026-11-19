@@ -192,13 +192,14 @@ class ImportIntakeTest {
             input = byteArrayOf(1, 2, 3, 4).inputStream(),
             caption = "  sunset from the porch  ",
         )
-        val outcome = take(intake(), item)
+        val i = intake()
+        val outcome = take(i, item)
         assertEquals(1, outcome.accepted)
-        val storedId = store.items(null, null).single().id
-        val descriptor = store.item(storedId)!!
+        val storedId = i.store.items(null, null).single().id
+        val descriptor = i.store.item(storedId)!!
         assertEquals("sunset from the porch", descriptor.caption)
         assertTrue(File(File(root, storedId), "caption.txt").isFile)
-        store.remove(storedId)
+        i.store.remove(storedId)
         assertFalse(File(root, storedId).exists())
     }
 }
