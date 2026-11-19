@@ -84,6 +84,7 @@ data class ImportItemDescriptor(
     val displayName: String,
     val mime: String,
     val size: Long,
+    val caption: String? = null,
 )
 
 // Process-wide reentrant lock keyed by canonical root path. Reentrant because recover calls finish while holding it.
@@ -177,6 +178,10 @@ class ImportCustodyStore(
             var moved = false
             try {
                 fsync(payloadPath)
+                val captionPath = stagingDir.resolve("caption.txt")
+                if (Files.isRegularFile(captionPath, NOFOLLOW_LINKS)) {
+                    fsync(captionPath)
+                }
                 fsync(stagingDir)
                 val targetDir = root.resolve(id)
                 move(stagingDir, targetDir)
@@ -621,13 +626,25 @@ class ImportCustodyStore(
     fun item(id: String): ImportItemDescriptor? {
         if (isUnsafeId(id)) return null
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return null
+        val itemDir = root.resolve(row.id)
+        val captionPath = itemDir.resolve("caption.txt")
+        val caption = try {
+            if (Files.isRegularFile(captionPath, NOFOLLOW_LINKS) && Files.size(captionPath) <= 256 * 1024L) {
+                String(Files.readAllBytes(captionPath), Charsets.UTF_8).trim().takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
         return ImportItemDescriptor(
             id = row.id,
             payloadKind = row.payloadKind,
-            payloadPath = root.resolve(row.id).resolve("payload"),
+            payloadPath = itemDir.resolve("payload"),
             displayName = row.displayName,
             mime = row.mime,
             size = row.byteSize,
+            caption = caption,
         )
     }
 }

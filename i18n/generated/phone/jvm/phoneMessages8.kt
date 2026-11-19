@@ -2,7 +2,6 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
-    "android.source.details" to PhoneMessage("m616e64726f69642e736f757263652e64657461696c73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "details"))),
     "android.source.device" to PhoneMessage("m616e64726f69642e736f757263652e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this device"))),
     "android.source.device.low.storage.free.up" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e6c6f772e73746f726167652e667265652e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this device is low on storage. free up space before turning this on again."))),
     "android.source.device.not.processed.until.connect" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e6e6f742e70726f6365737365642e756e74696c2e636f6e6e656374", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "on this device and not processed until you connect a journal."))),
@@ -62,4 +61,5 @@ internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
     "android.source.while.solstone.app.takes.video" to PhoneMessage("m616e64726f69642e736f757263652e7768696c652e736f6c73746f6e652e6170702e74616b65732e766964656f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes in video of the app or screen you choose, including while you use other apps. it stays on this device until it can reach your journal."))),
     "android.status.all.caught.up" to PhoneMessage("m616e64726f69642e7374617475732e616c6c2e6361756768742e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "all caught up"))),
     "android.status.anythingwaitingstayshere" to PhoneMessage("m616e64726f69642e7374617475732e616e797468696e6777616974696e67737461797368657265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "anything waiting stays here until you pair again."))),
+    "android.status.calendar.notes.stay.phone.until" to PhoneMessage("m616e64726f69642e7374617475732e63616c656e6461722e6e6f7465732e737461792e70686f6e652e756e74696c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "calendar notes stay on this phone until your journal can take them."))),
 )

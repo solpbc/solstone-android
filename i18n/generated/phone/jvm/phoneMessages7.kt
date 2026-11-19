@@ -2,7 +2,6 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
-    "android.shelf.event.log" to PhoneMessage("m616e64726f69642e7368656c662e6576656e742e6c6f67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "event log"))),
     "android.shelf.fingerprint" to PhoneMessage("m616e64726f69642e7368656c662e66696e6765727072696e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "fingerprint"))),
     "android.shelf.forget.journal" to PhoneMessage("m616e64726f69642e7368656c662e666f726765742e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "forget this journal"))),
     "android.shelf.forget.journal.n2" to PhoneMessage("m616e64726f69642e7368656c662e666f726765742e6a6f75726e616c2e6e32", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "forget this journal?"))),
@@ -62,4 +61,5 @@ internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
     "android.source.connected" to PhoneMessage("m616e64726f69642e736f757263652e636f6e6e6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "connected"))),
     "android.source.couldn.t.confirm.stop.was" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e636f6e6669726d2e73746f702e776173", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't confirm the stop was saved"))),
     "android.source.couldn.t.save.journal.access" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e736176652e6a6f75726e616c2e616363657373", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't save journal access on this phone"))),
+    "android.source.details" to PhoneMessage("m616e64726f69642e736f757263652e64657461696c73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "details"))),
 )

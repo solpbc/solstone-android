@@ -151,7 +151,6 @@
     <item quantity="one">"and %1$s more"</item>
     <item quantity="other">"and %1$s more"</item>
   </plurals>
-  <string name="m616e64726f69642e696d706f72742e746578742e73656e742e616c6f6e672e776974682e7468657365">"text sent along with these isn't added."</string>
   <string name="m616e64726f69642e696d706f72742e74686572652e69736e2e742e656e6f7567682e726f6f6d">"there isn't enough room on this device"</string>
   <string name="m616e64726f69642e696d706f72742e7472792e6e6f772e726f772e6e616d65">"try now, %1$s"</string>
   <string name="m616e64726f69642e696d706f72742e77616974696e67">"waiting"</string>

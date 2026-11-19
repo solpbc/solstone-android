@@ -2562,7 +2562,7 @@
       "resource": "m616e64726f69642e696d706f72742e746578742e73656e742e616c6f6e672e776974682e7468657365",
       "namespace": "android.import.text.sent.along.with",
       "owner": "solstone-android",
-      "tombstone": false,
+      "tombstone": true,
       "replacement": null,
       "format_intent": "text",
       "arguments": [],

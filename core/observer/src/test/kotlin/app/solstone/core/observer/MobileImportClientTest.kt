@@ -860,4 +860,37 @@ class MobileImportClientTest {
             client.save(MobileImportText("id", "txt"))
         }
     }
+
+    @Test
+    fun fileSaveIncludesUtf8CaptionWithExactContentLength() {
+        val payload = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+        val caption = "ramen in shinjuku 🍜\nsecond line"
+        val http = ScriptedPlHttpClient()
+        var drained: ByteArray? = null
+        var declaredLength = -1L
+        http.streamingHandler = { body ->
+            declaredLength = body.contentLength
+            drained = drainBody(body)
+            HttpResponse(200, emptyMap(), "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8))
+        }
+
+        val outcome = MobileImportClient(http).save(
+            MobileImportFile(
+                clientItemId = "photo-caption-1",
+                filename = "photo.jpg",
+                mediaType = "image/jpeg",
+                length = payload.size.toLong(),
+                source = SimpleSource(payload),
+                caption = "  $caption  ",
+            ),
+        )
+        assertEquals(MobileImportOutcome.Saved("/p", "ts"), outcome)
+        val raw = requireNotNull(drained)
+        assertEquals(raw.size.toLong(), declaredLength)
+        val boundary = http.streamed.single().headers["Content-Type"]!!.removePrefix("multipart/form-data; boundary=")
+        val parts = parseMultipart(raw, boundary)
+        assertEquals(listOf("client_item_id", "imported_via", "caption", "file"), parts.map { it.name })
+        assertEquals(caption, parts[2].body.toString(Charsets.UTF_8))
+        assertTrue(payload.contentEquals(parts[3].body))
+    }
 }

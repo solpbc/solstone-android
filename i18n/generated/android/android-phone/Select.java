@@ -138,7 +138,6 @@ public final class Select {
             case "android.import.setupscreenshots": return "m616e64726f69642e696d706f72742e736574757073637265656e73686f7473";
             case "android.import.something.were.adding.didn.t": return "m616e64726f69642e696d706f72742e736f6d657468696e672e776572652e616464696e672e6469646e2e74";
             case "android.import.state.items.size.share.sheet": return "m616e64726f69642e696d706f72742e73746174652e6974656d732e73697a652e73686172652e7368656574";
-            case "android.import.text.sent.along.with.these": return "m616e64726f69642e696d706f72742e746578742e73656e742e616c6f6e672e776974682e7468657365";
             case "android.import.there.isn.t.enough.room": return "m616e64726f69642e696d706f72742e74686572652e69736e2e742e656e6f7567682e726f6f6d";
             case "android.import.try.now.row.name": return "m616e64726f69642e696d706f72742e7472792e6e6f772e726f772e6e616d65";
             case "android.import.waiting": return "m616e64726f69642e696d706f72742e77616974696e67";

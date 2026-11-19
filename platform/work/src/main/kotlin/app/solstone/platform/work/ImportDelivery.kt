@@ -215,6 +215,7 @@ private fun save(wire: MobileImportClient, descriptor: ImportItemDescriptor): Mo
             mediaType = descriptor.mime,
             length = descriptor.size,
             source = FileImportSource(Files.newInputStream(descriptor.payloadPath)),
+            caption = descriptor.caption,
         )
     }
     return wire.save(item)

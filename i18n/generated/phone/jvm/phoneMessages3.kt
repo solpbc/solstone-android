@@ -2,7 +2,6 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages3(): Map<String, PhoneMessage> = mapOf(
-    "android.journalmark.notchanged" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f746368616e676564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not changed"))),
     "android.journalmark.notconfirmed" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f74636f6e6669726d6564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal, mark not confirmed yet"))),
     "android.journalmark.notreadyet" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f7472656164796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal, mark not read yet"))),
     "android.journalmark.pairingstaysnothingwaiting" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e70616972696e6773746179736e6f7468696e6777616974696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your pairing stays as it was. nothing waiting on this phone went to that journal through this link."))),
@@ -62,4 +61,5 @@ internal fun phoneMessages3(): Map<String, PhoneMessage> = mapOf(
     "android.native.not.selected" to PhoneMessage("m616e64726f69642e6e61746976652e6e6f742e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Not selected"))),
     "android.native.selected" to PhoneMessage("m616e64726f69642e6e61746976652e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Selected"))),
     "android.native.state.off" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6666", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Off"))),
+    "android.native.state.on" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "On"))),
 )

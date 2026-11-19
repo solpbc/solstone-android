@@ -2,7 +2,6 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
-    "android.status.calendar.notes.stay.phone.until" to PhoneMessage("m616e64726f69642e7374617475732e63616c656e6461722e6e6f7465732e737461792e70686f6e652e756e74696c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "calendar notes stay on this phone until your journal can take them."))),
     "android.status.confirm.mark" to PhoneMessage("m616e64726f69642e7374617475732e636f6e6669726d2e6d61726b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "confirm the mark"))),
     "android.status.confirm.mark.model.pendingcount.waiting" to PhoneMessage("m616e64726f69642e7374617475732e636f6e6669726d2e6d61726b2e6d6f64656c2e70656e64696e67636f756e742e77616974696e67", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "confirm the mark · %1\$s waiting", "other" to "confirm the mark · %1\$s waiting"))),
     "android.status.everything.journal" to PhoneMessage("m616e64726f69642e7374617475732e65766572797468696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "everything is in your journal"))),

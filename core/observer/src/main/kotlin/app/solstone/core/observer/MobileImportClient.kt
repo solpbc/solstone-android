@@ -22,6 +22,7 @@ class MobileImportFile(
     val mediaType: String,
     val length: Long,
     val source: MobileImportSource,
+    val caption: String? = null,
 ) : MobileImportItem
 
 data class MobileImportText(
@@ -124,6 +125,12 @@ class MobileImportClient(private val http: PlHttpClient) {
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"imported_via\"\r\n\r\n")
                     append(IMPORTED_VIA).append("\r\n")
+                    val trimmedCaption = item.caption?.trim()?.takeIf { it.isNotEmpty() }
+                    if (trimmedCaption != null) {
+                        append("--").append(boundary).append("\r\n")
+                        append("Content-Disposition: form-data; name=\"caption\"\r\n\r\n")
+                        append(trimmedCaption).append("\r\n")
+                    }
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(sanitizedFilename).append("\"\r\n")
                     if (sanitizedMediaType.isNotEmpty()) {

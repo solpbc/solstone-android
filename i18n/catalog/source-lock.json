@@ -912,13 +912,6 @@
       "locales": []
     },
     {
-      "id": "android.import.text.sent.along.with.these",
-      "source": "5afd2f904a536041a3d4d31d8007825f3c66437b58dea3bc5742af9f574652cc",
-      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
-      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
-      "locales": []
-    },
-    {
       "id": "android.import.there.isn.t.enough.room",
       "source": "f777ce5f6cb034722ed3c9240fc3ffb1d20a394ea9afa1d85964135c2516607d",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",

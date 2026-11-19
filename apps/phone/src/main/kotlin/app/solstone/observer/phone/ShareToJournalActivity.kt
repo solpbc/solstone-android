@@ -85,16 +85,27 @@ class ShareToJournalActivity : ComponentActivity() {
         // Every stream opens now, while the share's read grant certainly holds; the copies then
         // run app-wide and keep going if this sheet is closed. One the sheet already showed as
         // refused by its type is not opened at all.
-        val items = share.uris.map { uri ->
+        // When text arrives alongside image(s), attach it as the photo's caption instead of
+        // dropping it or creating an unrelated text item. If no addable image is present, keep
+        // the text as its own text import so nothing shared by the owner is lost.
+        val hasAddableImage = share.uris.any { uri ->
             val meta = share.meta.getValue(uri.toString())
+            knownRefusal(uri.scheme, meta.mime) == null && isImageMime(meta.mime)
+        }
+        val streamItems = share.uris.map { uri ->
+            val meta = share.meta.getValue(uri.toString())
+            val refused = knownRefusal(uri.scheme, meta.mime) != null
             IntakeItem.Stream(
                 displayName = meta.name,
                 mime = meta.mime,
                 scheme = uri.scheme,
                 reportedSize = meta.size,
-                input = if (knownRefusal(uri.scheme, meta.mime) != null) null else runCatching { contentResolver.openInputStream(uri) }.getOrNull(),
+                input = if (refused) null else runCatching { contentResolver.openInputStream(uri) }.getOrNull(),
+                caption = if (!refused && isImageMime(meta.mime)) share.text else null,
             )
-        } + listOfNotNull(share.text?.let { IntakeItem.Text(it) })
+        }
+        val textItems = if (!hasAddableImage && share.text != null) listOf(IntakeItem.Text(share.text)) else emptyList()
+        val items = streamItems + textItems
         model.copying(items.size)
         ImportIntake.get(this).submit(items) { outcome -> model.finished(outcome) }
     }
@@ -109,11 +120,13 @@ class ShareToJournalActivity : ComponentActivity() {
             else -> return null
         }
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
-        val keepText = uris.isEmpty() && text != null
-        if (uris.isEmpty() && !keepText) return null
+        if (uris.isEmpty() && text == null) return null
         val meta = uris.associate { it.toString() to describe(it) }
-        return PendingShare(uris, meta, if (keepText) text else null, textDropped = !keepText && text != null)
+        return PendingShare(uris, meta, text)
     }
+
+    private fun isImageMime(mime: String?): Boolean =
+        mime?.substringBefore(';')?.trim()?.lowercase()?.startsWith("image/") == true
 
     private fun describe(uri: Uri): ShareMeta {
         var name: String? = null
@@ -162,7 +175,6 @@ internal data class PendingShare(
     val uris: List<Uri>,
     val meta: Map<String, ShareMeta>,
     val text: String?,
-    val textDropped: Boolean,
 )
 
 /** Holds one share across rotation and recreation. */
@@ -180,7 +192,6 @@ internal class ShareModel(private val saved: SavedStateHandle) : ViewModel() {
         _state.value = ShareSheetState.Review(
             items = items,
             textPreview = pending.text,
-            textDropped = pending.textDropped,
         )
     }
 

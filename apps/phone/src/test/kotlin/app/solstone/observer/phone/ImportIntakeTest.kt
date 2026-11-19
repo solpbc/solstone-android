@@ -181,4 +181,24 @@ class ImportIntakeTest {
         assertFalse(File(root, ".intake-running").exists())
         assertFalse(intake().interrupted)
     }
+
+    @Test
+    fun photoCaptionSurvivesCustodyAndFinishRemovesIt() {
+        val item = IntakeItem.Stream(
+            displayName = "IMG_4821.jpg",
+            mime = "image/jpeg",
+            scheme = "content",
+            reportedSize = 4L,
+            input = byteArrayOf(1, 2, 3, 4).inputStream(),
+            caption = "  sunset from the porch  ",
+        )
+        val outcome = take(intake(), item)
+        assertEquals(1, outcome.accepted)
+        val storedId = store.items(null, null).single().id
+        val descriptor = store.item(storedId)!!
+        assertEquals("sunset from the porch", descriptor.caption)
+        assertTrue(File(File(root, storedId), "caption.txt").isFile)
+        store.remove(storedId)
+        assertFalse(File(root, storedId).exists())
+    }
 }

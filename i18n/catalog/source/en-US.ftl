@@ -281,7 +281,6 @@ android.import.state.items.size.share.sheet =
         [one] and { $count } more
        *[other] and { $count } more
     }
-android.import.text.sent.along.with.these = text sent along with these isn't added.
 android.import.there.isn.t.enough.room = there isn't enough room on this device
 android.import.try.now.row.name = try now, { $name }
 android.import.waiting = waiting

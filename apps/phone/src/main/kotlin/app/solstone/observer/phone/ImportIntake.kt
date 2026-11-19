@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.os.Build
+import app.solstone.core.observer.HeicExif
 import app.solstone.core.observer.INTAKE_MAX_BYTES
 import app.solstone.core.observer.INTAKE_MIN_FREE_BYTES
 import app.solstone.core.observer.IntakeDecision
@@ -42,6 +43,8 @@ internal sealed interface IntakeItem {
         val reportedSize: Long?,
         /** Null when the stream could not be opened. */
         val input: InputStream?,
+        /** Optional owner-written text shared alongside an image. */
+        val caption: String? = null,
     ) : IntakeItem {
         override val label: String get() = displayName ?: "item"
     }
@@ -168,6 +171,7 @@ internal class ImportIntake(
             when (decision) {
                 is IntakeDecision.Accept -> {
                     copy(input, payload)?.let { return abandon(id, it) }
+                    writeCaption(id, item.caption)
                     finish(id, intakeName(item.displayName, decision.mime), decision.mime, payload)
                 }
                 IntakeDecision.ConvertToJpeg -> {
@@ -181,6 +185,7 @@ internal class ImportIntake(
                         return abandon(id, IntakeRefusal.CANNOT_CONVERT)
                     }
                     raw.delete()
+                    writeCaption(id, item.caption)
                     finish(id, intakeName(item.displayName, item.mime.orEmpty(), convertedToJpeg = true), "image/jpeg", payload)
                 }
                 is IntakeDecision.Refuse -> abandon(id, decision.reason)
@@ -218,6 +223,12 @@ internal class ImportIntake(
     }
 
     private fun staged(id: String): File = File(File(File(root, ".staging"), id), "payload")
+
+    private fun writeCaption(id: String, caption: String?) {
+        val trimmed = caption?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val file = File(File(File(root, ".staging"), id), "caption.txt")
+        Files.write(file.toPath(), trimmed.toByteArray(Charsets.UTF_8))
+    }
 
     private fun abandon(id: String, reason: IntakeRefusal): IntakeRefusal {
         store.abandon(id)
@@ -257,15 +268,19 @@ internal class ImportIntake(
     }
 }
 
-/** Decode a HEIC/HEIF photo and write it as JPEG (Android 9 and later). */
+/** Decode a HEIC/HEIF photo and write it as JPEG carrying its EXIF metadata (Android 9+). */
 private fun heicToJpeg(source: File, target: File) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) throw IOException("HEIC conversion needs Android 9")
     val bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(source))
-    try {
-        target.outputStream().use { out ->
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)) throw IOException("JPEG encode failed")
-        }
+    val encoded = try {
+        val buffer = java.io.ByteArrayOutputStream()
+        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 92, buffer)) throw IOException("JPEG encode failed")
+        buffer.toByteArray()
     } finally {
         bitmap.recycle()
     }
+    val withExif = runCatching {
+        HeicExif.carryToUprightJpeg(source.readBytes(), encoded)
+    }.getOrDefault(encoded)
+    target.writeBytes(withExif)
 }

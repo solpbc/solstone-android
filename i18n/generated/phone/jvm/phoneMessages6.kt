@@ -2,7 +2,6 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
-    "android.screenshots.foldername2" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c6465726e616d6532", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Screenshots"))),
     "android.screenshots.last30days" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c617374333064617973", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last 30 days"))),
     "android.screenshots.last6months" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c617374366d6f6e746873", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last 6 months"))),
     "android.screenshots.lastyear" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c61737479656172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last year"))),
@@ -62,4 +61,5 @@ internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
     "android.shelf.delivered.by" to PhoneMessage("m616e64726f69642e7368656c662e64656c6976657265642e6279", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "delivered by"))),
     "android.shelf.device.choice" to PhoneMessage("m616e64726f69642e7368656c662e6465766963652e63686f696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "device choice"))),
     "android.shelf.email.support" to PhoneMessage("m616e64726f69642e7368656c662e656d61696c2e737570706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "email support"))),
+    "android.shelf.event.log" to PhoneMessage("m616e64726f69642e7368656c662e6576656e742e6c6f67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "event log"))),
 )

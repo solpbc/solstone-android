@@ -363,8 +363,6 @@ sealed interface ShareSheetState {
     data class Review(
         val items: List<ShareSheetItem>,
         val textPreview: String?,
-        /** Text arrived alongside files; it isn't added. */
-        val textDropped: Boolean = false,
     ) : ShareSheetState {
         /** Whether anything here can be added at all. */
         val addable: Boolean get() = textPreview != null || items.any { it.refusal == null }
@@ -429,6 +427,7 @@ fun PhoneShareSheet(
                         )
                     }
                     state.textPreview?.let { preview ->
+                        if (state.items.isNotEmpty()) Spacer(Modifier.height(8.dp))
                         Text(
                             preview,
                             style = MaterialTheme.typography.bodyMedium,
@@ -436,10 +435,6 @@ fun PhoneShareSheet(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.testTag("shareSheet-text"),
                         )
-                    }
-                    if (state.textDropped) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(phoneText("android.import.text.sent.along.with.these"), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
