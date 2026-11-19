@@ -870,7 +870,7 @@ class MobileImportClientTest {
         var declaredLength = -1L
         http.streamingHandler = { body ->
             declaredLength = body.contentLength
-            drained = drainBody(body)
+            drained = drainStreamingBody(body)
             HttpResponse(200, emptyMap(), "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8))
         }
 
