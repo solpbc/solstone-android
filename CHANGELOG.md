@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.49] - 2026-11-19
+
 ### Fixed
 
 - the question that asks whether this phone is replacing one of your devices now looks like the rest of the solstone app, with one cancel button where it showed two.
