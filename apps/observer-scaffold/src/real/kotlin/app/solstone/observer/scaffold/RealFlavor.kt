@@ -165,15 +165,24 @@ internal fun realImportBacklog(
         // journal too old to take imports holds every waiting one until the owner updates it, so
         // those can't shrink on their own either and never read as syncing.
         val elsewhere = app.solstone.platform.persistence.room.ImportAttentionScope.ELSEWHERE
-        val moving = items.count { it.state == "pending" || it.scope == elsewhere }
+        val movingItems = items.filter { it.state == "pending" || it.scope == elsewhere }
         val needOwner = items.count { it.state == "attention" && it.scope != elsewhere }
-        val held = gate == app.solstone.platform.work.ImportVersionGate.TOO_OLD
+        val journalVersion = record?.version.orEmpty()
+        val captionHeldCount = if (gate == app.solstone.platform.work.ImportVersionGate.SUPPORTED &&
+            !app.solstone.platform.work.journalSupportsImportCaptions(journalVersion)
+        ) {
+            movingItems.count { it.hasCaption && !it.hasSavedProgress }
+        } else {
+            0
+        }
+        val effectiveGate = app.solstone.platform.work.effectiveImportGate(gate, journalVersion, movingItems.size, captionHeldCount)
+        val heldCount = if (gate == app.solstone.platform.work.ImportVersionGate.TOO_OLD) movingItems.size else captionHeldCount
         app.solstone.observer.harness.HarnessImportBacklog(
-            pendingCount = if (held) 0 else moving,
-            attentionCount = needOwner + if (held) moving else 0,
+            pendingCount = movingItems.size - heldCount,
+            attentionCount = needOwner + heldCount,
             pairingIncomplete = pairingFact() == app.solstone.core.diagnostics.PairingFact.INCOMPLETE,
             refused = refused,
-            gate = gate,
+            gate = effectiveGate,
             sending = items.any { it.inFlight },
             lastDelivery = store.lastDelivery(),
             currentInstanceId = identity?.instanceId,

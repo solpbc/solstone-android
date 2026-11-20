@@ -70,11 +70,15 @@ class ImportDeliveryTest {
         return store
     }
 
-    private fun share(name: String = "doc.pdf"): String {
+    private fun share(name: String = "doc.pdf", mime: String = "application/pdf", caption: String? = null): String {
         val id = store.begin("file")!!
         val bytes = "pdf-bytes-$name".toByteArray()
-        Files.write(root.resolve(".staging").resolve(id).resolve("payload"), bytes)
-        assertTrue(store.publish(id, name, "application/pdf", bytes.size.toLong()))
+        val stageDir = root.resolve(".staging").resolve(id)
+        Files.write(stageDir.resolve("payload"), bytes)
+        if (caption != null) {
+            Files.write(stageDir.resolve("caption.txt"), caption.toByteArray(Charsets.UTF_8))
+        }
+        assertTrue(store.publish(id, name, mime, bytes.size.toLong()))
         return id
     }
 
@@ -265,6 +269,53 @@ class ImportDeliveryTest {
         }
         assertEquals(ImportStageResult.CLEAN, deliver(journal))
         assertEquals(listOf(save), journal.paths, "no start for an item that is gone")
+        assertNull(dao.byId(id))
+    }
+
+    @Test
+    fun aCaptionedPhotoIsHeldOnJournalsOlderThan2086AndDeliversOnceUpdated() {
+        setUp()
+        val id = share("photo.jpg", mime = "image/jpeg", caption = "sunset from the porch")
+        val oldJournal = Journal()
+        val run = ImportRun()
+        assertEquals(ImportStageResult.HELD, deliver(oldJournal, run, version = "2.0.85"))
+        assertTrue(oldJournal.paths.isEmpty())
+        assertFalse(run.stageClean, "a held captioned photo must not trigger a follow-up loop")
+        assertFalse(hasDeliverableImports(store, "A", "2.0.85", 2_000L))
+        assertEquals(0, dao.byId(id)!!.attemptCount)
+        assertEquals("sunset from the porch", store.item(id)!!.caption)
+
+        val updatedJournal = Journal(saved(), started())
+        assertTrue(hasDeliverableImports(store, "A", "2.0.86", 2_000L))
+        assertEquals(ImportStageResult.CLEAN, deliver(updatedJournal, ImportRun(), version = "2.0.86"))
+        assertEquals(listOf(save, start), updatedJournal.paths)
+        assertNull(dao.byId(id))
+    }
+
+    @Test
+    fun anUncaptionedItemStillDeliversOn2085WhileACaptionedPhotoStaysHeld() {
+        setUp()
+        val captioned = share("photo.jpg", mime = "image/jpeg", caption = "keep me")
+        val plain = share("notes.pdf")
+        val journal = Journal(saved(), started())
+        val run = ImportRun(cap = 1)
+        assertEquals(ImportStageResult.CLEAN, deliver(journal, run, version = "2.0.85"))
+        assertEquals(listOf(save, start), journal.paths)
+        assertEquals(setOf(plain), run.selected)
+        assertNull(dao.byId(plain))
+        assertNotNull(dao.byId(captioned))
+        assertEquals("keep me", store.item(captioned)!!.caption)
+        assertFalse(hasDeliverableImports(store, "A", "2.0.85", 2_000L))
+    }
+
+    @Test
+    fun aCaptionedPhotoAlreadyStagedOn2085StillFinishesStart() {
+        setUp()
+        val id = share("photo.jpg", mime = "image/jpeg", caption = "already staged")
+        assertTrue(store.markSaved(id, "/imports/20261120_100000/photo.jpg", "20261120_100000", "A"))
+        val journal = Journal(started())
+        assertEquals(ImportStageResult.CLEAN, deliver(journal, ImportRun(), version = "2.0.85"))
+        assertEquals(listOf(start), journal.paths)
         assertNull(dao.byId(id))
     }
 }

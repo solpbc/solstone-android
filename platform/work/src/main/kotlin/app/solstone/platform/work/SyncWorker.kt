@@ -643,7 +643,7 @@ private fun sync(
                 // refused, or never reached the stage leaves that to its own retry.
                 val record = stores.journalVersionStore.load()
                 if (importRun.stageClean && context != null &&
-                    importStore.eligible(credentials.identity.instanceId, record?.version.orEmpty(), System.currentTimeMillis(), 1).isNotEmpty()
+                    hasDeliverableImports(importStore, credentials.identity.instanceId, record?.version.orEmpty(), System.currentTimeMillis())
                 ) {
                     SyncScheduler.enqueueFollowUp(context, MAIN_STREAM)
                 }

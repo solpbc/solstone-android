@@ -10,6 +10,7 @@ import app.solstone.core.observer.MobileImportOutcome
 import app.solstone.core.observer.MobileImportSource
 import app.solstone.core.observer.MobileImportText
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.platform.persistence.room.ImportCandidate
 import app.solstone.platform.persistence.room.ImportChange
 import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ImportItemDescriptor
@@ -64,6 +65,22 @@ internal enum class ImportStageResult {
  * Every item left to retry writes one line to [diag], the owner's event log, naming the step and
  * why: a retry costs the owner a back-off, so its cause is never silent.
  */
+/**
+ * Whether [candidate] can be sent to a journal at [journalVersion] without losing its caption.
+ * An item already saved at this journal (`progress != null`) finishes its `start` regardless so
+ * a half-finished exchange never wedges.
+ */
+internal fun isImportDeliverable(candidate: ImportCandidate, journalVersion: String): Boolean =
+    candidate.progress != null || !candidate.hasCaption || journalSupportsImportCaptions(journalVersion)
+
+/** Whether any currently eligible item can be delivered to [journalVersion] right now. */
+internal fun hasDeliverableImports(
+    store: ImportCustodyStore,
+    instanceId: String,
+    journalVersion: String,
+    now: Long,
+): Boolean = store.eligible(instanceId, journalVersion, now, Int.MAX_VALUE).any { isImportDeliverable(it, journalVersion) }
+
 internal fun deliverImports(
     http: PlHttpClient,
     store: ImportCustodyStore,
@@ -81,10 +98,16 @@ internal fun deliverImports(
     val wire = client(http)
     val candidates = store.eligible(instanceId, journalVersion, now(), Int.MAX_VALUE)
     var anyRetry = false
+    var anyHeldForVersion = false
+    var attempted = 0
     var result = ImportStageResult.CLEAN
     run.stoppedByCap = false
     try {
         for (candidate in candidates) {
+            if (!isImportDeliverable(candidate, journalVersion)) {
+                anyHeldForVersion = true
+                continue
+            }
             if (!run.mayTake(candidate.id)) {
                 run.stoppedByCap = true
                 break
@@ -94,6 +117,7 @@ internal fun deliverImports(
                 break
             }
             if (store.beginExchange(candidate.id, instanceId, journalVersion) != ImportChange.DONE) continue
+            attempted++
             run.selected.add(candidate.id)
             run.retried.remove(candidate.id)
             val retried = { stage: String, cause: String ->
@@ -127,6 +151,10 @@ internal fun deliverImports(
         }
     } finally {
         runCatching { store.finish() }.onFailure { log("finishing delivered imports failed", it) }
+    }
+    if (result == ImportStageResult.CLEAN && anyHeldForVersion && attempted == 0) {
+        run.stageClean = false
+        return ImportStageResult.HELD
     }
     if (result == ImportStageResult.CLEAN && anyRetry) result = ImportStageResult.RETRY
     run.stageClean = result == ImportStageResult.CLEAN

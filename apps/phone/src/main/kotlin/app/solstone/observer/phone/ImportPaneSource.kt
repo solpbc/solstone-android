@@ -22,8 +22,10 @@ import app.solstone.platform.persistence.room.ImportChange
 import app.solstone.platform.work.ImportVersionGate
 import app.solstone.platform.work.ImportWaitingReason
 import app.solstone.platform.work.SyncStores
+import app.solstone.platform.work.effectiveImportGate
 import app.solstone.platform.work.importVersionGate
 import app.solstone.platform.work.importWaitingReason
+import app.solstone.platform.work.journalSupportsImportCaptions
 
 /**
  * Refusals a retry could plausibly change: the journal's queue or a write was briefly unavailable,
@@ -49,6 +51,14 @@ internal fun readImportPane(
     val record = stores.journalVersionStore.load()
     val gate = if (identity == null) ImportVersionGate.UNKNOWN else importVersionGate(record, identity.instanceId, identity.caChainFingerprint)
     val items = intake.store.items(identity?.instanceId, record?.version)
+    val journalVersion = record?.version.orEmpty()
+    val waitingItems = items.filter { it.state == "pending" || it.scope == ImportAttentionScope.ELSEWHERE }
+    val captionHeldCount = if (gate == ImportVersionGate.SUPPORTED && !journalSupportsImportCaptions(journalVersion)) {
+        waitingItems.count { it.hasCaption && !it.hasSavedProgress }
+    } else {
+        0
+    }
+    val effectiveGate = effectiveImportGate(gate, journalVersion, waitingItems.size, captionHeldCount)
     // A revoked pairing is a refusal too: only pairing again sends these.
     val refused = pairingFact == PairingFact.REVOKED || (identity != null &&
         (stores.pairingRefusalStore?.refusedFor(PairingGeneration(identity.instanceId, identity.clientCertFingerprint)) ?: false))
@@ -57,7 +67,7 @@ internal fun readImportPane(
         pairingIncomplete = pairingFact == PairingFact.INCOMPLETE,
         awaitingConfirmation = awaitingConfirmation,
         refused = refused,
-        gate = gate,
+        gate = effectiveGate,
         sending = items.any { it.inFlight },
     )
     val rows = items.map { item ->

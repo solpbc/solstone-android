@@ -20,6 +20,9 @@ enum class ImportVersionGate {
 /** The first journal release whose import save and start are safe to repeat. */
 internal val MIN_IMPORT_JOURNAL_VERSION = listOf(2, 0, 52)
 
+/** The first journal release that persists the multipart `caption` field on photo imports. */
+internal val MIN_CAPTION_JOURNAL_VERSION = listOf(2, 0, 86)
+
 /**
  * The one gate for phone imports, shared by delivery and by what the app says about waiting
  * imports, so the two can never disagree.
@@ -39,6 +42,37 @@ fun importVersionGate(record: JournalVersionRecord?, instanceId: String, caChain
         ImportVersionGate.TOO_OLD
     }
 }
+
+/**
+ * Whether a journal running [journalVersion] persists the `caption` field on photo imports.
+ * Journals older than 2.0.86 accept the photo and silently ignore `caption`, so captioned items
+ * stay held on the device until the journal updates. Fails closed when the version can't be read.
+ */
+fun journalSupportsImportCaptions(journalVersion: String): Boolean {
+    val parts = numericVersion(journalVersion) ?: return false
+    return compareVersions(parts, MIN_CAPTION_JOURNAL_VERSION) >= 0
+}
+
+/**
+ * Effective version gate for the waiting summary when [heldForCaption] of [totalWaiting] waiting
+ * items carry a photo caption that [journalVersion] would silently drop. When every waiting item
+ * is waiting for a journal update, the owner sees the update reason rather than "waiting".
+ */
+fun effectiveImportGate(
+    gate: ImportVersionGate,
+    journalVersion: String,
+    totalWaiting: Int,
+    heldForCaption: Int,
+): ImportVersionGate =
+    if (gate == ImportVersionGate.SUPPORTED &&
+        totalWaiting > 0 &&
+        heldForCaption >= totalWaiting &&
+        !journalSupportsImportCaptions(journalVersion)
+    ) {
+        ImportVersionGate.TOO_OLD
+    } else {
+        gate
+    }
 
 private fun numericVersion(raw: String): List<Int>? {
     val numbers = raw.trim().trimStart('v').takeWhile { it.isDigit() || it == '.' }

@@ -17,7 +17,11 @@ import java.util.concurrent.locks.ReentrantLock
 
 data class ImportProgress(val path: String, val timestamp: String)
 data class ImportBackoff(val attemptCount: Int, val nextAttemptAt: Long)
-data class ImportCandidate(val id: String, val progress: ImportProgress?)
+data class ImportCandidate(
+    val id: String,
+    val progress: ImportProgress?,
+    val hasCaption: Boolean = false,
+)
 data class ImportHeldItem(
     val id: String,
     val state: String,
@@ -73,6 +77,7 @@ data class ImportListItem(
     val scope: ImportAttentionScope,
     val inFlight: Boolean,
     val hasSavedProgress: Boolean,
+    val hasCaption: Boolean = false,
 )
 
 data class ImportLastDelivery(val at: Long, val instanceId: String)
@@ -448,7 +453,7 @@ class ImportCustodyStore(
                 } else {
                     null
                 }
-                candidates.add(ImportCandidate(row.id, progress))
+                candidates.add(ImportCandidate(row.id, progress, hasCaption = readCaption(root.resolve(row.id)) != null))
                 if (candidates.size == limit) break
             }
         }
@@ -615,6 +620,7 @@ class ImportCustodyStore(
                 scope = scope,
                 inFlight = kindKey(root, row.id) in inFlight,
                 hasSavedProgress = row.progressPath != null && row.progressTimestamp != null,
+                hasCaption = readCaption(root.resolve(row.id)) != null,
             )
         }
     }
@@ -627,16 +633,7 @@ class ImportCustodyStore(
         if (isUnsafeId(id)) return null
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return null
         val itemDir = root.resolve(row.id)
-        val captionPath = itemDir.resolve("caption.txt")
-        val caption = try {
-            if (Files.isRegularFile(captionPath, NOFOLLOW_LINKS) && Files.size(captionPath) <= 256 * 1024L) {
-                String(Files.readAllBytes(captionPath), Charsets.UTF_8).trim().takeIf { it.isNotEmpty() }
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
+        val caption = readCaption(itemDir)
         return ImportItemDescriptor(
             id = row.id,
             payloadKind = row.payloadKind,
@@ -646,5 +643,18 @@ class ImportCustodyStore(
             size = row.byteSize,
             caption = caption,
         )
+    }
+
+    private fun readCaption(itemDir: Path): String? {
+        val captionPath = itemDir.resolve("caption.txt")
+        return try {
+            if (Files.isRegularFile(captionPath, NOFOLLOW_LINKS) && Files.size(captionPath) <= 256 * 1024L) {
+                String(Files.readAllBytes(captionPath), Charsets.UTF_8).trim().takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 }
