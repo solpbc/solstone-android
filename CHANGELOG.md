@@ -6,10 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.50] - 2026-11-20
+
 ### Fixed
 
 - sharing a HEIC photo from your phone now keeps the date and time it was taken when the app converts it to JPEG, so it lands on the right day in your journal.
-- text you share alongside a photo now travels with the photo as your note instead of being dropped.
+- once your journal is on 2.0.86 or later, text you share alongside a photo now travels with the photo as your note instead of being dropped.
 
 ## [2.1.49] - 2026-11-19
 
