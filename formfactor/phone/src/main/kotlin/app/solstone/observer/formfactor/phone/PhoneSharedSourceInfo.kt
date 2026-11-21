@@ -44,6 +44,12 @@ internal fun otherDevices(id: String, state: SourceState?, facts: Boolean = fals
 
 internal fun sharedHeading(count: Int) = phoneText("android.source.shared.devices", "count" to count)
 
+/**
+ * A drawn line for another device's source. The separator wrap rule: the state and the time
+ * never break inside themselves, and a separator stays with the part before it, so a line too
+ * long for its slot wraps only after a separator and no line starts with one. The name keeps
+ * its own spaces; the tile passes one that already cannot break ([SharedTileLine]).
+ */
 internal fun SharedSourceRow.line(name: String?, now: Long, spoken: Boolean = false): String {
     val stateText = when (state) {
         "paused" -> sourceStateCopy(SourceState.PAUSED)
@@ -55,13 +61,25 @@ internal fun SharedSourceRow.line(name: String?, now: Long, spoken: Boolean = fa
         if (spoken && minutes in 1..59) phoneText("android.about.freshnessminutes", "count" to minutes)
         else formatRelative(it.toEpochMilli(), now, ZoneId.systemDefault())
     }
-    val parts = listOfNotNull(name, stateText, time)
-    return when (parts.size) {
+    val whole = { part: String? -> if (spoken) part else part?.let(::unbroken) }
+    val parts = listOfNotNull(name, whole(stateText), whole(time))
+    val line = when (parts.size) {
         3 -> phoneText("android.source.shared.triple", "first" to parts[0], "state" to parts[1], "relative" to parts[2])
         2 -> phoneText("android.source.shared.pair", "first" to parts[0], "second" to parts[1])
         else -> parts.firstOrNull().orEmpty()
     }
+    return if (spoken) line else line.replace(" $SEPARATOR", "$NO_BREAK$SEPARATOR")
 }
+
+private const val NO_BREAK = '\u00A0'
+private const val SEPARATOR = '\u00B7'
+
+/** A part that a line may not break inside. */
+internal fun unbroken(part: String) = part.replace(' ', NO_BREAK)
+
+/** True when every line but the last ends just after a separator, so no part was split. */
+internal fun breaksOnlyAtSeparators(text: String, lineEnds: List<Int>): Boolean =
+    lineEnds.dropLast(1).all { end -> end >= 2 && text.substring(end - 2, end) == "$SEPARATOR " }
 
 @Composable
 internal fun SharedMarker() {
@@ -78,18 +96,24 @@ internal fun SharedTileLine(device: SharedSourceDevice, now: Long) {
     val style = MaterialTheme.typography.bodySmall
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val row = device.rows.first()
-        val full = row.line(device.label, now)
+        // The name cannot break either, so a line that does not fit gives up name, not state or time.
+        fun shortened(keep: Int) = row.line(unbroken(device.label.take(keep).trimEnd() + "…"), now)
+        val full = row.line(unbroken(device.label), now)
         val limit = Constraints(maxWidth = constraints.maxWidth)
         val shown = remember(full, style, limit, measure) {
-            fun fits(value: String) = !measure.measure(value, style, maxLines = 3, constraints = limit).hasVisualOverflow
+            fun fits(value: String): Boolean {
+                val layout = measure.measure(value, style, maxLines = 3, constraints = limit)
+                return !layout.hasVisualOverflow &&
+                    breaksOnlyAtSeparators(value, (0 until layout.lineCount).map { layout.getLineEnd(it) })
+            }
             if (fits(full)) full else {
                 var low = 0
-                var high = device.label.length
+                var high = device.label.length - 1
                 while (low < high) {
                     val mid = (low + high + 1) / 2
-                    if (fits(row.line(device.label.take(mid) + "…", now))) low = mid else high = mid - 1
+                    if (fits(shortened(mid))) low = mid else high = mid - 1
                 }
-                row.line(device.label.take(low) + "…", now)
+                shortened(low)
             }
         }
         Text(shown, style = style, color = shellSecondaryInk)
@@ -138,6 +162,7 @@ internal fun SharedSourceCard(id: String, state: SourceState?) {
 internal fun SharedSourceFacts(id: String, state: SourceState?) {
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     otherDevices(id, state, facts = true).forEachIndexed { index, device ->
-        PaneFactRow(if (index == 0) phoneText("android.source.shared.also") else "", device.rows.first().line(device.label, now))
+        // The label stays on one line beside a long value.
+        PaneFactRow(if (index == 0) unbroken(phoneText("android.source.shared.also")) else "", device.rows.first().line(device.label, now))
     }
 }
