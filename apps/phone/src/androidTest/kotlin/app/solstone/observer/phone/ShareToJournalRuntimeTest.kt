@@ -122,14 +122,28 @@ class ShareToJournalRuntimeTest {
     }
 
     @Test
-    fun aShareOfOnlyWhatTheJournalCantTakeSaysSoAndOffersOnlyClose() {
-        val uri = download("clip-${System.nanoTime()}.mp4", "video/mp4", "not really a video".toByteArray())
-        ActivityScenario.launch<ShareToJournalActivity>(share(uri, "video/mp4")).use { scenario ->
+    fun anyKindOfFileIsOfferedAndSavedBecauseTheJournalDecidesWhatItIs() {
+        val bytes = "not really a video".toByteArray()
+        val uri = download("clip-${System.nanoTime()}.mp4", "video/mp4", bytes)
+        ActivityScenario.launch<ShareToJournalActivity>(share(uri, "video/mp4")).use {
+            compose.onNodeWithTag("shareSheet-itemRefused").assertDoesNotExist()
+            compose.onNodeWithTag("shareSheet-add").performClick()
+            compose.waitUntil(10_000) { store.items(null, null).isNotEmpty() }
+        }
+        val item = store.items(null, null).single()
+        assertEquals(String(bytes), String(store.item(item.id)!!.payloadPath.toFile().readBytes()))
+    }
+
+    @Test
+    fun aShareOfOnlyWhatTheAppCantReadSaysSoAndOffersOnlyClose() {
+        val file = File(context.cacheDir, "not-shareable-${System.nanoTime()}.txt").apply { writeText("x") }
+        ActivityScenario.launch<ShareToJournalActivity>(share(Uri.fromFile(file), "text/plain")).use { scenario ->
             compose.onNodeWithTag("shareSheet-itemRefused").assertExists()
             compose.onNodeWithTag("shareSheet-add").assertDoesNotExist()
             compose.onNodeWithTag("shareSheet-close").performClick()
             compose.waitUntil(5_000) { scenario.state == Lifecycle.State.DESTROYED }
         }
+        file.delete()
         assertTrue(store.items(null, null).isEmpty())
         assertTrue(stagingIsEmpty())
     }
