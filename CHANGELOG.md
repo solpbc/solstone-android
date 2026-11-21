@@ -6,11 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.51] - 2026-11-21
+
 ### Added
 
-- when another device shares Obsidian notes or calendar events with your journal, your phone or tablet shows which device they come from. you can still set up either source here.
+- once your journal is updated, when Obsidian notes or calendar events from another device go into your journal, your phone or tablet shows which device they come from. you can still set up either one on this device too.
 - once your journal is updated, choosing a file on its import page opens your phone's own file picker. the file is saved on this device first and goes into your journal from there, so it still arrives if you close the journal window straight away.
-- the import tile has a new row, "more imports," that opens your journal's import page for exports from other services.
+- the import tile has a new "more imports" row that opens your journal's import page for exports from other services.
 
 ### Changed
 
