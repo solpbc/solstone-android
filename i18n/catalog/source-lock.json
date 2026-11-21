@@ -612,7 +612,7 @@
     },
     {
       "id": "android.import.adds.pdfs.audio.images.text",
-      "source": "da1f9f77caf0e7578ce8a8add8f25f80917a9f5d81ef12064cf194c4fbd4aa4b",
+      "source": "da6c6eb8c19136d866099a71e044b5a7298e4411539bc32176f6e08c7339b39c",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []
@@ -1102,7 +1102,7 @@
     },
     {
       "id": "android.journal.file.selection.isn.t.available",
-      "source": "6d135446010a8e8b55b2d1c1042f8a486e1d81f024704839538aa1bd29f34022",
+      "source": "70cd2e08c219c9a313e92f361bb8dad0b18ef8a1c401eeb31fa016af5873d211",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []

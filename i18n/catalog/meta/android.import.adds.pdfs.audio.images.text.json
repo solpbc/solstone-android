@@ -1,6 +1,6 @@
 {
   "description": "the solstone app, to the owner",
-  "context": "the solstone app, to the owner Exact iPhone English twin: ios.sourcevocabularyswift.addspdfsaudioandtext.",
+  "context": "the solstone app, to the owner: the note at the top of the import tile, saying any kind of file can be added there or from the share sheet.",
   "surfaces": [
     "phone"
   ],
@@ -10,7 +10,7 @@
   "arguments": [],
   "format_intent": "text",
   "max_length": 98,
-  "source_revision": "da1f9f77caf0e7578ce8a8add8f25f80917a9f5d81ef12064cf194c4fbd4aa4b",
+  "source_revision": "da6c6eb8c19136d866099a71e044b5a7298e4411539bc32176f6e08c7339b39c",
   "risk": "routine",
   "auto_merge": true
 }
