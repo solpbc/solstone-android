@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages3(): Map<String, PhoneMessage> = mapOf(
+    "android.journalmark.journal.s.mark.unavailable.right" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6a6f75726e616c2e732e6d61726b2e756e617661696c61626c652e7269676874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal's mark, unavailable right now"))),
+    "android.journalmark.journal.shows.same.mark.its" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6a6f75726e616c2e73686f77732e73616d652e6d61726b2e697473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal shows this same mark in its network app. it should match, exactly."))),
+    "android.journalmark.noidentity" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f6964656e74697479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "no identity presented"))),
+    "android.journalmark.notchanged" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f746368616e676564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not changed"))),
     "android.journalmark.notconfirmed" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f74636f6e6669726d6564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal, mark not confirmed yet"))),
     "android.journalmark.notreadyet" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f7472656164796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal, mark not read yet"))),
     "android.journalmark.pairingstaysnothingwaiting" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e70616972696e6773746179736e6f7468696e6777616974696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your pairing stays as it was. nothing waiting on this phone went to that journal through this link."))),
@@ -58,8 +62,4 @@ internal fun phoneMessages3(): Map<String, PhoneMessage> = mapOf(
     "android.native.in.progress" to PhoneMessage("m616e64726f69642e6e61746976652e696e2e70726f6772657373", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "In progress"))),
     "android.native.m3c.dialog" to PhoneMessage("m616e64726f69642e6e61746976652e6d33632e6469616c6f67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Dialog"))),
     "android.native.navigation.menu" to PhoneMessage("m616e64726f69642e6e61746976652e6e617669676174696f6e2e6d656e75", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Navigation menu"))),
-    "android.native.not.selected" to PhoneMessage("m616e64726f69642e6e61746976652e6e6f742e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Not selected"))),
-    "android.native.selected" to PhoneMessage("m616e64726f69642e6e61746976652e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Selected"))),
-    "android.native.state.off" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6666", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Off"))),
-    "android.native.state.on" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "On"))),
 )

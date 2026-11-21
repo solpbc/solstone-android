@@ -1,0 +1,16 @@
+{
+  "description": "The line the whole app shows when Google Play needs the person to confirm their age before the app can be used.",
+  "context": "Shown on an otherwise empty screen above one button that opens Google Play. 'Google Play' is the store's name and keeps its capitals; 'solstone' stays lowercase.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 90,
+  "source_revision": "5151868f49bb5f65b3221caf62804c83b9aaaabf0df1a53a54d5ad8957ec4d79",
+  "risk": "statutory",
+  "auto_merge": false
+}

@@ -1,0 +1,16 @@
+{
+  "description": "The one line the whole app shows when Google Play reports the person is under 13. The app does nothing else.",
+  "context": "Shown alone on an otherwise empty screen, in the solstone app, to a person Google Play reports as under 13. Plain and kind; no instruction follows it. 'solstone' is the product name and stays lowercase.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 60,
+  "source_revision": "54398ff46607262601f2ea12fc839cec82a114a9af60f218f9aaf94faf11f422",
+  "risk": "statutory",
+  "auto_merge": false
+}

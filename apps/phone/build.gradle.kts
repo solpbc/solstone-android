@@ -94,6 +94,14 @@ android {
         versionCode = 70
         versionName = "2.1.51"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The launch age check (Google Play Age Signals). OFF for every build, release included:
+        // off, the app never asks the store and behaves exactly as without it. A proof build turns
+        // it on with -Psolstone.ageSignalCheck=true. Publishing it is changing this default.
+        buildConfigField(
+            "boolean",
+            "AGE_SIGNAL_CHECK",
+            providers.gradleProperty("solstone.ageSignalCheck").getOrElse("false").toBooleanStrict().toString(),
+        )
     }
 
     sourceSets {
@@ -400,6 +408,11 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("org.unifiedpush.android:connector:3.3.5")
     implementation("org.unifiedpush.android:embedded-fcm-distributor:3.1.0")
+    // Same exclusion as :platform:wearable: Play services' basement would bring back a Fragment
+    // release the activity result APIs in this app refuse.
+    implementation("com.google.android.play:age-signals:0.0.6") {
+        exclude(group = "androidx.fragment", module = "fragment")
+    }
 
     testImplementation(kotlin("test"))
 

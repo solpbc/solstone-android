@@ -44,6 +44,8 @@ class ShareToJournalActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A share is a launch too: nothing is read or offered until the age check clears.
+        if (AgeSignalGate.holdsLaunch(this, ::recreate)) return
         if (!model.started) {
             val share = readShare(intent)
             if (share == null) {

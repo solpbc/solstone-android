@@ -45,6 +45,10 @@ class ObserverForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (startClosed()) {
+            refuseClosedStart()
+            return START_NOT_STICKY
+        }
         val hook = rehydrator
         val widgetSourceId = widgetSourceId(intent)
         val isIntakeStart = intent?.getBooleanExtra(EXTRA_INTAKE_START, false) == true
@@ -432,6 +436,8 @@ class ObserverForegroundService : Service() {
         @Volatile var lifecycleDiag: ((String) -> Unit)? = null
         @Volatile var onDestroyCallback: (() -> Unit)? = null
         @Volatile var onForegroundChanged: ((Boolean) -> Unit)? = null
+        /** The app's hold on capture: while it reads true, every start is refused. */
+        @Volatile var startClosed: () -> Boolean = { false }
 
         fun narrowRunningMask(types: Set<CaptureForegroundType>): MaskNarrowResult {
             val instance = runningInstance
@@ -666,6 +672,36 @@ class ObserverForegroundService : Service() {
             intent?.getStringExtra(EXTRA_WIDGET_SOURCE_ID)?.takeIf(String::isNotBlank)
 
         const val EXTRA_WIDGET_SOURCE_ID = "app.solstone.platform.fgs.extra.WIDGET_SOURCE_ID"
+    }
+
+    /**
+     * The app holds all capture, so this start ends here and asks for no restart. ⚠ A start made
+     * through `startForegroundService` (the widget, the notification) obliges the service to enter
+     * the foreground once, or the system ends the process. It enters with the off notification and
+     * leaves before returning: no source is started, and nothing is captured.
+     */
+    private fun refuseClosedStart() {
+        if (heldCaptureForegroundTypes == null) {
+            val permissions = AndroidPermissionStatusReader(this).read()
+            val types = satisfiableCaptureForegroundTypes(
+                microphoneGranted = permissions.microphoneGranted,
+                cameraGranted = permissions.cameraGranted,
+                locationGranted = permissions.locationGranted,
+                declared = declaredCaptureForegroundTypes ?: emptySet(),
+            )
+            if (types.isNotEmpty()) {
+                runCatching {
+                    ServiceCompat.startForeground(
+                        this,
+                        ObserverNotification.SERVICE_NOTIFICATION_ID,
+                        ObserverNotification.ongoing(this, stopped = true),
+                        captureForegroundTypeMask(types),
+                    )
+                }
+            }
+        }
+        removeForegroundNotification()
+        stopSelf()
     }
 
     private fun removeForegroundNotification() {

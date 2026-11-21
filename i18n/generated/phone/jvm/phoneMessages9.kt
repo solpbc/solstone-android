@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
+    "android.source.turn.any.time" to PhoneMessage("m616e64726f69642e736f757263652e7475726e2e616e792e74696d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn it on any time."))),
+    "android.source.unknownjournal" to PhoneMessage("m616e64726f69642e736f757263652e756e6b6e6f776e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal"))),
+    "android.source.waitingwatch" to PhoneMessage("m616e64726f69642e736f757263652e77616974696e677761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "waiting for your watch"))),
+    "android.source.while.solstone.app.takes.photo" to PhoneMessage("m616e64726f69642e736f757263652e7768696c652e736f6c73746f6e652e6170702e74616b65732e70686f746f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes a photo from your rear camera every minute and adds it to your journal."))),
     "android.source.while.solstone.app.takes.video" to PhoneMessage("m616e64726f69642e736f757263652e7768696c652e736f6c73746f6e652e6170702e74616b65732e766964656f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes in video of the app or screen you choose, including while you use other apps. it stays on this device until it can reach your journal."))),
     "android.status.all.caught.up" to PhoneMessage("m616e64726f69642e7374617475732e616c6c2e6361756768742e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "all caught up"))),
     "android.status.anythingwaitingstayshere" to PhoneMessage("m616e64726f69642e7374617475732e616e797468696e6777616974696e67737461797368657265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "anything waiting stays here until you pair again."))),

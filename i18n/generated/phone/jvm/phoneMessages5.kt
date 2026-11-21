@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
+    "android.pairing.paste.link" to PhoneMessage("m616e64726f69642e70616972696e672e70617374652e6c696e6b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "paste a link"))),
+    "android.pairing.phone.already.connected.working.journal" to PhoneMessage("m616e64726f69642e70616972696e672e70686f6e652e616c72656164792e636f6e6e65637465642e776f726b696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this phone is already connected to a working journal. unpair this phone, then try again to connect a different journal."))),
+    "android.pairing.scan.code" to PhoneMessage("m616e64726f69642e70616972696e672e7363616e2e636f6465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "scan a code"))),
+    "android.pairing.solstone.app.using.camera.right" to PhoneMessage("m616e64726f69642e70616972696e672e736f6c73746f6e652e6170702e7573696e672e63616d6572612e7269676874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the solstone app is using the camera right now. try again, or turn the camera source off to scan."))),
     "android.pairing.something.answered.at.value.but" to PhoneMessage("m616e64726f69642e70616972696e672e736f6d657468696e672e616e7377657265642e61742e76616c75652e627574", listOf(PhoneArgument("endpointport", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered at %1\$s but couldn't prove it's your journal. make sure you're connected to your journal's network, directly or over your vpn, then try again."))),
     "android.pairing.that.pairing.link.isn.t" to PhoneMessage("m616e64726f69642e70616972696e672e746861742e70616972696e672e6c696e6b2e69736e2e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "that pairing link isn't one the solstone app can read. show a new pairing code on your journal and try again."))),
     "android.phone.about" to PhoneMessage("m616e64726f69642e70686f6e652e61626f7574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "about"))),
@@ -58,8 +62,4 @@ internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
     "android.screenshots.choosefolder" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e63686f6f7365666f6c646572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose the Screenshots folder"))),
     "android.screenshots.choosefolder2" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e63686f6f7365666f6c64657232", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose the folder"))),
     "android.screenshots.choosehowfarback" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e63686f6f7365686f776661726261636b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose how far back to start, then bring them in."))),
-    "android.screenshots.couldntcountscreenshots" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e636f756c646e74636f756e7473637265656e73686f7473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't count your screenshots."))),
-    "android.screenshots.folder" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c646572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "folder"))),
-    "android.screenshots.foldername" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c6465726e616d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Screenshots"))),
-    "android.screenshots.foldername2" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c6465726e616d6532", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Screenshots"))),
 )

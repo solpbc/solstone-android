@@ -204,6 +204,7 @@ class PhoneShellActivity : ComponentActivity() {
     private val ownerStopped by lazy { OwnerStoppedStore(this) }
     private val mainHandler = Handler(Looper.getMainLooper())
     private var activityStarted = false
+    private var ageHeld = false
     private val midnightTick = Runnable {
         if (!activityStarted || !::statusViewModel.isInitialized) return@Runnable
         statusViewModel.onNow(System.currentTimeMillis())
@@ -550,11 +551,17 @@ class PhoneShellActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // A held instance keeps the newest link for the instance that replaces it.
+        if (ageHeld) return
         handleIntent(intent, cold = false)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        if (ageHeld) {
+            outState.putBoolean(STATE_AGE_HELD, true)
+            return
+        }
         outState.putBoolean(STATE_INITIAL_PAIRING_TASK, initialPairingTask)
         // A rotation or an appearance change rebuilds this activity, and the journal stays open on
         // the page it was showing. Only then: a journal reopening by itself after the process was
@@ -586,7 +593,15 @@ class PhoneShellActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        initialPairingTask = savedInstanceState?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
+        // ⚠ Before anything below can start capture, pairing or a send. A held instance does nothing
+        // else in its whole life, and every lifecycle callback below returns early for it.
+        if (AgeSignalGate.holdsLaunch(this, ::recreate)) {
+            ageHeld = true
+            return
+        }
+        // The held instance's state is not this one's: after the check clears, start cold.
+        val restored = savedInstanceState?.takeUnless { it.getBoolean(STATE_AGE_HELD) }
+        initialPairingTask = restored?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
             ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null &&
                 phoneJournalLink(intent?.data?.toString()) is PhoneJournalLink.Other)
         val app = application as ObserverApplication
@@ -603,13 +618,13 @@ class PhoneShellActivity : ComponentActivity() {
         pairingViewModel = ViewModelProvider(this)[PhonePairingViewModel::class.java]
         hasCameraPermission = hasCamera()
 
-        if (savedInstanceState == null) {
+        if (restored == null) {
             handleIntent(intent, cold = true)
         } else {
-            pendingJournalLinkPath = savedInstanceState.getString(STATE_PENDING_JOURNAL_LINK)
-            invalidJournalLink = savedInstanceState.getBoolean(STATE_INVALID_JOURNAL_LINK)
-            if (savedInstanceState.getBoolean(STATE_JOURNAL_OPEN)) {
-                journalPath = savedInstanceState.getString(STATE_JOURNAL_PATH)
+            pendingJournalLinkPath = restored.getString(STATE_PENDING_JOURNAL_LINK)
+            invalidJournalLink = restored.getBoolean(STATE_INVALID_JOURNAL_LINK)
+            if (restored.getBoolean(STATE_JOURNAL_OPEN)) {
+                journalPath = restored.getString(STATE_JOURNAL_PATH)
                 journalOpen = true
             }
         }
@@ -1863,6 +1878,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (ageHeld) return
         (application as PhoneApplication).sharedSources.refresh(detail = false)
         hasCameraPermission = hasCamera()
         migrationRefreshEpoch += 1
@@ -1886,6 +1902,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (ageHeld) return
         pushFactsStopped = true
         pushDeliveryUnsubscribe?.invoke()
         pushFactsExecutor?.shutdown()
@@ -2055,6 +2072,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (ageHeld) return
         activityStarted = true
         container.onOwnerForeground(true)
         (application as? PhoneApplication)?.addStatusListener(statusListener)
@@ -2120,6 +2138,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        if (ageHeld) return
         activityStarted = false
         mainHandler.removeCallbacks(midnightTick)
         if (::statusHost.isInitialized) statusHost.onStop(isChangingConfigurations)
@@ -2244,6 +2263,7 @@ class PhoneShellActivity : ComponentActivity() {
         const val EXTRA_OPEN_MARK = "app.solstone.observer.phone.EXTRA_OPEN_MARK"
         private const val CAMERA_FOR_SCAN_REQUEST = 12
         private const val STATE_INITIAL_PAIRING_TASK = "initial_pairing_task"
+        private const val STATE_AGE_HELD = "age_held"
         private const val STATE_JOURNAL_OPEN = "journal_open"
         private const val STATE_JOURNAL_PATH = "journal_path"
         private const val STATE_PENDING_JOURNAL_LINK = "pending_journal_link"

@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages2(): Map<String, PhoneMessage> = mapOf(
+    "android.import.remove.row.name.n2" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f76652e726f772e6e616d652e6e32", listOf(PhoneArgument("name", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "remove %1\$s"))),
+    "android.import.removes.copy.device.journal.may" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e6a6f75726e616c2e6d6179", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this removes the copy on this device. your journal may still bring in the copy it already has."))),
+    "android.import.removes.copy.device.so.won" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e736f2e776f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this removes the copy on this device, so it won't reach your journal."))),
+    "android.import.s.already.gone.from.device" to PhoneMessage("m616e64726f69642e696d706f72742e732e616c72656164792e676f6e652e66726f6d2e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "it's already gone from this device."))),
     "android.import.s.already.journal" to PhoneMessage("m616e64726f69642e696d706f72742e732e616c72656164792e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "it's already in your journal."))),
     "android.import.s.larger.than.journal.takes" to PhoneMessage("m616e64726f69642e696d706f72742e732e6c61726765722e7468616e2e6a6f75726e616c2e74616b6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "it's larger than your journal takes"))),
     "android.import.s.sending.now.so.nothing" to PhoneMessage("m616e64726f69642e696d706f72742e732e73656e64696e672e6e6f772e736f2e6e6f7468696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "it's sending now, so nothing changed."))),
@@ -58,8 +62,4 @@ internal fun phoneMessages2(): Map<String, PhoneMessage> = mapOf(
     "android.journalmark.fallbackunavailable" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e66616c6c6261636b756e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unavailable"))),
     "android.journalmark.fallbackyour" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e66616c6c6261636b796f7572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your"))),
     "android.journalmark.journal.not.set.up.yet" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6a6f75726e616c2e6e6f742e7365742e75702e796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal, not set up yet"))),
-    "android.journalmark.journal.s.mark.unavailable.right" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6a6f75726e616c2e732e6d61726b2e756e617661696c61626c652e7269676874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal's mark, unavailable right now"))),
-    "android.journalmark.journal.shows.same.mark.its" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6a6f75726e616c2e73686f77732e73616d652e6d61726b2e697473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal shows this same mark in its network app. it should match, exactly."))),
-    "android.journalmark.noidentity" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f6964656e74697479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "no identity presented"))),
-    "android.journalmark.notchanged" to PhoneMessage("m616e64726f69642e6a6f75726e616c6d61726b2e6e6f746368616e676564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not changed"))),
 )

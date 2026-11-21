@@ -181,6 +181,43 @@ class SyncWorkerCurrencyTest {
     }
 
     @Test
+    fun aClosedDrainGateSendsNothingAndLeavesTheSegmentForLater() {
+        val (stores, graph) = createStores()
+        graph.installOrReplace(testHome("sha256:cert-a", "home-A"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-a")
+
+        val spoolDir = temp.newFolder()
+        val segDir = File(File(File(spoolDir, WORK_TEST_DAY), MAIN_STREAM), "seg-1").apply { mkdirs() }
+        File(segDir, "a.bin").writeBytes(byteArrayOf(1, 2, 3))
+        File(segDir, "manifest").writeText("solstone-bundle-manifest-v1\nday=$WORK_TEST_DAY\nsegment=seg-1\nstartEpochMs=1\nendEpochMs=2\nzoneId=UTC\nutcOffsetSeconds=0\n[files]\ns1\ta.bin\tsha-a\t3\tapplication/octet-stream\t1\t2\n[gaps]\n")
+        val segRow = segment("$WORK_TEST_DAY/$MAIN_STREAM/seg-1").copy(day = WORK_TEST_DAY, stream = MAIN_STREAM, segment = "seg-1", dirSegment = "seg-1", byteSize = 3)
+        val fileRow = file("$WORK_TEST_DAY/$MAIN_STREAM/seg-1").copy(sourceId = "s1", name = "a.bin", sha256 = "sha-a", byteSize = 3)
+        val drainStore = FakeDrainStore(segRow, files = mapOf("$WORK_TEST_DAY/$MAIN_STREAM/seg-1" to listOf(fileRow)))
+        val client = RecordingClient()
+        var credentialsRead = false
+
+        val previous = SyncDrainGate.closed
+        val outcome = try {
+            SyncDrainGate.closed = { true }
+            completeSyncRun(
+                openStores = { stores },
+                spoolDir = spoolDir,
+                drainStore = drainStore,
+                openClient = { _, _ -> client },
+                afterCredentialsFrozen = { credentialsRead = true },
+                localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            )
+        } finally {
+            SyncDrainGate.closed = previous
+        }
+
+        assertEquals(SyncOutcome.RETRY, outcome)
+        assertFalse(credentialsRead)
+        assertEquals(0, client.requests.size)
+        assertEquals(QueueState.SEALED, drainStore.row("$WORK_TEST_DAY/$MAIN_STREAM/seg-1").state)
+    }
+
+    @Test
     fun confirmedSyncRunDetectsPairingReplacementBeforeDialAndReturnsRetryWithoutIngest() {
         val (stores, graph) = createStores()
         graph.installOrReplace(testHome("sha256:cert-a", "home-A"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)

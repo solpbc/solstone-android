@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
+    "android.screenshots.couldntcountscreenshots" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e636f756c646e74636f756e7473637265656e73686f7473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't count your screenshots."))),
+    "android.screenshots.folder" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c646572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "folder"))),
+    "android.screenshots.foldername" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c6465726e616d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Screenshots"))),
+    "android.screenshots.foldername2" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e666f6c6465726e616d6532", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Screenshots"))),
     "android.screenshots.last30days" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c617374333064617973", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last 30 days"))),
     "android.screenshots.last6months" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c617374366d6f6e746873", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last 6 months"))),
     "android.screenshots.lastyear" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c61737479656172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last year"))),
@@ -58,8 +62,4 @@ internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
     "android.shelf.couldn.t.reach.journal" to PhoneMessage("m616e64726f69642e7368656c662e636f756c646e2e742e72656163682e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't reach your journal"))),
     "android.shelf.couldn.t.send.test.notification" to PhoneMessage("m616e64726f69642e7368656c662e636f756c646e2e742e73656e642e746573742e6e6f74696669636174696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't send a test notification. check notification settings, then try again."))),
     "android.shelf.couldn.t.unpair.device.try" to PhoneMessage("m616e64726f69642e7368656c662e636f756c646e2e742e756e706169722e6465766963652e747279", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't unpair this device. try again."))),
-    "android.shelf.delivered.by" to PhoneMessage("m616e64726f69642e7368656c662e64656c6976657265642e6279", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "delivered by"))),
-    "android.shelf.device.choice" to PhoneMessage("m616e64726f69642e7368656c662e6465766963652e63686f696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "device choice"))),
-    "android.shelf.email.support" to PhoneMessage("m616e64726f69642e7368656c662e656d61696c2e737570706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "email support"))),
-    "android.shelf.event.log" to PhoneMessage("m616e64726f69642e7368656c662e6576656e742e6c6f67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "event log"))),
 )

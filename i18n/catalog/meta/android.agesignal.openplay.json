@@ -1,0 +1,16 @@
+{
+  "description": "The button under the age-confirmation line. It opens the solstone listing in Google Play.",
+  "context": "A button label. 'Google Play' is the store's name and keeps its capitals.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 30,
+  "source_revision": "8d74de39c98100de7d9e3e97e1e26e861847506d566d9e44fbe44ccc67c7fc51",
+  "risk": "statutory",
+  "auto_merge": false
+}

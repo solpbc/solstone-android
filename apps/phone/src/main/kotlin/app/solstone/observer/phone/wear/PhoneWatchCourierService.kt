@@ -32,6 +32,11 @@ class PhoneWatchCourierService : WearableListenerService() {
             super.onChannelOpened(channel)
             return
         }
+        if (app.solstone.observer.phone.AgeSignalGate.closed()) {
+            // Nothing is taken in, and no receipt goes back: the watch keeps its material.
+            runCatching { WearTaskPolicy.await<Void> { Wearable.getChannelClient(this).close(channel) } }
+            return
+        }
 
         // The SDK invokes this on its background callback looper and retains the
         // service binding until it returns. Keep custody work inside that lifetime.

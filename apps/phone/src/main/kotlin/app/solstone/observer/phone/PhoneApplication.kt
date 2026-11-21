@@ -88,15 +88,20 @@ class PhoneApplication : ObserverApplication(
 ), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost, app.solstone.platform.screenshots.ScreenshotsWorkerHost {
     internal val sharedSources by lazy { phoneSharedSources(this) }
 
+    // ⚠ A source check the system starts in a fresh process brings the whole runtime up, so a closed
+    // age gate refuses it here, before anything is created.
     override fun obsidianSessionForWork(): app.solstone.platform.obsidian.ObsidianSession? {
+        if (AgeSignalGate.closed()) return null
         runtime.container()
         return app.solstone.platform.obsidian.ObsidianRuntimes.current
     }
     override fun calendarSessionForWork(): CalendarSession? {
+        if (AgeSignalGate.closed()) return null
         runtime.container()
         return CalendarRuntimes.current
     }
     override fun screenshotsSessionForWork(): app.solstone.platform.screenshots.ScreenshotSession? {
+        if (AgeSignalGate.closed()) return null
         runtime.container()
         return app.solstone.platform.screenshots.ScreenshotsRuntimes.current
     }
@@ -140,6 +145,8 @@ class PhoneApplication : ObserverApplication(
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        // Before any content provider or component of this process can run.
+        AgeSignalGate.install(this)
         app.solstone.observer.formfactor.shared.AndroidPhoneText(this).install()
         // Field initializers run before attachment; resolve their display placeholders again.
         cachedWidgetModel = emptyWidgetModel()

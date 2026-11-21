@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages4(): Map<String, PhoneMessage> = mapOf(
+    "android.native.not.selected" to PhoneMessage("m616e64726f69642e6e61746976652e6e6f742e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Not selected"))),
+    "android.native.selected" to PhoneMessage("m616e64726f69642e6e61746976652e73656c6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Selected"))),
+    "android.native.state.off" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6666", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Off"))),
+    "android.native.state.on" to PhoneMessage("m616e64726f69642e6e61746976652e73746174652e6f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "On"))),
     "android.native.switch.role" to PhoneMessage("m616e64726f69642e6e61746976652e7377697463682e726f6c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Switch"))),
     "android.obsidian.accessvaultlostchoose" to PhoneMessage("m616e64726f69642e6f6273696469616e2e6163636573737661756c746c6f737463686f6f7365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "access to this vault was lost. choose the vault again."))),
     "android.obsidian.androidmaydelaybackground" to PhoneMessage("m616e64726f69642e6f6273696469616e2e616e64726f69646d617964656c61796261636b67726f756e64", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "android may delay background checks. after force-stopping the app, open it to start checking again."))),
@@ -58,8 +62,4 @@ internal fun phoneMessages4(): Map<String, PhoneMessage> = mapOf(
     "android.pairing.pairing.didn.t.go.through" to PhoneMessage("m616e64726f69642e70616972696e672e70616972696e672e6469646e2e742e676f2e7468726f756768", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "pairing didn't go through. show a new pairing code on your journal and try again."))),
     "android.pairing.pairing.link" to PhoneMessage("m616e64726f69642e70616972696e672e70616972696e672e6c696e6b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "pairing link"))),
     "android.pairing.pairing.window.closed.show.new" to PhoneMessage("m616e64726f69642e70616972696e672e70616972696e672e77696e646f772e636c6f7365642e73686f772e6e6577", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the pairing window closed. show a new pairing code on your journal, then try again."))),
-    "android.pairing.paste.link" to PhoneMessage("m616e64726f69642e70616972696e672e70617374652e6c696e6b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "paste a link"))),
-    "android.pairing.phone.already.connected.working.journal" to PhoneMessage("m616e64726f69642e70616972696e672e70686f6e652e616c72656164792e636f6e6e65637465642e776f726b696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this phone is already connected to a working journal. unpair this phone, then try again to connect a different journal."))),
-    "android.pairing.scan.code" to PhoneMessage("m616e64726f69642e70616972696e672e7363616e2e636f6465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "scan a code"))),
-    "android.pairing.solstone.app.using.camera.right" to PhoneMessage("m616e64726f69642e70616972696e672e736f6c73746f6e652e6170702e7573696e672e63616d6572612e7269676874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the solstone app is using the camera right now. try again, or turn the camera source off to scan."))),
 )

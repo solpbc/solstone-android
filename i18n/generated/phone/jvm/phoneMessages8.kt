@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
+    "android.source.connected" to PhoneMessage("m616e64726f69642e736f757263652e636f6e6e6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "connected"))),
+    "android.source.couldn.t.confirm.stop.was" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e636f6e6669726d2e73746f702e776173", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't confirm the stop was saved"))),
+    "android.source.couldn.t.save.journal.access" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e736176652e6a6f75726e616c2e616363657373", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't save journal access on this phone"))),
+    "android.source.details" to PhoneMessage("m616e64726f69642e736f757263652e64657461696c73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "details"))),
     "android.source.device" to PhoneMessage("m616e64726f69642e736f757263652e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this device"))),
     "android.source.device.low.storage.free.up" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e6c6f772e73746f726167652e667265652e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this device is low on storage. free up space before turning this on again."))),
     "android.source.device.not.processed.until.connect" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e6e6f742e70726f6365737365642e756e74696c2e636f6e6e656374", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "on this device and not processed until you connect a journal."))),
@@ -58,8 +62,4 @@ internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
     "android.source.taking" to PhoneMessage("m616e64726f69642e736f757263652e74616b696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "taking it in"))),
     "android.source.taking.tile.off.home.does" to PhoneMessage("m616e64726f69642e736f757263652e74616b696e672e74696c652e6f66662e686f6d652e646f6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "taking a tile off home does not turn the source off. it just keeps home to the ones you actually look at."))),
     "android.source.turn.again" to PhoneMessage("m616e64726f69642e736f757263652e7475726e2e616761696e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn this on again"))),
-    "android.source.turn.any.time" to PhoneMessage("m616e64726f69642e736f757263652e7475726e2e616e792e74696d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn it on any time."))),
-    "android.source.unknownjournal" to PhoneMessage("m616e64726f69642e736f757263652e756e6b6e6f776e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal"))),
-    "android.source.waitingwatch" to PhoneMessage("m616e64726f69642e736f757263652e77616974696e677761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "waiting for your watch"))),
-    "android.source.while.solstone.app.takes.photo" to PhoneMessage("m616e64726f69642e736f757263652e7768696c652e736f6c73746f6e652e6170702e74616b65732e70686f746f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes a photo from your rear camera every minute and adds it to your journal."))),
 )

@@ -40,6 +40,10 @@ public final class Select {
             case "android.about.solstone.comes.with.no.warranty": return "m616e64726f69642e61626f75742e736f6c73746f6e652e636f6d65732e776974682e6e6f2e77617272616e7479";
             case "android.about.solstone.open.source.under.agpl": return "m616e64726f69642e61626f75742e736f6c73746f6e652e6f70656e2e736f757263652e756e6465722e6167706c";
             case "android.about.what.app": return "m616e64726f69642e61626f75742e776861742e617070";
+            case "android.agesignal.openplay": return "m616e64726f69642e6167657369676e616c2e6f70656e706c6179";
+            case "android.agesignal.parentapproval": return "m616e64726f69642e6167657369676e616c2e706172656e74617070726f76616c";
+            case "android.agesignal.playverification": return "m616e64726f69642e6167657369676e616c2e706c6179766572696669636174696f6e";
+            case "android.agesignal.under13": return "m616e64726f69642e6167657369676e616c2e756e6465723133";
             case "android.calendar.add.these.journal": return "m616e64726f69642e63616c656e6461722e6164642e74686573652e6a6f75726e616c";
             case "android.calendar.all.only.history.phone.s": return "m616e64726f69642e63616c656e6461722e616c6c2e6f6e6c792e686973746f72792e70686f6e652e73";
             case "android.calendar.all.phone": return "m616e64726f69642e63616c656e6461722e616c6c2e70686f6e65";

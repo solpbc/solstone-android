@@ -20,4 +20,22 @@ class SyncDrainGateTest {
         assertTrue(SyncDrainGate.tryAcquire())
         SyncDrainGate.release()
     }
+
+    @Test
+    fun aClosedGateRefusesEveryDrainAndPairAttemptUntilItOpens() {
+        val previous = SyncDrainGate.closed
+        try {
+            SyncDrainGate.closed = { true }
+            assertFalse(SyncDrainGate.tryAcquire())
+            assertFalse(SyncDrainGate.inUse())
+
+            SyncDrainGate.closed = { false }
+            assertTrue(SyncDrainGate.tryAcquire())
+            assertTrue(SyncDrainGate.inUse())
+            SyncDrainGate.release()
+            assertFalse(SyncDrainGate.inUse())
+        } finally {
+            SyncDrainGate.closed = previous
+        }
+    }
 }

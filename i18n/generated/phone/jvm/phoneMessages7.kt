@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
+    "android.shelf.delivered.by" to PhoneMessage("m616e64726f69642e7368656c662e64656c6976657265642e6279", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "delivered by"))),
+    "android.shelf.device.choice" to PhoneMessage("m616e64726f69642e7368656c662e6465766963652e63686f696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "device choice"))),
+    "android.shelf.email.support" to PhoneMessage("m616e64726f69642e7368656c662e656d61696c2e737570706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "email support"))),
+    "android.shelf.event.log" to PhoneMessage("m616e64726f69642e7368656c662e6576656e742e6c6f67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "event log"))),
     "android.shelf.fingerprint" to PhoneMessage("m616e64726f69642e7368656c662e66696e6765727072696e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "fingerprint"))),
     "android.shelf.forget.journal" to PhoneMessage("m616e64726f69642e7368656c662e666f726765742e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "forget this journal"))),
     "android.shelf.forget.journal.n2" to PhoneMessage("m616e64726f69642e7368656c662e666f726765742e6a6f75726e616c2e6e32", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "forget this journal?"))),
@@ -58,8 +62,4 @@ internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
     "android.source.audio.intake.may.resume.after" to PhoneMessage("m616e64726f69642e736f757263652e617564696f2e696e74616b652e6d61792e726573756d652e6166746572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "audio intake may resume after restart"))),
     "android.source.audio.off.setting.may.not" to PhoneMessage("m616e64726f69642e736f757263652e617564696f2e6f66662e73657474696e672e6d61792e6e6f74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "audio off setting may not have saved"))),
     "android.source.checked" to PhoneMessage("m616e64726f69642e736f757263652e636865636b6564", listOf(PhoneArgument("it", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "checked in %1\$s"))),
-    "android.source.connected" to PhoneMessage("m616e64726f69642e736f757263652e636f6e6e6563746564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "connected"))),
-    "android.source.couldn.t.confirm.stop.was" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e636f6e6669726d2e73746f702e776173", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't confirm the stop was saved"))),
-    "android.source.couldn.t.save.journal.access" to PhoneMessage("m616e64726f69642e736f757263652e636f756c646e2e742e736176652e6a6f75726e616c2e616363657373", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "couldn't save journal access on this phone"))),
-    "android.source.details" to PhoneMessage("m616e64726f69642e736f757263652e64657461696c73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "details"))),
 )

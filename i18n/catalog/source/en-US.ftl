@@ -1675,3 +1675,11 @@ android.source.shared.also = also on
 android.source.shared.pair = { $first } · { $second }
 
 android.source.shared.triple = { $first } · { $state } · { $relative }
+
+android.agesignal.under13 = solstone is for people 13 and over.
+
+android.agesignal.parentapproval = a parent or guardian needs to approve this version of solstone before you can keep using it.
+
+android.agesignal.playverification = Google Play needs to confirm your age before you can use solstone.
+
+android.agesignal.openplay = open Google Play

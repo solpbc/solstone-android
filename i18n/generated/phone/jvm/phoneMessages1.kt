@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages1(): Map<String, PhoneMessage> = mapOf(
+    "android.calendar.preview.couldn.t.finish.check" to PhoneMessage("m616e64726f69642e63616c656e6461722e707265766965772e636f756c646e2e742e66696e6973682e636865636b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the preview couldn't finish. check calendar access and available space, then try again."))),
+    "android.calendar.resume.calendar" to PhoneMessage("m616e64726f69642e63616c656e6461722e726573756d652e63616c656e646172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "resume calendar"))),
+    "android.calendar.six.months" to PhoneMessage("m616e64726f69642e63616c656e6461722e7369782e6d6f6e746873", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "six months"))),
+    "android.calendar.what.s.already.journal.stays" to PhoneMessage("m616e64726f69642e63616c656e6461722e776861742e732e616c72656164792e6a6f75726e616c2e7374617973", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "what's already in your journal stays when you pause or switch a calendar off."))),
     "android.calendar.while.calendar.solstone.app.checks" to PhoneMessage("m616e64726f69642e63616c656e6461722e7768696c652e63616c656e6461722e736f6c73746f6e652e6170702e636865636b73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while calendar is on, the solstone app checks it in the background. android may delay those checks."))),
     "android.gap.camera" to PhoneMessage("m616e64726f69642e6761702e63616d657261", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "camera"))),
     "android.gap.complete.conversion.count" to PhoneMessage("m616e64726f69642e6761702e636f6d706c6574652e636f6e76657273696f6e2e636f756e74", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "complete %1\$s", "other" to "complete %1\$s"))),
@@ -58,8 +62,4 @@ internal fun phoneMessages1(): Map<String, PhoneMessage> = mapOf(
     "android.import.recent" to PhoneMessage("m616e64726f69642e696d706f72742e726563656e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "recent"))),
     "android.import.remove" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f7665", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "remove"))),
     "android.import.remove.row.name" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f76652e726f772e6e616d65", listOf(PhoneArgument("name", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "remove %1\$s?"))),
-    "android.import.remove.row.name.n2" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f76652e726f772e6e616d652e6e32", listOf(PhoneArgument("name", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "remove %1\$s"))),
-    "android.import.removes.copy.device.journal.may" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e6a6f75726e616c2e6d6179", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this removes the copy on this device. your journal may still bring in the copy it already has."))),
-    "android.import.removes.copy.device.so.won" to PhoneMessage("m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e736f2e776f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this removes the copy on this device, so it won't reach your journal."))),
-    "android.import.s.already.gone.from.device" to PhoneMessage("m616e64726f69642e696d706f72742e732e616c72656164792e676f6e652e66726f6d2e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "it's already gone from this device."))),
 )

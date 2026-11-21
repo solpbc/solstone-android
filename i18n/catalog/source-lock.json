@@ -226,6 +226,34 @@
       "locales": []
     },
     {
+      "id": "android.agesignal.openplay",
+      "source": "8d74de39c98100de7d9e3e97e1e26e861847506d566d9e44fbe44ccc67c7fc51",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.agesignal.parentapproval",
+      "source": "ac6b83048225435c5357590a778dae2bb534912951373426d53a2d34427127d0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.agesignal.playverification",
+      "source": "5151868f49bb5f65b3221caf62804c83b9aaaabf0df1a53a54d5ad8957ec4d79",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.agesignal.under13",
+      "source": "54398ff46607262601f2ea12fc839cec82a114a9af60f218f9aaf94faf11f422",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
       "id": "android.calendar.add.these.journal",
       "source": "222858899cc380cf85f4a875d3f516a6823b2c8a9b8387c4ca2cd0088cd65443",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
