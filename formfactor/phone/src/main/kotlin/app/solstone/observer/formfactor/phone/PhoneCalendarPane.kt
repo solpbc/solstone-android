@@ -82,14 +82,16 @@ private val historyChoices get() = listOf(
 internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceState? = null) {
     val binding = LocalPhoneCalendar.current
     val state = binding.state
+    val sharedAtOpen = otherDevices("calendar", verdict).isNotEmpty()
     LaunchedEffect(Unit) {
-        if (!state.permissionGranted) binding.onRequestPermission()
+        if (!sharedAtOpen && !state.permissionGranted) binding.onRequestPermission()
         binding.onOpened()
     }
     DisposableEffect(Unit) {
         onDispose { binding.onAbandon() }
     }
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.CalendarSetup) }) {
+        SharedSourceCard("calendar", verdict)
         // The verdict leads, as on every source page (mobile-shell § 3).
         verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
         PaneNote(phoneText("android.calendar.calendar.brings.events.phone.can"))
@@ -108,6 +110,7 @@ internal fun PhoneCalendarPane(modifier: Modifier = Modifier, verdict: SourceSta
                 else if (state.enabled) phoneText("android.push.on") else if (state.resume) phoneText("android.source.paused") else phoneText("android.push.off"))
         }
         PhoneIntakeFactRows("calendar")
+        SharedSourceFacts("calendar", verdict)
         PaneNote(phoneText("android.calendar.history.with.one.year.ahead"))
         PaneCard {
             historyChoices.forEach { (kind, label) ->

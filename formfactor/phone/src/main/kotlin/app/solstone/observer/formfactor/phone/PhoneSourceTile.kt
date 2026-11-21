@@ -75,8 +75,11 @@ fun PhoneSourceTile(
     paired: Boolean = false,
 ) {
     val label = sourceLabel(status.sourceId)
-    val stateCopy = sourceStateCopy(status.state)
-    val earnsSwitch = sourceEarnsSwitch(status.sourceId)
+    val others = otherDevices(status.sourceId, status.state)
+    val remote = others.firstOrNull()
+    val now = LocalPhoneStatusNow.current.nowEpochMs()
+    val stateCopy = if (remote == null) sourceStateCopy(status.state) else sharedHeading(others.size)
+    val earnsSwitch = sourceEarnsSwitch(status.sourceId) && !(sharedKind(status.sourceId) && status.state == SourceState.READY_TO_SET_UP)
     val wishOn = status.wish == SourceWish.On
     val overrideLine = when (status.sourceId) {
         "obsidian" -> obsidianSourceSubLine(LocalPhoneObsidian.current.state)
@@ -105,7 +108,8 @@ fun PhoneSourceTile(
                 // the release gate had to reach a source through `add more` instead of
                 // off the deck.
                 contentDescription = label
-                stateDescription = if (overrideLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) phoneText("android.source.statecopysubline" , "statecopy" to (stateCopy), "subline" to (subLine)) else sourceStateDescription(status, paired)
+                stateDescription = if (remote != null) phoneText("android.source.statecopysubline", "statecopy" to stateCopy, "subline" to remote.rows.first().line(remote.label, now, spoken = true))
+                    else if (overrideLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) phoneText("android.source.statecopysubline" , "statecopy" to (stateCopy), "subline" to (subLine)) else sourceStateDescription(status, paired)
                 role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {
@@ -179,20 +183,20 @@ fun PhoneSourceTile(
                 .testTag("sourceLabel-${status.sourceId}"),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PhoneTileDot(status.state)
+            if (remote == null) PhoneTileDot(status.state) else SharedMarker()
             Spacer(Modifier.width(8.dp))
             // The state word wraps at its spaces (`ready to / set up`), never inside a word.
             WholeWordText(
                 text = stateCopy,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (status.state == SourceState.NEEDS_ATTENTION) {
+                color = if (remote != null) shellSecondaryInk else if (status.state == SourceState.NEEDS_ATTENTION) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
             )
         }
-        if (subLine != null) {
+        if (remote != null) SharedTileLine(remote, now) else if (subLine != null) {
             WholeWordText(
                 text = subLine,
                 style = MaterialTheme.typography.bodySmall,

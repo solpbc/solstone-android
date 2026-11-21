@@ -1,0 +1,25 @@
+{
+  "description": "Two available parts of a source fact, in order: device or vault name, optional paused or needs attention state, relative time.",
+  "context": "Two available parts of a source fact, in order: device or vault name, optional paused or needs attention state, relative time.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "first",
+      "type": "string"
+    },
+    {
+      "name": "second",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "8f11f33cdede688b7d2bb60699e4e84644e72e9326a9c130fe7361fe5d931454",
+  "risk": "routine",
+  "auto_merge": true
+}

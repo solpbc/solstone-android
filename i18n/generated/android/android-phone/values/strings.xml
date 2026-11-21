@@ -623,6 +623,13 @@
   <string name="m616e64726f69642e736f757263652e73657373696f6e2e656e6465642e7475726e2e616761696e2e63686f6f7365">"this session ended. turn this on again to choose what to share."</string>
   <string name="m616e64726f69642e736f757263652e73657373696f6e636f6e74726f6c73776174636870686f6e65">"session controls are on your watch. this phone cannot tell whether your watch's microphone is receiving audio."</string>
   <string name="m616e64726f69642e736f757263652e73657474696e67">"your setting"</string>
+  <string name="m616e64726f69642e736f757263652e7368617265642e616c736f">"also on"</string>
+  <plurals name="m616e64726f69642e736f757263652e7368617265642e64657669636573">
+    <item quantity="one">"from another device"</item>
+    <item quantity="other">"from %1$s other devices"</item>
+  </plurals>
+  <string name="m616e64726f69642e736f757263652e7368617265642e70616972">"%1$s · %2$s"</string>
+  <string name="m616e64726f69642e736f757263652e7368617265642e747269706c65">"%1$s · %2$s · %3$s"</string>
   <string name="m616e64726f69642e736f757263652e736f757263652e6e656564732e696e74616b652e72657374617274">"this source needs intake to restart"</string>
   <string name="m616e64726f69642e736f757263652e73746172742e696e74616b652e616761696e">"start intake again"</string>
   <string name="m616e64726f69642e736f757263652e73746174652e6c6162656c">"%1$s: %2$s"</string>

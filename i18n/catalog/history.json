@@ -8541,6 +8541,104 @@
       "selector": null
     },
     {
+      "id": "android.source.shared.also",
+      "resource": "m616e64726f69642e736f757263652e7368617265642e616c736f",
+      "namespace": "android.source.shared",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.shared.devices",
+      "resource": "m616e64726f69642e736f757263652e7368617265642e64657669636573",
+      "namespace": "android.source.shared",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "cardinal",
+      "arguments": [
+        {
+          "name": "count",
+          "type": "cardinal",
+          "numeric_style": "ungrouped",
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": {
+        "name": "count",
+        "type": "cardinal",
+        "enum_values": [],
+        "enum_default": null
+      }
+    },
+    {
+      "id": "android.source.shared.pair",
+      "resource": "m616e64726f69642e736f757263652e7368617265642e70616972",
+      "namespace": "android.source.shared",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "first",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "second",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.shared.triple",
+      "resource": "m616e64726f69642e736f757263652e7368617265642e747269706c65",
+      "namespace": "android.source.shared",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "first",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "state",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "relative",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
       "id": "android.source.source.needs.intake.restart",
       "resource": "m616e64726f69642e736f757263652e736f757263652e6e656564732e696e74616b652e72657374617274",
       "namespace": "android.source.source.needs.intake",

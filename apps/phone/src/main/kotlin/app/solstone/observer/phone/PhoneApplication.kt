@@ -86,6 +86,8 @@ class PhoneApplication : ObserverApplication(
         PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
     },
 ), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost, app.solstone.platform.screenshots.ScreenshotsWorkerHost {
+    internal val sharedSources by lazy { phoneSharedSources(this) }
+
     override fun obsidianSessionForWork(): app.solstone.platform.obsidian.ObsidianSession? {
         runtime.container()
         return app.solstone.platform.obsidian.ObsidianRuntimes.current
@@ -563,6 +565,7 @@ class PhoneApplication : ObserverApplication(
 
     private fun onContainerInitialized(container: ObserverRuntimeContainer) {
         inactiveNotificationRequested = false
+        sharedSources // Restore or retire the pairing-bound view before showing the shell.
         followPairing()
         // ⚠ Installed here rather than passed in, because the container is shared with surfaces that
         // have no stop control. Without it a stopped source reads `setting up / getting ready…`
@@ -647,6 +650,22 @@ class PhoneApplication : ObserverApplication(
         }
         // A status read that failed knows nothing about the link, which is not the same as not paired.
         val statusModel = statusRead?.getOrNull() ?: coldPhoneStatus(filesDir, cacheDir, now, zone)
+        statusRead?.getOrNull()?.let { model ->
+            val advertised = readModel?.let {
+                runCatching {
+                    // A heartbeat establishes contact only. A committed bundle establishes a configured courier.
+                    val received = (container as? ObserverAppContainer)?.persistenceDatabase()?.watchSourceDao()?.firstReceiptEpochMs()
+                    val version = if (received != null) app.solstone.observer.phone.wear.PhoneWatchContactStore(this).read()?.version else null
+                    val watchState = when {
+                        received == null -> null
+                        version != null && version != app.solstone.core.watch.courier.WatchCourierProtocol.PROTOCOL_VERSION -> "needs_attention"
+                        else -> "on"
+                    }
+                    declaration(it, watchState)
+                }.getOrNull()
+            }
+            sharedSources.update(model.online, advertised)
+        }
         // The alarm follows the line the widget shows, which leaves the link out with no service running.
         syncGapAlarm(
             PhoneGapWindowScheduler(this),

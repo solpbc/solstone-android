@@ -15,9 +15,9 @@ fun parseJournalVersionCurrent(bodyText: String): String? {
     return sanitizeJournalVersion(current)
 }
 
-fun fetchJournalVersion(client: PlHttpClient): String? =
+fun fetchJournalVersion(client: PlHttpClient, fingerprint: String = ""): String? =
     try {
-        val response = client.request("GET", "/api/system/status", mapOf("Cache-Control" to "no-cache"), null, maxResponseBytes = 64 * 1024)
+        val response = readSystemStatus(client, fingerprint)
         if (response.status == 200) {
             parseJournalVersionCurrent(response.bodyText())
         } else {

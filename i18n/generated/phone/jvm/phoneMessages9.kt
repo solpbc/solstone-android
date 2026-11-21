@@ -2,6 +2,10 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
+    "android.source.while.solstone.app.takes.video" to PhoneMessage("m616e64726f69642e736f757263652e7768696c652e736f6c73746f6e652e6170702e74616b65732e766964656f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes in video of the app or screen you choose, including while you use other apps. it stays on this device until it can reach your journal."))),
+    "android.status.all.caught.up" to PhoneMessage("m616e64726f69642e7374617475732e616c6c2e6361756768742e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "all caught up"))),
+    "android.status.anythingwaitingstayshere" to PhoneMessage("m616e64726f69642e7374617475732e616e797468696e6777616974696e67737461797368657265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "anything waiting stays here until you pair again."))),
+    "android.status.calendar.notes.stay.phone.until" to PhoneMessage("m616e64726f69642e7374617475732e63616c656e6461722e6e6f7465732e737461792e70686f6e652e756e74696c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "calendar notes stay on this phone until your journal can take them."))),
     "android.status.confirm.mark" to PhoneMessage("m616e64726f69642e7374617475732e636f6e6669726d2e6d61726b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "confirm the mark"))),
     "android.status.confirm.mark.model.pendingcount.waiting" to PhoneMessage("m616e64726f69642e7374617475732e636f6e6669726d2e6d61726b2e6d6f64656c2e70656e64696e67636f756e742e77616974696e67", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "confirm the mark · %1\$s waiting", "other" to "confirm the mark · %1\$s waiting"))),
     "android.status.everything.journal" to PhoneMessage("m616e64726f69642e7374617475732e65766572797468696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "everything is in your journal"))),

@@ -188,13 +188,13 @@ class ObsidianSession(
     }
 
     /** Invoked by the normal authenticated sender, only after mark confirmation. */
-    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = checks.blocking(
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean, fingerprint: String = ""): Boolean = checks.blocking(
         60, onFailure = { android.util.Log.w("ObsidianSource", "delivery check failed: ${it.javaClass.simpleName}") },
     ) {
         capability = null
         refresh()
         if (!allowsDelivery() || !pairingCurrent()) return@blocking false
-        capability = fetchJournalCapability(client, OBSIDIAN_CAPABILITY)
+        capability = fetchJournalCapability(client, OBSIDIAN_CAPABILITY, fingerprint)
         if (capability != true || !pairingCurrent()) { refresh(); return@blocking false }
         val names = ledger.batches().map { it.vault }.distinct()
         val pending = names.filter { name -> ledger.get(global, OBSIDIAN_APPROVALS, obsidianApprovalKey(name)) == null }

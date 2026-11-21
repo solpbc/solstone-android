@@ -1,0 +1,29 @@
+{
+  "description": "A device or vault name followed by its source state and relative time.",
+  "context": "A device or vault name followed by its source state and relative time.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "first",
+      "type": "string"
+    },
+    {
+      "name": "state",
+      "type": "string"
+    },
+    {
+      "name": "relative",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "5e8112c7d4fff9a93ba58a5e909a83879beb8ea17aae1b3c91245a15de494dda",
+  "risk": "routine",
+  "auto_merge": true
+}

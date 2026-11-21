@@ -97,7 +97,7 @@ internal fun <C> syncWithTransport(
                     false
                 } else {
                     val read = try {
-                        fetchCalendarCapability(c)
+                        fetchCalendarCapability(c, legs.pairing.clientCertFingerprint)
                     } catch (e: RelayWebSocketClosedException) {
                         throw e
                     } catch (_: Throwable) {

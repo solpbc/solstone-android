@@ -315,9 +315,9 @@ class ScreenshotSession internal constructor(
         checks.checkNow()
     }
 
-    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean): Boolean = checks.blocking(30) {
+    fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean, fingerprint: String = ""): Boolean = checks.blocking(30) {
         if (!pairingCurrent() || !wishOn() || isPaused() || !hasAccess()) return@blocking false
-        capability = fetchJournalCapability(client, SCREENSHOTS_STREAM)
+        capability = fetchJournalCapability(client, SCREENSHOTS_STREAM, fingerprint)
         refresh()
         capability == true && pairingCurrent()
     } ?: false

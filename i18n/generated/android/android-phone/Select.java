@@ -572,6 +572,10 @@ public final class Select {
             case "android.source.session.ended.turn.again.choose": return "m616e64726f69642e736f757263652e73657373696f6e2e656e6465642e7475726e2e616761696e2e63686f6f7365";
             case "android.source.sessioncontrolswatchphone": return "m616e64726f69642e736f757263652e73657373696f6e636f6e74726f6c73776174636870686f6e65";
             case "android.source.setting": return "m616e64726f69642e736f757263652e73657474696e67";
+            case "android.source.shared.also": return "m616e64726f69642e736f757263652e7368617265642e616c736f";
+            case "android.source.shared.devices": return "m616e64726f69642e736f757263652e7368617265642e64657669636573";
+            case "android.source.shared.pair": return "m616e64726f69642e736f757263652e7368617265642e70616972";
+            case "android.source.shared.triple": return "m616e64726f69642e736f757263652e7368617265642e747269706c65";
             case "android.source.source.needs.intake.restart": return "m616e64726f69642e736f757263652e736f757263652e6e656564732e696e74616b652e72657374617274";
             case "android.source.start.intake.again": return "m616e64726f69642e736f757263652e73746172742e696e74616b652e616761696e";
             case "android.source.state.label": return "m616e64726f69642e736f757263652e73746174652e6c6162656c";

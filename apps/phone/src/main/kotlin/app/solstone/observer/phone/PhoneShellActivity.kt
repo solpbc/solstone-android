@@ -33,6 +33,9 @@ import app.solstone.observer.formfactor.phone.PhoneStatusNow
 import app.solstone.observer.formfactor.phone.distanceSystem
 import app.solstone.observer.formfactor.phone.measurementSystemNameBeforeApi28
 
+import androidx.compose.runtime.collectAsState
+import app.solstone.observer.formfactor.phone.LocalPhoneSharedSources
+import app.solstone.observer.formfactor.phone.PhoneSharedSourceInfo
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -1179,6 +1182,10 @@ class PhoneShellActivity : ComponentActivity() {
             )
             Box(Modifier.fillMaxSize()) {
             val calendarSession = CalendarRuntimes.current
+            val shared = (application as PhoneApplication).sharedSources
+            val known by shared.known.collectAsState()
+            val visibleSources = known?.takeIf { journalConfirmed && snapshot?.status?.refused != true &&
+                it.first == currentPairing?.clientCertFingerprint }?.second
             val calendarBinding = PhoneCalendarBinding(
                 state = calendarPaneState,
                 heldForJournal = snapshot?.status?.calendarHeldForJournal == true,
@@ -1196,6 +1203,7 @@ class PhoneShellActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalPhoneImport provides importBinding,
                 LocalPhoneCalendar provides calendarBinding,
+                LocalPhoneSharedSources provides PhoneSharedSourceInfo(visibleSources) { shared.refresh(detail = true) },
                 LocalPhoneWatchSource provides watchPage?.let { page ->
                     when {
                         snapshot?.status?.refused == true -> page.copy(notice = phoneText("android.shellactivity.journalnolongeraccepts"), actionLabel = phoneText("android.shellactivity.connectagain"))
@@ -1846,6 +1854,7 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        (application as PhoneApplication).sharedSources.refresh(detail = false)
         hasCameraPermission = hasCamera()
         migrationRefreshEpoch += 1
         // ⚠ A capture permission the owner allowed in system Settings is an affirmative grant, and

@@ -162,7 +162,7 @@ class JournalVersionRefreshCoordinator(
                 }
                 is ClientsSelfGetResult.NotFound -> {
                     // Fallback to legacy GET /api/system/status
-                    val legacyVersion = fetchJournalVersion(client)
+                    val legacyVersion = fetchJournalVersion(client, snap.clientCertFingerprint)
                     if (legacyVersion != null) {
                         synchronized(this) {
                             if (gen == job.currentGeneration() && snap.pairingMatches()) {

@@ -1663,3 +1663,15 @@ android.native.state.off = Off
 android.native.selected = Selected
 android.native.not.selected = Not selected
 android.native.default.popup.window.title = Pop-Up Window
+
+android.source.shared.devices =
+    { $count ->
+        [one] from another device
+       *[other] from { $count } other devices
+    }
+
+android.source.shared.also = also on
+
+android.source.shared.pair = { $first } · { $second }
+
+android.source.shared.triple = { $first } · { $state } · { $relative }

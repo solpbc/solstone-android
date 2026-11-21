@@ -1,0 +1,26 @@
+{
+  "description": "Source tile or card heading counting distinct other paired devices.",
+  "context": "Source tile or card heading counting distinct other paired devices.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 80,
+  "source_revision": "581ea08db64d53a71e034ad28888842a656cb04e5d87f3706ac0fe2f25294cc5",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

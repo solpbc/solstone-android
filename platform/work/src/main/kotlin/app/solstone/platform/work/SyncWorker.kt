@@ -534,12 +534,12 @@ private fun sync(
                 prepareObsidian = { connected, pairingNow ->
                     val source = app.solstone.platform.obsidian.ObsidianRuntimes.current
                         ?: (context?.applicationContext as? app.solstone.platform.obsidian.ObsidianWorkerHost)?.obsidianSessionForWork()
-                    source?.prepareDelivery(connected, pairingNow) == true
+                    source?.prepareDelivery(connected, pairingNow, credentials.identity.clientCertFingerprint) == true
                 },
                 prepareScreenshots = { connected, pairingNow ->
                     val source = app.solstone.platform.screenshots.ScreenshotsRuntimes.current
                         ?: (context?.applicationContext as? app.solstone.platform.screenshots.ScreenshotsWorkerHost)?.screenshotsSessionForWork()
-                    source?.prepareDelivery(connected, pairingNow) == true
+                    source?.prepareDelivery(connected, pairingNow, credentials.identity.clientCertFingerprint) == true
                 },
                 onCalendarCapability = capabilityDb?.let { calendarDb ->
                     { notes ->

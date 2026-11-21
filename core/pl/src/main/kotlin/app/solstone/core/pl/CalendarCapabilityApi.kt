@@ -21,13 +21,7 @@ fun parseCalendarCapability(status: Int, bodyText: String): CalendarCapabilityRe
     return CalendarCapabilityRead.Parsed(notes)
 }
 
-fun fetchCalendarCapability(client: PlHttpClient): CalendarCapabilityRead {
-    val response = client.request(
-        "GET",
-        "/api/system/status",
-        mapOf("Cache-Control" to "no-cache"),
-        null,
-        maxResponseBytes = 64 * 1024,
-    )
+fun fetchCalendarCapability(client: PlHttpClient, fingerprint: String = ""): CalendarCapabilityRead {
+    val response = readSystemStatus(client, fingerprint)
     return parseCalendarCapability(response.status, response.bodyText())
 }

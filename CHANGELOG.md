@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- when another device shares Obsidian notes or calendar events with your journal, your phone or tablet shows which device they come from. you can still set up either source here.
+
 ### Fixed
 
 - a photo you share with text now waits on this device until your journal is on 2.0.86 or later, instead of reaching an older journal without the text.

@@ -13,13 +13,7 @@ fun parseJournalCapability(status: Int, body: String, capability: String): Boole
     return capability in caps
 }
 
-fun fetchJournalCapability(client: PlHttpClient, capability: String): Boolean? {
-    val status = client.request(
-        "GET",
-        "/api/system/status",
-        mapOf("Cache-Control" to "no-cache"),
-        null,
-        maxResponseBytes = 64 * 1024,
-    )
+fun fetchJournalCapability(client: PlHttpClient, capability: String, fingerprint: String = ""): Boolean? {
+    val status = readSystemStatus(client, fingerprint)
     return parseJournalCapability(status.status, status.bodyText(), capability)
 }

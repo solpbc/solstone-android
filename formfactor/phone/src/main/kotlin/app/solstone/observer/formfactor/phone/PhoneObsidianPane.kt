@@ -63,6 +63,7 @@ internal fun PhoneObsidianPane(modifier: Modifier = Modifier, verdict: SourceSta
     val now = LocalPhoneStatusNow.current.nowEpochMs()
     LaunchedEffect(Unit) { binding.onRetry() }
     PhonePaneScaffold(modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.SourceDetail("obsidian")) }) {
+        SharedSourceCard("obsidian", verdict)
         // The verdict leads, as on every source page (mobile-shell § 3).
         verdict?.let { SourceVerdict(it, Modifier.padding(top = ShellMetrics.sectionGap)) }
         PaneNote(phoneText("android.obsidian.markdownnotesvaultchoose"))
@@ -75,6 +76,7 @@ internal fun PhoneObsidianPane(modifier: Modifier = Modifier, verdict: SourceSta
         if (s.pending > 0) PaneFactRow(phoneText("android.status.waiting.sync"), phoneText("android.obsidian.changes", "count" to (s.pending)))
         if (s.initialTotal > s.initialDone) PaneFactRow(phoneText("android.obsidian.firstsync"), phoneText("android.obsidian.sinitialdonesinitialtotal" , "initialdone" to (s.initialDone), "initialtotal" to (s.initialTotal)))
         PhoneIntakeFactRows("obsidian")
+        SharedSourceFacts("obsidian", verdict)
         if (s.tooLarge > 0) PaneNote(phoneText("android.obsidian.toolarge", "count" to (s.tooLarge)))
         if (s.unavailable > 0) PaneFactRow(phoneText("android.obsidian.notavailable"), phoneText("android.obsidian.notes", "count" to (s.unavailable)))
         if (s.enabled && s.capability == false) {

@@ -193,6 +193,7 @@ internal fun PaneNavRow(
     value: String? = null,
     subLine: String? = null,
     leadingGlyph: Int? = null,
+    subLineMarker: (@Composable () -> Unit)? = null,
 ) {
     PaneActionRow(
         label = label,
@@ -200,6 +201,7 @@ internal fun PaneNavRow(
         subLine = subLine,
         glyph = R.drawable.phone_chevron_right,
         leadingGlyph = leadingGlyph,
+        subLineMarker = subLineMarker,
         onClick = onClick,
         modifier = modifier,
     )
@@ -232,6 +234,7 @@ private fun PaneActionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leadingGlyph: Int? = null,
+    subLineMarker: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -265,7 +268,8 @@ private fun PaneActionRow(
                     color = shellSecondaryInk,
                 )
             }
-            if (subLine != null) {
+            if (subLine != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                subLineMarker?.invoke()
                 Text(
                     text = subLine,
                     style = MaterialTheme.typography.bodySmall,

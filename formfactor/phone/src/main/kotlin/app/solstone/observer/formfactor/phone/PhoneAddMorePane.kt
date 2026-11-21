@@ -60,9 +60,11 @@ fun PhoneAddMorePane(
 
 @Composable
 private fun AddMoreRow(id: String, status: SourceStatus?, onOpenSource: (String) -> Unit) {
+    val devices = otherDevices(id, status?.state)
     PaneNavRow(
         label = sourceLabel(id),
-        subLine = if (id == app.solstone.core.watch.courier.WatchCourierStrings.WATCH) {
+        subLineMarker = if (devices.isEmpty()) null else ({ SharedMarker() }),
+        subLine = if (devices.isNotEmpty()) sharedHeading(devices.size) else if (id == app.solstone.core.watch.courier.WatchCourierStrings.WATCH) {
             watchTileSubLine(LocalPhoneWatchSource.current)
         } else status?.let { sourceStateCopy(it.state) },
         leadingGlyph = sourceGlyph(id),
