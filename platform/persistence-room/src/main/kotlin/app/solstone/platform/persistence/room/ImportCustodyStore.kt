@@ -90,7 +90,25 @@ data class ImportItemDescriptor(
     val mime: String,
     val size: Long,
     val caption: String? = null,
+    /** The journal import page's card this item was picked for, when the page handed it over. */
+    val area: String? = null,
+    /** The page's choices for it, as the JSON object text it sent. */
+    val context: String? = null,
 )
+
+/** Where one handed-over item is now, as the journal page is told. */
+data class ImportHandoffStatus(
+    /** `waiting`, `uploading`, `attention`, `delivered`, or `gone`. */
+    val state: String,
+    /** The journal's import row, when it is known. */
+    val importId: String? = null,
+    /** The journal's own sentence for a refusal. */
+    val reason: String? = null,
+)
+
+/** The page's card and choices for a picked item, kept beside its bytes. */
+const val IMPORT_AREA_FILE = "area.txt"
+const val IMPORT_CONTEXT_FILE = "context.json"
 
 // Process-wide reentrant lock keyed by canonical root path. Reentrant because recover calls finish while holding it.
 internal object ImportRootLock {
@@ -122,6 +140,14 @@ internal object ImportRootLock {
 }
 
 private val kindMap = ConcurrentHashMap<String, String>()
+
+/**
+ * The journal row each recently delivered item became, in process memory, so a journal page that
+ * handed an item over can link to the row after the delivered item has left the device.
+ */
+private val receipts = object : LinkedHashMap<String, String>() {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 256
+}
 
 /**
  * Items in the middle of a journal exchange, in process memory: the sync worker and the screens
@@ -183,9 +209,11 @@ class ImportCustodyStore(
             var moved = false
             try {
                 fsync(payloadPath)
-                val captionPath = stagingDir.resolve("caption.txt")
-                if (Files.isRegularFile(captionPath, NOFOLLOW_LINKS)) {
-                    fsync(captionPath)
+                for (sidecar in listOf("caption.txt", IMPORT_AREA_FILE, IMPORT_CONTEXT_FILE)) {
+                    val sidecarPath = stagingDir.resolve(sidecar)
+                    if (Files.isRegularFile(sidecarPath, NOFOLLOW_LINKS)) {
+                        fsync(sidecarPath)
+                    }
                 }
                 fsync(stagingDir)
                 val targetDir = root.resolve(id)
@@ -540,11 +568,14 @@ class ImportCustodyStore(
      * store lock. The delivery record follows the item's own state; if it alone fails, the item is
      * still delivered.
      */
-    fun recordDelivered(id: String, instance: String): ImportChange =
+    fun recordDelivered(id: String, instance: String, importId: String? = null): ImportChange =
         ImportRootLock.withLock(root) {
             try {
-                if (try { dao.byId(id) } catch (_: Exception) { null } == null) return@withLock ImportChange.GONE
+                val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
                 if (!markDelivered(id)) return@withLock ImportChange.REFUSED
+                // The start answer names the row; a resend the journal already had answers without
+                // one, and the row is then the timestamp its save gave.
+                (importId ?: row.progressTimestamp)?.let { synchronized(receipts) { receipts[kindKey(root, id)] = it } }
                 runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = clock(), instanceId = instance)) }
                 ImportChange.DONE
             } finally {
@@ -642,7 +673,36 @@ class ImportCustodyStore(
             mime = row.mime,
             size = row.byteSize,
             caption = caption,
+            area = readSidecar(itemDir, IMPORT_AREA_FILE, 96),
+            context = readSidecar(itemDir, IMPORT_CONTEXT_FILE, 16 * 1024),
         )
+    }
+
+    /** Where [id] is now, for the journal page that handed it over. */
+    fun handoffStatus(id: String): ImportHandoffStatus {
+        if (isUnsafeId(id)) return ImportHandoffStatus("gone")
+        val key = kindKey(root, id)
+        synchronized(receipts) { receipts[key] }?.let { return ImportHandoffStatus("delivered", importId = it) }
+        val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return ImportHandoffStatus("gone")
+        return when {
+            row.state == "delivered" -> ImportHandoffStatus("delivered", importId = row.progressTimestamp)
+            row.state == "attention" -> ImportHandoffStatus("attention", importId = row.progressTimestamp, reason = row.attentionError)
+            key in inFlight -> ImportHandoffStatus("uploading")
+            else -> ImportHandoffStatus("waiting")
+        }
+    }
+
+    private fun readSidecar(itemDir: Path, name: String, maxBytes: Int): String? {
+        val path = itemDir.resolve(name)
+        return try {
+            if (Files.isRegularFile(path, NOFOLLOW_LINKS) && Files.size(path) <= maxBytes) {
+                String(Files.readAllBytes(path), Charsets.UTF_8).takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun readCaption(itemDir: Path): String? {

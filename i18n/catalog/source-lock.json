@@ -612,7 +612,7 @@
     },
     {
       "id": "android.import.adds.pdfs.audio.images.text",
-      "source": "dfedf914004c24fee4e66d70365c0fc5870175e9919c00a3876f6a658e77b00c",
+      "source": "da1f9f77caf0e7578ce8a8add8f25f80917a9f5d81ef12064cf194c4fbd4aa4b",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []
@@ -716,13 +716,6 @@
       "locales": []
     },
     {
-      "id": "android.import.journal.can.t.take.kind",
-      "source": "b3a66eeb1f67961d93144ad189f5088d0eb713a034225cad09898f5feaff482d",
-      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
-      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
-      "locales": []
-    },
-    {
       "id": "android.import.journal.couldn.t.accept",
       "source": "d435c8631acda1d4319822137cb42e685b303dbbcb653f4fd2928cb8c3fae451",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
@@ -747,6 +740,13 @@
       "id": "android.import.line.label.refusaltext.line.reason",
       "source": "dabd25995b7732ae383c5a004170d6cc60681fc1a97f84555af10801ed7c9f46",
       "contract": "8c8c0e34b8bfc53e22f8cbe57a716480b16db4b48295df56d0185a836669c9db",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.import.moreimports",
+      "source": "7de9a06c950f205d3d25ee4d45bcb8a612a294696a1c7d90b271f33f63df7a82",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []
     },
@@ -1102,7 +1102,7 @@
     },
     {
       "id": "android.journal.file.selection.isn.t.available",
-      "source": "bafd2c63247fafd2d6b8f00b0e7906c87e91fc54c579bb59ec64b639c5766317",
+      "source": "6d135446010a8e8b55b2d1c1042f8a486e1d81f024704839538aa1bd29f34022",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []

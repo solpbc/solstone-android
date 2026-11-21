@@ -24,6 +24,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +62,8 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import app.solstone.core.diagnostics.DiagEvent
 import app.solstone.core.identity.JournalMarkPresentation
 import app.solstone.core.pl.browser.BrowserTerminalClass
@@ -176,6 +180,27 @@ private fun JournalBrowserPane(
     var observedCanGoBack by remember { mutableStateOf(false) }
     val session = remember { sessionFactory() }
     val alive = remember { AtomicBoolean(true) }
+    // The journal's import page hands file picking to the app. One pick is open at a time; the
+    // system picker's answer goes to whichever pick asked for it.
+    val pickAnswer = remember { arrayOfNulls<(List<Uri>?) -> Unit>(1) }
+    val answerPick = { uris: List<Uri>? ->
+        val answer = pickAnswer[0]
+        pickAnswer[0] = null
+        answer?.invoke(uris)
+    }
+    val pickMany = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { answerPick(it) }
+    val pickOne = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { answerPick(listOfNotNull(it)) }
+    val openPicker = { multiple: Boolean, onPicked: (List<Uri>?) -> Unit ->
+        pickAnswer[0] = onPicked
+        // Every file stays choosable: the page's filters name extensions, and the system picker
+        // filters only by type, which providers often leave out (a .zip export reads as no type).
+        try {
+            if (multiple) pickMany.launch(arrayOf("*/*")) else pickOne.launch(arrayOf("*/*"))
+        } catch (e: RuntimeException) {
+            pickAnswer[0] = null
+            throw e
+        }
+    }
 
     DisposableEffect(session) {
         alive.set(true)
@@ -278,6 +303,7 @@ private fun JournalBrowserPane(
                         onUnsupportedNavigation = {
                             if (alive.get()) notice = LINK_UNAVAILABLE
                         },
+                        openPicker = openPicker,
                     )
                 },
                 onRelease = { webView ->
@@ -320,6 +346,7 @@ internal fun createJournalWebView(
     onUnsupportedTransfer: () -> Unit,
     onUnsupportedFileSelection: () -> Unit,
     onUnsupportedNavigation: () -> Unit,
+    openPicker: ((Boolean, (List<Uri>?) -> Unit) -> Unit)? = null,
 ): WebView {
     val policy = JournalWebPolicy(origin)
     val insetPolicy = journalWebInsetPolicy(WebView.getCurrentWebViewPackage()?.versionName)
@@ -333,6 +360,7 @@ internal fun createJournalWebView(
             ByteArrayInputStream(ByteArray(0)),
         )
     }
+    var importHost: JournalImportHost<Uri>? = null
     return WebView(journalWebViewContext(context)).apply {
         onLiveView(this)
         layoutParams = ViewGroup.LayoutParams(
@@ -418,6 +446,7 @@ internal fun createJournalWebView(
             ): WebResourceResponse? = if (policy.allows(request.url.toString())) null else blocked()
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                importHost?.documentStarted()
                 if (!policy.allows(url)) view.stopLoading()
             }
 
@@ -498,6 +527,7 @@ internal fun createJournalWebView(
         }
         setDownloadListener { _, _, _, _, _ -> onUnsupportedTransfer() }
         applyJournalWebHostUserAgent(context, settings)
+        importHost = openPicker?.let { installJournalImportHost(context, this, origin, it) }
         PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
         loadUrl(loadTarget)
     }
@@ -537,6 +567,76 @@ private fun applyJournalWebHostUserAgent(
             }.onFailure { emitInvalidJournalWebHostContract() }
         }
         JournalWebHostContractParse.Refused -> emitInvalidJournalWebHostContract()
+    }
+}
+
+/** Store reads for every journal window's import host, off the main thread. */
+private val importHostReads by lazy {
+    java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "import-host").apply { isDaemon = true } }
+}
+
+/** The journal's origin (`scheme://host:port`) for a URL the bridge serves it at. */
+internal fun journalOriginOf(url: String): String? {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    val scheme = uri.scheme?.lowercase() ?: return null
+    val host = uri.host ?: return null
+    return if (uri.port >= 0) "$scheme://$host:${uri.port}" else "$scheme://$host"
+}
+
+/**
+ * Give the journal's top document the import host, when this device's WebView can do it safely:
+ * a message listener bound to the journal's exact origin, with the main frame checked on every
+ * message, and a document-start script so the page finds the host before its own code runs.
+ * Without either, the page sees no host and keeps its own file input, which the app refuses with
+ * a pointer to the import tile and Share.
+ */
+private fun installJournalImportHost(
+    context: android.content.Context,
+    view: WebView,
+    url: String,
+    openPicker: (Boolean, (List<Uri>?) -> Unit) -> Unit,
+): JournalImportHost<Uri>? {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+        !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    ) {
+        PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "import-host", outcome = "unsupported-webview"))
+        return null
+    }
+    val origin = journalOriginOf(url)
+    val contract = runCatching {
+        context.assets.open("journal-web-host/import-host-contract.json").use { parseImportHostContract(it.readBytes()) }
+    }.getOrNull()
+    val template = runCatching {
+        context.assets.open("journal-web-host/import-host.js").use { String(it.readBytes(), Charsets.UTF_8) }
+    }.getOrNull()
+    if (origin == null || contract == null || template == null) {
+        PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "import-host", outcome = "invalid"))
+        return null
+    }
+    val app = context.applicationContext
+    val intake = ImportIntake.get(app)
+    val main = android.os.Handler(android.os.Looper.getMainLooper())
+    val host = JournalImportHost(
+        origin = origin,
+        contract = contract,
+        openPicker = openPicker,
+        itemFor = { uri: Uri -> app.contentResolver.intakeItemFor(uri) },
+        submit = { items, done -> intake.submit(items, done) },
+        status = { id -> intake.store.handoffStatus(id) },
+        background = { work -> importHostReads.execute(work) },
+    )
+    return try {
+        val rules = setOf(origin)
+        WebViewCompat.addWebMessageListener(view, JOURNAL_IMPORT_BRIDGE, rules) { _, message, sourceOrigin, isMainFrame, replyProxy ->
+            host.onMessage(message.data, sourceOrigin.toString(), isMainFrame) { text ->
+                main.post { runCatching { replyProxy.postMessage(text) } }
+            }
+        }
+        WebViewCompat.addDocumentStartJavaScript(view, journalImportHostScript(template, contract, origin), rules)
+        host
+    } catch (_: RuntimeException) {
+        PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "import-host", outcome = "refused"))
+        null
     }
 }
 

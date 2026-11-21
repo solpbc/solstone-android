@@ -110,11 +110,11 @@ public final class Select {
             case "android.import.imports.wait.until.confirm.journal": return "m616e64726f69642e696d706f72742e696d706f7274732e776169742e756e74696c2e636f6e6669726d2e6a6f75726e616c";
             case "android.import.imports.wait.until.journal.updated": return "m616e64726f69642e696d706f72742e696d706f7274732e776169742e756e74696c2e6a6f75726e616c2e75706461746564";
             case "android.import.journal": return "m616e64726f69642e696d706f72742e6a6f75726e616c";
-            case "android.import.journal.can.t.take.kind": return "m616e64726f69642e696d706f72742e6a6f75726e616c2e63616e2e742e74616b652e6b696e64";
             case "android.import.journal.couldn.t.accept": return "m616e64726f69642e696d706f72742e6a6f75726e616c2e636f756c646e2e742e616363657074";
             case "android.import.journal.stopped.accepting.device.imports": return "m616e64726f69642e696d706f72742e6a6f75726e616c2e73746f707065642e616363657074696e672e6465766963652e696d706f727473";
             case "android.import.keeps.saving.if.close": return "m616e64726f69642e696d706f72742e6b656570732e736176696e672e69662e636c6f7365";
             case "android.import.line.label.refusaltext.line.reason": return "m616e64726f69642e696d706f72742e6c696e652e6c6162656c2e7265667573616c746578742e6c696e652e726561736f6e";
+            case "android.import.moreimports": return "m616e64726f69642e696d706f72742e6d6f7265696d706f727473";
             case "android.import.notgoingjournalright": return "m616e64726f69642e696d706f72742e6e6f74676f696e676a6f75726e616c7269676874";
             case "android.import.nothing.changed.may.have.moved": return "m616e64726f69642e696d706f72742e6e6f7468696e672e6368616e6765642e6d61792e686176652e6d6f766564";
             case "android.import.nothing.yet": return "m616e64726f69642e696d706f72742e6e6f7468696e672e796574";

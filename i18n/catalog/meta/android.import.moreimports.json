@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner: a row on the import tile that opens the journal's own import page, for the kinds it brings in from other services. Same words as the Linux app's linux.import.moreimports.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "7de9a06c950f205d3d25ee4d45bcb8a612a294696a1c7d90b271f33f63df7a82",
+  "risk": "routine",
+  "auto_merge": true
+}

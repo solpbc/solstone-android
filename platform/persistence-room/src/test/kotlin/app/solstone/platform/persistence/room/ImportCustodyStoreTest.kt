@@ -695,6 +695,32 @@ class ImportCustodyStoreTest {
     }
 
     @Test
+    fun aHandedOverItemReportsEachStepAndItsJournalRowAfterItLeavesTheDevice() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao)
+        val id = published(store, root)
+        assertEquals(ImportHandoffStatus("waiting"), store.handoffStatus(id))
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.86"))
+        assertEquals(ImportHandoffStatus("uploading"), store.handoffStatus(id))
+        assertEquals(ImportChange.DONE, store.recordSaved(id, "/imports/x/doc.pdf", "20261120_190749", "A"))
+        assertEquals(ImportChange.DONE, store.recordDelivered(id, "A", "20261120_190750"))
+        store.finish()
+        assertNull(dao.byId(id), "a delivered item leaves the device")
+        assertEquals(ImportHandoffStatus("delivered", importId = "20261120_190750"), store.handoffStatus(id))
+        assertEquals(ImportHandoffStatus("gone"), store.handoffStatus("no-such-item"))
+    }
+
+    @Test
+    fun aResendTheJournalAlreadyHadNamesTheRowItsSaveGave() = withTempDir { root ->
+        val store = ImportCustodyStore(root = root, dao = InMemoryImportDao())
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.86"))
+        assertEquals(ImportChange.DONE, store.recordSaved(id, "/p", "20261120_190811", "A"))
+        assertEquals(ImportChange.DONE, store.recordDelivered(id, "A"))
+        assertEquals(ImportHandoffStatus("delivered", importId = "20261120_190811"), store.handoffStatus(id))
+    }
+
+    @Test
     fun aVanishedItemIsGoneForEveryRecordAndNothingIsCreated() = withTempDir { root ->
         val dao = InMemoryImportDao()
         val store = ImportCustodyStore(root = root, dao = dao)

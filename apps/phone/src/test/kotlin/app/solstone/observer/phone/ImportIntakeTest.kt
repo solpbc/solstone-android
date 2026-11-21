@@ -85,7 +85,10 @@ class ImportIntakeTest {
     @Test
     fun aSharedFileIsSavedOnTheDeviceWithItsBytesAndASyncIsAskedFor() {
         val outcome = take(intake(), stream("notes.pdf", "application/pdf", "pdf-bytes".toByteArray()))
-        assertEquals(IntakeOutcome(1, emptyList()), outcome)
+        assertEquals(1, outcome.accepted)
+        assertEquals(emptyList(), outcome.refused)
+        val row = dao.rows.values.single()
+        assertEquals(listOf(IntakeSaved(row.id, "notes.pdf")), outcome.saved, "each saved item names its queue id")
         assertEquals("pdf-bytes", String(payloadOf("notes.pdf")))
         assertEquals(1, runs)
     }
@@ -100,9 +103,9 @@ class ImportIntakeTest {
             stream("d.png", "image/png", "d".toByteArray(), scheme = "file"),
             IntakeItem.Text("a note"),
         )
-        assertEquals(2, outcome.accepted)
+        assertEquals(3, outcome.accepted, "a video is the journal's to decide, so it is saved too")
         assertEquals(
-            listOf(IntakeRefused("b.pdf", IntakeRefusal.UNREADABLE), IntakeRefused("c.mp4", IntakeRefusal.UNSUPPORTED_TYPE), IntakeRefused("d.png", IntakeRefusal.NOT_SHAREABLE)),
+            listOf(IntakeRefused("b.pdf", IntakeRefusal.UNREADABLE), IntakeRefused("d.png", IntakeRefusal.NOT_SHAREABLE)),
             outcome.refused,
         )
         assertEquals("text", dao.rows.values.single { it.payloadKind == "text" }.payloadKind)
@@ -201,5 +204,20 @@ class ImportIntakeTest {
         assertTrue(File(File(root, storedId), "caption.txt").isFile)
         i.store.remove(storedId)
         assertFalse(File(root, storedId).exists())
+    }
+
+    @Test
+    fun aHandedOverPickKeepsItsCardAndContextBesideItsBytes() {
+        val store = ImportCustodyStore(root.toPath(), dao)
+        val context = """{"setting":"host conformance","future":{"preserve":true}}"""
+        val outcome = take(
+            intake(),
+            IntakeItem.Stream("conversations.zip", null, "content", 3, ByteArrayInputStream("zip".toByteArray()), handoff = IntakeHandoff("chatgpt", context)),
+        )
+        val item = store.item(outcome.saved.single().id)!!
+        assertEquals("chatgpt", item.area)
+        assertEquals(context, item.context)
+        assertEquals("conversations.zip", item.displayName, "an untyped file keeps its own name")
+        assertEquals("waiting", store.handoffStatus(item.id).state)
     }
 }

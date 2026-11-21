@@ -8,26 +8,29 @@ import sys
 from pathlib import Path
 
 
-def main() -> int:
-    repo_root = Path(__file__).resolve().parents[2]
-    provenance_path = repo_root / "apps/phone/host-contract.provenance.json"
-    asset_path = repo_root / "apps/phone/src/main/assets/journal-web-host/host-contract.json"
+PINS = (
+    ("apps/phone/host-contract.provenance.json", "apps/phone/src/main/assets/journal-web-host/host-contract.json"),
+    ("apps/phone/import-host-contract.provenance.json", "apps/phone/src/main/assets/journal-web-host/import-host-contract.json"),
+)
 
+
+def verify(repo_root: Path, provenance_name: str, asset_name: str) -> bool:
+    label = f"journal web host contract pin ({asset_name})"
     try:
-        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        provenance = json.loads((repo_root / provenance_name).read_text(encoding="utf-8"))
         repository = provenance["repository"]
         commit = provenance["commit"]
         contract_path = provenance["path"]
         expected_digest = provenance["sha256"]
-        vendored = asset_path.read_bytes()
+        vendored = (repo_root / asset_name).read_bytes()
     except Exception as error:
-        print(f"journal web host contract pin: cannot read inputs: {error}", file=sys.stderr)
-        return 1
+        print(f"{label}: cannot read inputs: {error}", file=sys.stderr)
+        return False
 
     actual_digest = hashlib.sha256(vendored).hexdigest()
     if actual_digest != expected_digest:
-        print("journal web host contract pin: vendored digest differs from provenance", file=sys.stderr)
-        return 1
+        print(f"{label}: vendored digest differs from provenance", file=sys.stderr)
+        return False
 
     endpoint = f"repos/{repository}/contents/{contract_path}?ref={commit}"
     try:
@@ -38,13 +41,19 @@ def main() -> int:
             stderr=subprocess.PIPE,
         ).stdout
     except Exception as error:
-        print(f"journal web host contract pin: fetch failed: {error}", file=sys.stderr)
-        return 1
+        print(f"{label}: fetch failed: {error}", file=sys.stderr)
+        return False
 
     if fetched != vendored:
-        print("journal web host contract pin: fetched bytes differ from vendored asset", file=sys.stderr)
-        return 1
-    return 0
+        print(f"{label}: fetched bytes differ from vendored asset", file=sys.stderr)
+        return False
+    return True
+
+
+def main() -> int:
+    repo_root = Path(__file__).resolve().parents[2]
+    results = [verify(repo_root, provenance, asset) for provenance, asset in PINS]
+    return 0 if all(results) else 1
 
 
 if __name__ == "__main__":

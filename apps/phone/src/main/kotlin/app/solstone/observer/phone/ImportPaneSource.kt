@@ -101,6 +101,7 @@ internal fun readImportPane(
         rows = rows,
         intake = line,
         interrupted = intake.interrupted,
+        journalOpenable = pairingFact == PairingFact.PAIRED && !awaitingConfirmation && !refused,
     )
 }
 

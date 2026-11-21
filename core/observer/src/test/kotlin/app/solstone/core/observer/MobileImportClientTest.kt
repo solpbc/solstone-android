@@ -218,7 +218,7 @@ class MobileImportClientTest {
 
         val client = MobileImportClient(http)
         val outcome = client.start(path, timestamp)
-        assertEquals(MobileImportOutcome.Delivered, outcome)
+        assertEquals(MobileImportOutcome.Delivered("i"), outcome)
 
         assertEquals(1, http.buffered.size)
         assertTrue(http.streamed.isEmpty())
@@ -249,23 +249,23 @@ class MobileImportClientTest {
             Triple("save_replay_200", MobileImportOperation.SAVE) { body: Map<*, *> ->
                 MobileImportOutcome.Saved(body["path"] as String, body["timestamp"] as String)
             },
-            Triple("start_queued_200", MobileImportOperation.START) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+            Triple("start_queued_200", MobileImportOperation.START) { body: Map<*, *> ->
+                MobileImportOutcome.Delivered(body["import_id"] as String)
             },
-            Triple("start_inprocess_200", MobileImportOperation.START) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+            Triple("start_inprocess_200", MobileImportOperation.START) { body: Map<*, *> ->
+                MobileImportOutcome.Delivered(body["import_id"] as String)
             },
-            Triple("start_queued_replay_200", MobileImportOperation.START) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+            Triple("start_queued_replay_200", MobileImportOperation.START) { body: Map<*, *> ->
+                MobileImportOutcome.Delivered(body["import_id"] as String)
             },
-            Triple("start_inprocess_replay_200", MobileImportOperation.START) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+            Triple("start_inprocess_replay_200", MobileImportOperation.START) { body: Map<*, *> ->
+                MobileImportOutcome.Delivered(body["import_id"] as String)
             },
             Triple("save_already_imported_400", MobileImportOperation.SAVE) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+                MobileImportOutcome.Delivered()
             },
             Triple("start_already_imported_400", MobileImportOperation.START) { _: Map<*, *> ->
-                MobileImportOutcome.Delivered
+                MobileImportOutcome.Delivered()
             },
             Triple("save_client_item_conflict_400", MobileImportOperation.SAVE) { body: Map<*, *> ->
                 MobileImportOutcome.NeedsAttention(body["error"] as String, body["reason_code"] as String, body["kind"] as String)
@@ -619,8 +619,8 @@ class MobileImportClientTest {
         val tripleBody = "{\"error\":\"that action isn't available in the current state.\",\"reason_code\":\"invalid_operation_for_state\",\"detail\":\"content already imported\",\"kind\":\"already_imported\"}".toByteArray(Charsets.UTF_8)
 
         // 400 triple is Delivered for SAVE and START
-        assertEquals(MobileImportOutcome.Delivered, classifyMobileImportResponse(MobileImportOperation.SAVE, 400, tripleBody))
-        assertEquals(MobileImportOutcome.Delivered, classifyMobileImportResponse(MobileImportOperation.START, 400, tripleBody))
+        assertEquals(MobileImportOutcome.Delivered(), classifyMobileImportResponse(MobileImportOperation.SAVE, 400, tripleBody))
+        assertEquals(MobileImportOutcome.Delivered(), classifyMobileImportResponse(MobileImportOperation.START, 400, tripleBody))
 
         // 401 and 403 with that same body are AuthStop
         assertEquals(MobileImportOutcome.AuthStop, classifyMobileImportResponse(MobileImportOperation.SAVE, 401, tripleBody))
@@ -681,7 +681,7 @@ class MobileImportClientTest {
         http.streamed.clear()
         http.response = HttpResponse(200, emptyMap(), "{\"status\":\"ok\",\"task_id\":\"t\",\"import_id\":\"i\"}".toByteArray(Charsets.UTF_8))
         val startOutcome = client.start("/p", "ts")
-        assertEquals(MobileImportOutcome.Delivered, startOutcome)
+        assertEquals(MobileImportOutcome.Delivered("i"), startOutcome)
         assertEquals(1, http.buffered.size)
         assertTrue(http.streamed.isEmpty())
         assertEquals(startRoute[0], http.buffered[0].method)
@@ -892,5 +892,31 @@ class MobileImportClientTest {
         assertEquals(listOf("client_item_id", "imported_via", "caption", "file"), parts.map { it.name })
         assertEquals(caption, parts[2].body.toString(Charsets.UTF_8))
         assertTrue(payload.contentEquals(parts[3].body))
+    }
+
+    @Test
+    fun aHandedOverFileCarriesItsCardAndTheWholeContextToTheJournal() {
+        val payload = "chatgpt export".toByteArray()
+        val context = """{"setting":"host conformance","future":{"preserve":true}}"""
+        fun partsFor(area: String): Map<String, String> {
+            val http = ScriptedPlHttpClient()
+            var drained: ByteArray? = null
+            http.streamingHandler = { body ->
+                drained = drainStreamingBody(body)
+                HttpResponse(200, emptyMap(), "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8))
+            }
+            MobileImportClient(http).save(
+                MobileImportFile("handoff-1", "conversations.zip", "application/zip", payload.size.toLong(), SimpleSource(payload), area = area, context = context),
+            )
+            val boundary = http.streamed.single().headers["Content-Type"]!!.removePrefix("multipart/form-data; boundary=")
+            val parts = parseMultipart(requireNotNull(drained), boundary)
+            assertEquals(context, parts.single { it.name == "context" }.body.toString(Charsets.UTF_8))
+            assertEquals(area, parts.single { it.name == "area" }.body.toString(Charsets.UTF_8))
+            assertEquals("mobile_share", parts.single { it.name == "imported_via" }.body.toString(Charsets.UTF_8))
+            assertTrue(payload.contentEquals(parts.single { it.name == "file" }.body))
+            return parts.filter { it.name != "file" }.associate { it.name to it.body.toString(Charsets.UTF_8) }
+        }
+        assertEquals("chatgpt", partsFor("chatgpt")["source_hint"], "a card names its source")
+        assertTrue("source_hint" !in partsFor("quick"), "a quick pick leaves the kind to the journal")
     }
 }

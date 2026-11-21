@@ -55,7 +55,7 @@ class PhoneImportRecentStateTest {
 
     @Test
     fun aShareWithNothingAddableOffersOnlyClose() {
-        val refusedOnly = ShareSheetState.Review(listOf(ShareSheetItem("clip", "file", null, IntakeRefusalReason.UNSUPPORTED_TYPE)), textPreview = null)
+        val refusedOnly = ShareSheetState.Review(listOf(ShareSheetItem("clip", "file", null, IntakeRefusalReason.NOT_SHAREABLE)), textPreview = null)
         assertFalse(refusedOnly.addable)
         assertTrue(refusedOnly.copy(items = refusedOnly.items + ShareSheetItem("a", "PDF", null)).addable)
     }

@@ -17,6 +17,8 @@ import app.solstone.core.observer.intakeMayCopy
 import app.solstone.core.observer.intakeMayStart
 import app.solstone.core.observer.intakeName
 import app.solstone.core.observer.intakeTextName
+import app.solstone.platform.persistence.room.IMPORT_AREA_FILE
+import app.solstone.platform.persistence.room.IMPORT_CONTEXT_FILE
 import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.work.SyncScheduler
@@ -45,6 +47,8 @@ internal sealed interface IntakeItem {
         val input: InputStream?,
         /** Optional owner-written text shared alongside an image. */
         val caption: String? = null,
+        /** The journal page's card and choices, when the page handed this pick over. */
+        val handoff: IntakeHandoff? = null,
     ) : IntakeItem {
         override val label: String get() = displayName ?: "item"
     }
@@ -54,10 +58,18 @@ internal sealed interface IntakeItem {
     }
 }
 
+/** The journal import page's card ([area]) and the owner's choices for it ([context], JSON object text). */
+internal data class IntakeHandoff(val area: String, val context: String)
+
 internal data class IntakeRefused(val label: String, val reason: IntakeRefusal)
 
-/** What one intake did: how many items were saved on this device, and each refusal with why. */
-internal data class IntakeOutcome(val accepted: Int, val refused: List<IntakeRefused>)
+/** One item saved on this device: its queue id and the name the owner knows it by. */
+internal data class IntakeSaved(val id: String, val label: String)
+
+/** What one intake did: each item saved on this device, and each refusal with why. */
+internal data class IntakeOutcome(val saved: List<IntakeSaved>, val refused: List<IntakeRefused>) {
+    val accepted: Int get() = saved.size
+}
 
 internal sealed interface IntakeState {
     data object Idle : IntakeState
@@ -119,39 +131,50 @@ internal class ImportIntake(
     private fun run(items: List<IntakeItem>): IntakeOutcome {
         root.mkdirs()
         runCatching { running.createNewFile() }
-        var accepted = 0
+        val saved = mutableListOf<IntakeSaved>()
         val refused = mutableListOf<IntakeRefused>()
         try {
             items.forEachIndexed { index, item ->
                 _state.value = IntakeState.Copying(index, items.size)
-                val refusal = try {
+                val taken = try {
                     take(item)
                 } catch (_: IOException) {
-                    IntakeRefusal.UNREADABLE
+                    Taken.No(IntakeRefusal.UNREADABLE)
                 } catch (_: RuntimeException) {
-                    IntakeRefusal.UNREADABLE
+                    Taken.No(IntakeRefusal.UNREADABLE)
                 }
-                if (refusal == null) accepted++ else refused += IntakeRefused(item.label, refusal)
+                when (taken) {
+                    is Taken.Yes -> saved += IntakeSaved(taken.id, item.label)
+                    is Taken.No -> refused += IntakeRefused(item.label, taken.reason)
+                }
             }
         } finally {
             items.forEach { (it as? IntakeItem.Stream)?.input?.let { input -> runCatching { input.close() } } }
             running.delete()
         }
-        if (accepted > 0) runCatching(requestRun)
-        return IntakeOutcome(accepted, refused)
+        if (saved.isNotEmpty()) runCatching(requestRun)
+        return IntakeOutcome(saved, refused)
     }
 
-    /** Take one item into the store; null when it was saved, otherwise why it wasn't. */
-    private fun take(item: IntakeItem): IntakeRefusal? =
-        when (item) {
-            is IntakeItem.Text -> takeText(item.text)
-            is IntakeItem.Stream -> takeStream(item)
-        }
+    private sealed interface Taken {
+        data class Yes(val id: String) : Taken
+        data class No(val reason: IntakeRefusal) : Taken
+    }
 
-    private fun takeText(text: String): IntakeRefusal? {
+    /** Take one item into the store: its queue id when it was saved, otherwise why it wasn't. */
+    private fun take(item: IntakeItem): Taken {
+        var id: String? = null
+        val refusal = when (item) {
+            is IntakeItem.Text -> takeText(item.text) { id = it }
+            is IntakeItem.Stream -> takeStream(item) { id = it }
+        }
+        return if (refusal == null) Taken.Yes(checkNotNull(id)) else Taken.No(refusal)
+    }
+
+    private fun takeText(text: String, began: (String) -> Unit): IntakeRefusal? {
         val bytes = text.toByteArray(Charsets.UTF_8)
         intakeMayStart(bytes.size.toLong(), usableSpace(), maxBytes, minFree)?.let { return it }
-        val id = store.begin("text") ?: return IntakeRefusal.NO_SPACE
+        val id = store.begin("text")?.also(began) ?: return IntakeRefusal.NO_SPACE
         return try {
             Files.write(staged(id).toPath(), bytes)
             if (store.publish(id, intakeName(intakeTextName(text), "text/plain"), "text/plain", bytes.size.toLong())) null else abandon(id, IntakeRefusal.NO_SPACE)
@@ -160,13 +183,14 @@ internal class ImportIntake(
         }
     }
 
-    private fun takeStream(item: IntakeItem.Stream): IntakeRefusal? {
+    private fun takeStream(item: IntakeItem.Stream, began: (String) -> Unit): IntakeRefusal? {
         val decision = intakeDecision(item.scheme, item.mime, canConvertHeic)
         if (decision is IntakeDecision.Refuse) return decision.reason
         val input = item.input ?: return IntakeRefusal.UNREADABLE
         intakeMayStart(item.reportedSize, usableSpace(), maxBytes, minFree)?.let { return it }
-        val id = store.begin("file") ?: return IntakeRefusal.NO_SPACE
+        val id = store.begin("file")?.also(began) ?: return IntakeRefusal.NO_SPACE
         val payload = staged(id)
+        item.handoff?.let { writeHandoff(id, it) }
         return try {
             when (decision) {
                 is IntakeDecision.Accept -> {
@@ -223,6 +247,12 @@ internal class ImportIntake(
     }
 
     private fun staged(id: String): File = File(File(File(root, ".staging"), id), "payload")
+
+    private fun writeHandoff(id: String, handoff: IntakeHandoff) {
+        val dir = File(File(root, ".staging"), id)
+        Files.write(File(dir, IMPORT_AREA_FILE).toPath(), handoff.area.toByteArray(Charsets.UTF_8))
+        Files.write(File(dir, IMPORT_CONTEXT_FILE).toPath(), handoff.context.toByteArray(Charsets.UTF_8))
+    }
 
     private fun writeCaption(id: String, caption: String?) {
         val trimmed = caption?.trim()?.takeIf { it.isNotEmpty() } ?: return

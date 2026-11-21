@@ -212,8 +212,8 @@ private fun settle(
     retried: (cause: String) -> Unit,
 ): ItemStep =
     when (outcome) {
-        MobileImportOutcome.Delivered -> {
-            store.recordDelivered(id, instanceId)
+        is MobileImportOutcome.Delivered -> {
+            store.recordDelivered(id, instanceId, outcome.importId)
             ItemStep.DONE
         }
         is MobileImportOutcome.NeedsAttention -> {
@@ -244,6 +244,8 @@ private fun save(wire: MobileImportClient, descriptor: ImportItemDescriptor): Mo
             length = descriptor.size,
             source = FileImportSource(Files.newInputStream(descriptor.payloadPath)),
             caption = descriptor.caption,
+            area = descriptor.area,
+            context = descriptor.context,
         )
     }
     return wire.save(item)

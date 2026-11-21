@@ -102,7 +102,7 @@
   <string name="m616e64726f69642e6761702e7765646e6573646179">"wednesday"</string>
   <string name="m616e64726f69642e696d706f72742e6164642e6a6f75726e616c">"add to your journal?"</string>
   <string name="m616e64726f69642e696d706f72742e6164642e6a6f75726e616c2e6e32">"add to your journal"</string>
-  <string name="m616e64726f69642e696d706f72742e616464732e706466732e617564696f2e696d616765732e74657874">"adds PDFs, audio and text you choose here, and the photos and files you send from the share sheet."</string>
+  <string name="m616e64726f69642e696d706f72742e616464732e706466732e617564696f2e696d616765732e74657874">"adds any file you choose here or send from the share sheet. your journal works out what each one is."</string>
   <string name="m616e64726f69642e696d706f72742e636865636b696e672e6a6f75726e616c">"checking your journal."</string>
   <string name="m616e64726f69642e696d706f72742e636f70792e616c72656164792e676f6e652e736f2e6f6e6c79">"the copy is already gone, so this only clears it from here."</string>
   <string name="m616e64726f69642e696d706f72742e636f70792e6465766963652e6d697373696e67">"the copy on this device is missing"</string>
@@ -117,11 +117,11 @@
   <string name="m616e64726f69642e696d706f72742e696d706f7274732e776169742e756e74696c2e636f6e6669726d2e6a6f75726e616c">"imports wait until you confirm your journal's mark."</string>
   <string name="m616e64726f69642e696d706f72742e696d706f7274732e776169742e756e74696c2e6a6f75726e616c2e75706461746564">"imports wait until your journal is updated."</string>
   <string name="m616e64726f69642e696d706f72742e6a6f75726e616c">"in your journal."</string>
-  <string name="m616e64726f69642e696d706f72742e6a6f75726e616c2e63616e2e742e74616b652e6b696e64">"your journal can't take this kind of file"</string>
   <string name="m616e64726f69642e696d706f72742e6a6f75726e616c2e636f756c646e2e742e616363657074">"your journal couldn't accept this."</string>
   <string name="m616e64726f69642e696d706f72742e6a6f75726e616c2e73746f707065642e616363657074696e672e6465766963652e696d706f727473">"your journal stopped accepting this device. imports wait here until you pair again."</string>
   <string name="m616e64726f69642e696d706f72742e6b656570732e736176696e672e69662e636c6f7365">"it keeps saving if you close this."</string>
   <string name="m616e64726f69642e696d706f72742e6c696e652e6c6162656c2e7265667573616c746578742e6c696e652e726561736f6e">"%1$s: %2$s"</string>
+  <string name="m616e64726f69642e696d706f72742e6d6f7265696d706f727473">"more imports"</string>
   <string name="m616e64726f69642e696d706f72742e6e6f74676f696e676a6f75726e616c7269676874">"not going to your journal right now. each one says why."</string>
   <string name="m616e64726f69642e696d706f72742e6e6f7468696e672e6368616e6765642e6d61792e686176652e6d6f766564">"nothing changed. it may have moved on; check the list."</string>
   <string name="m616e64726f69642e696d706f72742e6e6f7468696e672e796574">"nothing yet."</string>
@@ -230,7 +230,7 @@
   <string name="m616e64726f69642e6a6f75726e616c2e636c6f7365">"close"</string>
   <string name="m616e64726f69642e6a6f75726e616c2e636f756c646e2e742e72656163682e6a6f75726e616c2e6b656570">"couldn't reach your journal. keep the solstone app open and try again."</string>
   <string name="m616e64726f69642e6a6f75726e616c2e636f756c646e2e742e736176652e746861742e747279">"couldn't save that. try again."</string>
-  <string name="m616e64726f69642e6a6f75726e616c2e66696c652e73656c656374696f6e2e69736e2e742e617661696c61626c65">"file selection isn't available in the app."</string>
+  <string name="m616e64726f69642e6a6f75726e616c2e66696c652e73656c656374696f6e2e69736e2e742e617661696c61626c65">"to add a file here, use import in the app, or share it to solstone."</string>
   <string name="m616e64726f69642e6a6f75726e616c2e6c6f73742e636f6e6e656374696f6e2e6a6f75726e616c2e6b6565702e736f6c73746f6e65">"lost the connection to your journal. keep the solstone app open and try again."</string>
   <string name="m616e64726f69642e6a6f75726e616c2e746861742e6c696e6b2e69736e2e742e617661696c61626c65">"that link isn't available in the app."</string>
   <string name="m616e64726f69642e6a6f75726e616c6d61726b2e63616e63656c2e70616972696e67">"cancel pairing"</string>

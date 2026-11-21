@@ -23,6 +23,10 @@ class MobileImportFile(
     val length: Long,
     val source: MobileImportSource,
     val caption: String? = null,
+    /** The journal import page's card the owner picked this for, when the page handed it over. */
+    val area: String? = null,
+    /** The page's choices for it, as the JSON object text the page sent. */
+    val context: String? = null,
 ) : MobileImportItem
 
 data class MobileImportText(
@@ -37,7 +41,8 @@ interface MobileImportSource {
 
 sealed interface MobileImportOutcome {
     data class Saved(val path: String, val timestamp: String) : MobileImportOutcome
-    data object Delivered : MobileImportOutcome
+    /** The journal has it, as row [importId] when its answer named one. */
+    data class Delivered(val importId: String? = null) : MobileImportOutcome
     data object AuthStop : MobileImportOutcome
     /**
      * Try again later. [cause] says why, as the owner's event log writes it: `io-<exception
@@ -125,6 +130,12 @@ class MobileImportClient(private val http: PlHttpClient) {
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"imported_via\"\r\n\r\n")
                     append(IMPORTED_VIA).append("\r\n")
+                    item.area?.let { area ->
+                        appendField(boundary, "area", area)
+                        // A card names its source; a quick pick or a recording leaves it to detection.
+                        if (area != "quick" && area != "recording") appendField(boundary, "source_hint", area)
+                    }
+                    item.context?.let { appendField(boundary, "context", it) }
                     val trimmedCaption = item.caption?.trim()?.takeIf { it.isNotEmpty() }
                     if (trimmedCaption != null) {
                         append("--").append(boundary).append("\r\n")
@@ -165,6 +176,12 @@ class MobileImportClient(private val http: PlHttpClient) {
     companion object {
         private val secureRandom = SecureRandom()
     }
+}
+
+private fun StringBuilder.appendField(boundary: String, name: String, value: String) {
+    append("--").append(boundary).append("\r\n")
+    append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n\r\n")
+    append(value).append("\r\n")
 }
 
 private class ByteArraySource(private val bytes: ByteArray) : MobileImportSource {
@@ -353,7 +370,7 @@ internal fun classifyMobileImportResponse(
                 val taskId = root["task_id"] as? String
                 val importId = root["import_id"] as? String
                 if (status == "ok" && taskId != null && taskId.isNotEmpty() && importId != null && importId.isNotEmpty()) {
-                    MobileImportOutcome.Delivered
+                    MobileImportOutcome.Delivered(importId)
                 } else {
                     MobileImportOutcome.Retry(unexpectedAnswer(status, "ok"))
                 }
@@ -371,7 +388,7 @@ internal fun classifyMobileImportResponse(
     } ?: return MobileImportOutcome.NeedsAttention(GENERIC_REFUSAL, null, null)
 
     if (httpStatus == 400 && root["reason_code"] == "invalid_operation_for_state" && root["kind"] == "already_imported") {
-        return MobileImportOutcome.Delivered
+        return MobileImportOutcome.Delivered()
     }
 
     val error = root["error"] as? String

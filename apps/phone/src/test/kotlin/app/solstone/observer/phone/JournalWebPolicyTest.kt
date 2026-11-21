@@ -224,4 +224,20 @@ class JournalWebPolicyTest {
         assertEquals(0, openCount, url)
         assertEquals(1, noticeCount, url)
     }
+
+    @Test
+    fun theWindowShowsJournalPagesOnlyAndOurServicesAndHelpOpenInTheSystemBrowser() {
+        assertFalse(policy.decide("http://0123456789abcdef0123456789abcdef.localhost:7657/app/import/", isMainFrame = true).consume)
+        listOf(
+            "https://services.solstone.app/",
+            "https://services.solstone.app/support",
+            "https://solstone.app/help",
+            "https://support.solstone.app/kb/import",
+        ).forEach { url ->
+            val opened = mutableListOf<String>()
+            assertTrue(applyJournalWebNavigation(policy.decide(url, isMainFrame = true), hasGesture = true, open = { opened += it }, notify = {}), url)
+            assertEquals(listOf(url), opened, "$url opens in the system browser")
+            assertFalse(policy.allows(url), "$url never loads in the journal window")
+        }
+    }
 }

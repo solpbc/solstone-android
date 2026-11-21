@@ -16,9 +16,6 @@ sealed interface IntakeDecision {
 }
 
 enum class IntakeRefusal {
-    /** Video, or a type the journal doesn't import. */
-    UNSUPPORTED_TYPE,
-
     /** A HEIC photo on a phone too old to convert it (before Android 9). */
     CANNOT_CONVERT,
 
@@ -35,25 +32,22 @@ enum class IntakeRefusal {
     NO_SPACE,
 }
 
-/** The images the journal imports as images (its image source). */
-private val JOURNAL_IMAGES = setOf("image/png", "image/jpeg", "image/webp", "image/gif")
 private val HEIC = setOf("image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence")
 
+/** The type sent for an item whose provider names none. */
+const val INTAKE_UNKNOWN_MIME = "application/octet-stream"
+
 /**
- * The type decision for one item: PDF, any audio, plain text and the journal's images are taken;
- * HEIC/HEIF is converted where the phone can ([canConvertHeic], Android 9+); everything else,
- * video included, is refused. A missing type is refused rather than guessed.
+ * The type decision for one item. Any file the owner shares or picks is taken, because the journal
+ * decides what a file is; HEIC/HEIF is converted to JPEG where the phone can ([canConvertHeic],
+ * Android 9+), since the journal reads no HEIC. A missing type is sent as [INTAKE_UNKNOWN_MIME].
  */
 fun intakeDecision(scheme: String?, resolvedMime: String?, canConvertHeic: Boolean): IntakeDecision {
     if (scheme != "content") return IntakeDecision.Refuse(IntakeRefusal.NOT_SHAREABLE)
-    val mime = resolvedMime?.substringBefore(';')?.trim()?.lowercase() ?: return IntakeDecision.Refuse(IntakeRefusal.UNSUPPORTED_TYPE)
+    val mime = resolvedMime?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: INTAKE_UNKNOWN_MIME
     return when {
-        mime == "application/pdf" -> IntakeDecision.Accept(mime)
-        mime == "text/plain" -> IntakeDecision.Accept(mime)
-        mime.startsWith("audio/") -> IntakeDecision.Accept(mime)
-        mime in JOURNAL_IMAGES -> IntakeDecision.Accept(mime)
         mime in HEIC -> if (canConvertHeic) IntakeDecision.ConvertToJpeg else IntakeDecision.Refuse(IntakeRefusal.CANNOT_CONVERT)
-        else -> IntakeDecision.Refuse(IntakeRefusal.UNSUPPORTED_TYPE)
+        else -> IntakeDecision.Accept(mime)
     }
 }
 
@@ -76,6 +70,11 @@ private val EXTENSION_FOR_MIME = mapOf(
     "audio/webm" to "webm",
     "audio/amr" to "amr",
     "audio/3gpp" to "3gp",
+    "application/zip" to "zip",
+    "application/json" to "json",
+    "text/csv" to "csv",
+    "text/calendar" to "ics",
+    INTAKE_UNKNOWN_MIME to "bin",
 )
 
 /**

@@ -115,7 +115,7 @@ data class PhoneImportRow(
 )
 
 /** Why an item wasn't taken in, for the owner. */
-enum class IntakeRefusalReason { UNSUPPORTED_TYPE, CANNOT_CONVERT, NOT_SHAREABLE, UNREADABLE, TOO_LARGE, NO_SPACE }
+enum class IntakeRefusalReason { CANNOT_CONVERT, NOT_SHAREABLE, UNREADABLE, TOO_LARGE, NO_SPACE }
 
 data class IntakeRefusalLine(val label: String, val reason: IntakeRefusalReason)
 
@@ -130,6 +130,8 @@ data class PhoneImportPaneState(
     val intake: PhoneIntakeLine? = null,
     /** An earlier share or pick was cut short before it finished. */
     val interrupted: Boolean = false,
+    /** The journal can be opened here: paired, and its mark confirmed. */
+    val journalOpenable: Boolean = false,
 )
 
 class PhoneImportActions(
@@ -141,6 +143,8 @@ class PhoneImportActions(
     /** The finished intake's result has been shown; it is cleared once the owner leaves it. */
     val onIntakeSeen: () -> Unit = {},
     val onOpenScreenshots: () -> Unit = {},
+    /** Opens the journal's own import page, for the kinds it brings in from other services. */
+    val onMoreImports: () -> Unit = {},
 )
 
 /** The import pane's state and actions, provided once by the activity that hosts the shell. */
@@ -151,9 +155,8 @@ data class PhoneImportBinding(
 
 val LocalPhoneImport = compositionLocalOf { PhoneImportBinding() }
 
-internal fun refusalText(reason: IntakeRefusalReason): String =
+fun refusalText(reason: IntakeRefusalReason): String =
     when (reason) {
-        IntakeRefusalReason.UNSUPPORTED_TYPE -> phoneText("android.import.journal.can.t.take.kind")
         IntakeRefusalReason.CANNOT_CONVERT -> phoneText("android.import.device.can.t.convert.photo")
         IntakeRefusalReason.NOT_SHAREABLE -> phoneText("android.import.couldn.t.be.read")
         IntakeRefusalReason.UNREADABLE -> phoneText("android.import.couldn.t.be.read.add")
@@ -201,6 +204,10 @@ fun PhoneImportPane(
         PhoneIntakeFactRows("import")
         PaneCard {
             PaneNavRow(label = phoneText("android.import.files"), onClick = actions.onPickFiles, modifier = Modifier.testTag("importRow-files"))
+            if (state.journalOpenable) {
+                PaneRowDivider()
+                PaneNavRow(label = phoneText("android.import.moreimports"), onClick = actions.onMoreImports, modifier = Modifier.testTag("importRow-more"))
+            }
         }
         val screenshotsOn = LocalPhoneScreenshots.current.state.enabled
         PaneNavRow(

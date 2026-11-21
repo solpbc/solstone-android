@@ -9,14 +9,15 @@ import kotlin.test.assertNull
 
 class ImportIntakeRulesTest {
     @Test
-    fun theJournalsTypesAreTakenAndVideoIsNot() {
-        listOf("application/pdf", "text/plain", "audio/mpeg", "audio/mp4", "image/png", "image/jpeg", "image/webp", "image/gif").forEach {
+    fun anyFileIsTakenBecauseTheJournalDecidesWhatItIs() {
+        listOf(
+            "application/pdf", "text/plain", "audio/mpeg", "image/png", "video/mp4", "image/tiff",
+            "application/zip", "application/x-zip-compressed", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ).forEach {
             assertEquals(IntakeDecision.Accept(it), intakeDecision("content", it, canConvertHeic = true))
         }
-        listOf("video/mp4", "image/avif", "image/x-adobe-dng", "image/tiff", "application/vnd.openxmlformats-officedocument.wordprocessingml.document").forEach {
-            assertEquals(IntakeDecision.Refuse(IntakeRefusal.UNSUPPORTED_TYPE), intakeDecision("content", it, canConvertHeic = true))
-        }
-        assertEquals(IntakeDecision.Refuse(IntakeRefusal.UNSUPPORTED_TYPE), intakeDecision("content", null, canConvertHeic = true))
+        assertEquals(IntakeDecision.Accept(INTAKE_UNKNOWN_MIME), intakeDecision("content", null, canConvertHeic = true))
+        assertEquals(IntakeDecision.Accept(INTAKE_UNKNOWN_MIME), intakeDecision("content", " ", canConvertHeic = true))
     }
 
     @Test
@@ -45,6 +46,9 @@ class ImportIntakeRulesTest {
         assertEquals("voice.ogg", intakeName("voice", "audio/ogg"))
         assertEquals("song.mp3", intakeName("/storage/music/song.mp3", "audio/mpeg"))
         assertEquals(".hidden.png", intakeName(".hidden", "image/png").let { it }, "a leading dot is not an extension")
+        assertEquals("conversations.zip", intakeName("conversations.zip", INTAKE_UNKNOWN_MIME))
+        assertEquals("export.zip", intakeName("export", "application/zip"))
+        assertEquals("file.bin", intakeName(null, INTAKE_UNKNOWN_MIME))
     }
 
     @Test

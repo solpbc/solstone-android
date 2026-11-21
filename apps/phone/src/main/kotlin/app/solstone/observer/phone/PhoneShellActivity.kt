@@ -288,6 +288,14 @@ class PhoneShellActivity : ComponentActivity() {
         refusedUnread = refusedUnread,
         refusedJournal = refusedJournal,
     )
+    /** Open the journal at [path]; it shows once the pairing is committed and the mark confirmed. */
+    private fun openJournalAt(path: String) {
+        journalPath = path
+        journalVisitedPath = null
+        journalOpenSequence++
+        journalOpen = true
+    }
+
     private fun openScreenshots() {
         incomingDetail = ((incomingDetail?.first ?: 0L) + 1L) to app.solstone.observer.formfactor.phone.PhoneRoute.SourceDetail("screenshots")
     }
@@ -333,7 +341,8 @@ class PhoneShellActivity : ComponentActivity() {
             onPickPhotos = {
                 pickPhotos.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
-            onPickFiles = { pickFiles.launch(arrayOf("application/pdf", "audio/*", "text/plain")) },
+            onPickFiles = { pickFiles.launch(arrayOf("*/*")) },
+            onMoreImports = { openJournalAt(JOURNAL_IMPORT_PATH) },
             onRemove = { id ->
                 importWork.execute {
                     val change = ImportIntake.get(this).store.remove(id)
@@ -2239,6 +2248,8 @@ class PhoneShellActivity : ComponentActivity() {
         private const val STATE_JOURNAL_PATH = "journal_path"
         private const val STATE_PENDING_JOURNAL_LINK = "pending_journal_link"
         private const val STATE_INVALID_JOURNAL_LINK = "invalid_journal_link"
+        /** The journal's import page, which the import tile's `more imports` opens. */
+        const val JOURNAL_IMPORT_PATH = "/app/import/"
         internal var promptedConfirmationThisProcess = false
         const val PERMISSION_REQUEST = 10
         // The embedded distributor delivers through Google Play services.
