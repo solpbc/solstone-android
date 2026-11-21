@@ -157,7 +157,6 @@ class MobileImportClientTest {
         val vectors = vectorsDoc["vectors"] as Map<*, *>
         val saveRequest = vectors["save_request"] as Map<*, *>
         val clientItemId = saveRequest["client_item_id"] as String
-        val importedVia = saveRequest["imported_via"] as String
         val fileMap = saveRequest["file"] as Map<*, *>
         val filename = fileMap["filename"] as String
         val contentType = fileMap["content_type"] as String
@@ -195,7 +194,7 @@ class MobileImportClientTest {
         val parts = parseMultipart(requireNotNull(drainedBytes), boundary)
         assertEquals(listOf("client_item_id", "imported_via", "file"), parts.map { it.name })
         assertEquals(clientItemId, parts[0].body.toString(Charsets.UTF_8))
-        assertEquals(importedVia, parts[1].body.toString(Charsets.UTF_8))
+        assertEquals(MOBILE_IMPORTED_VIA, parts[1].body.toString(Charsets.UTF_8), "the vector's door is the journal's example; this app names itself")
         assertEquals(filename, parts[2].filename)
         assertEquals(contentType, parts[2].contentType)
         assertTrue(payload.contentEquals(parts[2].body))
@@ -350,17 +349,12 @@ class MobileImportClientTest {
         assertTrue(source.maxRequestedLength < size, "Requested length should not be the entire 3 MiB")
         assertEquals(1, source.closeCalls, "Source close should have run exactly once")
 
-        val vectorsDoc = json("mobile-import-v1/v1.vectors.json")
-        val vectors = vectorsDoc["vectors"] as Map<*, *>
-        val saveRequest = vectors["save_request"] as Map<*, *>
-        val importedVia = saveRequest["imported_via"] as String
-
         val contentType = http.streamed.single().headers["Content-Type"] ?: error("missing header")
         val boundary = contentType.removePrefix("multipart/form-data; boundary=")
         val parts = parseMultipart(bytes, boundary)
         assertEquals(3, parts.size)
         assertEquals("id-3mb", parts[0].body.toString(Charsets.UTF_8))
-        assertEquals(importedVia, parts[1].body.toString(Charsets.UTF_8))
+        assertEquals(MOBILE_IMPORTED_VIA, parts[1].body.toString(Charsets.UTF_8), "the vector's door is the journal's example; this app names itself")
         assertEquals("large.bin", parts[2].filename)
         assertEquals("application/octet-stream", parts[2].contentType)
         assertTrue(sourceBytes.contentEquals(parts[2].body))
@@ -494,11 +488,6 @@ class MobileImportClientTest {
         val http = ScriptedPlHttpClient()
         var inspectedContentLength = -1L
 
-        val vectorsDoc = json("mobile-import-v1/v1.vectors.json")
-        val vectors = vectorsDoc["vectors"] as Map<*, *>
-        val saveRequest = vectors["save_request"] as Map<*, *>
-        val importedVia = saveRequest["imported_via"] as String
-
         http.streamingHandler = { body ->
             inspectedContentLength = body.contentLength
             HttpResponse(200, emptyMap(), "{\"status\":\"staged\",\"path\":\"/p\",\"timestamp\":\"ts\"}".toByteArray(Charsets.UTF_8))
@@ -522,7 +511,7 @@ class MobileImportClientTest {
             append("large-id").append("\r\n")
             append("--").append(boundary).append("\r\n")
             append("Content-Disposition: form-data; name=\"imported_via\"\r\n\r\n")
-            append(importedVia).append("\r\n")
+            append(MOBILE_IMPORTED_VIA).append("\r\n")
             append("--").append(boundary).append("\r\n")
             append("Content-Disposition: form-data; name=\"file\"; filename=\"scan.pdf\"\r\n")
             append("Content-Type: application/pdf\r\n\r\n")
@@ -912,7 +901,7 @@ class MobileImportClientTest {
             val parts = parseMultipart(requireNotNull(drained), boundary)
             assertEquals(context, parts.single { it.name == "context" }.body.toString(Charsets.UTF_8))
             assertEquals(area, parts.single { it.name == "area" }.body.toString(Charsets.UTF_8))
-            assertEquals("mobile_share", parts.single { it.name == "imported_via" }.body.toString(Charsets.UTF_8))
+            assertEquals("android", parts.single { it.name == "imported_via" }.body.toString(Charsets.UTF_8))
             assertTrue(payload.contentEquals(parts.single { it.name == "file" }.body))
             return parts.filter { it.name != "file" }.associate { it.name to it.body.toString(Charsets.UTF_8) }
         }

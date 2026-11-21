@@ -55,7 +55,8 @@ sealed interface MobileImportOutcome {
 
 private const val SAVE_PATH = "/app/import/api/save"
 private const val START_PATH = "/app/import/api/start"
-private const val IMPORTED_VIA = "mobile_share"
+/** The door every import from this app names, so the journal's history says it came from the solstone app for android. */
+const val MOBILE_IMPORTED_VIA = "android"
 private val GENERIC_REFUSAL get() = phoneText("android.import.journal.couldn.t.accept")
 private const val HEX_DIGITS = "0123456789abcdef"
 
@@ -129,7 +130,7 @@ class MobileImportClient(private val http: PlHttpClient) {
                     append(item.clientItemId).append("\r\n")
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"imported_via\"\r\n\r\n")
-                    append(IMPORTED_VIA).append("\r\n")
+                    append(MOBILE_IMPORTED_VIA).append("\r\n")
                     item.area?.let { area ->
                         appendField(boundary, "area", area)
                         // A card names its source; a quick pick or a recording leaves it to detection.
@@ -159,7 +160,7 @@ class MobileImportClient(private val http: PlHttpClient) {
                     append(item.clientItemId).append("\r\n")
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"imported_via\"\r\n\r\n")
-                    append(IMPORTED_VIA).append("\r\n")
+                    append(MOBILE_IMPORTED_VIA).append("\r\n")
                     append("--").append(boundary).append("\r\n")
                     append("Content-Disposition: form-data; name=\"text\"\r\n\r\n")
                 }.toByteArray(Charsets.UTF_8)

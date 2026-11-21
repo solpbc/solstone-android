@@ -44,6 +44,10 @@ import org.junit.runner.RunWith
  * pages are served at the window's own journal origin, and the host, its message listener and the
  * system picker are the shipped ones.
  *
+ * The window refuses every frame (`frame-ancestors 'none'`), so instead of the kit's frame report
+ * the test observes that no fixture document loads in the embedded frame; the app's host also
+ * answers no message from a subframe (JournalImportHostTest).
+ *
  * Operator-driven, so it runs only when asked: `-e importConformance 1`. When the kit opens the
  * picker the first time, dismiss it (Back); the second time, choose a file named `sample.txt`.
  * Each kit line is written to logcat under `ImportConformance`. The kit pages are the journal's
@@ -112,7 +116,14 @@ class JournalImportConformanceRuntimeTest {
             awaitLog(view, 15_000) { title(view) == "Journal import host conformance" }
 
             click(scenario, view, "detect")
-            awaitLog(view, 15_000) { "top document capability" in it && "embedded document" in it }
+            awaitLog(view, 15_000) { "top document capability" in it || "FAIL" in it }
+            // The journal window refuses every frame (frame-ancestors 'none'), so the kit's frame
+            // never loads and never reports. Observe that instead: no fixture document exists in it.
+            Thread.sleep(3_000)
+            val frame = script(view, FRAME_STATE)
+            Log.i(TAG, "embedded document: $frame")
+            assertTrue("the embedded fixture must not load: $frame", "fixture" !in frame)
+            assertTrue("FAIL" !in log(view))
             click(scenario, view, "wire")
             awaitLog(view, 15_000) { "invalid context refused" in it || "FAIL" in it }
             Log.i(TAG, "dismiss the picker now")
@@ -127,7 +138,6 @@ class JournalImportConformanceRuntimeTest {
             assertTrue(final, "FAIL" !in final)
             listOf(
                 "PASS top document capability",
-                "PASS embedded document",
                 "PASS unsupported message",
                 "PASS invalid context refused",
                 "PASS overlapping request reports busy",
@@ -144,11 +154,26 @@ class JournalImportConformanceRuntimeTest {
 
     private fun awaitLog(view: WebView, timeoutMs: Long, done: (String) -> Boolean): String {
         var last = ""
-        composeRule.waitUntil(timeoutMs) {
-            last = log(view)
-            done(last)
+        try {
+            composeRule.waitUntil(timeoutMs) {
+                last = log(view)
+                done(last)
+            }
+        } catch (timeout: Throwable) {
+            Log.e(TAG, "timed out; page: " + script(view, DIAGNOSE))
+            throw timeout
         }
         return last
+    }
+
+    private fun script(view: WebView, source: String): String {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var value = ""
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.evaluateJavascript(source) { raw -> value = raw.orEmpty(); latch.countDown() }
+        }
+        latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
+        return value
     }
 
     private fun title(view: WebView): String {
@@ -231,5 +256,11 @@ class JournalImportConformanceRuntimeTest {
 
     private companion object {
         const val TAG = "ImportConformance"
+        const val FRAME_STATE = "(() => { const f = document.getElementById('frameFixture'); if (!f) return 'no frame'; " +
+            "try { const d = f.contentDocument; return d ? 'document ' + d.location.href + ' ' + d.title : 'no document'; } " +
+            "catch (e) { return 'blocked: ' + e.name; } })()"
+        const val DIAGNOSE = "JSON.stringify({href: location.href, host: typeof window.solstoneJournalHost, " +
+            "bridge: typeof window.solstoneJournalImportBridge, log: (document.getElementById('log')||{}).textContent, " +
+            "csp: [...document.querySelectorAll('meta[http-equiv]')].map(m => m.content)})"
     }
 }
