@@ -3,7 +3,7 @@
 
 // Installed at document start in frames on the journal's origin. Only the top journal document
 // gets the import host; the app also refuses any message that does not come from the main frame.
-((contract, origin, bridgeName) => {
+((contract, auth, origin, bridgeName) => {
   if (window !== window.top || location.origin !== origin) return;
   const bridge = window[bridgeName];
   if (!bridge) return;
@@ -22,6 +22,9 @@
     pending.set(seq, resolve);
     bridge.postMessage(JSON.stringify({seq, message, context}));
   });
+  const authTypes = auth && auth.version === contract.version && auth.capability === contract.capability
+    ? [auth.prepare, auth.authorize, auth.cancel]
+    : [];
   const items = new Map();
   let timer;
   async function update() {
@@ -42,9 +45,10 @@
   }
   const isObject = value => typeof value === 'object' && value !== null && !Array.isArray(value);
   Object.defineProperty(window, contract.capability, {value:Object.freeze({
-    version:contract.version, types:Object.freeze([contract.pick]),
+    version:contract.version, types:Object.freeze([contract.pick, ...authTypes]),
     async send(message) {
       if (!message || typeof message.id !== 'string' || typeof message.type !== 'string') throw new TypeError();
+      if (authTypes.includes(message.type)) return await post(message, null);
       if (message.type !== contract.pick) return {type:contract.unsupported, id:message.id};
       const request = {type:message.type, id:message.id, area:message.area, multiple:message.multiple,
         accept:Array.isArray(message.accept) ? message.accept.filter(entry => typeof entry === 'string') : null};
@@ -54,4 +58,4 @@
       return reply;
     }
   })});
-})(__CONTRACT__, __ORIGIN__, __BRIDGE__);
+})(__CONTRACT__, __AUTH_CONTRACT__, __ORIGIN__, __BRIDGE__);

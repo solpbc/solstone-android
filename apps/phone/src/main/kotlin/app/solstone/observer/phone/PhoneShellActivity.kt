@@ -54,6 +54,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.auth.AuthTabIntent
+import androidx.browser.customtabs.CustomTabsClient
+import androidx.browser.customtabs.CustomTabsIntent
 import app.solstone.observer.formfactor.phone.ScreenToggleAction
 import app.solstone.observer.formfactor.phone.LocalPhoneImport
 import app.solstone.observer.formfactor.phone.PhoneImportActions
@@ -496,10 +499,60 @@ class PhoneShellActivity : ComponentActivity() {
         applicationContext.startActivity(main)
     }
 
+    private val authTabLauncher = AuthTabIntent.registerActivityResultLauncher(this) { result ->
+        when (result.resultCode) {
+            AuthTabIntent.RESULT_OK -> {
+                val uri = result.resultUri?.toString()
+                if (uri == null || !JournalAuthCallbackBus.deliver(uri)) {
+                    JournalAuthCallbackBus.notifyAuthTabClosed(refusedReason = "callback_mismatch")
+                }
+            }
+            AuthTabIntent.RESULT_CANCELED -> {
+                JournalAuthCallbackBus.notifyAuthTabClosed(refusedReason = null)
+            }
+            else -> {
+                JournalAuthCallbackBus.notifyAuthTabClosed(refusedReason = "auth_tab_failed")
+            }
+        }
+    }
+
+    private fun launchAuthBrowser(authorizeUrl: String, callbackScheme: String): Boolean {
+        val uri = runCatching { Uri.parse(authorizeUrl) }.getOrNull() ?: return false
+        val customTabsPkg = runCatching { CustomTabsClient.getPackageName(this, null) }.getOrNull()
+        if (customTabsPkg != null && runCatching { CustomTabsClient.isAuthTabSupported(this, customTabsPkg) }.getOrDefault(false)) {
+            val authTab = AuthTabIntent.Builder().build()
+            authTab.intent.setPackage(customTabsPkg)
+            return runCatching {
+                authTab.launch(authTabLauncher, uri, callbackScheme)
+                true
+            }.getOrDefault(false)
+        }
+        if (customTabsPkg != null) {
+            val customTabs = CustomTabsIntent.Builder().build()
+            customTabs.intent.setPackage(customTabsPkg)
+            return runCatching {
+                customTabs.launchUrl(this, uri)
+                true
+            }.getOrDefault(false)
+        }
+        return runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            true
+        }.getOrDefault(false)
+    }
+
     private fun handleIntent(intent: Intent?, cold: Boolean) {
         if (intent == null) return
         val rawData = intent.data?.toString()
         if (rawData != null) {
+            if (JournalAuthValidation.isOAuthCallbackUrl(rawData)) {
+                // Consume in memory without logging; keep any open journal sheet WebView alive so
+                // the in-flight `auth.authorize` Promise resolves directly.
+                intent.data = null
+                if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+                JournalAuthCallbackBus.deliver(rawData)
+                return
+            }
             when (val link = phoneJournalLink(rawData)) {
                 PhoneJournalLink.Other -> invalidJournalLink = false
                 else -> {
@@ -603,6 +656,7 @@ class PhoneShellActivity : ComponentActivity() {
         val restored = savedInstanceState?.takeUnless { it.getBoolean(STATE_AGE_HELD) }
         initialPairingTask = restored?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
             ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null &&
+                !JournalAuthValidation.isOAuthCallbackUrl(intent?.data?.toString()) &&
                 phoneJournalLink(intent?.data?.toString()) is PhoneJournalLink.Other)
         val app = application as ObserverApplication
         val runtime = ObserverHarnessRuntime.runtime ?: app.runtime.also {
@@ -1529,6 +1583,7 @@ class PhoneShellActivity : ComponentActivity() {
                     onVisitedUrl = { url ->
                         journalVisitedPath = validJournalOpenPath(android.net.Uri.parse(url).encodedPath)
                     },
+                    openAuthBrowser = ::launchAuthBrowser,
                 )
                 }
                 }

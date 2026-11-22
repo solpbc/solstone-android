@@ -95,6 +95,7 @@ internal fun JournalSheet(
     onPairingRepair: () -> Unit,
     initialPath: String? = null,
     onVisitedUrl: (String) -> Unit = {},
+    openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var retryGeneration by remember { mutableIntStateOf(0) }
@@ -150,6 +151,7 @@ internal fun JournalSheet(
                     onRetry = { retryGeneration += 1 },
                     onPairingRepair = onPairingRepair,
                     onVisitedUrl = onVisitedUrl,
+                    openAuthBrowser = openAuthBrowser,
                 )
             }
         }
@@ -169,6 +171,7 @@ private fun JournalBrowserPane(
     onRetry: () -> Unit,
     onPairingRepair: () -> Unit,
     onVisitedUrl: (String) -> Unit,
+    openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
 ) {
     val hostView = LocalView.current
     val context = LocalContext.current
@@ -177,6 +180,7 @@ private fun JournalBrowserPane(
     var committed by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     var liveWebView by remember { mutableStateOf<WebView?>(null) }
+    var liveImportHost by remember { mutableStateOf<JournalImportHost<Uri>?>(null) }
     var observedCanGoBack by remember { mutableStateOf(false) }
     val session = remember { sessionFactory() }
     val alive = remember { AtomicBoolean(true) }
@@ -304,6 +308,15 @@ private fun JournalBrowserPane(
                             if (alive.get()) notice = LINK_UNAVAILABLE
                         },
                         openPicker = openPicker,
+                        openAuthBrowser = openAuthBrowser,
+                        onImportHost = { host ->
+                            liveImportHost?.let { prev ->
+                                prev.authHost?.let(JournalAuthCallbackBus::unregister)
+                                prev.tearDown()
+                            }
+                            liveImportHost = host
+                            host?.authHost?.let(JournalAuthCallbackBus::register)
+                        },
                     )
                 },
                 onRelease = { webView ->
@@ -311,6 +324,11 @@ private fun JournalBrowserPane(
                         liveWebView = null
                         observedCanGoBack = false
                     }
+                    liveImportHost?.let { host ->
+                        host.authHost?.let(JournalAuthCallbackBus::unregister)
+                        host.tearDown()
+                    }
+                    liveImportHost = null
                     webView.stopLoading()
                     webView.webChromeClient = null
                     webView.webViewClient = WebViewClient()
@@ -347,6 +365,8 @@ internal fun createJournalWebView(
     onUnsupportedFileSelection: () -> Unit,
     onUnsupportedNavigation: () -> Unit,
     openPicker: ((Boolean, (List<Uri>?) -> Unit) -> Unit)? = null,
+    openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
+    onImportHost: ((JournalImportHost<Uri>?) -> Unit)? = null,
 ): WebView {
     val policy = JournalWebPolicy(origin)
     val insetPolicy = journalWebInsetPolicy(WebView.getCurrentWebViewPackage()?.versionName)
@@ -496,6 +516,7 @@ internal fun createJournalWebView(
                 view: WebView,
                 detail: RenderProcessGoneDetail,
             ): Boolean {
+                importHost?.tearDown()
                 onRetryableFailure()
                 return true
             }
@@ -527,7 +548,8 @@ internal fun createJournalWebView(
         }
         setDownloadListener { _, _, _, _, _ -> onUnsupportedTransfer() }
         applyJournalWebHostUserAgent(context, settings)
-        importHost = openPicker?.let { installJournalImportHost(context, this, origin, it) }
+        importHost = openPicker?.let { installJournalImportHost(context, this, origin, it, openAuthBrowser) }
+        onImportHost?.invoke(importHost)
         PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
         loadUrl(loadTarget)
     }
@@ -595,6 +617,7 @@ private fun installJournalImportHost(
     view: WebView,
     url: String,
     openPicker: (Boolean, (List<Uri>?) -> Unit) -> Unit,
+    openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
 ): JournalImportHost<Uri>? {
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
         !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -606,6 +629,9 @@ private fun installJournalImportHost(
     val contract = runCatching {
         context.assets.open("journal-web-host/import-host-contract.json").use { parseImportHostContract(it.readBytes()) }
     }.getOrNull()
+    val authContract = runCatching {
+        context.assets.open("journal-web-host/auth-host-contract.json").use { parseAuthHostContract(it.readBytes()) }
+    }.getOrNull()?.takeIf { it.capability == contract?.capability }
     val template = runCatching {
         context.assets.open("journal-web-host/import-host.js").use { String(it.readBytes(), Charsets.UTF_8) }
     }.getOrNull()
@@ -616,6 +642,18 @@ private fun installJournalImportHost(
     val app = context.applicationContext
     val intake = ImportIntake.get(app)
     val main = android.os.Handler(android.os.Looper.getMainLooper())
+    val fallbackBrowserOpener: (String, String) -> Boolean = { authorizeUrl, _ ->
+        runCatching {
+            deliverJournalExternalView(context, authorizeUrl)
+            true
+        }.getOrDefault(false)
+    }
+    val authHost = authContract?.let { auth ->
+        JournalAuthHost(
+            contract = auth,
+            openBrowser = openAuthBrowser ?: fallbackBrowserOpener,
+        )
+    }
     val host = JournalImportHost(
         origin = origin,
         contract = contract,
@@ -624,6 +662,7 @@ private fun installJournalImportHost(
         submit = { items, done -> intake.submit(items, done) },
         status = { id -> intake.store.handoffStatus(id) },
         background = { work -> importHostReads.execute(work) },
+        authHost = authHost,
     )
     return try {
         val rules = setOf(origin)
@@ -632,7 +671,11 @@ private fun installJournalImportHost(
                 main.post { runCatching { replyProxy.postMessage(text) } }
             }
         }
-        WebViewCompat.addDocumentStartJavaScript(view, journalImportHostScript(template, contract, origin), rules)
+        WebViewCompat.addDocumentStartJavaScript(
+            view,
+            journalImportHostScript(template, contract, origin, authContract),
+            rules,
+        )
         host
     } catch (_: RuntimeException) {
         PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "import-host", outcome = "refused"))

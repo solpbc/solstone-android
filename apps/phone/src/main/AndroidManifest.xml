@@ -52,6 +52,21 @@
                     android:path="/p" />
                 <data android:path="/j" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="solstone"
+                    android:host="oauth"
+                    android:path="/callback" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="app.solstone" />
+            </intent-filter>
         </activity>
         <!-- A share to solstone. It runs in the sharing app's task, and nothing is copied until
              the owner taps to add it, because any app can address it without the chooser. Any

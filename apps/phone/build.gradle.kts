@@ -404,6 +404,7 @@ dependencies {
         exclude(group = "androidx.fragment", module = "fragment")
     }
     implementation("androidx.activity:activity-compose:1.12.4")
+    implementation("androidx.browser:browser:1.9.0")
     implementation("androidx.webkit:webkit:1.18.0")
     implementation("androidx.compose.material3:material3:1.4.0")
     implementation("androidx.compose.ui:ui:1.10.6")

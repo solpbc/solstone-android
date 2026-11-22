@@ -39,9 +39,15 @@ internal fun parseImportHostContract(bytes: ByteArray): ImportHostContract? {
 /** The name of the object the app injects for the import host script to talk through. */
 internal const val JOURNAL_IMPORT_BRIDGE = "solstoneJournalImportBridge"
 
-/** The document-start script for [origin], built from the vendored script and contract. */
-internal fun journalImportHostScript(template: String, contract: ImportHostContract, origin: String): String =
+/** The document-start script for [origin], built from the vendored script and contracts. */
+internal fun journalImportHostScript(
+    template: String,
+    contract: ImportHostContract,
+    origin: String,
+    authContract: AuthHostContract? = null,
+): String =
     template.replace("__CONTRACT__", contract.json)
+        .replace("__AUTH_CONTRACT__", authContract?.json ?: "null")
         .replace("__ORIGIN__", toJson(origin))
         .replace("__BRIDGE__", toJson(JOURNAL_IMPORT_BRIDGE))
 
@@ -66,13 +72,20 @@ internal class JournalImportHost<P>(
     private val status: (String) -> ImportHandoffStatus,
     /** Runs store reads off the main thread. */
     private val background: (() -> Unit) -> Unit,
+    internal val authHost: JournalAuthHost? = null,
 ) {
     @Volatile private var busy = false
     @Volatile private var document = 0L
 
-    /** A new main-frame document started; a pick still open for the old one is cancelled. */
+    /** A new main-frame document started; a pick or OAuth session open for the old one is cancelled. */
     fun documentStarted() {
         document++
+        authHost?.tearDown()
+    }
+
+    /** Tears down any in-flight OAuth session when the WebView is released or crashes. */
+    fun tearDown() {
+        authHost?.tearDown()
     }
 
     /**
@@ -85,8 +98,9 @@ internal class JournalImportHost<P>(
         val seq = packet["seq"] as? BigDecimal ?: return
         val message = packet["message"] as? Map<*, *> ?: return
         val answer = { body: Map<String, Any?> -> reply(toJson(linkedMapOf("seq" to seq, "body" to body))) }
-        when (message["type"]) {
-            "host.status" -> {
+        val type = message["type"]
+        when {
+            type == "host.status" -> {
                 val item = message["item"] as? String
                 if (item == null) {
                     answer(mapOf("state" to "gone"))
@@ -94,7 +108,8 @@ internal class JournalImportHost<P>(
                 }
                 background { answer(statusBody(status(item))) }
             }
-            contract.pick -> pick(message, packet["context"], answer)
+            type == contract.pick -> pick(message, packet["context"], answer)
+            authHost != null && authHost.handles(type) -> authHost.handle(message, answer)
             else -> answer(mapOf("type" to contract.unsupported, "id" to message["id"]))
         }
     }
