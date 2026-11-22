@@ -2794,15 +2794,30 @@ fun Project.registerRealReleasePushDexCheck() {
                 "com.google.android.gms:play-services-basement:18.9.0",
                 "com.google.android.gms:play-services-tasks:18.2.0",
             )
-            val gmsDep = dependencies.create("com.google.android.gms:play-services-wearable:20.0.1")
-            val detachedConfig = configurations.detachedConfiguration(gmsDep)
+            // Google Play libraries outside the GMS group whose classes may sit under
+            // com/google/android/gms/internal/: Play Age Signals keeps its internals in
+            // playcore_age_signals. Their classes join the inventory, scanned for the same
+            // banned tokens as the GMS artifacts.
+            val approvedPlayCoordinates = setOf(
+                "com.google.android.play:age-signals:0.0.6",
+            )
+            val detachedConfig = configurations.detachedConfiguration(
+                dependencies.create("com.google.android.gms:play-services-wearable:20.0.1"),
+                *approvedPlayCoordinates.map { dependencies.create(it) }.toTypedArray(),
+            )
             val resolvedGmsArtifacts = detachedConfig.resolvedConfiguration.resolvedArtifacts
             val resolvedGmsCoords = mutableSetOf<String>()
+            val resolvedPlayCoords = mutableSetOf<String>()
             val gmsArtifactFiles = mutableListOf<File>()
 
             for (artifact in resolvedGmsArtifacts) {
                 val id = artifact.moduleVersion.id
                 val coord = "${id.group}:${id.name}:${id.version}"
+                if (coord in approvedPlayCoordinates) {
+                    resolvedPlayCoords += coord
+                    gmsArtifactFiles += artifact.file
+                    continue
+                }
                 if (id.group.startsWith("com.google.android.gms") || id.group.contains("gms") ||
                     id.group.startsWith("com.google.firebase") || id.group.contains("firebase") ||
                     id.name.contains("play-services") || id.name.contains("firebase")
@@ -2817,6 +2832,11 @@ fun Project.registerRealReleasePushDexCheck() {
                 }
             }
 
+            if (resolvedPlayCoords != approvedPlayCoordinates) {
+                throw GradleException(
+                    "Resolved Play library coordinates did not match. Expected: $approvedPlayCoordinates, but resolved: $resolvedPlayCoords"
+                )
+            }
             if (resolvedGmsCoords != allowedGmsCoordinates) {
                 throw GradleException(
                     "Resolved GMS coordinates did not match required set. Expected: $allowedGmsCoordinates, but resolved: $resolvedGmsCoords"
