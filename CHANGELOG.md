@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- where the law asks for it, the solstone app now asks Google Play for your age range when it starts. if you're under 13, the app stops, and if a parent or guardian needs to approve this version, it waits until they do. your age range is never saved or sent anywhere.
+
 ## [2.1.51] - 2026-11-21
 
 ### Added

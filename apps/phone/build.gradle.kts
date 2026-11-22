@@ -94,13 +94,14 @@ android {
         versionCode = 70
         versionName = "2.1.51"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // The launch age check (Google Play Age Signals). OFF for every build, release included:
-        // off, the app never asks the store and behaves exactly as without it. A proof build turns
-        // it on with -Psolstone.ageSignalCheck=true. Publishing it is changing this default.
+        // The launch age check (Google Play Age Signals). ON for every build, release included:
+        // the app asks the store at launch only where the store says the law requires it.
+        // -Psolstone.ageSignalCheck=false builds it off, where the app never asks the store and
+        // behaves exactly as without it.
         buildConfigField(
             "boolean",
             "AGE_SIGNAL_CHECK",
-            providers.gradleProperty("solstone.ageSignalCheck").getOrElse("false").toBooleanStrict().toString(),
+            providers.gradleProperty("solstone.ageSignalCheck").getOrElse("true").toBooleanStrict().toString(),
         )
     }
 
