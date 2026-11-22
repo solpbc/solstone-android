@@ -95,7 +95,8 @@ android {
         versionName = "2.1.51"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The launch age check (Google Play Age Signals). ON for every build, release included:
-        // the app asks the store at launch only where the store says the law requires it.
+        // at launch the app asks the store whether a law requires the check, and asks for an age
+        // range only where one does.
         // -Psolstone.ageSignalCheck=false builds it off, where the app never asks the store and
         // behaves exactly as without it.
         buildConfigField(
