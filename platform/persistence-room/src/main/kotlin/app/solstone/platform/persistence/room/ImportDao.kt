@@ -34,6 +34,21 @@ interface ImportDao {
     @Query("SELECT * FROM import_delivery WHERE id = 0")
     fun delivery(): ImportDeliveryRow?
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun putRecentReceipt(row: ImportRecentReceiptRow)
+
+    @Query("SELECT * FROM import_recent_receipt WHERE instance_id = :instanceId AND delivered_at >= :cutoff ORDER BY delivered_at DESC, id DESC LIMIT :limit")
+    fun recentReceipts(instanceId: String, cutoff: Long, limit: Int): List<ImportRecentReceiptRow>
+
+    @Query("DELETE FROM import_recent_receipt WHERE delivered_at < :cutoff")
+    fun pruneExpiredReceipts(cutoff: Long): Int
+
+    @Query(
+        "DELETE FROM import_recent_receipt WHERE instance_id = :instanceId AND id NOT IN (" +
+            "SELECT id FROM import_recent_receipt WHERE instance_id = :instanceId ORDER BY delivered_at DESC, id DESC LIMIT :keep)",
+    )
+    fun trimRecentReceipts(instanceId: String, keep: Int): Int
+
     @Query("SELECT * FROM source_intake WHERE source_id = :sourceId")
     fun intakeBySource(sourceId: String): SourceIntakeRow?
 

@@ -71,6 +71,13 @@ fun buildObserverFlavor(
         publisher = stores.publisher,
         confirmation = stores.journalConfirmationStore,
     )
+    val reconcileExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "solstone-import-reconcile").apply { isDaemon = true }
+    }
+    val importStoreForProbe = app.solstone.platform.persistence.room.ImportCustodyStore(
+        app.solstone.platform.work.importStoreRoot(context).toPath(),
+        database.importDao(),
+    )
     val plStatusProbe = RealPlStatusProbe(
         endpointStore = stores.endpointStore,
         credentialStore = stores.credentialStore,
@@ -82,6 +89,39 @@ fun buildObserverFlavor(
         dialEvents = DialDiagnostics.events,
         publisher = stores.publisher,
         handshakeGuard = stores.handshakeGuard,
+        onReconcileImports = { identity, openClient ->
+            val snapshotPairing = app.solstone.core.identity.PairingGeneration(
+                identity.instanceId,
+                identity.clientCertFingerprint,
+            )
+            reconcileExecutor.execute {
+                val confirmed = app.solstone.core.identity.confirmedFor(
+                    app.solstone.core.identity.JournalConfirmationPolicy.consults,
+                    stores.journalConfirmationStore,
+                    identity.clientCertFingerprint,
+                )
+                val refused = stores.pairingRefusalStore?.refusedFor(snapshotPairing) == true
+                if (!confirmed || refused) return@execute
+                importStoreForProbe.resetReviewItemsForInstanceChange(identity.instanceId)
+                if (importStoreForProbe.reviewCandidates(identity.instanceId).isEmpty()) return@execute
+                runCatching {
+                    val client = openClient()
+                    try {
+                        val outcome = app.solstone.platform.work.reconcileReadyToReviewImports(
+                            http = client,
+                            store = importStoreForProbe,
+                            instanceId = identity.instanceId,
+                            pairingCurrent = { stores.identityMutator.currentPairingGeneration() == snapshotPairing },
+                        )
+                        if (outcome == app.solstone.platform.work.ImportReconcileOutcome.AUTH_STOP) {
+                            stores.pairingRefusalStore?.markRefused(snapshotPairing)
+                        }
+                    } finally {
+                        (client as? java.io.Closeable)?.close()
+                    }
+                }
+            }
+        },
     )
     val opportunisticSync = OpportunisticSync(
         evidenceReader = evidenceReader,
@@ -165,8 +205,12 @@ internal fun realImportBacklog(
         // journal too old to take imports holds every waiting one until the owner updates it, so
         // those can't shrink on their own either and never read as syncing.
         val elsewhere = app.solstone.platform.persistence.room.ImportAttentionScope.ELSEWHERE
-        val movingItems = items.filter { it.state == "pending" || it.scope == elsewhere }
-        val needOwner = items.count { it.state == "attention" && it.scope != elsewhere }
+        val movingItems = items.filter { it.state == app.solstone.platform.persistence.room.IMPORT_STATE_PENDING || it.scope == elsewhere }
+        val reviewCount = items.count { it.state == app.solstone.platform.persistence.room.IMPORT_STATE_READY_TO_REVIEW }
+        val needOwner = items.count {
+            (it.state == app.solstone.platform.persistence.room.IMPORT_STATE_ATTENTION && it.scope != elsewhere) ||
+                it.state == app.solstone.platform.persistence.room.IMPORT_STATE_REVIEW_EXPIRED
+        }
         val journalVersion = record?.version.orEmpty()
         val captionHeldCount = if (gate == app.solstone.platform.work.ImportVersionGate.SUPPORTED &&
             !app.solstone.platform.work.journalSupportsImportCaptions(journalVersion)
@@ -186,6 +230,7 @@ internal fun realImportBacklog(
             sending = items.any { it.inFlight },
             lastDelivery = store.lastDelivery(),
             currentInstanceId = identity?.instanceId,
+            reviewCount = reviewCount,
         )
     }
 }

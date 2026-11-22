@@ -175,5 +175,12 @@ internal class JournalImportHost<P>(
         put("state", status.state)
         status.importId?.let { put("import_id", it) }
         status.reason?.let { put("reason", it) }
+        status.reviewRequired?.let { put("review_required", it) }
+        status.reviewExpired?.let { put("review_expired", it) }
+        status.reasonCode?.let { put("reason_code", it) }
+        status.kind?.let { put("kind", it) }
+        status.retryable?.let { put("retryable", it) }
+        status.deviceNoun?.let { put("device_noun", it) }
+        status.sizeBytes?.let { put("size_bytes", it) }
     }
 }

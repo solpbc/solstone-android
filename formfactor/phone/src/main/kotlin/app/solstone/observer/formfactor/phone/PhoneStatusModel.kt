@@ -17,6 +17,8 @@ import java.time.ZoneId
 
 enum class StatusPillKind {
     CONNECTED,
+    IMPORT_REVIEW,
+    IMPORT_ATTENTION,
     SYNCING,
     CONNECTING,
     OFFLINE,
@@ -67,6 +69,10 @@ data class PhoneStatusModel(
     val refused: Boolean = false,
     /** Not connected, and not yet long enough to read offline. Only meaningful when not [online]. */
     val connecting: Boolean = false,
+    /** Imports staged in the journal waiting for owner preview & confirmation (non-fault). */
+    val importReviewCount: Int = 0,
+    /** One or more imports need owner action (refused, missing copy, expired, or held by journal version). */
+    val importsNeedAttention: Boolean = false,
 )
 
 data class PhoneJournalFacts(
@@ -99,6 +105,8 @@ fun statusPillKind(
     model.pendingCount > 0 -> StatusPillKind.SYNCING
     model.audioAwaitingCustody || !model.recoveryCompleted -> StatusPillKind.SYNCING
     gapPill(model, nowEpochMs, zone) != GapPill.NONE -> StatusPillKind.NOTICE
+    model.importsNeedAttention -> StatusPillKind.IMPORT_ATTENTION
+    model.importReviewCount > 0 -> StatusPillKind.IMPORT_REVIEW
     else -> StatusPillKind.CONNECTED
 }
 
@@ -190,6 +198,8 @@ fun statusPillText(
     !model.recoveryCompleted -> phoneText("android.status.n0.syncing", "count" to (0))
     gapPill(model, nowEpochMs, zone) == GapPill.UNKNOWN -> STATUS_UNKNOWN_RECOVERY_LEAD
     gapPill(model, nowEpochMs, zone) == GapPill.GAP -> GAP_HEADLINE
+    model.importsNeedAttention -> phoneText("android.source.connected")
+    model.importReviewCount > 0 -> phoneText("android.status.ready.to.review.pill", "count" to (model.importReviewCount))
     else -> phoneText("android.source.connected")
     }
 }
@@ -226,6 +236,8 @@ fun PhoneStatusModel.clearedForSupport(): PhoneStatusModel = copy(
     unknownUnseen = false,
     unseenUnknownKeys = emptyList(),
     gateOpen = false,
+    importReviewCount = 0,
+    importsNeedAttention = false,
 )
 
 data class StatusPaneCopy(
@@ -241,6 +253,7 @@ fun statusPaneCopy(
     nowEpochMs: Long = statusWallNow(),
     zone: ZoneId = ZoneId.systemDefault(),
     importsNeedYou: Boolean = false,
+    importsReadyToReview: Int = 0,
 ): StatusPaneCopy? {
     val summary = pairedStatusSummary(model, nowEpochMs, zone) ?: return null
     val day = gapDaySentence(model, nowEpochMs, zone)
@@ -248,9 +261,12 @@ fun statusPaneCopy(
     val showUnknown = model.gateOpen && model.unknownUnseen
     val notice = showGap || showUnknown
     val kind = statusPillKind(model, nowEpochMs, zone)
+    val effectiveImportsNeedYou = importsNeedYou || model.importsNeedAttention
+    val effectiveImportsReview = maxOf(importsReadyToReview, model.importReviewCount)
     val lines = mutableListOf<String>()
     val caughtUpLead = when {
-        importsNeedYou -> phoneText("android.status.imports.need")
+        effectiveImportsNeedYou -> phoneText("android.status.imports.need")
+        effectiveImportsReview > 0 -> phoneText("android.status.ready.to.review.lead", "count" to (effectiveImportsReview))
         model.calendarHeldForJournal -> phoneText("android.status.journal.needs.update")
         notice -> null
         model.unknownPresent -> phoneText("android.status.nothing.waiting.sync")
@@ -266,8 +282,13 @@ fun statusPaneCopy(
     if (summary.markLineFollowsCount) lines += MARK_LINE
     if (summary.subLine) {
         val sub = when (kind) {
-            StatusPillKind.CONNECTED, StatusPillKind.NOTICE -> when {
-                importsNeedYou -> phoneText("android.status.open.import.see.why")
+            StatusPillKind.CONNECTED,
+            StatusPillKind.NOTICE,
+            StatusPillKind.IMPORT_ATTENTION,
+            StatusPillKind.IMPORT_REVIEW,
+            -> when {
+                effectiveImportsNeedYou -> phoneText("android.status.open.import.see.why")
+                effectiveImportsReview > 0 -> phoneText("android.status.open.import.review.start")
                 model.calendarHeldForJournal -> CALENDAR_HELD_SUB
                 notice -> null
                 model.unknownPresent -> null
@@ -281,7 +302,13 @@ fun statusPaneCopy(
         }
         if (sub != null) lines += sub
     }
-    if (model.calendarHeldForJournal && kind != StatusPillKind.CONNECTED && kind != StatusPillKind.NOTICE) {
+    if (model.calendarHeldForJournal && kind !in setOf(
+            StatusPillKind.CONNECTED,
+            StatusPillKind.NOTICE,
+            StatusPillKind.IMPORT_ATTENTION,
+            StatusPillKind.IMPORT_REVIEW,
+        )
+    ) {
         lines += phoneText("android.status.journal.needs.update")
         lines += CALENDAR_HELD_SUB
     }

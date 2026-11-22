@@ -292,13 +292,28 @@ class PhoneShellActivity : ComponentActivity() {
         refusedUnread = refusedUnread,
         refusedJournal = refusedJournal,
     )
-    /** Open the journal at [path]; it shows once the pairing is committed and the mark confirmed. */
-    private fun openJournalAt(path: String) {
-        journalPath = path
+    /** Open the journal at [path]; refuses unpaired, mark-unconfirmed, or refused pairings without sticking [journalOpen]. */
+    internal fun openJournalAt(path: String): Boolean {
+        val validated = app.solstone.core.push.validJournalOpenPath(path) ?: return false
+        val committed = (PhoneJournalTestHooks.pairingSnapshotOverride ?: stores.publisher.currentSnapshot())
+            as? PairingGraphSnapshot.Committed ?: return false
+        val confirmed = confirmedFor(
+            JournalConfirmationPolicy.consults,
+            stores.journalConfirmationStore,
+            committed.home.clientCertFingerprint,
+        )
+        if (!confirmed) return false
+        val refused = stores.pairingRefusalStore?.refusedFor(committed.pairing) == true ||
+            (::container.isInitialized && container.controller.pairingFact() == app.solstone.core.diagnostics.PairingFact.REVOKED)
+        if (refused) return false
+        journalPath = validated
         journalVisitedPath = null
         journalOpenSequence++
         journalOpen = true
+        return true
     }
+
+    internal fun isJournalOpenForTest(): Boolean = journalOpen
 
     private fun openScreenshots() {
         incomingDetail = ((incomingDetail?.first ?: 0L) + 1L) to app.solstone.observer.formfactor.phone.PhoneRoute.SourceDetail("screenshots")
@@ -338,6 +353,7 @@ class PhoneShellActivity : ComponentActivity() {
     }
 
     private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
+    private val reconcileInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> takePicked(uris) }
     private val importActions by lazy {
@@ -347,11 +363,37 @@ class PhoneShellActivity : ComponentActivity() {
             },
             onPickFiles = { pickFiles.launch(arrayOf("*/*")) },
             onMoreImports = { openJournalAt(JOURNAL_IMPORT_PATH) },
+            onReviewInJournal = { importId ->
+                if (app.solstone.platform.persistence.room.isValidAsciiImportId(importId)) {
+                    openJournalAt("/app/import/$importId")
+                }
+            },
+            onOpenRecentImport = { importId ->
+                if (app.solstone.platform.persistence.room.isValidAsciiImportId(importId)) {
+                    openJournalAt("/app/import/$importId")
+                }
+            },
+            onSendAgain = { id ->
+                importWork.execute {
+                    val change = ImportIntake.get(this).store.sendAgain(id)
+                    if (change == app.solstone.platform.persistence.room.ImportChange.DONE) {
+                        app.solstone.platform.work.SyncScheduler.enqueueFollowUp(this, app.solstone.core.sources.MAIN_STREAM)
+                    }
+                    importChangeText(change)?.let(::showImportNotice)
+                    refreshImports()
+                    if (::statusViewModel.isInitialized) {
+                        runOnUiThread { statusViewModel.refresh() }
+                    }
+                }
+            },
             onRemove = { id ->
                 importWork.execute {
                     val change = ImportIntake.get(this).store.remove(id)
                     importChangeText(change)?.let(::showImportNotice)
                     refreshImports()
+                    if (::statusViewModel.isInitialized) {
+                        runOnUiThread { statusViewModel.refresh() }
+                    }
                 }
             },
             onRetry = { id ->
@@ -362,6 +404,9 @@ class PhoneShellActivity : ComponentActivity() {
                     }
                     importChangeText(change)?.let(::showImportNotice)
                     refreshImports()
+                    if (::statusViewModel.isInitialized) {
+                        runOnUiThread { statusViewModel.refresh() }
+                    }
                 }
             },
             onDismissInterrupted = {
@@ -374,6 +419,27 @@ class PhoneShellActivity : ComponentActivity() {
             },
             onOpenScreenshots = { openScreenshots() },
         )
+    }
+
+    private fun triggerImportReconciliation() {
+        if (!::container.isInitialized) return
+        if (!reconcileInFlight.compareAndSet(false, true)) return
+        importWork.execute {
+            try {
+                val changed = runCatching {
+                    app.solstone.platform.work.reconcileReviewImportsForPairing(
+                        stores = stores,
+                        importStore = ImportIntake.get(this).store,
+                    )
+                }.getOrDefault(false)
+                refreshImports()
+                if (changed && ::statusViewModel.isInitialized) {
+                    runOnUiThread { statusViewModel.refresh() }
+                }
+            } finally {
+                reconcileInFlight.set(false)
+            }
+        }
     }
 
     private fun showImportNotice(text: String) {
@@ -390,9 +456,20 @@ class PhoneShellActivity : ComponentActivity() {
 
     private fun refreshImports() {
         if (!::container.isInitialized) return
+        val online = if (::statusViewModel.isInitialized) {
+            (statusViewModel.statusState as? LoadState.Loaded)?.value?.status?.online ?: true
+        } else {
+            true
+        }
         importWork.execute {
             val state = runCatching {
-                readImportPane(ImportIntake.get(this), stores, container.controller.pairingFact(), phoneAwaitingMarkConfirmation(this))
+                readImportPane(
+                    intake = ImportIntake.get(this),
+                    stores = stores,
+                    pairingFact = container.controller.pairingFact(),
+                    awaitingConfirmation = phoneAwaitingMarkConfirmation(this),
+                    online = online,
+                )
             }.getOrNull() ?: return@execute
             runOnUiThread { importBinding = PhoneImportBinding(state, importActions) }
         }
@@ -1236,7 +1313,10 @@ class PhoneShellActivity : ComponentActivity() {
                     journalOpen = true
                 }
             }
-            val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed
+            val journalRefused = (pairingSnapshot as? PairingGraphSnapshot.Committed)?.let { committed ->
+                stores.pairingRefusalStore?.refusedFor(committed.pairing) == true
+            } ?: false
+            val journalSheetOpenState = journalOpen && !pairingOpen && pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed && !journalRefused
             val aboutFacts = remember { readAndroidAboutFacts(this) }
             val distanceSystem = remember {
                 val locale = resources.configuration.locales.let { listed ->
@@ -1560,32 +1640,34 @@ class PhoneShellActivity : ComponentActivity() {
                 // lavender header, a purple `close`, a purple `try again`. The journal is the
                 // app's content half and cannot be the one surface in a different palette.
                 PhoneTheme {
-                key(journalOpenSequence) {
-                JournalSheet(
-                    presentation = currentMarkPresentation,
-                    sessionFactory = {
-                        PhoneJournalTestHooks.sessionOverride?.invoke()
-                            ?: LiveJournalSheetSession(
-                                JournalBrowserSession(
-                                    publisher = stores.publisher,
-                                    upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher, stores.handshakeGuard),
-                                    diag = { PhoneDiagLog.emit(it) },
-                                    originKeeper = stores.journalBrowserOrigins,
-                                ),
-                            )
-                    },
-                    onClose = { journalOpen = false },
-                    onPairingRepair = {
-                        journalOpen = false
-                        pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
-                    },
-                    initialPath = journalPath,
-                    onVisitedUrl = { url ->
-                        journalVisitedPath = validJournalOpenPath(android.net.Uri.parse(url).encodedPath)
-                    },
-                    openAuthBrowser = ::launchAuthBrowser,
-                )
-                }
+                    JournalSheet(
+                        presentation = currentMarkPresentation,
+                        sessionFactory = {
+                            PhoneJournalTestHooks.sessionOverride?.invoke()
+                                ?: LiveJournalSheetSession(
+                                    JournalBrowserSession(
+                                        publisher = stores.publisher,
+                                        upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher, stores.handshakeGuard),
+                                        diag = { PhoneDiagLog.emit(it) },
+                                        originKeeper = stores.journalBrowserOrigins,
+                                    ),
+                                )
+                        },
+                        onClose = {
+                            journalOpen = false
+                            triggerImportReconciliation()
+                        },
+                        onPairingRepair = {
+                            journalOpen = false
+                            pairingViewModel.dispatch(PhonePairingEvent.OpenScan, container.controller, stores)
+                        },
+                        initialPath = journalPath,
+                        navigationSequence = journalOpenSequence,
+                        onVisitedUrl = { url ->
+                            journalVisitedPath = validJournalOpenPath(android.net.Uri.parse(url).encodedPath)
+                        },
+                        openAuthBrowser = ::launchAuthBrowser,
+                    )
                 }
             }
             val migrationNeedsAnswer = migrationRecord?.stage in setOf(
@@ -1943,6 +2025,7 @@ class PhoneShellActivity : ComponentActivity() {
         // call — and ⛔ not inline: it writes a file and can start an engine.
         container.onOwnerResumed()
         refreshIntake()
+        triggerImportReconciliation()
         if (::statusHost.isInitialized) statusHost.onResume()
         ObserverNotification.ensureChannel(this)
         notificationsEnabled = ObserverNotification.notificationsEnabled(this)

@@ -140,7 +140,9 @@ fun renderPhoneObserverWidget(
             presentation.reason !in setOf(ReasonCode.NONE, ReasonCode.MICROPHONE_SILENCED)
     }
     val diagnosis = reasonDiagnosis(presentation.reason)
-    val syncText = if (keptCurrent) statusPillText(statusModel) else linkFreeStatusLine(statusModel)
+    // Home-screen audio observer widgets are isolated from import review/attention pill changes.
+    val widgetStatus = statusModel.copy(importReviewCount = 0, importsNeedAttention = false)
+    val syncText = if (keptCurrent) statusPillText(widgetStatus) else linkFreeStatusLine(widgetStatus)
     val custody = audioCustodyLines(statusModel)
     val remainingCustody = custody.filter { it != syncText }
     val syncDetail = if (remainingCustody.isNotEmpty()) remainingCustody.joinToString("\n") else null

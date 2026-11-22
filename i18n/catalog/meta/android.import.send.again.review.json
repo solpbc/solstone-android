@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "primary action button re-uploading an expired waiting import so the owner can review and start it.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 60,
+  "source_revision": "b9780ef2c9a44800b1ec3086de82a537484b2401fda08f97e1534164b1728942",
+  "risk": "routine",
+  "auto_merge": true
+}

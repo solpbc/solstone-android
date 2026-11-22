@@ -200,11 +200,13 @@ private fun PhonePairedStatusSummary(
     onConfirmMark: () -> Unit,
     onPairAgain: () -> Unit,
 ) {
+    val imports = LocalPhoneImport.current.state
     val copy = statusPaneCopy(
         model = model,
         nowEpochMs = LocalPhoneStatusNow.current.nowEpochMs(),
         zone = java.time.ZoneId.systemDefault(),
-        importsNeedYou = LocalPhoneImport.current.state.recent.needsOwner,
+        importsNeedYou = imports.hasNeedsAttention || imports.recent.needsOwner,
+        importsReadyToReview = imports.readyToReviewCount,
     ) ?: return
     if (copy.count) PaneCount(model.pendingCount)
     copy.lead?.let { PaneLead(it) }
@@ -250,7 +252,15 @@ private fun PhoneStatusWaitingRows(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(text = phoneText("android.setup.import"), style = MaterialTheme.typography.bodyLarge)
-                Text(text = recentText(imports.recent), style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+                val importSubLine = when {
+                    imports.hasNeedsAttention -> phoneText("android.status.imports.need")
+                    imports.readyToReviewCount > 0 -> phoneText(
+                        "android.status.ready.to.review.pill",
+                        "count" to imports.readyToReviewCount,
+                    )
+                    else -> recentText(imports.recent)
+                }
+                Text(text = importSubLine, style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
             }
             // A chevron only where the row really opens the import pane.
             if (onOpenImport != null) {

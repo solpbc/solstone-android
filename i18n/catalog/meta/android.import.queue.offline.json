@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "queue hold line at the top of on this device when the journal is offline.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 100,
+  "source_revision": "8d27a89b42c01f542f85abcdef4f83f160ad167c36e2617363af6c999ff30280",
+  "risk": "routine",
+  "auto_merge": true
+}

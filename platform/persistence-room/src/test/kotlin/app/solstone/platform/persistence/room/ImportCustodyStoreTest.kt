@@ -56,12 +56,43 @@ class ImportCustodyStoreTest {
 
         var delivery: ImportDeliveryRow? = null
         val intake = mutableMapOf<String, SourceIntakeRow>()
+        val recent = ConcurrentHashMap<String, ImportRecentReceiptRow>()
+        var throwOnRecentPut: Boolean = false
 
         override fun putDelivery(row: ImportDeliveryRow) {
             delivery = row
         }
 
         override fun delivery(): ImportDeliveryRow? = delivery
+
+        override fun putRecentReceipt(row: ImportRecentReceiptRow) {
+            if (throwOnRecentPut) throw RuntimeException("injected recent receipt error")
+            recent[row.id] = row
+        }
+
+        override fun recentReceipts(instanceId: String, cutoff: Long, limit: Int): List<ImportRecentReceiptRow> =
+            recent.values
+                .filter { it.instanceId == instanceId && it.deliveredAt >= cutoff }
+                .sortedWith(compareByDescending<ImportRecentReceiptRow> { it.deliveredAt }.thenByDescending { it.id })
+                .take(limit)
+
+        override fun pruneExpiredReceipts(cutoff: Long): Int {
+            val expired = recent.values.filter { it.deliveredAt < cutoff }.map { it.id }
+            expired.forEach { recent.remove(it) }
+            return expired.size
+        }
+
+        override fun trimRecentReceipts(instanceId: String, keep: Int): Int {
+            val keepIds = recent.values
+                .filter { it.instanceId == instanceId }
+                .sortedWith(compareByDescending<ImportRecentReceiptRow> { it.deliveredAt }.thenByDescending { it.id })
+                .take(keep)
+                .map { it.id }
+                .toSet()
+            val drop = recent.values.filter { it.instanceId == instanceId && it.id !in keepIds }.map { it.id }
+            drop.forEach { recent.remove(it) }
+            return drop.size
+        }
 
         override fun intakeBySource(sourceId: String): SourceIntakeRow? = intake[sourceId]
 
@@ -699,9 +730,9 @@ class ImportCustodyStoreTest {
         val dao = InMemoryImportDao()
         val store = ImportCustodyStore(root = root, dao = dao)
         val id = published(store, root)
-        assertEquals(ImportHandoffStatus("waiting"), store.handoffStatus(id))
+        assertEquals(ImportHandoffStatus("waiting", deviceNoun = "phone", sizeBytes = 13L), store.handoffStatus(id))
         assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.86"))
-        assertEquals(ImportHandoffStatus("uploading"), store.handoffStatus(id))
+        assertEquals(ImportHandoffStatus("uploading", deviceNoun = "phone", sizeBytes = 13L), store.handoffStatus(id))
         assertEquals(ImportChange.DONE, store.recordSaved(id, "/imports/x/doc.pdf", "20261120_190749", "A"))
         assertEquals(ImportChange.DONE, store.recordDelivered(id, "A", "20261120_190750"))
         store.finish()
@@ -807,6 +838,172 @@ class ImportCustodyStoreTest {
         val again = published(store, root)
         assertEquals(2L, dao.intake[INTAKE_IMPORT]?.total)
         assertTrue(store.publish(again, "again", "application/pdf", 1L).not())
+    }
+
+    @Test
+    fun reviewRequiredKeepsBytesExcludesFromEligibleAndReportsBridgeFields() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 10_000L })
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.REFUSED,
+            store.recordReviewRequired(id, "not-a-timestamp", "import_preview_required", "body_confirmation_required", null, "A"),
+        )
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordReviewRequired(id, "20261122_120000", "import_preview_required", "body_confirmation_required", "confirm", "A"),
+        )
+        assertFalse(store.isInFlight(id))
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")), "local bytes stay on device while awaiting review")
+        assertTrue(store.eligible("A", "2.0.99", 10_000L, 10).isEmpty())
+        assertTrue(store.eligible("A", "2.0.100", 10_000L, 10).isEmpty())
+        assertEquals(listOf(ImportReviewCandidate(id, "20261122_120000", "A")), store.reviewCandidates("A"))
+        assertTrue(store.reviewCandidates("B").isEmpty())
+
+        val handoff = store.handoffStatus(id)
+        assertEquals("attention", handoff.state)
+        assertEquals("20261122_120000", handoff.importId)
+        assertEquals(true, handoff.reviewRequired)
+        assertEquals(false, handoff.reviewExpired)
+        assertEquals("import_preview_required", handoff.reasonCode)
+        assertEquals("body_confirmation_required", handoff.kind)
+        assertEquals(false, handoff.retryable)
+    }
+
+    @Test
+    fun nonConfirmationPreviewRequiredDoesNotAutoRetryOnVersionBump() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 10_000L })
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordAttention(id, "could not read archive", "import_preview_required", "plan_failed", "A", "2.0.99"),
+        )
+        assertTrue(store.eligible("A", "2.0.99", 10_000L, 10).isEmpty())
+        assertTrue(store.eligible("A", "2.0.100", 10_000L, 10).isEmpty())
+        assertEquals(ImportChange.REFUSED, store.beginExchange(id, "A", "2.0.100"))
+        assertEquals(ImportAttentionScope.HERE, store.items("A", "2.0.100").single().scope)
+        val handoff = store.handoffStatus(id)
+        assertEquals("attention", handoff.state)
+        assertEquals(false, handoff.reviewRequired)
+        assertEquals(false, handoff.retryable)
+        assertEquals("plan_failed", handoff.kind)
+    }
+
+    @Test
+    fun reconcileConfirmedPersistsReceiptBeforeDeletingBytesAndRejectsStaleReplies() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        var now = 100_000L
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { now })
+        val id = published(store, root)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordReviewRequired(id, "20261122_120500", "import_preview_required", "body_confirmation_required", null, "A"),
+        )
+
+        // Wrong import_id or instance_id is rejected without touching bytes or row.
+        assertEquals(ImportChange.REFUSED, store.reconcileConfirmed(id, "20261122_999999", "A"))
+        assertEquals(ImportChange.REFUSED, store.reconcileConfirmed(id, "20261122_120500", "B"))
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")))
+
+        // If persisting the recent receipt fails, bytes and row stay intact!
+        dao.throwOnRecentPut = true
+        assertEquals(ImportChange.REFUSED, store.reconcileConfirmed(id, "20261122_120500", "A"))
+        dao.throwOnRecentPut = false
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(id)?.state)
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")))
+
+        // Succeeding persists receipt, deletes local bytes, and keeps high-cap handoff lookup intact.
+        assertEquals(ImportChange.DONE, store.reconcileConfirmed(id, "20261122_120500", "A"))
+        assertNull(dao.byId(id))
+        assertFalse(Files.exists(root.resolve(id)))
+        assertEquals(ImportHandoffStatus("delivered", importId = "20261122_120500"), store.handoffStatus(id))
+        val recent = store.recentReceipts("A")
+        assertEquals(1, recent.size)
+        assertEquals("20261122_120500", recent.single().importId)
+        assertEquals("A", recent.single().instanceId)
+        assertTrue(store.recentReceipts("B").isEmpty())
+    }
+
+    @Test
+    fun reconcileExpiredSendAgainAndInstanceChangePreserveIntakeCount() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 50_000L })
+        val id = published(store, root)
+        assertEquals(1L, dao.intake[INTAKE_IMPORT]?.total)
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordReviewRequired(id, "20261122_121000", "import_preview_required", "body_confirmation_required", null, "A"),
+        )
+        assertEquals(ImportChange.DONE, store.reconcileExpired(id, "20261122_121000", "A"))
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")), "expired review keeps local bytes")
+        val expiredHandoff = store.handoffStatus(id)
+        assertEquals("attention", expiredHandoff.state)
+        assertEquals(false, expiredHandoff.reviewRequired)
+        assertEquals(true, expiredHandoff.reviewExpired)
+        assertEquals(true, expiredHandoff.retryable)
+
+        // sendAgain clears review/staging fields without double-counting source_intake.
+        assertEquals(ImportChange.DONE, store.sendAgain(id))
+        val row = dao.byId(id)!!
+        assertEquals(IMPORT_STATE_PENDING, row.state)
+        assertNull(row.reviewImportId)
+        assertNull(row.progressPath)
+        assertFalse(row.reviewExpired)
+        assertEquals(1L, dao.intake[INTAKE_IMPORT]?.total, "sendAgain never double-counts intake")
+
+        // Stale confirm after sendAgain is discarded cleanly.
+        assertEquals(ImportChange.REFUSED, store.reconcileConfirmed(id, "20261122_121000", "A"))
+        assertTrue(Files.exists(root.resolve(id).resolve("payload")))
+
+        // Re-pair to a different instance resets ready_to_review and review_expired items back to pending.
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordReviewRequired(id, "20261122_121500", "import_preview_required", "confirmation_required", null, "A"),
+        )
+        assertEquals(0, store.resetReviewItemsForInstanceChange("A"))
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(id)?.state)
+        assertEquals(1, store.resetReviewItemsForInstanceChange("B"))
+        assertEquals(IMPORT_STATE_PENDING, dao.byId(id)?.state)
+        assertNull(dao.byId(id)?.reviewInstanceId)
+    }
+
+    @Test
+    fun recentReceiptsPruneAfter24HoursCapAtFiveAndKeep256EntryHandoffLookup() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        var now = 1_000_000L
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { now })
+        val deliveredIds = mutableListOf<String>()
+        for (i in 1..7) {
+            now = 1_000_000L + i * 1_000L
+            val id = published(store, root)
+            deliveredIds += id
+            assertEquals(ImportChange.DONE, store.beginExchange(id, "A", "2.0.99"))
+            val ts = if (i == 7) null else "20261122_12000$i"
+            assertEquals(ImportChange.DONE, store.recordDelivered(id, "A", ts))
+            store.finish()
+        }
+
+        // UI recentReceipts caps at 5 newest; item 7 with null importId still renders calmly.
+        val recent = store.recentReceipts("A")
+        assertEquals(5, recent.size)
+        assertEquals(deliveredIds.reversed().take(5), recent.map { it.id })
+        assertNull(recent.first().importId)
+
+        // All 7 items remain in high-cap in-memory handoff lookup!
+        deliveredIds.forEach { id ->
+            assertEquals("delivered", store.handoffStatus(id).state)
+        }
+
+        // Advance past 24 hours: pruned on read.
+        now = 1_000_000L + 7_000L + RECENT_RECEIPT_WINDOW_MS + 1L
+        assertTrue(store.recentReceipts("A").isEmpty())
     }
 
     private fun createRow(

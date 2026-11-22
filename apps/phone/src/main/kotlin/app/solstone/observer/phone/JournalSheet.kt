@@ -26,6 +26,8 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,12 +43,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,6 +63,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -73,6 +81,9 @@ import app.solstone.core.pl.browser.JournalBrowserSession
 import app.solstone.core.pl.browser.JOURNAL_BROWSER_RESPONSE_HEADER
 import app.solstone.observer.formfactor.phone.PhoneJournalMarkPill
 import app.solstone.observer.formfactor.phone.PhonePane
+import app.solstone.observer.formfactor.phone.ShellMetrics
+import app.solstone.observer.formfactor.phone.shellHairline
+import app.solstone.observer.formfactor.phone.shellSurface
 import app.solstone.observer.formfactor.phone.spokenPaneTitle
 import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -94,6 +105,7 @@ internal fun JournalSheet(
     onClose: () -> Unit,
     onPairingRepair: () -> Unit,
     initialPath: String? = null,
+    navigationSequence: Long = 0L,
     onVisitedUrl: (String) -> Unit = {},
     openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
 ) {
@@ -148,6 +160,7 @@ internal fun JournalSheet(
                 JournalBrowserPane(
                     sessionFactory = sessionFactory,
                     path = validatedPath,
+                    navigationSequence = navigationSequence,
                     onRetry = { retryGeneration += 1 },
                     onPairingRepair = onPairingRepair,
                     onVisitedUrl = onVisitedUrl,
@@ -164,10 +177,14 @@ private sealed interface BrowserPaneState {
     data class Failed(val message: String) : BrowserPaneState
 }
 
+private fun journalTargetUrl(origin: String, path: String?): String =
+    if (path != null) origin + path.removePrefix("/") else origin
+
 @Composable
 private fun JournalBrowserPane(
     sessionFactory: () -> JournalSheetSession,
     path: String? = null,
+    navigationSequence: Long = 0L,
     onRetry: () -> Unit,
     onPairingRepair: () -> Unit,
     onVisitedUrl: (String) -> Unit,
@@ -182,6 +199,8 @@ private fun JournalBrowserPane(
     var liveWebView by remember { mutableStateOf<WebView?>(null) }
     var liveImportHost by remember { mutableStateOf<JournalImportHost<Uri>?>(null) }
     var observedCanGoBack by remember { mutableStateOf(false) }
+    var handledNavigationSequence by remember { mutableStateOf(navigationSequence) }
+    var pendingNavigation by remember { mutableStateOf<Pair<Long, String?>?>(null) }
     val session = remember { sessionFactory() }
     val alive = remember { AtomicBoolean(true) }
     // The journal's import page hands file picking to the app. One pick is open at a time; the
@@ -235,8 +254,15 @@ private fun JournalBrowserPane(
         session.addLifecycleListener(listener)
         state = try {
             val origin = session.start().url
-            val loadTarget = if (path != null) origin + path.removePrefix("/") else origin
-            BrowserPaneState.Showing(origin, loadTarget)
+            val pending = pendingNavigation
+            val effectivePath = if (pending != null) pending.second else path
+            if (pending != null) {
+                handledNavigationSequence = pending.first
+                pendingNavigation = null
+            } else {
+                handledNavigationSequence = navigationSequence
+            }
+            BrowserPaneState.Showing(origin, journalTargetUrl(origin, effectivePath))
         } catch (_: Throwable) {
             BrowserPaneState.Failed(INITIAL_FAILURE)
         }
@@ -244,6 +270,34 @@ private fun JournalBrowserPane(
             alive.set(false)
             session.removeLifecycleListener(listener)
             session.stop()
+        }
+    }
+
+    // Navigate an open sheet in place when a new deep-link / review path arrives across Showing,
+    // Loading, and Failed states without tearing down ModalBottomSheet or recreating the WebView.
+    LaunchedEffect(navigationSequence, path, state, liveWebView) {
+        if (navigationSequence == handledNavigationSequence) return@LaunchedEffect
+        when (val current = state) {
+            is BrowserPaneState.Showing -> {
+                val nextTarget = journalTargetUrl(current.origin, path)
+                handledNavigationSequence = navigationSequence
+                pendingNavigation = null
+                notice = null
+                state = current.copy(loadTarget = nextTarget)
+                val webView = liveWebView
+                if (webView != null) {
+                    PhoneJournalTestHooks.onLoadUrl?.invoke(nextTarget)
+                    webView.loadUrl(nextTarget)
+                }
+            }
+            BrowserPaneState.Loading -> {
+                pendingNavigation = navigationSequence to path
+            }
+            is BrowserPaneState.Failed -> {
+                handledNavigationSequence = navigationSequence
+                pendingNavigation = null
+                onRetry()
+            }
         }
     }
 
@@ -340,12 +394,53 @@ private fun JournalBrowserPane(
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
             notice?.let { message ->
-                Text(
-                    text = message,
+                JournalSheetNoticeBanner(
+                    message = message,
+                    onDismiss = { notice = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                         .padding(16.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun JournalSheetNoticeBanner(
+    message: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .testTag("journalSheetNotice")
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        shape = ShellMetrics.cardShape,
+        color = shellSurface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(ShellMetrics.hairline, shellHairline),
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("journalSheetNotice-dismiss"),
+            ) {
+                Text(phoneText("android.journal.dismiss"))
             }
         }
     }
@@ -383,6 +478,7 @@ internal fun createJournalWebView(
     var importHost: JournalImportHost<Uri>? = null
     return WebView(journalWebViewContext(context)).apply {
         onLiveView(this)
+        PhoneJournalTestHooks.onWebViewCreated?.invoke(this)
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,

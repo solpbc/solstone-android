@@ -512,22 +512,36 @@ private fun sync(
                 homeInstanceId = credentials.identity.instanceId,
                 importStage = importStore?.let { importCustody ->
                     { connected, pairingNow ->
-                        val record = stores.journalVersionStore.load()
-                        deliverImports(
-                            http = connected,
-                            store = importCustody,
-                            run = importRun,
-                            instanceId = credentials.identity.instanceId,
-                            journalVersion = record?.version.orEmpty(),
-                            gate = importVersionGate(record, credentials.identity.instanceId, credentials.identity.caChainFingerprint),
-                            pairingCurrent = pairingNow,
-                            now = System::currentTimeMillis,
-                            log = { message, throwable -> workerLog("w", message, throwable) },
-                            diag = { line ->
-                                SyncWorker.syncDiag?.invoke(line)
-                                workerLog("w", line, null)
-                            },
-                        )
+                        when (
+                            reconcileReadyToReviewImports(
+                                http = connected,
+                                store = importCustody,
+                                instanceId = credentials.identity.instanceId,
+                                pairingCurrent = pairingNow,
+                                log = { message, throwable -> workerLog("w", message, throwable) },
+                            )
+                        ) {
+                            ImportReconcileOutcome.AUTH_STOP -> ImportStageResult.AUTH_STOP
+                            ImportReconcileOutcome.PAIRING_LEFT -> ImportStageResult.PAIRING_LEFT
+                            ImportReconcileOutcome.CLEAN, ImportReconcileOutcome.TRANSIENT -> {
+                                val record = stores.journalVersionStore.load()
+                                deliverImports(
+                                    http = connected,
+                                    store = importCustody,
+                                    run = importRun,
+                                    instanceId = credentials.identity.instanceId,
+                                    journalVersion = record?.version.orEmpty(),
+                                    gate = importVersionGate(record, credentials.identity.instanceId, credentials.identity.caChainFingerprint),
+                                    pairingCurrent = pairingNow,
+                                    now = System::currentTimeMillis,
+                                    log = { message, throwable -> workerLog("w", message, throwable) },
+                                    diag = { line ->
+                                        SyncWorker.syncDiag?.invoke(line)
+                                        workerLog("w", line, null)
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 obsidianCurrent = { app.solstone.platform.obsidian.ObsidianRuntimes.current?.allowsDelivery() == true },
@@ -657,6 +671,131 @@ private fun sync(
 
 /** Where owner-shared imports are kept on the device. */
 fun importStoreRoot(context: Context): File = File(context.filesDir, "import")
+
+/**
+ * Reconcile any `ready_to_review` imports against the currently paired journal even when `waiting == 0`
+ * (triggered on journal sheet dismiss or app foreground). Enforces all preconditions: paired,
+ * mark-confirmed, not pairing-refused, and matching `instanceId`. Resets cross-instance review items
+ * back to `pending` first. Never dials if no candidates await review on this instance.
+ */
+fun reconcileReviewImportsForPairing(
+    stores: SyncStores,
+    importStore: ImportCustodyStore,
+    openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+): Boolean {
+    val (credentials, allowsOwnerMaterial) = stores.publisher.withMutationBoundary {
+        val creds = recoverSyncCredentials(stores.publisher)
+        val allows = when (creds) {
+            is SyncCredentials.Ready -> confirmedFor(
+                JournalConfirmationPolicy.consults,
+                stores.journalConfirmationStore,
+                creds.identity.clientCertFingerprint,
+            )
+            else -> false
+        }
+        creds to allows
+    }
+    if (credentials !is SyncCredentials.Ready || !allowsOwnerMaterial) return false
+    val attemptPairing = PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
+    if (stores.pairingRefusalStore?.refusedFor(attemptPairing) == true) return false
+    val guard = stores.handshakeGuard
+    if (guard != null && guard.stopped(attemptPairing)) return false
+
+    val resetCount = importStore.resetReviewItemsForInstanceChange(credentials.identity.instanceId)
+    if (importStore.reviewCandidates(credentials.identity.instanceId).isEmpty()) {
+        return resetCount > 0
+    }
+
+    val pairingCurrent = { stores.identityMutator.currentPairingGeneration() == attemptPairing }
+    val poster = defaultHttpsPoster()
+    val attempt = guard?.begin(attemptPairing) ?: JournalAttempt.untracked(attemptPairing)
+    var attempted = false
+    try {
+        val tryTransport: (SyncTransport) -> ImportReconcileOutcome = transportAttempt@{ selectedTransport ->
+            val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt ImportReconcileOutcome.TRANSIENT
+            if (access.pairing != attemptPairing) return@transportAttempt ImportReconcileOutcome.PAIRING_LEFT
+            if (!transportAccessStillCurrent(selectedTransport, credentials.identity, access, stores.identityMutator)) {
+                return@transportAttempt ImportReconcileOutcome.PAIRING_LEFT
+            }
+            attempted = true
+            try {
+                toCloseableClient(
+                    if (openClient != null) {
+                        openClient(selectedTransport, credentials.credential)
+                    } else {
+                        openSyncClient(selectedTransport, credentials.credential, attempt)
+                    },
+                ).use { client ->
+                    val outcome = reconcileReadyToReviewImports(
+                        http = client,
+                        store = importStore,
+                        instanceId = credentials.identity.instanceId,
+                        pairingCurrent = pairingCurrent,
+                        log = { message, throwable -> workerLog("w", message, throwable) },
+                    )
+                    if (outcome == ImportReconcileOutcome.AUTH_STOP) {
+                        stores.pairingRefusalStore?.markRefused(attemptPairing)
+                    }
+                    outcome
+                }
+            } catch (e: RelayDialWaitingException) {
+                attempt.legFailed(e)
+                ImportReconcileOutcome.TRANSIENT
+            } catch (_: RelayWebSocketClosedException) {
+                ImportReconcileOutcome.TRANSIENT
+            } catch (_: IOException) {
+                ImportReconcileOutcome.TRANSIENT
+            }
+        }
+
+        var outcome = when (val transport = credentials.transport) {
+            is SyncTransport.Direct -> {
+                var result = ImportReconcileOutcome.TRANSIENT
+                for (endpoint in credentials.directCandidates) {
+                    result = tryTransport(SyncTransport.Direct(endpoint))
+                    if (result != ImportReconcileOutcome.TRANSIENT || attempt.decided) break
+                }
+                result
+            }
+            is SyncTransport.Relay -> {
+                val maintained = maintainRelayToken(
+                    identity = credentials.identity,
+                    transport = transport,
+                    poster = poster,
+                    mutator = stores.identityMutator,
+                )
+                if (maintained is RelayTokenResult.Ready) {
+                    tryTransport(maintained.transport)
+                } else {
+                    ImportReconcileOutcome.TRANSIENT
+                }
+            }
+        }
+
+        if (outcome == ImportReconcileOutcome.TRANSIENT && credentials.transport is SyncTransport.Direct && !attempt.decided) {
+            val relayTransport = relayFallbackTransport(
+                identity = credentials.identity,
+                relayLiveEligible = stores.identityMutator.accessSnapshot()?.let {
+                    it.pairing == attemptPairing && it.relayLiveEligible
+                } ?: false,
+            )
+            if (relayTransport != null) {
+                val maintained = maintainRelayToken(
+                    identity = credentials.identity,
+                    transport = relayTransport,
+                    poster = poster,
+                    mutator = stores.identityMutator,
+                )
+                if (maintained is RelayTokenResult.Ready) {
+                    outcome = tryTransport(maintained.transport)
+                }
+            }
+        }
+        return attempted || resetCount > 0 || outcome == ImportReconcileOutcome.CLEAN
+    } finally {
+        attempt.finish()
+    }
+}
 
 private fun openSyncClient(
     transport: SyncTransport,

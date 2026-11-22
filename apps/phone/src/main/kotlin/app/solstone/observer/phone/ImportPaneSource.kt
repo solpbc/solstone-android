@@ -14,11 +14,17 @@ import app.solstone.observer.formfactor.phone.ImportRowKind
 import app.solstone.observer.formfactor.phone.ImportWaiting
 import app.solstone.observer.formfactor.phone.IntakeRefusalLine
 import app.solstone.observer.formfactor.phone.PhoneImportPaneState
+import app.solstone.observer.formfactor.phone.PhoneImportRecentReceipt
 import app.solstone.observer.formfactor.phone.PhoneImportRow
 import app.solstone.observer.formfactor.phone.PhoneIntakeLine
 import app.solstone.observer.formfactor.phone.importRecentState
+import app.solstone.platform.persistence.room.IMPORT_STATE_ATTENTION
+import app.solstone.platform.persistence.room.IMPORT_STATE_PENDING
+import app.solstone.platform.persistence.room.IMPORT_STATE_READY_TO_REVIEW
+import app.solstone.platform.persistence.room.IMPORT_STATE_REVIEW_EXPIRED
 import app.solstone.platform.persistence.room.ImportAttentionScope
 import app.solstone.platform.persistence.room.ImportChange
+import app.solstone.platform.persistence.room.isImportRefusalRetryable
 import app.solstone.platform.work.ImportVersionGate
 import app.solstone.platform.work.ImportWaitingReason
 import app.solstone.platform.work.SyncStores
@@ -27,32 +33,20 @@ import app.solstone.platform.work.importVersionGate
 import app.solstone.platform.work.importWaitingReason
 import app.solstone.platform.work.journalSupportsImportCaptions
 
-/**
- * Refusals a retry could plausibly change: the journal's queue or a write was briefly unavailable,
- * the record it staged went missing (a retry saves it again), or a preview was still running.
- * Every other refusal, and any code this list doesn't know, offers only `remove`.
- */
-private val RETRYABLE_REASONS = setOf(
-    "import_queue_unreachable",
-    "import_metadata_failed",
-    "import_not_found",
-    "import_preview_required",
-)
-private val NOT_RETRYABLE_KINDS = setOf("client_item_conflict")
-
 /** Reads the import pane's state from the import store and the pairing. Call off the main thread. */
 internal fun readImportPane(
     intake: ImportIntake,
     stores: SyncStores,
     pairingFact: PairingFact,
     awaitingConfirmation: Boolean,
+    online: Boolean = true,
 ): PhoneImportPaneState {
     val identity = stores.identityStore.load()
     val record = stores.journalVersionStore.load()
     val gate = if (identity == null) ImportVersionGate.UNKNOWN else importVersionGate(record, identity.instanceId, identity.caChainFingerprint)
     val items = intake.store.items(identity?.instanceId, record?.version)
     val journalVersion = record?.version.orEmpty()
-    val waitingItems = items.filter { it.state == "pending" || it.scope == ImportAttentionScope.ELSEWHERE }
+    val waitingItems = items.filter { it.state == IMPORT_STATE_PENDING || it.scope == ImportAttentionScope.ELSEWHERE }
     val captionHeldCount = if (gate == ImportVersionGate.SUPPORTED && !journalSupportsImportCaptions(journalVersion)) {
         waitingItems.count { it.hasCaption && !it.hasSavedProgress }
     } else {
@@ -73,6 +67,8 @@ internal fun readImportPane(
     val rows = items.map { item ->
         val kind = when {
             item.inFlight -> ImportRowKind.SENDING
+            item.state == IMPORT_STATE_READY_TO_REVIEW -> ImportRowKind.READY_TO_REVIEW
+            item.state == IMPORT_STATE_REVIEW_EXPIRED -> ImportRowKind.REVIEW_EXPIRED
             item.scope == ImportAttentionScope.HERE -> ImportRowKind.REFUSED
             item.scope == ImportAttentionScope.ELSEWHERE -> ImportRowKind.GOING_AGAIN
             item.scope == ImportAttentionScope.LOCAL -> ImportRowKind.MISSING_COPY
@@ -83,17 +79,35 @@ internal fun readImportPane(
             name = item.displayName,
             kind = kind,
             error = item.error,
-            retryable = kind == ImportRowKind.REFUSED && item.reasonCode in RETRYABLE_REASONS && item.kind !in NOT_RETRYABLE_KINDS,
-            savedAtJournal = item.hasSavedProgress,
+            retryable = kind == ImportRowKind.REFUSED && isImportRefusalRetryable(item.reasonCode, item.kind),
+            savedAtJournal = item.hasSavedProgress || kind == ImportRowKind.READY_TO_REVIEW,
+            importId = item.reviewImportId,
+            reviewKind = item.reviewKind,
         )
     }
-    val pending = items.count { it.state == "pending" }
-    val attention = items.count { it.state == "attention" && it.scope != ImportAttentionScope.ELSEWHERE }
+    val pending = items.count { it.state == IMPORT_STATE_PENDING }
+    val attention = items.count {
+        (it.state == IMPORT_STATE_ATTENTION && it.scope != ImportAttentionScope.ELSEWHERE) ||
+            it.state == IMPORT_STATE_REVIEW_EXPIRED
+    }
     val delivered = intake.store.lastDelivery()?.instanceId?.let { it == identity?.instanceId } ?: false
     val line = when (val state = intake.state.value) {
         is IntakeState.Copying -> PhoneIntakeLine.Copying(state.done, state.total)
         is IntakeState.Finished -> PhoneIntakeLine.Finished(state.outcome.accepted, state.outcome.refused.map { IntakeRefusalLine(it.label, it.reason.toLine()) })
         IntakeState.Idle -> null
+    }
+    val journalOpenable = pairingFact == PairingFact.PAIRED && !awaitingConfirmation && !refused
+    val recentReceipts = if (journalOpenable && identity != null) {
+        intake.store.recentReceipts(identity.instanceId).map { receipt ->
+            PhoneImportRecentReceipt(
+                id = receipt.id,
+                filename = receipt.filename,
+                importId = receipt.importId,
+                deliveredAtEpochMs = receipt.deliveredAt,
+            )
+        }
+    } else {
+        emptyList()
     }
     return PhoneImportPaneState(
         // An item another journal refused is going again here, so it counts as waiting.
@@ -101,7 +115,9 @@ internal fun readImportPane(
         rows = rows,
         intake = line,
         interrupted = intake.interrupted,
-        journalOpenable = pairingFact == PairingFact.PAIRED && !awaitingConfirmation && !refused,
+        journalOpenable = journalOpenable,
+        recentReceipts = recentReceipts,
+        offline = journalOpenable && !online,
     )
 }
 

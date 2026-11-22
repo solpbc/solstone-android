@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "short status word for an import whose waiting copy in the journal expired.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 40,
+  "source_revision": "66955023749c19d861e677c73ac155f49a57546420c7453839ca69f7dda345b6",
+  "risk": "routine",
+  "auto_merge": true
+}

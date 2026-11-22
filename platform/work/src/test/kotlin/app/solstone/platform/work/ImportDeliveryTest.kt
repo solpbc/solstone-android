@@ -5,10 +5,16 @@ package app.solstone.platform.work
 
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.platform.persistence.room.IMPORT_STATE_ATTENTION
+import app.solstone.platform.persistence.room.IMPORT_STATE_PENDING
+import app.solstone.platform.persistence.room.IMPORT_STATE_READY_TO_REVIEW
+import app.solstone.platform.persistence.room.IMPORT_STATE_REVIEW_EXPIRED
+import app.solstone.platform.persistence.room.ImportChange
 import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ImportDao
 import app.solstone.platform.persistence.room.ImportDeliveryRow
 import app.solstone.platform.persistence.room.ImportItemRow
+import app.solstone.platform.persistence.room.ImportRecentReceiptRow
 import app.solstone.platform.persistence.room.SourceIntakeRow
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -25,6 +31,7 @@ import kotlin.test.assertTrue
 class ImportDeliveryTest {
     private class Dao : ImportDao {
         val rows = ConcurrentHashMap<String, ImportItemRow>()
+        val recent = ConcurrentHashMap<String, ImportRecentReceiptRow>()
         var delivery: ImportDeliveryRow? = null
         override fun insert(row: ImportItemRow) { rows[row.id] = row }
         override fun update(row: ImportItemRow): Int = if (rows.containsKey(row.id)) { rows[row.id] = row; 1 } else 0
@@ -33,6 +40,28 @@ class ImportDeliveryTest {
         override fun all(): List<ImportItemRow> = rows.values.sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
         override fun putDelivery(row: ImportDeliveryRow) { delivery = row }
         override fun delivery(): ImportDeliveryRow? = delivery
+        override fun putRecentReceipt(row: ImportRecentReceiptRow) { recent[row.id] = row }
+        override fun recentReceipts(instanceId: String, cutoff: Long, limit: Int): List<ImportRecentReceiptRow> =
+            recent.values
+                .filter { it.instanceId == instanceId && it.deliveredAt >= cutoff }
+                .sortedWith(compareByDescending<ImportRecentReceiptRow> { it.deliveredAt }.thenByDescending { it.id })
+                .take(limit)
+        override fun pruneExpiredReceipts(cutoff: Long): Int {
+            val expired = recent.values.filter { it.deliveredAt < cutoff }.map { it.id }
+            expired.forEach { recent.remove(it) }
+            return expired.size
+        }
+        override fun trimRecentReceipts(instanceId: String, keep: Int): Int {
+            val keepIds = recent.values
+                .filter { it.instanceId == instanceId }
+                .sortedWith(compareByDescending<ImportRecentReceiptRow> { it.deliveredAt }.thenByDescending { it.id })
+                .take(keep)
+                .map { it.id }
+                .toSet()
+            val drop = recent.values.filter { it.instanceId == instanceId && it.id !in keepIds }.map { it.id }
+            drop.forEach { recent.remove(it) }
+            return drop.size
+        }
         override fun intakeBySource(sourceId: String): SourceIntakeRow? = null
         override fun upsertIntake(row: SourceIntakeRow) = Unit
     }
@@ -62,15 +91,18 @@ class ImportDeliveryTest {
     private lateinit var root: Path
     private lateinit var dao: Dao
     private lateinit var store: ImportCustodyStore
+    private var testClock: Long = 1_000L
 
     private fun setUp(): ImportCustodyStore {
         root = Files.createTempDirectory("import-delivery")
         dao = Dao()
-        store = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+        testClock = 1_000L
+        store = ImportCustodyStore(root = root, dao = dao, clock = { testClock })
         return store
     }
 
     private fun share(name: String = "doc.pdf", mime: String = "application/pdf", caption: String? = null): String {
+        testClock += 1L
         val id = store.begin("file")!!
         val bytes = "pdf-bytes-$name".toByteArray()
         val stageDir = root.resolve(".staging").resolve(id)
@@ -317,5 +349,108 @@ class ImportDeliveryTest {
         assertEquals(ImportStageResult.CLEAN, deliver(journal, ImportRun(), version = "2.0.85"))
         assertEquals(listOf(start), journal.paths)
         assertNull(dao.byId(id))
+    }
+
+    @Test
+    fun confirmationRequiredPreviewEntersReadyToReviewAndPlanFailedEntersAttention() {
+        setUp()
+        val appleId = share("export.zip", mime = "application/zip")
+        val brokenId = share("broken.zip", mime = "application/zip")
+        val journal = Journal(
+            saved("20261122_130001"),
+            json(
+                409,
+                """{"error":"confirm","reason_code":"import_preview_required","kind":"body_confirmation_required","import_id":"20261122_130001"}""",
+            ),
+            saved("20261122_130002"),
+            json(
+                409,
+                """{"error":"bad archive","reason_code":"import_preview_required","kind":"plan_failed","import_id":"20261122_130002"}""",
+            ),
+        )
+        val run = ImportRun()
+        assertEquals(ImportStageResult.CLEAN, deliver(journal, run, version = "2.0.99"))
+        assertTrue(run.stageClean)
+
+        val appleRow = dao.byId(appleId)!!
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, appleRow.state)
+        assertEquals("20261122_130001", appleRow.reviewImportId)
+        assertEquals("body_confirmation_required", appleRow.reviewKind)
+        assertEquals("A", appleRow.reviewInstanceId)
+        assertTrue(Files.exists(root.resolve(appleId).resolve("payload")), "local bytes stay until confirmed")
+
+        val brokenRow = dao.byId(brokenId)!!
+        assertEquals(IMPORT_STATE_ATTENTION, brokenRow.state)
+        assertEquals("plan_failed", brokenRow.attentionKind)
+        assertEquals("import_preview_required", brokenRow.attentionReasonCode)
+
+        // Neither item is auto-retried on reconnect or version bump.
+        val quiet = Journal()
+        assertEquals(ImportStageResult.CLEAN, deliver(quiet, ImportRun(), version = "2.0.100"))
+        assertTrue(quiet.paths.isEmpty())
+    }
+
+    @Test
+    fun reconcileHandlesConfirmedWaitingExpiredTransientAuthStopAndInstanceSwitch() {
+        setUp()
+        val idConfirmed = share("health-1.zip", mime = "application/zip")
+        val idWaiting = share("health-2.zip", mime = "application/zip")
+        val idExpired = share("health-3.zip", mime = "application/zip")
+        val idTransient = share("health-4.zip", mime = "application/zip")
+
+        assertEquals(ImportChange.DONE, store.recordReviewRequired(idConfirmed, "20261122_140001", "import_preview_required", "body_confirmation_required", null, "A"))
+        assertEquals(ImportChange.DONE, store.recordReviewRequired(idWaiting, "20261122_140002", "import_preview_required", "body_confirmation_required", null, "A"))
+        assertEquals(ImportChange.DONE, store.recordReviewRequired(idExpired, "20261122_140003", "import_preview_required", "body_confirmation_required", null, "A"))
+        assertEquals(ImportChange.DONE, store.recordReviewRequired(idTransient, "20261122_140004", "import_preview_required", "body_confirmation_required", null, "A"))
+
+        val inspectJournal = Journal(
+            json(200, """{"status":"running","saved_start":{"state":"consumed","active":true}}"""),
+            json(200, """{"status":"pending","saved_start":{"state":"unknown","active":false}}"""),
+            json(404, """{"error":"not found"}"""),
+            json(503, """{"error":"busy"}"""),
+        )
+        val outcome = reconcileReadyToReviewImports(inspectJournal, store, "A", { true })
+        assertEquals(ImportReconcileOutcome.TRANSIENT, outcome)
+        assertEquals(
+            listOf(
+                "/app/import/api/20261122_140001",
+                "/app/import/api/20261122_140002",
+                "/app/import/api/20261122_140003",
+                "/app/import/api/20261122_140004",
+            ),
+            inspectJournal.paths,
+        )
+
+        // Confirmed: deleted locally + 24h recent receipt persisted.
+        assertNull(dao.byId(idConfirmed))
+        assertFalse(Files.exists(root.resolve(idConfirmed)))
+        assertEquals(listOf("20261122_140001"), store.recentReceipts("A").map { it.importId })
+
+        // StillWaiting (including "unknown"): untouched and local bytes kept!
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(idWaiting)?.state)
+        assertTrue(Files.exists(root.resolve(idWaiting).resolve("payload")))
+
+        // Expired (404): marked review_expired, local bytes kept, sendAgain re-delivers.
+        assertEquals(IMPORT_STATE_REVIEW_EXPIRED, dao.byId(idExpired)?.state)
+        assertTrue(Files.exists(root.resolve(idExpired).resolve("payload")))
+
+        // Transient (503): left unchanged so next pass retries.
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(idTransient)?.state)
+        assertTrue(Files.exists(root.resolve(idTransient).resolve("payload")))
+
+        // 401/403 halts batch immediately without deleting bytes or probing later items.
+        val authJournal = Journal(json(401, """{"error":"unauthorized"}"""))
+        assertEquals(ImportReconcileOutcome.AUTH_STOP, reconcileReadyToReviewImports(authJournal, store, "A", { true }))
+        assertEquals(listOf("/app/import/api/20261122_140002"), authJournal.paths)
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(idWaiting)?.state)
+        assertEquals(IMPORT_STATE_READY_TO_REVIEW, dao.byId(idTransient)?.state)
+
+        // Re-pair to Journal B resets Journal A's review & expired items back to pending without querying Journal B with Journal A's import_ids.
+        val journalB = Journal()
+        assertEquals(ImportReconcileOutcome.CLEAN, reconcileReadyToReviewImports(journalB, store, "B", { true }))
+        assertTrue(journalB.paths.isEmpty())
+        assertEquals(IMPORT_STATE_PENDING, dao.byId(idWaiting)?.state)
+        assertEquals(IMPORT_STATE_PENDING, dao.byId(idExpired)?.state)
+        assertEquals(IMPORT_STATE_PENDING, dao.byId(idTransient)?.state)
     }
 }

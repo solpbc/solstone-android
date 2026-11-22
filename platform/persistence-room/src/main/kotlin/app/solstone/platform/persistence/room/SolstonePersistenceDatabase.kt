@@ -17,6 +17,7 @@ import app.solstone.core.model.QueueState
         SyncStateRow::class,
         ImportItemRow::class,
         ImportDeliveryRow::class,
+        ImportRecentReceiptRow::class,
         CalendarSettingsRow::class,
         CalendarCalendarRow::class,
         CalendarCountRow::class,
@@ -29,7 +30,7 @@ import app.solstone.core.model.QueueState
         SourceIntakeFixRow::class,
         SourceIntakeSeenRow::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)

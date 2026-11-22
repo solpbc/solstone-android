@@ -1,0 +1,26 @@
+{
+  "description": "the solstone app to the owner, on the home import tile",
+  "context": "sub-line count on the import home tile when imports are waiting to send.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 80,
+  "source_revision": "7947ca7c7e30549a4102b6c387dc776d7d189f16639aa4833746714ecb6912cf",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

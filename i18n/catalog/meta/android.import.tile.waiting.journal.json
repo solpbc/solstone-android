@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the home import tile",
+  "context": "sub-line on the import home tile when queued imports are held waiting for the journal.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 60,
+  "source_revision": "aed7b9720bdbea424dadfcc1eded216c855d92d0700f24a19d1d2cbc53aceb35",
+  "risk": "routine",
+  "auto_merge": true
+}

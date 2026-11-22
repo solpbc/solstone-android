@@ -9,12 +9,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -31,10 +34,14 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CollectionItemInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.solstone.core.model.ReasonCode
 import app.solstone.core.model.SourceState
@@ -210,19 +217,10 @@ internal fun PhoneSourceGrid(
             )
         }
         item(key = "importTile") {
-            PhoneNonSourceTile(
-                label = phoneText("android.setup.import"),
-                // ⚠ Was `photos, files, anything`. `anything` claims a category the
-                // product does not offer — the import surface names photos and files
-                // and nothing else — and the correction was already ruled for iOS on
-                // 2026-08-23 (mobile-shell.md § "import is a tile"). Android had
-                // carried the retired string since.
-                subLine = phoneText("android.setup.photos.files"),
-                glyph = R.drawable.phone_import,
+            PhoneImportHomeTile(
+                state = LocalPhoneImport.current.state,
                 index = sources.size,
                 count = sources.size + NON_SOURCE_TILE_COUNT,
-                testTag = "importTile",
-                dashed = false,
                 onOpen = onOpenImport,
             )
         }
@@ -300,7 +298,169 @@ private fun PhoneWelcomeCard(
 }
 
 /**
- * `import` and `add more`.
+ * Active home-tile presentation for `import` using worst-signal-wins precedence:
+ * `needs attention` > `ready to review` > `sending` > `waiting`.
+ * Null when idle (quiet `import` / `photos and files`).
+ */
+internal data class ImportTileActiveSummary(
+    val marker: ImportMarkerKind,
+    val stateWord: String,
+    val subLine: String,
+)
+
+internal fun importTileActiveSummary(state: PhoneImportPaneState): ImportTileActiveSummary? {
+    if (state.rows.isEmpty()) return null
+    val attentionRows = state.rows.filter {
+        it.kind == ImportRowKind.REFUSED ||
+            it.kind == ImportRowKind.MISSING_COPY ||
+            it.kind == ImportRowKind.REVIEW_EXPIRED
+    }
+    val queueFaultHold = state.recent in setOf(
+        ImportRecentState.PAIRING_REFUSED,
+        ImportRecentState.PAIRING_INCOMPLETE,
+        ImportRecentState.JOURNAL_TOO_OLD,
+    )
+    if (attentionRows.isNotEmpty() || queueFaultHold) {
+        val sub = when {
+            attentionRows.size == 1 -> attentionRows.single().name
+            attentionRows.size > 1 -> phoneText("android.import.tile.attention.count", "count" to attentionRows.size)
+            else -> recentText(state.recent)
+        }
+        return ImportTileActiveSummary(
+            marker = ImportMarkerKind.NEEDS_ATTENTION,
+            stateWord = phoneText("android.push.needs.attention"),
+            subLine = sub,
+        )
+    }
+    val reviewRows = state.rows.filter { it.kind == ImportRowKind.READY_TO_REVIEW }
+    if (reviewRows.isNotEmpty()) {
+        val sub = if (reviewRows.size == 1) {
+            reviewRows.single().name
+        } else {
+            phoneText("android.import.tile.ready.count", "count" to reviewRows.size)
+        }
+        return ImportTileActiveSummary(
+            marker = ImportMarkerKind.READY_TO_REVIEW,
+            stateWord = phoneText("android.import.tile.ready.to.review"),
+            subLine = sub,
+        )
+    }
+    val sendingRows = state.rows.filter { it.kind == ImportRowKind.SENDING }
+    if (sendingRows.isNotEmpty()) {
+        val sub = if (sendingRows.size == 1) {
+            sendingRows.single().name
+        } else {
+            phoneText("android.import.tile.sending.count", "count" to sendingRows.size)
+        }
+        return ImportTileActiveSummary(
+            marker = ImportMarkerKind.SENDING,
+            stateWord = phoneText("android.import.sending"),
+            subLine = sub,
+        )
+    }
+    val waitingRows = state.rows.filter { it.kind == ImportRowKind.WAITING || it.kind == ImportRowKind.GOING_AGAIN }
+    if (waitingRows.isNotEmpty()) {
+        val waitingForJournal = state.offline || state.recent in setOf(
+            ImportRecentState.UNPAIRED,
+            ImportRecentState.AWAITING_CONFIRMATION,
+        )
+        val sub = when {
+            waitingForJournal -> phoneText("android.import.tile.waiting.journal")
+            waitingRows.size == 1 -> waitingRows.single().name
+            else -> phoneText("android.import.tile.waiting.count", "count" to waitingRows.size)
+        }
+        return ImportTileActiveSummary(
+            marker = ImportMarkerKind.WAITING,
+            stateWord = phoneText("android.import.waiting"),
+            subLine = sub,
+        )
+    }
+    return null
+}
+
+/**
+ * Home `import` tile: solid tile, quiet when idle (`import` / `photos and files`, no switch, no
+ * `on`/`off`), worst-signal-wins when active (`needs attention` > `ready to review` > `sending` >
+ * `waiting`). Carries `Role.Button` always and `stateDescription` when active.
+ */
+@Composable
+private fun PhoneImportHomeTile(
+    state: PhoneImportPaneState,
+    index: Int,
+    count: Int,
+    onOpen: () -> Unit,
+) {
+    val active = importTileActiveSummary(state)
+    val label = phoneText("android.setup.import")
+    val iconTint = when (active?.marker) {
+        ImportMarkerKind.NEEDS_ATTENTION -> MaterialTheme.colorScheme.error
+        ImportMarkerKind.READY_TO_REVIEW, ImportMarkerKind.SENDING -> MaterialTheme.colorScheme.outline
+        else -> shellSecondaryInk
+    }
+    PhoneTileSurface(
+        modifier = Modifier
+            .semantics {
+                role = Role.Button
+                collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
+                if (active != null) {
+                    stateDescription = phoneText(
+                        "android.source.statecopysubline",
+                        "statecopy" to active.stateWord,
+                        "subline" to active.subLine,
+                    )
+                }
+            }
+            .testTag("importTile"),
+        onClick = onOpen,
+        dashed = false,
+    ) {
+        Box(Modifier.size(0.dp).testTag("importTile-solid"))
+        Icon(
+            painter = painterResource(R.drawable.phone_import),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(22.dp),
+        )
+        WholeWordText(
+            text = label,
+            modifier = Modifier.padding(top = 6.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (active == null) {
+            WholeWordText(
+                text = phoneText("android.setup.photos.files"),
+                style = MaterialTheme.typography.bodySmall,
+                color = shellSecondaryInk,
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ImportStateMarker(kind = active.marker)
+                Spacer(Modifier.width(8.dp))
+                WholeWordText(
+                    text = active.stateWord,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when (active.marker) {
+                        ImportMarkerKind.NEEDS_ATTENTION -> MaterialTheme.colorScheme.error
+                        ImportMarkerKind.READY_TO_REVIEW -> MaterialTheme.colorScheme.outline
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                )
+            }
+            Text(
+                text = active.subLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = shellSecondaryInk,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+/**
+ * `add more` and non-switch destination tiles.
  *
  * ⛔ **Neither carries a state word or a control**, and that is § 2.4 rather than a
  * layout choice: they are destinations, not sources — nothing about them can be on or
@@ -321,6 +481,7 @@ private fun PhoneNonSourceTile(
     PhoneTileSurface(
         modifier = Modifier
             .semantics {
+                role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
             }
             .testTag(testTag),

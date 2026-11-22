@@ -3,6 +3,9 @@
 
 package app.solstone.observer.formfactor.phone
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -13,6 +16,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.solstone.core.model.ReasonCode
@@ -227,20 +232,134 @@ class PhoneDeckNonSourceTileTest {
         composeRule.onNodeWithTag("sourcesFailed").assertIsDisplayed()
     }
 
+    @Test
+    fun importTileShowsWorstSignalWinsWithButtonRoleAndStateDescription() {
+        val reviewState = PhoneImportPaneState(
+            rows = listOf(
+                PhoneImportRow("r1", "export.zip", ImportRowKind.READY_TO_REVIEW, savedAtJournal = true, importId = "20261122_120000", reviewKind = "body_confirmation_required"),
+                PhoneImportRow("w1", "notes.pdf", ImportRowKind.WAITING),
+            ),
+            journalOpenable = true,
+        )
+        setScreen(imports = reviewState)
+        val reviewNode = composeRule.onNodeWithTag("importTile", useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals(Role.Button, reviewNode.config.getOrNull(SemanticsProperties.Role))
+        assertEquals("ready to review. export.zip", reviewNode.config.getOrNull(SemanticsProperties.StateDescription))
+        assertTileTexts("importTile", listOf("import", "ready to review", "export.zip"))
+        composeRule.onNodeWithTag("importMarker-ready_to_review", useUnmergedTree = true).assertExists()
+
+        // needs attention beats ready to review.
+        val attentionSummary = importTileActiveSummary(
+            reviewState.copy(
+                rows = reviewState.rows + PhoneImportRow("a1", "broken.zip", ImportRowKind.REFUSED, error = "bad archive"),
+            ),
+        )
+        assertNotNull(attentionSummary)
+        assertEquals(ImportMarkerKind.NEEDS_ATTENTION, attentionSummary!!.marker)
+        assertEquals("needs attention", attentionSummary.stateWord)
+        assertEquals("broken.zip", attentionSummary.subLine)
+    }
+
+    @Test
+    fun importPaneReviewExpiredRecentRemoveAndLargeFontRenderCleanly() {
+        var reviewedId: String? = null
+        var sentAgainId: String? = null
+        var openedRecentId: String? = null
+        var removedId: String? = null
+        val now = 1_763_838_000_000L
+        val state = PhoneImportPaneState(
+            rows = listOf(
+                PhoneImportRow(
+                    id = "rev1",
+                    name = "very-long-apple-health-export-archive-2026-11-22.zip",
+                    kind = ImportRowKind.READY_TO_REVIEW,
+                    savedAtJournal = true,
+                    importId = "20261122_120000",
+                    reviewKind = "body_confirmation_required",
+                ),
+                PhoneImportRow(
+                    id = "exp1",
+                    name = "old-health.zip",
+                    kind = ImportRowKind.REVIEW_EXPIRED,
+                    importId = "20261122_100000",
+                    reviewKind = "body_confirmation_required",
+                ),
+                PhoneImportRow(
+                    id = "att1",
+                    name = "corrupt.zip",
+                    kind = ImportRowKind.REFUSED,
+                    error = "couldn't read archive",
+                    retryable = false,
+                ),
+            ),
+            recentReceipts = listOf(
+                PhoneImportRecentReceipt("rcpt1", "field-notes.pdf", "20261122_115000", now - 10 * 60_000L),
+                PhoneImportRecentReceipt("rcpt2", "already-there.jpg", null, now - 30 * 60_000L),
+            ),
+            journalOpenable = true,
+        )
+        val actions = PhoneImportActions(
+            onReviewInJournal = { reviewedId = it },
+            onSendAgain = { sentAgainId = it },
+            onOpenRecentImport = { openedRecentId = it },
+            onRemove = { removedId = it },
+        )
+        composeRule.setContent {
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalPhoneStatusNow provides PhoneStatusNow { now },
+                LocalDensity provides Density(baseDensity.density, fontScale = 2.0f),
+            ) {
+                PhoneTheme(ThemeVariant.LIGHT_STANDARD) {
+                    PhoneImportPane(state = state, actions = actions)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Review row has no try now button; tapping review opens the journal import ID.
+        composeRule.onNodeWithTag("importItem-rev1-retry").assertDoesNotExist()
+        composeRule.onNodeWithTag("importItem-rev1-review").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals("20261122_120000", reviewedId)
+
+        // Expired row has send again to review.
+        composeRule.onNodeWithTag("importItem-exp1-sendAgain").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals("exp1", sentAgainId)
+
+        // Remove on READY_TO_REVIEW shows the updated waiting-copy dialog text.
+        composeRule.onNodeWithTag("importItem-rev1-remove").performScrollTo().performClick()
+        composeRule.onNodeWithText(
+            "this removes the copy on this device. the waiting copy in your journal stays there until you discard it or it expires.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithTag("importRemove-confirm").performClick()
+        assertEquals("rev1", removedId)
+
+        // Recent receipt with import_id is clickable; receipt without import_id renders calmly non-clickable.
+        composeRule.onNodeWithTag("importRecent-rcpt1").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals("20261122_115000", openedRecentId)
+        val nonClickableRecent = composeRule.onNodeWithTag("importRecent-rcpt2", useUnmergedTree = true).fetchSemanticsNode()
+        assertFalse(nonClickableRecent.config.getOrNull(SemanticsActions.OnClick) != null)
+        composeRule.onNodeWithTag("importRow-allHistory").performScrollTo().assertIsDisplayed()
+    }
+
     private fun setScreen(
         loadState: LoadState<SourcesReadModel> = loaded(audioOn()),
         initial: PhoneRoute? = null,
+        imports: PhoneImportPaneState = PhoneImportPaneState(),
+        status: PhoneStatusModel = connected(),
     ) {
         composeRule.setContent {
-            PhoneObserverScreen(
-                loadState = loadState,
-                status = connected(),
-                onToggle = { _, _ -> },
-                onStartObserving = {},
-                onConfirmMark = {},
-                initial = initial?.let { PhoneRouteStack.Empty.showInDetail(it) }
-                    ?: PhoneRouteStack.Empty,
-            )
+            CompositionLocalProvider(LocalPhoneImport provides PhoneImportBinding(state = imports)) {
+                PhoneObserverScreen(
+                    loadState = loadState,
+                    status = status,
+                    onToggle = { _, _ -> },
+                    onStartObserving = {},
+                    onConfirmMark = {},
+                    initial = initial?.let { PhoneRouteStack.Empty.showInDetail(it) }
+                        ?: PhoneRouteStack.Empty,
+                )
+            }
         }
         composeRule.waitForIdle()
     }

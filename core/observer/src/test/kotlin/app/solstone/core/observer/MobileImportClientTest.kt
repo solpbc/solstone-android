@@ -908,4 +908,111 @@ class MobileImportClientTest {
         assertEquals("chatgpt", partsFor("chatgpt")["source_hint"], "a card names its source")
         assertTrue("source_hint" !in partsFor("quick"), "a quick pick leaves the kind to the journal")
     }
+
+    @Test
+    fun startPreviewRequiredClassificationFollowsHardenedContract() {
+        val validId = "20261122_143000"
+        val fallbackId = "20261122_142959"
+        for (kind in listOf("body_confirmation_required", "confirmation_required", "evernote_confirmation_required")) {
+            val body = """{"error":"preview needed","reason_code":"import_preview_required","kind":"$kind","import_id":"$validId"}""".toByteArray()
+            assertEquals(
+                MobileImportOutcome.ReviewRequired("preview needed", "import_preview_required", kind, validId),
+                classifyMobileImportResponse(MobileImportOperation.START, 409, body, fallbackImportId = fallbackId),
+                "kind=$kind with response import_id",
+            )
+            // Falls back to persisted /save timestamp when response omits import_id.
+            val noIdBody = """{"error":"preview needed","reason_code":"import_preview_required","kind":"$kind"}""".toByteArray()
+            assertEquals(
+                MobileImportOutcome.ReviewRequired("preview needed", "import_preview_required", kind, fallbackId),
+                classifyMobileImportResponse(MobileImportOperation.START, 409, noIdBody, fallbackImportId = fallbackId),
+                "kind=$kind with fallback import_id",
+            )
+        }
+        // Invalid or non-ASCII Unicode digits in import_id (and no valid fallback) must NEVER enter ReviewRequired.
+        val unicodeDigits = "\u0662\u0660\u0662\u0666\u0661\u0661\u0662\u0662_\u0661\u0664\u0663\u0660\u0660\u0660"
+        assertTrue(!isValidImportId(unicodeDigits))
+        assertTrue(!isValidImportId("../20261122_1430"))
+        assertTrue(isValidImportId(validId))
+        val badIdBody = """{"error":"preview needed","reason_code":"import_preview_required","kind":"body_confirmation_required","import_id":"$unicodeDigits"}""".toByteArray()
+        assertEquals(
+            MobileImportOutcome.NeedsAttention("preview needed", "import_preview_required", "body_confirmation_required"),
+            classifyMobileImportResponse(MobileImportOperation.START, 409, badIdBody, fallbackImportId = "bad"),
+        )
+        // All non-confirmation 409 import_preview_required kinds stay NeedsAttention, never ReviewRequired.
+        for (kind in listOf("plan_failed", "nothing_to_import", "source_changed", "invalid_request", "not_found", "already_running", "unknown_kind", null)) {
+            val kindJson = if (kind != null) ""","kind":"$kind"""" else ""
+            val body = """{"error":"refused","reason_code":"import_preview_required"$kindJson,"import_id":"$validId"}""".toByteArray()
+            assertEquals(
+                MobileImportOutcome.NeedsAttention("refused", "import_preview_required", kind),
+                classifyMobileImportResponse(MobileImportOperation.START, 409, body, fallbackImportId = fallbackId),
+                "non-confirmation kind=$kind must stay NeedsAttention",
+            )
+        }
+        // Client.start passes timestamp as fallbackImportId.
+        val http = ScriptedPlHttpClient()
+        http.response = HttpResponse(
+            409,
+            emptyMap(),
+            """{"error":"preview first","reason_code":"import_preview_required","kind":"body_confirmation_required"}""".toByteArray(),
+        )
+        assertEquals(
+            MobileImportOutcome.ReviewRequired("preview first", "import_preview_required", "body_confirmation_required", fallbackId),
+            MobileImportClient(http).start("/imports/$fallbackId/export.zip", fallbackId),
+        )
+    }
+
+    @Test
+    fun inspectClassifiesEveryReconciliationResponseSafely() {
+        val http = ScriptedPlHttpClient()
+        val client = MobileImportClient(http)
+        // Invalid ID refuses before hitting network.
+        assertTrue(client.inspect("../bad") is MobileImportInspectOutcome.Transient)
+        assertTrue(http.buffered.isEmpty())
+
+        // Confirmed statuses & saved_start active/consumed.
+        for (status in listOf("running", "success", "failed", "unconfirmed", "noted", "unavailable")) {
+            assertEquals(
+                MobileImportInspectOutcome.Confirmed,
+                classifyMobileImportInspectResponse(200, """{"status":"$status"}""".toByteArray()),
+                "status=$status",
+            )
+        }
+        assertEquals(
+            MobileImportInspectOutcome.Confirmed,
+            classifyMobileImportInspectResponse(200, """{"status":"pending","saved_start":{"active":true,"state":"eligible"}}""".toByteArray()),
+        )
+        assertEquals(
+            MobileImportInspectOutcome.Confirmed,
+            classifyMobileImportInspectResponse(200, """{"status":"pending","saved_start":{"active":false,"state":"consumed"}}""".toByteArray()),
+        )
+
+        // Still waiting: NEVER delete on eligible, unknown, or omitted saved_start.
+        assertEquals(
+            MobileImportInspectOutcome.StillWaiting,
+            classifyMobileImportInspectResponse(200, """{"status":"pending","saved_start":{"active":false,"state":"eligible"}}""".toByteArray()),
+        )
+        assertEquals(
+            MobileImportInspectOutcome.StillWaiting,
+            classifyMobileImportInspectResponse(200, """{"status":"pending","saved_start":{"active":false,"state":"unknown"}}""".toByteArray()),
+        )
+        assertEquals(
+            MobileImportInspectOutcome.StillWaiting,
+            classifyMobileImportInspectResponse(200, """{"status":"pending"}""".toByteArray()),
+        )
+
+        // 404 -> Expired, 401/403 -> AuthStop, 400/429/5xx/bad JSON -> Transient.
+        assertEquals(MobileImportInspectOutcome.Expired, classifyMobileImportInspectResponse(404, ByteArray(0)))
+        assertEquals(MobileImportInspectOutcome.AuthStop, classifyMobileImportInspectResponse(401, ByteArray(0)))
+        assertEquals(MobileImportInspectOutcome.AuthStop, classifyMobileImportInspectResponse(403, ByteArray(0)))
+        assertTrue(classifyMobileImportInspectResponse(400, ByteArray(0)) is MobileImportInspectOutcome.Transient)
+        assertTrue(classifyMobileImportInspectResponse(429, ByteArray(0)) is MobileImportInspectOutcome.Transient)
+        assertTrue(classifyMobileImportInspectResponse(503, ByteArray(0)) is MobileImportInspectOutcome.Transient)
+        assertTrue(classifyMobileImportInspectResponse(200, "not-json".toByteArray()) is MobileImportInspectOutcome.Transient)
+
+        // Wire path check.
+        http.response = HttpResponse(200, emptyMap(), """{"status":"running"}""".toByteArray())
+        assertEquals(MobileImportInspectOutcome.Confirmed, client.inspect("20261122_143000"))
+        assertEquals("GET", http.buffered.single().method)
+        assertEquals("/app/import/api/20261122_143000", http.buffered.single().path)
+    }
 }

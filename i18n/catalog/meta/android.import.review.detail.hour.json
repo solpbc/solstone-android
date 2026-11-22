@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "detail sentence for an Apple Health or body import saved in the journal with a one-hour staging window before expiry.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 160,
+  "source_revision": "bbff647e10bbc0973f26c10260caa090cffc3942ff041087d38a2142923712ec",
+  "risk": "routine",
+  "auto_merge": true
+}

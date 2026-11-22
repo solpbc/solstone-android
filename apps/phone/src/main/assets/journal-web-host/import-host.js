@@ -28,6 +28,7 @@
   const items = new Map();
   let timer;
   async function update() {
+    let hasFast = false;
     for (const [item, record] of items) {
       try {
         const status = await post({type:'host.status', item});
@@ -38,10 +39,18 @@
             ...status, type:contract.status, item, name:record.name, id:record.id,
           }}));
         }
-        if (['attention', 'delivered', 'gone'].includes(status.state)) items.delete(item);
-      } catch (_) { /* Read the status again while the document is open. */ }
+        const waitingForReview = status.state === 'attention' && status.review_required === true;
+        if (waitingForReview) {
+          record.slow = true;
+        } else if (['attention', 'delivered', 'gone'].includes(status.state)) {
+          items.delete(item);
+        } else {
+          record.slow = false;
+          hasFast = true;
+        }
+      } catch (_) { /* Read the status again while the document is open. */ hasFast = true; }
     }
-    timer = items.size ? setTimeout(update, 400) : undefined;
+    timer = items.size ? setTimeout(update, hasFast ? 400 : 2000) : undefined;
   }
   const isObject = value => typeof value === 'object' && value !== null && !Array.isArray(value);
   Object.defineProperty(window, contract.capability, {value:Object.freeze({

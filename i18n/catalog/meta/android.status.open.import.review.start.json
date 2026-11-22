@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the status pane",
+  "context": "sub-line under the ready-to-review headline telling the owner to open import to review and start.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "e4e08e1c000af2959f97ccdecc04c047df15eba54535e2e5db036641bb582026",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -5,22 +5,36 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.i18n.phoneText
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,14 +42,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.ZoneId
 
 /** What the import pane's recent line says, decided from the store and the pairing. */
 enum class ImportRecentState {
@@ -93,6 +122,12 @@ enum class ImportRowKind {
     WAITING,
     SENDING,
 
+    /** Staged in the journal awaiting owner preview & confirmation; local copy stays on device. */
+    READY_TO_REVIEW,
+
+    /** The waiting copy in the journal expired (`404`); local copy stays on device to send again. */
+    REVIEW_EXPIRED,
+
     /** The journal it would go to now refused it; [PhoneImportRow.error] says why. */
     REFUSED,
 
@@ -112,6 +147,18 @@ data class PhoneImportRow(
     val retryable: Boolean = false,
     /** The journal already holds a staged copy, so removing it here may not keep it out. */
     val savedAtJournal: Boolean = false,
+    /** Valid strict-ASCII `YYYYMMDD_HHMMSS` journal import ID when staged for review. */
+    val importId: String? = null,
+    /** Confirmation kind (e.g. `body_confirmation_required` for the 1-hour Apple Health copy). */
+    val reviewKind: String? = null,
+)
+
+/** One persisted 24-hour recent receipt scoped to the currently paired journal instance. */
+data class PhoneImportRecentReceipt(
+    val id: String,
+    val filename: String,
+    val importId: String?,
+    val deliveredAtEpochMs: Long,
 )
 
 /** Why an item wasn't taken in, for the owner. */
@@ -132,7 +179,25 @@ data class PhoneImportPaneState(
     val interrupted: Boolean = false,
     /** The journal can be opened here: paired, and its mark confirmed. */
     val journalOpenable: Boolean = false,
-)
+    /** Persisted 24-hour receipts (max 5 newest) for the currently paired & confirmed journal. */
+    val recentReceipts: List<PhoneImportRecentReceipt> = emptyList(),
+    /** True when the paired journal is currently offline/unreachable while items wait. */
+    val offline: Boolean = false,
+) {
+    val readyToReviewCount: Int
+        get() = rows.count { it.kind == ImportRowKind.READY_TO_REVIEW }
+
+    val hasNeedsAttention: Boolean
+        get() = rows.any {
+            it.kind == ImportRowKind.REFUSED ||
+                it.kind == ImportRowKind.MISSING_COPY ||
+                it.kind == ImportRowKind.REVIEW_EXPIRED
+        } || (rows.isNotEmpty() && recent in setOf(
+            ImportRecentState.PAIRING_REFUSED,
+            ImportRecentState.PAIRING_INCOMPLETE,
+            ImportRecentState.JOURNAL_TOO_OLD,
+        ))
+}
 
 class PhoneImportActions(
     val onPickPhotos: () -> Unit = {},
@@ -145,6 +210,12 @@ class PhoneImportActions(
     val onOpenScreenshots: () -> Unit = {},
     /** Opens the journal's own import page, for the kinds it brings in from other services. */
     val onMoreImports: () -> Unit = {},
+    /** Opens `/app/import/<importId>` in the in-app journal sheet for review & confirmation. */
+    val onReviewInJournal: (String) -> Unit = {},
+    /** Re-enqueues an expired review item from its local device bytes. */
+    val onSendAgain: (String) -> Unit = {},
+    /** Opens `/app/import/<importId>` from a persisted 24h recent receipt. */
+    val onOpenRecentImport: (String) -> Unit = {},
 )
 
 /** The import pane's state and actions, provided once by the activity that hosts the shell. */
@@ -154,6 +225,126 @@ data class PhoneImportBinding(
 )
 
 val LocalPhoneImport = compositionLocalOf { PhoneImportBinding() }
+
+/** Whether the in-app journal sheet is currently open, so [PhoneImportPane] can restore focus on dismiss. */
+val LocalPhoneJournalSheetOpen = compositionLocalOf { false }
+
+/**
+ * Distinct geometric shapes for every import state (separate from [TileDotMark], which stays locked
+ * to the 6 [app.solstone.core.model.SourceState] entries). Zero infinite animations.
+ */
+enum class ImportMarkerKind {
+    /** Brand-orange bullseye (outer ring + center dot). */
+    READY_TO_REVIEW,
+
+    /** Error-ink hollow triangle (expired waiting copy). */
+    REVIEW_EXPIRED,
+
+    /** Brand-orange 270-degree open arc (actively sending). */
+    SENDING,
+
+    /** Calm secondary-ink hollow circle ring (waiting on device). */
+    WAITING,
+
+    /** Error-ink filled diamond (needs attention / refused / missing copy). */
+    NEEDS_ATTENTION,
+
+    /** Status-on green filled disc (delivered in journal). */
+    DELIVERED,
+}
+
+@Composable
+fun ImportStateMarker(
+    kind: ImportMarkerKind,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.outline
+    val error = MaterialTheme.colorScheme.error
+    val secondary = shellSecondaryInk
+    val green = LocalStatusOnGreen.current
+    Canvas(
+        modifier
+            .size(12.dp)
+            .testTag("importMarker-${kind.name.lowercase()}")
+            .clearAndSetSemantics { },
+    ) {
+        val strokeWidth = size.minDimension * 0.18f
+        val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val inset = size.minDimension * 0.10f
+        val diameter = size.minDimension - inset * 2
+        val topLeft = Offset(inset, inset)
+        val box = Size(diameter, diameter)
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = diameter / 2f
+        when (kind) {
+            ImportMarkerKind.READY_TO_REVIEW -> {
+                drawArc(
+                    color = accent,
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = box,
+                    style = stroke,
+                )
+                drawCircle(
+                    color = accent,
+                    radius = r * 0.38f,
+                    center = Offset(cx, cy),
+                )
+            }
+            ImportMarkerKind.REVIEW_EXPIRED -> {
+                val path = Path().apply {
+                    moveTo(cx, inset)
+                    lineTo(size.width - inset, size.height - inset)
+                    lineTo(inset, size.height - inset)
+                    close()
+                }
+                drawPath(path, color = error, style = stroke)
+            }
+            ImportMarkerKind.SENDING -> {
+                drawArc(
+                    color = accent,
+                    startAngle = -90f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = box,
+                    style = stroke,
+                )
+            }
+            ImportMarkerKind.WAITING -> {
+                drawArc(
+                    color = secondary,
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = box,
+                    style = stroke,
+                )
+            }
+            ImportMarkerKind.NEEDS_ATTENTION -> {
+                val path = Path().apply {
+                    moveTo(cx, cy - r)
+                    lineTo(cx + r, cy)
+                    lineTo(cx, cy + r)
+                    lineTo(cx - r, cy)
+                    close()
+                }
+                drawPath(path, color = error)
+            }
+            ImportMarkerKind.DELIVERED -> {
+                drawCircle(
+                    color = green,
+                    radius = r,
+                    center = Offset(cx, cy),
+                )
+            }
+        }
+    }
+}
 
 fun refusalText(reason: IntakeRefusalReason): String =
     when (reason) {
@@ -188,7 +379,24 @@ internal fun intakeText(line: PhoneIntakeLine): String =
 /** The fallback when the journal refused an item without a sentence of its own. */
 internal val IMPORT_REFUSED_FALLBACK get() = phoneText("android.import.journal.couldn.t.accept")
 
-/** `import`: what it adds, the two pickers, the recent line, and what is still on this device. */
+private fun deviceRowSortRank(kind: ImportRowKind): Int = when (kind) {
+    ImportRowKind.REFUSED, ImportRowKind.MISSING_COPY -> 0
+    ImportRowKind.SENDING -> 1
+    ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> 2
+    ImportRowKind.READY_TO_REVIEW, ImportRowKind.REVIEW_EXPIRED -> 3
+}
+
+internal fun queueHoldLine(state: PhoneImportPaneState): String? = when (state.recent) {
+    ImportRecentState.UNPAIRED,
+    ImportRecentState.AWAITING_CONFIRMATION,
+    ImportRecentState.PAIRING_REFUSED,
+    ImportRecentState.PAIRING_INCOMPLETE,
+    ImportRecentState.JOURNAL_TOO_OLD,
+    -> recentText(state.recent)
+    else -> if (state.offline) phoneText("android.import.queue.offline") else null
+}
+
+/** `import`: what it adds, file picker & journal handoff, review card, device queue, and 24h recent receipts. */
 @Composable
 fun PhoneImportPane(
     modifier: Modifier = Modifier,
@@ -196,6 +404,39 @@ fun PhoneImportPane(
     actions: PhoneImportActions = PhoneImportActions(),
 ) {
     var confirmingRemove by remember { mutableStateOf<PhoneImportRow?>(null) }
+    val journalSheetOpen = LocalPhoneJournalSheetOpen.current
+    var previousSheetOpen by remember { mutableStateOf(journalSheetOpen) }
+    var lastJournalTrigger by remember { mutableStateOf<String?>(null) }
+    val moreFocusRequester = remember { FocusRequester() }
+    val allHistoryFocusRequester = remember { FocusRequester() }
+    val triggerFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    LaunchedEffect(journalSheetOpen) {
+        if (previousSheetOpen && !journalSheetOpen) {
+            val target = lastJournalTrigger
+            if (target != null) {
+                val requester = when (target) {
+                    "more" -> moreFocusRequester
+                    "history" -> allHistoryFocusRequester
+                    else -> triggerFocusRequesters[target]
+                }
+                if (requester != null) {
+                    runCatching { requester.requestFocus() }
+                }
+                lastJournalTrigger = null
+            }
+        }
+        previousSheetOpen = journalSheetOpen
+    }
+
+    val reviewRows = state.rows.filter {
+        it.kind == ImportRowKind.READY_TO_REVIEW || it.kind == ImportRowKind.REVIEW_EXPIRED
+    }
+    val deviceRows = state.rows
+        .filter { it.kind != ImportRowKind.READY_TO_REVIEW && it.kind != ImportRowKind.REVIEW_EXPIRED }
+        .sortedBy { deviceRowSortRank(it.kind) }
+    val nowEpochMs = LocalPhoneStatusNow.current.nowEpochMs()
+    val zone = ZoneId.systemDefault()
+
     PhonePaneScaffold(
         modifier.semantics { paneTitle = spokenPaneTitle(PhoneRoute.Import) },
     ) {
@@ -203,10 +444,24 @@ fun PhoneImportPane(
         PaneNote(phoneText("android.import.adds.pdfs.audio.images.text"))
         PhoneIntakeFactRows("import")
         PaneCard {
-            PaneNavRow(label = phoneText("android.import.files"), onClick = actions.onPickFiles, modifier = Modifier.testTag("importRow-files"))
+            PaneNavRow(
+                label = phoneText("android.import.files"),
+                onClick = actions.onPickFiles,
+                modifier = Modifier.testTag("importRow-files"),
+            )
             if (state.journalOpenable) {
                 PaneRowDivider()
-                PaneNavRow(label = phoneText("android.import.moreimports"), onClick = actions.onMoreImports, modifier = Modifier.testTag("importRow-more"))
+                PaneNavRow(
+                    label = phoneText("android.import.moreimports"),
+                    subLine = phoneText("android.import.moreimports.subline"),
+                    onClick = {
+                        lastJournalTrigger = "more"
+                        actions.onMoreImports()
+                    },
+                    modifier = Modifier
+                        .testTag("importRow-more")
+                        .focusRequester(moreFocusRequester),
+                )
             }
         }
         val screenshotsOn = LocalPhoneScreenshots.current.state.enabled
@@ -225,7 +480,9 @@ fun PhoneImportPane(
         if (state.interrupted) {
             PaneCard(Modifier.testTag("importInterrupted")) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.surfacePadding, vertical = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = ShellMetrics.surfacePadding, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
@@ -234,30 +491,108 @@ fun PhoneImportPane(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = actions.onDismissInterrupted, modifier = Modifier.testTag("importInterrupted-dismiss")) { Text(phoneText("android.import.ok")) }
+                    TextButton(
+                        onClick = actions.onDismissInterrupted,
+                        modifier = Modifier.testTag("importInterrupted-dismiss"),
+                    ) { Text(phoneText("android.import.ok")) }
+                }
+            }
+        }
+        if (reviewRows.isNotEmpty()) {
+            PaneSectionTitle(phoneText("android.import.waiting.for.review"))
+            ImportReviewCard(Modifier.testTag("importReviewCard")) {
+                reviewRows.forEachIndexed { index, row ->
+                    if (index > 0) PaneRowDivider()
+                    val triggerKey = "review:${row.id}"
+                    val requester = triggerFocusRequesters.getOrPut(triggerKey) { FocusRequester() }
+                    ImportReviewRow(
+                        row = row,
+                        journalOpenable = state.journalOpenable,
+                        focusRequester = requester,
+                        onReview = { importId ->
+                            lastJournalTrigger = triggerKey
+                            actions.onReviewInJournal(importId)
+                        },
+                        onSendAgain = { actions.onSendAgain(row.id) },
+                        onAskRemove = { confirmingRemove = row },
+                    )
+                }
+            }
+        }
+        if (deviceRows.isNotEmpty()) {
+            PaneSectionTitle(phoneText("android.import.device"))
+            PaneCard(Modifier.testTag("importDeviceCard")) {
+                val holdLine = queueHoldLine(state)
+                if (holdLine != null) {
+                    Text(
+                        text = holdLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = shellSecondaryInk,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 10.dp)
+                            .testTag("importQueueHold"),
+                    )
+                    PaneRowDivider()
+                }
+                deviceRows.forEachIndexed { index, row ->
+                    if (index > 0) PaneRowDivider()
+                    ImportItemRow(row, actions, onAskRemove = { confirmingRemove = it })
                 }
             }
         }
         PaneSectionTitle(phoneText("android.import.recent"))
-        PaneCard {
-            Text(
-                recentText(state.recent),
-                style = MaterialTheme.typography.bodyMedium,
-                color = shellSecondaryInk,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = ShellMetrics.rowMinHeight)
-                    .padding(horizontal = ShellMetrics.surfacePadding, vertical = 12.dp)
-                    .testTag("importRow-recent")
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-        if (state.rows.isNotEmpty()) {
-            PaneSectionTitle(phoneText("android.import.device"))
-            PaneCard {
-                state.rows.forEachIndexed { index, row ->
+        PaneCard(Modifier.testTag("importRecentCard")) {
+            if (state.recentReceipts.isEmpty()) {
+                Text(
+                    text = phoneText("android.import.nothing.yet"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = shellSecondaryInk,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = ShellMetrics.rowMinHeight)
+                        .padding(horizontal = ShellMetrics.surfacePadding, vertical = 12.dp)
+                        .testTag("importRow-recent")
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            } else {
+                state.recentReceipts.forEachIndexed { index, receipt ->
                     if (index > 0) PaneRowDivider()
-                    ImportItemRow(row, actions, onAskRemove = { confirmingRemove = it })
+                    val triggerKey = "recent:${receipt.id}"
+                    val requester = triggerFocusRequesters.getOrPut(triggerKey) { FocusRequester() }
+                    ImportRecentReceiptRow(
+                        receipt = receipt,
+                        nowEpochMs = nowEpochMs,
+                        zone = zone,
+                        journalOpenable = state.journalOpenable,
+                        focusRequester = requester,
+                        onOpen = { importId ->
+                            lastJournalTrigger = triggerKey
+                            actions.onOpenRecentImport(importId)
+                        },
+                    )
+                }
+            }
+            if (state.journalOpenable) {
+                PaneRowDivider()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = ShellMetrics.rowMinHeight)
+                        .focusRequester(allHistoryFocusRequester)
+                        .clickable(role = Role.Button) {
+                            lastJournalTrigger = "history"
+                            actions.onMoreImports()
+                        }
+                        .padding(horizontal = ShellMetrics.surfacePadding, vertical = 12.dp)
+                        .testTag("importRow-allHistory"),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        text = phoneText("android.import.recent.all.history"),
+                        style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
+                        color = MaterialTheme.colorScheme.outline,
+                    )
                 }
             }
         }
@@ -265,12 +600,12 @@ fun PhoneImportPane(
     confirmingRemove?.let { row ->
         AlertDialog(
             onDismissRequest = { confirmingRemove = null },
-            title = { Text(phoneText("android.import.remove.row.name" , "name" to (row.name))) },
+            title = { Text(phoneText("android.import.remove.row.name", "name" to (row.name))) },
             text = {
                 Text(
                     when {
                         row.kind == ImportRowKind.MISSING_COPY -> phoneText("android.import.copy.already.gone.so.only")
-                        row.savedAtJournal -> phoneText("android.import.removes.copy.device.journal.may")
+                        row.kind == ImportRowKind.READY_TO_REVIEW || row.savedAtJournal -> phoneText("android.import.removes.copy.device.journal.may")
                         else -> phoneText("android.import.removes.copy.device.so.won")
                     },
                 )
@@ -285,9 +620,199 @@ fun PhoneImportPane(
                 ) { Text(phoneText("android.import.remove")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingRemove = null }, modifier = Modifier.testTag("importRemove-cancel")) { Text(phoneText("android.phone.cancel")) }
+                TextButton(
+                    onClick = { confirmingRemove = null },
+                    modifier = Modifier.testTag("importRemove-cancel"),
+                ) { Text(phoneText("android.phone.cancel")) }
             },
         )
+    }
+}
+
+@Composable
+private fun ImportReviewCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val fill = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.14f).compositeOver(shellSurface)
+    val border = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(color = fill, shape = ShellMetrics.cardShape)
+            .border(width = 1.dp, color = border, shape = ShellMetrics.cardShape)
+            .padding(vertical = 4.dp),
+        content = content,
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ImportReviewRow(
+    row: PhoneImportRow,
+    journalOpenable: Boolean,
+    focusRequester: FocusRequester,
+    onReview: (String) -> Unit,
+    onSendAgain: () -> Unit,
+    onAskRemove: () -> Unit,
+) {
+    val expired = row.kind == ImportRowKind.REVIEW_EXPIRED
+    val markerKind = if (expired) ImportMarkerKind.REVIEW_EXPIRED else ImportMarkerKind.READY_TO_REVIEW
+    val badgeText = if (expired) {
+        phoneText("android.import.review.expired.label")
+    } else {
+        phoneText("android.import.tile.ready.to.review")
+    }
+    val badgeColor = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+    val detailText = when {
+        expired -> phoneText("android.import.review.expired.detail")
+        row.reviewKind == "body_confirmation_required" -> phoneText("android.import.review.detail.hour")
+        else -> phoneText("android.import.review.detail.general")
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = ShellMetrics.rowMinHeight)
+            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 12.dp)
+            .testTag("importItem-${row.id}"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = row.name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ImportStateMarker(kind = markerKind)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = badgeText,
+                style = MaterialTheme.typography.labelLarge,
+                color = badgeColor,
+            )
+        }
+        Text(
+            text = detailText,
+            style = MaterialTheme.typography.bodySmall,
+            color = shellSecondaryInk,
+        )
+        Spacer(Modifier.height(4.dp))
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (expired) {
+                Button(
+                    onClick = onSendAgain,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                    modifier = Modifier
+                        .testTag("importItem-${row.id}-sendAgain")
+                        .semantics {
+                            contentDescription = phoneText("android.import.send.again.review.a11y", "name" to row.name)
+                        },
+                ) {
+                    Text(phoneText("android.import.send.again.review"))
+                }
+            } else {
+                val importId = row.importId
+                Button(
+                    onClick = { if (importId != null) onReview(importId) },
+                    enabled = journalOpenable && importId != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                    modifier = Modifier
+                        .focusRequester(focusRequester)
+                        .testTag("importItem-${row.id}-review")
+                        .semantics {
+                            contentDescription = phoneText("android.import.review.in.journal.a11y", "name" to row.name)
+                        },
+                ) {
+                    Text(phoneText("android.import.review.in.journal"))
+                }
+            }
+            TextButton(
+                onClick = onAskRemove,
+                modifier = Modifier
+                    .testTag("importItem-${row.id}-remove")
+                    .semantics {
+                        contentDescription = phoneText("android.import.remove.row.name.n2", "name" to row.name)
+                    },
+            ) {
+                Text(phoneText("android.import.remove"))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportRecentReceiptRow(
+    receipt: PhoneImportRecentReceipt,
+    nowEpochMs: Long,
+    zone: ZoneId,
+    journalOpenable: Boolean,
+    focusRequester: FocusRequester,
+    onOpen: (String) -> Unit,
+) {
+    val relative = formatRelative(receipt.deliveredAtEpochMs, nowEpochMs, zone)
+    val subLine = phoneText("android.import.recent.in.journal", "relative" to relative)
+    val importId = receipt.importId
+    val openable = journalOpenable && importId != null
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = ShellMetrics.rowMinHeight)
+            .then(
+                if (openable) {
+                    Modifier
+                        .focusRequester(focusRequester)
+                        .clickable(role = Role.Button) { onOpen(importId!!) }
+                        .semantics {
+                            contentDescription = phoneText(
+                                "android.import.recent.open.a11y",
+                                "name" to receipt.filename,
+                                "relative" to relative,
+                            )
+                        }
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 10.dp)
+            .testTag("importRecent-${receipt.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        ImportStateMarker(kind = ImportMarkerKind.DELIVERED)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = receipt.filename,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = shellSecondaryInk,
+            )
+        }
+        if (openable) {
+            Icon(
+                painter = painterResource(R.drawable.phone_chevron_right),
+                contentDescription = null,
+                tint = shellSecondaryInk,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
@@ -305,51 +830,75 @@ private fun IntakeResult(line: PhoneIntakeLine, modifier: Modifier = Modifier) {
 private fun RefusalLines(refused: List<IntakeRefusalLine>) {
     refused.forEach { line ->
         Text(
-            phoneText("android.import.line.label.refusaltext.line.reason" , "label" to (line.label), "reason" to (refusalText(line.reason))),
+            phoneText("android.import.line.label.refusaltext.line.reason", "label" to (line.label), "reason" to (refusalText(line.reason))),
             style = MaterialTheme.typography.bodySmall,
             color = shellSecondaryInk,
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAskRemove: (PhoneImportRow) -> Unit) {
+    val markerKind = when (row.kind) {
+        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> ImportMarkerKind.WAITING
+        ImportRowKind.SENDING -> ImportMarkerKind.SENDING
+        ImportRowKind.REFUSED, ImportRowKind.MISSING_COPY -> ImportMarkerKind.NEEDS_ATTENTION
+        ImportRowKind.READY_TO_REVIEW -> ImportMarkerKind.READY_TO_REVIEW
+        ImportRowKind.REVIEW_EXPIRED -> ImportMarkerKind.REVIEW_EXPIRED
+    }
+    val isAttention = row.kind == ImportRowKind.REFUSED || row.kind == ImportRowKind.MISSING_COPY
     val subLine = when (row.kind) {
-        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> phoneText("android.import.waiting")
-        ImportRowKind.SENDING -> phoneText("android.import.sending")
+        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> phoneText("android.import.row.waiting.detail")
+        ImportRowKind.SENDING -> phoneText("android.import.row.sending.detail")
         ImportRowKind.REFUSED -> row.error ?: IMPORT_REFUSED_FALLBACK
         ImportRowKind.MISSING_COPY -> phoneText("android.import.copy.device.missing")
+        ImportRowKind.READY_TO_REVIEW -> phoneText("android.import.review.detail.general")
+        ImportRowKind.REVIEW_EXPIRED -> phoneText("android.import.review.expired.detail")
     }
     Column(
         Modifier
             .fillMaxWidth()
             .heightIn(min = ShellMetrics.rowMinHeight)
-            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 8.dp)
+            .padding(horizontal = ShellMetrics.surfacePadding, vertical = 10.dp)
             .testTag("importItem-${row.id}"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             row.name,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(subLine, style = MaterialTheme.typography.bodySmall, color = shellSecondaryInk)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ImportStateMarker(kind = markerKind)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = subLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isAttention) MaterialTheme.colorScheme.error else shellSecondaryInk,
+            )
+        }
         if (row.kind != ImportRowKind.SENDING) {
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 if (row.kind == ImportRowKind.REFUSED && row.retryable) {
                     TextButton(
                         onClick = { actions.onRetry(row.id) },
                         modifier = Modifier
                             .testTag("importItem-${row.id}-retry")
-                            .semantics { contentDescription = phoneText("android.import.try.now.row.name" , "name" to (row.name)) },
+                            .semantics { contentDescription = phoneText("android.import.try.now.row.name", "name" to (row.name)) },
                     ) { Text(phoneText("android.phone.try.now")) }
                 }
                 TextButton(
                     onClick = { onAskRemove(row) },
                     modifier = Modifier
                         .testTag("importItem-${row.id}-remove")
-                        .semantics { contentDescription = phoneText("android.import.remove.row.name.n2" , "name" to (row.name)) },
+                        .semantics { contentDescription = phoneText("android.import.remove.row.name.n2", "name" to (row.name)) },
                 ) { Text(phoneText("android.import.remove")) }
             }
         }

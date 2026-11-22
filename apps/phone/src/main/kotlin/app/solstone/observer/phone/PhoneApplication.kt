@@ -558,15 +558,36 @@ class PhoneApplication : ObserverApplication(
         CalendarRuntimes.current?.onProcessStart()
     }
 
+    private val pairingFollowExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "solstone-pairing-follow").apply { isDaemon = true }
+    }
+
     /**
      * What this process knows about unknown-journal sightings is about one pairing, and does not
-     * outlive it, whichever surface changed it.
+     * outlive it, whichever surface changed it. When the pairing commits to a different journal
+     * instance, review-staged imports from the prior journal reset back to pending so they deliver
+     * cleanly to the new journal without ever querying Journal B with Journal A's `import_id`.
      */
     private fun followPairing() {
         val publisher = syncStores(applicationContext).publisher
-        DialDiagnostics.sightings.followPairing(publisher.currentSnapshot())
+        val resetForSnapshot = { snapshot: app.solstone.core.identity.PairingGraphSnapshot ->
+            val committed = snapshot as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+            if (committed != null) {
+                pairingFollowExecutor.execute {
+                    runCatching {
+                        ImportIntake.get(applicationContext).store.resetReviewItemsForInstanceChange(
+                            committed.home.instanceId,
+                        )
+                    }
+                }
+            }
+        }
+        val initial = publisher.currentSnapshot()
+        DialDiagnostics.sightings.followPairing(initial)
+        resetForSnapshot(initial)
         publisher.subscribe { next ->
             DialDiagnostics.sightings.followPairing(next)
+            resetForSnapshot(next)
         }
     }
 

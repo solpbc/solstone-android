@@ -2990,11 +2990,11 @@
       },
       "cardinal": "en",
       "expectation_kind": "resource-golden",
-      "expected": "adds any kind of file you pick here or share from other apps. your journal works out what it is.",
+      "expected": "adds any file you choose here or share from other apps. your journal works out what it is.",
       "folder": "en-rUS",
       "inputs": {},
       "locale": "en-US",
-      "logical_expected": "adds any kind of file you pick here or share from other apps. your journal works out what it is.",
+      "logical_expected": "adds any file you choose here or share from other apps. your journal works out what it is.",
       "message_id": "android.import.adds.pdfs.audio.images.text",
       "own_reader": "android-xml",
       "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e616464732e706466732e617564696f2e696d616765732e74657874)",
@@ -3594,6 +3594,36 @@
         "entry": "Resources.getString",
         "enum_argument": null,
         "format_passes": 1,
+        "gettext_lookup_key": "android.import.moreimports.subline\u0004m616e64726f69642e696d706f72742e6d6f7265696d706f7274732e7375626c696e65",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e6d6f7265696d706f7274732e7375626c696e65_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.moreimports.subline",
+        "resource_key": "m616e64726f69642e696d706f72742e6d6f7265696d706f7274732e7375626c696e65",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "guides, options, and import history in your journal",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "guides, options, and import history in your journal",
+      "message_id": "android.import.moreimports.subline",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e6d6f7265696d706f7274732e7375626c696e65)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e6d6f7265696d706f7274732e7375626c696e65",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
         "gettext_lookup_key": "android.import.notgoingjournalright\u0004m616e64726f69642e696d706f72742e6e6f74676f696e676a6f75726e616c7269676874",
         "gettext_plural_key": "m616e64726f69642e696d706f72742e6e6f74676f696e676a6f75726e616c7269676874_plural",
         "gettext_unsigned_quantity": null,
@@ -3774,6 +3804,36 @@
         "entry": "Resources.getString",
         "enum_argument": null,
         "format_passes": 1,
+        "gettext_lookup_key": "android.import.queue.offline\u0004m616e64726f69642e696d706f72742e71756575652e6f66666c696e65",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e71756575652e6f66666c696e65_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.queue.offline",
+        "resource_key": "m616e64726f69642e696d706f72742e71756575652e6f66666c696e65",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "waiting for your journal to reconnect.",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "waiting for your journal to reconnect.",
+      "message_id": "android.import.queue.offline",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e71756575652e6f66666c696e65)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e71756575652e6f66666c696e65",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
         "gettext_lookup_key": "android.import.recent\u0004m616e64726f69642e696d706f72742e726563656e74",
         "gettext_plural_key": "m616e64726f69642e696d706f72742e726563656e74_plural",
         "gettext_unsigned_quantity": null,
@@ -3794,6 +3854,118 @@
       "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726563656e74)",
       "platform_reader": "pending",
       "resource_key": "m616e64726f69642e696d706f72742e726563656e74",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.recent.all.history\u0004m616e64726f69642e696d706f72742e726563656e742e616c6c2e686973746f7279",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e726563656e742e616c6c2e686973746f7279_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.recent.all.history",
+        "resource_key": "m616e64726f69642e696d706f72742e726563656e742e616c6c2e686973746f7279",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "all import history in your journal",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "all import history in your journal",
+      "message_id": "android.import.recent.all.history",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726563656e742e616c6c2e686973746f7279)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e726563656e742e616c6c2e686973746f7279",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "relative",
+            "type": "string",
+            "value": "sample"
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.recent.in.journal\u0004m616e64726f69642e696d706f72742e726563656e742e696e2e6a6f75726e616c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e726563656e742e696e2e6a6f75726e616c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.recent.in.journal",
+        "resource_key": "m616e64726f69642e696d706f72742e726563656e742e696e2e6a6f75726e616c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "in your journal · ⁨sample⁩",
+      "folder": "en-rUS",
+      "inputs": {
+        "relative": "sample"
+      },
+      "locale": "en-US",
+      "logical_expected": "in your journal · ⁨sample⁩",
+      "message_id": "android.import.recent.in.journal",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726563656e742e696e2e6a6f75726e616c, \"sample\")",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e726563656e742e696e2e6a6f75726e616c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "name",
+            "type": "string",
+            "value": "sample"
+          },
+          {
+            "name": "relative",
+            "type": "string",
+            "value": "sample"
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.recent.open.a11y\u0004m616e64726f69642e696d706f72742e726563656e742e6f70656e2e61313179",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e726563656e742e6f70656e2e61313179_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.recent.open.a11y",
+        "resource_key": "m616e64726f69642e696d706f72742e726563656e742e6f70656e2e61313179",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨sample⁩, in your journal, ⁨sample⁩. open in your journal.",
+      "folder": "en-rUS",
+      "inputs": {
+        "name": "sample",
+        "relative": "sample"
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨sample⁩, in your journal, ⁨sample⁩. open in your journal.",
+      "message_id": "android.import.recent.open.a11y",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726563656e742e6f70656e2e61313179, \"sample\", \"sample\")",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e726563656e742e6f70656e2e61313179",
       "target": "android"
     },
     {
@@ -3920,11 +4092,11 @@
       },
       "cardinal": "en",
       "expectation_kind": "resource-golden",
-      "expected": "this removes the copy on this device. your journal may still bring in the copy it already has.",
+      "expected": "this removes the copy on this device. the waiting copy in your journal stays there until you discard it or it expires.",
       "folder": "en-rUS",
       "inputs": {},
       "locale": "en-US",
-      "logical_expected": "this removes the copy on this device. your journal may still bring in the copy it already has.",
+      "logical_expected": "this removes the copy on this device. the waiting copy in your journal stays there until you discard it or it expires.",
       "message_id": "android.import.removes.copy.device.journal.may",
       "own_reader": "android-xml",
       "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e6a6f75726e616c2e6d6179)",
@@ -3960,6 +4132,254 @@
       "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e736f2e776f6e)",
       "platform_reader": "pending",
       "resource_key": "m616e64726f69642e696d706f72742e72656d6f7665732e636f70792e6465766963652e736f2e776f6e",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.detail.general\u0004m616e64726f69642e696d706f72742e7265766965772e64657461696c2e67656e6572616c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e67656e6572616c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.detail.general",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e67656e6572616c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "saved in your journal. preview and confirm to start.",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "saved in your journal. preview and confirm to start.",
+      "message_id": "android.import.review.detail.general",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e64657461696c2e67656e6572616c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e67656e6572616c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.detail.hour\u0004m616e64726f69642e696d706f72742e7265766965772e64657461696c2e686f7572",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e686f7572_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.detail.hour",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e686f7572",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "saved in your journal. review within an hour before your journal removes the waiting copy.",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "saved in your journal. review within an hour before your journal removes the waiting copy.",
+      "message_id": "android.import.review.detail.hour",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e64657461696c2e686f7572)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e64657461696c2e686f7572",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.expired.detail\u0004m616e64726f69642e696d706f72742e7265766965772e657870697265642e64657461696c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e64657461696c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.expired.detail",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e64657461696c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "the waiting copy in your journal expired. this device still holds the file.",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "the waiting copy in your journal expired. this device still holds the file.",
+      "message_id": "android.import.review.expired.detail",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e657870697265642e64657461696c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e64657461696c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.expired.label\u0004m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.expired.label",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "expired",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "expired",
+      "message_id": "android.import.review.expired.label",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.in.journal\u0004m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.in.journal",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "review in your journal",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "review in your journal",
+      "message_id": "android.import.review.in.journal",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "name",
+            "type": "string",
+            "value": "sample"
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.review.in.journal.a11y\u0004m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.review.in.journal.a11y",
+        "resource_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "review ⁨sample⁩ in your journal",
+      "folder": "en-rUS",
+      "inputs": {
+        "name": "sample"
+      },
+      "locale": "en-US",
+      "logical_expected": "review ⁨sample⁩ in your journal",
+      "message_id": "android.import.review.in.journal.a11y",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179, \"sample\")",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.row.sending.detail\u0004m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.row.sending.detail",
+        "resource_key": "m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "sending to your journal…",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "sending to your journal…",
+      "message_id": "android.import.row.sending.detail",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.row.waiting.detail\u0004m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.row.waiting.detail",
+        "resource_key": "m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "waiting to go to your journal",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "waiting to go to your journal",
+      "message_id": "android.import.row.waiting.detail",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c",
       "target": "android"
     },
     {
@@ -4164,6 +4584,74 @@
         "entry": "Resources.getString",
         "enum_argument": null,
         "format_passes": 1,
+        "gettext_lookup_key": "android.import.send.again.review\u0004m616e64726f69642e696d706f72742e73656e642e616761696e2e726576696577",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e726576696577_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.send.again.review",
+        "resource_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e726576696577",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "send again to review",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "send again to review",
+      "message_id": "android.import.send.again.review",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e73656e642e616761696e2e726576696577)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e726576696577",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "name",
+            "type": "string",
+            "value": "sample"
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.send.again.review.a11y\u0004m616e64726f69642e696d706f72742e73656e642e616761696e2e7265766965772e61313179",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e7265766965772e61313179_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.send.again.review.a11y",
+        "resource_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e7265766965772e61313179",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "send ⁨sample⁩ again to review",
+      "folder": "en-rUS",
+      "inputs": {
+        "name": "sample"
+      },
+      "locale": "en-US",
+      "logical_expected": "send ⁨sample⁩ again to review",
+      "message_id": "android.import.send.again.review.a11y",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e73656e642e616761696e2e7265766965772e61313179, \"sample\")",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e73656e642e616761696e2e7265766965772e61313179",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
         "gettext_lookup_key": "android.import.sending\u0004m616e64726f69642e696d706f72742e73656e64696e67",
         "gettext_plural_key": "m616e64726f69642e696d706f72742e73656e64696e67_plural",
         "gettext_unsigned_quantity": null,
@@ -4349,6 +4837,218 @@
       "call_contract": {
         "arguments": [
           {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.attention.count\u0004m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.import.tile.attention.count",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ items",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ items",
+      "message_id": "android.import.tile.attention.count",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.ready.count\u0004m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.import.tile.ready.count",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ ready in your journal",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ ready in your journal",
+      "message_id": "android.import.tile.ready.count",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.ready.to.review\u0004m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.tile.ready.to.review",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "ready to review",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "ready to review",
+      "message_id": "android.import.tile.ready.to.review",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.sending.count\u0004m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.import.tile.sending.count",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ files",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ files",
+      "message_id": "android.import.tile.sending.count",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.waiting.count\u0004m616e64726f69642e696d706f72742e74696c652e77616974696e672e636f756e74",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e636f756e74_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.import.tile.waiting.count",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e636f756e74",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ waiting",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ waiting",
+      "message_id": "android.import.tile.waiting.count",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e696d706f72742e74696c652e77616974696e672e636f756e74, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e636f756e74",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.tile.waiting.journal\u0004m616e64726f69642e696d706f72742e74696c652e77616974696e672e6a6f75726e616c",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e6a6f75726e616c_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.tile.waiting.journal",
+        "resource_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e6a6f75726e616c",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "waiting for your journal",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "waiting for your journal",
+      "message_id": "android.import.tile.waiting.journal",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e74696c652e77616974696e672e6a6f75726e616c)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e74696c652e77616974696e672e6a6f75726e616c",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
             "name": "name",
             "type": "string",
             "value": "sample"
@@ -4410,6 +5110,36 @@
       "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e77616974696e67)",
       "platform_reader": "pending",
       "resource_key": "m616e64726f69642e696d706f72742e77616974696e67",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.import.waiting.for.review\u0004m616e64726f69642e696d706f72742e77616974696e672e666f722e726576696577",
+        "gettext_plural_key": "m616e64726f69642e696d706f72742e77616974696e672e666f722e726576696577_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.import.waiting.for.review",
+        "resource_key": "m616e64726f69642e696d706f72742e77616974696e672e666f722e726576696577",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "waiting for your review",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "waiting for your review",
+      "message_id": "android.import.waiting.for.review",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e696d706f72742e77616974696e672e666f722e726576696577)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e696d706f72742e77616974696e672e666f722e726576696577",
       "target": "android"
     },
     {
@@ -5267,6 +5997,36 @@
       "own_reader_call": "getString(R.string.m616e64726f69642e6a6f75726e616c2e636f756c646e2e742e736176652e746861742e747279)",
       "platform_reader": "pending",
       "resource_key": "m616e64726f69642e6a6f75726e616c2e636f756c646e2e742e736176652e746861742e747279",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.journal.dismiss\u0004m616e64726f69642e6a6f75726e616c2e6469736d697373",
+        "gettext_plural_key": "m616e64726f69642e6a6f75726e616c2e6469736d697373_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.journal.dismiss",
+        "resource_key": "m616e64726f69642e6a6f75726e616c2e6469736d697373",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "dismiss",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "dismiss",
+      "message_id": "android.journal.dismiss",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e6a6f75726e616c2e6469736d697373)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e6a6f75726e616c2e6469736d697373",
       "target": "android"
     },
     {
@@ -17622,6 +18382,36 @@
         "entry": "Resources.getString",
         "enum_argument": null,
         "format_passes": 1,
+        "gettext_lookup_key": "android.status.open.import.review.start\u0004m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7265766965772e7374617274",
+        "gettext_plural_key": "m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7265766965772e7374617274_plural",
+        "gettext_unsigned_quantity": null,
+        "locale": "en-US",
+        "message_id": "android.status.open.import.review.start",
+        "resource_key": "m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7265766965772e7374617274",
+        "signed_quantity": null
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "open import to review and start.",
+      "folder": "en-rUS",
+      "inputs": {},
+      "locale": "en-US",
+      "logical_expected": "open import to review and start.",
+      "message_id": "android.status.open.import.review.start",
+      "own_reader": "android-xml",
+      "own_reader_call": "getString(R.string.m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7265766965772e7374617274)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7265766965772e7374617274",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [],
+        "bundle": "android-phone",
+        "entry": "Resources.getString",
+        "enum_argument": null,
+        "format_passes": 1,
         "gettext_lookup_key": "android.status.open.import.see.why\u0004m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7365652e776879",
         "gettext_plural_key": "m616e64726f69642e7374617475732e6f70656e2e696d706f72742e7365652e776879_plural",
         "gettext_unsigned_quantity": null,
@@ -17724,6 +18514,82 @@
       "own_reader_call": "getString(R.string.m616e64726f69642e7374617475732e72656164696e672e76657273696f6e2e6c6173742e6b6e6f776e_v63757272656e74, \"sample\")",
       "platform_reader": "pending",
       "resource_key": "m616e64726f69642e7374617475732e72656164696e672e76657273696f6e2e6c6173742e6b6e6f776e",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.status.ready.to.review.lead\u0004m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e6c656164",
+        "gettext_plural_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e6c656164_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.status.ready.to.review.lead",
+        "resource_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e6c656164",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ imports ready to review",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ imports ready to review",
+      "message_id": "android.status.ready.to.review.lead",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e6c656164, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e6c656164",
+      "target": "android"
+    },
+    {
+      "bundle": "android-phone",
+      "call_contract": {
+        "arguments": [
+          {
+            "name": "count",
+            "type": "cardinal",
+            "value": 0
+          }
+        ],
+        "bundle": "android-phone",
+        "entry": "Resources.getQuantityString",
+        "enum_argument": null,
+        "format_passes": 1,
+        "gettext_lookup_key": "android.status.ready.to.review.pill\u0004m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e70696c6c",
+        "gettext_plural_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e70696c6c_plural",
+        "gettext_unsigned_quantity": 0,
+        "locale": "en-US",
+        "message_id": "android.status.ready.to.review.pill",
+        "resource_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e70696c6c",
+        "signed_quantity": 0
+      },
+      "cardinal": "en",
+      "expectation_kind": "resource-golden",
+      "expected": "⁨0⁩ ready to review",
+      "folder": "en-rUS",
+      "inputs": {
+        "count": 0
+      },
+      "locale": "en-US",
+      "logical_expected": "⁨0⁩ ready to review",
+      "message_id": "android.status.ready.to.review.pill",
+      "own_reader": "android-xml",
+      "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e70696c6c, 0, 0)",
+      "platform_reader": "pending",
+      "resource_key": "m616e64726f69642e7374617475732e72656164792e746f2e7265766965772e70696c6c",
       "target": "android"
     },
     {

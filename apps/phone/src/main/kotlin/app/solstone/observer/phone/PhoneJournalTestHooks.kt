@@ -31,6 +31,7 @@ internal object PhoneJournalTestHooks {
     @Volatile var onLoadUrl: ((String) -> Unit)? = null
     @Volatile var onVisitedHistory: ((url: String, canGoBack: Boolean) -> Unit)? = null
     @Volatile var externalViewStarter: ((Intent) -> Unit)? = null
+    @Volatile var onWebViewCreated: ((android.webkit.WebView) -> Unit)? = null
 
     fun reset() {
         pairingSnapshotOverride = null
@@ -38,5 +39,6 @@ internal object PhoneJournalTestHooks {
         onLoadUrl = null
         onVisitedHistory = null
         externalViewStarter = null
+        onWebViewCreated = null
     }
 }

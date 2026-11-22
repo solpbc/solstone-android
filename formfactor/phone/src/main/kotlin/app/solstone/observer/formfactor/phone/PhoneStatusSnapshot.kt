@@ -67,6 +67,8 @@ fun phoneStatusSnapshotOf(
             journalVersion = backlog.journalVersion,
             calendarHeldForJournal = backlog.calendarHeldForJournal,
             unknownJournals = unknownJournals,
+            importReviewCount = backlog.imports?.reviewCount ?: 0,
+            importsNeedAttention = (backlog.imports?.attentionCount ?: 0) > 0,
         ),
         waiting = waiting,
     )

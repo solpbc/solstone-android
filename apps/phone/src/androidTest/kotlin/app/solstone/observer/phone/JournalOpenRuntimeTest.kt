@@ -75,12 +75,14 @@ class JournalOpenRuntimeTest {
         resetObserverRuntime()
         resetPersistence(context)
         syncStores(context).journalConfirmationStore.confirm("client-fp")
+        syncStores(context).pairingRefusalStore?.markAuthorized(PairingGeneration("test-instance", "client-fp"))
         loadedUrls.clear()
         PhoneJournalTestHooks.onLoadUrl = { loadedUrls.add(it) }
     }
 
     @After
     fun tearDown() {
+        syncStores(context).pairingRefusalStore?.markAuthorized(PairingGeneration("test-instance", "client-fp"))
         resetObserverRuntime()
         loadedUrls.clear()
     }
@@ -582,6 +584,102 @@ class JournalOpenRuntimeTest {
                 assertEquals("unexpected task replacement", expectedActivityCount, activities.size)
             } finally {
                 application.unregisterActivityLifecycleCallbacks(callbacks)
+            }
+        }
+    }
+
+    @Test
+    fun inPlaceNavigationReusesSingleWebViewAcrossImportRoutes() {
+        PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+        val sessions = CopyOnWriteArrayList<app.solstone.core.pl.browser.JournalBrowserSession>()
+        val upstream = object : app.solstone.core.pl.browser.JournalBrowserUpstream {
+            override val isPoisoned: Boolean get() = false
+            override fun close() {}
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+            ): app.solstone.core.pl.browser.BrowserHttpResponse = app.solstone.core.pl.browser.BrowserHttpResponse(
+                status = 200,
+                headers = listOf("Content-Type" to "text/html; charset=utf-8"),
+                body = "<!DOCTYPE html><html><body><p>$path</p></body></html>".encodeToByteArray(),
+            )
+        }
+        PhoneJournalTestHooks.sessionOverride = {
+            val session = app.solstone.core.pl.browser.JournalBrowserSession(
+                pairing = { PairingGeneration("test-instance", "client-fp") },
+                accessStillCurrent = { true },
+                upstreamFactory = { upstream },
+                diag = {},
+            )
+            sessions.add(session)
+            LiveJournalSheetSession(session)
+        }
+        val createdViews = CopyOnWriteArrayList<android.webkit.WebView>()
+        val visited = CopyOnWriteArrayList<Pair<String, Boolean>>()
+        PhoneJournalTestHooks.onWebViewCreated = { createdViews.add(it) }
+        PhoneJournalTestHooks.onVisitedHistory = { url, canGoBack -> visited.add(url to canGoBack) }
+
+        val launchIntent = Intent(context, PhoneShellActivity::class.java).apply {
+            putExtra(JournalPushPoster.EXTRA_JOURNAL_OPEN, "/app/import/")
+        }
+
+        ActivityScenario.launch<PhoneShellActivity>(launchIntent).use { scenario ->
+            composeRule.waitUntil(10_000) { visited.any { it.first.endsWith("/app/import/") } }
+            assertEquals(1, createdViews.size)
+            assertEquals(1, sessions.size)
+
+            scenario.onActivity { activity ->
+                assertTrue(activity.openJournalAt("/app/import/20261122_120000"))
+            }
+            composeRule.waitUntil(10_000) { visited.any { it.first.endsWith("/app/import/20261122_120000") } }
+            assertEquals("In-place navigation must reuse the existing WebView without recreating the sheet", 1, createdViews.size)
+            assertEquals("In-place navigation must reuse the existing JournalBrowserSession", 1, sessions.size)
+            assertTrue(
+                "In-place navigation preserves WebView back stack",
+                visited.last { it.first.endsWith("/app/import/20261122_120000") }.second,
+            )
+        }
+    }
+
+    @Test
+    fun openJournalAtRefusesUnpairedUnconfirmedAndRefusedWithoutStickingJournalOpen() {
+        val session = FakeJournalSheetSession("http://127.0.0.1:8080/")
+        PhoneJournalTestHooks.sessionOverride = { session }
+
+        // 1. Unpaired: refused, journalOpen stays false.
+        PhoneJournalTestHooks.pairingSnapshotOverride = app.solstone.core.identity.PairingGraphSnapshot.Absent(1L)
+        ActivityScenario.launch(PhoneShellActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertFalse(activity.openJournalAt("/app/import/20261122_120000"))
+                assertFalse(activity.isJournalOpenForTest())
+            }
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+
+            // 2. Paired but mark unconfirmed: refused, journalOpen stays false.
+            syncStores(context).journalConfirmationStore.holdToAskAgain("client-fp")
+            PhoneJournalTestHooks.pairingSnapshotOverride = committedSnapshot()
+            scenario.onActivity { activity ->
+                assertFalse(activity.openJournalAt("/app/import/20261122_120000"))
+                assertFalse(activity.isJournalOpenForTest())
+            }
+            composeRule.waitForIdle()
+            assertTrue(loadedUrls.isEmpty())
+
+            // 3. Confirmed, then pairing refused: refused, journalOpen stays false.
+            syncStores(context).journalConfirmationStore.confirm("client-fp")
+            try {
+                syncStores(context).pairingRefusalStore?.markRefused(PairingGeneration("test-instance", "client-fp"))
+                scenario.onActivity { activity ->
+                    assertFalse(activity.openJournalAt("/app/import/20261122_120000"))
+                    assertFalse(activity.isJournalOpenForTest())
+                }
+                composeRule.waitForIdle()
+                assertTrue(loadedUrls.isEmpty())
+            } finally {
+                syncStores(context).pairingRefusalStore?.markAuthorized(PairingGeneration("test-instance", "client-fp"))
             }
         }
     }

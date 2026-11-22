@@ -126,6 +126,7 @@ data class HarnessImportBacklog(
     val sending: Boolean,
     val lastDelivery: app.solstone.platform.persistence.room.ImportLastDelivery?,
     val currentInstanceId: String?,
+    val reviewCount: Int = 0,
 )
 
 data class HarnessExportResult(

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "footer link in the recent card opening all import history in the journal.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "c6a2f1c801f821a3f133465688943056da9de68e008adb87ec8afd8609a3b8ff",
+  "risk": "routine",
+  "auto_merge": true
+}

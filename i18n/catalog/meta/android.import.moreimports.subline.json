@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "sub-line under the more imports action explaining it opens guides, options, and import history in the journal.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 100,
+  "source_revision": "b2f76083a4313147697f91208578b967c7855fc235f6f3f3fdc2fd846c1ffd57",
+  "risk": "routine",
+  "auto_merge": true
+}

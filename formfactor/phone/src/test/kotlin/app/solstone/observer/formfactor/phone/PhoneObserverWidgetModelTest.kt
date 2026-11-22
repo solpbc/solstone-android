@@ -340,6 +340,29 @@ class PhoneObserverWidgetModelTest {
         assertEquals("connected", connected.syncText)
     }
 
+    @Test
+    fun widgetSyncTextIsIsolatedFromImportReviewAndAttentionStates() {
+        val reviewStatus = status().copy(importReviewCount = 2)
+        assertEquals("2 ready to review", statusPillText(reviewStatus))
+        val renderedReview = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = reviewStatus,
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals("connected", renderedReview.syncText)
+        assertFalse(renderedReview.needsAttention)
+
+        val attentionStatus = status().copy(importsNeedAttention = true)
+        assertEquals(StatusPillKind.IMPORT_ATTENTION, statusPillKind(attentionStatus))
+        val renderedAttention = renderPhoneObserverWidget(
+            readModel = PhoneObserverWidgetHarnessFixture().snapshot(true, SilencedFact.NOT_SILENCED),
+            statusModel = attentionStatus,
+            startOutcome = PhoneWidgetStartOutcome.None,
+        )
+        assertEquals("connected", renderedAttention.syncText)
+        assertFalse(renderedAttention.needsAttention)
+    }
+
     private fun status(
         pendingCount: Int = 0,
         awaitingMarkConfirmation: Boolean = false,

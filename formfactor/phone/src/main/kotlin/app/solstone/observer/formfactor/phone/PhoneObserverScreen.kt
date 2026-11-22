@@ -25,6 +25,7 @@ import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldValue
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -347,8 +348,8 @@ internal fun PhoneObserverScreen(
     val deckPaneOpen = statusOpen || shelfOpen
     var previousJournalSheetOpen by remember { mutableStateOf(journalSheetOpen) }
     LaunchedEffect(journalSheetOpen) {
-        if (previousJournalSheetOpen && !journalSheetOpen) {
-            journalFocusRequester.requestFocus()
+        if (previousJournalSheetOpen && !journalSheetOpen && top != PhoneRoute.Import) {
+            runCatching { journalFocusRequester.requestFocus() }
         }
         previousJournalSheetOpen = journalSheetOpen
     }
@@ -386,7 +387,8 @@ internal fun PhoneObserverScreen(
             paneStates = updatedPaneStates
         }
     }
-    PhoneShell(
+    CompositionLocalProvider(LocalPhoneJournalSheetOpen provides journalSheetOpen) {
+        PhoneShell(
         title = {
             val text = top?.let(::headingText)
             if (text != null) {
@@ -750,6 +752,7 @@ internal fun PhoneObserverScreen(
             }
         },
     )
+    }
     PhoneBackLadder(
         paneStates = paneStates,
         detailStack = detailStack,

@@ -51,14 +51,60 @@ sealed interface MobileImportOutcome {
      */
     data class Retry(val cause: String) : MobileImportOutcome
     data class NeedsAttention(val error: String, val reasonCode: String?, val kind: String?) : MobileImportOutcome
+    /** Staged on the journal and waiting for the owner to preview and confirm before starting. */
+    data class ReviewRequired(
+        val error: String,
+        val reasonCode: String,
+        val kind: String,
+        val importId: String,
+    ) : MobileImportOutcome
+}
+
+sealed interface MobileImportInspectOutcome {
+    /** Confirmed, running, or finished on the journal; local bytes can be retired after persisting a receipt. */
+    data object Confirmed : MobileImportInspectOutcome
+    /** Still staged and waiting for owner review on the journal; preserve local bytes. */
+    data object StillWaiting : MobileImportInspectOutcome
+    /** Waiting copy expired or was discarded on the journal (`404`); preserve local bytes for resend. */
+    data object Expired : MobileImportInspectOutcome
+    /** Pairing refused (`401`/`403`); halt reconciliation and record refusal without deleting bytes. */
+    data object AuthStop : MobileImportInspectOutcome
+    /** Transient/non-decisive answer (`400`/`429`/`5xx`/malformed JSON/IO); leave item unchanged. */
+    data class Transient(val cause: String) : MobileImportInspectOutcome
 }
 
 private const val SAVE_PATH = "/app/import/api/save"
 private const val START_PATH = "/app/import/api/start"
+private const val INSPECT_PATH_PREFIX = "/app/import/api/"
+private val CONFIRMED_INSPECT_STATUSES = setOf(
+    "running",
+    "success",
+    "failed",
+    "unconfirmed",
+    "noted",
+    "unavailable",
+)
 /** The door every import from this app names, so the journal's history says it came from the solstone app for android. */
 const val MOBILE_IMPORTED_VIA = "android"
 private val GENERIC_REFUSAL get() = phoneText("android.import.journal.couldn.t.accept")
 private const val HEX_DIGITS = "0123456789abcdef"
+
+/** Strict ASCII `YYYYMMDD_HHMMSS` check (never accepts non-ASCII digits). */
+fun isValidImportId(raw: String?): Boolean {
+    if (raw == null || raw.length != 15 || raw[8] != '_') return false
+    for (i in 0 until 15) {
+        if (i == 8) continue
+        if (raw[i] !in '0'..'9') return false
+    }
+    return true
+}
+
+fun isConfirmationRequiredKind(kind: String?): Boolean =
+    kind != null && (
+        kind == "body_confirmation_required" ||
+            kind == "confirmation_required" ||
+            kind.endsWith("_confirmation_required")
+    )
 
 class MobileImportClient(private val http: PlHttpClient) {
     fun save(item: MobileImportItem): MobileImportOutcome {
@@ -97,9 +143,27 @@ class MobileImportClient(private val http: PlHttpClient) {
                 operation = MobileImportOperation.START,
                 httpStatus = response.status,
                 body = response.body,
+                fallbackImportId = timestamp,
             )
         } catch (e: IOException) {
             MobileImportOutcome.Retry(ioCause(e))
+        }
+    }
+
+    fun inspect(importId: String): MobileImportInspectOutcome {
+        if (!isValidImportId(importId)) {
+            return MobileImportInspectOutcome.Transient("invalid-import-id")
+        }
+        return try {
+            val response = http.request(
+                method = "GET",
+                path = "$INSPECT_PATH_PREFIX$importId",
+                headers = emptyMap(),
+                body = null,
+            )
+            classifyMobileImportInspectResponse(response.status, response.body)
+        } catch (e: IOException) {
+            MobileImportInspectOutcome.Transient(ioCause(e))
         }
     }
 
@@ -341,6 +405,7 @@ internal fun classifyMobileImportResponse(
     operation: MobileImportOperation,
     httpStatus: Int,
     body: ByteArray,
+    fallbackImportId: String? = null,
 ): MobileImportOutcome {
     if (httpStatus == 401 || httpStatus == 403) {
         return MobileImportOutcome.AuthStop
@@ -394,12 +459,56 @@ internal fun classifyMobileImportResponse(
 
     val error = root["error"] as? String
     val reasonCode = root["reason_code"] as? String
+    val kind = root["kind"] as? String
+    if (operation == MobileImportOperation.START &&
+        httpStatus == 409 &&
+        reasonCode == "import_preview_required" &&
+        isConfirmationRequiredKind(kind)
+    ) {
+        val importId = (root["import_id"] as? String)?.takeIf(::isValidImportId)
+            ?: fallbackImportId?.takeIf(::isValidImportId)
+        if (importId != null) {
+            return MobileImportOutcome.ReviewRequired(
+                error = error ?: GENERIC_REFUSAL,
+                reasonCode = reasonCode,
+                kind = kind!!,
+                importId = importId,
+            )
+        }
+    }
     if (error != null && reasonCode != null) {
-        val kind = root["kind"] as? String
         return MobileImportOutcome.NeedsAttention(error, reasonCode, kind)
     }
 
     return MobileImportOutcome.NeedsAttention(GENERIC_REFUSAL, null, null)
+}
+
+internal fun classifyMobileImportInspectResponse(
+    httpStatus: Int,
+    body: ByteArray,
+): MobileImportInspectOutcome {
+    if (httpStatus == 401 || httpStatus == 403) return MobileImportInspectOutcome.AuthStop
+    if (httpStatus == 404) return MobileImportInspectOutcome.Expired
+    if (httpStatus != 200) return MobileImportInspectOutcome.Transient("http-$httpStatus")
+
+    val root = try {
+        parseJson(body.toString(Charsets.UTF_8)) as? Map<*, *>
+    } catch (_: IllegalArgumentException) {
+        null
+    } ?: return MobileImportInspectOutcome.Transient("unreadable-answer")
+
+    val status = root["status"] as? String
+    val savedStart = root["saved_start"] as? Map<*, *>
+    val savedStartActive = savedStart?.get("active") as? Boolean == true
+    val savedStartState = savedStart?.get("state") as? String
+
+    if (status in CONFIRMED_INSPECT_STATUSES || savedStartActive || savedStartState == "consumed") {
+        return MobileImportInspectOutcome.Confirmed
+    }
+    if (status == "pending" && (savedStartState == null || savedStartState == "eligible" || savedStartState == "unknown")) {
+        return MobileImportInspectOutcome.StillWaiting
+    }
+    return MobileImportInspectOutcome.Transient("unexpected-status")
 }
 
 private fun ioCause(e: IOException): String = "io-" + e.javaClass.simpleName.ifEmpty { "IOException" }

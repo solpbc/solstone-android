@@ -142,11 +142,38 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE import_item ADD COLUMN review_import_id TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN review_reason_code TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN review_kind TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN review_instance_id TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN review_expired INTEGER NOT NULL DEFAULT 0")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `import_recent_receipt` (`id` TEXT NOT NULL, `filename` TEXT NOT NULL, `import_id` TEXT, `instance_id` TEXT NOT NULL, `delivered_at` INTEGER NOT NULL, PRIMARY KEY(`id`))
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_recent_receipt_instance_id_delivered_at` ON `import_recent_receipt` (`instance_id`, `delivered_at`)")
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
 ): SolstonePersistenceDatabase =
     Room.databaseBuilder(context, SolstonePersistenceDatabase::class.java, name)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+        .addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            MIGRATION_9_10,
+            MIGRATION_10_11,
+        )
         .build()
 

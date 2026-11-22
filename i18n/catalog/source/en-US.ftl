@@ -230,7 +230,7 @@ android.gap.value.row.kind.row.source = { $zone } { $kind } { $source } { $reaso
 android.gap.wednesday = wednesday
 android.import.add.journal = add to your journal?
 android.import.add.journal.n2 = add to your journal
-android.import.adds.pdfs.audio.images.text = adds any kind of file you pick here or share from other apps. your journal works out what it is.
+android.import.adds.pdfs.audio.images.text = adds any file you choose here or share from other apps. your journal works out what it is.
 android.import.checking.journal = checking your journal.
 android.import.copy.already.gone.so.only = the copy is already gone, so this only clears it from here.
 android.import.copy.device.missing = the copy on this device is missing
@@ -250,18 +250,31 @@ android.import.journal.stopped.accepting.device.imports = your journal stopped a
 android.import.keeps.saving.if.close = it keeps saving if you close this.
 android.import.line.label.refusaltext.line.reason = { $label }: { $reason }
 android.import.moreimports = more imports
+android.import.moreimports.subline = guides, options, and import history in your journal
 android.import.notgoingjournalright = not going to your journal right now. each one says why.
 android.import.nothing.changed.may.have.moved = nothing changed. it may have moved on; check the list.
 android.import.nothing.yet = nothing yet.
 android.import.nothingwassaved = nothing was saved on this device.
 android.import.ok = ok
 android.import.openscreenshots = open screenshots
+android.import.queue.offline = waiting for your journal to reconnect.
 android.import.recent = recent
+android.import.recent.all.history = all import history in your journal
+android.import.recent.in.journal = in your journal · { $relative }
+android.import.recent.open.a11y = { $name }, in your journal, { $relative }. open in your journal.
 android.import.remove = remove
 android.import.remove.row.name = remove { $name }?
 android.import.remove.row.name.n2 = remove { $name }
-android.import.removes.copy.device.journal.may = this removes the copy on this device. your journal may still bring in the copy it already has.
+android.import.removes.copy.device.journal.may = this removes the copy on this device. the waiting copy in your journal stays there until you discard it or it expires.
 android.import.removes.copy.device.so.won = this removes the copy on this device, so it won't reach your journal.
+android.import.review.detail.general = saved in your journal. preview and confirm to start.
+android.import.review.detail.hour = saved in your journal. review within an hour before your journal removes the waiting copy.
+android.import.review.expired.detail = the waiting copy in your journal expired. this device still holds the file.
+android.import.review.expired.label = expired
+android.import.review.in.journal = review in your journal
+android.import.review.in.journal.a11y = review { $name } in your journal
+android.import.row.sending.detail = sending to your journal…
+android.import.row.waiting.detail = waiting to go to your journal
 android.import.s.already.gone.from.device = it's already gone from this device.
 android.import.s.already.journal = it's already in your journal.
 android.import.s.larger.than.journal.takes = it's larger than your journal takes
@@ -272,6 +285,8 @@ android.import.saving.device.line.done.n1 =
        *[other] saving on this device: { $done } of { $total }
     }
 android.import.screenshotscometheirown = screenshots come in on their own.
+android.import.send.again.review = send again to review
+android.import.send.again.review.a11y = send { $name } again to review
 android.import.sending = sending
 android.import.sending.journal = sending to your journal.
 android.import.setupscreenshots = set up screenshots
@@ -282,8 +297,31 @@ android.import.state.items.size.share.sheet =
        *[other] and { $count } more
     }
 android.import.there.isn.t.enough.room = there isn't enough room on this device
+android.import.tile.attention.count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
+android.import.tile.ready.count =
+    { $count ->
+        [one] { $count } ready in your journal
+       *[other] { $count } ready in your journal
+    }
+android.import.tile.ready.to.review = ready to review
+android.import.tile.sending.count =
+    { $count ->
+        [one] { $count } file
+       *[other] { $count } files
+    }
+android.import.tile.waiting.count =
+    { $count ->
+        [one] { $count } waiting
+       *[other] { $count } waiting
+    }
+android.import.tile.waiting.journal = waiting for your journal
 android.import.try.now.row.name = try now, { $name }
 android.import.waiting = waiting
+android.import.waiting.for.review = waiting for your review
 android.import.waiting.go.journal = waiting to go to your journal.
 android.intake.events =
     { $count ->
@@ -376,6 +414,7 @@ android.intake.yesterday = yesterday
 android.journal.close = close
 android.journal.couldn.t.reach.journal.keep = couldn't reach your journal. keep the solstone app open and try again.
 android.journal.couldn.t.save.that.try = couldn't save that. try again.
+android.journal.dismiss = dismiss
 android.journal.file.selection.isn.t.available = to add a file here, use the import tile, or share it to your journal.
 android.journal.lost.connection.journal.keep.solstone = lost the connection to your journal. keep the solstone app open and try again.
 android.journal.that.link.isn.t.available = that link isn't available in the app.
@@ -810,11 +849,22 @@ android.status.offline.model.pendingcount.waiting =
         [one] offline · { $count } waiting
        *[other] offline · { $count } waiting
     }
+android.status.open.import.review.start = open import to review and start.
 android.status.open.import.see.why = open import to see why
 android.status.pairagainwaiting =
     { $count ->
         [one] pair again · { $count } waiting
        *[other] pair again · { $count } waiting
+    }
+android.status.ready.to.review.lead =
+    { $count ->
+        [one] { $count } import ready to review
+       *[other] { $count } imports ready to review
+    }
+android.status.ready.to.review.pill =
+    { $count ->
+        [one] { $count } ready to review
+       *[other] { $count } ready to review
     }
 android.status.reading.version.last.known =
     { $freshness ->

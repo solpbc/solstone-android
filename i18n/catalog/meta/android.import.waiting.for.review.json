@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "section heading on the import screen for items awaiting owner confirmation in the journal.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 60,
+  "source_revision": "fefe8601870a9f024b1f7a0c41ed823a1d0bc2d35eb4568dd6d765911be017fd",
+  "risk": "routine",
+  "auto_merge": true
+}

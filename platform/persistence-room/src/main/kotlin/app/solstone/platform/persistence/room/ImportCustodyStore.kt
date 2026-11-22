@@ -15,12 +15,60 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
+const val IMPORT_STATE_PENDING = "pending"
+const val IMPORT_STATE_READY_TO_REVIEW = "ready_to_review"
+const val IMPORT_STATE_REVIEW_EXPIRED = "review_expired"
+const val IMPORT_STATE_ATTENTION = "attention"
+const val IMPORT_STATE_DELIVERED = "delivered"
+
+const val RECENT_RECEIPT_WINDOW_MS = 24L * 60L * 60L * 1000L
+const val RECENT_RECEIPT_MAX_COUNT = 5
+
+/** Strict ASCII `YYYYMMDD_HHMMSS` validation (never matches Unicode digits). */
+fun isValidAsciiImportId(raw: String?): Boolean {
+    if (raw == null || raw.length != 15 || raw[8] != '_') return false
+    for (i in 0 until 15) {
+        if (i == 8) continue
+        if (raw[i] !in '0'..'9') return false
+    }
+    return true
+}
+
+/**
+ * Refusals a manual `try now` could plausibly change. Confirmation-required `409`s never enter
+ * attention; non-confirmation `import_preview_required` kinds like `plan_failed`,
+ * `nothing_to_import`, `invalid_request`, `not_found`, or unknown kinds are non-retryable.
+ */
+fun isImportRefusalRetryable(reasonCode: String?, kind: String?): Boolean {
+    if (kind == "client_item_conflict") return false
+    return when (reasonCode) {
+        "import_queue_unreachable",
+        "import_metadata_failed",
+        "import_not_found",
+        -> true
+        "import_preview_required" -> kind == "source_changed" || kind == "already_running"
+        else -> false
+    }
+}
+
 data class ImportProgress(val path: String, val timestamp: String)
 data class ImportBackoff(val attemptCount: Int, val nextAttemptAt: Long)
 data class ImportCandidate(
     val id: String,
     val progress: ImportProgress?,
     val hasCaption: Boolean = false,
+)
+data class ImportReviewCandidate(
+    val id: String,
+    val importId: String,
+    val instanceId: String,
+)
+data class ImportRecentReceipt(
+    val id: String,
+    val filename: String,
+    val importId: String?,
+    val instanceId: String,
+    val deliveredAt: Long,
 )
 data class ImportHeldItem(
     val id: String,
@@ -78,6 +126,12 @@ data class ImportListItem(
     val inFlight: Boolean,
     val hasSavedProgress: Boolean,
     val hasCaption: Boolean = false,
+    val reviewImportId: String? = null,
+    val reviewReasonCode: String? = null,
+    val reviewKind: String? = null,
+    val reviewInstanceId: String? = null,
+    val reviewExpired: Boolean = false,
+    val byteSize: Long = 0L,
 )
 
 data class ImportLastDelivery(val at: Long, val instanceId: String)
@@ -104,6 +158,13 @@ data class ImportHandoffStatus(
     val importId: String? = null,
     /** The journal's own sentence for a refusal. */
     val reason: String? = null,
+    val reviewRequired: Boolean? = null,
+    val reviewExpired: Boolean? = null,
+    val reasonCode: String? = null,
+    val kind: String? = null,
+    val retryable: Boolean? = null,
+    val deviceNoun: String? = null,
+    val sizeBytes: Long? = null,
 )
 
 /** The page's card and choices for a picked item, kept beside its bytes. */
@@ -141,12 +202,14 @@ internal object ImportRootLock {
 
 private val kindMap = ConcurrentHashMap<String, String>()
 
+private data class HandoffReceipt(val importId: String?)
+
 /**
  * The journal row each recently delivered item became, in process memory, so a journal page that
  * handed an item over can link to the row after the delivered item has left the device.
  */
-private val receipts = object : LinkedHashMap<String, String>() {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 256
+private val receipts = object : LinkedHashMap<String, HandoffReceipt>() {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, HandoffReceipt>?): Boolean = size > 256
 }
 
 /**
@@ -347,7 +410,7 @@ class ImportCustodyStore(
                         // Already local attention, left as it is
                     } else {
                         val localAttention = row.copy(
-                            state = "attention",
+                            state = IMPORT_STATE_ATTENTION,
                             attentionKind = "missing_copy",
                             attentionError = null,
                             attentionReasonCode = null,
@@ -359,6 +422,11 @@ class ImportCustodyStore(
                             backoffInstanceId = null,
                             attemptCount = 0,
                             nextAttemptAt = null,
+                            reviewImportId = null,
+                            reviewReasonCode = null,
+                            reviewKind = null,
+                            reviewInstanceId = null,
+                            reviewExpired = false,
                         )
                         try {
                             dao.update(localAttention)
@@ -421,20 +489,21 @@ class ImportCustodyStore(
 
     fun markDelivered(id: String): Boolean {
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
-        if (row.state == "delivered") return true
-        val isPending = row.state == "pending"
-        val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
-        if (!isPending && !isJournalAttention) return false
-        val updated = row.copy(state = "delivered")
+        if (row.state == IMPORT_STATE_DELIVERED) return true
+        val isPending = row.state == IMPORT_STATE_PENDING
+        val isReview = row.state == IMPORT_STATE_READY_TO_REVIEW || row.state == IMPORT_STATE_REVIEW_EXPIRED
+        val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
+        if (!isPending && !isReview && !isJournalAttention) return false
+        val updated = row.copy(state = IMPORT_STATE_DELIVERED)
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
 
     fun resetAttention(id: String): Boolean {
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
-        val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
+        val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
         if (!isJournalAttention) return false
         val updated = row.copy(
-            state = "pending",
+            state = IMPORT_STATE_PENDING,
             progressPath = null,
             progressTimestamp = null,
             progressInstanceId = null,
@@ -446,6 +515,11 @@ class ImportCustodyStore(
             attentionKind = null,
             attentionInstanceId = null,
             attentionJournalVersion = null,
+            reviewImportId = null,
+            reviewReasonCode = null,
+            reviewKind = null,
+            reviewInstanceId = null,
+            reviewExpired = false,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
@@ -456,13 +530,18 @@ class ImportCustodyStore(
             .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
         val candidates = mutableListOf<ImportCandidate>()
         for (row in rows) {
-            if (row.state == "delivered") continue
-            val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
-            val isLocalAttention = row.state == "attention" && !isJournalAttention
+            if (row.state == IMPORT_STATE_DELIVERED ||
+                row.state == IMPORT_STATE_READY_TO_REVIEW ||
+                row.state == IMPORT_STATE_REVIEW_EXPIRED
+            ) {
+                continue
+            }
+            val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
+            val isLocalAttention = row.state == IMPORT_STATE_ATTENTION && !isJournalAttention
             if (isLocalAttention) continue
 
             val isEligible = when {
-                row.state == "pending" -> {
+                row.state == IMPORT_STATE_PENDING -> {
                     if (row.backoffInstanceId == instance && row.nextAttemptAt != null) {
                         now >= row.nextAttemptAt
                     } else {
@@ -470,7 +549,8 @@ class ImportCustodyStore(
                     }
                 }
                 isJournalAttention -> {
-                    row.attentionInstanceId != instance || row.attentionJournalVersion != journalVersion
+                    row.attentionInstanceId != instance ||
+                        (row.autoRetriesOnVersionBump() && row.attentionJournalVersion != journalVersion)
                 }
                 else -> false
             }
@@ -532,10 +612,13 @@ class ImportCustodyStore(
             if (row.state == "delivered") return@withLock ImportChange.DELIVERED
             val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
             when {
-                row.state == "pending" -> Unit
-                isJournalAttention && (row.attentionInstanceId != instance || row.attentionJournalVersion != journalVersion) -> {
+                row.state == IMPORT_STATE_PENDING -> Unit
+                isJournalAttention && (
+                    row.attentionInstanceId != instance ||
+                        (row.autoRetriesOnVersionBump() && row.attentionJournalVersion != journalVersion)
+                    ) -> {
                     val reopened = row.copy(
-                        state = "pending",
+                        state = IMPORT_STATE_PENDING,
                         attentionError = null,
                         attentionReasonCode = null,
                         attentionKind = null,
@@ -564,19 +647,67 @@ class ImportCustodyStore(
         }
 
     /**
+     * Record that [id] is staged on [instance] awaiting owner preview & confirmation (`409
+     * import_preview_required` with a confirmation-required kind and valid ASCII `import_id`),
+     * preserving local payload bytes on disk and ending the active exchange.
+     */
+    fun recordReviewRequired(
+        id: String,
+        importId: String,
+        reasonCode: String,
+        kind: String,
+        error: String?,
+        instance: String,
+    ): ImportChange =
+        ImportRootLock.withLock(root) {
+            try {
+                if (!isValidAsciiImportId(importId)) return@withLock ImportChange.REFUSED
+                val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+                val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
+                if (row.state != IMPORT_STATE_PENDING && row.state != IMPORT_STATE_READY_TO_REVIEW && !isJournalAttention) {
+                    return@withLock ImportChange.REFUSED
+                }
+                val updated = row.copy(
+                    state = IMPORT_STATE_READY_TO_REVIEW,
+                    progressTimestamp = row.progressTimestamp ?: importId,
+                    progressInstanceId = row.progressInstanceId ?: instance,
+                    backoffInstanceId = null,
+                    attemptCount = 0,
+                    nextAttemptAt = null,
+                    attentionError = null,
+                    attentionReasonCode = null,
+                    attentionKind = null,
+                    attentionInstanceId = null,
+                    attentionJournalVersion = null,
+                    reviewImportId = importId,
+                    reviewReasonCode = reasonCode,
+                    reviewKind = kind,
+                    reviewInstanceId = instance,
+                    reviewExpired = false,
+                )
+                if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) ImportChange.DONE else ImportChange.REFUSED
+            } finally {
+                inFlight.remove(kindKey(root, id))
+            }
+        }
+
+    /**
      * Record that [id] reached the journal at [instance] and end its exchange, in one hold of the
-     * store lock. The delivery record follows the item's own state; if it alone fails, the item is
-     * still delivered.
+     * store lock. The 24-hour recent receipt is persisted durably BEFORE the item is marked
+     * delivered for payload deletion.
      */
     fun recordDelivered(id: String, instance: String, importId: String? = null): ImportChange =
         ImportRootLock.withLock(root) {
             try {
                 val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+                val now = clock()
+                val rawHandoffId = importId ?: row.reviewImportId ?: row.progressTimestamp
+                val validReceiptId = rawHandoffId?.takeIf(::isValidAsciiImportId)
+                // Persist the 24h recent receipt durably before marking delivered / deleting bytes.
+                runCatching { persistRecentReceiptLocked(row, instance, validReceiptId, now) }
                 if (!markDelivered(id)) return@withLock ImportChange.REFUSED
-                // The start answer names the row; a resend the journal already had answers without
-                // one, and the row is then the timestamp its save gave.
-                (importId ?: row.progressTimestamp)?.let { synchronized(receipts) { receipts[kindKey(root, id)] = it } }
-                runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = clock(), instanceId = instance)) }
+                synchronized(receipts) { receipts[kindKey(root, id)] = HandoffReceipt(rawHandoffId) }
+                runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = now, instanceId = instance)) }
                 ImportChange.DONE
             } finally {
                 inFlight.remove(kindKey(root, id))
@@ -601,6 +732,202 @@ class ImportCustodyStore(
 
     /** Whether [id] is in a journal exchange now. */
     fun isInFlight(id: String): Boolean = kindKey(root, id) in inFlight
+
+    /** Items currently awaiting review on [instance], oldest first, eligible for safe reconciliation. */
+    fun reviewCandidates(instance: String): List<ImportReviewCandidate> {
+        val rows = try { dao.all() } catch (_: Exception) { emptyList() }
+            .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
+        return rows.mapNotNull { row ->
+            val importId = row.reviewImportId
+            if (row.state == IMPORT_STATE_READY_TO_REVIEW &&
+                row.reviewInstanceId == instance &&
+                isValidAsciiImportId(importId) &&
+                kindKey(root, row.id) !in inFlight
+            ) {
+                ImportReviewCandidate(row.id, importId!!, instance)
+            } else {
+                null
+            }
+        }
+    }
+
+    /**
+     * When the device pairs with a different journal instance, reset `ready_to_review` and
+     * `review_expired` items belonging to the prior instance back to pending/waiting (clearing
+     * saved path/timestamp/instance/review fields) so they deliver cleanly to the new journal
+     * without ever querying Journal B with Journal A's `import_id`.
+     */
+    fun resetReviewItemsForInstanceChange(currentInstanceId: String): Int =
+        ImportRootLock.withLock(root) {
+            val rows = try { dao.all() } catch (_: Exception) { emptyList() }
+            var reset = 0
+            for (row in rows) {
+                if (row.state != IMPORT_STATE_READY_TO_REVIEW && row.state != IMPORT_STATE_REVIEW_EXPIRED) continue
+                if (row.reviewInstanceId == currentInstanceId) continue
+                if (kindKey(root, row.id) in inFlight) continue
+                val cleared = row.copy(
+                    state = IMPORT_STATE_PENDING,
+                    progressPath = null,
+                    progressTimestamp = null,
+                    progressInstanceId = null,
+                    backoffInstanceId = null,
+                    attemptCount = 0,
+                    nextAttemptAt = null,
+                    attentionError = null,
+                    attentionReasonCode = null,
+                    attentionKind = null,
+                    attentionInstanceId = null,
+                    attentionJournalVersion = null,
+                    reviewImportId = null,
+                    reviewReasonCode = null,
+                    reviewKind = null,
+                    reviewInstanceId = null,
+                    reviewExpired = false,
+                )
+                if ((try { dao.update(cleared) } catch (_: Exception) { 0 }) > 0) {
+                    reset++
+                }
+            }
+            reset
+        }
+
+    /**
+     * Complete reconciliation for a `ready_to_review` item confirmed on the journal. Re-verifies
+     * `(id, expectedImportId, expectedInstanceId)` under the store lock so a concurrent `sendAgain`
+     * or `remove` cannot be clobbered by a stale response. Persists the 24h recent receipt durably
+     * BEFORE deleting local payload bytes.
+     */
+    fun reconcileConfirmed(id: String, expectedImportId: String, expectedInstanceId: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id) || !isValidAsciiImportId(expectedImportId)) return@withLock ImportChange.REFUSED
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state != IMPORT_STATE_READY_TO_REVIEW ||
+                row.reviewImportId != expectedImportId ||
+                row.reviewInstanceId != expectedInstanceId
+            ) {
+                return@withLock ImportChange.REFUSED
+            }
+            val now = clock()
+            // Persist the 24h receipt durably BEFORE mutating the row to delivered or deleting local bytes.
+            try {
+                persistRecentReceiptLocked(row, expectedInstanceId, expectedImportId, now)
+            } catch (_: Exception) {
+                return@withLock ImportChange.REFUSED
+            }
+            val marked = try { dao.update(row.copy(state = IMPORT_STATE_DELIVERED)) > 0 } catch (_: Exception) { false }
+            if (!marked) return@withLock ImportChange.REFUSED
+            synchronized(receipts) { receipts[kindKey(root, id)] = HandoffReceipt(expectedImportId) }
+            runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = now, instanceId = expectedInstanceId)) }
+            if (remover.remove(root.resolve(id))) {
+                runCatching { dao.delete(id) }
+            }
+            ImportChange.DONE
+        }
+
+    /**
+     * Mark a `ready_to_review` item as `review_expired` after `404` on reconciliation, keeping
+     * local payload bytes intact for one-tap `send again to review`. Re-verifies `(id,
+     * expectedImportId, expectedInstanceId)` under the store lock.
+     */
+    fun reconcileExpired(id: String, expectedImportId: String, expectedInstanceId: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id) || !isValidAsciiImportId(expectedImportId)) return@withLock ImportChange.REFUSED
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state != IMPORT_STATE_READY_TO_REVIEW ||
+                row.reviewImportId != expectedImportId ||
+                row.reviewInstanceId != expectedInstanceId
+            ) {
+                return@withLock ImportChange.REFUSED
+            }
+            val updated = row.copy(
+                state = IMPORT_STATE_REVIEW_EXPIRED,
+                reviewExpired = true,
+            )
+            if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) ImportChange.DONE else ImportChange.REFUSED
+        }
+
+    /**
+     * Re-enqueue an expired (or ready-to-review) item from local bytes by clearing saved staging
+     * and review state. Never double-counts `source_intake`.
+     */
+    fun sendAgain(id: String): ImportChange =
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock ImportChange.GONE
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            if (row.state == IMPORT_STATE_DELIVERED) return@withLock ImportChange.DELIVERED
+            if (row.state != IMPORT_STATE_REVIEW_EXPIRED && row.state != IMPORT_STATE_READY_TO_REVIEW) {
+                return@withLock ImportChange.REFUSED
+            }
+            val updated = row.copy(
+                state = IMPORT_STATE_PENDING,
+                progressPath = null,
+                progressTimestamp = null,
+                progressInstanceId = null,
+                backoffInstanceId = null,
+                attemptCount = 0,
+                nextAttemptAt = null,
+                attentionError = null,
+                attentionReasonCode = null,
+                attentionKind = null,
+                attentionInstanceId = null,
+                attentionJournalVersion = null,
+                reviewImportId = null,
+                reviewReasonCode = null,
+                reviewKind = null,
+                reviewInstanceId = null,
+                reviewExpired = false,
+            )
+            if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) ImportChange.DONE else ImportChange.REFUSED
+        }
+
+    /** Persisted 24h recent receipts (max 5 newest) for [instanceId], pruned on read. */
+    fun recentReceipts(instanceId: String?): List<ImportRecentReceipt> =
+        ImportRootLock.withLock(root) {
+            if (instanceId.isNullOrEmpty()) return@withLock emptyList()
+            val now = clock()
+            val cutoff = now - RECENT_RECEIPT_WINDOW_MS
+            runCatching { dao.pruneExpiredReceipts(cutoff) }
+            runCatching { dao.trimRecentReceipts(instanceId, RECENT_RECEIPT_MAX_COUNT) }
+            val rows = try {
+                dao.recentReceipts(instanceId, cutoff, RECENT_RECEIPT_MAX_COUNT)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            rows.map { row ->
+                ImportRecentReceipt(
+                    id = row.id,
+                    filename = row.filename,
+                    importId = row.importId?.takeIf(::isValidAsciiImportId),
+                    instanceId = row.instanceId,
+                    deliveredAt = row.deliveredAt,
+                )
+            }
+        }
+
+    private fun persistRecentReceiptLocked(
+        row: ImportItemRow,
+        instanceId: String,
+        validImportId: String?,
+        now: Long,
+    ) {
+        dao.putRecentReceipt(
+            ImportRecentReceiptRow(
+                id = row.id,
+                filename = row.displayName,
+                importId = validImportId,
+                instanceId = instanceId,
+                deliveredAt = now,
+            ),
+        )
+        dao.pruneExpiredReceipts(now - RECENT_RECEIPT_WINDOW_MS)
+        dao.trimRecentReceipts(instanceId, RECENT_RECEIPT_MAX_COUNT)
+    }
+
+    private fun ImportItemRow.autoRetriesOnVersionBump(): Boolean =
+        attentionReasonCode != "import_preview_required"
 
     /**
      * Remove [id] from this device: its row first, then its bytes, so an interrupted removal
@@ -631,14 +958,14 @@ class ImportCustodyStore(
     /** Every item still on this device, oldest first, with where its attention came from. */
     fun items(instance: String?, journalVersion: String?): List<ImportListItem> {
         val rows = try { dao.all() } catch (_: Exception) { emptyList() }
-            .filter { it.state != "delivered" }
+            .filter { it.state != IMPORT_STATE_DELIVERED }
             .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
         return rows.map { row ->
-            val journalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
+            val journalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
             val scope = when {
-                row.state != "attention" -> ImportAttentionScope.NONE
+                row.state != IMPORT_STATE_ATTENTION -> ImportAttentionScope.NONE
                 !journalAttention -> ImportAttentionScope.LOCAL
-                row.attentionInstanceId == instance && row.attentionJournalVersion == journalVersion -> ImportAttentionScope.HERE
+                row.attentionInstanceId == instance && (!row.autoRetriesOnVersionBump() || row.attentionJournalVersion == journalVersion) -> ImportAttentionScope.HERE
                 else -> ImportAttentionScope.ELSEWHERE
             }
             ImportListItem(
@@ -652,6 +979,12 @@ class ImportCustodyStore(
                 inFlight = kindKey(root, row.id) in inFlight,
                 hasSavedProgress = row.progressPath != null && row.progressTimestamp != null,
                 hasCaption = readCaption(root.resolve(row.id)) != null,
+                reviewImportId = row.reviewImportId?.takeIf(::isValidAsciiImportId),
+                reviewReasonCode = row.reviewReasonCode,
+                reviewKind = row.reviewKind,
+                reviewInstanceId = row.reviewInstanceId,
+                reviewExpired = row.reviewExpired || row.state == IMPORT_STATE_REVIEW_EXPIRED,
+                byteSize = row.byteSize,
             )
         }
     }
@@ -682,13 +1015,55 @@ class ImportCustodyStore(
     fun handoffStatus(id: String): ImportHandoffStatus {
         if (isUnsafeId(id)) return ImportHandoffStatus("gone")
         val key = kindKey(root, id)
-        synchronized(receipts) { receipts[key] }?.let { return ImportHandoffStatus("delivered", importId = it) }
+        synchronized(receipts) { receipts[key] }?.let { return ImportHandoffStatus("delivered", importId = it.importId) }
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return ImportHandoffStatus("gone")
         return when {
-            row.state == "delivered" -> ImportHandoffStatus("delivered", importId = row.progressTimestamp)
-            row.state == "attention" -> ImportHandoffStatus("attention", importId = row.progressTimestamp, reason = row.attentionError)
-            key in inFlight -> ImportHandoffStatus("uploading")
-            else -> ImportHandoffStatus("waiting")
+            row.state == IMPORT_STATE_DELIVERED -> ImportHandoffStatus(
+                state = "delivered",
+                importId = (row.reviewImportId ?: row.progressTimestamp)?.takeIf(::isValidAsciiImportId),
+            )
+            row.state == IMPORT_STATE_READY_TO_REVIEW -> ImportHandoffStatus(
+                state = "attention",
+                importId = row.reviewImportId?.takeIf(::isValidAsciiImportId),
+                reason = "saved in your journal. preview and confirm to start.",
+                reviewRequired = true,
+                reviewExpired = false,
+                reasonCode = row.reviewReasonCode ?: "import_preview_required",
+                kind = row.reviewKind,
+                retryable = false,
+            )
+            row.state == IMPORT_STATE_REVIEW_EXPIRED -> ImportHandoffStatus(
+                state = "attention",
+                importId = row.reviewImportId?.takeIf(::isValidAsciiImportId),
+                reason = "the waiting copy in your journal expired. this device still holds the file.",
+                reviewRequired = false,
+                reviewExpired = true,
+                reasonCode = row.reviewReasonCode ?: "import_preview_required",
+                kind = row.reviewKind,
+                retryable = true,
+            )
+            row.state == IMPORT_STATE_ATTENTION -> {
+                val isLocalMissing = row.attentionInstanceId == null && row.attentionJournalVersion == null
+                ImportHandoffStatus(
+                    state = "attention",
+                    importId = row.progressTimestamp?.takeIf(::isValidAsciiImportId),
+                    reason = row.attentionError,
+                    reviewRequired = false,
+                    reasonCode = row.attentionReasonCode,
+                    kind = row.attentionKind,
+                    retryable = !isLocalMissing && isImportRefusalRetryable(row.attentionReasonCode, row.attentionKind),
+                )
+            }
+            key in inFlight -> ImportHandoffStatus(
+                state = "uploading",
+                deviceNoun = "phone",
+                sizeBytes = row.byteSize,
+            )
+            else -> ImportHandoffStatus(
+                state = "waiting",
+                deviceNoun = "phone",
+                sizeBytes = row.byteSize,
+            )
         }
     }
 

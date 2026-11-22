@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the journal sheet",
+  "context": "dismiss button on an in-sheet notice banner.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 30,
+  "source_revision": "9dbaf882187a75810fa21e17d2e888e82f540e910cf17ef6b8524ba577ad9149",
+  "risk": "routine",
+  "auto_merge": true
+}

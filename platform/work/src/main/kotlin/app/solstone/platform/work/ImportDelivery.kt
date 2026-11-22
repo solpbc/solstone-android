@@ -5,6 +5,7 @@ package app.solstone.platform.work
 
 import app.solstone.core.observer.MobileImportClient
 import app.solstone.core.observer.MobileImportFile
+import app.solstone.core.observer.MobileImportInspectOutcome
 import app.solstone.core.observer.MobileImportItem
 import app.solstone.core.observer.MobileImportOutcome
 import app.solstone.core.observer.MobileImportSource
@@ -55,6 +56,71 @@ internal enum class ImportStageResult {
     HELD,
 }
 
+enum class ImportReconcileOutcome {
+    /** Reconciled every ready-to-review candidate cleanly (or none were waiting). */
+    CLEAN,
+
+    /** At least one candidate hit a transient/transport failure; fallback transport may retry. */
+    TRANSIENT,
+
+    /** The journal refused this pairing (401/403); batch halted without deleting bytes. */
+    AUTH_STOP,
+
+    /** The pairing changed during reconciliation. */
+    PAIRING_LEFT,
+}
+
+/**
+ * Safely reconcile `ready_to_review` items for [instanceId] via `GET /app/import/api/<id>`.
+ *
+ * Preconditions (paired, mark-confirmed, not pairing-refused) are enforced by the caller.
+ * First resets any `ready_to_review` / `review_expired` items belonging to a different journal
+ * instance back to `pending` so Journal B is never queried with Journal A's `import_id`.
+ * Never logs raw filenames or file paths.
+ */
+fun reconcileReadyToReviewImports(
+    http: PlHttpClient,
+    store: ImportCustodyStore,
+    instanceId: String,
+    pairingCurrent: () -> Boolean,
+    log: (String, Throwable?) -> Unit = { _, _ -> },
+    client: (PlHttpClient) -> MobileImportClient = ::MobileImportClient,
+): ImportReconcileOutcome {
+    if (!pairingCurrent()) return ImportReconcileOutcome.PAIRING_LEFT
+    store.resetReviewItemsForInstanceChange(instanceId)
+    val candidates = store.reviewCandidates(instanceId)
+    if (candidates.isEmpty()) return ImportReconcileOutcome.CLEAN
+    val wire = client(http)
+    var anyTransient = false
+    try {
+        for (candidate in candidates) {
+            if (!pairingCurrent()) return ImportReconcileOutcome.PAIRING_LEFT
+            val outcome = try {
+                wire.inspect(candidate.importId)
+            } catch (e: Exception) {
+                log("import ${candidate.id} reconcile threw", e)
+                MobileImportInspectOutcome.Transient("threw-${e.javaClass.simpleName}")
+            }
+            when (outcome) {
+                MobileImportInspectOutcome.Confirmed -> {
+                    store.reconcileConfirmed(candidate.id, candidate.importId, candidate.instanceId)
+                }
+                MobileImportInspectOutcome.StillWaiting -> Unit
+                MobileImportInspectOutcome.Expired -> {
+                    store.reconcileExpired(candidate.id, candidate.importId, candidate.instanceId)
+                }
+                MobileImportInspectOutcome.AuthStop -> return ImportReconcileOutcome.AUTH_STOP
+                is MobileImportInspectOutcome.Transient -> {
+                    anyTransient = true
+                }
+            }
+        }
+    } finally {
+        runCatching { store.finish() }.onFailure { log("finishing reconciled imports failed", it) }
+    }
+    return if (anyTransient) ImportReconcileOutcome.TRANSIENT else ImportReconcileOutcome.CLEAN
+}
+
 /**
  * Deliver held imports to the paired journal, oldest first, within [run]'s cap. Each item's
  * exchange (save, then start) is marked in the store so the owner can't remove it mid-flight, and
@@ -95,6 +161,9 @@ internal fun deliverImports(
     client: (PlHttpClient) -> MobileImportClient = ::MobileImportClient,
 ): ImportStageResult {
     if (gate != ImportVersionGate.SUPPORTED) return ImportStageResult.HELD
+    if (pairingCurrent()) {
+        store.resetReviewItemsForInstanceChange(instanceId)
+    }
     val wire = client(http)
     val candidates = store.eligible(instanceId, journalVersion, now(), Int.MAX_VALUE)
     var anyRetry = false
@@ -214,6 +283,17 @@ private fun settle(
     when (outcome) {
         is MobileImportOutcome.Delivered -> {
             store.recordDelivered(id, instanceId, outcome.importId)
+            ItemStep.DONE
+        }
+        is MobileImportOutcome.ReviewRequired -> {
+            store.recordReviewRequired(
+                id = id,
+                importId = outcome.importId,
+                reasonCode = outcome.reasonCode,
+                kind = outcome.kind,
+                error = outcome.error,
+                instance = instanceId,
+            )
             ItemStep.DONE
         }
         is MobileImportOutcome.NeedsAttention -> {

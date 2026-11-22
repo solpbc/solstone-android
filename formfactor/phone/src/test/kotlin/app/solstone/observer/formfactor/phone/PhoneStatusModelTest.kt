@@ -405,6 +405,37 @@ class PhoneStatusModelTest {
         )
     }
 
+    @Test
+    fun importReviewAndAttentionPillAndPanePrecedenceWhenNothingIsWaiting() {
+        val now = at(2026, 11, 22, 12, 0)
+        val reviewOnly = ready().copy(importReviewCount = 1)
+        assertEquals(StatusPillKind.IMPORT_REVIEW, statusPillKind(reviewOnly, now, ny))
+        assertEquals("1 ready to review", statusPillText(reviewOnly, now, ny))
+        val reviewPane = statusPaneCopy(reviewOnly, now, ny)!!
+        assertEquals("1 import ready to review", reviewPane.lead)
+        assertEquals(listOf("open import to review and start."), reviewPane.lines)
+
+        val multiReview = ready().copy(importReviewCount = 3)
+        assertEquals("3 ready to review", statusPillText(multiReview, now, ny))
+        assertEquals("3 imports ready to review", statusPaneCopy(multiReview, now, ny)!!.lead)
+
+        // needs attention wins over ready to review: non-green connected, no fault text rollup in pill.
+        val both = ready().copy(importReviewCount = 2, importsNeedAttention = true)
+        assertEquals(StatusPillKind.IMPORT_ATTENTION, statusPillKind(both, now, ny))
+        assertEquals("connected", statusPillText(both, now, ny))
+        val attentionPane = statusPaneCopy(both, now, ny)!!
+        assertEquals("imports need you", attentionPane.lead)
+        assertEquals(listOf("open import to see why"), attentionPane.lines)
+
+        // pendingCount > 0 still wins over both import review and import attention.
+        val syncing = both.copy(pendingCount = 2, hasContentPending = true)
+        assertEquals(StatusPillKind.SYNCING, statusPillKind(syncing, now, ny))
+        assertEquals("2 syncing", statusPillText(syncing, now, ny))
+
+        // Support copy clears import states back to connected.
+        assertEquals("connected", supportOf(both.clearedForSupport()))
+    }
+
     private val ny: ZoneId = ZoneId.of("America/New_York")
 
     private fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =

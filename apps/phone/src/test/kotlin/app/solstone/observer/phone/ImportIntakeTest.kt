@@ -8,6 +8,7 @@ import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ImportDao
 import app.solstone.platform.persistence.room.ImportDeliveryRow
 import app.solstone.platform.persistence.room.ImportItemRow
+import app.solstone.platform.persistence.room.ImportRecentReceiptRow
 import app.solstone.platform.persistence.room.SourceIntakeRow
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -32,6 +33,10 @@ class ImportIntakeTest {
         override fun all(): List<ImportItemRow> = rows.values.sortedBy { it.createdAt }
         override fun putDelivery(row: ImportDeliveryRow) = Unit
         override fun delivery(): ImportDeliveryRow? = null
+        override fun putRecentReceipt(row: ImportRecentReceiptRow) = Unit
+        override fun recentReceipts(instanceId: String, cutoff: Long, limit: Int): List<ImportRecentReceiptRow> = emptyList()
+        override fun pruneExpiredReceipts(cutoff: Long): Int = 0
+        override fun trimRecentReceipts(instanceId: String, keep: Int): Int = 0
         override fun intakeBySource(sourceId: String): SourceIntakeRow? = null
         override fun upsertIntake(row: SourceIntakeRow) = Unit
     }

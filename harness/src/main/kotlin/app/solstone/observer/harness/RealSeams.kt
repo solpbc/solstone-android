@@ -192,6 +192,7 @@ class RealPlStatusProbe(
     private val dialEvents: DialEventLog? = null,
     private val publisher: app.solstone.core.identity.PairingPublisher? = null,
     private val handshakeGuard: HandshakeGuard? = null,
+    private val onReconcileImports: ((PairedHome, () -> PlHttpClient) -> Unit)? = null,
 ) : PlStatusProbe {
     private var wasReachable: Boolean? = null
 
@@ -392,6 +393,7 @@ class RealPlStatusProbe(
                 clientCertFingerprint = identity.clientCertFingerprint,
                 openClient = openClient,
             )
+            onReconcileImports?.invoke(identity, openClient)
         } else if (previous == true && !reachable) {
             coordinator?.onConnectionLost()
             relayAccessCoordinator?.onConnectionLost()

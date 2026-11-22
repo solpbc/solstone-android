@@ -45,7 +45,10 @@ fun pairedStatusSummary(
             action = true,
         )
     }
-    StatusPillKind.CONNECTED -> PairedStatusSummary(
+    StatusPillKind.CONNECTED,
+    StatusPillKind.IMPORT_REVIEW,
+    StatusPillKind.IMPORT_ATTENTION,
+    -> PairedStatusSummary(
         lead = PairedStatusLead.CAUGHT_UP,
         markLineFollowsCount = false,
         subLine = true,

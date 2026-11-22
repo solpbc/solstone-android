@@ -165,4 +165,62 @@ class JournalImportHostTest {
         assertNull(journalOriginOf("not a url"))
         assertEquals(BigDecimal(2), (parseJson(contract.json) as Map<*, *>)["version"])
     }
+
+    @Test
+    fun additiveV2StatusFieldsEmitReviewExpiredDeviceNounAndSizeBytesWithoutBreakingContract() {
+        statuses["review-1"] = ImportHandoffStatus(
+            state = "attention",
+            importId = "20261122_120000",
+            reason = "saved in your journal. preview and confirm to start.",
+            reviewRequired = true,
+            reviewExpired = false,
+            reasonCode = "import_preview_required",
+            kind = "body_confirmation_required",
+            retryable = false,
+        )
+        send("""{"type":"host.status","item":"review-1"}""", contextText = null)
+        assertEquals(
+            mapOf(
+                "state" to "attention",
+                "import_id" to "20261122_120000",
+                "reason" to "saved in your journal. preview and confirm to start.",
+                "review_required" to true,
+                "review_expired" to false,
+                "reason_code" to "import_preview_required",
+                "kind" to "body_confirmation_required",
+                "retryable" to false,
+            ),
+            replies.last(),
+        )
+
+        statuses["expired-1"] = ImportHandoffStatus(
+            state = "attention",
+            importId = "20261122_110000",
+            reason = "the waiting copy in your journal expired. this device still holds the file.",
+            reviewRequired = false,
+            reviewExpired = true,
+            reasonCode = "import_preview_required",
+            kind = "body_confirmation_required",
+            retryable = true,
+        )
+        send("""{"type":"host.status","item":"expired-1"}""", contextText = null)
+        assertEquals(true, replies.last()["review_expired"])
+        assertEquals(false, replies.last()["review_required"])
+        assertEquals(true, replies.last()["retryable"])
+
+        statuses["waiting-1"] = ImportHandoffStatus(
+            state = "waiting",
+            deviceNoun = "phone",
+            sizeBytes = 4096L,
+        )
+        send("""{"type":"host.status","item":"waiting-1"}""", contextText = null)
+        assertEquals("waiting", replies.last()["state"])
+        assertEquals("phone", replies.last()["device_noun"])
+        assertEquals(BigDecimal(4096), replies.last()["size_bytes"])
+
+        // import-host.js continues calm 2000ms polling on review_required === true.
+        val script = File("src/main/assets/journal-web-host/import-host.js").readText()
+        assertTrue(script.contains("status.review_required === true"))
+        assertTrue(script.contains("2000"))
+    }
 }

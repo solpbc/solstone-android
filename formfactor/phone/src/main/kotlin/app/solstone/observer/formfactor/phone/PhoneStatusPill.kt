@@ -112,12 +112,28 @@ fun PhoneStatusPill(
     val calm = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
     val mark = when (kind) {
         StatusPillKind.CONNECTED, StatusPillKind.SYNCING -> TileDotMark.DISC
-        StatusPillKind.CONNECTING, StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> TileDotMark.RING
+        StatusPillKind.CONNECTING,
+        StatusPillKind.OFFLINE,
+        StatusPillKind.NOT_PAIRED,
+        StatusPillKind.REFUSED,
+        StatusPillKind.AWAITING_MARK_CONFIRMATION,
+        StatusPillKind.NOTICE,
+        StatusPillKind.IMPORT_ATTENTION,
+        StatusPillKind.IMPORT_REVIEW,
+        -> TileDotMark.RING
     }
     val dotColor = when (kind) {
         StatusPillKind.CONNECTED -> LocalStatusOnGreen.current
         StatusPillKind.SYNCING -> MaterialTheme.colorScheme.primaryContainer
-        StatusPillKind.CONNECTING, StatusPillKind.OFFLINE, StatusPillKind.NOT_PAIRED, StatusPillKind.REFUSED, StatusPillKind.AWAITING_MARK_CONFIRMATION, StatusPillKind.NOTICE -> calm
+        StatusPillKind.IMPORT_REVIEW -> MaterialTheme.colorScheme.outline
+        StatusPillKind.CONNECTING,
+        StatusPillKind.OFFLINE,
+        StatusPillKind.NOT_PAIRED,
+        StatusPillKind.REFUSED,
+        StatusPillKind.AWAITING_MARK_CONFIRMATION,
+        StatusPillKind.NOTICE,
+        StatusPillKind.IMPORT_ATTENTION,
+        -> calm
     }
     Box(
         modifier = modifier
@@ -137,7 +153,11 @@ fun PhoneStatusPill(
                     .size(12.dp)
                     .alpha(if (pulse) pulseAlpha else 1f),
             ) {
-                PhoneTileDot(mark = mark, color = dotColor)
+                if (kind == StatusPillKind.IMPORT_REVIEW) {
+                    ImportStateMarker(kind = ImportMarkerKind.READY_TO_REVIEW)
+                } else {
+                    PhoneTileDot(mark = mark, color = dotColor)
+                }
             }
             Text(
                 text = text,
