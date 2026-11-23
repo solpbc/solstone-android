@@ -97,10 +97,12 @@ Numbers use the selected locale with the catalog's grouped or ungrouped style.
 Byte sizes use Android's formatter. Whole date messages preserve existing
 English presentation and allow another language to reorder dates. Optional
 about-line clauses and their meaningful spaces remain catalog messages;
-English is unchanged. Complete license texts and notices are legal messages,
-verbatim in English. Templates too large for Android’s string pool use generated
+English is unchanged. Complete license texts stay `legal` and verbatim in
+English. License notices, attributions, warranty lines and age-signal messages
+are `consent` messages with `auto_merge: false` that require human review before
+a translation ships. Templates too large for Android’s string pool use generated
 UTF-8 raw resources and the same single formatting pass; this avoids AAPT
-replacing a long license with `STRING_TOO_LARGE`. Permission sidecars call for review before translation.
+replacing a long license with `STRING_TOO_LARGE`.
 Shared sentences name exact iPhone message identities in translator context.
 
 Presenter unit tests use a generated English reader and retain their existing
