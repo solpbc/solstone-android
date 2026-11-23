@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.53] - 2026-11-23
+
+### Added
+
+- once your journal is on 2.0.89 or later, an import that waits for you to look it over before it starts, like an Apple Health export, shows as ready to review on the import tile. "review in your journal" opens it there. this device keeps its copy until you start it, and if the waiting copy in your journal expires, you can send it again from here.
+- your recent imports show when each one reached your journal, and tapping one opens it there.
+- once your journal is on 2.0.89 or later, signing in to Plaud from your journal's settings opens a sign-in tab over the app.
+
 ## [2.1.52] - 2026-11-22
 
 ### Added
