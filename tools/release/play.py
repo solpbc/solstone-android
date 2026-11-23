@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2026 sol pbc
-"""Controller-side Play release rail. Requires requests, PyJWT, and PLAY_SERVICE_ACCOUNT.
+"""Controller-side Play release rail. Requires requests, PyJWT[crypto], and PLAY_SERVICE_ACCOUNT.
 
 prepare uploads a bound bundle and stages one track, with optional approved
 listing patches and Wear screenshots. It never commits. commit validates the
