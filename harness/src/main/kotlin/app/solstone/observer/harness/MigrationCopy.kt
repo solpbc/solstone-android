@@ -4,6 +4,9 @@
 package app.solstone.observer.harness
 
 import app.solstone.core.i18n.phoneText
+import app.solstone.core.pl.MigrationClient
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 
 /** Owner-facing surfaces of the post-pair device choice; one table for every form factor. */
 enum class MigrationSurface {
@@ -81,4 +84,37 @@ fun migrationCopy(surface: MigrationSurface, selectedLabel: String? = null): Mig
         phoneText("android.migration.device.couldn.t.open.its"),
         phoneText("android.migration.pair.again"),
     )
+}
+
+private const val FUTURE_CLOCK_DRIFT_TOLERANCE_MS = 300_000L
+
+/**
+ * Second line under a device in the replacement picker, distinguishing devices that share a name.
+ * Prefers [MigrationClient.lastSeenAt], falls back to [MigrationClient.pairedAt], and returns null
+ * when neither timestamp is present and parseable.
+ */
+fun migrationClientActivityLine(client: MigrationClient, nowEpochMs: Long): String? {
+    formatRelativeFromIso(client.lastSeenAt, nowEpochMs)?.let { relative ->
+        return phoneText("android.migration.device.last.reached", "relative" to relative)
+    }
+    formatRelativeFromIso(client.pairedAt, nowEpochMs)?.let { relative ->
+        return phoneText("android.migration.device.paired", "relative" to relative)
+    }
+    return null
+}
+
+private fun formatRelativeFromIso(timestamp: String?, nowEpochMs: Long): String? {
+    val raw = timestamp?.trim()?.takeIf(String::isNotBlank) ?: return null
+    val thenEpochMs = runCatching {
+        Instant.from(DateTimeFormatter.ISO_OFFSET_DATE_TIME.parse(raw)).toEpochMilli()
+    }.getOrNull() ?: return null
+    val age = nowEpochMs - thenEpochMs
+    if (age < -FUTURE_CLOCK_DRIFT_TOLERANCE_MS) return null
+    val effectiveAge = age.coerceAtLeast(0L)
+    return when {
+        effectiveAge < 60_000L -> phoneText("android.about.freshnessnow")
+        effectiveAge < 3_600_000L -> phoneText("android.about.freshnessminutes", "count" to (effectiveAge / 60_000L))
+        effectiveAge < 86_400_000L -> phoneText("android.about.freshnesshours", "count" to (effectiveAge / 3_600_000L))
+        else -> phoneText("android.about.freshnessdays", "count" to (effectiveAge / 86_400_000L))
+    }
 }

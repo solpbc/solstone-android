@@ -280,7 +280,9 @@ public final class Select {
             case "android.migration.device.continues.its.name.history": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e636f6e74696e7565732e6974732e6e616d652e686973746f7279";
             case "android.migration.device.couldn.t.open.its": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e636f756c646e2e742e6f70656e2e697473";
             case "android.migration.device.couldn.t.read.its": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e636f756c646e2e742e726561642e697473";
+            case "android.migration.device.last.reached": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e6c6173742e72656163686564";
             case "android.migration.device.no.longer.available": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e6e6f2e6c6f6e6765722e617661696c61626c65";
+            case "android.migration.device.paired": return "m616e64726f69642e6d6967726174696f6e2e6465766963652e706169726564";
             case "android.migration.devices.unavailable": return "m616e64726f69642e6d6967726174696f6e2e646576696365732e756e617661696c61626c65";
             case "android.migration.getting.device.ready": return "m616e64726f69642e6d6967726174696f6e2e67657474696e672e6465766963652e7265616479";
             case "android.migration.journal.couldn.t.apply.choice": return "m616e64726f69642e6d6967726174696f6e2e6a6f75726e616c2e636f756c646e2e742e6170706c792e63686f696365";

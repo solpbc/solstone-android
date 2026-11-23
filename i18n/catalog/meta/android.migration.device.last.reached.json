@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app, to the owner, second line under a device in the replacement picker when it has reached the journal",
+  "context": "the solstone app, to the owner, under each device in the replacement picker. { $relative } is a relative time phrase such as 'just now' or '2 days ago'.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "relative",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "0350a380b709d13c8256a3a6fad1f3185f38203dc3efdd51c6412e477f3b87aa",
+  "risk": "routine",
+  "auto_merge": true
+}

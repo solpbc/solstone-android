@@ -62,6 +62,65 @@ class DeviceMigrationApiTest {
     }
 
     @Test
+    fun listParsesOptionalActivityTimestampsAndIgnoresMalformedValues() {
+        val active = "sha256:${"a".repeat(64)}"
+        val pairedOnly = "sha256:${"b".repeat(64)}"
+        val malformed = "sha256:${"c".repeat(64)}"
+        val body = toJson(
+            mapOf(
+                "clients" to listOf(
+                    mapOf(
+                        "cid" to active,
+                        "display_label" to "Phone",
+                        "last_seen_at" to "2026-11-21T12:00:00Z",
+                        "paired_at" to "2026-11-18T09:00:00Z",
+                    ),
+                    mapOf(
+                        "cid" to pairedOnly,
+                        "display_label" to "Phone",
+                        "last_seen_at" to null,
+                        "paired_at" to "2026-11-20T09:00:00+00:00",
+                    ),
+                    mapOf(
+                        "cid" to malformed,
+                        "display_label" to "Phone",
+                        "last_seen_at" to "   ",
+                        "paired_at" to 12345,
+                    ),
+                ),
+            ),
+        )
+        val client = RecordingClient { _, _, _, _ -> HttpResponse(200, emptyMap(), body.toByteArray()) }
+        val result = assertIs<MigrationApiResult.Success<List<MigrationClient>>>(getMigrationClients(client))
+        assertEquals(
+            listOf(
+                MigrationClient(
+                    active,
+                    "Phone",
+                    null,
+                    lastSeenAt = "2026-11-21T12:00:00Z",
+                    pairedAt = "2026-11-18T09:00:00Z",
+                ),
+                MigrationClient(
+                    pairedOnly,
+                    "Phone",
+                    null,
+                    lastSeenAt = null,
+                    pairedAt = "2026-11-20T09:00:00+00:00",
+                ),
+                MigrationClient(
+                    malformed,
+                    "Phone",
+                    null,
+                    lastSeenAt = null,
+                    pairedAt = null,
+                ),
+            ),
+            result.value,
+        )
+    }
+
+    @Test
     fun putUsesCanonicalBodyAndOnlyPinnedDefiniteRefusalsAreCertain() {
         val expected = "{\"protocol_version\":1,\"operation_id\":\"123e4567-e89b-42d3-a456-426614174004\",\"choice\":\"new_device\"}"
         val client = RecordingClient { method, path, headers, body ->

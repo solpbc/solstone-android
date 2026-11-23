@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
+    "android.obsidian.turnoffobsidian" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f66666f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn off Obsidian"))),
+    "android.obsidian.vault" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "vault"))),
     "android.obsidian.vaultcouldntchecked" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74636f756c646e74636865636b6564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the vault couldn't be checked. try again."))),
     "android.obsidian.vaultsnamecan" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74736e616d6563616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this vault's name can't be used. choose another vault."))),
     "android.obsidian.waitingjournalupdate" to PhoneMessage("m616e64726f69642e6f6273696469616e2e77616974696e676a6f75726e616c757064617465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "waiting for a journal update"))),
@@ -60,6 +62,4 @@ internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
     "android.phone.status.unavailable" to PhoneMessage("m616e64726f69642e70686f6e652e7374617475732e756e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status unavailable"))),
     "android.phone.text" to PhoneMessage("m616e64726f69642e70686f6e652e74657874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "text"))),
     "android.phone.try.now" to PhoneMessage("m616e64726f69642e70686f6e652e7472792e6e6f77", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "try now"))),
-    "android.phone.up" to PhoneMessage("m616e64726f69642e70686f6e652e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "up"))),
-    "android.phone.watch.start" to PhoneMessage("m616e64726f69642e70686f6e652e77617463682e7374617274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "start on your watch"))),
 )

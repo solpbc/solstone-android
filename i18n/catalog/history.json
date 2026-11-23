@@ -4652,6 +4652,26 @@
       "selector": null
     },
     {
+      "id": "android.migration.device.last.reached",
+      "resource": "m616e64726f69642e6d6967726174696f6e2e6465766963652e6c6173742e72656163686564",
+      "namespace": "android.migration.device.last",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "relative",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
       "id": "android.migration.device.no.longer.available",
       "resource": "m616e64726f69642e6d6967726174696f6e2e6465766963652e6e6f2e6c6f6e6765722e617661696c61626c65",
       "namespace": "android.migration.device.no.longer",
@@ -4660,6 +4680,26 @@
       "replacement": null,
       "format_intent": "text",
       "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.migration.device.paired",
+      "resource": "m616e64726f69642e6d6967726174696f6e2e6465766963652e706169726564",
+      "namespace": "android.migration.device",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "relative",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
       "protected_slots": [],
       "selector": null
     },

@@ -1682,9 +1682,23 @@
       "locales": []
     },
     {
+      "id": "android.migration.device.last.reached",
+      "source": "0350a380b709d13c8256a3a6fad1f3185f38203dc3efdd51c6412e477f3b87aa",
+      "contract": "6979d4d46857d915950df394a8566197077b1e1a3e797b2be0cb5523bc6d69a3",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
       "id": "android.migration.device.no.longer.available",
       "source": "025f10aedddbbe9378d68786ef7158e3e9623f04f795397dfa6da1dc6204d752",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.migration.device.paired",
+      "source": "e49b1235ade73fd2ac98f46d93b0ee1915c793c6a6c448f941c105044e10a0f3",
+      "contract": "6979d4d46857d915950df394a8566197077b1e1a3e797b2be0cb5523bc6d69a3",
       "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
       "locales": []
     },

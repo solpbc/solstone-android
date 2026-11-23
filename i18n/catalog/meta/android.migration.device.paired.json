@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app, to the owner, second line under a device in the replacement picker when it was paired but has never reached the journal",
+  "context": "the solstone app, to the owner, under each device in the replacement picker when last_seen_at is absent. { $relative } is a relative time phrase such as 'just now' or '2 days ago'.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "relative",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "e49b1235ade73fd2ac98f46d93b0ee1915c793c6a6c448f941c105044e10a0f3",
+  "risk": "routine",
+  "auto_merge": true
+}

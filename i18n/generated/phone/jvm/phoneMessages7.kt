@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
+    "android.setup.opensetuppage" to PhoneMessage("m616e64726f69642e73657475702e6f70656e736574757070616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "open the setup page"))),
+    "android.setup.photos.files" to PhoneMessage("m616e64726f69642e73657475702e70686f746f732e66696c6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "photos and files"))),
     "android.setup.scanpairingcode" to PhoneMessage("m616e64726f69642e73657475702e7363616e70616972696e67636f6465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "scan its pairing code"))),
     "android.setup.send.yourself.link" to PhoneMessage("m616e64726f69642e73657475702e73656e642e796f757273656c662e6c696e6b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "send yourself the link"))),
     "android.setup.setupjournal" to PhoneMessage("m616e64726f69642e73657475702e73657475706a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "set up a journal"))),
@@ -60,6 +62,4 @@ internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
     "android.shelf.saved.device" to PhoneMessage("m616e64726f69642e7368656c662e73617665642e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved on this device"))),
     "android.shelf.saved" to PhoneMessage("m616e64726f69642e7368656c662e7361766564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved"))),
     "android.shelf.send.test.notification" to PhoneMessage("m616e64726f69642e7368656c662e73656e642e746573742e6e6f74696669636174696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "send test notification"))),
-    "android.shelf.settings" to PhoneMessage("m616e64726f69642e7368656c662e73657474696e6773", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "settings"))),
-    "android.shelf.status" to PhoneMessage("m616e64726f69642e7368656c662e737461747573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status"))),
 )

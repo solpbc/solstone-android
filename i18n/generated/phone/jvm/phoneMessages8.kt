@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
+    "android.shelf.settings" to PhoneMessage("m616e64726f69642e7368656c662e73657474696e6773", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "settings"))),
+    "android.shelf.status" to PhoneMessage("m616e64726f69642e7368656c662e737461747573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status"))),
     "android.shelf.support.solstone.app" to PhoneMessage("m616e64726f69642e7368656c662e737570706f72742e736f6c73746f6e652e617070", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "support.solstone.app"))),
     "android.shelf.unpair.device" to PhoneMessage("m616e64726f69642e7368656c662e756e706169722e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unpair this device?"))),
     "android.shelf.unpair" to PhoneMessage("m616e64726f69642e7368656c662e756e70616972", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unpair"))),
@@ -60,6 +62,4 @@ internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
     "android.source.nothing.has.come.recently" to PhoneMessage("m616e64726f69642e736f757263652e6e6f7468696e672e6861732e636f6d652e726563656e746c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing has come in recently"))),
     "android.source.offline" to PhoneMessage("m616e64726f69642e736f757263652e6f66666c696e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "offline"))),
     "android.source.other.sources.stopped.unexpectedly" to PhoneMessage("m616e64726f69642e736f757263652e6f746865722e736f75726365732e73746f707065642e756e65787065637465646c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "other sources stopped unexpectedly"))),
-    "android.source.paused" to PhoneMessage("m616e64726f69642e736f757263652e706175736564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "paused"))),
-    "android.source.paused.resume.start.intake.again" to PhoneMessage("m616e64726f69642e736f757263652e7061757365642e726573756d652e73746172742e696e74616b652e616761696e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you paused this. resume to start intake again."))),
 )

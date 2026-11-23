@@ -8,7 +8,13 @@ private const val MIGRATION_PATH = "/app/network/api/clients/self/migration"
 private val CID_PATTERN = Regex("sha256:[0-9a-f]{64}")
 private val UUID_PATTERN = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
-data class MigrationClient(val cid: String, val displayLabel: String, val reported: ClientReportedDescription?)
+data class MigrationClient(
+    val cid: String,
+    val displayLabel: String,
+    val reported: ClientReportedDescription?,
+    val lastSeenAt: String? = null,
+    val pairedAt: String? = null,
+)
 
 data class MigrationStateResponse(
     val operationId: String?,
@@ -58,7 +64,9 @@ fun getMigrationClients(client: PlHttpClient): MigrationApiResult<List<Migration
             val label = row["display_label"] as? String ?: throw IllegalArgumentException("display label missing")
             require(label.isNotBlank()) { "display label is blank" }
             val reported = parseOptionalReported(row["reported"])
-            MigrationClient(cid, label, reported)
+            val lastSeenAt = optionalNonBlankTimestamp(row["last_seen_at"])
+            val pairedAt = optionalNonBlankTimestamp(row["paired_at"])
+            MigrationClient(cid, label, reported, lastSeenAt = lastSeenAt, pairedAt = pairedAt)
         }
         require(parsed.map(MigrationClient::cid).toSet().size == parsed.size) { "duplicate client CID" }
         MigrationApiResult.Success(parsed)
@@ -154,6 +162,9 @@ fun canonicalMigrationDecisionPayload(
 private fun HttpResponse.errorReasonCode(): String? = runCatching {
     (parseJson(bodyText()) as? Map<*, *>)?.get("reason_code") as? String
 }.getOrNull()
+
+private fun optionalNonBlankTimestamp(value: Any?): String? =
+    (value as? String)?.trim()?.takeIf(String::isNotBlank)
 
 private fun parseOptionalReported(value: Any?): ClientReportedDescription? = when (value) {
     null -> null

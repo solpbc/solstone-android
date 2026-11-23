@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- when you replace a device after pairing, each device in the list now shows when it last reached your journal, or when it was paired, so devices with the same name are easier to tell apart.
+
 ## [2.1.53] - 2026-11-23
 
 ### Added

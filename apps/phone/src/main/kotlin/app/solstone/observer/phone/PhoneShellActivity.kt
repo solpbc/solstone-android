@@ -174,6 +174,7 @@ import app.solstone.observer.harness.freshPairResultIsCurrent
 import app.solstone.observer.harness.phoneDeviceChoicePending
 import app.solstone.observer.harness.planPhoneFreshPair
 import app.solstone.observer.formfactor.phone.PhoneJournalNotificationRow
+import app.solstone.observer.formfactor.phone.PhoneMigrationDeviceList
 import org.unifiedpush.android.connector.UnifiedPush
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -1701,12 +1702,18 @@ class PhoneShellActivity : ComponentActivity() {
                                 if (!migrationBusy && !migrationStoreUnavailable &&
                                     migrationSurface in setOf(MigrationSurface.PICKER, MigrationSurface.PICKER_EMPTY)
                                 ) {
-                                    migrationListing?.clients.orEmpty().forEach { client ->
-                                        TextButton(onClick = {
-                                            val listing = migrationListing ?: return@TextButton
-                                            migrationSelected = client
-                                            performMigration(MigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
-                                        }) { Text(client.displayLabel) }
+                                    val clients = migrationListing?.clients.orEmpty()
+                                    if (clients.isNotEmpty()) {
+                                        val nowEpochMs = remember(migrationListing) { System.currentTimeMillis() }
+                                        PhoneMigrationDeviceList(
+                                            clients = clients,
+                                            nowEpochMs = nowEpochMs,
+                                            onSelect = { client ->
+                                                val listing = migrationListing ?: return@PhoneMigrationDeviceList
+                                                migrationSelected = client
+                                                performMigration(MigrationSurface.PREPARING) { it.selectTarget(listing, client.cid) }
+                                            },
+                                        )
                                     }
                                 }
                                 if (migrationSurface == MigrationSurface.TARGET_UNAVAILABLE &&

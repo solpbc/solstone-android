@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
+    "android.source.paused" to PhoneMessage("m616e64726f69642e736f757263652e706175736564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "paused"))),
+    "android.source.paused.resume.start.intake.again" to PhoneMessage("m616e64726f69642e736f757263652e7061757365642e726573756d652e73746172742e696e74616b652e616761696e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you paused this. resume to start intake again."))),
     "android.source.permissions.needed" to PhoneMessage("m616e64726f69642e736f757263652e7065726d697373696f6e732e6e6565646564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "permissions needed"))),
     "android.source.phonestoragealmostfull" to PhoneMessage("m616e64726f69642e736f757263652e70686f6e6573746f72616765616c6d6f737466756c6c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "phone storage is almost full. free space in phone settings."))),
     "android.source.ready.set.up" to PhoneMessage("m616e64726f69642e736f757263652e72656164792e7365742e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "ready to set up"))),
@@ -60,6 +62,4 @@ internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
     "android.unknownjournal.bodyrelay" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e626f647972656c6179", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered this device through the relay, and it isn't the journal this device is paired with. this is less certain than a direct connection."))),
     "android.unknownjournal.claimednotverified" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e636c61696d65646e6f747665726966696564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "claimed, not verified"))),
     "android.unknownjournal.seenat" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e7365656e6174", listOf(PhoneArgument("it", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal seen at %1\$s"))),
-    "android.unknownjournal.somethingansweredinsteadjournal" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e736f6d657468696e67616e737765726564696e73746561646a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered instead of your journal"))),
-    "android.unknownjournal.unknownjournalseenthrough" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e756e6b6e6f776e6a6f75726e616c7365656e7468726f756768", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal seen through the relay"))),
 )

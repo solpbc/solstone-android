@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
+    "android.phone.up" to PhoneMessage("m616e64726f69642e70686f6e652e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "up"))),
+    "android.phone.watch.start" to PhoneMessage("m616e64726f69642e70686f6e652e77617463682e7374617274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "start on your watch"))),
     "android.push.fallbackbody" to PhoneMessage("m616e64726f69642e707573682e66616c6c6261636b626f6479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you have a new notification."))),
     "android.push.intake" to PhoneMessage("m616e64726f69642e707573682e696e74616b65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "intake"))),
     "android.push.needs.attention" to PhoneMessage("m616e64726f69642e707573682e6e656564732e617474656e74696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "needs attention"))),
@@ -60,6 +62,4 @@ internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
     "android.setup.i.already.have.one" to PhoneMessage("m616e64726f69642e73657475702e692e616c72656164792e686176652e6f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "i already have one"))),
     "android.setup.import" to PhoneMessage("m616e64726f69642e73657475702e696d706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "import"))),
     "android.setup.journal.always.private.only.yours" to PhoneMessage("m616e64726f69642e73657475702e6a6f75726e616c2e616c776179732e707269766174652e6f6e6c792e796f757273", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal is always private, only yours."))),
-    "android.setup.opensetuppage" to PhoneMessage("m616e64726f69642e73657475702e6f70656e736574757070616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "open the setup page"))),
-    "android.setup.photos.files" to PhoneMessage("m616e64726f69642e73657475702e70686f746f732e66696c6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "photos and files"))),
 )

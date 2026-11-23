@@ -2,7 +2,9 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages4(): Map<String, PhoneMessage> = mapOf(
+    "android.migration.device.last.reached" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e6465766963652e6c6173742e72656163686564", listOf(PhoneArgument("relative", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "last reached your journal %1\$s"))),
     "android.migration.device.no.longer.available" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e6465766963652e6e6f2e6c6f6e6765722e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "device no longer available"))),
+    "android.migration.device.paired" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e6465766963652e706169726564", listOf(PhoneArgument("relative", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "paired %1\$s"))),
     "android.migration.devices.unavailable" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e646576696365732e756e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "devices unavailable"))),
     "android.migration.getting.device.ready" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e67657474696e672e6465766963652e7265616479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "getting this device ready"))),
     "android.migration.journal.couldn.t.apply.choice" to PhoneMessage("m616e64726f69642e6d6967726174696f6e2e6a6f75726e616c2e636f756c646e2e742e6170706c792e63686f696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal couldn't apply this choice. your current connection still works."))),
@@ -60,6 +62,4 @@ internal fun phoneMessages4(): Map<String, PhoneMessage> = mapOf(
     "android.obsidian.turningoffremovesnothing" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e696e676f666672656d6f7665736e6f7468696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turning this off removes nothing from your journal. changes already waiting stay on this phone."))),
     "android.obsidian.turnobsidian" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn on Obsidian"))),
     "android.obsidian.turnoffbeforechoosing" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f66666265666f726563686f6f73696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn this off before choosing another vault."))),
-    "android.obsidian.turnoffobsidian" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f66666f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn off Obsidian"))),
-    "android.obsidian.vault" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "vault"))),
 )

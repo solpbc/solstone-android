@@ -2,6 +2,8 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages10(): Map<String, PhoneMessage> = mapOf(
+    "android.unknownjournal.somethingansweredinsteadjournal" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e736f6d657468696e67616e737765726564696e73746561646a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered instead of your journal"))),
+    "android.unknownjournal.unknownjournalseenthrough" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e756e6b6e6f776e6a6f75726e616c7365656e7468726f756768", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal seen through the relay"))),
     "android.unknownjournal.viewdetails" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e7669657764657461696c73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "view details"))),
     "android.unknownjournal.whatanswered" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e77686174616e737765726564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "what answered"))),
     "android.wear.not.yet" to PhoneMessage("m616e64726f69642e776561722e6e6f742e796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not yet"))),
