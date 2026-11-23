@@ -15,6 +15,7 @@ import java.net.SocketTimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -1014,5 +1015,28 @@ class MobileImportClientTest {
         assertEquals(MobileImportInspectOutcome.Confirmed, client.inspect("20261122_143000"))
         assertEquals("GET", http.buffered.single().method)
         assertEquals("/app/import/api/20261122_143000", http.buffered.single().path)
+    }
+
+    @Test
+    fun saveAndStartSendLocaleHeaderOnlyOutsideEnglish() {
+        val xaHttp = ScriptedPlHttpClient()
+        xaHttp.response = HttpResponse(200, emptyMap(), """{"status":"staged","path":"/tmp/x","timestamp":"20261122_143000"}""".toByteArray())
+        val xaClient = MobileImportClient(xaHttp, localeHeader = { "en-XA" })
+        xaClient.save(MobileImportText("id-1", "hello"))
+        assertEquals("en-XA", xaHttp.streamed.single().headers["X-Solstone-Locale"])
+
+        xaHttp.response = HttpResponse(200, emptyMap(), """{"status":"ok","import_id":"20261122_143000"}""".toByteArray())
+        xaClient.start("/tmp/x", "20261122_143000")
+        assertEquals("en-XA", xaHttp.buffered.single().headers["X-Solstone-Locale"])
+
+        val enHttp = ScriptedPlHttpClient()
+        enHttp.response = HttpResponse(200, emptyMap(), """{"status":"staged","path":"/tmp/x","timestamp":"20261122_143000"}""".toByteArray())
+        val enClient = MobileImportClient(enHttp, localeHeader = { null })
+        enClient.save(MobileImportText("id-2", "hello"))
+        assertFalse(enHttp.streamed.single().headers.containsKey("X-Solstone-Locale"))
+
+        enHttp.response = HttpResponse(200, emptyMap(), """{"status":"ok","import_id":"20261122_143000"}""".toByteArray())
+        enClient.start("/tmp/x", "20261122_143000")
+        assertFalse(enHttp.buffered.single().headers.containsKey("X-Solstone-Locale"))
     }
 }

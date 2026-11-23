@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.JOURNAL_LOCALE_HEADER
+import app.solstone.core.i18n.journalLocaleHeaderValue
 import app.solstone.core.i18n.phoneText
 
 import android.annotation.SuppressLint
@@ -180,6 +182,18 @@ private sealed interface BrowserPaneState {
 private fun journalTargetUrl(origin: String, path: String?): String =
     if (path != null) origin + path.removePrefix("/") else origin
 
+internal fun journalLoadHeaders(localeTag: String? = journalLocaleHeaderValue()): Map<String, String> =
+    if (localeTag.isNullOrBlank()) emptyMap() else mapOf(JOURNAL_LOCALE_HEADER to localeTag)
+
+private fun WebView.loadJournalUrl(url: String, localeTag: String?) {
+    val headers = journalLoadHeaders(localeTag)
+    if (headers.isEmpty()) {
+        loadUrl(url)
+    } else {
+        loadUrl(url, headers)
+    }
+}
+
 @Composable
 private fun JournalBrowserPane(
     sessionFactory: () -> JournalSheetSession,
@@ -287,7 +301,7 @@ private fun JournalBrowserPane(
                 val webView = liveWebView
                 if (webView != null) {
                     PhoneJournalTestHooks.onLoadUrl?.invoke(nextTarget)
-                    webView.loadUrl(nextTarget)
+                    webView.loadJournalUrl(nextTarget, journalLocaleHeaderValue())
                 }
             }
             BrowserPaneState.Loading -> {
@@ -462,6 +476,7 @@ internal fun createJournalWebView(
     openPicker: ((Boolean, (List<Uri>?) -> Unit) -> Unit)? = null,
     openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
     onImportHost: ((JournalImportHost<Uri>?) -> Unit)? = null,
+    localeTagProvider: () -> String? = { journalLocaleHeaderValue() },
 ): WebView {
     val policy = JournalWebPolicy(origin)
     val insetPolicy = journalWebInsetPolicy(WebView.getCurrentWebViewPackage()?.versionName)
@@ -544,6 +559,19 @@ internal fun createJournalWebView(
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
                 val decision = policy.decide(url, request.isForMainFrame)
+                if (!decision.consume &&
+                    request.isForMainFrame &&
+                    request.method.equals("GET", ignoreCase = true)
+                ) {
+                    val localeTag = localeTagProvider()
+                    val alreadyTagged = localeTag != null && request.requestHeaders?.entries?.any {
+                        it.key.equals(JOURNAL_LOCALE_HEADER, ignoreCase = true) && it.value == localeTag
+                    } == true
+                    if (!localeTag.isNullOrBlank() && !alreadyTagged) {
+                        view.loadJournalUrl(url, localeTag)
+                        return true
+                    }
+                }
                 return applyJournalWebNavigation(
                     decision,
                     request.hasGesture(),
@@ -647,7 +675,7 @@ internal fun createJournalWebView(
         importHost = openPicker?.let { installJournalImportHost(context, this, origin, it, openAuthBrowser) }
         onImportHost?.invoke(importHost)
         PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
-        loadUrl(loadTarget)
+        loadJournalUrl(loadTarget, localeTagProvider())
     }
 }
 

@@ -35,6 +35,20 @@ fun interface PhoneTextReader {
 
 fun phoneLocale(): Locale = PhoneText.locale()
 
+const val JOURNAL_LOCALE_HEADER = "X-Solstone-Locale"
+
+/**
+ * Returns the app's selected catalog language tag when it is not English, or
+ * `null` in English so requests send nothing new.
+ */
+fun journalLocaleHeaderValue(locale: Locale = phoneLocale()): String? {
+    val tag = locale.toLanguageTag().trim()
+    if (tag.isEmpty()) return null
+    if (tag.equals("en-US", ignoreCase = true) || tag.equals("en", ignoreCase = true)) return null
+    if (tag.contains('\r') || tag.contains('\n')) return null
+    return tag
+}
+
 fun phoneText(id: String, vararg arguments: Pair<String, Any?>): String {
     val message = phoneMessages.getValue(id)
     val supplied = arguments.toMap()

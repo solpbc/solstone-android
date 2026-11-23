@@ -131,6 +131,98 @@ class JournalBrowserHeaderFilterHostTest {
         session.stop()
     }
 
+    @Test
+    fun forwardsSingleLocaleHeaderAndSuppliesFallbackOnlyOutsideEnglish() {
+        val observed = mutableListOf<List<Pair<String, String>>>()
+
+        val xaSession = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                        BrowserHttpResponse(200, listOf("Content-Type" to "text/plain"), "OK".encodeToByteArray())
+                    override fun requestStreaming(
+                        method: String,
+                        path: String,
+                        headers: List<Pair<String, String>>,
+                        bodySource: BrowserRequestBodySource?,
+                        responseSink: BrowserResponseSink,
+                    ) {
+                        observed.add(headers)
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Type" to "text/plain", "Content-Length" to "2"))
+                        responseSink.onBodyChunk("OK".encodeToByteArray(), 0, 2)
+                        responseSink.onComplete()
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = { diagEvents.add(it) },
+            requestLocale = { "en-XA" },
+        )
+
+        val xaOrigin = xaSession.start()
+        val xaUri = URI(xaOrigin.url)
+        // Explicit header from WebView or page fetch passes through once.
+        sendRawHttpRequest(
+            xaUri.port,
+            "GET /doc HTTP/1.1\r\nHost: ${xaUri.host}:${xaUri.port}\r\nX-Solstone-Locale: en-XA\r\nX-Solstone-Locale: en-XA\r\n\r\n",
+        )
+        // Request where WebView couldn't add header (e.g. redirect, fetch) still receives fallback tag.
+        sendRawHttpRequest(
+            xaUri.port,
+            "GET /api/localized HTTP/1.1\r\nHost: ${xaUri.host}:${xaUri.port}\r\n\r\n",
+        )
+        xaSession.stop()
+
+        assertEquals(2, observed.size)
+        assertEquals(
+            listOf("en-XA"),
+            observed[0].filter { it.first.equals("x-solstone-locale", ignoreCase = true) }.map { it.second },
+        )
+        assertEquals(
+            listOf("en-XA"),
+            observed[1].filter { it.first.equals("x-solstone-locale", ignoreCase = true) }.map { it.second },
+        )
+
+        // English session sends nothing new.
+        observed.clear()
+        val enSession = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                        BrowserHttpResponse(200, listOf("Content-Type" to "text/plain"), "OK".encodeToByteArray())
+                    override fun requestStreaming(
+                        method: String,
+                        path: String,
+                        headers: List<Pair<String, String>>,
+                        bodySource: BrowserRequestBodySource?,
+                        responseSink: BrowserResponseSink,
+                    ) {
+                        observed.add(headers)
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Type" to "text/plain", "Content-Length" to "2"))
+                        responseSink.onBodyChunk("OK".encodeToByteArray(), 0, 2)
+                        responseSink.onComplete()
+                    }
+                    override fun close() {}
+                }
+            },
+            diag = { diagEvents.add(it) },
+            requestLocale = { null },
+        )
+        val enOrigin = enSession.start()
+        val enUri = URI(enOrigin.url)
+        sendRawHttpRequest(enUri.port, "GET /doc HTTP/1.1\r\nHost: ${enUri.host}:${enUri.port}\r\n\r\n")
+        enSession.stop()
+
+        assertEquals(1, observed.size)
+        assertTrue(observed[0].none { it.first.equals("x-solstone-locale", ignoreCase = true) })
+    }
+
     private fun sendRawHttpRequest(port: Int, rawHttp: String): String {
         Socket("127.0.0.1", port).use { socket ->
             val out = BufferedOutputStream(socket.getOutputStream())

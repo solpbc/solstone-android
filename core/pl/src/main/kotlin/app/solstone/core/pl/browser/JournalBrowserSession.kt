@@ -127,6 +127,12 @@ class JournalBrowserSession(
      * mints its own origin, and lets the port go when it stops.
      */
     private val originKeeper: JournalBrowserOriginKeeper? = null,
+    /**
+     * Non-English catalog language tag to send to the paired journal when the WebView cannot attach
+     * `X-Solstone-Locale` itself (such as redirects, history navigation, or page fetches). Returns
+     * `null` in English so nothing new is added.
+     */
+    private val requestLocale: () -> String? = { null },
 ) {
     constructor(
         publisher: app.solstone.core.identity.PairingPublisher,
@@ -619,9 +625,24 @@ class JournalBrowserSession(
                 null
             }
 
-            val filteredHeaders = filterRequestHeadersOrdered(headers).filterNot { 
-                it.first.equals("expect", ignoreCase = true)
-            }
+            val filteredHeaders = filterRequestHeadersOrdered(headers)
+                .filterNot { it.first.equals("expect", ignoreCase = true) }
+                .let { base ->
+                    val localeTag = requestLocale()
+                        ?.trim()
+                        ?.takeIf {
+                            it.isNotEmpty() &&
+                                !it.equals("en-US", ignoreCase = true) &&
+                                !it.equals("en", ignoreCase = true) &&
+                                !it.contains('\r') &&
+                                !it.contains('\n')
+                        }
+                    if (localeTag != null && base.none { it.first.equals("x-solstone-locale", ignoreCase = true) }) {
+                        base + ("x-solstone-locale" to localeTag)
+                    } else {
+                        base
+                    }
+                }
 
             val isIdempotent = method in IDEMPOTENT_METHODS
             var isAmbiguousFailure = false

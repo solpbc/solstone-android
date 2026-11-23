@@ -72,6 +72,7 @@ val REQUEST_ALLOWED_HEADERS: Set<String> = setOf(
     "pragma",
     "user-agent",
     "last-event-id",
+    "x-solstone-locale",
 )
 
 val RESPONSE_ALLOWED_HEADERS: Set<String> = setOf(
@@ -280,6 +281,7 @@ fun filterRequestHeaders(rawHeaders: List<Pair<String, String>>): Map<String, St
 fun filterRequestHeadersOrdered(rawHeaders: List<Pair<String, String>>): List<Pair<String, String>> {
     val result = mutableListOf<Pair<String, String>>()
     val cookies = mutableListOf<String>()
+    var localeHeader: String? = null
     for ((name, value) in rawHeaders) {
         val lower = name.lowercase(Locale.US)
         if (lower in HOP_BY_HOP_HEADERS) continue
@@ -289,9 +291,19 @@ fun filterRequestHeadersOrdered(rawHeaders: List<Pair<String, String>>): List<Pa
             }
             continue
         }
+        if (lower == "x-solstone-locale") {
+            val trimmed = value.trim()
+            if (trimmed.isNotEmpty() && !trimmed.contains('\r') && !trimmed.contains('\n')) {
+                localeHeader = trimmed
+            }
+            continue
+        }
         if (lower in REQUEST_ALLOWED_HEADERS) {
             result.add(lower to value)
         }
+    }
+    if (localeHeader != null) {
+        result.add("x-solstone-locale" to localeHeader)
     }
     if (cookies.isNotEmpty()) {
         result.add("cookie" to cookies.joinToString("; "))

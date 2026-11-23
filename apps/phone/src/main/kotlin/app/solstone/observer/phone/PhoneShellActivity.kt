@@ -3,6 +3,7 @@
 
 package app.solstone.observer.phone
 
+import app.solstone.core.i18n.journalLocaleHeaderValue
 import app.solstone.core.i18n.phoneText
 
 import app.solstone.platform.calendar.CalendarRuntimes
@@ -1651,6 +1652,7 @@ class PhoneShellActivity : ComponentActivity() {
                                         upstreamFactory = JournalBrowserUpstreamAdapter(stores.publisher, stores.handshakeGuard),
                                         diag = { PhoneDiagLog.emit(it) },
                                         originKeeper = stores.journalBrowserOrigins,
+                                        requestLocale = { journalLocaleHeaderValue() },
                                     ),
                                 )
                         },

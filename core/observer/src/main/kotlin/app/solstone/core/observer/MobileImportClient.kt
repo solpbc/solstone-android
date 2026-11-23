@@ -3,6 +3,8 @@
 
 package app.solstone.core.observer
 
+import app.solstone.core.i18n.JOURNAL_LOCALE_HEADER
+import app.solstone.core.i18n.journalLocaleHeaderValue
 import app.solstone.core.i18n.phoneText
 
 import app.solstone.core.pl.PlHttpClient
@@ -106,7 +108,21 @@ fun isConfirmationRequiredKind(kind: String?): Boolean =
             kind.endsWith("_confirmation_required")
     )
 
-class MobileImportClient(private val http: PlHttpClient) {
+class MobileImportClient(
+    private val http: PlHttpClient,
+    private val localeHeader: () -> String? = { journalLocaleHeaderValue() },
+) {
+    private fun withLocaleHeader(base: Map<String, String>): Map<String, String> {
+        val tag = localeHeader()?.trim()?.takeIf {
+            it.isNotEmpty() &&
+                !it.equals("en-US", ignoreCase = true) &&
+                !it.equals("en", ignoreCase = true) &&
+                !it.contains('\r') &&
+                !it.contains('\n')
+        } ?: return base
+        return base + (JOURNAL_LOCALE_HEADER to tag)
+    }
+
     fun save(item: MobileImportItem): MobileImportOutcome {
         val boundary = generateBoundary()
         val body = buildStreamingBody(boundary, item)
@@ -114,7 +130,7 @@ class MobileImportClient(private val http: PlHttpClient) {
             val response = http.requestStreaming(
                 method = "POST",
                 path = SAVE_PATH,
-                headers = mapOf("Content-Type" to "multipart/form-data; boundary=$boundary"),
+                headers = withLocaleHeader(mapOf("Content-Type" to "multipart/form-data; boundary=$boundary")),
                 body = body,
             )
             classifyMobileImportResponse(
@@ -136,7 +152,7 @@ class MobileImportClient(private val http: PlHttpClient) {
             val response = http.request(
                 method = "POST",
                 path = START_PATH,
-                headers = mapOf("Content-Type" to "application/json"),
+                headers = withLocaleHeader(mapOf("Content-Type" to "application/json")),
                 body = requestBody,
             )
             classifyMobileImportResponse(
