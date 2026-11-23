@@ -48,7 +48,7 @@ dependencies {
     implementation(project(":core:crypto"))
     implementation(project(":core:identity"))
     implementation(project(":core:model"))
-    implementation("org.conscrypt:conscrypt-android:2.8.0")
+    implementation("org.conscrypt:conscrypt-android:2.10.0")
     api("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation(kotlin("test"))
