@@ -453,4 +453,34 @@ class ImportDeliveryTest {
         assertEquals(IMPORT_STATE_PENDING, dao.byId(idExpired)?.state)
         assertEquals(IMPORT_STATE_PENDING, dao.byId(idTransient)?.state)
     }
+
+    @Test
+    fun nextImportRetryDelayMsReturnsSoonestDeliverableDelayAndRespectsGates() {
+        setUp()
+        val idPlain = share("doc.pdf")
+        val idCaptioned = share("photo.jpg", mime = "image/jpeg", caption = "sunset")
+        val now = 10_000L
+
+        assertNull(nextImportRetryDelayMs(store, "A", "2.0.86", ImportVersionGate.SUPPORTED, now))
+
+        assertTrue(store.markRetry(idCaptioned, "A", now - 5_000L)) // due at now + 10_000L
+        assertTrue(store.markRetry(idPlain, "A", now)) // due at now + 15_000L
+
+        // Gate held -> never schedules a retry wake.
+        assertNull(nextImportRetryDelayMs(store, "A", "2.0.86", ImportVersionGate.TOO_OLD, now))
+        assertNull(nextImportRetryDelayMs(store, "A", "2.0.86", ImportVersionGate.UNKNOWN, now))
+
+        // On 2.0.86+, captioned item is deliverable and earliest (10s).
+        assertEquals(10_000L, nextImportRetryDelayMs(store, "A", "2.0.86", ImportVersionGate.SUPPORTED, now))
+
+        // On 2.0.85, unsaved captioned item is held, so only plain item's 15s delay counts.
+        assertEquals(15_000L, nextImportRetryDelayMs(store, "A", "2.0.85", ImportVersionGate.SUPPORTED, now))
+
+        // Once saved progress exists on A, the captioned item finishes start even on 2.0.85.
+        assertTrue(store.markSaved(idCaptioned, "/imports/20261124_100000/photo.jpg", "20261124_100000", "A"))
+        assertEquals(10_000L, nextImportRetryDelayMs(store, "A", "2.0.85", ImportVersionGate.SUPPORTED, now))
+
+        // Once clock reaches or passes all nextAttemptAt timestamps, no future backoff remains.
+        assertNull(nextImportRetryDelayMs(store, "A", "2.0.86", ImportVersionGate.SUPPORTED, now + 15_000L))
+    }
 }

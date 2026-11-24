@@ -54,4 +54,28 @@ class SyncSchedulerTest {
         kotlin.test.assertNotEquals(SyncScheduler.NOW_WORK_NAME, SyncScheduler.AFTER_CONFIRM_WORK_NAME)
         kotlin.test.assertNotEquals(SyncScheduler.PERIODIC_WORK_NAME, SyncScheduler.AFTER_CONFIRM_WORK_NAME)
     }
+
+    @Test
+    fun importRetryWorkPolicyAppendsBehindRunningOnlyWhenCompletingCleanlyAndReplacesOtherwise() {
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.importRetryWorkPolicy(emptyList(), allowAppendIfRunning = true))
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.SUCCEEDED)), allowAppendIfRunning = true))
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.ENQUEUED)), allowAppendIfRunning = true))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.RUNNING)), allowAppendIfRunning = true))
+        assertEquals(ExistingWorkPolicy.APPEND_OR_REPLACE, SyncScheduler.importRetryWorkPolicy(null, allowAppendIfRunning = true))
+        assertEquals(
+            ExistingWorkPolicy.KEEP,
+            SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.RUNNING), info(WorkInfo.State.BLOCKED)), allowAppendIfRunning = true),
+        )
+
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.importRetryWorkPolicy(emptyList(), allowAppendIfRunning = false))
+        assertEquals(ExistingWorkPolicy.REPLACE, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.ENQUEUED)), allowAppendIfRunning = false))
+        assertEquals(null, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.RUNNING)), allowAppendIfRunning = false))
+        assertEquals(null, SyncScheduler.importRetryWorkPolicy(listOf(info(WorkInfo.State.BLOCKED)), allowAppendIfRunning = false))
+        assertEquals(null, SyncScheduler.importRetryWorkPolicy(null, allowAppendIfRunning = false))
+
+        kotlin.test.assertNotEquals(SyncScheduler.NOW_WORK_NAME, SyncScheduler.IMPORT_RETRY_WORK_NAME)
+        kotlin.test.assertNotEquals(SyncScheduler.FOLLOW_UP_WORK_NAME, SyncScheduler.IMPORT_RETRY_WORK_NAME)
+        kotlin.test.assertNotEquals(SyncScheduler.AFTER_CONFIRM_WORK_NAME, SyncScheduler.IMPORT_RETRY_WORK_NAME)
+        kotlin.test.assertNotEquals(SyncScheduler.PERIODIC_WORK_NAME, SyncScheduler.IMPORT_RETRY_WORK_NAME)
+    }
 }

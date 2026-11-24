@@ -140,7 +140,7 @@ class ImportCustodyStoreInstrumentedTest {
 
         var db: SolstonePersistenceDatabase? = null
         val now = 1_000_000L
-        val nextAttempt = now + 15 * 60_000L
+        val nextAttempt = now + 15_000L
         try {
             val (idAtt, idRetry, idSaved, idLocal) = runDb {
                 val database = openSolstonePersistenceDatabase(targetContext, dbName).also { db = it }

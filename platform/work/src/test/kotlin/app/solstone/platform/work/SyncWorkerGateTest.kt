@@ -48,9 +48,15 @@ import app.solstone.platform.identity.file.FilePairingGraph
 import app.solstone.platform.identity.file.SecretProtector
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.ImportCustodyStore
+import app.solstone.platform.persistence.room.ImportDao
+import app.solstone.platform.persistence.room.ImportDeliveryRow
+import app.solstone.platform.persistence.room.ImportItemRow
+import app.solstone.platform.persistence.room.ImportRecentReceiptRow
 import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
+import app.solstone.platform.persistence.room.SourceIntakeRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import org.junit.After
 import org.junit.Before
@@ -598,5 +604,167 @@ class SyncWorkerGateTest {
             assertEquals(QueueState.SEALED, drainStore.row(segId).state)
         }
         assertFalse(client.requests.any { it.path == INGEST_PATH })
+    }
+
+    @Test
+    fun importOnlyRetrySchedulesShortDelayedRetryAndMarksScheduled() {
+        val (stores, graph, _) = createStores(enablePush = false)
+        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
+        stores.journalVersionStore.save(JournalVersionRecord("home-1", "sha256:ca-1", "2.0.99"))
+
+        val importRoot = temp.newFolder().toPath()
+        val importDao = InMemoryImportDao()
+        var nowMs = 1_000_000L
+        val importStore = ImportCustodyStore(root = importRoot, dao = importDao, clock = { nowMs })
+        val id = importStore.begin("file")!!
+        val bytes = "import-body".toByteArray()
+        Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+        assertTrue(importStore.publish(id, "doc.txt", "text/plain", bytes.size.toLong()))
+
+        val scheduled = mutableListOf<Pair<Long, Boolean>>()
+        val busyClient = MockPlHttpClient { method, path, body ->
+            when {
+                method == "POST" && path == "/app/import/api/save" ->
+                    HttpResponse(503, emptyMap(), """{"error":"busy"}""".toByteArray())
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.0.99"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+
+        // Attempt 1: 15s backoff, importRetryScheduled=true, diagnostic still records retry.
+        val first = completeSyncRunDetailed(
+            openStores = { stores },
+            spoolDir = temp.newFolder(),
+            drainStore = FakeDrainStore(),
+            openClient = { _, _ -> busyClient },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            customImportStore = importStore,
+            now = { nowMs },
+            scheduleImportRetry = { delayMs, allowAppend ->
+                scheduled += delayMs to allowAppend
+                true
+            },
+        )
+        assertEquals(SyncOutcome.RETRY, first.outcome)
+        assertTrue(first.importRetryScheduled)
+        assertEquals(listOf(15_000L to true), scheduled)
+        assertTrue(capturedDiag.contains("kind=sync outcome=retry"))
+        assertTrue(capturedDiag.any { it.contains("kind=import id=$id step=save outcome=retry cause=http-503") })
+
+        // Attempt 2 at now + 15s: 30s backoff.
+        nowMs += 15_000L
+        val second = completeSyncRunDetailed(
+            openStores = { stores },
+            spoolDir = temp.newFolder(),
+            drainStore = FakeDrainStore(),
+            openClient = { _, _ -> busyClient },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            customImportStore = importStore,
+            now = { nowMs },
+            scheduleImportRetry = { delayMs, allowAppend ->
+                scheduled += delayMs to allowAppend
+                true
+            },
+        )
+        assertEquals(SyncOutcome.RETRY, second.outcome)
+        assertTrue(second.importRetryScheduled)
+        assertEquals(listOf(15_000L to true, 30_000L to true), scheduled)
+
+        // Auth stop on attempt 3 schedules nothing and returns FAILURE.
+        nowMs += 30_000L
+        val authClient = MockPlHttpClient { method, path, body ->
+            when {
+                method == "POST" && path == "/app/import/api/save" ->
+                    HttpResponse(401, emptyMap(), """{"error":"unauthorized"}""".toByteArray())
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.0.99"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+        val third = completeSyncRunDetailed(
+            openStores = { stores },
+            spoolDir = temp.newFolder(),
+            drainStore = FakeDrainStore(),
+            openClient = { _, _ -> authClient },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            customImportStore = importStore,
+            now = { nowMs },
+            scheduleImportRetry = { delayMs, allowAppend ->
+                scheduled += delayMs to allowAppend
+                true
+            },
+        )
+        assertEquals(SyncOutcome.FAILURE, third.outcome)
+        assertFalse(third.importRetryScheduled)
+        assertEquals(2, scheduled.size)
+    }
+
+    @Test
+    fun mixedSegmentAndImportRetryKeepsWorkerRetryAndDisallowsAppend() {
+        val (stores, graph, _) = createStores(enablePush = false)
+        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
+        stores.journalVersionStore.save(JournalVersionRecord("home-1", "sha256:ca-1", "2.0.99"))
+
+        val spoolDir = temp.newFolder()
+        val (drainStore, _) = setupSpoolAndDrainStore(spoolDir)
+
+        val importRoot = temp.newFolder().toPath()
+        val importDao = InMemoryImportDao()
+        val nowMs = 2_000_000L
+        val importStore = ImportCustodyStore(root = importRoot, dao = importDao, clock = { nowMs })
+        val id = importStore.begin("file")!!
+        val bytes = "mixed-body".toByteArray()
+        Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+        assertTrue(importStore.publish(id, "doc.txt", "text/plain", bytes.size.toLong()))
+
+        val scheduled = mutableListOf<Pair<Long, Boolean>>()
+        val busyClient = MockPlHttpClient { method, path, body ->
+            when {
+                (method == "POST" && path == "/app/import/api/save") || (method == "POST" && path == INGEST_PATH) ->
+                    HttpResponse(503, emptyMap(), """{"error":"busy"}""".toByteArray())
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.0.99"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+
+        val result = completeSyncRunDetailed(
+            openStores = { stores },
+            spoolDir = spoolDir,
+            drainStore = drainStore,
+            openClient = { _, _ -> busyClient },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            customImportStore = importStore,
+            now = { nowMs },
+            scheduleImportRetry = { delayMs, allowAppend ->
+                scheduled += delayMs to allowAppend
+                true
+            },
+        )
+        assertEquals(SyncOutcome.RETRY, result.outcome)
+        assertFalse(result.importRetryScheduled, "segment failure must still propagate Result.retry()")
+        assertEquals(listOf(15_000L to false), scheduled)
+    }
+
+    private class InMemoryImportDao : ImportDao {
+        val rows = java.util.concurrent.ConcurrentHashMap<String, ImportItemRow>()
+        val recent = java.util.concurrent.ConcurrentHashMap<String, ImportRecentReceiptRow>()
+        var delivery: ImportDeliveryRow? = null
+        override fun insert(row: ImportItemRow) { rows[row.id] = row }
+        override fun update(row: ImportItemRow): Int = if (rows.containsKey(row.id)) { rows[row.id] = row; 1 } else 0
+        override fun delete(id: String): Int = if (rows.remove(id) != null) 1 else 0
+        override fun byId(id: String): ImportItemRow? = rows[id]
+        override fun all(): List<ImportItemRow> = rows.values.sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
+        override fun putDelivery(row: ImportDeliveryRow) { delivery = row }
+        override fun delivery(): ImportDeliveryRow? = delivery
+        override fun putRecentReceipt(row: ImportRecentReceiptRow) { recent[row.id] = row }
+        override fun recentReceipts(instanceId: String, cutoff: Long, limit: Int): List<ImportRecentReceiptRow> = emptyList()
+        override fun pruneExpiredReceipts(cutoff: Long): Int = 0
+        override fun trimRecentReceipts(instanceId: String, keep: Int): Int = 0
+        override fun intakeBySource(sourceId: String): SourceIntakeRow? = null
+        override fun upsertIntake(row: SourceIntakeRow) = Unit
     }
 }

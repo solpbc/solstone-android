@@ -21,6 +21,7 @@ object SyncScheduler {
     const val NOW_WORK_NAME = "solstone-sync-now"
     const val AFTER_CONFIRM_WORK_NAME = "solstone-sync-after-confirm"
     const val FOLLOW_UP_WORK_NAME = "solstone-sync-follow-up"
+    const val IMPORT_RETRY_WORK_NAME = "solstone-sync-import-retry"
     const val STREAM_TYPE_KEY = "stream_type"
     internal val PERIODIC_WORK_POLICY = ExistingPeriodicWorkPolicy.UPDATE
     internal val AFTER_CONFIRM_WORK_POLICY = ExistingWorkPolicy.REPLACE
@@ -97,6 +98,54 @@ object SyncScheduler {
             existing == null -> ExistingWorkPolicy.APPEND_OR_REPLACE
             existing.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED } -> ExistingWorkPolicy.KEEP
             existing.any { it.state == WorkInfo.State.RUNNING } -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            else -> ExistingWorkPolicy.REPLACE
+        }
+
+    /**
+     * Schedule a delayed sync run for one or more imports waiting in retry backoff.
+     *
+     * Runs synchronously on the worker's background thread so the delayed wakeup is committed to
+     * WorkManager before the current worker returns and the OS can freeze the process.
+     */
+    fun enqueueImportRetry(
+        context: Context,
+        streamType: String,
+        delayMs: Long,
+        allowAppendIfRunning: Boolean = true,
+    ): Boolean {
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInitialDelay(delayMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
+            .setConstraints(networkConstraints())
+            .setInputData(streamInputData(streamType))
+            .build()
+        val existing = runCatching {
+            workManager.getWorkInfosForUniqueWork(IMPORT_RETRY_WORK_NAME).get(5, TimeUnit.SECONDS)
+        }.getOrNull()
+        val policy = importRetryWorkPolicy(existing, allowAppendIfRunning) ?: return false
+        workManager.enqueueUniqueWork(IMPORT_RETRY_WORK_NAME, policy, request).result.get(5, TimeUnit.SECONDS)
+        return true
+    }
+
+    /**
+     * Never replace a currently running import-retry worker (which may be the caller itself).
+     * When the caller is completing cleanly ([allowAppendIfRunning] == true), append a single
+     * delayed child so WorkManager runs it once the running attempt completes. When the caller
+     * itself is returning `Result.retry()` ([allowAppendIfRunning] == false), do not append a
+     * blocked child behind a running import-retry worker.
+     */
+    internal fun importRetryWorkPolicy(
+        existing: List<WorkInfo>?,
+        allowAppendIfRunning: Boolean = true,
+    ): ExistingWorkPolicy? =
+        when {
+            existing == null -> if (allowAppendIfRunning) ExistingWorkPolicy.APPEND_OR_REPLACE else null
+            existing.any { it.state == WorkInfo.State.RUNNING } -> when {
+                !allowAppendIfRunning -> null
+                existing.any { it.state == WorkInfo.State.BLOCKED } -> ExistingWorkPolicy.KEEP
+                else -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            }
+            !allowAppendIfRunning && existing.any { it.state == WorkInfo.State.BLOCKED } -> null
             else -> ExistingWorkPolicy.REPLACE
         }
 

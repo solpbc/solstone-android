@@ -47,6 +47,7 @@ internal fun <C> syncWithTransport(
     prepareObsidian: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
     obsidianCurrent: () -> Boolean = { true },
     prepareScreenshots: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
+    onImportOnlyRetry: () -> Unit = {},
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val legs = attempt ?: JournalAttempt.untracked(PairingGeneration("", ""))
     val client = try {
@@ -146,6 +147,7 @@ internal fun <C> syncWithTransport(
                 )
                 if (report.halted) onRefused()
                 if (imports == ImportStageResult.RETRY && report.workOutcome == SyncOutcome.SUCCESS) {
+                    onImportOnlyRetry()
                     SyncOutcome.RETRY
                 } else {
                     report.workOutcome

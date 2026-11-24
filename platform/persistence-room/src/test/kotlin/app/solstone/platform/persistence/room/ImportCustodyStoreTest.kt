@@ -3,7 +3,6 @@
 
 package app.solstone.platform.persistence.room
 
-import app.solstone.core.queue.RetryDecision
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -370,7 +369,7 @@ class ImportCustodyStoreTest {
         val heldA = store.held("A").first { it.id == idRetry }
         val nextAttemptAt = heldA.backoff!!.nextAttemptAt
         assertEquals(1, heldA.backoff.attemptCount)
-        assertEquals(now + 15 * 60_000L, nextAttemptAt)
+        assertEquals(now + 15_000L, nextAttemptAt)
 
         // While now < next_attempt_at, ineligible at A, eligible at B
         assertTrue(store.eligible("A", "2.0.52", nextAttemptAt - 1, 10).map { it.id }.none { it == idRetry })
@@ -379,15 +378,17 @@ class ImportCustodyStoreTest {
         // When now == next_attempt_at, eligible at A
         assertTrue(store.eligible("A", "2.0.52", nextAttemptAt, 10).map { it.id }.contains(idRetry))
 
-        // After two retries at A, B's first markRetry has attemptCount == 1 and 15 min delay
+        // Second retry at A uses 30s; B's first markRetry resets to attemptCount == 1 and 15s delay
         assertTrue(store.markRetry(idRetry, "A", nextAttemptAt))
-        assertEquals(2, store.held("A").first { it.id == idRetry }.backoff!!.attemptCount)
+        val secondHeldA = store.held("A").first { it.id == idRetry }
+        assertEquals(2, secondHeldA.backoff!!.attemptCount)
+        assertEquals(nextAttemptAt + 30_000L, secondHeldA.backoff.nextAttemptAt)
 
-        now = nextAttemptAt + 30 * 60_000L
+        now = nextAttemptAt + 30_000L
         assertTrue(store.markRetry(idRetry, "B", now))
         val heldB = store.held("B").first { it.id == idRetry }
         assertEquals(1, heldB.backoff!!.attemptCount)
-        assertEquals(now + 15 * 60_000L, heldB.backoff.nextAttemptAt)
+        assertEquals(now + 15_000L, heldB.backoff.nextAttemptAt)
 
         // 3. markSaved at A is reported by eligible and held at A, absent at B
         val idSaved = store.begin("file")!!
@@ -1091,6 +1092,38 @@ class ImportCustodyStoreTest {
         // A subsequent failure continues the backoff ladder from attemptCount = 2 -> 3.
         assertTrue(store.markRetry(idWaiting, "A", now + 2))
         assertEquals(3, dao.byId(idWaiting)!!.attemptCount)
+    }
+
+    @Test
+    fun earliestBackoffAtPicksSoonestFutureDeliverableRowForInstance() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val now = 1_000_000L
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { now })
+
+        val idLong = store.begin("file")!!
+        val sizeLong = writePayload(root, idLong)
+        assertTrue(store.publish(idLong, "long.txt", "text/plain", sizeLong))
+        assertTrue(store.markRetry(idLong, "A", now))
+        assertTrue(store.markRetry(idLong, "A", now)) // attempt 2 -> now + 30_000L
+
+        val idShort = store.begin("file")!!
+        val sizeShort = writePayload(root, idShort)
+        assertTrue(store.publish(idShort, "short.txt", "text/plain", sizeShort))
+        assertTrue(store.markRetry(idShort, "A", now + 1_000L)) // attempt 1 -> now + 16_000L
+
+        val idCaptioned = store.begin("file")!!
+        val sizeCap = writePayload(root, idCaptioned)
+        Files.write(root.resolve(".staging").resolve(idCaptioned).resolve("caption.txt"), "note".toByteArray())
+        assertTrue(store.publish(idCaptioned, "cap.jpg", "image/jpeg", sizeCap))
+        assertTrue(store.markRetry(idCaptioned, "A", now - 5_000L)) // attempt 1 -> now + 10_000L
+
+        assertEquals(now + 10_000L, store.earliestBackoffAt("A", now))
+        assertEquals(
+            now + 16_000L,
+            store.earliestBackoffAt("A", now) { hasCaption, hasSavedProgress -> hasSavedProgress || !hasCaption },
+        )
+        assertNull(store.earliestBackoffAt("B", now))
+        assertNull(store.earliestBackoffAt("A", now + 30_000L))
     }
 
     private fun createRow(

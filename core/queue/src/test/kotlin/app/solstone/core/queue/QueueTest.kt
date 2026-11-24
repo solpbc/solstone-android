@@ -60,4 +60,24 @@ class QueueTest {
             transition(QueueState.UPLOADING, QueueEvent.FINISH)
         }
     }
+
+    @Test
+    fun importRetryBackoffMsUsesShortLadderAndLeavesSegmentBackoffIntact() {
+        assertEquals(15_000L, importRetryBackoffMs(0))
+        assertEquals(15_000L, importRetryBackoffMs(1))
+        assertEquals(30_000L, importRetryBackoffMs(2))
+        assertEquals(60_000L, importRetryBackoffMs(3))
+        assertEquals(120_000L, importRetryBackoffMs(4))
+        assertEquals(240_000L, importRetryBackoffMs(5))
+        assertEquals(480_000L, importRetryBackoffMs(6))
+        assertEquals(960_000L, importRetryBackoffMs(7))
+        assertEquals(1_920_000L, importRetryBackoffMs(8))
+        assertEquals(3_600_000L, importRetryBackoffMs(9))
+        assertEquals(3_600_000L, importRetryBackoffMs(99))
+
+        // Segment sync retains its 15m..4h schedule untouched.
+        assertEquals(15 * 60_000L, retryBackoffMs(1, RetryDecision.RETRY))
+        assertEquals(30 * 60_000L, retryBackoffMs(2, RetryDecision.RETRY))
+        assertEquals(4 * 60 * 60_000L, retryBackoffMs(5, RetryDecision.RETRY))
+    }
 }

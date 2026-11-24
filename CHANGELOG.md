@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- an import waiting on your phone now goes into your journal when your connection returns, and tries again after 15 seconds following a brief interruption instead of waiting 15 minutes.
+
 ## [2.1.54] - 2026-11-24
 
 ### Changed

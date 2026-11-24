@@ -3,7 +3,6 @@
 
 package app.solstone.platform.persistence.room
 
-import app.solstone.core.queue.RetryDecision
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -477,13 +476,39 @@ class ImportCustodyStore(
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
         if (row.state != "pending") return false
         val count = if (row.backoffInstanceId == instance) row.attemptCount + 1 else 1
-        val nextAttempt = now + app.solstone.core.queue.retryBackoffMs(count, RetryDecision.RETRY)
+        val nextAttempt = now + app.solstone.core.queue.importRetryBackoffMs(count)
         val updated = row.copy(
             backoffInstanceId = instance,
             attemptCount = count,
             nextAttemptAt = nextAttempt,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
+    }
+
+    /**
+     * Earliest `nextAttemptAt` strictly in the future (`> now`) among `pending` rows backed off at
+     * [instance] that satisfy [isDeliverable], or null when none are waiting in backoff.
+     */
+    fun earliestBackoffAt(
+        instance: String,
+        now: Long,
+        isDeliverable: (hasCaption: Boolean, hasSavedProgress: Boolean) -> Boolean = { _, _ -> true },
+    ): Long? {
+        val rows = try { dao.all() } catch (_: Exception) { return null }
+        var earliest: Long? = null
+        for (row in rows) {
+            if (row.state != IMPORT_STATE_PENDING) continue
+            if (row.backoffInstanceId != instance) continue
+            val nextAttempt = row.nextAttemptAt ?: continue
+            if (nextAttempt <= now) continue
+            val hasSavedProgress = row.progressPath != null && row.progressTimestamp != null
+            val hasCaption = readCaption(root.resolve(row.id)) != null
+            if (!isDeliverable(hasCaption, hasSavedProgress)) continue
+            if (earliest == null || nextAttempt < earliest) {
+                earliest = nextAttempt
+            }
+        }
+        return earliest
     }
 
     /**

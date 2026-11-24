@@ -34,12 +34,15 @@ fun classify(httpStatus: Int?, ioError: Boolean): RetryDecision =
         else -> RetryDecision.HARD_FAIL
     }
 
-private const val MINUTE_MS = 60_000L
+private const val SECOND_MS = 1_000L
+private const val MINUTE_MS = 60L * SECOND_MS
 private const val HOUR_MS = 60L * MINUTE_MS
 private const val RETRY_BACKOFF_BASE_MS = 15L * MINUTE_MS
 private const val RETRY_BACKOFF_CAP_MS = 4L * HOUR_MS
 private const val HARD_FAIL_BACKOFF_BASE_MS = 2L * HOUR_MS
 private const val HARD_FAIL_BACKOFF_CAP_MS = 6L * HOUR_MS
+private const val IMPORT_RETRY_BACKOFF_BASE_MS = 15L * SECOND_MS
+private const val IMPORT_RETRY_BACKOFF_CAP_MS = HOUR_MS
 
 fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
     val exponent = (attemptCount - 1).coerceAtLeast(0)
@@ -48,5 +51,14 @@ fun retryBackoffMs(attemptCount: Int, decision: RetryDecision): Long {
         RetryDecision.HARD_FAIL -> (HARD_FAIL_BACKOFF_BASE_MS shl exponent.coerceAtMost(2)).coerceAtMost(HARD_FAIL_BACKOFF_CAP_MS)
         RetryDecision.STOP_AUTH -> 0L
     }
+}
+
+/**
+ * Retry backoff for one-shot owner-shared import uploads: 15s, 30s, 1m, 2m, 4m, 8m, 16m, 32m,
+ * capped at 1h. Kept separate from [retryBackoffMs], which owns segment sync's 15m..4h schedule.
+ */
+fun importRetryBackoffMs(attemptCount: Int): Long {
+    val exponent = (attemptCount - 1).coerceAtLeast(0).coerceAtMost(8)
+    return (IMPORT_RETRY_BACKOFF_BASE_MS shl exponent).coerceAtMost(IMPORT_RETRY_BACKOFF_CAP_MS)
 }
 

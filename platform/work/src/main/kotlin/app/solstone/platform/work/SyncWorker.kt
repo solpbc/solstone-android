@@ -114,6 +114,12 @@ data class SyncRunExecutionResult(
     val outcome: SyncOutcome,
     val heldUnconfirmed: Boolean,
     val gateBusy: Boolean = false,
+    val importRetryScheduled: Boolean = false,
+)
+
+private data class SyncCallResult(
+    val outcome: SyncOutcome,
+    val importRetryScheduled: Boolean = false,
 )
 
 internal fun executeSyncRun(
@@ -126,6 +132,9 @@ internal fun executeSyncRun(
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    customImportStore: ImportCustodyStore? = null,
+    now: () -> Long = System::currentTimeMillis,
+    scheduleImportRetry: ((delayMs: Long, allowAppendIfRunning: Boolean) -> Boolean)? = null,
     setPhase: (String) -> Unit = {},
 ): SyncRunExecutionResult {
     if (!SyncDrainGate.tryAcquire()) {
@@ -154,7 +163,7 @@ internal fun executeSyncRun(
                 return SyncRunExecutionResult(SyncOutcome.FAILURE, false)
             }
             is SyncCredentials.Ready -> {
-                val outcome = sync(
+                val callResult = sync(
                     stores = stores,
                     credentials = credentials,
                     allowsOwnerMaterial = allowsOwnerMaterial,
@@ -165,10 +174,17 @@ internal fun executeSyncRun(
                     drainStore = drainStore,
                     customOpenClient = openClient,
                     localDescriptionProvider = localDescriptionProvider,
+                    customImportStore = customImportStore,
+                    now = now,
+                    scheduleImportRetry = scheduleImportRetry,
                     setPhase = setPhase,
                 )
-                val held = outcome == SyncOutcome.SUCCESS && !allowsOwnerMaterial
-                return SyncRunExecutionResult(outcome, held)
+                val held = callResult.outcome == SyncOutcome.SUCCESS && !allowsOwnerMaterial
+                return SyncRunExecutionResult(
+                    outcome = callResult.outcome,
+                    heldUnconfirmed = held,
+                    importRetryScheduled = callResult.importRetryScheduled,
+                )
             }
         }
     } finally {
@@ -186,14 +202,46 @@ internal fun completeSyncRun(
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     afterCredentialsFrozen: (() -> Unit)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    customImportStore: ImportCustodyStore? = null,
+    now: () -> Long = System::currentTimeMillis,
+    scheduleImportRetry: ((delayMs: Long, allowAppendIfRunning: Boolean) -> Boolean)? = null,
     setPhase: (String) -> Unit = {},
-): SyncOutcome {
-    var outcome = SyncOutcome.FAILURE
-    var heldUnconfirmed = false
-    var gateBusy = false
+): SyncOutcome =
+    completeSyncRunDetailed(
+        openStores = openStores,
+        context = context,
+        db = db,
+        spoolDir = spoolDir,
+        deviceLabel = deviceLabel,
+        drainStore = drainStore,
+        openClient = openClient,
+        afterCredentialsFrozen = afterCredentialsFrozen,
+        localDescriptionProvider = localDescriptionProvider,
+        customImportStore = customImportStore,
+        now = now,
+        scheduleImportRetry = scheduleImportRetry,
+        setPhase = setPhase,
+    ).outcome
+
+internal fun completeSyncRunDetailed(
+    openStores: () -> SyncStores,
+    context: Context? = null,
+    db: SolstonePersistenceDatabase? = null,
+    spoolDir: File? = null,
+    deviceLabel: String = "android",
+    drainStore: DrainStore? = null,
+    openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
+    afterCredentialsFrozen: (() -> Unit)? = null,
+    localDescriptionProvider: (() -> ClientReportedDescription)? = null,
+    customImportStore: ImportCustodyStore? = null,
+    now: () -> Long = System::currentTimeMillis,
+    scheduleImportRetry: ((delayMs: Long, allowAppendIfRunning: Boolean) -> Boolean)? = null,
+    setPhase: (String) -> Unit = {},
+): SyncRunExecutionResult {
+    var result = SyncRunExecutionResult(SyncOutcome.FAILURE, heldUnconfirmed = false)
     try {
         val stores = openStores()
-        val result = executeSyncRun(
+        result = executeSyncRun(
             stores = stores,
             context = context,
             db = db,
@@ -203,25 +251,23 @@ internal fun completeSyncRun(
             openClient = openClient,
             afterCredentialsFrozen = afterCredentialsFrozen,
             localDescriptionProvider = localDescriptionProvider,
+            customImportStore = customImportStore,
+            now = now,
+            scheduleImportRetry = scheduleImportRetry,
             setPhase = setPhase,
         )
-        outcome = result.outcome
-        heldUnconfirmed = result.heldUnconfirmed
-        gateBusy = result.gateBusy
     } catch (e: Throwable) {
         workerLog("e", "sync threw before its own outcome", e)
-        outcome = SyncOutcome.FAILURE
-        heldUnconfirmed = false
-        gateBusy = false
+        result = SyncRunExecutionResult(SyncOutcome.FAILURE, heldUnconfirmed = false)
     } finally {
-        val diagLine = if (heldUnconfirmed) {
+        val diagLine = if (result.heldUnconfirmed) {
             "kind=sync outcome=success held=unconfirmed"
         } else {
-            "kind=sync outcome=${outcome.name.lowercase()}"
+            "kind=sync outcome=${result.outcome.name.lowercase()}"
         }
         runCatching { SyncWorker.syncDiag?.invoke(diagLine) }
     }
-    return outcome
+    return result
 }
 
 class SyncWorker(
@@ -235,6 +281,8 @@ class SyncWorker(
     private var testAfterCredentialsFrozen: (() -> Unit)? = null
     private var testLocalDescriptionProvider: (() -> ClientReportedDescription)? = null
     private var testDeviceLabel: String? = null
+    private var testImportStore: ImportCustodyStore? = null
+    private var testNow: (() -> Long)? = null
 
     internal constructor(
         context: Context,
@@ -246,6 +294,8 @@ class SyncWorker(
         afterCredentialsFrozen: (() -> Unit)? = null,
         localDescriptionProvider: (() -> ClientReportedDescription)? = null,
         deviceLabel: String? = null,
+        importStore: ImportCustodyStore? = null,
+        now: (() -> Long)? = null,
     ) : this(context, params) {
         this.testOpenStores = openStores
         this.testOpenClient = openClient
@@ -254,6 +304,8 @@ class SyncWorker(
         this.testAfterCredentialsFrozen = afterCredentialsFrozen
         this.testLocalDescriptionProvider = localDescriptionProvider
         this.testDeviceLabel = deviceLabel
+        this.testImportStore = importStore
+        this.testNow = now
     }
 
     override suspend fun doWork(): Result = coroutineScope {
@@ -264,7 +316,8 @@ class SyncWorker(
         }
         try {
             withContext(Dispatchers.IO) {
-                completeSyncRun(
+                val streamType = inputData.getString(SyncScheduler.STREAM_TYPE_KEY) ?: MAIN_STREAM
+                completeSyncRunDetailed(
                     openStores = testOpenStores ?: { syncStores(applicationContext) },
                     context = if (testOpenStores != null) null else applicationContext,
                     spoolDir = testSpoolDir,
@@ -273,6 +326,11 @@ class SyncWorker(
                     openClient = testOpenClient,
                     afterCredentialsFrozen = testAfterCredentialsFrozen,
                     localDescriptionProvider = testLocalDescriptionProvider,
+                    customImportStore = testImportStore,
+                    now = testNow ?: System::currentTimeMillis,
+                    scheduleImportRetry = { delayMs, allowAppendIfRunning ->
+                        SyncScheduler.enqueueImportRetry(applicationContext, streamType, delayMs, allowAppendIfRunning)
+                    },
                     setPhase = phase::set,
                 ).toWorkResult()
             }
@@ -281,10 +339,10 @@ class SyncWorker(
         }
     }
 
-    private fun SyncOutcome.toWorkResult(): Result =
-        when (this) {
+    private fun SyncRunExecutionResult.toWorkResult(): Result =
+        when (outcome) {
             SyncOutcome.SUCCESS -> Result.success()
-            SyncOutcome.RETRY -> Result.retry()
+            SyncOutcome.RETRY -> if (importRetryScheduled) Result.success() else Result.retry()
             SyncOutcome.FAILURE -> Result.failure()
         }
 
@@ -333,8 +391,10 @@ private fun sync(
     customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
     localDescriptionProvider: (() -> ClientReportedDescription)? = null,
     customImportStore: ImportCustodyStore? = null,
+    now: () -> Long = System::currentTimeMillis,
+    scheduleImportRetry: ((delayMs: Long, allowAppendIfRunning: Boolean) -> Boolean)? = null,
     setPhase: (String) -> Unit,
-): SyncOutcome {
+): SyncCallResult {
     setPhase("opening delivery stores")
     val spoolDir = customSpoolDir ?: (context?.let { File(it.filesDir, "spool") } ?: File("spool"))
     var shouldCloseDb = false
@@ -415,12 +475,14 @@ private fun sync(
         // The journal stopped accepting this credential: nothing dials it again until a re-pair.
         workerLog("w", "credential stopped; not dialling until a new pairing", null)
         if (shouldCloseDb) dbToClose?.close()
-        return SyncOutcome.FAILURE
+        return SyncCallResult(SyncOutcome.FAILURE)
     }
     // One attempt across every leg of this run: each saved address, then the relay.
     val attempt = guard?.begin(attemptPairing) ?: JournalAttempt.untracked(attemptPairing)
+    var importOnlyRetry = false
     try {
         val syncTransport: (SyncTransport) -> SyncOutcome = transportAttempt@{ selectedTransport ->
+            importOnlyRetry = false
             setPhase(if (selectedTransport is SyncTransport.Relay) "syncing over relay" else "syncing directly")
             val access = stores.identityMutator.accessSnapshot() ?: return@transportAttempt SyncOutcome.RETRY
             val pairingMatches = access.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint)
@@ -455,7 +517,7 @@ private fun sync(
                 readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
                 spoolDir = spoolDir,
                 host = deviceLabel,
-                now = System::currentTimeMillis,
+                now = now,
                 log = { message, throwable -> workerLog("w", message, throwable) },
                 onUsableConnection = { connectedClient ->
                     credentials.pairingSnapshot?.let { expected ->
@@ -533,7 +595,7 @@ private fun sync(
                                     journalVersion = record?.version.orEmpty(),
                                     gate = importVersionGate(record, credentials.identity.instanceId, credentials.identity.caChainFingerprint),
                                     pairingCurrent = pairingNow,
-                                    now = System::currentTimeMillis,
+                                    now = now,
                                     log = { message, throwable -> workerLog("w", message, throwable) },
                                     diag = { line ->
                                         SyncWorker.syncDiag?.invoke(line)
@@ -562,107 +624,148 @@ private fun sync(
                                 instanceId = credentials.identity.instanceId,
                                 caFingerprint = credentials.identity.caChainFingerprint,
                                 calendarNotes = if (notes) 1 else 0,
-                                observedAt = System.currentTimeMillis(),
+                                observedAt = now(),
                             ),
                         )
                     }
                 },
+                onImportOnlyRetry = { importOnlyRetry = true },
             )
         }
 
-        var outcome = when (val transport = credentials.transport) {
-            is SyncTransport.Direct -> {
-                var attempted = SyncOutcome.RETRY
-                for (endpoint in credentials.directCandidates) {
-                    attempted = syncTransport(SyncTransport.Direct(endpoint))
-                    // The first verdict on any leg decides the attempt; no further leg is dialled.
-                    if (attempted != SyncOutcome.RETRY || attempt.decided) break
+        val finalOutcome = try {
+            var outcome = when (val transport = credentials.transport) {
+                is SyncTransport.Direct -> {
+                    var attempted = SyncOutcome.RETRY
+                    for (endpoint in credentials.directCandidates) {
+                        attempted = syncTransport(SyncTransport.Direct(endpoint))
+                        // The first verdict on any leg decides the attempt; no further leg is dialled.
+                        if (attempted != SyncOutcome.RETRY || attempt.decided) break
+                    }
+                    attempted
                 }
-                attempted
-            }
-            is SyncTransport.Relay -> {
-                setPhase("checking relay access")
-                val maintained = maintainRelayToken(
-                    identity = credentials.identity,
-                    transport = transport,
-                    poster = poster,
-                    mutator = stores.identityMutator,
-                )
-                when (maintained) {
-                    is RelayTokenResult.Ready -> dialWithReactiveRefresh(
+                is SyncTransport.Relay -> {
+                    setPhase("checking relay access")
+                    val maintained = maintainRelayToken(
                         identity = credentials.identity,
-                        transport = maintained.transport,
+                        transport = transport,
                         poster = poster,
                         mutator = stores.identityMutator,
-                        dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
-                        log = { message, throwable -> workerLog("w", message, throwable) },
                     )
-                    RelayTokenResult.ReconnectNeeded -> return SyncOutcome.FAILURE
-                    RelayTokenResult.Obsolete -> return SyncOutcome.RETRY
+                    when (maintained) {
+                        is RelayTokenResult.Ready -> dialWithReactiveRefresh(
+                            identity = credentials.identity,
+                            transport = maintained.transport,
+                            poster = poster,
+                            mutator = stores.identityMutator,
+                            dial = RelayDial { relayTransport -> syncTransport(relayTransport) },
+                            log = { message, throwable -> workerLog("w", message, throwable) },
+                        )
+                        RelayTokenResult.ReconnectNeeded -> {
+                            importOnlyRetry = false
+                            SyncOutcome.FAILURE
+                        }
+                        RelayTokenResult.Obsolete -> {
+                            importOnlyRetry = false
+                            SyncOutcome.RETRY
+                        }
+                    }
                 }
             }
-        }
 
-        // Every direct leg ended without a verdict (unreachable, or a peer that is not the paired
-        // journal): the relay is still tried in this run.
-        if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct && !attempt.decided) {
-            val relayTransport = relayFallbackTransport(
-                identity = credentials.identity,
-                relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
-            )
-            if (relayTransport != null) {
-                setPhase("checking relay access")
-                val maintained = maintainRelayToken(
+            // Every direct leg ended without a verdict (unreachable, or a peer that is not the paired
+            // journal): the relay is still tried in this run.
+            if (outcome == SyncOutcome.RETRY && credentials.transport is SyncTransport.Direct && !attempt.decided) {
+                val relayTransport = relayFallbackTransport(
                     identity = credentials.identity,
-                    transport = relayTransport,
-                    poster = poster,
-                    mutator = stores.identityMutator,
+                    relayLiveEligible = stores.identityMutator.accessSnapshot()?.let { it.pairing == PairingGeneration(credentials.identity.instanceId, credentials.identity.clientCertFingerprint) && it.relayLiveEligible } ?: false,
                 )
-                if (maintained is RelayTokenResult.Ready) {
-                    outcome = dialWithReactiveRefresh(
+                if (relayTransport != null) {
+                    setPhase("checking relay access")
+                    val maintained = maintainRelayToken(
                         identity = credentials.identity,
-                        transport = maintained.transport,
+                        transport = relayTransport,
                         poster = poster,
                         mutator = stores.identityMutator,
-                        dial = RelayDial { t -> syncTransport(t) },
-                        log = { message, throwable -> workerLog("w", message, throwable) },
                     )
+                    if (maintained is RelayTokenResult.Ready) {
+                        outcome = dialWithReactiveRefresh(
+                            identity = credentials.identity,
+                            transport = maintained.transport,
+                            poster = poster,
+                            mutator = stores.identityMutator,
+                            dial = RelayDial { t -> syncTransport(t) },
+                            log = { message, throwable -> workerLog("w", message, throwable) },
+                        )
+                    }
                 }
             }
+
+            // A screenshot just delivered moves the source page's `{d} of {N}` now, not at the next folder read.
+            app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.observeDelivery()
+            outcome
+        } catch (e: RelayDialWaitingException) {
+            importOnlyRetry = false
+            attempt.legFailed(e)
+            workerLog("i", "home offline, waiting; will retry", e)
+            SyncOutcome.RETRY
+        } catch (e: RelayWebSocketClosedException) {
+            importOnlyRetry = false
+            workerLog("w", "relay ws closed; retry", e)
+            SyncOutcome.RETRY
+        } catch (e: IOException) {
+            importOnlyRetry = false
+            workerLog("w", "sync io; retry", e)
+            SyncOutcome.RETRY
+        } catch (e: Exception) {
+            importOnlyRetry = false
+            workerLog("e", "sync failed", e)
+            SyncOutcome.FAILURE
         }
 
-        // A screenshot just delivered moves the source page's `{d} of {N}` now, not at the next folder read.
-        app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.observeDelivery()
-        return outcome
-    } catch (e: RelayDialWaitingException) {
-        attempt.legFailed(e)
-        workerLog("i", "home offline, waiting; will retry", e)
-        return SyncOutcome.RETRY
-    } catch (e: RelayWebSocketClosedException) {
-        workerLog("w", "relay ws closed; retry", e)
-        return SyncOutcome.RETRY
-    } catch (e: IOException) {
-        workerLog("w", "sync io; retry", e)
-        return SyncOutcome.RETRY
-    } catch (e: Exception) {
-        workerLog("e", "sync failed", e)
-        return SyncOutcome.FAILURE
-    } finally {
-        attempt.finish()
+        var importRetryScheduled = false
         if (importStore != null) {
             runCatching {
-                recordImportRetries(importStore, importRun, credentials.identity.instanceId, System.currentTimeMillis())
+                val nowMs = now()
+                recordImportRetries(importStore, importRun, credentials.identity.instanceId, nowMs)
+                val record = stores.journalVersionStore.load()
+                val journalVersion = record?.version.orEmpty()
+                val gate = importVersionGate(record, credentials.identity.instanceId, credentials.identity.caChainFingerprint)
                 // A clean import stage that left eligible items (the cap, or one shared after the
                 // stage read the queue) asks for a run after this one. A run that retried, was
                 // refused, or never reached the stage leaves that to its own retry.
-                val record = stores.journalVersionStore.load()
                 if (importRun.stageClean && context != null &&
-                    hasDeliverableImports(importStore, credentials.identity.instanceId, record?.version.orEmpty(), System.currentTimeMillis())
+                    hasDeliverableImports(importStore, credentials.identity.instanceId, journalVersion, nowMs)
                 ) {
                     SyncScheduler.enqueueFollowUp(context, MAIN_STREAM)
                 }
+                if (allowsOwnerMaterial && finalOutcome != SyncOutcome.FAILURE) {
+                    val retryDelayMs = nextImportRetryDelayMs(
+                        store = importStore,
+                        instanceId = credentials.identity.instanceId,
+                        journalVersion = journalVersion,
+                        gate = gate,
+                        now = nowMs,
+                    )
+                    if (retryDelayMs != null) {
+                        val scheduler = scheduleImportRetry
+                            ?: context?.let { ctx ->
+                                { delayMs: Long, allowAppend: Boolean ->
+                                    SyncScheduler.enqueueImportRetry(ctx, MAIN_STREAM, delayMs, allowAppend)
+                                }
+                            }
+                        val allowAppend = finalOutcome == SyncOutcome.SUCCESS || importOnlyRetry
+                        val scheduled = scheduler?.invoke(retryDelayMs, allowAppend) == true
+                        if (scheduled && importOnlyRetry) {
+                            importRetryScheduled = true
+                        }
+                    }
+                }
             }.onFailure { workerLog("w", "import run bookkeeping failed", it) }
         }
+        return SyncCallResult(outcome = finalOutcome, importRetryScheduled = importRetryScheduled)
+    } finally {
+        attempt.finish()
         if (shouldCloseDb) {
             dbToClose?.close()
         }

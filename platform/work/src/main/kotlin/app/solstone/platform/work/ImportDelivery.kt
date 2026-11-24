@@ -147,6 +147,25 @@ internal fun hasDeliverableImports(
     now: Long,
 ): Boolean = store.eligible(instanceId, journalVersion, now, Int.MAX_VALUE).any { isImportDeliverable(it, journalVersion) }
 
+/**
+ * Delay (in ms, >= 1) until the earliest deliverable import waiting in retry backoff at
+ * [instanceId] becomes due for [journalVersion], or null when none is waiting in backoff or
+ * [gate] does not allow imports.
+ */
+internal fun nextImportRetryDelayMs(
+    store: ImportCustodyStore,
+    instanceId: String,
+    journalVersion: String,
+    gate: ImportVersionGate,
+    now: Long,
+): Long? {
+    if (gate != ImportVersionGate.SUPPORTED) return null
+    val earliest = store.earliestBackoffAt(instanceId, now) { hasCaption, hasSavedProgress ->
+        hasSavedProgress || !hasCaption || journalSupportsImportCaptions(journalVersion)
+    } ?: return null
+    return (earliest - now).coerceAtLeast(1L)
+}
+
 internal fun deliverImports(
     http: PlHttpClient,
     store: ImportCustodyStore,

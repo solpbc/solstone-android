@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Configuration
 import androidx.work.ListenableWorker
+import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
@@ -17,6 +18,7 @@ import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.GraphMutationResult
 import app.solstone.core.identity.JournalConfirmation
 import app.solstone.core.identity.JournalConfirmationStore
+import app.solstone.core.identity.JournalVersionRecord
 import app.solstone.core.identity.PairingGeneration
 import app.solstone.core.identity.StoreInspectResult
 import app.solstone.core.model.DirectEndpoint
@@ -40,10 +42,14 @@ import app.solstone.platform.identity.file.FileJournalMarkStore
 import app.solstone.platform.identity.file.FileJournalVersionStore
 import app.solstone.platform.identity.file.FilePairingGraph
 import app.solstone.platform.identity.file.SecretProtector
+import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
+import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -51,12 +57,15 @@ import org.junit.runner.RunWith
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(AndroidJUnit4::class)
 class WorkManagerSyncConfirmationRuntimeTest {
@@ -156,9 +165,13 @@ class WorkManagerSyncConfirmationRuntimeTest {
     fun tearDown() {
         releaseInFlightLatch.countDown()
         runCatching {
-            WorkManager.getInstance(context).cancelUniqueWork("solstone-sync-now")
-            WorkManager.getInstance(context).cancelUniqueWork("solstone-sync-after-confirm")
-            WorkManager.getInstance(context).cancelUniqueWork("solstone-sync-periodic")
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(SyncScheduler.NOW_WORK_NAME).result.get(5, TimeUnit.SECONDS)
+            wm.cancelUniqueWork(SyncScheduler.AFTER_CONFIRM_WORK_NAME).result.get(5, TimeUnit.SECONDS)
+            wm.cancelUniqueWork(SyncScheduler.PERIODIC_WORK_NAME).result.get(5, TimeUnit.SECONDS)
+            wm.cancelUniqueWork(SyncScheduler.FOLLOW_UP_WORK_NAME).result.get(5, TimeUnit.SECONDS)
+            wm.cancelUniqueWork(SyncScheduler.IMPORT_RETRY_WORK_NAME).result.get(5, TimeUnit.SECONDS)
+            wm.pruneWork().result.get(5, TimeUnit.SECONDS)
         }
         rootDir.deleteRecursively()
     }
@@ -270,6 +283,261 @@ class WorkManagerSyncConfirmationRuntimeTest {
         assertEquals(2, drainStore.segmentsByState(QueueState.EVICTED).size)
         assertTrue(recordingClient.requests.any { it.method == "GET" && it.path.startsWith(SEGMENTS_PATH) })
         assertTrue(recordingClient.requests.any { it.method == "POST" && it.path == INGEST_PATH })
+    }
+
+    @Test
+    fun failedImportSchedulesShortDelayedRetryAndDeliversOnRetryWake() {
+        val dbName = "work-import-retry-${UUID.randomUUID()}.db"
+        val db = openSolstonePersistenceDatabase(context, dbName)
+        val importRoot = File(rootDir, "import-store").apply { mkdirs() }.toPath()
+        val fakeNow = AtomicLong(10_000_000L)
+        val importStore = ImportCustodyStore(root = importRoot, dao = db.importDao(), clock = fakeNow::get)
+        val saveAttempts = AtomicInteger(0)
+        val importClient = TestRecordingHttpClient { method, path, body ->
+            when {
+                method == "POST" && path == "/app/import/api/save" -> {
+                    if (saveAttempts.incrementAndGet() <= 2) {
+                        HttpResponse(503, mapOf("content-type" to "application/json"), """{"error":"busy"}""".toByteArray())
+                    } else {
+                        HttpResponse(
+                            200,
+                            mapOf("content-type" to "application/json"),
+                            """{"status":"staged","path":"/imports/20261124_101500/doc.txt","timestamp":"20261124_101500","replay":false}""".toByteArray(),
+                        )
+                    }
+                }
+                method == "POST" && path == "/app/import/api/start" ->
+                    HttpResponse(
+                        200,
+                        mapOf("content-type" to "application/json"),
+                        """{"status":"ok","task_id":"t1","import_id":"20261124_101500"}""".toByteArray(),
+                    )
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(
+                        200,
+                        mapOf("content-type" to "application/json"),
+                        """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.0.99"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray(),
+                    )
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+        try {
+            stores.journalConfirmationStore.confirm("sha256:cert-1")
+            stores.journalVersionStore.save(JournalVersionRecord(testHome.instanceId, testHome.caChainFingerprint, "2.0.99"))
+
+            val id = requireNotNull(importStore.begin("file"))
+            val bytes = "retry-payload".toByteArray()
+            Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+            assertTrue(importStore.publish(id, "doc.txt", "text/plain", bytes.size.toLong()))
+
+            val emptyDrainStore = FakeDrainStore()
+            val retryFactory = object : WorkerFactory() {
+                override fun createWorker(
+                    appContext: Context,
+                    workerClassName: String,
+                    workerParameters: WorkerParameters,
+                ): ListenableWorker? =
+                    if (workerClassName == SyncWorker::class.java.name) {
+                        SyncWorker(
+                            context = appContext,
+                            params = workerParameters,
+                            openStores = { stores },
+                            openClient = { _, _ -> importClient },
+                            drainStore = emptyDrainStore,
+                            spoolDir = spoolDir,
+                            localDescriptionProvider = {
+                                ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone")
+                            },
+                            importStore = importStore,
+                            now = fakeNow::get,
+                        )
+                    } else {
+                        null
+                    }
+            }
+            currentFactory = { retryFactory }
+
+            // Attempt 1 via NOW fails with 503 -> NOW finishes SUCCEEDED and schedules IMPORT_RETRY at 15s.
+            SyncScheduler.enqueueNow(context, MAIN_STREAM)
+            triggerConstraints(SyncScheduler.NOW_WORK_NAME)
+            waitUntilWorkCompleted(SyncScheduler.NOW_WORK_NAME)
+            val nowInfos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(SyncScheduler.NOW_WORK_NAME).get(5, TimeUnit.SECONDS)
+            assertEquals(listOf(WorkInfo.State.SUCCEEDED), nowInfos.map { it.state })
+
+            val rowAfterAttempt1 = requireNotNull(db.importDao().byId(id))
+            assertEquals(1, rowAfterAttempt1.attemptCount)
+            assertEquals(fakeNow.get() + 15_000L, rowAfterAttempt1.nextAttemptAt)
+
+            val retry1 = waitForSingleEnqueuedWork(SyncScheduler.IMPORT_RETRY_WORK_NAME)
+            assertEquals(15_000L, retry1.initialDelayMillis)
+            assertEquals(NetworkType.CONNECTED, retry1.constraints.requiredNetworkType)
+
+            // Attempt 2 via IMPORT_RETRY fails with 503 -> appends 30s child cleanly and unblocks it.
+            fakeNow.addAndGet(15_000L)
+            val driver = checkNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+            driver.setInitialDelayMet(retry1.id)
+            driver.setAllConstraintsMet(retry1.id)
+            waitUntilWorkIdFinished(SyncScheduler.IMPORT_RETRY_WORK_NAME, retry1.id)
+
+            val rowAfterAttempt2 = requireNotNull(db.importDao().byId(id))
+            assertEquals(2, rowAfterAttempt2.attemptCount)
+            assertEquals(fakeNow.get() + 30_000L, rowAfterAttempt2.nextAttemptAt)
+
+            val retry2 = waitForSingleEnqueuedWork(SyncScheduler.IMPORT_RETRY_WORK_NAME, excludingId = retry1.id)
+            assertNotEquals(retry1.id, retry2.id)
+            assertEquals(30_000L, retry2.initialDelayMillis)
+            assertEquals(NetworkType.CONNECTED, retry2.constraints.requiredNetworkType)
+
+            // Attempt 3 via IMPORT_RETRY delivers cleanly and leaves no pending retry work.
+            fakeNow.addAndGet(30_000L)
+            driver.setInitialDelayMet(retry2.id)
+            driver.setAllConstraintsMet(retry2.id)
+            waitUntilWorkCompleted(SyncScheduler.IMPORT_RETRY_WORK_NAME)
+
+            assertNull("delivered import row should be removed", db.importDao().byId(id))
+            assertEquals(3, importClient.requests.count { it.method == "POST" && it.path == "/app/import/api/save" })
+            assertEquals(1, importClient.requests.count { it.method == "POST" && it.path == "/app/import/api/start" })
+        } finally {
+            runCatching { db.close() }
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun earlyRetryWakeBeforeWallClockDueReschedulesRemainingDelayWithoutDroppingImport() {
+        val dbName = "work-import-early-${UUID.randomUUID()}.db"
+        val db = openSolstonePersistenceDatabase(context, dbName)
+        val importRoot = File(rootDir, "import-early").apply { mkdirs() }.toPath()
+        val fakeNow = AtomicLong(20_000_000L)
+        val importStore = ImportCustodyStore(root = importRoot, dao = db.importDao(), clock = fakeNow::get)
+        val saveAttempts = AtomicInteger(0)
+        val importClient = TestRecordingHttpClient { method, path, body ->
+            when {
+                method == "POST" && path == "/app/import/api/save" -> {
+                    if (saveAttempts.incrementAndGet() == 1) {
+                        HttpResponse(503, mapOf("content-type" to "application/json"), """{"error":"busy"}""".toByteArray())
+                    } else {
+                        HttpResponse(
+                            200,
+                            mapOf("content-type" to "application/json"),
+                            """{"status":"staged","path":"/imports/20261124_102000/doc.txt","timestamp":"20261124_102000","replay":false}""".toByteArray(),
+                        )
+                    }
+                }
+                method == "POST" && path == "/app/import/api/start" ->
+                    HttpResponse(
+                        200,
+                        mapOf("content-type" to "application/json"),
+                        """{"status":"ok","task_id":"t2","import_id":"20261124_102000"}""".toByteArray(),
+                    )
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(
+                        200,
+                        mapOf("content-type" to "application/json"),
+                        """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.0.99"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray(),
+                    )
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+        try {
+            stores.journalConfirmationStore.confirm("sha256:cert-1")
+            stores.journalVersionStore.save(JournalVersionRecord(testHome.instanceId, testHome.caChainFingerprint, "2.0.99"))
+
+            val id = requireNotNull(importStore.begin("file"))
+            val bytes = "early-wake".toByteArray()
+            Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+            assertTrue(importStore.publish(id, "early.txt", "text/plain", bytes.size.toLong()))
+
+            val emptyDrainStore = FakeDrainStore()
+            val retryFactory = object : WorkerFactory() {
+                override fun createWorker(
+                    appContext: Context,
+                    workerClassName: String,
+                    workerParameters: WorkerParameters,
+                ): ListenableWorker? =
+                    if (workerClassName == SyncWorker::class.java.name) {
+                        SyncWorker(
+                            context = appContext,
+                            params = workerParameters,
+                            openStores = { stores },
+                            openClient = { _, _ -> importClient },
+                            drainStore = emptyDrainStore,
+                            spoolDir = spoolDir,
+                            localDescriptionProvider = {
+                                ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone")
+                            },
+                            importStore = importStore,
+                            now = fakeNow::get,
+                        )
+                    } else {
+                        null
+                    }
+            }
+            currentFactory = { retryFactory }
+
+            SyncScheduler.enqueueNow(context, MAIN_STREAM)
+            triggerConstraints(SyncScheduler.NOW_WORK_NAME)
+            waitUntilWorkCompleted(SyncScheduler.NOW_WORK_NAME)
+
+            val retry1 = waitForSingleEnqueuedWork(SyncScheduler.IMPORT_RETRY_WORK_NAME)
+            assertEquals(15_000L, retry1.initialDelayMillis)
+
+            // Wake 1s early relative to wall clock -> must reschedule remaining 1s delay, not drop!
+            fakeNow.addAndGet(14_000L)
+            val driver = checkNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+            driver.setInitialDelayMet(retry1.id)
+            driver.setAllConstraintsMet(retry1.id)
+            waitUntilWorkIdFinished(SyncScheduler.IMPORT_RETRY_WORK_NAME, retry1.id)
+
+            val retry2 = waitForSingleEnqueuedWork(SyncScheduler.IMPORT_RETRY_WORK_NAME, excludingId = retry1.id)
+            assertEquals(1_000L, retry2.initialDelayMillis)
+
+            // Advance the remaining 1s -> delivers cleanly.
+            fakeNow.addAndGet(1_000L)
+            driver.setInitialDelayMet(retry2.id)
+            driver.setAllConstraintsMet(retry2.id)
+            waitUntilWorkCompleted(SyncScheduler.IMPORT_RETRY_WORK_NAME)
+
+            assertNull("delivered import row should be removed", db.importDao().byId(id))
+            assertEquals(2, importClient.requests.count { it.method == "POST" && it.path == "/app/import/api/save" })
+            assertEquals(1, importClient.requests.count { it.method == "POST" && it.path == "/app/import/api/start" })
+        } finally {
+            runCatching { db.close() }
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    private fun waitForSingleEnqueuedWork(
+        uniqueWorkName: String,
+        excludingId: UUID? = null,
+        timeoutMs: Long = 10_000L,
+    ): WorkInfo {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get(5, TimeUnit.SECONDS)
+            val active = infos.filter { !it.state.isFinished && it.id != excludingId }
+            if (active.size == 1 && active.single().state == WorkInfo.State.ENQUEUED) {
+                return active.single()
+            }
+            Thread.sleep(50)
+        }
+        val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get(5, TimeUnit.SECONDS)
+        throw AssertionError("Expected 1 ENQUEUED work for $uniqueWorkName (excluding $excludingId), got ${infos.map { "${it.id}:${it.state}" }}")
+    }
+
+    private fun waitUntilWorkIdFinished(uniqueWorkName: String, workId: UUID, timeoutMs: Long = 10_000L) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get(5, TimeUnit.SECONDS)
+            val match = infos.firstOrNull { it.id == workId }
+            if (match != null && match.state.isFinished) {
+                assertEquals("Expected work $workId to succeed", WorkInfo.State.SUCCEEDED, match.state)
+                return
+            }
+            Thread.sleep(50)
+        }
+        val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(uniqueWorkName).get(5, TimeUnit.SECONDS)
+        throw AssertionError("Work $workId in $uniqueWorkName did not finish; states=${infos.map { "${it.id}:${it.state}" }}")
     }
 
     private fun triggerConstraints(uniqueWorkName: String, isPeriodic: Boolean = false, timeoutMs: Long = 5000L) {
