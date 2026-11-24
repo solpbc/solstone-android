@@ -247,7 +247,7 @@ android.import.line.label.refusaltext.line.reason = { $label }: { $reason }
 
 android.import.moreimports = más importaciones
 
-android.import.moreimports.subline = guías, opciones e historial de importación en tu diario
+android.import.moreimports.subline = guías, opciones y el historial de importación en tu diario
 
 android.import.notgoingjournalright = por ahora no van a tu diario. cada uno dice por qué.
 
@@ -283,7 +283,7 @@ android.import.removes.copy.device.so.won = esto quita la copia de este disposit
 
 android.import.review.detail.general = se guardó en tu diario. previsualiza y confirma para empezar.
 
-android.import.review.detail.hour = se guardó en tu diario. revisa dentro de una hora, antes de que tu diario quite la copia en espera.
+android.import.review.detail.hour = se guardó en tu diario. revisa en menos de una hora, antes de que tu diario quite la copia en espera.
 
 android.import.review.expired.detail = la copia en espera en tu diario venció. este dispositivo todavía guarda el archivo.
 
@@ -301,7 +301,7 @@ android.import.s.already.gone.from.device = ya no está en este dispositivo.
 
 android.import.s.already.journal = ya está en tu diario.
 
-android.import.s.larger.than.journal.takes = es más grande de lo que tu diario acepta
+android.import.s.larger.than.journal.takes = es más grande de lo que tu diario recibe
 
 android.import.s.sending.now.so.nothing = se está enviando ahora, así que no cambió nada.
 
@@ -507,11 +507,11 @@ android.journal.lost.connection.journal.keep.solstone = se perdió la conexión 
 
 android.journal.that.link.isn.t.available = ese enlace no está disponible en la app.
 
-android.journalmark.cancel.pairing = desvincular
+android.journalmark.cancel.pairing = cancelar la vinculación
 
 android.journalmark.cancel.pairing.discard.attempt = cancelar la vinculación y descartar este intento
 
-android.journalmark.check.journal.s.mark.didn = la revisión de la marca de tu diario no terminó. eso no significa que las marcas no coincidan.
+android.journalmark.check.journal.s.mark.didn = la revisión de la marca de tu diario no terminó. eso no significa que las marcas discrepen.
 
 android.journalmark.connecting = conectando…
 
@@ -539,7 +539,7 @@ android.journalmark.fallbackyour = tu
 
 android.journalmark.journal.not.set.up.yet = tu diario, todavía sin configurar
 
-android.journalmark.journal.s.mark.unavailable.right = la marca de tu diario, no disponible en este momento
+android.journalmark.journal.s.mark.unavailable.right = la marca de tu diario, no disponible ahora
 
 android.journalmark.journal.shows.same.mark.its = tu diario muestra esta misma marca en su app de red. debe coincidir, exactamente.
 
@@ -583,7 +583,7 @@ android.licences.lucide = Lucide
 
 android.licences.markuses = la marca de tu diario usa iconos de Lucide y palabras de la lista larga de palabras de la EFF.
 
-android.migration.anything.waiting.send.stays.device = todo lo que espera enviarse se queda en este dispositivo hasta que esté listo.
+android.migration.anything.waiting.send.stays.device = lo que está en espera de enviarse se queda en este dispositivo hasta que esté listo.
 
 android.migration.anything.waiting.send.stays.device.n2 = todo lo que espera enviarse se queda en este dispositivo. vuelve a intentarlo cuando se pueda conectar con tu diario.
 
@@ -599,13 +599,13 @@ android.migration.choice.needs.attention = la elección necesita atención
 
 android.migration.choose.device = elegir un dispositivo
 
-android.migration.couldn.t.load.devices.journal = no se pudieron cargar los dispositivos de tu diario. vuelve a intentarlo cuando se pueda conectar con tu diario.
+android.migration.couldn.t.load.devices.journal = no se pudieron cargar los dispositivos en tu diario. vuelve a intentarlo cuando se pueda conectar con tu diario.
 
-android.migration.device.continues.its.name.history = este dispositivo continúa su nombre y su historial. el dispositivo seleccionado perderá el acceso a tu diario.
+android.migration.device.continues.its.name.history = este dispositivo continúa con su nombre y su historial. el dispositivo seleccionado perderá el acceso a tu diario.
 
-android.migration.device.couldn.t.open.its = este dispositivo no pudo abrir su conexión guardada con tu diario. lo que espera enviarse sigue aquí. vuelve a vincular para reconectar.
+android.migration.device.couldn.t.open.its = este dispositivo no pudo abrir su conexión guardada con tu diario. lo que está en espera de enviarse sigue aquí. vincula de nuevo para reconectar.
 
-android.migration.device.couldn.t.read.its = este dispositivo no pudo leer su conexión guardada. lo que espera enviarse no se ha quitado.
+android.migration.device.couldn.t.read.its = este dispositivo no pudo leer su conexión guardada. lo que está en espera de enviarse no se ha quitado.
 
 android.migration.device.last.reached = se conectó por última vez con tu diario { $relative }
 
@@ -621,9 +621,9 @@ android.migration.journal.couldn.t.apply.choice = tu diario no pudo aplicar esta
 
 android.migration.journal.doesn.t.support.move = tu diario todavía no admite este traslado. lo que espera enviarse se queda en este dispositivo. actualiza tu diario y vuelve a intentarlo.
 
-android.migration.journal.hasn.t.confirmed.result = tu diario todavía no ha confirmado el resultado.
+android.migration.journal.hasn.t.confirmed.result = tu diario todavía no confirmó el resultado.
 
-android.migration.journal.update.needed = se necesita actualizar el diario
+android.migration.journal.update.needed = actualización del diario necesaria
 
 android.migration.no.other.paired.devices = no hay otros dispositivos vinculados
 
@@ -942,9 +942,9 @@ android.screenshots.choosefolder = elegir la carpeta { $foldername }
 
 android.screenshots.choosefolder2 = elegir la carpeta
 
-android.screenshots.choosehowfarback = elige desde cuándo empezar y luego recíbelas.
+android.screenshots.choosehowfarback = elige qué tan atrás empezar y luego tráelas.
 
-android.screenshots.couldntcountscreenshots = no se pudo contar tus capturas de pantalla.
+android.screenshots.couldntcountscreenshots = no se pudieron contar tus capturas de pantalla.
 
 android.screenshots.folder = carpeta
 
@@ -958,11 +958,11 @@ android.screenshots.last6months = los últimos 6 meses
 
 android.screenshots.lastyear = el último año
 
-android.screenshots.llseehowmany = verás cuántas capturas de pantalla hay antes de que se reciba alguna.
+android.screenshots.llseehowmany = verás cuántas capturas de pantalla hay antes de que entre alguna.
 
 android.screenshots.nothingbeforetoday = nada de antes de hoy
 
-android.screenshots.onlywhatsolstoneapp = solo se recibe lo que la app de solstone puede distinguir como captura de pantalla.
+android.screenshots.onlywhatsolstoneapp = solo entra lo que la app de solstone puede reconocer como captura de pantalla.
 
 android.screenshots.pause = pausar
 
@@ -978,9 +978,9 @@ android.screenshots.screenshotcouldntread = no se pudo leer esta captura de pant
 
 android.screenshots.screenshots = capturas de pantalla
 
-android.screenshots.screenshotsalreadyjournalaren = las capturas de pantalla que ya están en tu diario no se vuelven a recibir.
+android.screenshots.screenshotsalreadyjournalaren = las capturas de pantalla que ya están en tu diario no se vuelven a traer.
 
-android.screenshots.screenshotstakewaitdevice = las capturas de pantalla que tomas esperan en este dispositivo hasta que conectas un diario.
+android.screenshots.screenshotstakewaitdevice = las capturas de pantalla que tomas esperan en este dispositivo hasta que conectes un diario.
 
 android.screenshots.screenshottoobigcome = esta captura de pantalla es demasiado grande para entrar, así que se queda en la carpeta.
 
@@ -1012,7 +1012,7 @@ android.setup.i.already.have.one = ya tengo uno
 
 android.setup.import = importar
 
-android.setup.journal.always.private.only.yours = tu diario es siempre privado, solo para ti.
+android.setup.journal.always.private.only.yours = tu diario es siempre privado, solo tuyo.
 
 android.setup.opensetuppage = abrir la página de configuración inicial
 
@@ -1024,7 +1024,7 @@ android.setup.send.yourself.link = enviarte el enlace
 
 android.setup.setupjournal = configurar un diario
 
-android.setup.solstone.app.takes.what.share = la app de solstone recibe lo que compartes con ella, y todo entra a tu diario.
+android.setup.solstone.app.takes.what.share = la app de solstone recibe lo que compartes con ella, y todo va a tu diario.
 
 android.setup.sources = fuentes
 
@@ -1044,7 +1044,7 @@ android.shelf.app.permissions = permisos de la app
 
 android.shelf.app.that.delivers.notifications.uses = la app que entrega las notificaciones usa una dirección de servidor que no empieza con { $httpsword }, y las notificaciones de tu diario solo van a direcciones que sí. cambia su servidor a uno que empiece con { $httpsword } y luego vuelve aquí.
 
-android.shelf.check.connection = revisar la conexión
+android.shelf.check.connection = revisar conexión
 
 android.shelf.checking = revisando…
 
@@ -1144,7 +1144,7 @@ android.shelf.unpair = desvincular
 
 android.shelf.unpair.device = ¿desvincular este dispositivo?
 
-android.shelf.when.there.s.something.worth = cuando hay algo que vale la pena mirar
+android.shelf.when.there.s.something.worth = cuando hay algo que vale la pena ver
 
 android.shellactivity.confirmjournalsmark = confirma la marca de tu diario para enviar el material retenido.
 
@@ -1278,7 +1278,7 @@ android.source.sessioncontrolswatchphone = los controles de la sesión están en
 
 android.source.setting = tu ajuste
 
-android.source.shared.also = también activado
+android.source.shared.also = también en
 
 android.source.shared.devices = { $count ->
         [one] de otro dispositivo
@@ -1356,7 +1356,7 @@ android.status.n0.syncing = { $count ->
        *[other] { $count } sincronizando
     }
 
-android.status.nothing.waiting.goes.into.journal = nada de lo que está en espera entra a tu diario hasta que lo hagas.
+android.status.nothing.waiting.goes.into.journal = nada en espera entra a tu diario hasta que lo hagas.
 
 android.status.nothing.waiting.sync = nada en espera de sincronizar
 
@@ -1403,7 +1403,7 @@ android.status.waiting.sync = en espera de sincronizar
 
 android.unknownjournal.bodyaddress = algo respondió a este dispositivo en { $address }, y no es el diario con el que este dispositivo está vinculado. podría ser otro dispositivo que ahora usa esa dirección, o tu diario, si se restableció su identidad. si la marca bajo "{ $whatanswered }" coincide con la que tu diario muestra ahora, vincula este dispositivo de nuevo.
 
-android.unknownjournal.bodyrelay = algo respondió a este dispositivo a través del servidor de retransmisión, y no es el diario con el que este dispositivo está vinculado. esto es menos cierto que una conexión directa.
+android.unknownjournal.bodyrelay = algo respondió a este dispositivo por el servidor de retransmisión, y no es el diario con el que este dispositivo está vinculado. esto tiene menos certeza que una conexión directa.
 
 android.unknownjournal.claimednotverified = declarado, no verificado
 
@@ -1497,7 +1497,7 @@ android.wear.relay.notice.short = la entrega del reloj al teléfono puede usar e
 
 android.wear.row.spoken = { $label }: { $value }
 
-android.wear.running = en marcha
+android.wear.running = en ejecución
 
 android.wear.seconds.short = { $count } s
 
