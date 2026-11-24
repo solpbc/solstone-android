@@ -135,3 +135,7 @@ Preview conversion requires Pillow. For a build host without Pillow, add
 `python3 scripts/i18n_preview.py --frames /var/tmp/tile-frames` there before
 finishing regeneration. Captures must contain the catalog's words; a blank tile
 or a system watch face is refused. Test-locale previews stay in scratch builds.
+
+## Draft locales
+
+`es-419` is registered in the pinned locale registry as a draft locale (`development` released, `production` withheld). Draft translations live in `catalog/translations/es-419.ftl` (or sharded files under `catalog/translations/es-419/`), and production builds exclude them. Unapproved legal and statutory messages stay absent from draft translation files and fall back to English in development builds. When editing English prose, run `i18n-catalog lock` to refresh `source-lock.json`, copy each changed `source` hash into its sidecar `source_revision`, and do not pass `--acknowledge es-419`: leaving the prior acknowledgment untouched marks edited draft entries stale until a translator updates them.
