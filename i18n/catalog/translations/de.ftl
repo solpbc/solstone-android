@@ -13,7 +13,7 @@ android.about.copy = kopieren
 
 android.about.copyright.n2026.sol.pbc.fixed = Copyright © 2026 { $company }
 
-android.about.couldn.t.copy.select.text = kopieren ist nicht gelungen. markiere den Text und kopiere ihn.
+android.about.couldn.t.copy.select.text = das Kopieren ist nicht gelungen. wähle den Text aus und kopiere ihn.
 
 android.about.freshnessdays = { $count ->
     [one] vor { $count } Tag
@@ -113,9 +113,9 @@ android.calendar.last.check.checkedat = letzte Prüfung { $checkedat }
 
 android.calendar.last.check.couldn.t.finish = die letzte Prüfung konnte nicht fertig werden. prüfe den Kalenderzugriff und den freien Speicher, dann versuch es noch einmal.
 
-android.calendar.last.n30.days = letzte 30 Tage
+android.calendar.last.n30.days = die letzten 30 Tage
 
-android.calendar.needs.permission = braucht eine Berechtigung
+android.calendar.needs.permission = braucht Berechtigung
 
 android.calendar.no.complete.check.yet = noch keine vollständige Prüfung
 
@@ -200,13 +200,13 @@ android.import.adds.pdfs.audio.images.text = fügt jede Datei hinzu, die du hier
 
 android.import.checking.journal = dein Journal wird geprüft.
 
-android.import.copy.already.gone.so.only = die Kopie ist schon weg, das hier entfernt sie also nur von hier.
+android.import.copy.already.gone.so.only = die Kopie ist schon weg, also wird sie nur von hier entfernt.
 
 android.import.copy.device.missing = die Kopie auf diesem Gerät fehlt
 
 android.import.couldn.t.be.read = das konnte nicht gelesen werden
 
-android.import.couldn.t.be.read.add = das konnte nicht gelesen werden. füge es noch einmal hinzu
+android.import.couldn.t.be.read.add = das konnte nicht gelesen werden. füge es erneut hinzu
 
 android.import.device = auf diesem Gerät
 
@@ -238,13 +238,13 @@ android.import.moreimports = weitere Importe
 
 android.import.moreimports.subline = Anleitungen, Optionen und der Importverlauf in deinem Journal
 
-android.import.notgoingjournalright = geht gerade nicht in dein Journal. bei jedem steht, warum.
+android.import.notgoingjournalright = geht gerade nicht in dein Journal. jedes sagt, warum.
 
-android.import.nothing.changed.may.have.moved = nichts hat sich geändert. es kann weitergegangen sein. sieh in die Liste.
+android.import.nothing.changed.may.have.moved = nichts hat sich geändert. es ist vielleicht schon weiter; prüfe die Liste.
 
 android.import.nothing.yet = noch nichts.
 
-android.import.nothingwassaved = auf diesem Gerät wurde nichts gespeichert.
+android.import.nothingwassaved = nichts wurde auf diesem Gerät gespeichert.
 
 android.import.ok = ok
 
@@ -254,7 +254,7 @@ android.import.queue.offline = wartet, bis dein Journal wieder verbunden ist.
 
 android.import.recent = kürzlich
 
-android.import.recent.all.history = der ganze Importverlauf in deinem Journal
+android.import.recent.all.history = der gesamte Importverlauf in deinem Journal
 
 android.import.recent.in.journal = in deinem Journal · { $relative }
 
@@ -268,13 +268,13 @@ android.import.remove.row.name.n2 = { $name } entfernen
 
 android.import.removes.copy.device.journal.may = das entfernt die Kopie auf diesem Gerät. die wartende Kopie in deinem Journal bleibt dort, bis du sie verwirfst oder sie abläuft.
 
-android.import.removes.copy.device.so.won = das entfernt die Kopie auf diesem Gerät, sie erreicht dein Journal also nicht.
+android.import.removes.copy.device.so.won = das entfernt die Kopie auf diesem Gerät, also erreicht sie dein Journal nicht.
 
-android.import.review.detail.general = in deinem Journal gespeichert. sieh die Vorschau an und bestätige, um zu starten.
+android.import.review.detail.general = in deinem Journal gespeichert. Vorschau anzeigen und bestätigen, um zu starten.
 
-android.import.review.detail.hour = in deinem Journal gespeichert. prüfe es innerhalb einer Stunde, bevor dein Journal die wartende Kopie entfernt.
+android.import.review.detail.hour = in deinem Journal gespeichert. prüfe innerhalb einer Stunde, bevor dein Journal die wartende Kopie entfernt.
 
-android.import.review.expired.detail = die wartende Kopie in deinem Journal ist abgelaufen. dieses Gerät hat die Datei noch.
+android.import.review.expired.detail = die wartende Kopie in deinem Journal ist abgelaufen. dieses Gerät hält die Datei noch.
 
 android.import.review.expired.label = abgelaufen
 
@@ -286,13 +286,13 @@ android.import.row.sending.detail = wird an dein Journal gesendet…
 
 android.import.row.waiting.detail = wartet darauf, in dein Journal zu gehen
 
-android.import.s.already.gone.from.device = es ist schon weg von diesem Gerät.
+android.import.s.already.gone.from.device = es ist schon von diesem Gerät weg.
 
 android.import.s.already.journal = es ist schon in deinem Journal.
 
-android.import.s.larger.than.journal.takes = es ist größer, als dein Journal annimmt
+android.import.s.larger.than.journal.takes = es ist größer, als dein Journal entgegennimmt
 
-android.import.s.sending.now.so.nothing = es wird gerade gesendet, es hat sich also nichts geändert.
+android.import.s.sending.now.so.nothing = es wird gerade gesendet, also hat sich nichts geändert.
 
 android.import.saving.device.line.done.n1 = { $done ->
     [one] speichern auf diesem Gerät: { $done } von { $total }
@@ -301,9 +301,9 @@ android.import.saving.device.line.done.n1 = { $done ->
 
 android.import.screenshotscometheirown = Bildschirmfotos kommen von selbst herein.
 
-android.import.send.again.review = erneut senden zum Prüfen
+android.import.send.again.review = erneut zum Prüfen senden
 
-android.import.send.again.review.a11y = { $name } erneut senden zum Prüfen
+android.import.send.again.review.a11y = { $name } erneut zum Prüfen senden
 
 android.import.sending = wird gesendet
 
@@ -452,7 +452,7 @@ android.journal.close = schließen
 
 android.journal.couldn.t.reach.journal.keep = dein Journal war nicht erreichbar. lass die solstone-App offen und versuch es noch einmal.
 
-android.journal.couldn.t.save.that.try = das Speichern ist nicht gelungen. versuch es noch einmal.
+android.journal.couldn.t.save.that.try = das konnte nicht gespeichert werden. versuch es noch einmal.
 
 android.journal.dismiss = verwerfen
 
@@ -466,7 +466,7 @@ android.journalmark.cancel.pairing = Kopplung abbrechen
 
 android.journalmark.cancel.pairing.discard.attempt = Kopplung abbrechen und diesen Versuch verwerfen
 
-android.journalmark.check.journal.s.mark.didn = die Prüfung der mark deines Journals wurde nicht fertig. das heißt nicht, dass die marks nicht übereinstimmen.
+android.journalmark.check.journal.s.mark.didn = die Prüfung für die mark deines Journals ist nicht fertig geworden. das heißt nicht, dass die marks voneinander abweichen.
 
 android.journalmark.connecting = wird verbunden…
 
@@ -476,7 +476,7 @@ android.journalmark.continue.pairing.without.verifying.journal = Kopplung fortse
 
 android.journalmark.couldn.t.disconnect.phone.try = dieses Telefon konnte nicht getrennt werden. versuch es noch einmal.
 
-android.journalmark.couldn.t.verify = prüfen ist nicht gelungen
+android.journalmark.couldn.t.verify = konnte nicht überprüfen
 
 android.journalmark.couldntsaveanswer = deine Antwort konnte nicht gespeichert werden. versuch es noch einmal.
 
@@ -540,27 +540,27 @@ android.licences.markuses = die mark deines Journals nutzt Symbole von Lucide un
 
 android.migration.anything.waiting.send.stays.device = alles, was aufs Senden wartet, bleibt auf diesem Gerät, bis es bereit ist.
 
-android.migration.anything.waiting.send.stays.device.n2 = alles, was aufs Senden wartet, bleibt auf diesem Gerät. versuch es noch einmal, wenn dein Journal erreichbar ist.
+android.migration.anything.waiting.send.stays.device.n2 = was auf das Senden wartet, bleibt auf diesem Gerät. versuch es noch einmal, wenn dein Journal erreichbar ist.
 
-android.migration.can.keep.both.or.choose = du kannst beide behalten oder ein Gerät wählen, das dieses ersetzt.
+android.migration.can.keep.both.or.choose = du kannst beide behalten oder ein Gerät wählen, das von diesem ersetzt wird.
 
 android.migration.can.t.reach.journal = dein Journal ist nicht erreichbar
 
 android.migration.check.again = erneut prüfen
 
-android.migration.checking.choice = deine Wahl wird geprüft
+android.migration.checking.choice = deine Auswahl wird geprüft
 
-android.migration.choice.needs.attention = die Wahl braucht Aufmerksamkeit
+android.migration.choice.needs.attention = Auswahl braucht Aufmerksamkeit
 
-android.migration.choose.device = ein Gerät wählen
+android.migration.choose.device = Gerät wählen
 
 android.migration.couldn.t.load.devices.journal = die Geräte in deinem Journal konnten nicht geladen werden. versuch es noch einmal, wenn dein Journal erreichbar ist.
 
-android.migration.device.continues.its.name.history = dieses Gerät behält seinen Namen und seinen Verlauf. das ausgewählte Gerät verliert den Zugang zu deinem Journal.
+android.migration.device.continues.its.name.history = dieses Gerät führt seinen Namen und seinen Verlauf fort. das gewählte Gerät verliert den Zugriff auf dein Journal.
 
 android.migration.device.couldn.t.open.its = dieses Gerät konnte seine gespeicherte Verbindung zu deinem Journal nicht öffnen. alles, was aufs Senden wartet, ist noch hier. kopple erneut, um wieder zu verbinden.
 
-android.migration.device.couldn.t.read.its = dieses Gerät konnte seine gespeicherte Verbindung nicht lesen. alles, was aufs Senden wartet, wurde nicht entfernt.
+android.migration.device.couldn.t.read.its = dieses Gerät konnte seine gespeicherte Verbindung nicht lesen. was auf das Senden wartet, wurde nicht entfernt.
 
 android.migration.device.last.reached = dein Journal zuletzt erreicht { $relative }
 
@@ -570,15 +570,15 @@ android.migration.device.paired = gekoppelt { $relative }
 
 android.migration.devices.unavailable = Geräte nicht verfügbar
 
-android.migration.getting.device.ready = dieses Gerät wird vorbereitet
+android.migration.getting.device.ready = dieses Gerät wird bereit gemacht
 
-android.migration.journal.couldn.t.apply.choice = dein Journal konnte diese Wahl nicht anwenden. deine aktuelle Verbindung funktioniert noch.
+android.migration.journal.couldn.t.apply.choice = dein Journal konnte diese Auswahl nicht anwenden. deine aktuelle Verbindung funktioniert weiter.
 
 android.migration.journal.doesn.t.support.move = dein Journal unterstützt diesen Umzug noch nicht. alles, was aufs Senden wartet, bleibt auf diesem Gerät. aktualisiere dein Journal und versuch es dann noch einmal.
 
 android.migration.journal.hasn.t.confirmed.result = dein Journal hat das Ergebnis noch nicht bestätigt.
 
-android.migration.journal.update.needed = Journal-Aktualisierung nötig
+android.migration.journal.update.needed = Journalaktualisierung nötig
 
 android.migration.no.other.paired.devices = keine anderen gekoppelten Geräte
 
@@ -646,7 +646,7 @@ android.obsidian.choicecouldntsaved = deine Auswahl konnte nicht gespeichert wer
 
 android.obsidian.chooseanotherfolder = einen anderen Ordner wählen
 
-android.obsidian.choosefolder = einen Ordner wählen
+android.obsidian.choosefolder = Ordner wählen
 
 android.obsidian.choosevaultagain = den Tresor erneut wählen
 
@@ -738,11 +738,11 @@ android.pairing.open.android.settings = Android-Einstellungen öffnen
 
 android.pairing.paired = gekoppelt
 
-android.pairing.pairing.didn.t.go.through = die Kopplung ist nicht zustande gekommen. zeige einen neuen Kopplungscode in deinem Journal und versuch es noch einmal.
+android.pairing.pairing.didn.t.go.through = die Kopplung ist nicht gelungen. zeige einen neuen Kopplungscode auf deinem Journal und versuch es noch einmal.
 
 android.pairing.pairing.link = Kopplungslink
 
-android.pairing.pairing.window.closed.show.new = das Kopplungsfenster ist zu. zeige einen neuen Kopplungscode in deinem Journal und versuch es noch einmal.
+android.pairing.pairing.window.closed.show.new = das Kopplungsfenster ist geschlossen. zeige einen neuen Kopplungscode auf deinem Journal, dann versuch es noch einmal.
 
 android.pairing.paste.link = einen Link einfügen
 
@@ -932,9 +932,9 @@ android.screenshots.startfromtoday = ab heute starten
 
 android.screenshots.waitinggojournal = wartet darauf, in dein Journal zu gehen
 
-android.screenshots.waitingjournalupdatescreenshots = wartet auf eine Aktualisierung des Journals. deine Bildschirmfotos warten auf diesem Gerät.
+android.screenshots.waitingjournalupdatescreenshots = wartet auf eine Journal-Aktualisierung. deine Bildschirmfotos warten auf diesem Gerät.
 
-android.screenshots.whatsalreadyjournal = was schon in deinem Journal ist, bleibt, wenn du das pausierst oder ausschaltest.
+android.screenshots.whatsalreadyjournal = was schon in deinem Journal ist, bleibt, wenn du pausierst oder das ausschaltest.
 
 android.screenshots.whilesolstoneapptakes = solange das an ist, nimmt die solstone-App die Bildschirmfotos entgegen, die du machst, und dein Journal behält jedes mit der Minute, in der du es gemacht hast.
 
@@ -952,17 +952,17 @@ android.setup.import = Import
 
 android.setup.journal.always.private.only.yours = dein Journal ist immer privat, nur deins.
 
-android.setup.opensetuppage = die Seite zur Ersteinrichtung öffnen
+android.setup.opensetuppage = Ersteinrichtungsseite öffnen
 
 android.setup.photos.files = Fotos und Dateien
 
 android.setup.scanpairingcode = seinen Kopplungscode scannen
 
-android.setup.send.yourself.link = dir den Link schicken
+android.setup.send.yourself.link = dir den Link senden
 
 android.setup.setupjournal = ein Journal einrichten
 
-android.setup.solstone.app.takes.what.share = die solstone-App nimmt entgegen, was du mit ihr teilst, und alles davon geht in dein Journal.
+android.setup.solstone.app.takes.what.share = die solstone-App nimmt entgegen, was du mit ihr teilst, und all das geht in dein Journal.
 
 android.setup.sources = Quellen
 
@@ -986,9 +986,9 @@ android.shelf.check.connection = Verbindung prüfen
 
 android.shelf.checking = wird geprüft…
 
-android.shelf.choose.app.deliver.notifications = eine App wählen, die Benachrichtigungen zustellt
+android.shelf.choose.app.deliver.notifications = App wählen, die Benachrichtigungen zustellt
 
-android.shelf.connect.journal = ein Journal verbinden
+android.shelf.connect.journal = Journal verbinden
 
 android.shelf.connection = Verbindung
 
@@ -1004,7 +1004,7 @@ android.shelf.couldn.t.unpair.device.try = dieses Gerät konnte nicht entkoppelt
 
 android.shelf.delivered.by = zugestellt von
 
-android.shelf.device.choice = Gerätewahl
+android.shelf.device.choice = Geräteauswahl
 
 android.shelf.email.support = Support per E-Mail
 
@@ -1052,7 +1052,7 @@ android.shelf.off.until.turn.journal.encrypts = aus, bis du es einschaltest. dei
 
 android.shelf.open.notification.settings = Benachrichtigungseinstellungen öffnen
 
-android.shelf.pair.new.journal = ein neues Journal koppeln
+android.shelf.pair.new.journal = neues Journal koppeln
 
 android.shelf.privacy = Datenschutz
 
@@ -1060,11 +1060,11 @@ android.shelf.problem.reports = Problemberichte
 
 android.shelf.reached.journal = hat dein Journal erreicht
 
-android.shelf.report.problem = ein Problem melden
+android.shelf.report.problem = Problem melden
 
 android.shelf.review.send.support.site = auf der Support-Website prüfen und senden
 
-android.shelf.save.problem.report = einen Problembericht speichern
+android.shelf.save.problem.report = Problembericht speichern
 
 android.shelf.saved = gespeichert
 
@@ -1142,7 +1142,7 @@ android.source.firstreceived = zuerst empfangen
 
 android.source.getting.ready = wird vorbereitet…
 
-android.source.getting.ready.connecting.journal = wird vorbereitet. Verbindung zu deinem Journal.
+android.source.getting.ready.connecting.journal = wird vorbereitet. wird mit deinem Journal verbunden.
 
 android.source.give.tile.home = gib dem eine Kachel auf Start
 
@@ -1168,7 +1168,7 @@ android.source.journal = dein Journal
 
 android.source.journalconfirmed = Journal bestätigt
 
-android.source.lastcheck = letzte Meldung
+android.source.lastcheck = letzter Check-in
 
 android.source.lastcheck2 = { $it } bei der letzten Meldung
 
@@ -1216,7 +1216,7 @@ android.source.sessioncontrolswatchphone = die Sitzungssteuerung ist auf deiner 
 
 android.source.setting = deine Einstellung
 
-android.source.shared.also = auch an
+android.source.shared.also = auch auf
 
 android.source.shared.devices = { $count ->
     [one] von einem anderen Gerät
@@ -1255,7 +1255,7 @@ android.source.while.solstone.app.takes.photo = solange das an ist, macht die so
 
 android.source.while.solstone.app.takes.video = solange das an ist, nimmt die solstone-App Video von der App oder dem Bildschirm entgegen, den du wählst, auch während du andere Apps nutzt. es bleibt auf diesem Gerät, bis sie dein Journal erreichen kann.
 
-android.status.all.caught.up = auf dem neuesten Stand
+android.status.all.caught.up = alles auf dem neuesten Stand
 
 android.status.anythingwaitingstayshere = alles, was wartet, bleibt hier, bis du erneut koppelst.
 
@@ -1276,7 +1276,7 @@ android.status.imports.need = Importe brauchen dich
 
 android.status.journal.needs.update = Journal braucht eine Aktualisierung
 
-android.status.journal.version = journal-Version
+android.status.journal.version = Journalversion
 
 android.status.journalstoppedacceptingdevice = dein Journal akzeptiert dieses Gerät nicht mehr
 
@@ -1290,7 +1290,7 @@ android.status.n0.syncing = { $count ->
    *[other] { $count } werden abgeglichen
 }
 
-android.status.nothing.waiting.goes.into.journal = nichts, was wartet, geht in dein Journal, bevor du es tust.
+android.status.nothing.waiting.goes.into.journal = nichts, was wartet, geht in dein Journal, bis du es tust.
 
 android.status.nothing.waiting.sync = nichts wartet auf den Abgleich
 
@@ -1323,7 +1323,7 @@ android.status.ready.to.review.pill = { $count ->
    *[other] { $count } bereit zum Prüfen
 }
 
-android.status.syncing.journal = Abgleich mit deinem Journal…
+android.status.syncing.journal = wird mit deinem Journal abgeglichen…
 
 android.status.unfinished.item.couldn.t.be = ein unfertiges Element konnte nicht geprüft werden
 
@@ -1454,9 +1454,9 @@ android.wear.starting = wird gestartet
 
 android.wear.starts.a.session = startet eine Sitzung
 
-android.wear.stop = beenden
+android.wear.stop = stoppen
 
-android.wear.stopped = beendet
+android.wear.stopped = gestoppt
 
 android.wear.stops.the.session = beendet die Sitzung
 
@@ -1470,7 +1470,7 @@ android.wear.update.solstone.on.your.phone = solstone auf dem Telefon aktualisie
 
 android.wear.update.solstone.on.your.phone.so.what.s.saved.can.move = aktualisiere solstone auf deinem Telefon, damit Gespeichertes weiter kann.
 
-android.wear.update.solstone.on.your.watch = solstone auf der Uhr aktualisieren
+android.wear.update.solstone.on.your.watch = aktualisiere solstone auf deiner Uhr
 
 android.wear.update.solstone.on.your.watch.so.what.s.saved.can.move = aktualisiere solstone auf deiner Uhr, damit Gespeichertes weiter kann.
 
