@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
+import app.solstone.core.i18n.phoneText
 import app.solstone.observer.harness.AsyncLoad
 import app.solstone.observer.harness.HarnessController
 import app.solstone.observer.harness.HarnessEvidenceSegment
@@ -157,7 +158,7 @@ class ObserverHarnessUi(
             val onStatusHolder = arrayOfNulls<TextView>(1)
             val onStatus = { message: String ->
                 onStatusHolder[0]?.text = message
-                if (message == "paired") showPaired()
+                if (message == phoneText("android.pairing.paired")) showPaired()
             }
             val preview = when (qrBackend) {
                 QrBackend.Camera2 -> Camera2QrPreviewView(context, controller, qrThreadLabel, status = onStatus)

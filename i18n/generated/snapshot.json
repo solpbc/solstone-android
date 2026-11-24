@@ -721,7 +721,7 @@
   "i18n/previews/manifest.json": "f8b84187f1a28a66130551d2d17df0724809e870c8da85e1bbe053ee515e2f91",
   "i18n/previews/res/drawable-en-rUS-nodpi/wear_tile_preview.png": "0ca088d74d0270846e42d7d6bf30c8ebfef92f10d4c9969ba30b943ee5e3157a",
   "i18n/previews/res/drawable-nodpi/wear_tile_preview.png": "0ca088d74d0270846e42d7d6bf30c8ebfef92f10d4c9969ba30b943ee5e3157a",
-  "scripts/i18n.py": "9a6ab8bdb0c31af6212342b489583b1388616b924b7f2ded09d8365659c7d413",
+  "scripts/i18n.py": "59f9a5a4d7eaa89909ab5df483510f06e466f4ece02f67d550cd939b2e560657",
   "scripts/i18n_phone.py": "d3190d5624595b1981948ceaff4c50707fcd3ba27e4451e7bc1bea0d25a9feb8",
   "scripts/i18n_preview.py": "e800368bc0584152d4b480145829289625f6cc6299de4757ed4cd0695a6a4efd"
 }

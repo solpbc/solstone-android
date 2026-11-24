@@ -73,7 +73,14 @@ def main():
     compiler=os.environ.get('I18N_COMPILER')
     if not compiler: sys.exit('Set I18N_COMPILER to the pinned i18n-catalog executable; see i18n/README.md.')
     pin=json.loads((ROOT/'i18n/compiler.json').read_text())
-    subprocess.run([compiler,'targets',str(CAT),'--channel',pin['channel'],'--target','android','--out',str(GENERATED)],check=True,timeout=120)
+    channel=pin['channel']
+    if '--channel' in sys.argv:
+        idx=sys.argv.index('--channel')
+        if idx+1>=len(sys.argv): sys.exit('--channel requires a value')
+        channel=sys.argv[idx+1]
+        if channel not in ('production','development'): sys.exit(f'Unsupported channel: {channel}')
+    extra=['--fallback-stale'] if channel=='development' else []
+    subprocess.run([compiler,'targets',str(CAT),'--channel',channel,*extra,'--target','android','--out',str(GENERATED)],check=True,timeout=120)
     from i18n_phone import generate
     generate(ROOT, native_text, quote)
     res=GENERATED/'android'/pin['bundle']
@@ -120,6 +127,9 @@ def main():
     shared={'SOLSTONE':'APP_NAME','RELAY_NOTICE_SHORT':'RELAY_NOTICE_SHORT','RELAY_NOTICE_FULL':'RELAY_NOTICE_FULL'}
     by_name={name:'m'+id.encode().hex() for id,name in messages.items()}
     SHARED.write_text(HEADER+'package app.solstone.core.watch.courier\n\nobject WatchCourierStrings {\n    // Stable source identifier; never localized.\n    const val WATCH = "watch"\n'+''.join(f'    const val {field} = {quote(native_text(resources[by_name[name]].text))}\n' for field,name in shared.items())+'}\n')
+    if channel == 'development':
+        print(f'Generated development resources for {locales}.')
+        return
     if '--resources-only' in sys.argv:
         print('Native resources generated; preview refresh and snapshot are still required.')
         return

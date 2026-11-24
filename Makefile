@@ -432,9 +432,28 @@ github-release:
 	  --apk $(ARTIFACTS)/$(RELEASE_PRODUCT)-$(VERSION).apk \
 	  --notes $(ARTIFACTS)/notes-$(SURFACE)-$(VERSION).md
 
-.PHONY: i18n check-i18n
+.PHONY: i18n i18n-dev push-i18n-dev check-i18n
 i18n:
 	python3 scripts/i18n.py
+
+i18n-dev:
+	python3 scripts/i18n.py --channel development
+
+push-i18n-dev:
+	@set -eu; \
+	test -n "$${PUSH_CATALOG_COMPILER:-}" || { echo "error: PUSH_CATALOG_COMPILER is required" >&2; exit 1; }; \
+	binary="$$PUSH_CATALOG_COMPILER/tools/i18n/target/debug/i18n-catalog"; \
+	test -x "$$binary" || { echo "error: i18n-catalog binary not found or not executable at $$binary" >&2; exit 1; }; \
+	work=$$(mktemp -d /var/tmp/android-push-i18n-dev.XXXXXX); \
+	trap 'rm -rf "$$work"' EXIT INT TERM; \
+	"$$binary" import "$$PUSH_CATALOG_COMPILER/contracts/push-i18n/r3" --dest "$$work/import"; \
+	"$$binary" compile "$$work/import" --channel development --fallback-stale --locale en-US --locale es-419; \
+	"$$binary" emit "$$work/import" --channel development --fallback-stale --locale en-US --locale es-419 --out "$$work/ir.json"; \
+	"$$binary" targets "$$work/import" --channel development --fallback-stale --locale en-US --locale es-419 --target android --out "$$work/out"; \
+	cp "$$work/ir.json" contracts/push-i18n/production/ir.json; \
+	cp -R "$$work/out/android/PushMessages"/values* apps/phone/src/main/res/; \
+	cp "$$work/out/android/PushMessages/Select.java" apps/phone/src/main/java/solstone/i18n/Select.java; \
+	echo "push-i18n-dev updated (en-US, es-419); run 'make i18n-dev' next to refresh push-locales"
 
 check-i18n:
 	python3 scripts/i18n.py --check
