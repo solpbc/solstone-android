@@ -1333,7 +1333,7 @@ android.status.waiting.sync = wartet auf den Abgleich
 
 android.unknownjournal.bodyaddress = unter { $address } hat etwas diesem Gerät geantwortet, und es ist nicht das Journal, mit dem dieses Gerät gekoppelt ist. das kann ein anderes Gerät sein, das diese Adresse jetzt nutzt, oder dein Journal, wenn seine Identität zurückgesetzt wurde. wenn die mark unter "{ $whatanswered }" zu der passt, die dein Journal jetzt zeigt, kopple dieses Gerät erneut.
 
-android.unknownjournal.bodyrelay = etwas hat diesem Gerät über das Relay geantwortet, und es ist nicht das Journal, mit dem dieses Gerät gekoppelt ist. das ist weniger sicher als eine direkte Verbindung.
+android.unknownjournal.bodyrelay = etwas hat diesem Gerät über das Relay geantwortet, und es ist nicht das Journal, mit dem dieses Gerät gekoppelt ist. das ist weniger gewiss als eine direkte Verbindung.
 
 android.unknownjournal.claimednotverified = behauptet, nicht überprüft
 
