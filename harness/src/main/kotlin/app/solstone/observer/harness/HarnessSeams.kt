@@ -93,6 +93,7 @@ interface SyncEnqueue {
 
 interface NetworkAvailability {
     fun start(onUsableNetwork: () -> Unit)
+    fun start(onUsableNetwork: () -> Unit, onNetworkLost: () -> Unit) = start(onUsableNetwork)
     fun stop()
     fun isUsableNow(): Boolean
 

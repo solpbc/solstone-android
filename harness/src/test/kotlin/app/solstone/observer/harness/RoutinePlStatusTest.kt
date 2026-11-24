@@ -249,6 +249,37 @@ class RoutinePlStatusTest {
         assertEquals(PresentedConnection.CONNECTED, phone.shown())
     }
 
+    @Test
+    fun networkRecoveryInCheckIfDueWakesWaitingWorkEvenWhenCaptureIsOff() {
+        var network = true
+        var probes = 0
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(1, null, null))
+        val f = fixture(
+            plStatusProbe = PlStatusProbe { probes += 1; HarnessPlStatus.Reachable(200) },
+            evidenceReader = evidence,
+            networkAvailability = FakeNetworkAvailability(),
+            awakeMs = { 0L },
+            hasNetwork = { network },
+        )
+
+        // Capture is never started; initial online check does not spuriously enqueue.
+        f.controller.checkIfDue()
+        assertEquals(0, f.sync.calls)
+
+        // Dropping and regaining network wakes waiting work on the next due check.
+        network = false
+        assertTrue(f.controller.checkIfDue())
+        assertEquals(0, f.sync.calls)
+
+        network = true
+        assertTrue(f.controller.checkIfDue())
+        assertEquals(1, f.sync.calls)
+
+        // Steady network does not re-enqueue on later ticks.
+        assertFalse(f.controller.checkIfDue())
+        assertEquals(1, f.sync.calls)
+    }
+
     private companion object {
         const val ONE_HOUR = 3_600_000L
     }

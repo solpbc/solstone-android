@@ -210,4 +210,59 @@ class OpportunisticSyncTest {
         assertEquals(0, sync.calls)
         assertEquals(1, recoveryCalls)
     }
+
+    @Test
+    fun networkLossAndRecoveryReEnqueuesSamePendingCountAndRunsRecoveryHook() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(1, null, null))
+        val sync = RecordingSyncEnqueue()
+        val network = FakeNetworkAvailability()
+        var recoveryHooks = 0
+        val opportunistic = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = sync,
+            networkAvailability = network,
+            onNetworkRecovery = { recoveryHooks++ },
+        )
+
+        opportunistic.start()
+        network.triggerUsableNetwork()
+        assertEquals(1, sync.calls)
+        assertEquals(0, recoveryHooks, "initial usable signal on an existing network is not a recovery")
+
+        // A new pending item on the same network enqueues without clearing backoff via the recovery hook.
+        evidence.pendingCountValue = 2
+        network.triggerUsableNetwork()
+        assertEquals(2, sync.calls)
+        assertEquals(0, recoveryHooks)
+
+        // Network loss resets dedupe and marks the next usable signal as a real recovery.
+        network.triggerNetworkLost()
+        network.triggerUsableNetwork()
+        assertEquals(3, sync.calls)
+        assertEquals(1, recoveryHooks)
+
+        // Repeated capability updates on the recovered network still dedupe.
+        network.triggerUsableNetwork()
+        assertEquals(3, sync.calls)
+        assertEquals(1, recoveryHooks)
+    }
+
+    @Test
+    fun usableNetworkWithoutEmptySpoolRecoverySkipsProbeWhenEmpty() {
+        val evidence = FakeEvidenceReader(sync = HarnessSyncState(0, null, null))
+        val sync = RecordingSyncEnqueue()
+        val network = FakeNetworkAvailability()
+        var recoveryCalls = 0
+        val opportunistic = OpportunisticSync(
+            evidenceReader = evidence,
+            syncEnqueue = sync,
+            networkAvailability = network,
+            emptySpoolRecovery = { recoveryCalls++ },
+        )
+
+        opportunistic.onUsableNetwork(runEmptySpoolRecovery = false)
+
+        assertEquals(0, sync.calls)
+        assertEquals(0, recoveryCalls)
+    }
 }

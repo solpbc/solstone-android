@@ -497,7 +497,13 @@ class HarnessController(
         val networkChanged = networkPresent != lastNetworkPresent
         lastNetworkPresent = networkPresent
         synchronized(connection) { connection.network(networkPresent, connectionNow()) }
-        if (!networkPresent) return networkChanged
+        if (!networkPresent) {
+            if (networkChanged) opportunisticSync?.onNetworkLost()
+            return networkChanged
+        }
+        if (networkChanged) {
+            opportunisticSync?.onUsableNetwork(runEmptySpoolRecovery = false)
+        }
         val last = routineProbe
         val due = last == null || last.key != routineProbeKey() || if (foreground) {
             realtimeMs() - last.startedMs !in 0 until FOREGROUND_CHECK_SPACING_MS

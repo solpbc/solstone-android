@@ -51,6 +51,29 @@ fun isImportRefusalRetryable(reasonCode: String?, kind: String?): Boolean {
     }
 }
 
+/**
+ * Count rows waiting to be delivered to [instance] (at [journalVersion]): every `pending` row,
+ * plus any `attention` row whose refusal came from another journal or an older journal version
+ * that auto-retries. Local-only attention, attention from this journal/version,
+ * `ready_to_review`, `review_expired`, and `delivered` are excluded.
+ */
+fun countWaitingImports(
+    rows: List<ImportItemRow>,
+    instance: String?,
+    journalVersion: String?,
+): Int = rows.count { row ->
+    when {
+        row.state == IMPORT_STATE_PENDING -> true
+        row.state == IMPORT_STATE_ATTENTION &&
+            row.attentionInstanceId != null &&
+            row.attentionJournalVersion != null -> {
+            row.attentionInstanceId != instance ||
+                (row.attentionReasonCode != "import_preview_required" && row.attentionJournalVersion != journalVersion)
+        }
+        else -> false
+    }
+}
+
 data class ImportProgress(val path: String, val timestamp: String)
 data class ImportBackoff(val attemptCount: Int, val nextAttemptAt: Long)
 data class ImportCandidate(
@@ -462,6 +485,27 @@ class ImportCustodyStore(
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
+
+    /**
+     * Clear scheduled retry wait times (`nextAttemptAt`) on non-in-flight `pending` rows while
+     * preserving `attemptCount` and `backoffInstanceId`. Used on genuine network recovery so
+     * waiting imports wake immediately without losing backoff progression if the journal is still
+     * failing.
+     */
+    fun clearRetrySchedule(): Int =
+        ImportRootLock.withLock(root) {
+            val rows = try { dao.all() } catch (_: Exception) { return@withLock 0 }
+            var cleared = 0
+            for (row in rows) {
+                if (row.state != IMPORT_STATE_PENDING || row.nextAttemptAt == null) continue
+                if (kindKey(root, row.id) in inFlight) continue
+                val updated = row.copy(nextAttemptAt = null)
+                if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) {
+                    cleared++
+                }
+            }
+            cleared
+        }
 
     fun markAttention(
         id: String,

@@ -12,6 +12,7 @@ class OpportunisticSync(
     private val syncEnqueue: SyncEnqueue,
     private val networkAvailability: NetworkAvailability,
     private val emptySpoolRecovery: (() -> Unit)? = null,
+    private val onNetworkRecovery: (() -> Unit)? = null,
     private val failureReporter: (String, Throwable) -> Unit = { message, throwable ->
         runCatching { Log.w(TAG, message, throwable) }
     },
@@ -19,6 +20,7 @@ class OpportunisticSync(
     private val lock = Any()
     private var started = false
     private var lastEnqueuedPending: Int? = null
+    private var networkRecovered = false
     private var _lastError: String? = null
     @Volatile var diagnosticReporter: ((String, Throwable) -> Unit)? = null
 
@@ -31,7 +33,10 @@ class OpportunisticSync(
         synchronized(lock) {
             if (started) return
             try {
-                networkAvailability.start { onUsableNetwork() }
+                networkAvailability.start(
+                    onUsableNetwork = { onUsableNetwork() },
+                    onNetworkLost = { onNetworkLost() },
+                )
                 started = true
                 _lastError = null
             } catch (e: Exception) {
@@ -51,6 +56,8 @@ class OpportunisticSync(
             runCatching { networkAvailability.stop() }
                 .onFailure { recordErrorLocked("network unregister failed", it) }
             started = false
+            lastEnqueuedPending = null
+            networkRecovered = false
         }
     }
 
@@ -58,24 +65,39 @@ class OpportunisticSync(
         syncEnqueue.enqueueNow()
     }
 
-    fun onUsableNetwork() {
+    fun onNetworkLost() {
+        synchronized(lock) {
+            lastEnqueuedPending = null
+            networkRecovered = true
+        }
+    }
+
+    fun onUsableNetwork(runEmptySpoolRecovery: Boolean = true) {
         val pending = pendingCountOrNull() ?: return
         if (pending == 0) {
             synchronized(lock) {
                 lastEnqueuedPending = null
+                networkRecovered = false
             }
-            emptySpoolRecovery?.invoke()
+            if (runEmptySpoolRecovery) {
+                emptySpoolRecovery?.invoke()
+            }
             return
         }
-        val shouldEnqueue = synchronized(lock) {
+        val (shouldEnqueue, recovered) = synchronized(lock) {
             if (pending != lastEnqueuedPending) {
+                val wasRecovered = networkRecovered
                 lastEnqueuedPending = pending
-                true
+                networkRecovered = false
+                true to wasRecovered
             } else {
-                false
+                false to false
             }
         }
         if (shouldEnqueue) {
+            if (recovered) {
+                runCatching { onNetworkRecovery?.invoke() }
+            }
             syncEnqueue.enqueueNow()
         }
     }

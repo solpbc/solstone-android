@@ -1006,6 +1006,93 @@ class ImportCustodyStoreTest {
         assertTrue(store.recentReceipts("A").isEmpty())
     }
 
+    @Test
+    fun countWaitingImportsCountsPendingAndAutoRetryingAttentionOnly() {
+        val pending = createRow("p1", state = IMPORT_STATE_PENDING)
+        val backedOffPending = createRow("p2", state = IMPORT_STATE_PENDING).copy(
+            backoffInstanceId = "A",
+            attemptCount = 2,
+            nextAttemptAt = 9_999_999L,
+        )
+        val elsewhereAttention = createRow("att-other-journal", state = IMPORT_STATE_ATTENTION).copy(
+            attentionInstanceId = "B",
+            attentionJournalVersion = "2.0.52",
+            attentionReasonCode = "import_metadata_failed",
+        )
+        val olderVersionAttention = createRow("att-old-version", state = IMPORT_STATE_ATTENTION).copy(
+            attentionInstanceId = "A",
+            attentionJournalVersion = "2.0.51",
+            attentionReasonCode = "import_metadata_failed",
+        )
+        val hereAttention = createRow("att-here", state = IMPORT_STATE_ATTENTION).copy(
+            attentionInstanceId = "A",
+            attentionJournalVersion = "2.0.52",
+            attentionReasonCode = "import_metadata_failed",
+        )
+        val herePreviewAttention = createRow("att-preview", state = IMPORT_STATE_ATTENTION).copy(
+            attentionInstanceId = "A",
+            attentionJournalVersion = "2.0.51",
+            attentionReasonCode = "import_preview_required",
+        )
+        val localAttention = createRow("att-local", state = IMPORT_STATE_ATTENTION)
+        val readyToReview = createRow("review", state = IMPORT_STATE_READY_TO_REVIEW)
+        val reviewExpired = createRow("expired", state = IMPORT_STATE_REVIEW_EXPIRED)
+        val delivered = createRow("done", state = IMPORT_STATE_DELIVERED)
+
+        val all = listOf(
+            pending,
+            backedOffPending,
+            elsewhereAttention,
+            olderVersionAttention,
+            hereAttention,
+            herePreviewAttention,
+            localAttention,
+            readyToReview,
+            reviewExpired,
+            delivered,
+        )
+
+        assertEquals(4, countWaitingImports(all, instance = "A", journalVersion = "2.0.52"))
+        assertEquals(0, countWaitingImports(listOf(hereAttention, herePreviewAttention, localAttention, readyToReview, reviewExpired, delivered), instance = "A", journalVersion = "2.0.52"))
+    }
+
+    @Test
+    fun clearRetryScheduleClearsNextAttemptAtWhilePreservingAttemptCountAndSkippingInFlight() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val now = 1_000_000L
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { now })
+
+        val idWaiting = store.begin("file")!!
+        val sizeWaiting = writePayload(root, idWaiting)
+        assertTrue(store.publish(idWaiting, "wait.txt", "text/plain", sizeWaiting))
+        assertTrue(store.markRetry(idWaiting, "A", now))
+        assertTrue(store.markRetry(idWaiting, "A", now + 1))
+
+        val idInFlight = store.begin("file")!!
+        val sizeInFlight = writePayload(root, idInFlight)
+        assertTrue(store.publish(idInFlight, "flight.txt", "text/plain", sizeInFlight))
+        assertTrue(store.markRetry(idInFlight, "A", now))
+        assertEquals(ImportChange.DONE, store.beginExchange(idInFlight, "A", "2.0.52"))
+
+        assertTrue(store.eligible("A", "2.0.52", now + 2, 10).isEmpty())
+
+        assertEquals(1, store.clearRetrySchedule())
+
+        val waitingRow = dao.byId(idWaiting)!!
+        assertNull(waitingRow.nextAttemptAt)
+        assertEquals(2, waitingRow.attemptCount)
+        assertEquals("A", waitingRow.backoffInstanceId)
+        assertEquals(listOf(idWaiting), store.eligible("A", "2.0.52", now + 2, 10).map { it.id })
+
+        val inFlightRow = dao.byId(idInFlight)!!
+        assertNotNull(inFlightRow.nextAttemptAt)
+        store.endExchange(idInFlight)
+
+        // A subsequent failure continues the backoff ladder from attemptCount = 2 -> 3.
+        assertTrue(store.markRetry(idWaiting, "A", now + 2))
+        assertEquals(3, dao.byId(idWaiting)!!.attemptCount)
+    }
+
     private fun createRow(
         id: String,
         state: String = "pending",

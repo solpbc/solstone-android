@@ -589,6 +589,17 @@ class RealSeamsTest {
         )
     }
 
+    @Test
+    fun realEvidenceReaderPendingCountIncludesWaitingImports() {
+        val reader = RealEvidenceReader(
+            dao = TestSegmentDao(),
+            pendingImports = { 2 },
+        )
+
+        assertEquals(2, reader.pendingCount())
+        assertEquals(2, reader.syncState().pendingCount)
+    }
+
     private class TestEndpointStore : EndpointStore {
         private var endpoint: DirectEndpoint? = null
         override fun save(endpoint: DirectEndpoint) {

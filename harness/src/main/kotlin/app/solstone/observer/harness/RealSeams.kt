@@ -419,18 +419,41 @@ class RealSyncEnqueue(private val context: Context, private val streamType: Stri
 @SuppressLint("MissingPermission")
 class AndroidNetworkAvailability(context: Context) : NetworkAvailability {
     private val connectivityManager = context.applicationContext.getSystemService(ConnectivityManager::class.java)
+    private val lock = Any()
     private var callback: ConnectivityManager.NetworkCallback? = null
+    private var activeUsableNetwork: Network? = null
 
     override fun start(onUsableNetwork: () -> Unit) {
+        start(onUsableNetwork, onNetworkLost = {})
+    }
+
+    override fun start(onUsableNetwork: () -> Unit, onNetworkLost: () -> Unit) {
         val manager = connectivityManager ?: error("connectivity manager unavailable")
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                signalIfUsable(manager.getNetworkCapabilities(network), onUsableNetwork)
+                handleCapabilities(network, manager.getNetworkCapabilities(network), onUsableNetwork, onNetworkLost)
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                signalIfUsable(networkCapabilities, onUsableNetwork)
+                handleCapabilities(network, networkCapabilities, onUsableNetwork, onNetworkLost)
             }
+
+            override fun onLost(network: Network) {
+                val lostActive = synchronized(lock) {
+                    if (activeUsableNetwork == network) {
+                        activeUsableNetwork = null
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if (lostActive) {
+                    onNetworkLost()
+                }
+            }
+        }
+        synchronized(lock) {
+            activeUsableNetwork = null
         }
         manager.registerNetworkCallback(
             NetworkRequest.Builder()
@@ -438,13 +461,19 @@ class AndroidNetworkAvailability(context: Context) : NetworkAvailability {
                 .build(),
             networkCallback,
         )
-        callback = networkCallback
+        synchronized(lock) {
+            callback = networkCallback
+        }
     }
 
     override fun stop() {
         val manager = connectivityManager ?: return
-        val registered = callback ?: return
-        callback = null
+        val registered = synchronized(lock) {
+            val current = callback
+            callback = null
+            activeUsableNetwork = null
+            current
+        } ?: return
         runCatching { manager.unregisterNetworkCallback(registered) }
     }
 
@@ -460,14 +489,43 @@ class AndroidNetworkAvailability(context: Context) : NetworkAvailability {
     // validates. Only no default network at all (airplane mode, no signal, a blocked app) is no network.
     override fun hasNetwork(): Boolean = connectivityManager?.activeNetwork != null
 
-    private fun signalIfUsable(capabilities: NetworkCapabilities?, onUsableNetwork: () -> Unit) {
-        if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
-            onUsableNetwork()
+    private fun handleCapabilities(
+        network: Network,
+        capabilities: NetworkCapabilities?,
+        onUsableNetwork: () -> Unit,
+        onNetworkLost: () -> Unit,
+    ) {
+        val usable = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        if (!usable) {
+            val lostActive = synchronized(lock) {
+                if (activeUsableNetwork == network) {
+                    activeUsableNetwork = null
+                    true
+                } else {
+                    false
+                }
+            }
+            if (lostActive) {
+                onNetworkLost()
+            }
+            return
         }
+        val switchedNetwork = synchronized(lock) {
+            val previous = activeUsableNetwork
+            activeUsableNetwork = network
+            previous != null && previous != network
+        }
+        if (switchedNetwork) {
+            onNetworkLost()
+        }
+        onUsableNetwork()
     }
 }
 
-class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
+class RealEvidenceReader(
+    private val dao: SegmentDao,
+    private val pendingImports: () -> Int = { 0 },
+) : EvidenceReader {
     override fun listEvidence(): List<HarnessEvidenceSegment> =
         dao.segmentsByState(QueueState.SEALED).map { row ->
             HarnessEvidenceSegment(
@@ -491,7 +549,7 @@ class RealEvidenceReader(private val dao: SegmentDao) : EvidenceReader {
             )
         }
 
-    override fun pendingCount(): Int = DELIVERY_STREAMS.sumOf(dao::pendingCount)
+    override fun pendingCount(): Int = DELIVERY_STREAMS.sumOf(dao::pendingCount) + pendingImports()
 
     override fun syncState(): HarnessSyncState {
         val row = dao.syncState()

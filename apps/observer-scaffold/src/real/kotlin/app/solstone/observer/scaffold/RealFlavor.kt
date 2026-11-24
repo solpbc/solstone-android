@@ -41,7 +41,18 @@ fun buildObserverFlavor(
 ): SharedObserverFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
-    val evidenceReader = RealEvidenceReader(database.segmentDao())
+    val evidenceReader = RealEvidenceReader(
+        dao = database.segmentDao(),
+        pendingImports = {
+            val identity = stores.identityStore.load()
+            val version = stores.journalVersionStore.load()?.version
+            app.solstone.platform.persistence.room.countWaitingImports(
+                rows = database.importDao().all(),
+                instance = identity?.instanceId,
+                journalVersion = version,
+            )
+        },
+    )
     val syncEnqueue = RealSyncEnqueue(context, spec.stream)
     val networkAvailability = AndroidNetworkAvailability(context)
     val pairProbe = RealPairProbe(
@@ -128,6 +139,7 @@ fun buildObserverFlavor(
         syncEnqueue = syncEnqueue,
         networkAvailability = networkAvailability,
         emptySpoolRecovery = { plStatusProbe.probe() },
+        onNetworkRecovery = { importStoreForProbe.clearRetrySchedule() },
     )
     val controller = HarnessController(
         permissionStatusReader = AndroidPermissionStatusReader(context),

@@ -158,22 +158,33 @@ internal class FakeNetworkAvailability : NetworkAvailability {
     var failOnStart = false
     var usableNow = true
     private var callback: (() -> Unit)? = null
+    private var lostCallback: (() -> Unit)? = null
 
     override fun start(onUsableNetwork: () -> Unit) {
+        start(onUsableNetwork, onNetworkLost = {})
+    }
+
+    override fun start(onUsableNetwork: () -> Unit, onNetworkLost: () -> Unit) {
         startCalls += 1
         if (failOnStart) error("network registration failed")
         callback = onUsableNetwork
+        lostCallback = onNetworkLost
     }
 
     override fun stop() {
         stopCalls += 1
         callback = null
+        lostCallback = null
     }
 
     override fun isUsableNow(): Boolean = usableNow
 
     fun triggerUsableNetwork() {
         callback?.invoke()
+    }
+
+    fun triggerNetworkLost() {
+        lostCallback?.invoke()
     }
 }
 
