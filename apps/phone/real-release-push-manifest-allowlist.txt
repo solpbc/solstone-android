@@ -13,6 +13,7 @@ android.permission.POST_PROMOTED_NOTIFICATIONS
 android.permission.READ_CALENDAR
 android.permission.RECEIVE_BOOT_COMPLETED
 android.permission.RECORD_AUDIO
+android.permission.RUN_USER_INITIATED_JOBS
 android.permission.WAKE_LOCK
 app.solstone.observer.phone.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 

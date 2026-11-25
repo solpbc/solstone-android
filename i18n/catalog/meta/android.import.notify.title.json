@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the ongoing import notification",
+  "context": "notification title while a large import sends to the owner's journal on Android 14 and later.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 50,
+  "source_revision": "e1e72e8be4fb914e22b2aa88549239e6032f8d3ff2772fcb8c6ddedd81e14c7c",
+  "risk": "routine",
+  "auto_merge": true
+}

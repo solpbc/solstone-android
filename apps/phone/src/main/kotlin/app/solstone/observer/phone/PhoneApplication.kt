@@ -135,6 +135,7 @@ class PhoneApplication : ObserverApplication(
         super.onConfigurationChanged(newConfig)
         ObserverNotification.ensureChannel(this)
         JournalPushPoster(this).renameChannelIfPresent()
+        ImportUploadNotification.renameChannelIfPresent(this)
         ObserverNotification.stopAction?.let { action ->
             ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, action.actionIntent).build()
         }
@@ -158,6 +159,9 @@ class PhoneApplication : ObserverApplication(
         ObserverForegroundService.lifecycleDiag = { PhoneDiagLog.appendRaw(it) }
         SyncWorker.syncDiag = { PhoneDiagLog.appendRaw(it) }
         DialDiagnostics.sink = { PhoneDiagLog.appendRaw(it) }
+        app.solstone.platform.work.ImportUploadWake.onNetworkRecovery = {
+            ImportUploadJobService.wakeOnNetworkRecovery()
+        }
         installPushRegistration(
             port = UnifiedPushDistributorPort(this),
             enabled = BuildConfig.PUSH_REGISTRATION,
@@ -168,6 +172,7 @@ class PhoneApplication : ObserverApplication(
         super.onCreate()
         ObserverNotification.ensureChannel(this)
         JournalPushPoster(this).renameChannelIfPresent()
+        ImportUploadNotification.renameChannelIfPresent(this)
         ObserverForegroundService.captureWishTypes = {
             val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
             val base = when (val read = store.read()) {

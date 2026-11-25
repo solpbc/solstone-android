@@ -2317,6 +2317,111 @@
       "selector": null
     },
     {
+      "id": "android.import.notify.channel",
+      "resource": "m616e64726f69642e696d706f72742e6e6f746966792e6368616e6e656c",
+      "namespace": "android.import.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.import.notify.checking",
+      "resource": "m616e64726f69642e696d706f72742e6e6f746966792e636865636b696e67",
+      "namespace": "android.import.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "filename",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.import.notify.paused",
+      "resource": "m616e64726f69642e696d706f72742e6e6f746966792e706175736564",
+      "namespace": "android.import.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "sent",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "total",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.import.notify.sending",
+      "resource": "m616e64726f69642e696d706f72742e6e6f746966792e73656e64696e67",
+      "namespace": "android.import.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "filename",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "sent",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "total",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.import.notify.title",
+      "resource": "m616e64726f69642e696d706f72742e6e6f746966792e7469746c65",
+      "namespace": "android.import.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
       "id": "android.import.ok",
       "resource": "m616e64726f69642e696d706f72742e6f6b",
       "namespace": "android.import",

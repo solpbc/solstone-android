@@ -13,5 +13,6 @@ class PhoneLocaleReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_LOCALE_CHANGED) return
         ObserverNotification.ensureChannel(context.applicationContext)
         JournalPushPoster(context.applicationContext).renameChannelIfPresent()
+        ImportUploadNotification.renameChannelIfPresent(context.applicationContext)
     }
 }

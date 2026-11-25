@@ -131,6 +131,11 @@
   <string name="m616e64726f69642e696d706f72742e6e6f7468696e672e6368616e6765642e6d61792e686176652e6d6f766564">"nothing changed. it may have moved on; check the list."</string>
   <string name="m616e64726f69642e696d706f72742e6e6f7468696e672e796574">"nothing yet."</string>
   <string name="m616e64726f69642e696d706f72742e6e6f7468696e677761737361766564">"nothing was saved on this device."</string>
+  <string name="m616e64726f69642e696d706f72742e6e6f746966792e6368616e6e656c">"sending imports"</string>
+  <string name="m616e64726f69642e696d706f72742e6e6f746966792e636865636b696e67">"%1$s · checking file"</string>
+  <string name="m616e64726f69642e696d706f72742e6e6f746966792e706175736564">"paused at %1$s of %2$s · waiting for your journal"</string>
+  <string name="m616e64726f69642e696d706f72742e6e6f746966792e73656e64696e67">"%1$s · %2$s of %3$s"</string>
+  <string name="m616e64726f69642e696d706f72742e6e6f746966792e7469746c65">"sending to your journal"</string>
   <string name="m616e64726f69642e696d706f72742e6f6b">"ok"</string>
   <string name="m616e64726f69642e696d706f72742e6f70656e73637265656e73686f7473">"open screenshots"</string>
   <string name="m616e64726f69642e696d706f72742e71756575652e6f66666c696e65">"waiting for your journal to reconnect."</string>

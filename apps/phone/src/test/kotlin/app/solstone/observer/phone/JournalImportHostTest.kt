@@ -223,4 +223,68 @@ class JournalImportHostTest {
         assertTrue(script.contains("status.review_required === true"))
         assertTrue(script.contains("2000"))
     }
+
+    @Test
+    fun resumableStatusFieldsEmitBytesSentBytesTotalResumableAndPhaseAndStayAbsentForLegacy() {
+        statuses["resumable-sending"] = ImportHandoffStatus(
+            state = "uploading",
+            deviceNoun = "phone",
+            sizeBytes = 64L * 1024L * 1024L,
+            bytesSent = 16L * 1024L * 1024L,
+            bytesTotal = 64L * 1024L * 1024L,
+            resumable = true,
+            phase = "sending",
+        )
+        send("""{"type":"host.status","item":"resumable-sending"}""", contextText = null)
+        assertEquals(
+            mapOf(
+                "state" to "uploading",
+                "device_noun" to "phone",
+                "size_bytes" to BigDecimal(64L * 1024L * 1024L),
+                "bytes_sent" to BigDecimal(16L * 1024L * 1024L),
+                "bytes_total" to BigDecimal(64L * 1024L * 1024L),
+                "resumable" to true,
+                "phase" to "sending",
+            ),
+            replies.last(),
+        )
+
+        statuses["resumable-checking"] = ImportHandoffStatus(
+            state = "uploading",
+            deviceNoun = "phone",
+            sizeBytes = 64L * 1024L * 1024L,
+            bytesSent = 64L * 1024L * 1024L,
+            bytesTotal = 64L * 1024L * 1024L,
+            resumable = true,
+            phase = "checking",
+        )
+        send("""{"type":"host.status","item":"resumable-checking"}""", contextText = null)
+        assertEquals("checking", replies.last()["phase"])
+        assertEquals(BigDecimal(64L * 1024L * 1024L), replies.last()["bytes_sent"])
+
+        statuses["resumable-paused"] = ImportHandoffStatus(
+            state = "waiting",
+            deviceNoun = "phone",
+            sizeBytes = 64L * 1024L * 1024L,
+            bytesSent = 16L * 1024L * 1024L,
+            bytesTotal = 64L * 1024L * 1024L,
+            resumable = true,
+            phase = "paused",
+        )
+        send("""{"type":"host.status","item":"resumable-paused"}""", contextText = null)
+        assertEquals("waiting", replies.last()["state"])
+        assertEquals("paused", replies.last()["phase"])
+        assertEquals(true, replies.last()["resumable"])
+
+        statuses["small-legacy"] = ImportHandoffStatus(
+            state = "uploading",
+            deviceNoun = "phone",
+            sizeBytes = 4096L,
+        )
+        send("""{"type":"host.status","item":"small-legacy"}""", contextText = null)
+        assertNull(replies.last()["bytes_sent"])
+        assertNull(replies.last()["bytes_total"])
+        assertNull(replies.last()["resumable"])
+        assertNull(replies.last()["phase"])
+    }
 }

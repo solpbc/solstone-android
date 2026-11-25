@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, in the ongoing import notification",
+  "context": "notification body when a large import is paused mid-transfer waiting for the owner's journal to be reachable again.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "sent",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "400b47780e7b96d08b313926ab8a5219efd57689fd3c6bc378a3ae0690ccf708",
+  "risk": "routine",
+  "auto_merge": true
+}

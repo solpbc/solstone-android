@@ -2,6 +2,11 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
+    "android.source.not.paired.with.journal" to PhoneMessage("m616e64726f69642e736f757263652e6e6f742e7061697265642e776974682e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not paired with your journal"))),
+    "android.source.notcheckedyet" to PhoneMessage("m616e64726f69642e736f757263652e6e6f74636865636b6564796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not checked in yet"))),
+    "android.source.nothing.has.come.recently" to PhoneMessage("m616e64726f69642e736f757263652e6e6f7468696e672e6861732e636f6d652e726563656e746c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing has come in recently"))),
+    "android.source.offline" to PhoneMessage("m616e64726f69642e736f757263652e6f66666c696e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "offline"))),
+    "android.source.other.sources.stopped.unexpectedly" to PhoneMessage("m616e64726f69642e736f757263652e6f746865722e736f75726365732e73746f707065642e756e65787065637465646c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "other sources stopped unexpectedly"))),
     "android.source.paused" to PhoneMessage("m616e64726f69642e736f757263652e706175736564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "paused"))),
     "android.source.paused.resume.start.intake.again" to PhoneMessage("m616e64726f69642e736f757263652e7061757365642e726573756d652e73746172742e696e74616b652e616761696e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you paused this. resume to start intake again."))),
     "android.source.permissions.needed" to PhoneMessage("m616e64726f69642e736f757263652e7065726d697373696f6e732e6e6565646564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "permissions needed"))),
@@ -57,9 +62,4 @@ internal fun phoneMessages9(): Map<String, PhoneMessage> = mapOf(
     "android.status.syncing.journal" to PhoneMessage("m616e64726f69642e7374617475732e73796e63696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "syncing to your journal…"))),
     "android.status.unfinished.item.couldn.t.be" to PhoneMessage("m616e64726f69642e7374617475732e756e66696e69736865642e6974656d2e636f756c646e2e742e6265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "an unfinished item couldn't be checked"))),
     "android.status.waiting.confirm.journal.s.mark" to PhoneMessage("m616e64726f69642e7374617475732e77616974696e672e636f6e6669726d2e6a6f75726e616c2e732e6d61726b", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "waiting for you to confirm your journal's mark"))),
-    "android.status.waiting.sync" to PhoneMessage("m616e64726f69642e7374617475732e77616974696e672e73796e63", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "waiting to sync"))),
-    "android.unknownjournal.bodyaddress" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e626f647961646472657373", listOf(PhoneArgument("address", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered this device at %1\$s, and it isn't the journal this device is paired with. this could be another device now using that address, or your journal, if its identity was reset. if the mark under \"what answered\" matches the one your journal shows now, pair this device again."))),
-    "android.unknownjournal.bodyrelay" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e626f647972656c6179", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "something answered this device through the relay, and it isn't the journal this device is paired with. this is less certain than a direct connection."))),
-    "android.unknownjournal.claimednotverified" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e636c61696d65646e6f747665726966696564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "claimed, not verified"))),
-    "android.unknownjournal.seenat" to PhoneMessage("m616e64726f69642e756e6b6e6f776e6a6f75726e616c2e7365656e6174", listOf(PhoneArgument("it", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "unknown journal seen at %1\$s"))),
 )

@@ -124,6 +124,11 @@ public final class Select {
             case "android.import.nothing.changed.may.have.moved": return "m616e64726f69642e696d706f72742e6e6f7468696e672e6368616e6765642e6d61792e686176652e6d6f766564";
             case "android.import.nothing.yet": return "m616e64726f69642e696d706f72742e6e6f7468696e672e796574";
             case "android.import.nothingwassaved": return "m616e64726f69642e696d706f72742e6e6f7468696e677761737361766564";
+            case "android.import.notify.channel": return "m616e64726f69642e696d706f72742e6e6f746966792e6368616e6e656c";
+            case "android.import.notify.checking": return "m616e64726f69642e696d706f72742e6e6f746966792e636865636b696e67";
+            case "android.import.notify.paused": return "m616e64726f69642e696d706f72742e6e6f746966792e706175736564";
+            case "android.import.notify.sending": return "m616e64726f69642e696d706f72742e6e6f746966792e73656e64696e67";
+            case "android.import.notify.title": return "m616e64726f69642e696d706f72742e6e6f746966792e7469746c65";
             case "android.import.ok": return "m616e64726f69642e696d706f72742e6f6b";
             case "android.import.openscreenshots": return "m616e64726f69642e696d706f72742e6f70656e73637265656e73686f7473";
             case "android.import.queue.offline": return "m616e64726f69642e696d706f72742e71756575652e6f66666c696e65";

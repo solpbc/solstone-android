@@ -2,6 +2,11 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
+    "android.phone.source.route.fixed" to PhoneMessage("m616e64726f69642e70686f6e652e736f757263652e726f7574652e6669786564", listOf(PhoneArgument("route", "string", "")), "route", "string", "relay-other", setOf("direct", "both-sol", "both-other", "relay-sol", "relay-other"), mapOf("direct" to mapOf("other" to "straight to your journal"), "both-sol" to mapOf("other" to "straight to your journal, or through the relay sol pbc runs"), "both-other" to mapOf("other" to "straight to your journal, or through a relay"), "relay-sol" to mapOf("other" to "through the relay sol pbc runs"), "relay-other" to mapOf("other" to "through a relay"))),
+    "android.phone.source.watch" to PhoneMessage("m616e64726f69642e70686f6e652e736f757263652e7761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "watch"))),
+    "android.phone.status.unavailable" to PhoneMessage("m616e64726f69642e70686f6e652e7374617475732e756e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status unavailable"))),
+    "android.phone.text" to PhoneMessage("m616e64726f69642e70686f6e652e74657874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "text"))),
+    "android.phone.try.now" to PhoneMessage("m616e64726f69642e70686f6e652e7472792e6e6f77", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "try now"))),
     "android.phone.up" to PhoneMessage("m616e64726f69642e70686f6e652e7570", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "up"))),
     "android.phone.watch.start" to PhoneMessage("m616e64726f69642e70686f6e652e77617463682e7374617274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "start on your watch"))),
     "android.push.fallbackbody" to PhoneMessage("m616e64726f69642e707573682e66616c6c6261636b626f6479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you have a new notification."))),
@@ -57,9 +62,4 @@ internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
     "android.screenshots.whilesolstoneapptakes" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e7768696c65736f6c73746f6e6561707074616b6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "while this is on, the solstone app takes in the screenshots you take, and your journal keeps each one at the minute you took it."))),
     "android.setup.add.more" to PhoneMessage("m616e64726f69642e73657475702e6164642e6d6f7265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "add more"))),
     "android.setup.good.afternoon" to PhoneMessage("m616e64726f69642e73657475702e676f6f642e61667465726e6f6f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "good afternoon"))),
-    "android.setup.good.evening" to PhoneMessage("m616e64726f69642e73657475702e676f6f642e6576656e696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "good evening"))),
-    "android.setup.good.morning" to PhoneMessage("m616e64726f69642e73657475702e676f6f642e6d6f726e696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "good morning"))),
-    "android.setup.i.already.have.one" to PhoneMessage("m616e64726f69642e73657475702e692e616c72656164792e686176652e6f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "i already have one"))),
-    "android.setup.import" to PhoneMessage("m616e64726f69642e73657475702e696d706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "import"))),
-    "android.setup.journal.always.private.only.yours" to PhoneMessage("m616e64726f69642e73657475702e6a6f75726e616c2e616c776179732e707269766174652e6f6e6c792e796f757273", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal is always private, only yours."))),
 )

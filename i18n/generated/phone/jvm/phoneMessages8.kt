@@ -2,6 +2,11 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
+    "android.shelf.review.send.support.site" to PhoneMessage("m616e64726f69642e7368656c662e7265766965772e73656e642e737570706f72742e73697465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "review and send on the support site"))),
+    "android.shelf.save.problem.report" to PhoneMessage("m616e64726f69642e7368656c662e736176652e70726f626c656d2e7265706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "save a problem report"))),
+    "android.shelf.saved.device" to PhoneMessage("m616e64726f69642e7368656c662e73617665642e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved on this device"))),
+    "android.shelf.saved" to PhoneMessage("m616e64726f69642e7368656c662e7361766564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved"))),
+    "android.shelf.send.test.notification" to PhoneMessage("m616e64726f69642e7368656c662e73656e642e746573742e6e6f74696669636174696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "send test notification"))),
     "android.shelf.settings" to PhoneMessage("m616e64726f69642e7368656c662e73657474696e6773", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "settings"))),
     "android.shelf.status" to PhoneMessage("m616e64726f69642e7368656c662e737461747573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status"))),
     "android.shelf.support.solstone.app" to PhoneMessage("m616e64726f69642e7368656c662e737570706f72742e736f6c73746f6e652e617070", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "support.solstone.app"))),
@@ -57,9 +62,4 @@ internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
     "android.source.managephonestorage" to PhoneMessage("m616e64726f69642e736f757263652e6d616e61676570686f6e6573746f72616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "manage phone storage"))),
     "android.source.materialstaysdevicesuntil" to PhoneMessage("m616e64726f69642e736f757263652e6d6174657269616c737461797364657669636573756e74696c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "material stays on your devices until you connect a journal and confirm its mark."))),
     "android.source.not.paired" to PhoneMessage("m616e64726f69642e736f757263652e6e6f742e706169726564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not paired"))),
-    "android.source.not.paired.with.journal" to PhoneMessage("m616e64726f69642e736f757263652e6e6f742e7061697265642e776974682e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not paired with your journal"))),
-    "android.source.notcheckedyet" to PhoneMessage("m616e64726f69642e736f757263652e6e6f74636865636b6564796574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not checked in yet"))),
-    "android.source.nothing.has.come.recently" to PhoneMessage("m616e64726f69642e736f757263652e6e6f7468696e672e6861732e636f6d652e726563656e746c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing has come in recently"))),
-    "android.source.offline" to PhoneMessage("m616e64726f69642e736f757263652e6f66666c696e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "offline"))),
-    "android.source.other.sources.stopped.unexpectedly" to PhoneMessage("m616e64726f69642e736f757263652e6f746865722e736f75726365732e73746f707065642e756e65787065637465646c79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "other sources stopped unexpectedly"))),
 )

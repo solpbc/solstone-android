@@ -2,6 +2,11 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
+    "android.setup.good.evening" to PhoneMessage("m616e64726f69642e73657475702e676f6f642e6576656e696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "good evening"))),
+    "android.setup.good.morning" to PhoneMessage("m616e64726f69642e73657475702e676f6f642e6d6f726e696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "good morning"))),
+    "android.setup.i.already.have.one" to PhoneMessage("m616e64726f69642e73657475702e692e616c72656164792e686176652e6f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "i already have one"))),
+    "android.setup.import" to PhoneMessage("m616e64726f69642e73657475702e696d706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "import"))),
+    "android.setup.journal.always.private.only.yours" to PhoneMessage("m616e64726f69642e73657475702e6a6f75726e616c2e616c776179732e707269766174652e6f6e6c792e796f757273", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal is always private, only yours."))),
     "android.setup.opensetuppage" to PhoneMessage("m616e64726f69642e73657475702e6f70656e736574757070616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "open the setup page"))),
     "android.setup.photos.files" to PhoneMessage("m616e64726f69642e73657475702e70686f746f732e66696c6573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "photos and files"))),
     "android.setup.scanpairingcode" to PhoneMessage("m616e64726f69642e73657475702e7363616e70616972696e67636f6465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "scan its pairing code"))),
@@ -57,9 +62,4 @@ internal fun phoneMessages7(): Map<String, PhoneMessage> = mapOf(
     "android.shelf.problem.reports" to PhoneMessage("m616e64726f69642e7368656c662e70726f626c656d2e7265706f727473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "problem reports"))),
     "android.shelf.reached.journal" to PhoneMessage("m616e64726f69642e7368656c662e726561636865642e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "reached your journal"))),
     "android.shelf.report.problem" to PhoneMessage("m616e64726f69642e7368656c662e7265706f72742e70726f626c656d", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "report a problem"))),
-    "android.shelf.review.send.support.site" to PhoneMessage("m616e64726f69642e7368656c662e7265766965772e73656e642e737570706f72742e73697465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "review and send on the support site"))),
-    "android.shelf.save.problem.report" to PhoneMessage("m616e64726f69642e7368656c662e736176652e70726f626c656d2e7265706f7274", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "save a problem report"))),
-    "android.shelf.saved.device" to PhoneMessage("m616e64726f69642e7368656c662e73617665642e646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved on this device"))),
-    "android.shelf.saved" to PhoneMessage("m616e64726f69642e7368656c662e7361766564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "saved"))),
-    "android.shelf.send.test.notification" to PhoneMessage("m616e64726f69642e7368656c662e73656e642e746573742e6e6f74696669636174696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "send test notification"))),
 )

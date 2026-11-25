@@ -1,0 +1,29 @@
+{
+  "description": "the solstone app to the owner, in the ongoing import notification",
+  "context": "notification body while a large file sends pieces to the journal, showing filename and confirmed byte progress.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "filename",
+      "type": "string"
+    },
+    {
+      "name": "sent",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "0477e74b118cdbf52bf7e5126575d12a0d7cfe7b301af0d3b8c04f87c1001540",
+  "risk": "routine",
+  "auto_merge": true
+}

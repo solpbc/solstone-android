@@ -182,5 +182,9 @@ internal class JournalImportHost<P>(
         status.retryable?.let { put("retryable", it) }
         status.deviceNoun?.let { put("device_noun", it) }
         status.sizeBytes?.let { put("size_bytes", it) }
+        status.bytesSent?.let { put("bytes_sent", it) }
+        status.bytesTotal?.let { put("bytes_total", it) }
+        status.resumable?.let { put("resumable", it) }
+        status.phase?.let { put("phase", it) }
     }
 }

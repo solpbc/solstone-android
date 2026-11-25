@@ -2,6 +2,11 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
+    "android.obsidian.somenotescouldnt" to PhoneMessage("m616e64726f69642e6f6273696469616e2e736f6d656e6f746573636f756c646e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "some notes couldn't be read. they will be checked again."))),
+    "android.obsidian.toolarge" to PhoneMessage("m616e64726f69642e6f6273696469616e2e746f6f6c61726765", listOf(PhoneArgument("count", "cardinal", "locale-formatted")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "%1\$s note is too large to bring in.", "other" to "%1\$s notes are too large to bring in."))),
+    "android.obsidian.turningoffremovesnothing" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e696e676f666672656d6f7665736e6f7468696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turning this off removes nothing from your journal. changes already waiting stay on this phone."))),
+    "android.obsidian.turnobsidian" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn on Obsidian"))),
+    "android.obsidian.turnoffbeforechoosing" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f66666265666f726563686f6f73696e67", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn this off before choosing another vault."))),
     "android.obsidian.turnoffobsidian" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7475726e6f66666f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "turn off Obsidian"))),
     "android.obsidian.vault" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "vault"))),
     "android.obsidian.vaultcouldntchecked" to PhoneMessage("m616e64726f69642e6f6273696469616e2e7661756c74636f756c646e74636865636b6564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the vault couldn't be checked. try again."))),
@@ -57,9 +62,4 @@ internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
     "android.phone.solstone.phone" to PhoneMessage("m616e64726f69642e70686f6e652e736f6c73746f6e652e70686f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "solstone phone"))),
     "android.phone.some.events.couldn.t.be" to PhoneMessage("m616e64726f69642e70686f6e652e736f6d652e6576656e74732e636f756c646e2e742e6265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "some events couldn't be read."))),
     "android.phone.source.obsidian" to PhoneMessage("m616e64726f69642e70686f6e652e736f757263652e6f6273696469616e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Obsidian"))),
-    "android.phone.source.route.fixed" to PhoneMessage("m616e64726f69642e70686f6e652e736f757263652e726f7574652e6669786564", listOf(PhoneArgument("route", "string", "")), "route", "string", "relay-other", setOf("direct", "both-sol", "both-other", "relay-sol", "relay-other"), mapOf("direct" to mapOf("other" to "straight to your journal"), "both-sol" to mapOf("other" to "straight to your journal, or through the relay sol pbc runs"), "both-other" to mapOf("other" to "straight to your journal, or through a relay"), "relay-sol" to mapOf("other" to "through the relay sol pbc runs"), "relay-other" to mapOf("other" to "through a relay"))),
-    "android.phone.source.watch" to PhoneMessage("m616e64726f69642e70686f6e652e736f757263652e7761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "watch"))),
-    "android.phone.status.unavailable" to PhoneMessage("m616e64726f69642e70686f6e652e7374617475732e756e617661696c61626c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "status unavailable"))),
-    "android.phone.text" to PhoneMessage("m616e64726f69642e70686f6e652e74657874", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "text"))),
-    "android.phone.try.now" to PhoneMessage("m616e64726f69642e70686f6e652e7472792e6e6f77", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "try now"))),
 )

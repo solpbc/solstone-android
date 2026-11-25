@@ -140,7 +140,10 @@ fun buildObserverFlavor(
         syncEnqueue = syncEnqueue,
         networkAvailability = networkAvailability,
         emptySpoolRecovery = { plStatusProbe.probe() },
-        onNetworkRecovery = { importStoreForProbe.clearRetrySchedule() },
+        onNetworkRecovery = {
+            importStoreForProbe.clearRetrySchedule()
+            app.solstone.platform.work.ImportUploadWake.notifyNetworkRecovery()
+        },
     )
     val controller = HarnessController(
         permissionStatusReader = AndroidPermissionStatusReader(context),

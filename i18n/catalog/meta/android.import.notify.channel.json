@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in Android notification settings",
+  "context": "notification channel name for ongoing progress notifications while large imports send to the owner's journal on Android 14 and later.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 40,
+  "source_revision": "26d2cdc66f6f1cfa4836840cde23d0da1e5cc267b3ad05edb0cab1133a93972a",
+  "risk": "routine",
+  "auto_merge": true
+}

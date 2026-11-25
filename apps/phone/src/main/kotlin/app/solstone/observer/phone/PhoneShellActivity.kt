@@ -379,7 +379,7 @@ class PhoneShellActivity : ComponentActivity() {
                 importWork.execute {
                     val change = ImportIntake.get(this).store.sendAgain(id)
                     if (change == app.solstone.platform.persistence.room.ImportChange.DONE) {
-                        app.solstone.platform.work.SyncScheduler.enqueueFollowUp(this, app.solstone.core.sources.MAIN_STREAM)
+                        ImportUploadScheduler.scheduleForImports(this)
                     }
                     importChangeText(change)?.let(::showImportNotice)
                     refreshImports()
@@ -402,7 +402,7 @@ class PhoneShellActivity : ComponentActivity() {
                 importWork.execute {
                     val change = ImportIntake.get(this).store.retry(id)
                     if (change == app.solstone.platform.persistence.room.ImportChange.DONE) {
-                        app.solstone.platform.work.SyncScheduler.enqueueFollowUp(this, app.solstone.core.sources.MAIN_STREAM)
+                        ImportUploadScheduler.scheduleForImports(this)
                     }
                     importChangeText(change)?.let(::showImportNotice)
                     refreshImports()
@@ -434,6 +434,7 @@ class PhoneShellActivity : ComponentActivity() {
                         importStore = ImportIntake.get(this).store,
                     )
                 }.getOrDefault(false)
+                runCatching { ImportUploadScheduler.resumePendingLargeImports(this) }
                 refreshImports()
                 if (changed && ::statusViewModel.isInitialized) {
                     runOnUiThread { statusViewModel.refresh() }

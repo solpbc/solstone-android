@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
 
     <uses-feature
         android:name="android.hardware.camera"
@@ -100,6 +101,10 @@
             android:exported="false"
             android:foregroundServiceType="microphone|location|camera|mediaProjection" />
         <service
+            android:name=".ImportUploadJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service
             android:name=".PhonePushService"
             android:exported="false">
             <intent-filter>
@@ -125,6 +130,9 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".ImportUploadCancelReceiver"
+            android:exported="false" />
         <receiver
             android:name=".PhoneObserverStopReceiver"
             android:exported="false" />

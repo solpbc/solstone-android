@@ -290,7 +290,7 @@ internal class ImportIntake(
                     ImportIntake(
                         store = ImportCustodyStore(root.toPath(), openSolstonePersistenceDatabase(app).importDao()),
                         root = root,
-                        requestRun = { SyncScheduler.enqueueFollowUp(app, MAIN_STREAM) },
+                        requestRun = { ImportUploadScheduler.scheduleForImports(app) },
                         usableSpace = { app.filesDir.usableSpace },
                     ).also { instance = it }
                 }
