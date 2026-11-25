@@ -91,8 +91,8 @@ android {
         applicationId = "app.solstone.observer.phone"
         minSdk = 26
         targetSdk = 36
-        versionCode = 76
-        versionName = "2.1.54"
+        versionCode = 78
+        versionName = "2.1.55"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The launch age check (Google Play Age Signals). ON for every build, release included:
         // at launch the app asks the store whether a law requires the check, and asks for an age
