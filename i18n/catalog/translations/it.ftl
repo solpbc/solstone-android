@@ -211,13 +211,13 @@ android.import.copy.device.missing = manca la copia su questo dispositivo
 
 android.import.couldn.t.be.read = non è stato possibile leggere questo
 
-android.import.couldn.t.be.read.add = non è stato possibile leggere questo. aggiungilo di nuovo
+android.import.couldn.t.be.read.add = non è stato possibile leggerlo. aggiungilo di nuovo
 
 android.import.device = su questo dispositivo
 
 android.import.device.can.t.convert.photo = questo dispositivo non può convertire questa foto
 
-android.import.device.not.paired.with.journal = questo dispositivo non è accoppiato con il tuo diario. le importazioni restano in attesa qui finché non connetti un diario.
+android.import.device.not.paired.with.journal = questo dispositivo non è accoppiato al tuo diario. le importazioni aspettano qui finché non connetti un diario.
 
 android.import.done = fatto
 
@@ -287,11 +287,11 @@ android.import.review.in.journal = rivedi nel tuo diario
 
 android.import.review.in.journal.a11y = rivedi { $name } nel tuo diario
 
-android.import.row.sending.detail = in invio al tuo diario…
+android.import.row.sending.detail = invio al tuo diario in corso…
 
 android.import.row.waiting.detail = in attesa di andare nel tuo diario
 
-android.import.s.already.gone.from.device = non c'è già più su questo dispositivo.
+android.import.s.already.gone.from.device = non c'è più su questo dispositivo.
 
 android.import.s.already.journal = è già nel tuo diario.
 
@@ -311,13 +311,13 @@ android.import.send.again.review = invia di nuovo per rivedere
 
 android.import.send.again.review.a11y = invia di nuovo { $name } per rivedere
 
-android.import.sending = in invio
+android.import.sending = invio in corso
 
-android.import.sending.journal = in invio al tuo diario.
+android.import.sending.journal = invio al tuo diario in corso.
 
 android.import.setupscreenshots = configura gli screenshot
 
-android.import.something.were.adding.didn.t = qualcosa che stavi aggiungendo non ha completato il salvataggio. aggiungilo di nuovo.
+android.import.something.were.adding.didn.t = qualcosa che stavi aggiungendo non ha finito di salvarsi. aggiungilo di nuovo.
 
 android.import.state.items.size.share.sheet = { $count ->
     [one] e { $count } altro
@@ -473,13 +473,13 @@ android.journal.close = chiudi
 
 android.journal.couldn.t.reach.journal.keep = non è stato possibile connettersi al tuo diario. tieni aperta l'app di solstone e riprova.
 
-android.journal.couldn.t.save.that.try = non è stato possibile salvare quello. riprova.
+android.journal.couldn.t.save.that.try = non è stato possibile salvare. riprova.
 
 android.journal.dismiss = ignora
 
 android.journal.file.selection.isn.t.available = per aggiungere un file qui, usa il riquadro di importazione, o condividilo con il tuo diario.
 
-android.journal.lost.connection.journal.keep.solstone = si è persa la connessione al tuo diario. tieni aperta l'app di solstone e riprova.
+android.journal.lost.connection.journal.keep.solstone = connessione al tuo diario persa. tieni aperta l'app di solstone e riprova.
 
 android.journal.that.link.isn.t.available = quel link non è disponibile nell'app.
 
@@ -503,7 +503,7 @@ android.journalmark.couldntsaveanswer = non è stato possibile salvare la tua ri
 
 android.journalmark.disconnecting.phone = disconnessione di questo telefono in corso…
 
-android.journalmark.does.match.journal = questo corrisponde al tuo diario?
+android.journalmark.does.match.journal = corrisponde al tuo diario?
 
 android.journalmark.fallbackjournal = diario
 
@@ -535,7 +535,7 @@ android.journalmark.phone.no.longer.connected.that = questo telefono non è più
 
 android.journalmark.scan.again = scansiona di nuovo
 
-android.journalmark.that.doesn.t.match = quello non corrisponde
+android.journalmark.that.doesn.t.match = non corrisponde
 
 android.journalmark.wordnot = non
 
@@ -563,7 +563,7 @@ android.migration.anything.waiting.send.stays.device = ciò che è in attesa di 
 
 android.migration.anything.waiting.send.stays.device.n2 = ciò che è in attesa di invio resta su questo dispositivo. riprova quando ci si può connettere al tuo diario.
 
-android.migration.can.keep.both.or.choose = puoi tenere entrambi, oppure scegliere un dispositivo che questo deve sostituire.
+android.migration.can.keep.both.or.choose = puoi tenere entrambi, oppure scegliere un dispositivo che questo sostituisce.
 
 android.migration.can.t.reach.journal = non è stato possibile connettersi al tuo diario
 
@@ -783,7 +783,7 @@ android.pairing.that.pairing.link.isn.t = quel link di accoppiamento non è uno 
 
 android.phone.about = informazioni
 
-android.phone.already.home = già in inizio
+android.phone.already.home = già su inizio
 
 android.phone.audio = audio
 
@@ -865,7 +865,7 @@ android.push.on = attivo
 
 android.push.setting.up = configurazione in corso
 
-android.push.short.heads.up.never.content = un avviso breve, mai il contenuto
+android.push.short.heads.up.never.content = un breve avviso, mai il contenuto
 
 android.push.start.intake = avvia l'ingresso
 
@@ -875,7 +875,7 @@ android.push.test.notification = notifica di prova
 
 android.push.title = solstone
 
-android.screenshots.addsscreenshotstakejournal = aggiunge gli screenshot che fai al tuo diario mentre questo è attivo.
+android.screenshots.addsscreenshotstakejournal = aggiunge al tuo diario gli screenshot che fai mentre questo è attivo.
 
 android.screenshots.all = tutto quanto
 
@@ -909,7 +909,7 @@ android.screenshots.choosefolder = scegli la cartella { $foldername }
 
 android.screenshots.choosefolder2 = scegli la cartella
 
-android.screenshots.choosehowfarback = scegli quanto indietro iniziare, poi portali dentro.
+android.screenshots.choosehowfarback = scegli da quanto indietro iniziare, poi portali.
 
 android.screenshots.couldntcountscreenshots = non è stato possibile contare i tuoi screenshot.
 
@@ -947,7 +947,7 @@ android.screenshots.screenshots = screenshot
 
 android.screenshots.screenshotsalreadyjournalaren = gli screenshot già nel tuo diario non vengono presi di nuovo.
 
-android.screenshots.screenshotstakewaitdevice = gli screenshot che scatti restano in attesa su questo dispositivo finché non connetti un diario.
+android.screenshots.screenshotstakewaitdevice = gli screenshot che fai restano in attesa su questo dispositivo finché non connetti un diario.
 
 android.screenshots.screenshottoobigcome = questo screenshot è troppo grande per arrivare, quindi resta nella cartella.
 
@@ -1171,7 +1171,7 @@ android.source.firstreceived = prima ricezione
 
 android.source.getting.ready = preparazione in corso…
 
-android.source.getting.ready.connecting.journal = preparazione in corso. connessione in corso al tuo diario.
+android.source.getting.ready.connecting.journal = preparazione in corso. connessione al tuo diario in corso.
 
 android.source.give.tile.home = dai a questo un riquadro in inizio
 
@@ -1223,7 +1223,7 @@ android.source.other.sources.stopped.unexpectedly = altre fonti si sono fermate 
 
 android.source.paused = in pausa
 
-android.source.paused.resume.start.intake.again = hai messo questo in pausa. riprendi per avviare di nuovo l'ingresso.
+android.source.paused.resume.start.intake.again = hai messo questo in pausa. riprendi per ricominciare l'ingresso.
 
 android.source.permissions.needed = permessi necessari
 
@@ -1360,7 +1360,7 @@ android.status.ready.to.review.pill = { $count ->
    *[other] { $count } pronte per rivedere
     }
 
-android.status.syncing.journal = sincronizzazione verso il tuo diario…
+android.status.syncing.journal = sincronizzazione verso il tuo diario in corso…
 
 android.status.unfinished.item.couldn.t.be = non è stato possibile controllare un elemento non finito
 
@@ -1370,7 +1370,7 @@ android.status.waiting.sync = in attesa di sincronizzazione
 
 android.unknownjournal.bodyaddress = qualcosa ha risposto a questo dispositivo all'indirizzo { $address }, e non è il diario con cui questo dispositivo è accoppiato. potrebbe essere un altro dispositivo che ora usa quell'indirizzo, oppure il tuo diario, se la sua identità è stata reimpostata. se la marca sotto "{ $whatanswered }" corrisponde a quella che il tuo diario mostra ora, accoppia di nuovo questo dispositivo.
 
-android.unknownjournal.bodyrelay = qualcosa ha risposto a questo dispositivo attraverso il relay, e non è il diario con cui questo dispositivo è accoppiato. questo è meno certo di una connessione diretta.
+android.unknownjournal.bodyrelay = qualcosa ha risposto a questo dispositivo tramite il relay, e non è il diario con cui questo dispositivo è accoppiato. questo è meno certo di una connessione diretta.
 
 android.unknownjournal.claimednotverified = dichiarato, non verificato
 
@@ -1382,7 +1382,7 @@ android.unknownjournal.unknownjournalseenthrough = diario sconosciuto visto attr
 
 android.unknownjournal.viewdetails = vedi i dettagli
 
-android.unknownjournal.whatanswered = cosa ha risposto
+android.unknownjournal.whatanswered = che cosa ha risposto
 
 android.wear.allow.microphone.access.in.settings.then.start.again = consenti l'accesso al microfono nelle impostazioni, poi avvia di nuovo.
 
@@ -1490,7 +1490,7 @@ android.wear.start.again = avvia di nuovo
 
 android.wear.start.again.if.the.microphone.stops.a.second.time.restart.your.watch = avvia di nuovo. se il microfono si ferma una seconda volta, riavvia il tuo orologio.
 
-android.wear.starting = in avvio
+android.wear.starting = avvio in corso
 
 android.wear.starts.a.session = avvia una sessione
 
