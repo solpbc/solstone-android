@@ -742,6 +742,8 @@ class WorkManagerSyncConfirmationRuntimeTest {
     ): HttpResponse = when {
         method == "GET" && path == "/app/network/api/status" ->
             HttpResponse(200, emptyMap(), ByteArray(0))
+        method == "GET" && path == "/api/system/status" ->
+            HttpResponse(200, emptyMap(), """{"capabilities":[]}""".toByteArray())
         method == "GET" && path == "/app/network/api/clients/self" -> {
             val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"1.2.3"},"reported":{"name":"Old Name","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}"""
             HttpResponse(200, emptyMap(), getJson.toByteArray())

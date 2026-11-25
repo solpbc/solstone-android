@@ -575,9 +575,9 @@ class PhoneApplication : ObserverApplication(
             if (committed != null) {
                 pairingFollowExecutor.execute {
                     runCatching {
-                        ImportIntake.get(applicationContext).store.resetReviewItemsForInstanceChange(
-                            committed.home.instanceId,
-                        )
+                        val importStore = ImportIntake.get(applicationContext).store
+                        importStore.resetReviewItemsForInstanceChange(committed.home.instanceId)
+                        importStore.resetUploadSessionsForInstanceChange(committed.home.instanceId)
                     }
                 }
             }

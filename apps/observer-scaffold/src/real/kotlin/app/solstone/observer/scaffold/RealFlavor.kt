@@ -114,6 +114,7 @@ fun buildObserverFlavor(
                 val refused = stores.pairingRefusalStore?.refusedFor(snapshotPairing) == true
                 if (!confirmed || refused) return@execute
                 importStoreForProbe.resetReviewItemsForInstanceChange(identity.instanceId)
+                importStoreForProbe.resetUploadSessionsForInstanceChange(identity.instanceId)
                 if (importStoreForProbe.reviewCandidates(identity.instanceId).isEmpty()) return@execute
                 runCatching {
                     val client = openClient()

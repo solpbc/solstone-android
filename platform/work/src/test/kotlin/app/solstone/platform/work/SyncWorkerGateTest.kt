@@ -284,6 +284,8 @@ class SyncWorkerGateTest {
         when {
             method == "GET" && path == "/app/network/api/status" ->
                 HttpResponse(200, emptyMap(), ByteArray(0))
+            method == "GET" && path == "/api/system/status" ->
+                HttpResponse(200, emptyMap(), """{"capabilities":[]}""".toByteArray())
             method == "GET" && path == "/app/network/api/clients/self" -> {
                 val getJson = """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"1.2.3"},"reported":{"name":"Old Name","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}"""
                 HttpResponse(200, emptyMap(), getJson.toByteArray())
@@ -747,6 +749,60 @@ class SyncWorkerGateTest {
         assertEquals(SyncOutcome.RETRY, result.outcome)
         assertFalse(result.importRetryScheduled, "segment failure must still propagate Result.retry()")
         assertEquals(listOf(15_000L to false), scheduled)
+    }
+
+    @Test
+    fun resumableImportBudgetYieldReturnsSuccessAndSchedulesFollowUp() {
+        val (stores, graph, _) = createStores(enablePush = false)
+        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
+        stores.journalVersionStore.save(JournalVersionRecord("home-1", "sha256:ca-1", "2.1.0"))
+
+        val importRoot = temp.newFolder().toPath()
+        val importDao = InMemoryImportDao()
+        var nowMs = 3_000_000L
+        val importStore = ImportCustodyStore(root = importRoot, dao = importDao, clock = { nowMs })
+        val id = importStore.begin("file")!!
+        val bytes = ByteArray(1024) { (it % 251).toByte() }
+        Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+        assertTrue(importStore.publish(id, "big.bin", "application/octet-stream", bytes.size.toLong()))
+
+        var followUpCount = 0
+        val client = MockPlHttpClient { method, path, body ->
+            when {
+                method == "GET" && path == "/api/system/status" ->
+                    HttpResponse(200, emptyMap(), """{"capabilities":["resumable_import_uploads"]}""".toByteArray())
+                method == "GET" && path == "/app/import/api/sources" ->
+                    HttpResponse(200, emptyMap(), """{"sources":[],"resumable":{"threshold_bytes":512,"chunk_bytes":400,"max_file_bytes":100000}}""".toByteArray())
+                method == "POST" && path == "/app/import/api/uploads" ->
+                    HttpResponse(201, emptyMap(), """{"status":"open","upload_id":"upl_budget","next_offset":0,"total_bytes":1024,"chunk_bytes":400}""".toByteArray())
+                method == "PUT" && path == "/app/import/api/uploads/upl_budget?offset=0" -> {
+                    // Advance fake clock past the worker budget after the first chunk succeeds.
+                    nowMs += 10_000L
+                    HttpResponse(200, emptyMap(), """{"upload_id":"upl_budget","next_offset":400,"total_bytes":1024,"complete":false}""".toByteArray())
+                }
+                path == "/app/network/api/clients/self" ->
+                    HttpResponse(200, emptyMap(), """{"protocol_version":1,"revision":1,"journal":{"name":"Home Journal","version":"2.1.0"},"reported":{"name":"Phone","platform":null,"device_type":null,"app_id":null,"app_version":null},"owner_label":null,"display_label":"Phone","updated_at":null}""".toByteArray())
+                else -> standardMockResponses(method, path, body)
+            }
+        }
+
+        val result = completeSyncRunDetailed(
+            openStores = { stores },
+            spoolDir = temp.newFolder(),
+            drainStore = FakeDrainStore(),
+            openClient = { _, _ -> client },
+            localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+            customImportStore = importStore,
+            now = { nowMs },
+            importTimeBudgetMs = 5_000L,
+            scheduleFollowUp = { followUpCount++ },
+        )
+        assertEquals(SyncOutcome.SUCCESS, result.outcome)
+        assertFalse(result.importRetryScheduled)
+        assertEquals(1, followUpCount)
+        assertEquals(400L, importStore.item(id)!!.uploadOffset)
+        assertEquals("paused", importStore.items("home-1", "2.1.0").single().uploadPhase)
     }
 
     private class InMemoryImportDao : ImportDao {

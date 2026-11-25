@@ -122,7 +122,19 @@ class ImportDeliveryTest {
         gate: ImportVersionGate = ImportVersionGate.SUPPORTED,
         pairingCurrent: () -> Boolean = { true },
         diag: (String) -> Unit = {},
-    ): ImportStageResult = deliverImports(journal, store, run, instance, version, gate, pairingCurrent, { 2_000L }, { _, _ -> }, diag)
+    ): ImportStageResult = deliverImports(
+        http = journal,
+        store = store,
+        run = run,
+        instanceId = instance,
+        journalVersion = version,
+        gate = gate,
+        pairingCurrent = pairingCurrent,
+        now = { 2_000L },
+        log = { _, _ -> },
+        diag = diag,
+        resumableConfigProvider = { app.solstone.core.observer.ResumableConfigOutcome.Unsupported },
+    )
 
     @Test
     fun aSharedFileIsSavedThenStartedAndItsCopyRemovedOnlyAfter() {
@@ -170,7 +182,19 @@ class ImportDeliveryTest {
         val id = share("private name.pdf")
         val lines = mutableListOf<String>()
         fun runAfterBackoff(journal: PlHttpClient) =
-            deliverImports(journal, store, ImportRun(), "A", "2.0.52", ImportVersionGate.SUPPORTED, { true }, { Long.MAX_VALUE / 2 }, { _, _ -> }, { lines += it })
+            deliverImports(
+                http = journal,
+                store = store,
+                run = ImportRun(),
+                instanceId = "A",
+                journalVersion = "2.0.52",
+                gate = ImportVersionGate.SUPPORTED,
+                pairingCurrent = { true },
+                now = { Long.MAX_VALUE / 2 },
+                log = { _, _ -> },
+                diag = { lines += it },
+                resumableConfigProvider = { app.solstone.core.observer.ResumableConfigOutcome.Unsupported },
+            )
 
         assertEquals(ImportStageResult.RETRY, deliver(Journal(json(503, "{}")), diag = { lines += it }))
         assertEquals(ImportStageResult.RETRY, runAfterBackoff(Journal(saved(), SocketTimeoutException("read timed out"))))
