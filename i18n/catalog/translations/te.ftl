@@ -16,23 +16,20 @@ android.about.copyright.n2026.sol.pbc.fixed = కాపీరైట్ © 2026 {
 
 android.about.couldn.t.copy.select.text = కాపీ చేయలేకపోయింది. వచనాన్ని ఎంచుకుని కాపీ చేయండి.
 
-android.about.freshnessdays =
-    { $count ->
-        [one] { $count } రోజు క్రితం
-       *[other] { $count } రోజుల క్రితం
-    }
+android.about.freshnessdays = { $count ->
+    [one] { $count } రోజు క్రితం
+   *[other] { $count } రోజుల క్రితం
+}
 
-android.about.freshnesshours =
-    { $count ->
-        [one] { $count } గంట క్రితం
-       *[other] { $count } గంటల క్రితం
-    }
+android.about.freshnesshours = { $count ->
+    [one] { $count } గంట క్రితం
+   *[other] { $count } గంటల క్రితం
+}
 
-android.about.freshnessminutes =
-    { $count ->
-        [one] { $count } నిమిషం క్రితం
-       *[other] { $count } నిమిషాల క్రితం
-    }
+android.about.freshnessminutes = { $count ->
+    [one] { $count } నిమిషం క్రితం
+   *[other] { $count } నిమిషాల క్రితం
+}
 
 android.about.freshnessnow = ఇప్పుడే
 
@@ -142,7 +139,7 @@ android.calendar.resume.calendar = క్యాలెండర్ కొనస�
 
 android.calendar.six.months = ఆరు నెలలు
 
-android.calendar.what.s.already.journal.stays = క్యాలెండర్ పాజ్ అయినా లేదా ఆఫ్ అయినా, మీ జర్నల్‌లో ఇప్పటికే ఉన్నది ఉండిపోతుంది.
+android.calendar.what.s.already.journal.stays = మీరు పాజ్ చేసినా, లేదా క్యాలెండర్‌ను ఆఫ్‌లో చేసినా, మీ జర్నల్‌లో ఇప్పటికే ఉన్నది ఉండిపోతుంది.
 
 android.calendar.while.calendar.solstone.app.checks = క్యాలెండర్ ఆన్‌లో ఉంటే solstone యాప్ దాన్ని బ్యాక్‌గ్రౌండ్‌లో సరిచూస్తుంది. android ఆ సరిచూపులను ఆలస్యం చేయవచ్చు.
 
@@ -216,13 +213,13 @@ android.import.couldn.t.be.read.add = దీన్ని చదవలేకప�
 
 android.import.device = ఈ పరికరంలో
 
-android.import.device.can.t.convert.photo = ఈ పరికరం ఈ ఫోటోను కన్వర్ట్ చేయలేదు
+android.import.device.can.t.convert.photo = ఈ పరికరం ఈ ఫోటోను కన్వర్ట్ చేయలేకపోయింది
 
-android.import.device.not.paired.with.journal = ఈ పరికరం మీ జర్నల్‌తో పెయిర్ అవ్వలేదు. మీరు ఒక జర్నల్‌ను కనెక్ట్ చేసే వరకు ఇంపోర్ట్‌లు ఇక్కడ వేచి ఉంటాయి.
+android.import.device.not.paired.with.journal = ఈ పరికరం మీ జర్నల్‌తో పెయిర్ అయి లేదు. మీరు జర్నల్‌ను కనెక్ట్ చేసే వరకు ఇంపోర్ట్‌లు ఇక్కడ వేచి ఉంటాయి.
 
 android.import.done = పూర్తి
 
-android.import.files = ఫైళ్లు
+android.import.files = ఫైల్‌లు
 
 android.import.imports.wait.device.until.connect = మీరు ఒక జర్నల్‌ను కనెక్ట్ చేసే వరకు ఇంపోర్ట్‌లు ఈ పరికరంలో వేచి ఉంటాయి.
 
@@ -314,7 +311,7 @@ android.import.send.again.review.a11y = సమీక్షకు { $name } మ�
 
 android.import.sending = పంపిస్తోంది
 
-android.import.sending.journal = మీ జర్నల్‌కు పంపిస్తోంది.
+android.import.sending.journal = మీ జర్నల్‌కు పంపుతోంది.
 
 android.import.setupscreenshots = స్క్రీన్‌షాట్‌లు సెటప్ చేయండి
 
@@ -362,7 +359,7 @@ android.import.waiting = వేచి ఉంది
 
 android.import.waiting.for.review = మీ సమీక్ష కోసం వేచి ఉంది
 
-android.import.waiting.go.journal = మీ జర్నల్‌కు వెళ్లేందుకు వేచి ఉంది.
+android.import.waiting.go.journal = మీ జర్నల్‌లోకి వెళ్ళడానికి వేచి ఉంది.
 
 android.intake.events =
     { $count ->
@@ -490,7 +487,7 @@ android.journalmark.cancel.pairing = పెయిరింగ్ రద్దు
 
 android.journalmark.cancel.pairing.discard.attempt = పెయిరింగ్ రద్దు చేసి ఈ ప్రయత్నం వదలండి
 
-android.journalmark.check.journal.s.mark.didn = మీ జర్నల్ మార్క్ సరిచూపు పూర్తి కాలేదు. మార్కులు విభేదిస్తున్నాయని కాదు.
+android.journalmark.check.journal.s.mark.didn = మీ జర్నల్ మార్క్ సరిచూపు పూర్తి కాలేదు. మార్కు‌లు విభేదిస్తున్నాయని కాదు.
 
 android.journalmark.connecting = కనెక్ట్ అవుతోంది…
 
@@ -582,7 +579,7 @@ android.migration.couldn.t.load.devices.journal = మీ జర్నల్‌�
 
 android.migration.device.continues.its.name.history = ఈ పరికరం తన పేరును, చరిత్రను కొనసాగిస్తుంది. ఎంచుకున్న పరికరం మీ జర్నల్‌కు యాక్సెస్ కోల్పోతుంది.
 
-android.migration.device.couldn.t.open.its = ఈ పరికరం మీ జర్నల్‌తో సేవ్ అయిన కనెక్షన్‌ను తెరవలేకపోయింది. పంపడానికి వేచి ఉన్నది ఇక్కడే ఉంది. మళ్ళీ కనెక్ట్ కావడానికి పెయిరింగ్ చేయండి.
+android.migration.device.couldn.t.open.its = ఈ పరికరం మీ జర్నల్‌తో సేవ్ అయిన కనెక్షన్‌ను తెరవలేకపోయింది. పంపడానికి వేచి ఉన్నది ఇక్కడే ఉంది. మళ్ళీ కనెక్ట్ కావడానికి మళ్ళీ పెయిరింగ్ చేయండి.
 
 android.migration.device.couldn.t.read.its = ఈ పరికరం సేవ్ అయిన కనెక్షన్‌ను చదవలేకపోయింది. పంపడానికి వేచి ఉన్నది తీసివేయబడలేదు.
 
@@ -822,7 +819,7 @@ android.phone.not.now = ఇప్పుడు కాదు
 
 android.phone.notifications = నోటిఫికేషన్‌లు
 
-android.phone.open.any.source.change.what = అది ఏమి చేస్తుందో మార్చడానికి, దాని టైల్‌ను జోడించడానికి లేదా తీసివేయడానికి ఏ మూలాన్నైనా తెరవండి.
+android.phone.open.any.source.change.what = అది ఏమి చేస్తుందో మార్చడానికి, దాని టైల్‌ను చేర్చడానికి లేదా తీసివేయడానికి ఏ మూలాన్నైనా తెరవండి.
 
 android.phone.pdf = PDF
 
@@ -869,7 +866,7 @@ android.push.on = ఆన్
 
 android.push.setting.up = సెటప్ చేస్తోంది
 
-android.push.short.heads.up.never.content = ఒక చిన్న సూచన, కంటెంట్ కాదు
+android.push.short.heads.up.never.content = ఒక చిన్న సూచన, ఎప్పుడూ కంటెంట్ కాదు
 
 android.push.start.intake = తీసుకోలు ప్రారంభించండి
 
@@ -879,7 +876,7 @@ android.push.test.notification = పరీక్ష నోటిఫికేష�
 
 android.push.title = solstone
 
-android.screenshots.addsscreenshotstakejournal = ఇది ఆన్ అయి ఉన్నప్పుడు, మీరు తీసే స్క్రీన్‌షాట్‌లను మీ జర్నల్‌కు జోడిస్తుంది.
+android.screenshots.addsscreenshotstakejournal = ఇది ఆన్‌లో ఉన్నప్పుడు మీరు తీసిన స్క్రీన్‌షాట్‌లను మీ జర్నల్‌కు చేరుస్తుంది.
 
 android.screenshots.all = అంతా
 
@@ -937,7 +934,7 @@ android.screenshots.onlywhatsolstoneapp = solstone యాప్ స్క్ర�
 
 android.screenshots.pause = పాజ్ చేయండి
 
-android.screenshots.pausedscreenshotstakewhile = మీరు దీన్ని పాజ్ చేశారు. పాజ్ అయి ఉన్నప్పుడు మీరు తీసే స్క్రీన్‌షాట్‌లు లోపలికి రావు.
+android.screenshots.pausedscreenshotstakewhile = మీరు దీన్ని పాజ్ చేశారు. పాజ్‌లో ఉన్నప్పుడు మీరు తీసిన స్క్రీన్‌షాట్‌లు రావు.
 
 android.screenshots.resume = కొనసాగించండి
 
@@ -951,7 +948,7 @@ android.screenshots.screenshots = స్క్రీన్‌షాట్‌ల�
 
 android.screenshots.screenshotsalreadyjournalaren = మీ జర్నల్‌లో ఇప్పటికే ఉన్న స్క్రీన్‌షాట్‌లు మళ్ళీ తీసుకురాబడవు.
 
-android.screenshots.screenshotstakewaitdevice = మీరు జర్నల్‌ను కనెక్ట్ చేసే వరకు, మీరు తీసే స్క్రీన్‌షాట్‌లు ఈ పరికరంలో వేచి ఉంటాయి.
+android.screenshots.screenshotstakewaitdevice = మీరు జర్నల్‌ను కనెక్ట్ చేసే వరకు, మీరు తీసిన స్క్రీన్‌షాట్‌లు ఈ పరికరంలో వేచి ఉంటాయి.
 
 android.screenshots.screenshottoobigcome = ఈ స్క్రీన్‌షాట్ లోపలికి రావడానికి చాలా పెద్దది, కాబట్టి అది ఫోల్డర్‌లోనే ఉంటుంది.
 
@@ -971,7 +968,7 @@ android.screenshots.whatsalreadyjournal = మీరు పాజ్ చేసి
 
 android.screenshots.whilesolstoneapptakes = ఇది ఆన్ అయి ఉన్నప్పుడు, మీరు తీసే స్క్రీన్‌షాట్‌లను solstone యాప్ స్వీకరిస్తుంది, మరియు మీరు తీసిన నిమిషానికి ప్రతిదాన్ని మీ జర్నల్ ఉంచుకుంటుంది.
 
-android.setup.add.more = మరిన్ని జోడించండి
+android.setup.add.more = మరిన్ని చేర్చండి
 
 android.setup.good.afternoon = శుభ మధ్యాహ్నం
 
@@ -979,19 +976,19 @@ android.setup.good.evening = శుభ సాయంత్రం
 
 android.setup.good.morning = శుభోదయం
 
-android.setup.i.already.have.one = నా దగ్గర ఇప్పటికే ఒకటి ఉంది
+android.setup.i.already.have.one = నాకు ఇప్పటికే ఒకటి ఉంది
 
 android.setup.import = ఇంపోర్ట్
 
 android.setup.journal.always.private.only.yours = మీ జర్నల్ ఎప్పుడూ ప్రైవేట్, మీదే.
 
-android.setup.opensetuppage = సెటప్ పేజీని తెరవండి
+android.setup.opensetuppage = సెటప్ పేజీ తెరవండి
 
 android.setup.photos.files = ఫోటోలు, ఫైల్‌లు
 
 android.setup.scanpairingcode = దాని పెయిరింగ్ కోడ్‌ను స్కాన్ చేయండి
 
-android.setup.send.yourself.link = లింక్‌ను మీకు పంపండి
+android.setup.send.yourself.link = లింక్‌ను మీకు మీరే పంపండి
 
 android.setup.setupjournal = జర్నల్‌ను సెటప్ చేయండి
 
@@ -999,7 +996,7 @@ android.setup.solstone.app.takes.what.share = solstone యాప్ మీరు
 
 android.setup.sources = మూలాలు
 
-android.setup.today.journal.lives.computer.own = ఈ రోజు, అది మీ సొంత కంప్యూటర్‌లో ఉంటుంది.
+android.setup.today.journal.lives.computer.own = ఈరోజు అది మీ కంప్యూటర్‌లో ఉంటుంది.
 
 android.setup.welcome.solstone = solstone‌కు స్వాగతం.
 
@@ -1021,7 +1018,7 @@ android.shelf.checking = సరిచూస్తోంది…
 
 android.shelf.choose.app.deliver.notifications = నోటిఫికేషన్‌లను చేరవేసే యాప్‌ను ఎంచుకోండి
 
-android.shelf.connect.journal = జర్నల్‌ను కనెక్ట్ చేయండి
+android.shelf.connect.journal = ఒక జర్నల్‌ను కనెక్ట్ చేయండి
 
 android.shelf.connection = కనెక్షన్
 
@@ -1115,13 +1112,13 @@ android.shelf.unpair = పెయిరింగ్ తీసివేయండ�
 
 android.shelf.unpair.device = ఈ పరికరం పెయిరింగ్ తీసివేయాలా?
 
-android.shelf.when.there.s.something.worth = చూడదగ్గది ఉన్నప్పుడు
+android.shelf.when.there.s.something.worth = చూడదగినది ఏదైనా ఉన్నప్పుడు
 
 android.shellactivity.confirmjournalsmark = నిలిచి ఉన్న సమాచారం పంపడానికి మీ జర్నల్ మార్క్‌ను నిర్ధారించండి.
 
 android.shellactivity.connectagain = మళ్ళీ కనెక్ట్ చేయండి
 
-android.shellactivity.copyfulllinkchat = మీ చాట్ నుండి పూర్తి లింక్‌ను కాపీ చేయండి, దాన్ని మళ్ళీ తెరవండి.
+android.shellactivity.copyfulllinkchat = మీ చాట్ నుండి పూర్తి లింక్ కాపీ చేసి మళ్ళీ తెరవండి.
 
 android.shellactivity.googleplayservicesneeds = Google Play సేవలకు శ్రద్ధ కావాలి. వాచ్ చేరవేత కొనసాగించడానికి ఫోన్ సెట్టింగ్‌లలో దాన్ని ఎనేబుల్ చేయండి లేదా అప్‌డేట్ చేయండి.
 
@@ -1227,7 +1224,7 @@ android.source.other.sources.stopped.unexpectedly = ఇతర మూలాలు
 
 android.source.paused = పాజ్ అయి ఉంది
 
-android.source.paused.resume.start.intake.again = మీరు దీన్ని పాజ్ చేశారు. తీసుకోలు మళ్ళీ ప్రారంభించడానికి కొనసాగించండి.
+android.source.paused.resume.start.intake.again = మీరు దీన్ని పాజ్ చేశారు. తీసుకోలు మళ్ళీ స్టార్ట్ చేయడానికి కొనసాగించండి.
 
 android.source.permissions.needed = అనుమతులు కావాలి
 
@@ -1487,7 +1484,7 @@ android.wear.solstone.on.your.phone.takes.what.your.watch.saves.install.or.open.
 
 android.wear.some.audio.couldn.t.be.prepared.to.send.what.s.saved.stays.on.your.watch = కొంత ఆడియోను పంపడానికి సిద్ధం చేయలేకపోయింది. సేవ్ అయినది మీ వాచ్‌లో ఉంటుంది.
 
-android.wear.start = ప్రారంభించండి
+android.wear.start = స్టార్ట్ చేయండి
 
 android.wear.start.a.session = సెషన్ ప్రారంభించండి
 
@@ -1495,7 +1492,7 @@ android.wear.start.again = మళ్ళీ ప్రారంభించండ�
 
 android.wear.start.again.if.the.microphone.stops.a.second.time.restart.your.watch = మళ్ళీ ప్రారంభించండి. మైక్రోఫోన్ రెండోసారి ఆగితే, మీ వాచ్‌ను రీస్టార్ట్ చేయండి.
 
-android.wear.starting = ప్రారంభమవుతోంది
+android.wear.starting = స్టార్ట్ అవుతోంది
 
 android.wear.starts.a.session = సెషన్ ప్రారంభిస్తుంది
 
