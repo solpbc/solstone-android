@@ -12,7 +12,6 @@ import app.solstone.observer.formfactor.phone.PhoneWidgetStartOutcome
 import app.solstone.observer.formfactor.phone.renderPhoneObserverWidget
 import app.solstone.observer.formfactor.phone.STATUS_CONNECTING
 import app.solstone.observer.formfactor.phone.statusPillText
-import java.time.Instant
 import app.solstone.observer.harness.ObserverStatus
 import app.solstone.observer.harness.SourcesReadModel
 import app.solstone.platform.identity.file.CommitMarkerStatus
@@ -144,8 +143,10 @@ class ColdGapStatusTest {
             val cache = File(root, "cache")
             commit(files)
             val zone = ZoneId.of("UTC")
-            val now = Instant.parse("2026-10-25T15:00:00Z").toEpochMilli()
-            val found = Instant.parse("2026-10-17T15:00:00Z").toEpochMilli()
+            // Relative to the real clock: the store's reader prunes rows by the wall clock, so fixed
+            // dates here stop being "now" once they are more than 30 days old.
+            val now = System.currentTimeMillis()
+            val found = now - 8L * 24 * 60 * 60 * 1000
             var clock = found
             val store = GapNoticeStore(File(files, "gap").toPath(), clock = { clock }, zone = { zone })
             assertTrue(store.recordLoss("audio", "undeliverable", "rec-old", found))
