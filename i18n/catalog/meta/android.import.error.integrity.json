@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row error when a finished large-file import failed integrity verification at the journal.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "90d7865d6707f67e9009e71d0e5249f7aa9ed0affdaf82b95a062153d19ed921",
+  "risk": "routine",
+  "auto_merge": true
+}

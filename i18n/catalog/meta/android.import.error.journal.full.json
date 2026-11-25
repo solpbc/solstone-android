@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row error when the journal does not have enough free storage for a large-file import.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 160,
+  "source_revision": "e03815c9810ef26f25f15e2e87666339d50426b67d53130d2b659f6e28bf4b19",
+  "risk": "routine",
+  "auto_merge": true
+}

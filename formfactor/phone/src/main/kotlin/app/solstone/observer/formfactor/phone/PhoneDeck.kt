@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -308,7 +309,10 @@ internal data class ImportTileActiveSummary(
     val subLine: String,
 )
 
-internal fun importTileActiveSummary(state: PhoneImportPaneState): ImportTileActiveSummary? {
+internal fun importTileActiveSummary(
+    state: PhoneImportPaneState,
+    formatBytes: (Long) -> String = { formatPhoneByteSize(it) },
+): ImportTileActiveSummary? {
     if (state.rows.isEmpty()) return null
     val attentionRows = state.rows.filter {
         it.kind == ImportRowKind.REFUSED ||
@@ -347,6 +351,37 @@ internal fun importTileActiveSummary(state: PhoneImportPaneState): ImportTileAct
     }
     val sendingRows = state.rows.filter { it.kind == ImportRowKind.SENDING }
     if (sendingRows.isNotEmpty()) {
+        val resumableSending = sendingRows.firstOrNull { it.resumable && it.bytesTotal > 0L }
+        if (resumableSending != null) {
+            if (resumableSending.uploadPhase == "checking") {
+                return ImportTileActiveSummary(
+                    marker = ImportMarkerKind.SENDING,
+                    stateWord = phoneText("android.import.tile.checking"),
+                    subLine = resumableSending.name,
+                )
+            }
+            val sent = formatBytes(resumableSending.bytesSent)
+            val total = formatBytes(resumableSending.bytesTotal)
+            val queuedBehind = state.rows.count {
+                it.id != resumableSending.id &&
+                    it.kind in setOf(ImportRowKind.SENDING, ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN)
+            }
+            val sub = if (queuedBehind > 0) {
+                phoneText(
+                    "android.import.tile.progress.queued",
+                    "sent" to sent,
+                    "total" to total,
+                    "queued" to queuedBehind,
+                )
+            } else {
+                phoneText("android.import.tile.progress", "sent" to sent, "total" to total)
+            }
+            return ImportTileActiveSummary(
+                marker = ImportMarkerKind.SENDING,
+                stateWord = phoneText("android.import.sending"),
+                subLine = sub,
+            )
+        }
         val sub = if (sendingRows.size == 1) {
             sendingRows.single().name
         } else {
@@ -360,6 +395,29 @@ internal fun importTileActiveSummary(state: PhoneImportPaneState): ImportTileAct
     }
     val waitingRows = state.rows.filter { it.kind == ImportRowKind.WAITING || it.kind == ImportRowKind.GOING_AGAIN }
     if (waitingRows.isNotEmpty()) {
+        val pausedResumable = waitingRows.firstOrNull {
+            it.resumable && it.uploadPhase == "paused" && it.bytesTotal > 0L
+        }
+        if (pausedResumable != null) {
+            val sent = formatBytes(pausedResumable.bytesSent)
+            val total = formatBytes(pausedResumable.bytesTotal)
+            val queuedBehind = waitingRows.count { it.id != pausedResumable.id }
+            val sub = if (queuedBehind > 0) {
+                phoneText(
+                    "android.import.tile.progress.queued",
+                    "sent" to sent,
+                    "total" to total,
+                    "queued" to queuedBehind,
+                )
+            } else {
+                phoneText("android.import.tile.progress", "sent" to sent, "total" to total)
+            }
+            return ImportTileActiveSummary(
+                marker = ImportMarkerKind.WAITING,
+                stateWord = phoneText("android.import.tile.paused"),
+                subLine = sub,
+            )
+        }
         val waitingForJournal = state.offline || state.recent in setOf(
             ImportRecentState.UNPAIRED,
             ImportRecentState.AWAITING_CONFIRMATION,
@@ -390,7 +448,8 @@ private fun PhoneImportHomeTile(
     count: Int,
     onOpen: () -> Unit,
 ) {
-    val active = importTileActiveSummary(state)
+    val context = LocalContext.current
+    val active = importTileActiveSummary(state) { formatPhoneByteSize(it, context) }
     val label = phoneText("android.setup.import")
     val iconTint = when (active?.marker) {
         ImportMarkerKind.NEEDS_ATTENTION -> MaterialTheme.colorScheme.error

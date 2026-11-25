@@ -1,0 +1,21 @@
+{
+  "description": "the solstone app to the owner, on import (accessibility)",
+  "context": "spoken label for the cancel button on an active or paused large-file import row.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "name",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "cc1c702f5fe7c3dd2a3d600ba0b39c5d173218f4f65f084a3bae07ab30ce9c85",
+  "risk": "routine",
+  "auto_merge": true
+}

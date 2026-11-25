@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row error when the queued local copy of an import file can no longer be read on this device.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 140,
+  "source_revision": "8fb194913dbee4529ecc4c0a2ced3aff283f6889b01c04dc924dbcc1014c2202",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -5,6 +5,8 @@ package app.solstone.observer.formfactor.phone
 
 import app.solstone.core.i18n.phoneText
 
+import android.content.Context
+import android.text.format.Formatter
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -42,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -51,6 +56,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -65,6 +71,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.ZoneId
+import java.util.Locale
 
 /** What the import pane's recent line says, decided from the store and the pairing. */
 enum class ImportRecentState {
@@ -151,6 +158,18 @@ data class PhoneImportRow(
     val importId: String? = null,
     /** Confirmation kind (e.g. `body_confirmation_required` for the 1-hour Apple Health copy). */
     val reviewKind: String? = null,
+    /** Machine reason code from the journal refusal, when known. */
+    val reasonCode: String? = null,
+    /** Journal-confirmed bytes received so far for a resumable upload. */
+    val bytesSent: Long = 0L,
+    /** Total file byte size. */
+    val bytesTotal: Long = 0L,
+    /** True when this item is transferring or paused on the resumable upload protocol. */
+    val resumable: Boolean = false,
+    /** `"sending"`, `"paused"`, or `"checking"` for a resumable transfer. */
+    val uploadPhase: String? = null,
+    /** True briefly while resuming from a non-zero confirmed offset. */
+    val resuming: Boolean = false,
 )
 
 /** One persisted 24-hour recent receipt scoped to the currently paired journal instance. */
@@ -216,6 +235,8 @@ class PhoneImportActions(
     val onSendAgain: (String) -> Unit = {},
     /** Opens `/app/import/<importId>` from a persisted 24h recent receipt. */
     val onOpenRecentImport: (String) -> Unit = {},
+    /** Cancels an active or paused resumable transfer, aborting partial bytes on the journal. */
+    val onCancel: (String) -> Unit = {},
 )
 
 /** The import pane's state and actions, provided once by the activity that hosts the shell. */
@@ -837,9 +858,80 @@ private fun RefusalLines(refused: List<IntakeRefusalLine>) {
     }
 }
 
+internal fun formatPhoneByteSize(bytes: Long, context: Context? = null): String {
+    val safe = bytes.coerceAtLeast(0L)
+    if (context != null) {
+        val formatted = runCatching { Formatter.formatShortFileSize(context, safe) }.getOrNull()
+        if (!formatted.isNullOrBlank()) return formatted
+    }
+    val kb = 1_000.0
+    val mb = 1_000_000.0
+    val gb = 1_000_000_000.0
+    return when {
+        safe >= gb -> String.format(Locale.US, "%.1f GB", safe / gb)
+        safe >= mb -> String.format(Locale.US, "%.1f MB", safe / mb)
+        safe >= kb -> String.format(Locale.US, "%.0f KB", safe / kb)
+        else -> "$safe B"
+    }
+}
+
+internal fun importRowPercent(bytesSent: Long, bytesTotal: Long): Int {
+    if (bytesTotal <= 0L) return 0
+    val clamped = bytesSent.coerceIn(0L, bytesTotal)
+    return ((clamped * 100.0) / bytesTotal.toDouble()).toInt().coerceIn(0, 100)
+}
+
+internal fun importRowDetailText(
+    row: PhoneImportRow,
+    formatBytes: (Long) -> String = { formatPhoneByteSize(it) },
+): String = when (row.kind) {
+    ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> {
+        if (row.resumable && row.uploadPhase == "paused" && row.bytesTotal > 0L) {
+            phoneText(
+                "android.import.row.paused",
+                "sent" to formatBytes(row.bytesSent),
+                "total" to formatBytes(row.bytesTotal),
+            )
+        } else {
+            phoneText("android.import.row.waiting.detail")
+        }
+    }
+    ImportRowKind.SENDING -> {
+        when {
+            row.resumable && row.uploadPhase == "checking" -> phoneText("android.import.row.checking")
+            row.resumable && row.resuming && row.bytesSent > 0L && row.bytesTotal > 0L -> phoneText(
+                "android.import.row.resuming",
+                "sent" to formatBytes(row.bytesSent),
+                "total" to formatBytes(row.bytesTotal),
+            )
+            row.resumable && row.bytesTotal > 0L -> phoneText(
+                "android.import.row.progress",
+                "sent" to formatBytes(row.bytesSent),
+                "total" to formatBytes(row.bytesTotal),
+                "percent" to importRowPercent(row.bytesSent, row.bytesTotal).toString(),
+            )
+            else -> phoneText("android.import.row.sending.detail")
+        }
+    }
+    ImportRowKind.REFUSED -> when (row.reasonCode) {
+        "insufficient_journal_space" -> if (row.bytesTotal > 0L) {
+            phoneText("android.import.error.journal.full", "total" to formatBytes(row.bytesTotal))
+        } else {
+            row.error ?: IMPORT_REFUSED_FALLBACK
+        }
+        "whole_file_checksum_mismatch", "chunk_checksum_mismatch" -> phoneText("android.import.error.integrity")
+        "upload_not_found" -> phoneText("android.import.error.expired")
+        else -> row.error ?: IMPORT_REFUSED_FALLBACK
+    }
+    ImportRowKind.MISSING_COPY -> phoneText("android.import.error.unreadable")
+    ImportRowKind.READY_TO_REVIEW -> phoneText("android.import.review.detail.general")
+    ImportRowKind.REVIEW_EXPIRED -> phoneText("android.import.review.expired.detail")
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAskRemove: (PhoneImportRow) -> Unit) {
+    val context = LocalContext.current
     val markerKind = when (row.kind) {
         ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> ImportMarkerKind.WAITING
         ImportRowKind.SENDING -> ImportMarkerKind.SENDING
@@ -848,14 +940,20 @@ private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAs
         ImportRowKind.REVIEW_EXPIRED -> ImportMarkerKind.REVIEW_EXPIRED
     }
     val isAttention = row.kind == ImportRowKind.REFUSED || row.kind == ImportRowKind.MISSING_COPY
-    val subLine = when (row.kind) {
-        ImportRowKind.WAITING, ImportRowKind.GOING_AGAIN -> phoneText("android.import.row.waiting.detail")
-        ImportRowKind.SENDING -> phoneText("android.import.row.sending.detail")
-        ImportRowKind.REFUSED -> row.error ?: IMPORT_REFUSED_FALLBACK
-        ImportRowKind.MISSING_COPY -> phoneText("android.import.copy.device.missing")
-        ImportRowKind.READY_TO_REVIEW -> phoneText("android.import.review.detail.general")
-        ImportRowKind.REVIEW_EXPIRED -> phoneText("android.import.review.expired.detail")
+    val subLine = importRowDetailText(row) { formatPhoneByteSize(it, context) }
+    val isPausedResumable = (row.kind == ImportRowKind.WAITING || row.kind == ImportRowKind.GOING_AGAIN) &&
+        row.resumable && row.uploadPhase == "paused" && row.bytesTotal > 0L
+    val showProgressBar = row.resumable && row.bytesTotal > 0L &&
+        (row.kind == ImportRowKind.SENDING || isPausedResumable)
+    val progressFraction = if (row.uploadPhase == "checking") {
+        1f
+    } else if (row.bytesTotal > 0L) {
+        (row.bytesSent.coerceIn(0L, row.bytesTotal).toDouble() / row.bytesTotal.toDouble()).toFloat().coerceIn(0f, 1f)
+    } else {
+        0f
     }
+    val showCancel = (row.kind == ImportRowKind.SENDING && row.resumable) || isPausedResumable
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -880,7 +978,44 @@ private fun ImportItemRow(row: PhoneImportRow, actions: PhoneImportActions, onAs
                 color = if (isAttention) MaterialTheme.colorScheme.error else shellSecondaryInk,
             )
         }
-        if (row.kind != ImportRowKind.SENDING) {
+        if (showProgressBar) {
+            val barShape = RoundedCornerShape(2.dp)
+            val barColor = if (row.kind == ImportRowKind.SENDING) {
+                MaterialTheme.colorScheme.outline
+            } else {
+                shellSecondaryInk
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp)
+                    .height(4.dp)
+                    .clip(barShape)
+                    .background(shellHairline)
+                    .testTag("importItem-${row.id}-progress"),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(progressFraction)
+                        .fillMaxHeight()
+                        .background(barColor),
+                )
+            }
+        }
+        if (showCancel) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(
+                    onClick = { actions.onCancel(row.id) },
+                    modifier = Modifier
+                        .testTag("importItem-${row.id}-cancel")
+                        .semantics { contentDescription = phoneText("android.import.cancel.row.name", "name" to row.name) },
+                ) { Text(phoneText("android.phone.cancel")) }
+            }
+        } else if (row.kind != ImportRowKind.SENDING) {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),

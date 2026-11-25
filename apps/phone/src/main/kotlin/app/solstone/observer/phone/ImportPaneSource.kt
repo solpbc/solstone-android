@@ -83,6 +83,12 @@ internal fun readImportPane(
             savedAtJournal = item.hasSavedProgress || kind == ImportRowKind.READY_TO_REVIEW,
             importId = item.reviewImportId,
             reviewKind = item.reviewKind,
+            reasonCode = item.reasonCode,
+            bytesSent = item.uploadOffset,
+            bytesTotal = item.byteSize,
+            resumable = item.uploadResumable,
+            uploadPhase = item.uploadPhase,
+            resuming = item.resuming,
         )
     }
     val pending = items.count { it.state == IMPORT_STATE_PENDING }

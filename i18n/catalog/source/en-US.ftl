@@ -231,6 +231,7 @@ android.gap.wednesday = wednesday
 android.import.add.journal = add to your journal?
 android.import.add.journal.n2 = add to your journal
 android.import.adds.pdfs.audio.images.text = adds any file you choose here or share from other apps. your journal works out what it is.
+android.import.cancel.row.name = cancel { $name }
 android.import.checking.journal = checking your journal.
 android.import.copy.already.gone.so.only = the copy is already gone, so this only clears it from here.
 android.import.copy.device.missing = the copy on this device is missing
@@ -240,6 +241,10 @@ android.import.device = on this device
 android.import.device.can.t.convert.photo = this device can't convert this photo
 android.import.device.not.paired.with.journal = this device is not paired with your journal. imports wait here until you connect a journal.
 android.import.done = done
+android.import.error.expired = this unfinished import expired after waiting too long. try again to start over.
+android.import.error.integrity = the file didn't arrive intact. try sending it again.
+android.import.error.journal.full = not enough space where your journal lives for this { $total } file. free up space there and try again.
+android.import.error.unreadable = this file could no longer be read on this device. remove it and choose the file again.
 android.import.files = files
 android.import.imports.wait.device.until.connect = imports wait on this device until you connect a journal.
 android.import.imports.wait.until.confirm.journal = imports wait until you confirm your journal's mark.
@@ -278,6 +283,10 @@ android.import.review.expired.detail = the waiting copy in your journal expired.
 android.import.review.expired.label = expired
 android.import.review.in.journal = review in your journal
 android.import.review.in.journal.a11y = review { $name } in your journal
+android.import.row.checking = checking the complete file
+android.import.row.paused = paused at { $sent } of { $total }. picks up from here.
+android.import.row.progress = { $sent } of { $total } ({ $percent }%)
+android.import.row.resuming = resuming from { $sent } of { $total }
 android.import.row.sending.detail = sending to your journal…
 android.import.row.waiting.detail = waiting to go to your journal
 android.import.s.already.gone.from.device = it's already gone from this device.
@@ -306,6 +315,14 @@ android.import.tile.attention.count =
     { $count ->
         [one] { $count } item
        *[other] { $count } items
+    }
+android.import.tile.checking = checking file
+android.import.tile.paused = paused
+android.import.tile.progress = { $sent } of { $total }
+android.import.tile.progress.queued =
+    { $queued ->
+        [one] { $sent } of { $total } · { $queued } more waiting
+       *[other] { $sent } of { $total } · { $queued } more waiting
     }
 android.import.tile.ready.count =
     { $count ->

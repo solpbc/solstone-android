@@ -1,0 +1,34 @@
+{
+  "description": "the solstone app to the owner, on the home import tile",
+  "context": "sub-line on the home import tile showing confirmed byte progress for a large-file import plus how many more items are waiting behind it.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "sent",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    },
+    {
+      "name": "queued",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 100,
+  "source_revision": "2bfdfa4e0e7e6d9fb0744ac2cb4747b6f5318fe307114fefe96a2c3fa775ad22",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "queued",
+    "type": "cardinal"
+  }
+}

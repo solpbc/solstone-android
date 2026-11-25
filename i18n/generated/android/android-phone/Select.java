@@ -100,6 +100,7 @@ public final class Select {
             case "android.import.add.journal": return "m616e64726f69642e696d706f72742e6164642e6a6f75726e616c";
             case "android.import.add.journal.n2": return "m616e64726f69642e696d706f72742e6164642e6a6f75726e616c2e6e32";
             case "android.import.adds.pdfs.audio.images.text": return "m616e64726f69642e696d706f72742e616464732e706466732e617564696f2e696d616765732e74657874";
+            case "android.import.cancel.row.name": return "m616e64726f69642e696d706f72742e63616e63656c2e726f772e6e616d65";
             case "android.import.checking.journal": return "m616e64726f69642e696d706f72742e636865636b696e672e6a6f75726e616c";
             case "android.import.copy.already.gone.so.only": return "m616e64726f69642e696d706f72742e636f70792e616c72656164792e676f6e652e736f2e6f6e6c79";
             case "android.import.copy.device.missing": return "m616e64726f69642e696d706f72742e636f70792e6465766963652e6d697373696e67";
@@ -109,6 +110,10 @@ public final class Select {
             case "android.import.device.can.t.convert.photo": return "m616e64726f69642e696d706f72742e6465766963652e63616e2e742e636f6e766572742e70686f746f";
             case "android.import.device.not.paired.with.journal": return "m616e64726f69642e696d706f72742e6465766963652e6e6f742e7061697265642e776974682e6a6f75726e616c";
             case "android.import.done": return "m616e64726f69642e696d706f72742e646f6e65";
+            case "android.import.error.expired": return "m616e64726f69642e696d706f72742e6572726f722e65787069726564";
+            case "android.import.error.integrity": return "m616e64726f69642e696d706f72742e6572726f722e696e74656772697479";
+            case "android.import.error.journal.full": return "m616e64726f69642e696d706f72742e6572726f722e6a6f75726e616c2e66756c6c";
+            case "android.import.error.unreadable": return "m616e64726f69642e696d706f72742e6572726f722e756e7265616461626c65";
             case "android.import.files": return "m616e64726f69642e696d706f72742e66696c6573";
             case "android.import.imports.wait.device.until.connect": return "m616e64726f69642e696d706f72742e696d706f7274732e776169742e6465766963652e756e74696c2e636f6e6e656374";
             case "android.import.imports.wait.until.confirm.journal": return "m616e64726f69642e696d706f72742e696d706f7274732e776169742e756e74696c2e636f6e6669726d2e6a6f75726e616c";
@@ -147,6 +152,10 @@ public final class Select {
             case "android.import.review.expired.label": return "m616e64726f69642e696d706f72742e7265766965772e657870697265642e6c6162656c";
             case "android.import.review.in.journal": return "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c";
             case "android.import.review.in.journal.a11y": return "m616e64726f69642e696d706f72742e7265766965772e696e2e6a6f75726e616c2e61313179";
+            case "android.import.row.checking": return "m616e64726f69642e696d706f72742e726f772e636865636b696e67";
+            case "android.import.row.paused": return "m616e64726f69642e696d706f72742e726f772e706175736564";
+            case "android.import.row.progress": return "m616e64726f69642e696d706f72742e726f772e70726f6772657373";
+            case "android.import.row.resuming": return "m616e64726f69642e696d706f72742e726f772e726573756d696e67";
             case "android.import.row.sending.detail": return "m616e64726f69642e696d706f72742e726f772e73656e64696e672e64657461696c";
             case "android.import.row.waiting.detail": return "m616e64726f69642e696d706f72742e726f772e77616974696e672e64657461696c";
             case "android.import.s.already.gone.from.device": return "m616e64726f69642e696d706f72742e732e616c72656164792e676f6e652e66726f6d2e646576696365";
@@ -164,6 +173,10 @@ public final class Select {
             case "android.import.state.items.size.share.sheet": return "m616e64726f69642e696d706f72742e73746174652e6974656d732e73697a652e73686172652e7368656574";
             case "android.import.there.isn.t.enough.room": return "m616e64726f69642e696d706f72742e74686572652e69736e2e742e656e6f7567682e726f6f6d";
             case "android.import.tile.attention.count": return "m616e64726f69642e696d706f72742e74696c652e617474656e74696f6e2e636f756e74";
+            case "android.import.tile.checking": return "m616e64726f69642e696d706f72742e74696c652e636865636b696e67";
+            case "android.import.tile.paused": return "m616e64726f69642e696d706f72742e74696c652e706175736564";
+            case "android.import.tile.progress": return "m616e64726f69642e696d706f72742e74696c652e70726f6772657373";
+            case "android.import.tile.progress.queued": return "m616e64726f69642e696d706f72742e74696c652e70726f67726573732e717565756564";
             case "android.import.tile.ready.count": return "m616e64726f69642e696d706f72742e74696c652e72656164792e636f756e74";
             case "android.import.tile.ready.to.review": return "m616e64726f69642e696d706f72742e74696c652e72656164792e746f2e726576696577";
             case "android.import.tile.sending.count": return "m616e64726f69642e696d706f72742e74696c652e73656e64696e672e636f756e74";

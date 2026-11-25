@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- once your journal supports it, large files you import now send in pieces and pick up where they left off after a network switch or restart, with live progress on the import tile, in import, and in your journal. on android 14 and later, a notification shows progress while a large file sends and lets you cancel it.
+
 ## [2.1.55] - 2026-11-25
 
 ### Fixed

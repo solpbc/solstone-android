@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row status line when a large-file import is paused mid-transfer and will resume from the confirmed byte offset.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "sent",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "112ac98b5c3fcc0fafa8c74403ad098d5eb84db9c9c9963ce22c7691a0af549c",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -5,6 +5,8 @@ package app.solstone.observer.phone
 
 import app.solstone.core.i18n.journalLocaleHeaderValue
 import app.solstone.core.i18n.phoneText
+import app.solstone.platform.persistence.room.ImportCustodyStore
+import app.solstone.platform.persistence.room.ImportUploadProgressEvent
 
 import app.solstone.platform.calendar.CalendarRuntimes
 import app.solstone.platform.calendar.CalendarUiState
@@ -356,6 +358,9 @@ class PhoneShellActivity : ComponentActivity() {
 
     private val importWork = java.util.concurrent.Executors.newSingleThreadExecutor { java.lang.Thread(it, "import-pane").apply { isDaemon = true } }
     private val reconcileInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val lastImportProgressRefreshMs = java.util.concurrent.atomic.AtomicLong(0L)
+    private val lastImportProgressPhase = java.util.concurrent.atomic.AtomicReference<String?>(null)
+    private var importProgressListener: ((ImportUploadProgressEvent) -> Unit)? = null
     private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris -> takePicked(uris) }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> takePicked(uris) }
     private val importActions by lazy {
@@ -392,6 +397,15 @@ class PhoneShellActivity : ComponentActivity() {
                 importWork.execute {
                     val change = ImportIntake.get(this).store.remove(id)
                     importChangeText(change)?.let(::showImportNotice)
+                    refreshImports()
+                    if (::statusViewModel.isInitialized) {
+                        runOnUiThread { statusViewModel.refresh() }
+                    }
+                }
+            },
+            onCancel = { id ->
+                importWork.execute {
+                    ImportUploadCancelReceiver.cancelImportItem(this, id)
                     refreshImports()
                     if (::statusViewModel.isInitialized) {
                         runOnUiThread { statusViewModel.refresh() }
@@ -799,6 +813,16 @@ class PhoneShellActivity : ComponentActivity() {
         ).get(SourcesViewModel::class.java)
         statusViewModel = ViewModelProvider(this, factory).get(PhoneStatusViewModel::class.java)
         statusHost = PhoneStatusHost(statusViewModel)
+        val listener: (ImportUploadProgressEvent) -> Unit = { event ->
+            val nowMs = System.currentTimeMillis()
+            val phaseChanged = lastImportProgressPhase.getAndSet(event.phase) != event.phase
+            if (phaseChanged || (nowMs - lastImportProgressRefreshMs.get()) >= 250L) {
+                lastImportProgressRefreshMs.set(nowMs)
+                refreshImports()
+            }
+        }
+        importProgressListener = listener
+        ImportCustodyStore.addProgressListener(listener)
         setContent {
             LaunchedEffect(Unit) {
                 everyWhileStarted(2_000) {
@@ -2050,6 +2074,10 @@ class PhoneShellActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        importProgressListener?.let {
+            ImportCustodyStore.removeProgressListener(it)
+        }
+        importProgressListener = null
         if (ageHeld) return
         pushFactsStopped = true
         pushDeliveryUnsubscribe?.invoke()

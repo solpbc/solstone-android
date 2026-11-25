@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on the home import tile",
+  "context": "state word on the home import tile when a large-file import is paused mid-transfer.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 40,
+  "source_revision": "bd7388c578d50e4a0746e9b352b91bca48827551ef442e581a74a8feea5bf9a4",
+  "risk": "routine",
+  "auto_merge": true
+}

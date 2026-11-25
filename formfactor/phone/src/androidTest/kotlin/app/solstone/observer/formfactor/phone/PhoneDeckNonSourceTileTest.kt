@@ -342,6 +342,47 @@ class PhoneDeckNonSourceTileTest {
         composeRule.onNodeWithTag("importRow-allHistory").performScrollTo().assertIsDisplayed()
     }
 
+    @Test
+    fun importPaneResumableProgressPausedAndCancelRenderCleanly() {
+        val cancelled = mutableListOf<String>()
+        val state = PhoneImportPaneState(
+            rows = listOf(
+                PhoneImportRow(
+                    id = "send1",
+                    name = "takeout-4gb.zip",
+                    kind = ImportRowKind.SENDING,
+                    bytesSent = 1_200_000_000L,
+                    bytesTotal = 4_000_000_000L,
+                    resumable = true,
+                    uploadPhase = "sending",
+                ),
+                PhoneImportRow(
+                    id = "pause1",
+                    name = "photos-archive.zip",
+                    kind = ImportRowKind.WAITING,
+                    bytesSent = 500_000_000L,
+                    bytesTotal = 2_000_000_000L,
+                    resumable = true,
+                    uploadPhase = "paused",
+                ),
+            ),
+            journalOpenable = true,
+        )
+        val actions = PhoneImportActions(onCancel = { cancelled += it })
+        composeRule.setContent {
+            PhoneTheme(ThemeVariant.LIGHT_STANDARD) {
+                PhoneImportPane(state = state, actions = actions)
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("importItem-send1-progress").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("importItem-send1-cancel").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("importItem-pause1-progress").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("importItem-pause1-cancel").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(listOf("send1", "pause1"), cancelled)
+    }
+
     private fun setScreen(
         loadState: LoadState<SourcesReadModel> = loaded(audioOn()),
         initial: PhoneRoute? = null,

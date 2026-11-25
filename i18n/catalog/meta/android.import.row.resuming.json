@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row status line when an interrupted large-file import resumes from its confirmed offset.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "sent",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "610c9d51dc5d4efeab193e49d80741bcef20363b250ec63b1aa2fdf79c7009a2",
+  "risk": "routine",
+  "auto_merge": true
+}

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, on import",
+  "context": "row error when a partial large-file import expired on the journal after inactivity.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 140,
+  "source_revision": "efac2185a7a6d15856613103e33991ceab4000b1f14cfd9f816306add321679a",
+  "risk": "routine",
+  "auto_merge": true
+}
