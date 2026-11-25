@@ -56,7 +56,7 @@ class ObsidianSession(
     private val ledger = SqliteObsidianLedger(appContext)
     private val reader = SafObsidianVault(appContext.contentResolver)
     private val engine = ObsidianEngine(ledger, ZoneId.systemDefault())
-    private val delivery = FolderDelivery(spoolDir, database.segmentDao())
+    private val delivery = FolderDelivery(spoolDir, database)
     @Volatile private var listener: () -> Unit = {}
     @Volatile private var pauseRequested = false
     @Volatile private var offRequested = false

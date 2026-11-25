@@ -141,4 +141,19 @@ class ScreenshotBookTest {
         assertEquals("Screenshots", screenshotsFolderPath("primary:", "Screenshots"))
         assertEquals("Screenshots", screenshotsFolderPath(null, "Screenshots"))
     }
+
+    @Test
+    fun stagedShotsRoundTripWithAndWithoutTheirFolderUri() {
+        val withTree = StagedShot(
+            "doc/1", "abc", "2026-11-03T14:32:07-07:00", "platform",
+            "20261103/screenshots/leaf", 99L, "content://folder/Pictures/Screenshots",
+        )
+        val legacy = StagedShot("doc/2", "def", "2026-11-03T14:32:08-07:00", "file", "20261103/screenshots/leaf2", 100L)
+        val book = ScreenshotBook(
+            treeUri = "content://folder/Pictures/Screenshots",
+            confirmed = true,
+            staged = listOf(withTree, legacy),
+        )
+        assertEquals(book, decodeBook(encodeBook(book)))
+    }
 }

@@ -13,6 +13,7 @@ data class StagedShot(
     val takenFrom: String,
     val segmentId: String,
     val epochMs: Long,
+    val treeUri: String? = null,
 )
 
 data class DocMark(val documentId: String, val end: ReceivedEnd)
@@ -84,7 +85,8 @@ fun encodeBook(book: ScreenshotBook): String = buildString {
         appendLine("received\t${it.sha256}\t${it.end.name}")
     }
     book.staged.forEach {
-        appendLine("staged\t${enc(it.documentId)}\t${it.sha256}\t${enc(it.capturedAt)}\t${it.takenFrom}\t${enc(it.segmentId)}\t${it.epochMs}")
+        val line = "staged\t${enc(it.documentId)}\t${it.sha256}\t${enc(it.capturedAt)}\t${it.takenFrom}\t${enc(it.segmentId)}\t${it.epochMs}"
+        appendLine(if (it.treeUri == null) line else "$line\t${enc(it.treeUri)}")
     }
     book.marks.forEach { appendLine("mark\t${enc(it.documentId)}\t${it.end.name}") }
     if (book.sourcePaused) appendLine("paused\t1")
@@ -138,7 +140,8 @@ fun decodeBook(text: String): ScreenshotBook {
             "staged" -> {
                 if (f.size < 7) continue
                 val epoch = f[6].toLongOrNull() ?: continue
-                staged += StagedShot(dec(f[1]), f[2], dec(f[3]), f[4], dec(f[5]), epoch)
+                val stagedTree = f.getOrNull(7)?.let(::dec)?.ifEmpty { null }
+                staged += StagedShot(dec(f[1]), f[2], dec(f[3]), f[4], dec(f[5]), epoch, stagedTree)
             }
             "mark" -> {
                 val end = runCatching { ReceivedEnd.valueOf(f[2]) }.getOrNull() ?: continue

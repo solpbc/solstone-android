@@ -18,6 +18,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
+import app.solstone.core.model.QueueState
+import app.solstone.core.model.SegmentKey
+import app.solstone.core.pl.HttpResponse
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.screenshots.KnownFile
 import app.solstone.core.screenshots.KnownVerdict
 import app.solstone.core.screenshots.ReceivedEnd
@@ -26,7 +30,15 @@ import app.solstone.core.screenshots.StagedShot
 import app.solstone.core.screenshots.decodeBook
 import app.solstone.core.screenshots.encodeBook
 import app.solstone.core.screenshots.encodeKnown
+import app.solstone.core.screenshots.screenshotKeys
+import app.solstone.core.segment.SealedSegment
+import app.solstone.core.segment.SegmentPayload
+import app.solstone.core.sources.PayloadRef
+import app.solstone.core.sources.SCREENSHOTS_STREAM
+import app.solstone.platform.foldersync.DISCARDED_LOCALLY
+import app.solstone.platform.foldersync.FolderDelivery
 import app.solstone.platform.foldersync.SafFolder
+import app.solstone.platform.foldersync.journalHasSegment
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import java.io.File
 import java.nio.file.Files
@@ -108,15 +120,178 @@ class ScreenshotFolderListingTest {
             assertEquals(result.name, 123L, session.ui.lastChecked)
         }
 
-        // A complete inventory can still confirm a real absence.
+        // A complete inventory can still confirm a real absence and drops its waiting item.
         provider.listing = Listing.EMPTY
         assertTrue(session.runCheckBlocking())
         assertFalse(session.ui.countFailed)
+        val after = decodeBook(bookFile.readText())
         assertEquals(
             prior.frozen,
-            decodeBook(bookFile.readText()).marks.filter { it.end == ReceivedEnd.GONE }.map { it.documentId }.toSet(),
+            after.marks.filter { it.end == ReceivedEnd.GONE }.map { it.documentId }.toSet(),
         )
+        assertTrue(after.staged.isEmpty())
+        assertEquals(0, session.ui.waiting)
         assertEquals("", knownFile.readText())
+    }
+
+    @Test fun aCompleteListingDropsStagedQueueAndSpoolBytesWhileAnIncompleteListingKeepsThem() {
+        val spool = files.resolve("spool").toPath()
+        val delivery = FolderDelivery(spool, database)
+        val frozenId = sealFixture(delivery, "2026-11-03T14:32:07Z", byteArrayOf(1, 2, 3, 4))
+        val liveId = sealFixture(delivery, "2026-11-03T14:32:09Z", byteArrayOf(5, 6, 7, 8))
+        val frozenRow = requireNotNull(database.segmentDao().segmentById(frozenId))
+        val liveRow = requireNotNull(database.segmentDao().segmentById(liveId))
+        val frozenDir = spool.resolve(frozenRow.day).resolve(frozenRow.stream).resolve(frozenRow.dirSegment)
+        val liveDir = spool.resolve(liveRow.day).resolve(liveRow.stream).resolve(liveRow.dirSegment)
+        assertTrue(Files.isRegularFile(frozenDir.resolve("screenshot_screen.png")))
+        assertTrue(Files.isRegularFile(liveDir.resolve("screenshot_screen.png")))
+
+        val book = ScreenshotBook(
+            treeUri = tree.toString(),
+            confirmed = true,
+            frozen = setOf("frozen-shot"),
+            staged = listOf(
+                StagedShot("frozen-shot", "hash-frozen", "2026-11-03T14:32:07Z", "platform", frozenId, 1, tree.toString()),
+                StagedShot("live-shot", "hash-live", "2026-11-03T14:32:09Z", "platform", liveId, 2, tree.toString()),
+            ),
+            lastCheckedMs = 123,
+        )
+        startWith(book)
+
+        for (result in Listing.entries.filter { it != Listing.EMPTY }) {
+            provider.listing = result
+            assertFalse(result.name, session.runCheckBlocking())
+            assertEquals(result.name, 2, session.ui.waiting)
+            assertEquals(result.name, 2, database.segmentDao().segmentsForDrain(SCREENSHOTS_STREAM).size)
+            assertEquals(result.name, 2, database.segmentDao().pendingCount(SCREENSHOTS_STREAM))
+            assertTrue(result.name, Files.isRegularFile(frozenDir.resolve("screenshot_screen.png")))
+            assertTrue(result.name, Files.isRegularFile(liveDir.resolve("screenshot_screen.png")))
+        }
+
+        provider.listing = Listing.EMPTY
+        assertTrue(session.runCheckBlocking())
+        val after = decodeBook(bookFile.readText())
+        assertTrue(after.staged.isEmpty())
+        assertTrue(after.received.isEmpty())
+        assertEquals(0, session.ui.waiting)
+        assertEquals(1, session.ui.backfillDone)
+        assertEquals(1, session.ui.backfillTotal)
+        assertEquals(listOf(ReceivedEnd.GONE), after.marks.map { it.end })
+        assertTrue(database.segmentDao().segmentsForDrain(SCREENSHOTS_STREAM).isEmpty())
+        assertEquals(0, database.segmentDao().pendingCount(SCREENSHOTS_STREAM))
+        for (id in listOf(frozenId, liveId)) {
+            val row = requireNotNull(database.segmentDao().segmentById(id))
+            assertEquals(QueueState.EVICTED, row.state)
+            assertEquals(DISCARDED_LOCALLY, row.lastError)
+            assertTrue(row.localCopyAbsent)
+            assertFalse(row.journalHasSegment())
+        }
+        assertFalse(Files.exists(frozenDir))
+        assertFalse(Files.exists(liveDir))
+    }
+
+    @Test fun deliveredAndOtherFolderStagedScreenshotsAreNotDiscardedAsDeleted() {
+        val spool = files.resolve("spool").toPath()
+        val delivery = FolderDelivery(spool, database)
+        val uploadedId = sealFixture(delivery, "2026-11-03T14:35:00Z", byteArrayOf(9, 10, 11))
+        val otherFolderId = sealFixture(delivery, "2026-11-03T14:35:05Z", byteArrayOf(12, 13, 14))
+        database.segmentDao().updateState(uploadedId, QueueState.UPLOADED)
+        database.segmentDao().recordUploaded(uploadedId)
+
+        val otherFolderShot = StagedShot(
+            "other-doc", "hash-other", "2026-11-03T14:35:05Z", "platform",
+            otherFolderId, 2, "content://app.solstone.test.folder/tree/previous",
+        )
+        val book = ScreenshotBook(
+            treeUri = tree.toString(),
+            confirmed = true,
+            frozen = setOf("uploaded-doc"),
+            staged = listOf(
+                StagedShot("uploaded-doc", "hash-uploaded", "2026-11-03T14:35:00Z", "platform", uploadedId, 1, tree.toString()),
+                otherFolderShot,
+            ),
+        )
+        startWith(book)
+
+        provider.listing = Listing.EMPTY
+        assertTrue(session.runCheckBlocking())
+        val after = decodeBook(bookFile.readText())
+        assertEquals(listOf(otherFolderShot), after.staged)
+        assertEquals(1, session.ui.waiting)
+        assertEquals(listOf("hash-uploaded"), after.received.filter { it.end == ReceivedEnd.DELIVERED }.map { it.sha256 })
+        assertEquals(listOf(ReceivedEnd.DELIVERED), after.marks.map { it.end })
+        assertTrue(database.segmentDao().segmentById(uploadedId).journalHasSegment())
+        assertEquals(listOf(otherFolderId), database.segmentDao().segmentsForDrain(SCREENSHOTS_STREAM).map { it.id })
+    }
+
+    @Test fun prepareDeliveryDropsDeletedStagedScreenshotBeforeDrainWhileIncompleteListingKeepsIt() {
+        val spool = files.resolve("spool").toPath()
+        val delivery = FolderDelivery(spool, database)
+        val shotId = sealFixture(delivery, "2026-11-03T14:40:00Z", byteArrayOf(21, 22, 23))
+        val row = requireNotNull(database.segmentDao().segmentById(shotId))
+        val shotDir = spool.resolve(row.day).resolve(row.stream).resolve(row.dirSegment)
+        assertTrue(Files.isRegularFile(shotDir.resolve("screenshot_screen.png")))
+
+        val book = ScreenshotBook(
+            treeUri = tree.toString(),
+            confirmed = true,
+            staged = listOf(
+                StagedShot("waiting-shot", "hash-waiting", "2026-11-03T14:40:00Z", "platform", shotId, 1, tree.toString()),
+            ),
+        )
+        startWith(book)
+        val client = object : PlHttpClient {
+            override fun request(
+                method: String,
+                path: String,
+                headers: Map<String, String>,
+                body: ByteArray?,
+                maxResponseBytes: Int,
+            ): HttpResponse = HttpResponse(200, emptyMap(), """{"capabilities":["screenshots"]}""".toByteArray())
+        }
+
+        for (result in Listing.entries.filter { it != Listing.EMPTY }) {
+            provider.listing = result
+            assertTrue(result.name, session.prepareDelivery(client, pairingCurrent = { true }))
+            assertEquals(result.name, 1, database.segmentDao().segmentsForDrain(SCREENSHOTS_STREAM).size)
+            assertTrue(result.name, Files.isRegularFile(shotDir.resolve("screenshot_screen.png")))
+        }
+
+        provider.listing = Listing.EMPTY
+        assertTrue(session.prepareDelivery(client, pairingCurrent = { true }))
+        val after = decodeBook(bookFile.readText())
+        assertTrue(after.staged.isEmpty())
+        assertEquals(0, session.ui.waiting)
+        assertTrue(database.segmentDao().segmentsForDrain(SCREENSHOTS_STREAM).isEmpty())
+        assertEquals(0, database.segmentDao().pendingCount(SCREENSHOTS_STREAM))
+        val afterRow = requireNotNull(database.segmentDao().segmentById(shotId))
+        assertEquals(QueueState.EVICTED, afterRow.state)
+        assertEquals(DISCARDED_LOCALLY, afterRow.lastError)
+        assertTrue(afterRow.localCopyAbsent)
+        assertFalse(Files.exists(shotDir))
+    }
+
+    private fun sealFixture(delivery: FolderDelivery, capturedAt: String, bytes: ByteArray): String {
+        val keys = screenshotKeys(capturedAt)
+        val segment = SealedSegment(
+            stream = SCREENSHOTS_STREAM,
+            key = SegmentKey(keys.day, keys.segment),
+            wireKeys = keys,
+            payloads = listOf(
+                SegmentPayload(
+                    sourceId = SCREENSHOTS_STREAM,
+                    ref = PayloadRef("screenshot_screen.png", "image/png", bytes.size.toLong(), null),
+                    captureStartEpochMs = keys.startEpochMs,
+                    captureEndEpochMs = keys.endEpochMs,
+                ),
+            ),
+            gaps = emptyList(),
+            metadata = mapOf(
+                "screenshotCapturedAt" to capturedAt,
+                "screenshotTakenFrom" to "platform",
+            ),
+        )
+        return requireNotNull(delivery.seal(segment, bytes))
     }
 
     @Test fun aListingThatFailsAtConfirmationDoesNotStartAnEmptyBackfill() {

@@ -9,17 +9,31 @@ import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.spool.FileSpoolWriter
 import app.solstone.core.spool.PayloadBytesProvider
 import app.solstone.core.spool.SealState
+import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.RoomSealedSegmentSink
-import app.solstone.platform.persistence.room.SegmentDao
 import app.solstone.platform.persistence.room.SegmentRow
+import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
 import app.solstone.platform.persistence.room.id
 import app.solstone.platform.persistence.room.occupiedDirSegments
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
+import java.util.concurrent.Callable
+
+const val DISCARDED_LOCALLY = "deleted_locally"
+
+enum class DiscardResult {
+    DISCARDED,
+    NOT_FOUND,
+    ALREADY_DELIVERED,
+    IN_FLIGHT,
+}
 
 /** Hands one source payload to the ordinary spool and reads its delivery receipt. */
-class FolderDelivery(private val spool: Path, private val dao: SegmentDao) {
+class FolderDelivery(private val spool: Path, private val database: SolstonePersistenceDatabase) {
+    private val dao = database.segmentDao()
+
     fun seal(segment: SealedSegment, bytes: ByteArray): String? {
         val result = FileSpoolWriter(spool, occupiedLeaves = dao::occupiedDirSegments).seal(
             segment,
@@ -41,6 +55,36 @@ class FolderDelivery(private val spool: Path, private val dao: SegmentDao) {
 
     fun hasPayload(row: SegmentRow, name: String): Boolean =
         Files.isRegularFile(spool.resolve(row.day).resolve(row.stream).resolve(row.dirSegment).resolve(name))
+
+    /**
+     * Drops a segment that is still waiting to send and deletes its staged spool directory.
+     * Leaves an already-delivered or mid-upload segment untouched.
+     */
+    fun discardUnsent(segmentId: String): DiscardResult {
+        val outcome = database.runInTransaction(Callable {
+            val row = dao.segmentById(segmentId) ?: return@Callable DiscardResult.NOT_FOUND
+            when {
+                row.journalHasSegment() -> DiscardResult.ALREADY_DELIVERED
+                row.state == QueueState.EVICTED -> DiscardResult.DISCARDED
+                row.state == QueueState.UPLOADING -> DiscardResult.IN_FLIGHT
+                else -> {
+                    dao.recordFailure(segmentId, null, DISCARDED_LOCALLY)
+                    dao.updateState(segmentId, QueueState.EVICTED)
+                    DiscardResult.DISCARDED
+                }
+            }
+        })
+        if (outcome == DiscardResult.DISCARDED) {
+            ConfirmedCopyFinisher(spool, dao).finishUploaded(segmentId)
+            val row = dao.segmentById(segmentId)
+            if (row != null && row.state == QueueState.EVICTED) {
+                val dir = spool.resolve(row.day).resolve(row.stream).resolve(row.dirSegment)
+                if (!Files.exists(dir, NOFOLLOW_LINKS)) dao.markLocalCopyAbsent(segmentId)
+            }
+        }
+        return outcome
+    }
 }
 
-fun SegmentRow?.journalHasSegment(): Boolean = this?.state == QueueState.UPLOADED || this?.state == QueueState.EVICTED
+fun SegmentRow?.journalHasSegment(): Boolean =
+    this != null && (state == QueueState.UPLOADED || (state == QueueState.EVICTED && lastError != DISCARDED_LOCALLY))

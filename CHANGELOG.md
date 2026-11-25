@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - once your journal supports it, large files you import now send in pieces and pick up where they left off after a network switch or restart, with live progress on the import tile, in import, and in your journal. on android 14 and later, a notification shows progress while a large file sends and lets you cancel it.
 
+### Fixed
+
+- if you delete a screenshot while it is waiting to sync, the solstone app now drops it and removes its waiting copy on this device. before, that screenshot could still go into your journal later.
+
 ## [2.1.55] - 2026-11-25
 
 ### Fixed

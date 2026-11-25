@@ -6,6 +6,7 @@ package app.solstone.platform.screenshots
 import android.content.Context
 import android.net.Uri
 import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import androidx.work.WorkerParameters
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.pl.PlHttpClient
@@ -47,6 +48,8 @@ import app.solstone.core.segment.SealedSegment
 import app.solstone.core.segment.SegmentPayload
 import app.solstone.core.sources.PayloadRef
 import app.solstone.core.sources.SCREENSHOTS_STREAM
+import app.solstone.platform.foldersync.DISCARDED_LOCALLY
+import app.solstone.platform.foldersync.DiscardResult
 import app.solstone.platform.foldersync.FolderCheckWorker
 import app.solstone.platform.foldersync.FolderChecks
 import app.solstone.platform.foldersync.FolderDelivery
@@ -56,6 +59,7 @@ import app.solstone.platform.foldersync.FolderRuntime
 import app.solstone.platform.foldersync.SafFolder
 import app.solstone.platform.foldersync.journalHasSegment
 import app.solstone.platform.persistence.room.SolstonePersistenceDatabase
+import java.io.IOException
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -132,7 +136,7 @@ class ScreenshotSession internal constructor(
     )
 
     private val appContext = context.applicationContext
-    private val delivery = FolderDelivery(spoolDir, database.segmentDao())
+    private val delivery = FolderDelivery(spoolDir, database)
     private val bookFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("book.txt"))
     // The check time has its own record, so a check that finds nothing new rewrites neither the book nor the known list.
     private val checkedFile = SavedTextFile(appContext.filesDir.resolve("screenshots").resolve("checked.txt"))
@@ -204,12 +208,20 @@ class ScreenshotSession internal constructor(
             folder.persist(uri)
             val name = folder.root(uri)?.name?.takeIf { it.isNotBlank() } ?: "Screenshots"
             val wasConfirmed = book.confirmed
+            val previousTree = book.treeUri
+            val nextTree = uri.toString()
+            val staged = if (previousTree != null && previousTree != nextTree) {
+                book.staged.map { if (it.treeUri == null) it.copy(treeUri = previousTree) else it }
+            } else {
+                book.staged
+            }
             book = book.copy(
-                treeUri = uri.toString(),
+                treeUri = nextTree,
                 folderName = name,
                 confirmed = false,
                 reconfirm = wasConfirmed || book.reconfirm,
                 frozen = emptySet(),
+                staged = staged,
                 marks = emptyList(),
             )
             if (wasConfirmed) {
@@ -318,6 +330,9 @@ class ScreenshotSession internal constructor(
     fun prepareDelivery(client: PlHttpClient, pairingCurrent: () -> Boolean, fingerprint: String = ""): Boolean = checks.blocking(30) {
         if (!pairingCurrent() || !wishOn() || isPaused() || !hasAccess()) return@blocking false
         capability = fetchJournalCapability(client, SCREENSHOTS_STREAM, fingerprint)
+        if (capability == true && pairingCurrent()) {
+            reconcileStagedBeforeDelivery()
+        }
         refresh()
         capability == true && pairingCurrent()
     } ?: false
@@ -441,7 +456,8 @@ class ScreenshotSession internal constructor(
                             if (segmentId != null) {
                                 book = book.copy(
                                     staged = book.staged + StagedShot(
-                                        file.documentId, sha, whenShot.capturedAt, whenShot.takenFrom.name.lowercase(), segmentId, whenShot.epochMs,
+                                        file.documentId, sha, whenShot.capturedAt, whenShot.takenFrom.name.lowercase(),
+                                        segmentId, whenShot.epochMs, uri.toString(),
                                     ),
                                 )
                                 stagedNow = true
@@ -460,6 +476,7 @@ class ScreenshotSession internal constructor(
             throw error
         }
         retryUnread = false
+        dropDeletedStaged(uri.toString(), seen)
         if (book.confirmed) {
             for (id in book.frozen) {
                 if (id !in seen && book.marks.none { it.documentId == id }) mark(id, ReceivedEnd.GONE)
@@ -578,6 +595,56 @@ class ScreenshotSession internal constructor(
         return delivery.seal(segment, bytes)
     }
 
+    private fun reconcileStagedBeforeDelivery() {
+        val currentTree = book.treeUri ?: return
+        if (book.staged.none { it.treeUri == null || it.treeUri == currentTree }) return
+        val uri = runCatching { Uri.parse(currentTree) }.getOrNull() ?: return
+        if (!folder.hasReadGrant(uri)) return
+        val signal = CancellationSignal()
+        val files = try {
+            if (folder.root(uri, signal)?.directory != true) return
+            folder.walk(uri, signal) { document, _ -> document.file }
+        } catch (_: IOException) {
+            return
+        } catch (_: SecurityException) {
+            return
+        } catch (_: OperationCanceledException) {
+            return
+        } catch (_: RuntimeException) {
+            return
+        }
+        val seen = files.mapTo(HashSet()) { it.documentId }
+        val before = book
+        dropDeletedStaged(currentTree, seen)
+        if (book.confirmed) {
+            for (id in book.frozen) {
+                if (id !in seen && book.marks.none { it.documentId == id }) mark(id, ReceivedEnd.GONE)
+            }
+        }
+        if (book != before) save()
+    }
+
+    private fun dropDeletedStaged(currentTree: String, seen: Set<String>) {
+        if (book.staged.isEmpty()) return
+        val kept = mutableListOf<StagedShot>()
+        for (staged in book.staged) {
+            val sameFolder = staged.treeUri == null || staged.treeUri == currentTree
+            if (!sameFolder || staged.documentId in seen) {
+                kept += staged
+                continue
+            }
+            when (delivery.discardUnsent(staged.segmentId)) {
+                DiscardResult.DISCARDED, DiscardResult.NOT_FOUND -> Unit
+                DiscardResult.ALREADY_DELIVERED -> {
+                    receive(staged.sha256, ReceivedEnd.DELIVERED)
+                    mark(staged.documentId, ReceivedEnd.DELIVERED)
+                }
+                DiscardResult.IN_FLIGHT -> kept += staged
+            }
+        }
+        book = book.copy(staged = kept)
+    }
+
     private fun observeStaged() {
         val still = mutableListOf<StagedShot>()
         for (staged in book.staged) {
@@ -588,6 +655,7 @@ class ScreenshotSession internal constructor(
                     receive(staged.sha256, ReceivedEnd.DELIVERED)
                     mark(staged.documentId, ReceivedEnd.DELIVERED)
                 }
+                row.lastError == DISCARDED_LOCALLY -> Unit
                 row.lastError == "screenshot_invalid" -> {
                     receive(staged.sha256, ReceivedEnd.REFUSED_TYPE)
                     mark(staged.documentId, ReceivedEnd.REFUSED_TYPE)
