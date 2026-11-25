@@ -144,6 +144,22 @@ class MobileImportClientTest {
             "start_already_imported_400",
             "start_nothing_to_import_409",
             "refusals",
+            "upload_create_request",
+            "upload_created_201",
+            "upload_resumed_200",
+            "upload_already_staged_200",
+            "upload_already_imported_200",
+            "upload_chunk_200",
+            "upload_offset_mismatch_409",
+            "upload_chunk_checksum_mismatch_422",
+            "upload_insufficient_space_507",
+            "upload_status_200",
+            "upload_commit_request",
+            "upload_committed_200",
+            "upload_whole_checksum_mismatch_422",
+            "upload_abort_200",
+            "host_import_status_uploading",
+            "upload_refusals",
         )
         assertEquals(expectedKeys, vectors.keys)
     }

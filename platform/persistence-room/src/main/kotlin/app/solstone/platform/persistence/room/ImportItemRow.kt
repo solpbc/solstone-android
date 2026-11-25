@@ -33,6 +33,11 @@ data class ImportItemRow(
     @ColumnInfo(name = "review_kind") val reviewKind: String? = null,
     @ColumnInfo(name = "review_instance_id") val reviewInstanceId: String? = null,
     @ColumnInfo(name = "review_expired", defaultValue = "0") val reviewExpired: Boolean = false,
+    @ColumnInfo(name = "payload_sha256") val payloadSha256: String? = null,
+    @ColumnInfo(name = "upload_id") val uploadId: String? = null,
+    @ColumnInfo(name = "upload_instance_id") val uploadInstanceId: String? = null,
+    @ColumnInfo(name = "upload_offset", defaultValue = "0") val uploadOffset: Long = 0L,
+    @ColumnInfo(name = "upload_resumable", defaultValue = "0") val uploadResumable: Boolean = false,
 )
 
 /** When an import last reached a journal, and which journal: one row, id 0. */

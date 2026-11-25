@@ -12,7 +12,7 @@ class MobileImportContractAdoptionTest {
     @Test
     fun pinnedRevisionResourcesAreBound() {
         val adoption = json("mobile-import-v1/adoption.json")
-        assertEquals("d4405f11b0748b067caa273be6a9d8a317757ca5", adoption["authority_commit"])
+        assertEquals("e270c90c8db5e8f0c08e2cf9fbc681dd2fda45f4", adoption["authority_commit"])
         assertEquals("app.solstone.core.observer.MobileImportClient", adoption["owner"])
 
         val files = adoption["files"] as List<*>

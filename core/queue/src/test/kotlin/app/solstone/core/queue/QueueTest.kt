@@ -80,4 +80,22 @@ class QueueTest {
         assertEquals(30 * 60_000L, retryBackoffMs(2, RetryDecision.RETRY))
         assertEquals(4 * 60 * 60_000L, retryBackoffMs(5, RetryDecision.RETRY))
     }
+
+    @Test
+    fun resumableChunkRetryDelayMsFollowsContractLadderWithJitter() {
+        assertEquals(1_000L, resumableChunkRetryDelayMs(0, jitterUnit = 0.5))
+        assertEquals(1_000L, resumableChunkRetryDelayMs(1, jitterUnit = 0.5))
+        assertEquals(2_000L, resumableChunkRetryDelayMs(2, jitterUnit = 0.5))
+        assertEquals(5_000L, resumableChunkRetryDelayMs(3, jitterUnit = 0.5))
+        assertEquals(10_000L, resumableChunkRetryDelayMs(4, jitterUnit = 0.5))
+        assertEquals(30_000L, resumableChunkRetryDelayMs(5, jitterUnit = 0.5))
+        assertEquals(60_000L, resumableChunkRetryDelayMs(6, jitterUnit = 0.5))
+        assertEquals(60_000L, resumableChunkRetryDelayMs(99, jitterUnit = 0.5))
+
+        // +-20% jitter bounds.
+        assertEquals(800L, resumableChunkRetryDelayMs(1, jitterUnit = 0.0))
+        assertEquals(1_200L, resumableChunkRetryDelayMs(1, jitterUnit = 1.0))
+        assertEquals(48_000L, resumableChunkRetryDelayMs(6, jitterUnit = 0.0))
+        assertEquals(72_000L, resumableChunkRetryDelayMs(6, jitterUnit = 1.0))
+    }
 }

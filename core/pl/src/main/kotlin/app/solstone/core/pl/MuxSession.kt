@@ -335,6 +335,7 @@ class MuxSession(
                     writeFrame(streamId, FLAG_DATA, chunk)
                     sendCredit -= count
                     sent += count
+                    notifyObserver { it.onRequestDataSent(streamId, count, sent) }
                     unsent.reset()
                     if (count < all.size) {
                         unsent.write(all, count, all.size - count)
@@ -545,7 +546,10 @@ class MuxSession(
         var successful = false
         try {
             val request = httpRequestBytes(method, path, headers, body)
+            val bodyLength = body?.size ?: 0
+            val headerLength = request.size - bodyLength
             var offset = 0
+            var bodyBytesSent = 0L
             var requestClosed = false
             // Framing § flow control: the request draws on per-stream send credit, and only the
             // peer's WINDOW grants replenish it. Sending past it draws a FLOW_CONTROL_ERROR reset,
@@ -559,8 +563,14 @@ class MuxSession(
                     val count = minOf(MAX_DATA_CHUNK_BYTES.toLong(), (request.size - offset).toLong(), sendCredit).toInt()
                     val flags = if (offset == 0) FLAG_OPEN or FLAG_DATA else FLAG_DATA
                     writeFrame(streamId, flags, request.copyOfRange(offset, offset + count))
+                    val prevOffset = offset
                     offset += count
                     sendCredit -= count
+                    val bodyDelta = (offset - maxOf(prevOffset, headerLength)).coerceAtLeast(0)
+                    if (bodyDelta > 0) {
+                        bodyBytesSent += bodyDelta
+                        notifyObserver { it.onRequestDataSent(streamId, bodyDelta, bodyBytesSent) }
+                    }
                 }
                 if (offset == request.size && !requestClosed) {
                     writeFrame(streamId, FLAG_CLOSE, ByteArray(0))

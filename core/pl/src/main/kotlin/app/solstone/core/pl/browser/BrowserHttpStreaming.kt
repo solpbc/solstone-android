@@ -43,7 +43,8 @@ fun formatStreamingHttpRequest(
 
     for ((key, value) in headers) {
         if (key.equals("content-length", ignoreCase = true) ||
-            key.equals("transfer-encoding", ignoreCase = true)
+            key.equals("transfer-encoding", ignoreCase = true) ||
+            key.equals("expect", ignoreCase = true)
         ) {
             continue
         }

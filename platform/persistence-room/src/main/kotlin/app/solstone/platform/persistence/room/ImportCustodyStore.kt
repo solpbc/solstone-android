@@ -12,6 +12,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.locks.ReentrantLock
 
 const val IMPORT_STATE_PENDING = "pending"
@@ -44,6 +45,10 @@ fun isImportRefusalRetryable(reasonCode: String?, kind: String?): Boolean {
         "import_queue_unreachable",
         "import_metadata_failed",
         "import_not_found",
+        "insufficient_journal_space",
+        "whole_file_checksum_mismatch",
+        "chunk_checksum_mismatch",
+        "upload_not_found",
         -> true
         "import_preview_required" -> kind == "source_changed" || kind == "already_running"
         else -> false
@@ -74,11 +79,33 @@ fun countWaitingImports(
 }
 
 data class ImportProgress(val path: String, val timestamp: String)
+data class ImportUploadSession(
+    val uploadId: String,
+    val instanceId: String,
+    val offset: Long,
+    val resumable: Boolean,
+)
+data class ImportUploadProgressEvent(
+    val itemId: String,
+    val uploadId: String?,
+    val bytesSent: Long,
+    val bytesTotal: Long,
+    val phase: String,
+    val resumable: Boolean,
+)
+sealed interface ImportCancelResult {
+    data object Gone : ImportCancelResult
+    data object Delivered : ImportCancelResult
+    data class SignalledInFlight(val uploadId: String?, val uploadInstanceId: String?) : ImportCancelResult
+    data class RemovedLocally(val uploadId: String?, val uploadInstanceId: String?) : ImportCancelResult
+}
 data class ImportBackoff(val attemptCount: Int, val nextAttemptAt: Long)
 data class ImportCandidate(
     val id: String,
     val progress: ImportProgress?,
     val hasCaption: Boolean = false,
+    val byteSize: Long = 0L,
+    val uploadSession: ImportUploadSession? = null,
 )
 data class ImportReviewCandidate(
     val id: String,
@@ -154,6 +181,12 @@ data class ImportListItem(
     val reviewInstanceId: String? = null,
     val reviewExpired: Boolean = false,
     val byteSize: Long = 0L,
+    val uploadId: String? = null,
+    val uploadInstanceId: String? = null,
+    val uploadOffset: Long = 0L,
+    val uploadResumable: Boolean = false,
+    val uploadPhase: String? = null,
+    val resuming: Boolean = false,
 )
 
 data class ImportLastDelivery(val at: Long, val instanceId: String)
@@ -170,6 +203,11 @@ data class ImportItemDescriptor(
     val area: String? = null,
     /** The page's choices for it, as the JSON object text it sent. */
     val context: String? = null,
+    val payloadSha256: String? = null,
+    val uploadId: String? = null,
+    val uploadInstanceId: String? = null,
+    val uploadOffset: Long = 0L,
+    val uploadResumable: Boolean = false,
 )
 
 /** Where one handed-over item is now, as the journal page is told. */
@@ -187,6 +225,10 @@ data class ImportHandoffStatus(
     val retryable: Boolean? = null,
     val deviceNoun: String? = null,
     val sizeBytes: Long? = null,
+    val bytesSent: Long? = null,
+    val bytesTotal: Long? = null,
+    val resumable: Boolean? = null,
+    val phase: String? = null,
 )
 
 /** The page's card and choices for a picked item, kept beside its bytes. */
@@ -239,6 +281,16 @@ private val receipts = object : LinkedHashMap<String, HandoffReceipt>() {
  * run in one process, and a process death ends every exchange, so nothing is persisted.
  */
 private val inFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
+private val livePhases = ConcurrentHashMap<String, String>()
+private val resumingItems: MutableSet<String> = ConcurrentHashMap.newKeySet()
+private val cancelRequested: MutableSet<String> = ConcurrentHashMap.newKeySet()
+private val progressListeners = CopyOnWriteArrayList<(ImportUploadProgressEvent) -> Unit>()
+
+private fun notifyProgress(event: ImportUploadProgressEvent) {
+    for (listener in progressListeners) {
+        runCatching { listener(event) }
+    }
+}
 
 private fun kindKey(root: Path, id: String): String {
     val canonical = ImportRootLock.canonicalKey(root)
@@ -449,6 +501,10 @@ class ImportCustodyStore(
                             reviewKind = null,
                             reviewInstanceId = null,
                             reviewExpired = false,
+                            uploadId = null,
+                            uploadInstanceId = null,
+                            uploadOffset = 0L,
+                            uploadResumable = false,
                         )
                         try {
                             dao.update(localAttention)
@@ -468,15 +524,24 @@ class ImportCustodyStore(
             progressPath = path,
             progressTimestamp = timestamp,
             progressInstanceId = instance,
+            uploadId = null,
+            uploadInstanceId = null,
+            uploadOffset = 0L,
+            uploadResumable = false,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
 
-    fun markRetry(id: String, instance: String, now: Long): Boolean {
+    fun markRetry(id: String, instance: String, now: Long, jitterUnit: Double = 0.5): Boolean {
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
         if (row.state != "pending") return false
         val count = if (row.backoffInstanceId == instance) row.attemptCount + 1 else 1
-        val nextAttempt = now + app.solstone.core.queue.importRetryBackoffMs(count)
+        val delayMs = if (row.uploadResumable) {
+            app.solstone.core.queue.resumableChunkRetryDelayMs(count, jitterUnit)
+        } else {
+            app.solstone.core.queue.importRetryBackoffMs(count)
+        }
+        val nextAttempt = now + delayMs
         val updated = row.copy(
             backoffInstanceId = instance,
             attemptCount = count,
@@ -545,6 +610,7 @@ class ImportCustodyStore(
         val isPending = row.state == "pending"
         val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
         if (!isPending && !isJournalAttention) return false
+        val keepUploadSession = reasonCode == "insufficient_journal_space" && row.uploadInstanceId == instance
         val updated = row.copy(
             state = "attention",
             attentionInstanceId = instance,
@@ -552,6 +618,10 @@ class ImportCustodyStore(
             attentionKind = kind,
             attentionError = error,
             attentionReasonCode = reasonCode,
+            uploadId = if (keepUploadSession) row.uploadId else null,
+            uploadInstanceId = if (keepUploadSession) row.uploadInstanceId else null,
+            uploadOffset = if (keepUploadSession) row.uploadOffset else 0L,
+            uploadResumable = if (keepUploadSession) row.uploadResumable else false,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
@@ -563,7 +633,13 @@ class ImportCustodyStore(
         val isReview = row.state == IMPORT_STATE_READY_TO_REVIEW || row.state == IMPORT_STATE_REVIEW_EXPIRED
         val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
         if (!isPending && !isReview && !isJournalAttention) return false
-        val updated = row.copy(state = IMPORT_STATE_DELIVERED)
+        val updated = row.copy(
+            state = IMPORT_STATE_DELIVERED,
+            uploadId = null,
+            uploadInstanceId = null,
+            uploadOffset = 0L,
+            uploadResumable = false,
+        )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
 
@@ -571,6 +647,7 @@ class ImportCustodyStore(
         val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return false
         val isJournalAttention = row.state == IMPORT_STATE_ATTENTION && row.attentionInstanceId != null && row.attentionJournalVersion != null
         if (!isJournalAttention) return false
+        val keepUploadSession = row.attentionReasonCode == "insufficient_journal_space" && row.uploadId != null
         val updated = row.copy(
             state = IMPORT_STATE_PENDING,
             progressPath = null,
@@ -589,6 +666,10 @@ class ImportCustodyStore(
             reviewKind = null,
             reviewInstanceId = null,
             reviewExpired = false,
+            uploadId = if (keepUploadSession) row.uploadId else null,
+            uploadInstanceId = if (keepUploadSession) row.uploadInstanceId else null,
+            uploadOffset = if (keepUploadSession) row.uploadOffset else 0L,
+            uploadResumable = if (keepUploadSession) row.uploadResumable else false,
         )
         return try { dao.update(updated) > 0 } catch (_: Exception) { false }
     }
@@ -630,7 +711,25 @@ class ImportCustodyStore(
                 } else {
                     null
                 }
-                candidates.add(ImportCandidate(row.id, progress, hasCaption = readCaption(root.resolve(row.id)) != null))
+                val uploadSession = if (row.uploadInstanceId == instance && row.uploadId != null) {
+                    ImportUploadSession(
+                        uploadId = row.uploadId,
+                        instanceId = row.uploadInstanceId,
+                        offset = row.uploadOffset,
+                        resumable = row.uploadResumable,
+                    )
+                } else {
+                    null
+                }
+                candidates.add(
+                    ImportCandidate(
+                        id = row.id,
+                        progress = progress,
+                        hasCaption = readCaption(root.resolve(row.id)) != null,
+                        byteSize = row.byteSize,
+                        uploadSession = uploadSession,
+                    ),
+                )
                 if (candidates.size == limit) break
             }
         }
@@ -671,7 +770,9 @@ class ImportCustodyStore(
     /**
      * Mark [id] as in a journal exchange with [instance], under the store lock. An item whose
      * attention came from another journal or an older journal version goes back to pending,
-     * since it is now being sent again. Returns [ImportChange.DONE] only when the exchange may go.
+     * since it is now being sent again. Any persisted upload session belonging to a different
+     * journal instance is cleared before the exchange begins. Returns [ImportChange.DONE] only
+     * when the exchange may go.
      */
     fun beginExchange(id: String, instance: String, journalVersion: String): ImportChange =
         ImportRootLock.withLock(root) {
@@ -680,8 +781,19 @@ class ImportCustodyStore(
             if (key in inFlight) return@withLock ImportChange.IN_FLIGHT
             if (row.state == "delivered") return@withLock ImportChange.DELIVERED
             val isJournalAttention = row.state == "attention" && row.attentionInstanceId != null && row.attentionJournalVersion != null
+            val foreignUploadSession = (row.uploadId != null || row.uploadResumable) && row.uploadInstanceId != instance
             when {
-                row.state == IMPORT_STATE_PENDING -> Unit
+                row.state == IMPORT_STATE_PENDING -> {
+                    if (foreignUploadSession) {
+                        val cleared = row.copy(
+                            uploadId = null,
+                            uploadInstanceId = null,
+                            uploadOffset = 0L,
+                            uploadResumable = false,
+                        )
+                        if ((try { dao.update(cleared) } catch (_: Exception) { 0 }) == 0) return@withLock ImportChange.REFUSED
+                    }
+                }
                 isJournalAttention && (
                     row.attentionInstanceId != instance ||
                         (row.autoRetriesOnVersionBump() && row.attentionJournalVersion != journalVersion)
@@ -693,14 +805,277 @@ class ImportCustodyStore(
                         attentionKind = null,
                         attentionInstanceId = null,
                         attentionJournalVersion = null,
+                        uploadId = if (foreignUploadSession) null else row.uploadId,
+                        uploadInstanceId = if (foreignUploadSession) null else row.uploadInstanceId,
+                        uploadOffset = if (foreignUploadSession) 0L else row.uploadOffset,
+                        uploadResumable = if (foreignUploadSession) false else row.uploadResumable,
                     )
                     if ((try { dao.update(reopened) } catch (_: Exception) { 0 }) == 0) return@withLock ImportChange.REFUSED
                 }
                 else -> return@withLock ImportChange.REFUSED
             }
+            cancelRequested.remove(key)
+            livePhases.remove(key)
+            resumingItems.remove(key)
             inFlight.add(key)
             ImportChange.DONE
         }
+
+    /** Persist the whole-file SHA-256 hex digest computed from the custody payload copy. */
+    fun recordPayloadSha256(id: String, sha256: String): Boolean =
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock false
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock false
+            if (row.state == IMPORT_STATE_DELIVERED) return@withLock false
+            if (row.payloadSha256 == sha256) return@withLock true
+            try { dao.update(row.copy(payloadSha256 = sha256)) > 0 } catch (_: Exception) { false }
+        }
+
+    /**
+     * Persist journal-confirmed resumable upload progress for [id] on [instanceId]. Only offsets
+     * confirmed by the journal (create, chunk PUT, status GET, or 409 next_offset) should be
+     * recorded here. When progress advances or a new upload session starts, retry backoff resets.
+     */
+    fun recordUploadProgress(
+        id: String,
+        uploadId: String,
+        instanceId: String,
+        confirmedOffset: Long,
+        phase: String = "sending",
+        resuming: Boolean = false,
+    ): Boolean {
+        var event: ImportUploadProgressEvent? = null
+        val ok = ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock false
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock false
+            if (row.state == IMPORT_STATE_DELIVERED) return@withLock false
+            val safeOffset = confirmedOffset.coerceIn(0L, row.byteSize.coerceAtLeast(0L))
+            val madeProgress = row.uploadId != uploadId ||
+                row.uploadInstanceId != instanceId ||
+                safeOffset > row.uploadOffset
+            val updated = row.copy(
+                uploadId = uploadId,
+                uploadInstanceId = instanceId,
+                uploadOffset = safeOffset,
+                uploadResumable = true,
+                backoffInstanceId = if (madeProgress) null else row.backoffInstanceId,
+                attemptCount = if (madeProgress) 0 else row.attemptCount,
+                nextAttemptAt = if (madeProgress) null else row.nextAttemptAt,
+            )
+            if ((try { dao.update(updated) } catch (_: Exception) { 0 }) == 0) return@withLock false
+            val key = kindKey(root, id)
+            livePhases[key] = phase
+            if (resuming) resumingItems.add(key) else resumingItems.remove(key)
+            event = ImportUploadProgressEvent(
+                itemId = id,
+                uploadId = uploadId,
+                bytesSent = safeOffset,
+                bytesTotal = row.byteSize,
+                phase = phase,
+                resumable = true,
+            )
+            true
+        }
+        event?.let(::notifyProgress)
+        return ok
+    }
+
+    /** Update the live in-process phase (`sending`, `paused`, `checking`) for [id] and notify listeners. */
+    fun recordUploadPhase(id: String, phase: String, resuming: Boolean = false) {
+        var event: ImportUploadProgressEvent? = null
+        ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock
+            val key = kindKey(root, id)
+            livePhases[key] = phase
+            if (resuming) resumingItems.add(key) else resumingItems.remove(key)
+            event = ImportUploadProgressEvent(
+                itemId = id,
+                uploadId = row.uploadId,
+                bytesSent = row.uploadOffset,
+                bytesTotal = row.byteSize,
+                phase = phase,
+                resumable = row.uploadResumable,
+            )
+        }
+        event?.let(::notifyProgress)
+    }
+
+    /** Clear the persisted resumable upload session on [id] while retaining the local payload and hash. */
+    fun clearUploadSession(id: String): Boolean {
+        var event: ImportUploadProgressEvent? = null
+        val ok = ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock false
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock false
+            val updated = row.copy(
+                uploadId = null,
+                uploadInstanceId = null,
+                uploadOffset = 0L,
+                uploadResumable = false,
+            )
+            if ((try { dao.update(updated) } catch (_: Exception) { 0 }) == 0) return@withLock false
+            val key = kindKey(root, id)
+            livePhases.remove(key)
+            resumingItems.remove(key)
+            event = ImportUploadProgressEvent(
+                itemId = id,
+                uploadId = null,
+                bytesSent = 0L,
+                bytesTotal = row.byteSize,
+                phase = "paused",
+                resumable = false,
+            )
+            true
+        }
+        event?.let(::notifyProgress)
+        return ok
+    }
+
+    /**
+     * When the device pairs with a different journal instance, discard persisted resumable upload
+     * sessions (`upload_id`, confirmed offset, journal instance id) belonging to another journal
+     * so every queued large file starts clean at offset 0 on the new journal while retaining its
+     * local file bytes and whole-file SHA-256.
+     */
+    fun resetUploadSessionsForInstanceChange(currentInstanceId: String): Int =
+        ImportRootLock.withLock(root) {
+            val rows = try { dao.all() } catch (_: Exception) { emptyList() }
+            var reset = 0
+            for (row in rows) {
+                if (row.state == IMPORT_STATE_DELIVERED) continue
+                if (row.uploadId == null && !row.uploadResumable && row.uploadOffset == 0L) continue
+                if (row.uploadInstanceId == currentInstanceId) continue
+                val key = kindKey(root, row.id)
+                if (key in inFlight) continue
+                val clearBackoff = row.backoffInstanceId != null && row.backoffInstanceId != currentInstanceId
+                val cleared = row.copy(
+                    uploadId = null,
+                    uploadInstanceId = null,
+                    uploadOffset = 0L,
+                    uploadResumable = false,
+                    backoffInstanceId = if (clearBackoff) null else row.backoffInstanceId,
+                    attemptCount = if (clearBackoff) 0 else row.attemptCount,
+                    nextAttemptAt = if (clearBackoff) null else row.nextAttemptAt,
+                )
+                if ((try { dao.update(cleared) } catch (_: Exception) { 0 }) > 0) {
+                    livePhases.remove(key)
+                    resumingItems.remove(key)
+                    reset++
+                }
+            }
+            reset
+        }
+
+    /**
+     * Record that [id]'s local custody payload is missing or unreadable on this device, ending
+     * any active exchange and placing the item into local attention (`missing_copy`).
+     */
+    fun markLocalUnreadable(id: String, error: String? = null): ImportChange {
+        var event: ImportUploadProgressEvent? = null
+        val change = ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
+            try {
+                if (isUnsafeId(id)) return@withLock ImportChange.GONE
+                val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+                if (row.state == IMPORT_STATE_DELIVERED) return@withLock ImportChange.DELIVERED
+                val updated = row.copy(
+                    state = IMPORT_STATE_ATTENTION,
+                    attentionKind = "missing_copy",
+                    attentionError = error,
+                    attentionReasonCode = null,
+                    attentionInstanceId = null,
+                    attentionJournalVersion = null,
+                    progressPath = null,
+                    progressTimestamp = null,
+                    progressInstanceId = null,
+                    backoffInstanceId = null,
+                    attemptCount = 0,
+                    nextAttemptAt = null,
+                    reviewImportId = null,
+                    reviewReasonCode = null,
+                    reviewKind = null,
+                    reviewInstanceId = null,
+                    reviewExpired = false,
+                    uploadId = null,
+                    uploadInstanceId = null,
+                    uploadOffset = 0L,
+                    uploadResumable = false,
+                )
+                if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) {
+                    event = ImportUploadProgressEvent(id, null, 0L, row.byteSize, "attention", false)
+                    ImportChange.DONE
+                } else {
+                    ImportChange.REFUSED
+                }
+            } finally {
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
+            }
+        }
+        event?.let(::notifyProgress)
+        return change
+    }
+
+    /**
+     * Request cancellation of [id]. If [id] is actively transferring, records the cancellation
+     * signal so the delivery loop aborts cleanly (sending best-effort `DELETE` to the journal and
+     * removing local bytes via [completeCancelled]). If [id] is paused or waiting, removes it
+     * locally immediately and returns its remote `uploadId` so the caller can issue a best-effort
+     * `DELETE`.
+     */
+    fun requestCancel(id: String): ImportCancelResult {
+        var event: ImportUploadProgressEvent? = null
+        val result = ImportRootLock.withLock(root) {
+            if (isUnsafeId(id)) return@withLock ImportCancelResult.Gone
+            val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportCancelResult.Gone
+            if (row.state == IMPORT_STATE_DELIVERED) return@withLock ImportCancelResult.Delivered
+            val key = kindKey(root, id)
+            if (key in inFlight) {
+                cancelRequested.add(key)
+                return@withLock ImportCancelResult.SignalledInFlight(row.uploadId, row.uploadInstanceId)
+            }
+            val deleted = try { dao.delete(id) } catch (_: Exception) { 0 }
+            if (deleted == 0) return@withLock ImportCancelResult.Gone
+            remover.remove(root.resolve(id))
+            livePhases.remove(key)
+            resumingItems.remove(key)
+            cancelRequested.remove(key)
+            event = ImportUploadProgressEvent(id, row.uploadId, row.uploadOffset, row.byteSize, "cancelled", row.uploadResumable)
+            ImportCancelResult.RemovedLocally(row.uploadId, row.uploadInstanceId)
+        }
+        event?.let(::notifyProgress)
+        return result
+    }
+
+    /** Whether an in-flight cancellation has been requested for [id]. */
+    fun isCancelRequested(id: String): Boolean = kindKey(root, id) in cancelRequested
+
+    /** Finalize cancellation of an in-flight item by deleting its row and local payload copy. */
+    fun completeCancelled(id: String): ImportChange {
+        var event: ImportUploadProgressEvent? = null
+        val change = ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
+            try {
+                if (isUnsafeId(id)) return@withLock ImportChange.GONE
+                val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+                if (row.state == IMPORT_STATE_DELIVERED) return@withLock ImportChange.DELIVERED
+                val deleted = try { dao.delete(id) } catch (_: Exception) { 0 }
+                if (deleted == 0) return@withLock ImportChange.REFUSED
+                remover.remove(root.resolve(id))
+                event = ImportUploadProgressEvent(id, row.uploadId, row.uploadOffset, row.byteSize, "cancelled", row.uploadResumable)
+                ImportChange.DONE
+            } finally {
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
+            }
+        }
+        event?.let(::notifyProgress)
+        return change
+    }
 
     /**
      * Record that the journal staged [id], keeping the exchange open for its start. Under the store
@@ -708,10 +1083,16 @@ class ImportCustodyStore(
      */
     fun recordSaved(id: String, path: String, timestamp: String, instance: String): ImportChange =
         ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
             if (try { dao.byId(id) } catch (_: Exception) { null } == null) {
-                inFlight.remove(kindKey(root, id))
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
                 return@withLock ImportChange.GONE
             }
+            livePhases.remove(key)
+            resumingItems.remove(key)
             if (markSaved(id, path, timestamp, instance)) ImportChange.DONE else ImportChange.REFUSED
         }
 
@@ -727,8 +1108,10 @@ class ImportCustodyStore(
         kind: String,
         error: String?,
         instance: String,
-    ): ImportChange =
-        ImportRootLock.withLock(root) {
+    ): ImportChange {
+        var event: ImportUploadProgressEvent? = null
+        val change = ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
             try {
                 if (!isValidAsciiImportId(importId)) return@withLock ImportChange.REFUSED
                 val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
@@ -753,20 +1136,37 @@ class ImportCustodyStore(
                     reviewKind = kind,
                     reviewInstanceId = instance,
                     reviewExpired = false,
+                    uploadId = null,
+                    uploadInstanceId = null,
+                    uploadOffset = 0L,
+                    uploadResumable = false,
                 )
-                if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) ImportChange.DONE else ImportChange.REFUSED
+                if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) {
+                    event = ImportUploadProgressEvent(id, null, row.byteSize, row.byteSize, "review", false)
+                    ImportChange.DONE
+                } else {
+                    ImportChange.REFUSED
+                }
             } finally {
-                inFlight.remove(kindKey(root, id))
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
             }
         }
+        event?.let(::notifyProgress)
+        return change
+    }
 
     /**
      * Record that [id] reached the journal at [instance] and end its exchange, in one hold of the
      * store lock. The 24-hour recent receipt is persisted durably BEFORE the item is marked
      * delivered for payload deletion.
      */
-    fun recordDelivered(id: String, instance: String, importId: String? = null): ImportChange =
-        ImportRootLock.withLock(root) {
+    fun recordDelivered(id: String, instance: String, importId: String? = null): ImportChange {
+        var event: ImportUploadProgressEvent? = null
+        val change = ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
             try {
                 val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
                 val now = clock()
@@ -775,28 +1175,67 @@ class ImportCustodyStore(
                 // Persist the 24h recent receipt durably before marking delivered / deleting bytes.
                 runCatching { persistRecentReceiptLocked(row, instance, validReceiptId, now) }
                 if (!markDelivered(id)) return@withLock ImportChange.REFUSED
-                synchronized(receipts) { receipts[kindKey(root, id)] = HandoffReceipt(rawHandoffId) }
+                synchronized(receipts) { receipts[key] = HandoffReceipt(rawHandoffId) }
                 runCatching { dao.putDelivery(ImportDeliveryRow(lastDeliveredAt = now, instanceId = instance)) }
+                event = ImportUploadProgressEvent(id, null, row.byteSize, row.byteSize, "delivered", false)
                 ImportChange.DONE
             } finally {
-                inFlight.remove(kindKey(root, id))
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
             }
         }
+        event?.let(::notifyProgress)
+        return change
+    }
 
     /** Record the journal's refusal of [id] and end its exchange, in one hold of the store lock. */
-    fun recordAttention(id: String, error: String, reasonCode: String, kind: String?, instance: String, journalVersion: String): ImportChange =
-        ImportRootLock.withLock(root) {
+    fun recordAttention(id: String, error: String, reasonCode: String, kind: String?, instance: String, journalVersion: String): ImportChange {
+        var event: ImportUploadProgressEvent? = null
+        val change = ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
             try {
-                if (try { dao.byId(id) } catch (_: Exception) { null } == null) return@withLock ImportChange.GONE
-                if (markAttention(id, error, reasonCode, kind, instance, journalVersion)) ImportChange.DONE else ImportChange.REFUSED
+                val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
+                if (markAttention(id, error, reasonCode, kind, instance, journalVersion)) {
+                    event = ImportUploadProgressEvent(id, row.uploadId, row.uploadOffset, row.byteSize, "attention", row.uploadResumable)
+                    ImportChange.DONE
+                } else {
+                    ImportChange.REFUSED
+                }
             } finally {
-                inFlight.remove(kindKey(root, id))
+                inFlight.remove(key)
+                livePhases.remove(key)
+                resumingItems.remove(key)
+                cancelRequested.remove(key)
             }
         }
+        event?.let(::notifyProgress)
+        return change
+    }
 
     /** End [id]'s exchange without recording anything (a retry, a pairing change, an error). */
     fun endExchange(id: String) {
-        ImportRootLock.withLock(root) { inFlight.remove(kindKey(root, id)) }
+        var event: ImportUploadProgressEvent? = null
+        ImportRootLock.withLock(root) {
+            val key = kindKey(root, id)
+            inFlight.remove(key)
+            livePhases.remove(key)
+            resumingItems.remove(key)
+            cancelRequested.remove(key)
+            val row = try { dao.byId(id) } catch (_: Exception) { null }
+            if (row != null && row.uploadResumable && row.state == IMPORT_STATE_PENDING) {
+                event = ImportUploadProgressEvent(
+                    itemId = id,
+                    uploadId = row.uploadId,
+                    bytesSent = row.uploadOffset,
+                    bytesTotal = row.byteSize,
+                    phase = "paused",
+                    resumable = true,
+                )
+            }
+        }
+        event?.let(::notifyProgress)
     }
 
     /** Whether [id] is in a journal exchange now. */
@@ -852,6 +1291,10 @@ class ImportCustodyStore(
                     reviewKind = null,
                     reviewInstanceId = null,
                     reviewExpired = false,
+                    uploadId = null,
+                    uploadInstanceId = null,
+                    uploadOffset = 0L,
+                    uploadResumable = false,
                 )
                 if ((try { dao.update(cleared) } catch (_: Exception) { 0 }) > 0) {
                     reset++
@@ -948,6 +1391,10 @@ class ImportCustodyStore(
                 reviewKind = null,
                 reviewInstanceId = null,
                 reviewExpired = false,
+                uploadId = null,
+                uploadInstanceId = null,
+                uploadOffset = 0L,
+                uploadResumable = false,
             )
             if ((try { dao.update(updated) } catch (_: Exception) { 0 }) > 0) ImportChange.DONE else ImportChange.REFUSED
         }
@@ -1007,11 +1454,15 @@ class ImportCustodyStore(
         ImportRootLock.withLock(root) {
             if (isUnsafeId(id)) return@withLock ImportChange.GONE
             val row = try { dao.byId(id) } catch (_: Exception) { null } ?: return@withLock ImportChange.GONE
-            if (kindKey(root, id) in inFlight) return@withLock ImportChange.IN_FLIGHT
+            val key = kindKey(root, id)
+            if (key in inFlight) return@withLock ImportChange.IN_FLIGHT
             if (row.state == "delivered") return@withLock ImportChange.DELIVERED
             val deleted = try { dao.delete(id) } catch (_: Exception) { 0 }
             if (deleted == 0) return@withLock ImportChange.REFUSED
             remover.remove(root.resolve(id))
+            livePhases.remove(key)
+            resumingItems.remove(key)
+            cancelRequested.remove(key)
             ImportChange.DONE
         }
 
@@ -1037,6 +1488,19 @@ class ImportCustodyStore(
                 row.attentionInstanceId == instance && (!row.autoRetriesOnVersionBump() || row.attentionJournalVersion == journalVersion) -> ImportAttentionScope.HERE
                 else -> ImportAttentionScope.ELSEWHERE
             }
+            val key = kindKey(root, row.id)
+            val itemInFlight = key in inFlight
+            val sameUploadInstance = row.uploadId != null && (instance == null || row.uploadInstanceId == instance)
+            val effectiveUploadId = if (sameUploadInstance) row.uploadId else null
+            val effectiveUploadInstanceId = if (sameUploadInstance) row.uploadInstanceId else null
+            val effectiveUploadOffset = if (sameUploadInstance) row.uploadOffset else 0L
+            val effectiveUploadResumable = row.uploadResumable && (instance == null || row.uploadInstanceId == null || row.uploadInstanceId == instance)
+            val effectivePhase = when {
+                row.state != IMPORT_STATE_PENDING -> null
+                itemInFlight -> livePhases[key] ?: if (effectiveUploadResumable) "sending" else null
+                effectiveUploadResumable && effectiveUploadId != null -> "paused"
+                else -> null
+            }
             ImportListItem(
                 id = row.id,
                 displayName = row.displayName,
@@ -1045,7 +1509,7 @@ class ImportCustodyStore(
                 reasonCode = row.attentionReasonCode,
                 kind = row.attentionKind,
                 scope = scope,
-                inFlight = kindKey(root, row.id) in inFlight,
+                inFlight = itemInFlight,
                 hasSavedProgress = row.progressPath != null && row.progressTimestamp != null,
                 hasCaption = readCaption(root.resolve(row.id)) != null,
                 reviewImportId = row.reviewImportId?.takeIf(::isValidAsciiImportId),
@@ -1054,6 +1518,12 @@ class ImportCustodyStore(
                 reviewInstanceId = row.reviewInstanceId,
                 reviewExpired = row.reviewExpired || row.state == IMPORT_STATE_REVIEW_EXPIRED,
                 byteSize = row.byteSize,
+                uploadId = effectiveUploadId,
+                uploadInstanceId = effectiveUploadInstanceId,
+                uploadOffset = effectiveUploadOffset,
+                uploadResumable = effectiveUploadResumable,
+                uploadPhase = effectivePhase,
+                resuming = itemInFlight && (key in resumingItems),
             )
         }
     }
@@ -1077,6 +1547,11 @@ class ImportCustodyStore(
             caption = caption,
             area = readSidecar(itemDir, IMPORT_AREA_FILE, 96),
             context = readSidecar(itemDir, IMPORT_CONTEXT_FILE, 16 * 1024),
+            payloadSha256 = row.payloadSha256,
+            uploadId = row.uploadId,
+            uploadInstanceId = row.uploadInstanceId,
+            uploadOffset = row.uploadOffset,
+            uploadResumable = row.uploadResumable,
         )
     }
 
@@ -1127,12 +1602,30 @@ class ImportCustodyStore(
                 state = "uploading",
                 deviceNoun = "phone",
                 sizeBytes = row.byteSize,
+                bytesSent = if (row.uploadResumable) row.uploadOffset else null,
+                bytesTotal = if (row.uploadResumable) row.byteSize else null,
+                resumable = if (row.uploadResumable) true else null,
+                phase = if (row.uploadResumable) livePhases[key] ?: "sending" else null,
             )
             else -> ImportHandoffStatus(
                 state = "waiting",
                 deviceNoun = "phone",
                 sizeBytes = row.byteSize,
+                bytesSent = if (row.uploadResumable) row.uploadOffset else null,
+                bytesTotal = if (row.uploadResumable) row.byteSize else null,
+                resumable = if (row.uploadResumable) true else null,
+                phase = if (row.uploadResumable) "paused" else null,
             )
+        }
+    }
+
+    companion object {
+        fun addProgressListener(listener: (ImportUploadProgressEvent) -> Unit) {
+            progressListeners.add(listener)
+        }
+
+        fun removeProgressListener(listener: (ImportUploadProgressEvent) -> Unit) {
+            progressListeners.remove(listener)
         }
     }
 

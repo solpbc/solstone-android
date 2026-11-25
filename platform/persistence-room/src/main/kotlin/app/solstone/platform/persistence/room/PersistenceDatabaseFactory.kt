@@ -158,6 +158,16 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE import_item ADD COLUMN payload_sha256 TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN upload_id TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN upload_instance_id TEXT")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN upload_offset INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE import_item ADD COLUMN upload_resumable INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 fun openSolstonePersistenceDatabase(
     context: Context,
     name: String = "solstone-persistence.db",
@@ -174,6 +184,7 @@ fun openSolstonePersistenceDatabase(
             MIGRATION_8_9,
             MIGRATION_9_10,
             MIGRATION_10_11,
+            MIGRATION_11_12,
         )
         .build()
 

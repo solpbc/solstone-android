@@ -25,6 +25,8 @@ fun httpRequestBytes(method: String, path: String, headers: Map<String, String>,
         if (
             !name.equals("host", ignoreCase = true) &&
             !name.equals("content-length", ignoreCase = true) &&
+            !name.equals("transfer-encoding", ignoreCase = true) &&
+            !name.equals("expect", ignoreCase = true) &&
             !name.equals("accept", ignoreCase = true)
         ) {
             head.append(name).append(": ").append(value).append("\r\n")

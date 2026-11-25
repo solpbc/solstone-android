@@ -100,6 +100,68 @@ class MuxSessionObserverTest {
     }
 
     @Test
+    fun reportsOrderedOutboundDeltasOnStreamingAndBufferedRequests() {
+        val payload = ByteArray(MAX_DATA_CHUNK_BYTES + 1234) { (it and 0xff).toByte() }
+        val responseBytes = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok".toByteArray()
+        val streamDuplex = scriptedDuplex(encodeFrame(1, FLAG_DATA or FLAG_CLOSE, responseBytes))
+        val streamedSent = mutableListOf<Triple<Int, Int, Long>>()
+        val observer = object : PlStreamObserver {
+            override fun onStreamOpened(streamId: Int) {}
+            override fun onRequestDataSent(streamId: Int, deltaBytes: Int, cumulativeBytes: Long) {
+                streamedSent += Triple(streamId, deltaBytes, cumulativeBytes)
+            }
+            override fun onResponseDataConsumed(streamId: Int, deltaBytes: Int, cumulativeBytes: Int) {}
+            override fun onStreamTerminated(streamId: Int, successful: Boolean) {}
+        }
+
+        var cursor = 0
+        val streamResp = MuxSession(streamDuplex, observer).requestStreaming(
+            method = "PUT",
+            path = "/app/import/api/uploads/u1?offset=0",
+            headers = listOf("Content-Type" to "application/octet-stream"),
+            contentLength = payload.size.toLong(),
+            readChunk = { target, offset, length ->
+                if (cursor >= payload.size) {
+                    -1
+                } else {
+                    val count = minOf(length, payload.size - cursor)
+                    System.arraycopy(payload, cursor, target, offset, count)
+                    cursor += count
+                    count
+                }
+            },
+        )
+        assertEquals(200, streamResp.status)
+        assertEquals(
+            listOf(
+                Triple(1, MAX_DATA_CHUNK_BYTES, MAX_DATA_CHUNK_BYTES.toLong()),
+                Triple(1, 1234, payload.size.toLong()),
+            ),
+            streamedSent,
+        )
+
+        val bufferedDuplex = scriptedDuplex(encodeFrame(1, FLAG_DATA or FLAG_CLOSE, responseBytes))
+        val bufferedSent = mutableListOf<Pair<Int, Long>>()
+        val bufferedObserver = object : PlStreamObserver {
+            override fun onStreamOpened(streamId: Int) {}
+            override fun onRequestDataSent(streamId: Int, deltaBytes: Int, cumulativeBytes: Long) {
+                bufferedSent += deltaBytes to cumulativeBytes
+            }
+            override fun onResponseDataConsumed(streamId: Int, deltaBytes: Int, cumulativeBytes: Int) {}
+            override fun onStreamTerminated(streamId: Int, successful: Boolean) {}
+        }
+        val bufferedResp = MuxSession(bufferedDuplex, bufferedObserver).request(
+            method = "POST",
+            path = "/app/import/api/uploads",
+            headers = mapOf("Content-Type" to "application/json"),
+            body = payload,
+        )
+        assertEquals(200, bufferedResp.status)
+        assertEquals(payload.size.toLong(), bufferedSent.last().second)
+        assertEquals(payload.size, bufferedSent.sumOf { it.first })
+    }
+
+    @Test
     fun explicitNullObserverMatchesDefaultConstructor() {
         val responseBytes = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok".toByteArray()
         val defaultDuplex = scriptedDuplex(encodeFrame(1, FLAG_DATA or FLAG_CLOSE, responseBytes))

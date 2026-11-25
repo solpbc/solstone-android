@@ -1126,6 +1126,222 @@ class ImportCustodyStoreTest {
         assertNull(store.earliestBackoffAt("A", now + 30_000L))
     }
 
+    @Test
+    fun resumableUploadProgressPersistsConfirmedOffsetResetsBackoffAndEmitsHandoffStatus() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val now = 2_000_000L
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { now })
+        val events = mutableListOf<ImportUploadProgressEvent>()
+        val listener: (ImportUploadProgressEvent) -> Unit = { events.add(it) }
+        ImportCustodyStore.addProgressListener(listener)
+        try {
+            val id = store.begin("file")!!
+            val payload = ByteArray(1024) { it.toByte() }
+            val size = writePayload(root, id, payload)
+            assertTrue(store.publish(id, "archive.zip", "application/zip", size))
+            assertTrue(store.recordPayloadSha256(id, "a".repeat(64)))
+
+            // Non-resumable retry keeps 15s backoff.
+            assertTrue(store.markRetry(id, "inst-a", now))
+            assertEquals(now + 15_000L, dao.byId(id)!!.nextAttemptAt)
+
+            assertEquals(ImportChange.DONE, store.beginExchange(id, "inst-a", "2.1.0"))
+            assertTrue(store.recordUploadProgress(id, "upl_01", "inst-a", 256L, phase = "sending", resuming = true))
+
+            val desc = store.item(id)!!
+            assertEquals("a".repeat(64), desc.payloadSha256)
+            assertEquals("upl_01", desc.uploadId)
+            assertEquals("inst-a", desc.uploadInstanceId)
+            assertEquals(256L, desc.uploadOffset)
+            assertTrue(desc.uploadResumable)
+
+            // Confirmed progress resets retry backoff.
+            assertEquals(0, dao.byId(id)!!.attemptCount)
+            assertNull(dao.byId(id)!!.nextAttemptAt)
+
+            val activeListItem = store.items("inst-a", "2.1.0").single()
+            assertEquals("sending", activeListItem.uploadPhase)
+            assertEquals(256L, activeListItem.uploadOffset)
+            assertTrue(activeListItem.uploadResumable)
+            assertTrue(activeListItem.resuming)
+
+            val sendingStatus = store.handoffStatus(id)
+            assertEquals("uploading", sendingStatus.state)
+            assertEquals("phone", sendingStatus.deviceNoun)
+            assertEquals(256L, sendingStatus.bytesSent)
+            assertEquals(1024L, sendingStatus.bytesTotal)
+            assertEquals(true, sendingStatus.resumable)
+            assertEquals("sending", sendingStatus.phase)
+
+            store.recordUploadPhase(id, "checking")
+            assertEquals("checking", store.handoffStatus(id).phase)
+            assertEquals("checking", store.items("inst-a", "2.1.0").single().uploadPhase)
+
+            // Pause exchange: resumable retry uses 1s chunk retry ladder (deterministic midpoint jitter = 0.5).
+            assertTrue(store.markRetry(id, "inst-a", now, jitterUnit = 0.5))
+            assertEquals(now + 1_000L, dao.byId(id)!!.nextAttemptAt)
+            store.endExchange(id)
+
+            val pausedItem = store.items("inst-a", "2.1.0").single()
+            assertFalse(pausedItem.inFlight)
+            assertEquals("paused", pausedItem.uploadPhase)
+            assertEquals(256L, pausedItem.uploadOffset)
+
+            val pausedStatus = store.handoffStatus(id)
+            assertEquals("waiting", pausedStatus.state)
+            assertEquals(256L, pausedStatus.bytesSent)
+            assertEquals(1024L, pausedStatus.bytesTotal)
+            assertEquals(true, pausedStatus.resumable)
+            assertEquals("paused", pausedStatus.phase)
+
+            assertTrue(events.any { it.itemId == id && it.bytesSent == 256L && it.phase == "sending" })
+            assertTrue(events.any { it.itemId == id && it.phase == "checking" })
+            assertTrue(events.any { it.itemId == id && it.phase == "paused" })
+        } finally {
+            ImportCustodyStore.removeProgressListener(listener)
+        }
+    }
+
+    @Test
+    fun pairingSwitchDiscardsUploadSessionAndRetainsLocalFileAndSha256() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+
+        val idA = store.begin("file")!!
+        val sizeA = writePayload(root, idA, ByteArray(512) { 7 })
+        assertTrue(store.publish(idA, "big-a.zip", "application/zip", sizeA))
+        assertTrue(store.recordPayloadSha256(idA, "b".repeat(64)))
+        assertTrue(store.recordUploadProgress(idA, "upl_a", "inst-a", 128L))
+        assertTrue(store.markRetry(idA, "inst-a", 1_000L, jitterUnit = 0.5))
+
+        val idB = store.begin("file")!!
+        val sizeB = writePayload(root, idB, ByteArray(512) { 9 })
+        assertTrue(store.publish(idB, "big-b.zip", "application/zip", sizeB))
+        assertTrue(store.recordUploadProgress(idB, "upl_b", "inst-b", 64L))
+
+        assertEquals(1, store.resetUploadSessionsForInstanceChange("inst-b"))
+
+        val resetA = store.item(idA)!!
+        assertNull(resetA.uploadId)
+        assertNull(resetA.uploadInstanceId)
+        assertEquals(0L, resetA.uploadOffset)
+        assertFalse(resetA.uploadResumable)
+        assertEquals("b".repeat(64), resetA.payloadSha256)
+        assertTrue(Files.exists(resetA.payloadPath))
+        assertNull(dao.byId(idA)!!.nextAttemptAt)
+
+        val keptB = store.item(idB)!!
+        assertEquals("upl_b", keptB.uploadId)
+        assertEquals("inst-b", keptB.uploadInstanceId)
+        assertEquals(64L, keptB.uploadOffset)
+        assertTrue(keptB.uploadResumable)
+
+        // Defense in depth: beginExchange on another instance also clears any foreign upload session.
+        assertEquals(ImportChange.DONE, store.beginExchange(idB, "inst-c", "2.1.0"))
+        val clearedOnBegin = store.item(idB)!!
+        assertNull(clearedOnBegin.uploadId)
+        assertEquals(0L, clearedOnBegin.uploadOffset)
+        assertFalse(clearedOnBegin.uploadResumable)
+        store.endExchange(idB)
+    }
+
+    @Test
+    fun journalFullPreservesUploadSessionWhileExpiredAndIntegrityClearIt() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+
+        val idFull = store.begin("file")!!
+        val sizeFull = writePayload(root, idFull, ByteArray(256) { 1 })
+        assertTrue(store.publish(idFull, "full.zip", "application/zip", sizeFull))
+        assertEquals(ImportChange.DONE, store.beginExchange(idFull, "inst-a", "2.1.0"))
+        assertTrue(store.recordUploadProgress(idFull, "upl_full", "inst-a", 128L))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordAttention(idFull, "journal storage full", "insufficient_journal_space", null, "inst-a", "2.1.0"),
+        )
+        assertEquals("upl_full", store.item(idFull)!!.uploadId)
+        assertEquals(128L, store.item(idFull)!!.uploadOffset)
+        assertTrue(store.handoffStatus(idFull).retryable == true)
+
+        // Retrying after freeing journal space preserves the upload session so it can resume.
+        assertEquals(ImportChange.DONE, store.retry(idFull))
+        assertEquals("upl_full", store.item(idFull)!!.uploadId)
+        assertEquals(128L, store.item(idFull)!!.uploadOffset)
+
+        // Integrity mismatch and expired upload clear the upload session while remaining retryable.
+        val idMismatch = store.begin("file")!!
+        val sizeMismatch = writePayload(root, idMismatch, ByteArray(256) { 2 })
+        assertTrue(store.publish(idMismatch, "bad.zip", "application/zip", sizeMismatch))
+        assertEquals(ImportChange.DONE, store.beginExchange(idMismatch, "inst-a", "2.1.0"))
+        assertTrue(store.recordUploadProgress(idMismatch, "upl_bad", "inst-a", 256L))
+        assertEquals(
+            ImportChange.DONE,
+            store.recordAttention(idMismatch, "checksum mismatch", "whole_file_checksum_mismatch", null, "inst-a", "2.1.0"),
+        )
+        assertNull(store.item(idMismatch)!!.uploadId)
+        assertEquals(0L, store.item(idMismatch)!!.uploadOffset)
+        assertTrue(store.handoffStatus(idMismatch).retryable == true)
+        assertTrue(Files.exists(store.item(idMismatch)!!.payloadPath))
+    }
+
+    @Test
+    fun cancelInFlightSignalsAndCompletesWhilePausedCancelRemovesImmediately() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+
+        val idActive = store.begin("file")!!
+        val sizeActive = writePayload(root, idActive, ByteArray(128) { 3 })
+        assertTrue(store.publish(idActive, "active.zip", "application/zip", sizeActive))
+        assertEquals(ImportChange.DONE, store.beginExchange(idActive, "inst-a", "2.1.0"))
+        assertTrue(store.recordUploadProgress(idActive, "upl_active", "inst-a", 64L))
+
+        val inFlightCancel = store.requestCancel(idActive)
+        assertEquals(ImportCancelResult.SignalledInFlight("upl_active", "inst-a"), inFlightCancel)
+        assertTrue(store.isCancelRequested(idActive))
+        assertNotNull(dao.byId(idActive))
+
+        assertEquals(ImportChange.DONE, store.completeCancelled(idActive))
+        assertNull(dao.byId(idActive))
+        assertFalse(Files.exists(root.resolve(idActive)))
+        assertFalse(store.isInFlight(idActive))
+        assertFalse(store.isCancelRequested(idActive))
+
+        val idPaused = store.begin("file")!!
+        val sizePaused = writePayload(root, idPaused, ByteArray(128) { 4 })
+        assertTrue(store.publish(idPaused, "paused.zip", "application/zip", sizePaused))
+        assertTrue(store.recordUploadProgress(idPaused, "upl_paused", "inst-a", 64L))
+
+        val pausedCancel = store.requestCancel(idPaused)
+        assertEquals(ImportCancelResult.RemovedLocally("upl_paused", "inst-a"), pausedCancel)
+        assertNull(dao.byId(idPaused))
+        assertFalse(Files.exists(root.resolve(idPaused)))
+    }
+
+    @Test
+    fun markLocalUnreadableTransitionsToLocalAttentionAndClearsUploadSession() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val store = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+
+        val id = store.begin("file")!!
+        val size = writePayload(root, id, ByteArray(128) { 5 })
+        assertTrue(store.publish(id, "vanished.zip", "application/zip", size))
+        assertEquals(ImportChange.DONE, store.beginExchange(id, "inst-a", "2.1.0"))
+        assertTrue(store.recordUploadProgress(id, "upl_gone", "inst-a", 64L))
+
+        assertEquals(ImportChange.DONE, store.markLocalUnreadable(id, "local copy unreadable"))
+        assertFalse(store.isInFlight(id))
+        val row = dao.byId(id)!!
+        assertEquals(IMPORT_STATE_ATTENTION, row.state)
+        assertEquals("missing_copy", row.attentionKind)
+        assertNull(row.attentionInstanceId)
+        assertNull(row.uploadId)
+        assertEquals(0L, row.uploadOffset)
+        assertFalse(row.uploadResumable)
+        assertTrue(store.eligible("inst-a", "2.1.0", 2_000L, 10).isEmpty())
+        assertEquals(ImportAttentionScope.LOCAL, store.items("inst-a", "2.1.0").single().scope)
+        assertEquals(false, store.handoffStatus(id).retryable)
+    }
+
     private fun createRow(
         id: String,
         state: String = "pending",

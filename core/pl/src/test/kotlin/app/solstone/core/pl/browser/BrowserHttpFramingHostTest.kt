@@ -117,4 +117,25 @@ class BrowserHttpFramingHostTest {
         val cookies = parsed.headers("Set-Cookie")
         assertEquals(listOf("a=1", "b=2", "c=3"), cookies)
     }
+
+    @Test
+    fun formatStreamingHttpRequestEnforcesExactContentLengthAndStripsChunkedAndExpect() {
+        val raw = formatStreamingHttpRequest(
+            method = "PUT",
+            path = "/app/import/api/uploads/u1?offset=0",
+            headers = listOf(
+                "Content-Type" to "application/octet-stream",
+                "Transfer-Encoding" to "chunked",
+                "Expect" to "100-continue",
+                "X-Chunk-Sha256" to "a".repeat(64),
+            ),
+            hasBody = true,
+            contentLength = 4_194_304L,
+        ).toString(Charsets.US_ASCII)
+
+        assertTrue(raw.contains("Content-Length: 4194304\r\n"), raw)
+        assertTrue(raw.contains("X-Chunk-Sha256: ${"a".repeat(64)}\r\n"), raw)
+        assertTrue(!raw.contains("Transfer-Encoding", ignoreCase = true), raw)
+        assertTrue(!raw.contains("Expect:", ignoreCase = true), raw)
+    }
 }

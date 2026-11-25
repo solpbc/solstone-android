@@ -88,7 +88,7 @@ private val CONFIRMED_INSPECT_STATUSES = setOf(
 )
 /** The door every import from this app names, so the journal's history says it came from the solstone app for android. */
 const val MOBILE_IMPORTED_VIA = "android"
-private val GENERIC_REFUSAL get() = phoneText("android.import.journal.couldn.t.accept")
+internal val GENERIC_REFUSAL get() = phoneText("android.import.journal.couldn.t.accept")
 private const val HEX_DIGITS = "0123456789abcdef"
 
 /** Strict ASCII `YYYYMMDD_HHMMSS` check (never accepts non-ASCII digits). */
@@ -109,10 +109,10 @@ fun isConfirmationRequiredKind(kind: String?): Boolean =
     )
 
 class MobileImportClient(
-    private val http: PlHttpClient,
+    internal val http: PlHttpClient,
     private val localeHeader: () -> String? = { journalLocaleHeaderValue() },
 ) {
-    private fun withLocaleHeader(base: Map<String, String>): Map<String, String> {
+    internal fun withLocaleHeader(base: Map<String, String>): Map<String, String> {
         val tag = localeHeader()?.trim()?.takeIf {
             it.isNotEmpty() &&
                 !it.equals("en-US", ignoreCase = true) &&
@@ -347,7 +347,7 @@ private class MobileImportStreamingBody(
     }
 }
 
-private fun sanitizeFilename(rawFilename: String): String {
+internal fun sanitizeFilename(rawFilename: String): String {
     val lastComponent = rawFilename.split('/', '\\').last()
     val filtered = buildString(lastComponent.length) {
         for (ch in lastComponent) {
@@ -407,7 +407,7 @@ private fun sanitizeFilename(rawFilename: String): String {
     return ext.substring(0, maxValidLen)
 }
 
-private fun sanitizeMediaType(mediaType: String): String = buildString(mediaType.length) {
+internal fun sanitizeMediaType(mediaType: String): String = buildString(mediaType.length) {
     for (ch in mediaType) {
         if (ch != '\r' && ch != '\n') {
             append(ch)
@@ -527,10 +527,10 @@ internal fun classifyMobileImportInspectResponse(
     return MobileImportInspectOutcome.Transient("unexpected-status")
 }
 
-private fun ioCause(e: IOException): String = "io-" + e.javaClass.simpleName.ifEmpty { "IOException" }
+internal fun ioCause(e: IOException): String = "io-" + e.javaClass.simpleName.ifEmpty { "IOException" }
 
 /** A 200 that isn't the answer this step needs. Only a plain-token status word is repeated. */
-private fun unexpectedAnswer(status: String?, expected: String): String = when {
+internal fun unexpectedAnswer(status: String?, expected: String): String = when {
     status == expected -> "answer-incomplete"
     status != null && status.length in 1..32 && status.all { it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-' } -> "answer-$status"
     else -> "answer-unknown"

@@ -6,6 +6,8 @@ package app.solstone.core.pl
 interface PlStreamObserver {
     fun onStreamOpened(streamId: Int)
 
+    fun onRequestDataSent(streamId: Int, deltaBytes: Int, cumulativeBytes: Long) {}
+
     fun onResponseDataConsumed(streamId: Int, deltaBytes: Int, cumulativeBytes: Int)
 
     fun onStreamTerminated(streamId: Int, successful: Boolean)

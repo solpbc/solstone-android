@@ -30,7 +30,7 @@ import app.solstone.core.model.QueueState
         SourceIntakeFixRow::class,
         SourceIntakeSeenRow::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(QueueStateConverters::class)
