@@ -1342,6 +1342,27 @@ class ImportCustodyStoreTest {
         assertEquals(false, store.handoffStatus(id).retryable)
     }
 
+    @Test
+    fun eligibleExcludesInFlightItemsHeldByAnotherDeliveryLane() = withTempDir { root ->
+        val dao = InMemoryImportDao()
+        val uidtStore = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+        val workerStore = ImportCustodyStore(root = root, dao = dao, clock = { 1_000L })
+
+        val id = uidtStore.begin("file")!!
+        val size = writePayload(root, id, ByteArray(128) { 9 })
+        assertTrue(uidtStore.publish(id, "large.zip", "application/zip", size))
+        assertEquals(listOf(id), workerStore.eligible("inst-a", "2.1.0", 1_000L, 10).map { it.id })
+
+        assertEquals(ImportChange.DONE, uidtStore.beginExchange(id, "inst-a", "2.1.0"))
+        assertTrue(
+            workerStore.eligible("inst-a", "2.1.0", 1_000L, 10).isEmpty(),
+            "in-flight UIDT item must not appear deliverable to concurrent SyncWorker runs",
+        )
+
+        uidtStore.endExchange(id)
+        assertEquals(listOf(id), workerStore.eligible("inst-a", "2.1.0", 1_000L, 10).map { it.id })
+    }
+
     private fun createRow(
         id: String,
         state: String = "pending",

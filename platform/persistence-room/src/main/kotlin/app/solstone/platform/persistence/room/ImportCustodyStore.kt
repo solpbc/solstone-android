@@ -680,6 +680,7 @@ class ImportCustodyStore(
             .sortedWith(compareBy<ImportItemRow> { it.createdAt }.thenBy { it.id })
         val candidates = mutableListOf<ImportCandidate>()
         for (row in rows) {
+            if (kindKey(root, row.id) in inFlight) continue
             if (row.state == IMPORT_STATE_DELIVERED ||
                 row.state == IMPORT_STATE_READY_TO_REVIEW ||
                 row.state == IMPORT_STATE_REVIEW_EXPIRED

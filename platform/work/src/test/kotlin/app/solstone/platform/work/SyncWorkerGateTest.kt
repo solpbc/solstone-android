@@ -48,6 +48,7 @@ import app.solstone.platform.identity.file.FilePairingGraph
 import app.solstone.platform.identity.file.SecretProtector
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.EventRow
+import app.solstone.platform.persistence.room.ImportChange
 import app.solstone.platform.persistence.room.ImportCustodyStore
 import app.solstone.platform.persistence.room.ImportDao
 import app.solstone.platform.persistence.room.ImportDeliveryRow
@@ -803,6 +804,48 @@ class SyncWorkerGateTest {
         assertEquals(1, followUpCount)
         assertEquals(400L, importStore.item(id)!!.uploadOffset)
         assertEquals("paused", importStore.items("home-1", "2.1.0").single().uploadPhase)
+    }
+
+    @Test
+    fun inFlightResumableImportDoesNotTriggerFollowUpLoop() {
+        val (stores, graph, _) = createStores(enablePush = false)
+        graph.installOrReplace(testHome("sha256:cert-1"), testCred(), DirectEndpoint("10.0.0.1", 7657), true)
+        confirmCurrentJournal(graph, stores.journalConfirmationStore, "sha256:cert-1")
+        stores.journalVersionStore.save(JournalVersionRecord("home-1", "sha256:ca-1", "2.1.0"))
+
+        val importRoot = temp.newFolder().toPath()
+        val importDao = InMemoryImportDao()
+        val uidtStore = ImportCustodyStore(root = importRoot, dao = importDao, clock = { 3_000_000L })
+        val workerStore = ImportCustodyStore(root = importRoot, dao = importDao, clock = { 3_000_000L })
+        val id = uidtStore.begin("file")!!
+        val bytes = ByteArray(1024) { (it % 251).toByte() }
+        Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), bytes)
+        assertTrue(uidtStore.publish(id, "big.bin", "application/octet-stream", bytes.size.toLong()))
+
+        // Simulate API 34+ UIDT ImportUploadJobService actively streaming this item.
+        assertEquals(ImportChange.DONE, uidtStore.beginExchange(id, "home-1", "2.1.0"))
+        try {
+            var followUpCount = 0
+            val client = MockPlHttpClient { method, path, body ->
+                standardMockResponses(method, path, body)
+            }
+            val result = completeSyncRunDetailed(
+                openStores = { stores },
+                spoolDir = temp.newFolder(),
+                drainStore = FakeDrainStore(),
+                openClient = { _, _ -> client },
+                localDescriptionProvider = { ClientReportedDescription("Phone", "1.0", "Android", appId = "app.solstone.phone") },
+                customImportStore = workerStore,
+                now = { 3_000_000L },
+                scheduleFollowUp = { followUpCount++ },
+            )
+            assertEquals(SyncOutcome.SUCCESS, result.outcome)
+            assertFalse(result.importRetryScheduled)
+            assertEquals(0, followUpCount, "concurrent SyncWorker must not spin follow-ups for an in-flight UIDT item")
+            assertTrue(client.requests.none { it.path.startsWith("/app/import/api/") })
+        } finally {
+            uidtStore.endExchange(id)
+        }
     }
 
     private class InMemoryImportDao : ImportDao {
