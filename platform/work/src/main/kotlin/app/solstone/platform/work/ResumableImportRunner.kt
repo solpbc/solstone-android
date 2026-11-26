@@ -128,6 +128,7 @@ fun runResumableImportUploadLoop(
     },
     log: (String, Throwable?) -> Unit = { msg, t -> workerLog("w", msg, t) },
 ): ResumableImportRunOutcome {
+    val retriedItems = linkedSetOf<String>()
     var retryAttempt = 0
     while (!control.isStopped) {
         if (SyncDrainGate.closed()) {
@@ -175,6 +176,7 @@ fun runResumableImportUploadLoop(
         val progressBefore = snapshotConfirmedBytes(importStore, instanceId, journalVersion)
         val stageOutcome = executeSingleImportPass(
             stores = stores,
+            retriedItems = retriedItems,
             credentials = credentials,
             attemptPairing = attemptPairing,
             importStore = importStore,
@@ -201,6 +203,7 @@ fun runResumableImportUploadLoop(
             -> return ResumableImportRunOutcome.FINISHED
 
             ImportStageResult.PAIRING_LEFT -> {
+                retriedItems.clear()
                 retryAttempt = 0
                 continue
             }
@@ -241,6 +244,7 @@ private fun snapshotConfirmedBytes(
 
 private fun executeSingleImportPass(
     stores: SyncStores,
+    retriedItems: MutableSet<String>,
     credentials: SyncCredentials.Ready,
     attemptPairing: PairingGeneration,
     importStore: ImportCustodyStore,
@@ -257,7 +261,7 @@ private fun executeSingleImportPass(
     val poster = defaultHttpsPoster()
     val guard = stores.handshakeGuard
     val attempt = guard?.begin(attemptPairing) ?: JournalAttempt.untracked(attemptPairing)
-    val importRun = ImportRun(cap = Int.MAX_VALUE)
+    val importRun = ImportRun(cap = Int.MAX_VALUE, retried = retriedItems)
 
     try {
         val tryTransport: (SyncTransport, Boolean) -> ImportStageResult = transportAttempt@{ selectedTransport, propagateWsClosed ->

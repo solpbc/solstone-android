@@ -145,7 +145,9 @@ class ResumableImportRunnerTest {
             val dao = MemoryDao()
             val importRoot = root.resolve("imports").also { Files.createDirectories(it) }
             val store = ImportCustodyStore(root = importRoot, dao = dao, clock = { 10_000L })
-            val payload = ByteArray(900) { ((it * 13) % 251).toByte() }
+            val advertised = 512L * 1024L
+            val recovered = 256L * 1024L
+            val payload = ByteArray((3 * advertised).toInt()) { ((it * 13) % 251).toByte() }
             val id = store.begin("file")!!
             Files.write(importRoot.resolve(".staging").resolve(id).resolve("payload"), payload)
             assertTrue(store.publish(id, "archive.bin", "application/octet-stream", payload.size.toLong()))
@@ -166,7 +168,7 @@ class ResumableImportRunnerTest {
                     val dial = dialCount.incrementAndGet()
                     // Dials 1 & 2 fail before any progress (1s, then 2s backoff).
                     if (dial <= 2) throw IOException("offline-$dial")
-                    // Dial 3 delivers chunk 0 (offset 0..300) then drops before chunk 1 -> progress resets backoff!
+                    // Dial 3 delivers the first piece then drops before the second -> progress resets backoff!
                     // Dial 4 fails right away -> must use fresh 1s backoff (NOT 5s!).
                     if (dial == 4) throw IOException("transient-after-progress")
                     object : PlHttpClient, Closeable {
@@ -179,9 +181,9 @@ class ResumableImportRunnerTest {
                         ): HttpResponse = when {
                             method == "GET" && path == "/app/network/api/status" -> HttpResponse(200, emptyMap(), ByteArray(0))
                             method == "GET" && path == "/api/system/status" -> HttpResponse(200, emptyMap(), """{"capabilities":["resumable_import_uploads"]}""".toByteArray())
-                            method == "GET" && path == "/app/import/api/sources" -> HttpResponse(200, emptyMap(), """{"sources":[],"resumable":{"threshold_bytes":500,"chunk_bytes":300,"max_file_bytes":100000}}""".toByteArray())
-                            method == "POST" && path == "/app/import/api/uploads" -> HttpResponse(201, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":0,"total_bytes":900,"chunk_bytes":300}""".toByteArray())
-                            method == "GET" && path == "/app/import/api/uploads/upl_run" -> HttpResponse(200, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":${serverData.size()},"total_bytes":900,"chunk_bytes":300,"phase":"sending"}""".toByteArray())
+                            method == "GET" && path == "/app/import/api/sources" -> HttpResponse(200, emptyMap(), """{"sources":[],"resumable":{"threshold_bytes":500,"chunk_bytes":$advertised,"max_file_bytes":${payload.size}}}""".toByteArray())
+                            method == "POST" && path == "/app/import/api/uploads" -> HttpResponse(201, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":0,"total_bytes":${payload.size},"chunk_bytes":$advertised}""".toByteArray())
+                            method == "GET" && path == "/app/import/api/uploads/upl_run" -> HttpResponse(200, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":${serverData.size()},"total_bytes":${payload.size},"chunk_bytes":$advertised,"phase":"sending"}""".toByteArray())
                             method == "POST" && path == "/app/import/api/uploads/upl_run/commit" -> {
                                 val expected = (parseJson(body!!.toString(Charsets.UTF_8)) as Map<*, *>)["sha256"]
                                 val actual = bytesToLowerHex(MessageDigest.getInstance("SHA-256").digest(serverData.toByteArray()))
@@ -201,7 +203,7 @@ class ResumableImportRunnerTest {
                         ): HttpResponse {
                             val offset = path.substringAfter("?offset=").toLong()
                             putOffsets += offset
-                            if (dial == 3 && offset == 300L) {
+                            if (dial == 3 && offset == advertised) {
                                 body.close()
                                 throw IOException("dropped mid-transfer")
                             }
@@ -214,7 +216,7 @@ class ResumableImportRunnerTest {
                                 }
                             }
                             val next = serverData.size().toLong()
-                            return HttpResponse(200, emptyMap(), """{"upload_id":"upl_run","next_offset":$next,"total_bytes":900,"complete":${next >= 900L}}""".toByteArray())
+                            return HttpResponse(200, emptyMap(), """{"upload_id":"upl_run","next_offset":$next,"total_bytes":${payload.size},"complete":${next >= payload.size}}""".toByteArray())
                         }
 
                         override fun close() = Unit
@@ -226,7 +228,7 @@ class ResumableImportRunnerTest {
             assertNull(dao.byId(id))
             // Wait ladder: 1s (dial 1), 2s (dial 2), 0ms immediate retry after dial 3 progress, 1s (dial 4)!
             assertEquals(listOf(1_000L, 2_000L, 1_000L), waits)
-            assertEquals(listOf(0L, 300L, 300L, 600L), putOffsets)
+            assertEquals(listOf(0L, advertised, advertised, advertised + recovered, 2 * advertised, 2 * advertised + recovered), putOffsets)
         } finally {
             root.toFile().deleteRecursively()
         }

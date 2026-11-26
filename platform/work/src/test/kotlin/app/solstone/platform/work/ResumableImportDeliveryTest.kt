@@ -344,16 +344,16 @@ class ResumableImportDeliveryTest {
 
     @Test
     fun interruptedUploadResyncsViaGetAndNeverResendsConfirmedChunks() = withStore { root, dao, store ->
-        val payload = ByteArray(1000) { ((it * 17) % 253).toByte() }
+        val piece = 300 * 1024L
+        val payload = ByteArray((3 * piece + 100).toInt()) { ((it * 17) % 253).toByte() }
         val id = enqueueFile(root, store, "resume.bin", payload)
-        val journal = FakeResumableJournal(thresholdBytes = 512L, chunkBytes = 300L)
+        val journal = FakeResumableJournal(thresholdBytes = 512L, chunkBytes = piece)
 
-        // Drop right after chunk at offset 300 is accepted by the journal (simulating lost HTTP 200 response!).
+        // The journal accepts the second piece before the connection drops.
         var injectedAmbiguousDrop = false
         journal.onPutChunkOverride = { uploadId, offset, bytes, _ ->
-            if (offset == 300L && !injectedAmbiguousDrop) {
+            if (offset == piece && !injectedAmbiguousDrop) {
                 injectedAmbiguousDrop = true
-                // Server durably wrote chunk 1 (offset 300..600), then transport died before 200 reached client!
                 journal.sessions[uploadId]!!.data.write(bytes)
                 throw IOException("relay restarted before 200")
             }
@@ -365,20 +365,49 @@ class ResumableImportDeliveryTest {
             ImportStageResult.RETRY,
             deliverImports(journal, store, firstRun, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED, { true }, { 20_000L }, { _, _ -> }),
         )
-        // Client locally only saw offset 300 confirmed, while server actually confirmed 600.
-        assertEquals(300L, store.item(id)!!.uploadOffset)
+        // Client locally only saw one piece confirmed, while the server actually confirmed two.
+        assertEquals(piece, store.item(id)!!.uploadOffset)
         assertEquals("paused", store.items("inst-1", "2.1.0").single().uploadPhase)
 
-        // Second run must call GET /uploads/{id}, learn next_offset == 600, and send ONLY offsets 600 and 900!
-        val secondRun = ImportRun()
+        // GET confirms two pieces. The second run keeps the advertised size.
+        val secondRun = ImportRun(retried = firstRun.retried)
         assertEquals(
             ImportStageResult.CLEAN,
             deliverImports(journal, store, secondRun, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED, { true }, { 25_000L }, { _, _ -> }),
         )
         assertNull(dao.byId(id))
-        assertEquals(listOf(0L, 300L, 600L, 900L), journal.putOffsets, "zero completed chunks may be re-sent")
+        assertEquals(listOf(0L, piece, piece * 2, piece * 3), journal.putOffsets, "zero completed chunks may be re-sent")
         assertTrue(journal.calls.any { it.first == "GET" && it.second.startsWith("/app/import/api/uploads/") })
         assertContentEquals(payload, journal.committedBytes[id])
+    }
+
+    @Test
+    fun retryWithNoConfirmedProgressUsesSmallerPutsOnlyForThatUpload() = withStore { root, dao, store ->
+        val advertised = 1024 * 1024
+        val fallback = 256 * 1024
+        val bytes = ByteArray(advertised + 1) { it.toByte() }
+        enqueueFile(root, store, "interrupted.bin", bytes)
+        val journal = FakeResumableJournal(thresholdBytes = 500L, chunkBytes = advertised.toLong())
+        val sizes = mutableListOf<Int>()
+        journal.onPutChunkOverride = { _, _, chunk, _ ->
+            sizes += chunk.size
+            if (sizes.size == 1) throw java.net.SocketTimeoutException("no receipt")
+            null
+        }
+        fun deliver(custody: ImportCustodyStore, run: ImportRun) =
+            deliverImports(journal, custody, run, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED, { true }, { 20_000L }, { _, _ -> })
+
+        val first = ImportRun()
+        assertEquals(ImportStageResult.RETRY, deliver(store, first))
+        // WorkManager stores the failed item; a later process reopens the custody row.
+        recordImportRetries(store, first, "inst-1", now = 0)
+        val reopened = ImportCustodyStore(root, dao)
+        assertEquals(ImportStageResult.CLEAN, deliver(reopened, ImportRun()))
+        assertEquals(listOf(advertised, fallback, fallback, fallback, fallback, 1), sizes)
+        val completed = sizes.size
+        enqueueFile(root, store, "fresh.bin", bytes.copyOf().also { it[0] = 42 })
+        assertEquals(ImportStageResult.CLEAN, deliver(store, ImportRun()))
+        assertEquals(listOf(advertised, 1), sizes.drop(completed))
     }
 
     @Test

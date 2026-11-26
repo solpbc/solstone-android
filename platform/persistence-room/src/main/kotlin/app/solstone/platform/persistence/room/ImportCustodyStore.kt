@@ -208,6 +208,7 @@ data class ImportItemDescriptor(
     val uploadInstanceId: String? = null,
     val uploadOffset: Long = 0L,
     val uploadResumable: Boolean = false,
+    val retryingUpload: Boolean = false,
 )
 
 /** Where one handed-over item is now, as the journal page is told. */
@@ -1553,6 +1554,7 @@ class ImportCustodyStore(
             uploadInstanceId = row.uploadInstanceId,
             uploadOffset = row.uploadOffset,
             uploadResumable = row.uploadResumable,
+            retryingUpload = row.attemptCount > 0 && row.backoffInstanceId == row.uploadInstanceId,
         )
     }
 

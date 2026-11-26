@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - sending audio and screen recordings to your journal uses less memory on your phone.
 
+### Fixed
+
+- large file imports can now get moving again on a slow connection after a transfer stalls.
+
 ## [2.1.56] - 2026-11-26
 
 ### Added

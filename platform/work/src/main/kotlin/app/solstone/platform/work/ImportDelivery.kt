@@ -54,9 +54,11 @@ private const val MAX_COMMIT_INCOMPLETE_RESYNCS = 2
  * then relay), so an item retried on direct is tried again on relay without counting twice, and
  * the cap holds for the whole run.
  */
-internal class ImportRun(private val cap: Int = IMPORTS_PER_RUN) {
+internal class ImportRun(
+    private val cap: Int = IMPORTS_PER_RUN,
+    val retried: MutableSet<String> = linkedSetOf(),
+) {
     val selected = linkedSetOf<String>()
-    val retried = linkedSetOf<String>()
 
     /** The last import stage finished without a retry or a refusal and took every item it could. */
     var stageClean = false
@@ -269,7 +271,7 @@ internal fun deliverImports(
             if (store.beginExchange(candidate.id, instanceId, journalVersion) != ImportChange.DONE) continue
             attempted++
             run.selected.add(candidate.id)
-            run.retried.remove(candidate.id)
+            val retrying = run.retried.remove(candidate.id)
             val retried = { stage: String, cause: String ->
                 runCatching { diag(importRetryLine(candidate.id, stage, cause)) }
                 Unit
@@ -279,6 +281,7 @@ internal fun deliverImports(
                     wire = wire,
                     store = store,
                     id = candidate.id,
+                    retrying = retrying,
                     saved = candidate.progress?.let { it.path to it.timestamp },
                     instanceId = instanceId,
                     journalVersion = journalVersion,
@@ -346,6 +349,7 @@ private fun deliverOne(
     wire: MobileImportClient,
     store: ImportCustodyStore,
     id: String,
+    retrying: Boolean,
     saved: Pair<String, String>?,
     instanceId: String,
     journalVersion: String,
@@ -374,6 +378,7 @@ private fun deliverOne(
                             wire = wire,
                             store = store,
                             descriptor = descriptor,
+                            retrying = retrying || descriptor.retryingUpload,
                             config = configOutcome.config,
                             instanceId = instanceId,
                             journalVersion = journalVersion,
@@ -398,10 +403,14 @@ private fun deliverOne(
     return settle(store, id, wire.start(progress.first, progress.second), instanceId, journalVersion) { retried("start", it) }
 }
 
+// A smaller PUT lets a slow uplink receive a journal receipt before the next mux window grant.
+private const val RECOVERY_CHUNK_BYTES = 256L * 1024L
+
 private fun deliverResumable(
     wire: MobileImportClient,
     store: ImportCustodyStore,
     descriptor: ImportItemDescriptor,
+    retrying: Boolean,
     config: ResumableUploadConfig,
     instanceId: String,
     journalVersion: String,
@@ -476,6 +485,7 @@ private fun deliverResumable(
     var uploadId: String
     var offset: Long
     var chunkBytes: Long = config.chunkBytes
+    var chunkLimit = Long.MAX_VALUE
 
     val existingUploadId = descriptor.uploadId?.takeIf { descriptor.uploadInstanceId == instanceId }
     if (existingUploadId != null) {
@@ -484,6 +494,9 @@ private fun deliverResumable(
                 uploadId = status.uploadId
                 offset = status.nextOffset.coerceIn(0L, totalBytes)
                 chunkBytes = status.chunkBytes
+                if (retrying && offset == descriptor.uploadOffset) {
+                    chunkLimit = RECOVERY_CHUNK_BYTES
+                }
                 store.recordUploadProgress(
                     id = id,
                     uploadId = uploadId,
@@ -587,7 +600,7 @@ private fun deliverResumable(
                 return ItemStep.YIELDED
             }
 
-            val chunkLen = minOf(chunkBytes, totalBytes - offset)
+            val chunkLen = minOf(chunkBytes, chunkLimit, totalBytes - offset)
             val chunkSha = try {
                 sha256SliceHex(
                     path = descriptor.payloadPath,
