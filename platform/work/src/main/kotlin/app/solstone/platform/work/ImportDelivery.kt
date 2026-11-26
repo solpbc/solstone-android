@@ -35,6 +35,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.util.concurrent.TimeUnit
 
 /** How many distinct imports one sync run takes on, across all its transport attempts. */
 internal const val IMPORTS_PER_RUN = 16
@@ -216,6 +217,7 @@ internal fun deliverImports(
     onObservedThreshold: ((Long) -> Unit)? = null,
     shouldYield: () -> Boolean = { false },
     candidateFilter: (ImportCandidate) -> Boolean = { true },
+    monotonicNanos: () -> Long = System::nanoTime,
 ): ImportStageResult {
     if (gate != ImportVersionGate.SUPPORTED) return ImportStageResult.HELD
     if (pairingCurrent()) {
@@ -282,6 +284,7 @@ internal fun deliverImports(
                     store = store,
                     id = candidate.id,
                     retrying = retrying,
+                    monotonicNanos = monotonicNanos,
                     saved = candidate.progress?.let { it.path to it.timestamp },
                     instanceId = instanceId,
                     journalVersion = journalVersion,
@@ -350,6 +353,7 @@ private fun deliverOne(
     store: ImportCustodyStore,
     id: String,
     retrying: Boolean,
+    monotonicNanos: () -> Long,
     saved: Pair<String, String>?,
     instanceId: String,
     journalVersion: String,
@@ -379,6 +383,7 @@ private fun deliverOne(
                             store = store,
                             descriptor = descriptor,
                             retrying = retrying || descriptor.retryingUpload,
+                            monotonicNanos = monotonicNanos,
                             config = configOutcome.config,
                             instanceId = instanceId,
                             journalVersion = journalVersion,
@@ -405,12 +410,14 @@ private fun deliverOne(
 
 // A smaller PUT lets a slow uplink receive a journal receipt before the next mux window grant.
 private const val RECOVERY_CHUNK_BYTES = 256L * 1024L
+private val PROMPT_CHUNK_ACK_NANOS = TimeUnit.SECONDS.toNanos(5)
 
 private fun deliverResumable(
     wire: MobileImportClient,
     store: ImportCustodyStore,
     descriptor: ImportItemDescriptor,
     retrying: Boolean,
+    monotonicNanos: () -> Long,
     config: ResumableUploadConfig,
     instanceId: String,
     journalVersion: String,
@@ -636,7 +643,9 @@ private fun deliverResumable(
                 length = chunkLen,
                 shouldStop = { store.isCancelRequested(id) || !pairingCurrent() },
             )
+            val putStarted = monotonicNanos()
             val chunkOutcome = wire.uploadChunk(uploadId, offset, chunkLen, chunkSha, source)
+            val putElapsed = monotonicNanos() - putStarted
 
             if (store.isCancelRequested(id)) {
                 runCatching { wire.abortUpload(uploadId) }
@@ -654,6 +663,12 @@ private fun deliverResumable(
 
             when (chunkOutcome) {
                 is ResumableChunkOutcome.Accepted -> {
+                    // A prompt receipt for the whole reduced PUT lets this file try a larger piece.
+                    if (chunkLimit < chunkBytes && chunkOutcome.nextOffset == offset + chunkLen &&
+                        putElapsed < PROMPT_CHUNK_ACK_NANOS
+                    ) {
+                        chunkLimit = minOf(chunkBytes, 2 * chunkLimit)
+                    }
                     chunkMismatchAttempts = 0
                     offsetMismatchAttempts = 0
                     offset = chunkOutcome.nextOffset.coerceIn(0L, totalBytes)

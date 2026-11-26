@@ -154,6 +154,7 @@ class ResumableImportRunnerTest {
 
             val serverData = ByteArrayOutputStream()
             val putOffsets = mutableListOf<Long>()
+            var commitSha256: String? = null
             val waits = mutableListOf<Long>()
             val dialCount = AtomicInteger(0)
 
@@ -163,7 +164,10 @@ class ResumableImportRunnerTest {
                 importStore = store,
                 control = control,
                 jitterUnit = { 0.5 },
-                waitRetry = { waits += it },
+                waitRetry = {
+                    check(dialCount.get() < 10) { "retry loop did not finish" }
+                    waits += it
+                },
                 openClient = { _, _ ->
                     val dial = dialCount.incrementAndGet()
                     // Dials 1 & 2 fail before any progress (1s, then 2s backoff).
@@ -185,9 +189,7 @@ class ResumableImportRunnerTest {
                             method == "POST" && path == "/app/import/api/uploads" -> HttpResponse(201, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":0,"total_bytes":${payload.size},"chunk_bytes":$advertised}""".toByteArray())
                             method == "GET" && path == "/app/import/api/uploads/upl_run" -> HttpResponse(200, emptyMap(), """{"status":"open","upload_id":"upl_run","next_offset":${serverData.size()},"total_bytes":${payload.size},"chunk_bytes":$advertised,"phase":"sending"}""".toByteArray())
                             method == "POST" && path == "/app/import/api/uploads/upl_run/commit" -> {
-                                val expected = (parseJson(body!!.toString(Charsets.UTF_8)) as Map<*, *>)["sha256"]
-                                val actual = bytesToLowerHex(MessageDigest.getInstance("SHA-256").digest(serverData.toByteArray()))
-                                assertEquals(expected, actual)
+                                commitSha256 = (parseJson(body!!.toString(Charsets.UTF_8)) as Map<*, *>)["sha256"] as String
                                 HttpResponse(200, emptyMap(), """{"status":"staged","path":"/imports/20261125_120001/archive.bin","timestamp":"20261125_120001","replay":false}""".toByteArray())
                             }
                             method == "POST" && path == "/app/import/api/start" -> HttpResponse(200, emptyMap(), """{"status":"ok","task_id":"t1","import_id":"20261125_120001"}""".toByteArray())
@@ -226,9 +228,11 @@ class ResumableImportRunnerTest {
 
             assertEquals(ResumableImportRunOutcome.FINISHED, outcome)
             assertNull(dao.byId(id))
+            assertEquals(bytesToLowerHex(MessageDigest.getInstance("SHA-256").digest(serverData.toByteArray())), commitSha256)
             // Wait ladder: 1s (dial 1), 2s (dial 2), 0ms immediate retry after dial 3 progress, 1s (dial 4)!
             assertEquals(listOf(1_000L, 2_000L, 1_000L), waits)
-            assertEquals(listOf(0L, advertised, advertised, advertised + recovered, 2 * advertised, 2 * advertised + recovered), putOffsets)
+            assertEquals(listOf(0L, advertised, advertised, advertised + recovered), putOffsets.take(4))
+            assertTrue(putOffsets.drop(2).zipWithNext().all { (previous, next) -> next > previous })
         } finally {
             root.toFile().deleteRecursively()
         }

@@ -382,20 +382,26 @@ class ResumableImportDeliveryTest {
     }
 
     @Test
-    fun retryWithNoConfirmedProgressUsesSmallerPutsOnlyForThatUpload() = withStore { root, dao, store ->
+    fun stalledUploadKeepsSmallPutsUntilFastReceiptsRestoreTheAdvertisedSize() = withStore { root, dao, store ->
         val advertised = 1024 * 1024
         val fallback = 256 * 1024
-        val bytes = ByteArray(advertised + 1) { it.toByte() }
-        enqueueFile(root, store, "interrupted.bin", bytes)
+        val bytes = ByteArray(3 * advertised + 1) { it.toByte() }
+        val interrupted = enqueueFile(root, store, "interrupted.bin", bytes)
         val journal = FakeResumableJournal(thresholdBytes = 500L, chunkBytes = advertised.toLong())
         val sizes = mutableListOf<Int>()
+        var wireNanos = 0L
         journal.onPutChunkOverride = { _, _, chunk, _ ->
             sizes += chunk.size
             if (sizes.size == 1) throw java.net.SocketTimeoutException("no receipt")
+            wireNanos += when (sizes.size) {
+                2 -> 30_000_000_000L
+                3 -> 5_000_000_000L
+                else -> 1_000_000_000L
+            }
             null
         }
         fun deliver(custody: ImportCustodyStore, run: ImportRun) =
-            deliverImports(journal, custody, run, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED, { true }, { 20_000L }, { _, _ -> })
+            deliverImports(journal, custody, run, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED, { true }, { 20_000L }, { _, _ -> }, monotonicNanos = { wireNanos })
 
         val first = ImportRun()
         assertEquals(ImportStageResult.RETRY, deliver(store, first))
@@ -403,11 +409,46 @@ class ResumableImportDeliveryTest {
         recordImportRetries(store, first, "inst-1", now = 0)
         val reopened = ImportCustodyStore(root, dao)
         assertEquals(ImportStageResult.CLEAN, deliver(reopened, ImportRun()))
-        assertEquals(listOf(advertised, fallback, fallback, fallback, fallback, 1), sizes)
+        assertEquals(listOf(advertised, fallback, fallback, fallback, 2 * fallback, advertised, 3 * fallback + 1), sizes)
+        assertContentEquals(bytes, journal.committedBytes[interrupted])
         val completed = sizes.size
-        enqueueFile(root, store, "fresh.bin", bytes.copyOf().also { it[0] = 42 })
+        val freshBytes = bytes.copyOf().also { it[0] = 42 }
+        val fresh = enqueueFile(root, store, "fresh.bin", freshBytes)
         assertEquals(ImportStageResult.CLEAN, deliver(store, ImportRun()))
-        assertEquals(listOf(advertised, 1), sizes.drop(completed))
+        assertEquals(listOf(advertised, advertised, advertised, 1), sizes.drop(completed))
+        assertContentEquals(freshBytes, journal.committedBytes[fresh])
+    }
+
+    @Test
+    fun partialReceiptsAndFailedGrowthProbesPreserveConfirmedProgress() = withStore { root, _, store ->
+        val ceiling = 256 * 1024
+        val payload = ByteArray(8 * ceiling + 1) { it.toByte() }
+        val id = enqueueFile(root, store, "probe.bin", payload)
+        val journal = FakeResumableJournal(thresholdBytes = 500L, chunkBytes = 4L * ceiling)
+        val attempts = mutableListOf<Pair<Long, Int>>()
+        journal.onPutChunkOverride = { uploadId, offset, bytes, _ ->
+            attempts += offset to bytes.size
+            if (bytes.size > ceiling) throw IOException("no receipt for larger piece")
+            if (offset == 0L) {
+                val accepted = bytes.size / 2
+                journal.sessions.getValue(uploadId).data.write(bytes, 0, accepted)
+                val reply = """{"upload_id":"$uploadId","next_offset":$accepted,"total_bytes":${payload.size},"complete":false}"""
+                HttpResponse(200, emptyMap(), reply.toByteArray())
+            } else null
+        }
+        val run = ImportRun()
+        val confirmed = mutableListOf<Long>()
+        for (pass in 0..10) {
+            val result = deliverImports(journal, store, run, "inst-1", "2.1.0", ImportVersionGate.SUPPORTED,
+                { true }, { 20_000L }, { _, _ -> }, monotonicNanos = { 0L })
+            if (result == ImportStageResult.CLEAN) break
+            assertEquals(ImportStageResult.RETRY, result)
+            confirmed += store.item(id)!!.uploadOffset
+        }
+        assertEquals(ceiling / 2L to ceiling, attempts[2], "partial receipt keeps the smaller size")
+        assertTrue(confirmed.size > 2)
+        assertTrue(confirmed.zipWithNext().all { (before, after) -> after > before })
+        assertContentEquals(payload, journal.committedBytes[id])
     }
 
     @Test
