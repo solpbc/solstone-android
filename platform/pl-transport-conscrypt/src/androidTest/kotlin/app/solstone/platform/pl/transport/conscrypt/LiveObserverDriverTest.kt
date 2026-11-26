@@ -7,7 +7,8 @@ import android.content.Context
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.solstone.core.crypto.sha256Hex
+import app.solstone.core.crypto.hex
+import java.security.MessageDigest
 import app.solstone.core.identity.ClientCredential
 import app.solstone.core.identity.ClientCredentialStore
 import app.solstone.core.identity.IdentityStore
@@ -157,13 +158,21 @@ class LiveObserverDriverTest {
         try {
             val fixture = File(requiredArg("fixturePath"))
             require(fixture.isFile && fixture.canRead()) { "fixture is absent or unreadable" }
-            val payload = fixture.readBytes()
             val day = requiredArg("day").also {
                 require(it.matches(Regex("\\d{8}"))) { "invalid instrumentation argument: day" }
             }
             val segmentKey = requiredArg("segment")
             val fileName = fixture.name
-            val expectedSha = sha256Hex(payload)
+            val digest = MessageDigest.getInstance("SHA-256")
+            fixture.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                var count = input.read(buffer)
+                while (count >= 0) {
+                    digest.update(buffer, 0, count)
+                    count = input.read(buffer)
+                }
+            }
+            val expectedSha = hex(digest.digest())
             val manifest = BundleManifest(
                 key = SegmentKey(day = day, segment = segmentKey),
                 files = listOf(
@@ -171,7 +180,7 @@ class LiveObserverDriverTest {
                         sourceId = "validation",
                         name = fileName,
                         sha256 = expectedSha,
-                        byteSize = payload.size.toLong(),
+                        byteSize = fixture.length(),
                         mediaType = "audio/wav",
                         captureStartEpochMs = 0L,
                         captureEndEpochMs = 0L,
@@ -183,7 +192,7 @@ class LiveObserverDriverTest {
             val outcome = openClient(credential!!).use { client ->
                 ObserverIngestClient(client) { "solstoneAndroidValidation${System.nanoTime()}" }.ingest(
                     manifest = manifest,
-                    fileBytes = { payload },
+                    openFile = { fixture.inputStream() },
                     host = arg("hostname", "android-validation"),
                     platform = arg("platform", "android"),
                 ).single()
@@ -214,7 +223,7 @@ class LiveObserverDriverTest {
             assertNotNull("server must return the canonical segment key", serverSegment)
 
             ingestFile.writeText(
-                "day=$day\nsegment=$serverSegment\nfileName=$fileName\nsize=${payload.size}\nsha=$expectedSha\n",
+                "day=$day\nsegment=$serverSegment\nfileName=$fileName\nsize=${fixture.length()}\nsha=$expectedSha\n",
             )
         } catch (t: Throwable) {
             result("t3.ERROR=${t.javaClass.simpleName}: ${t.message}")

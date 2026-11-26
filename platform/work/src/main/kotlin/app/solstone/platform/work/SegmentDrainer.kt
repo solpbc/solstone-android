@@ -24,8 +24,9 @@ import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SyncStateRow
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
-import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
+import java.io.FileNotFoundException
 
 const val DRAIN_SEGMENT_CAP = 50
 
@@ -73,8 +74,8 @@ class RoomDrainStore(private val dao: SegmentDao) : DrainStore {
 internal fun drainSegments(
     store: DrainStore,
     reconcile: (List<BundleManifest>, String) -> List<ReconcileVerdict>,
-    ingest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome>,
-    readPayload: (SegmentRow, BundleFile) -> ByteArray,
+    ingest: (BundleManifest, (BundleFile) -> InputStream) -> List<IngestOutcome>,
+    openPayload: (SegmentRow, BundleFile) -> InputStream,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
     finisher: ConfirmedCopyFinisher,
@@ -176,7 +177,7 @@ internal fun drainSegments(
                         val result = try {
                             resolveIngestOutcomes(
                                 uploading,
-                                ingest(uploading) { file -> readPayload(segment, file) },
+                                ingest(uploading) { file -> openPayload(segment, file) },
                             )
                         } catch (e: RelayWebSocketClosedException) {
                             throw e
@@ -322,7 +323,7 @@ internal fun drainSegments(
                         val result = try {
                             resolveIngestOutcomes(
                                 uploading,
-                                ingest(uploading) { file -> readPayload(segment, file) },
+                                ingest(uploading) { file -> openPayload(segment, file) },
                             )
                         } catch (e: RelayWebSocketClosedException) {
                             throw e
@@ -344,9 +345,7 @@ internal fun drainSegments(
                             break
                         } catch (e: IOException) {
                             log("watch ingest io ${segment.id}", e)
-                            watchFailed = true
                             resolveIoError()
-                            break
                         }
 
                         when (result) {

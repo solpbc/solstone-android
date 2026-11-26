@@ -76,27 +76,29 @@ fun parseHttpResponse(raw: ByteArray): HttpResponse {
 
 fun dechunk(raw: ByteArray): ByteArray {
     val out = ByteArrayOutputStream()
+    val crlf = "\r\n".toByteArray(Charsets.US_ASCII)
     var index = 0
-    while (index < raw.size) {
-        val lineEnd = indexOf(raw, "\r\n".toByteArray(Charsets.US_ASCII), index)
-        if (lineEnd < 0) {
-            throw IllegalStateException("chunked body missing size line")
-        }
-        val sizeText = String(raw, index, lineEnd - index, Charsets.US_ASCII)
-            .split(";", limit = 2)[0]
-            .trim()
-        val size = sizeText.toInt(16)
-        index = lineEnd + 2
+    while (true) {
+        val lineEnd = indexOf(raw, crlf, index)
+        check(lineEnd >= 0) { "chunked body missing size line" }
+        val size = String(raw, index, lineEnd - index, Charsets.US_ASCII)
+            .substringBefore(';').trim().toIntOrNull(16)
+        check(size != null && size >= 0) { "invalid chunk length" }
+        index = lineEnd + crlf.size
         if (size == 0) {
-            return out.toByteArray()
+            while (true) {
+                val end = indexOf(raw, crlf, index)
+                check(end >= 0) { "chunked body missing trailer terminator" }
+                if (end == index) return out.toByteArray()
+                index = end + crlf.size
+            }
         }
-        if (index + size > raw.size) {
-            throw IllegalStateException("chunked body truncated")
-        }
+        check(size <= raw.size - index - crlf.size) { "chunked body truncated" }
         out.write(raw, index, size)
-        index += size + 2
+        index += size
+        check(raw[index] == crlf[0] && raw[index + 1] == crlf[1]) { "chunk missing CRLF" }
+        index += crlf.size
     }
-    return out.toByteArray()
 }
 
 fun indexOf(haystack: ByteArray, needle: ByteArray, start: Int = 0): Int {

@@ -554,7 +554,7 @@ class SyncDecisionsTest {
     }
 
     @Test
-    fun readPayloadForUsesDirSegmentNotWireSegment() {
+    fun openPayloadForUsesDirSegmentNotWireSegment() {
         val spoolDir = Files.createTempDirectory("solstone-work-spool").toFile()
         try {
             val wireKey = "011500_300"
@@ -571,7 +571,7 @@ class SyncDecisionsTest {
             segmentDir.mkdirs()
             File(segmentDir, file.name).writeBytes("bytes".toByteArray())
 
-            assertEquals("bytes", readPayloadFor(spoolDir, row, file).decodeToString())
+            assertEquals("bytes", openPayloadFor(spoolDir, row, file).use { it.readBytes().decodeToString() })
         } finally {
             spoolDir.deleteRecursively()
         }

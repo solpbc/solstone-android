@@ -16,8 +16,8 @@ import app.solstone.core.observer.ReconcileAuthException
 import app.solstone.core.observer.ReconcileUnavailableException
 import app.solstone.core.observer.ReconcileVerdict
 import app.solstone.core.observer.SegmentReconciler
-import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.queue.QueueEvent
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.MAIN_STREAM
@@ -30,6 +30,7 @@ import app.solstone.platform.persistence.room.SegmentFileRow
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.persistence.room.SpoolDirectoryRemover
 import app.solstone.platform.persistence.room.SyncStateRow
+import java.io.InputStream
 import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
@@ -50,16 +51,16 @@ class SegmentDrainerTest {
         val sent = mutableListOf<String>()
         fun allowed() = !app.solstone.core.obsidian.obsidianOwnerStopHolds(witness, acknowledged)
         drainSegments(f.store, { manifests, day -> witness = "stop-two"; uploadAll(manifests, day) },
-            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, readBytes,
+            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, openBytes,
             { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
         assertTrue(sent.isEmpty()); assertEquals(0, f.store.row(notes.id).attemptCount)
         // Cold sender reads the same persisted witness; no Activity or source callback is needed.
         drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
-            readBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
+            openBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
         assertTrue(sent.isEmpty())
         witness = null // a global resume releases a purely global hold
         drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
-            readBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
+            openBytes, { NOW }, f.store::log, f.finisher, obsidianCurrent = ::allowed)
         assertEquals(listOf("090000_300"), sent)
     }
 
@@ -72,13 +73,13 @@ class SegmentDrainerTest {
         val (main, _) = f.createSegment("main", sealedAt = 3)
         val sent = mutableListOf<String>()
         drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
-            readBytes, { NOW }, f.store::log, f.finisher)
+            openBytes, { NOW }, f.store::log, f.finisher)
         assertEquals(listOf("main"), sent)
         assertEquals(QueueState.FAILED, f.store.row(old.id).state)
         assertEquals(QueueState.SEALED, f.store.row(later.id).state)
         assertEquals(QueueState.EVICTED, f.store.row(main.id).state)
         drainSegments(f.store, uploadAll, { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) },
-            readBytes, { NOW + 172_800_000L }, f.store::log, f.finisher)
+            openBytes, { NOW + 172_800_000L }, f.store::log, f.finisher)
         assertEquals(listOf("main", "090000_300", "090500_300"), sent)
         assertEquals(QueueState.EVICTED, f.store.row(later.id).state)
     }
@@ -90,7 +91,7 @@ class SegmentDrainerTest {
         val (later, _) = f.createSegment("090500_300", stream = "obsidian", sealedAt = 2)
         val sent = mutableListOf<String>()
         drainSegments(f.store, uploadAll, { m, _ -> sent += m.key.segment; listOf(IngestOutcome.Rejected(503, "")) },
-            readBytes, { NOW }, f.store::log, f.finisher)
+            openBytes, { NOW }, f.store::log, f.finisher)
         assertEquals(listOf("090000_300"), sent)
         assertEquals(QueueState.FAILED, f.store.row(old.id).state)
         assertEquals(QueueState.SEALED, f.store.row(later.id).state)
@@ -104,7 +105,7 @@ class SegmentDrainerTest {
         var allowed = true
         val sent = mutableListOf<String>()
         drainSegments(f.store, { m, day -> allowed = false; uploadAll(m, day) },
-            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, readBytes,
+            { m, bytes -> sent += m.key.segment; acceptedIngest("srv")(m, bytes) }, openBytes,
             { NOW }, f.store::log, f.finisher, obsidianCurrent = { allowed })
         assertEquals(listOf("main"), sent)
         assertEquals(QueueState.SEALED, f.store.row(notes.id).state)
@@ -120,7 +121,7 @@ class SegmentDrainerTest {
         drainSegments(f.store, uploadAll, { m, bytes ->
             if (m.key.segment == "090000_300") listOf(IngestOutcome.Failed("obsidian_note_invalid"))
             else acceptedIngest("srv")(m, bytes)
-        }, readBytes, { NOW }, f.store::log, f.finisher)
+        }, openBytes, { NOW }, f.store::log, f.finisher)
         assertEquals(QueueState.FAILED, f.store.row(bad.id).state)
         assertEquals("obsidian_note_invalid", f.store.row(bad.id).lastError)
         assertEquals(QueueState.EVICTED, f.store.row(good.id).state)
@@ -162,7 +163,7 @@ class SegmentDrainerTest {
                 BundleFile("audio", "audio.bin", "audio-hash", 1, "application/octet-stream", 1, 2)))
             val report = drainSegments(f.store, uploadAll, { _, _ -> listOf(
                 IngestOutcome.Accepted("srv", derived), IngestOutcome.Accepted("srv", bad)) },
-                readBytes, { NOW }, f.store::log, f.finisher)
+                openBytes, { NOW }, f.store::log, f.finisher)
             assertTrue(report.failedThisRun)
             assertEquals(QueueState.FAILED, f.store.row(row.id).state)
             assertTrue(Files.exists(directory))
@@ -187,7 +188,7 @@ class SegmentDrainerTest {
                 2 -> IngestOutcome.Duplicate("srv", IngestDescriptors.Listed(emptyList()))
                 else -> IngestOutcome.Collision("srv", derived)
             })
-        }, readBytes, { NOW }, f.store::log, f.finisher)
+        }, openBytes, { NOW }, f.store::log, f.finisher)
         assertEquals(leaves, sent)
         assertFalse(report.failedThisRun)
         rows.forEach { (row, directory) ->
@@ -209,7 +210,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, bytes -> sent += manifest.key.segment; acceptedIngest("uploaded")(manifest, bytes) },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -232,7 +233,7 @@ class SegmentDrainerTest {
                 if (manifest.files.any { it.sourceId == CALENDAR_STREAM }) calendarIngests++
                 acceptedIngest("srv")(manifest, fileBytes)
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -264,13 +265,13 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 if (manifest.files.any { it.sourceId == CALENDAR_STREAM }) {
-                    manifest.files.forEach { fileBytes(it) }
+                    manifest.files.forEach { fileBytes(it).close() }
                     listOf(IngestOutcome.Failed("calendar_note_invalid"))
                 } else {
                     acceptedIngest("srv")(manifest, fileBytes)
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -293,7 +294,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -328,7 +329,7 @@ class SegmentDrainerTest {
                 if (later == null) later = fixture.createSegment("b", sealedAt = 2).first
                 accept(manifest, fileBytes)
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -365,7 +366,7 @@ class SegmentDrainerTest {
                 paired = false
                 accept(manifest, fileBytes)
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -401,7 +402,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { _, _ -> listOf(IngestOutcome.Rejected(401, "unauthorized")) },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -417,7 +418,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -459,7 +460,7 @@ class SegmentDrainerTest {
                 ingestCount += 1
                 error("ingest must not be called for a held segment")
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -479,7 +480,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -508,7 +509,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = uploadAll,
             ingest = rejectedIngest(422),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -537,10 +538,10 @@ class SegmentDrainerTest {
                 store = store,
                 reconcile = uploadAll,
                 ingest = { manifest, fileBytes ->
-                    ingested = fileBytes(manifest.files.single())
+                    ingested = fileBytes(manifest.files.single()).use { it.readBytes() }
                     outcome
                 },
-                readPayload = { _, _ -> payload },
+                openPayload = { _, _ -> payload.inputStream() },
                 now = { NOW },
                 log = store::log,
                 finisher = dummyFinisher(),
@@ -560,7 +561,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = uploadAll,
             ingest = acceptedIngest("unused"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -590,7 +591,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = uploadAll,
             ingest = acceptedIngest("unused"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -614,9 +615,9 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv"),
-            readPayload = { segment, _ ->
+            openPayload = { segment, _ ->
                 if (segment.id == missing.id) throw FileNotFoundException("missing")
-                byteArrayOf(1)
+                byteArrayOf(1).inputStream()
             },
             now = { NOW },
             log = fixture.store::log,
@@ -642,9 +643,9 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv"),
-            readPayload = { segment, _ ->
+            openPayload = { segment, _ ->
                 if (segment.id == bad.id) throw IllegalArgumentException("bad path")
-                byteArrayOf(1)
+                byteArrayOf(1).inputStream()
             },
             now = { NOW },
             log = fixture.store::log,
@@ -668,7 +669,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = { _, _ -> throw ReconcileUnavailableException(500) },
             ingest = acceptedIngest("unused"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -689,7 +690,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = { _, _ -> throw ReconcileAuthException(401) },
             ingest = acceptedIngest("unused"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -715,7 +716,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 ingestCount += 1
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(
                     IngestOutcome.Accepted(
                         "srv-${manifest.key.segment}",
@@ -733,7 +734,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -750,7 +751,7 @@ class SegmentDrainerTest {
     fun logsClaimPayloadAndReconcileCatches() {
         val claimStore = FakeDrainStore(segment("claim"), files = mapOf("claim" to listOf(file("claim"))))
         claimStore.failAdvanceFor += "claim"
-        drainSegments(claimStore, uploadAll, acceptedIngest("unused"), readBytes, { NOW }, claimStore::log, dummyFinisher())
+        drainSegments(claimStore, uploadAll, acceptedIngest("unused"), openBytes, { NOW }, claimStore::log, dummyFinisher())
 
         val payloadStore = FakeDrainStore(segment("payload"), files = mapOf("payload" to listOf(file("payload"))))
         drainSegments(
@@ -768,7 +769,7 @@ class SegmentDrainerTest {
             reconcileStore,
             { _, _ -> throw ReconcileUnavailableException(500) },
             acceptedIngest("unused"),
-            readBytes,
+            openBytes,
             { NOW },
             reconcileStore::log,
             dummyFinisher(),
@@ -792,7 +793,7 @@ class SegmentDrainerTest {
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
                     postedSources++
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         IngestOutcome.Accepted("srv-a", IngestDescriptors.Absent)
                     } else {
@@ -805,7 +806,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -830,7 +831,7 @@ class SegmentDrainerTest {
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
                     postedSources++
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         IngestOutcome.Accepted(
                             "srv-a",
@@ -848,7 +849,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -872,7 +873,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -895,7 +896,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         IngestOutcome.Accepted(
                             "srv-a",
@@ -908,7 +909,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -934,7 +935,7 @@ class SegmentDrainerTest {
                     IngestOutcome.Rejected(401, "unauthorized"),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -957,7 +958,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         IngestOutcome.Accepted(
                             "srv-a",
@@ -970,7 +971,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -989,7 +990,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(
                     IngestOutcome.Accepted(
                         "srv-a",
@@ -999,7 +1000,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -1026,7 +1027,7 @@ class SegmentDrainerTest {
             store = store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(
                     IngestOutcome.Accepted(
                         "srv-a",
@@ -1036,7 +1037,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -1064,10 +1065,10 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1092,10 +1093,10 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1120,14 +1121,14 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 if (manifest.key.segment == "a") {
                     listOf(IngestOutcome.Rejected(500, """{"status":"error","reason_code":"segment_removed"}"""))
                 } else {
                     listOf(IngestOutcome.Rejected(503, "temporary_unavailable"))
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1155,13 +1156,13 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     val disp = if (sourceId == "audio") "already_held" else "written"
                     val desc = files.map { IngestFileDescriptor(it.name, it.name, it.byteSize, it.sha256, disp) }
                     IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(desc))
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1184,7 +1185,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         val desc = files.map { IngestFileDescriptor(it.name, it.name, it.byteSize, it.sha256, "written") }
                         IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(desc))
@@ -1193,7 +1194,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1217,7 +1218,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         val desc = files.map { IngestFileDescriptor(it.name, it.name, it.byteSize, it.sha256, "written") }
                         IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(desc))
@@ -1226,7 +1227,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1251,7 +1252,7 @@ class SegmentDrainerTest {
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (sourceId, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     if (sourceId == "audio") {
                         val desc = files.map { IngestFileDescriptor(it.name, it.name, it.byteSize, it.sha256, "written") }
                         IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(desc))
@@ -1260,7 +1261,7 @@ class SegmentDrainerTest {
                     }
                 }
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1282,10 +1283,10 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Rejected(500, """{"error":"internal_server_error"}"""))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1328,7 +1329,7 @@ class SegmentDrainerTest {
             reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
             ingest = { manifest, fileBytes ->
                 ingestCount++
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(
                     IngestOutcome.Accepted(
                         "srv-a",
@@ -1336,7 +1337,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1378,10 +1379,10 @@ class SegmentDrainerTest {
             reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
             ingest = { manifest, fileBytes ->
                 ingestCount++
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Rejected(503, "temporary_unavailable"))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1400,7 +1401,7 @@ class SegmentDrainerTest {
         Files.delete(dir.resolve("manifest"))
         var ingestCount = 0
         val ingest = acceptedIngest("srv-a")
-        val countingIngest: (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome> = { manifest, fileBytes ->
+        val countingIngest: (BundleManifest, (BundleFile) -> InputStream) -> List<IngestOutcome> = { manifest, fileBytes ->
             ingestCount++
             ingest(manifest, fileBytes)
         }
@@ -1409,7 +1410,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = countingIngest,
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1428,7 +1429,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = countingIngest,
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW + 1 },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1471,7 +1472,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
             ingest = { _, _ -> error("ingest must not be called for a held segment") },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1572,7 +1573,7 @@ class SegmentDrainerTest {
             store = RoomDrainStore(dao),
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = finisher,
@@ -1601,10 +1602,10 @@ class SegmentDrainerTest {
                 store = store,
                 reconcile = uploadAll,
                 ingest = { manifest, fileBytes ->
-                    manifest.files.forEach { fileBytes(it) }
+                    manifest.files.forEach { fileBytes(it).close() }
                     listOf(IngestOutcome.Rejected(409, reason ?: ""))
                 },
-                readPayload = readBytes,
+                openPayload = openBytes,
                 now = { NOW },
                 log = store::log,
                 finisher = dummyFinisher(),
@@ -1630,10 +1631,10 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Accepted("srv-a", IngestDescriptors.Absent))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1670,7 +1671,7 @@ class SegmentDrainerTest {
                 secondIngestCount++
                 error("ingest should not be called")
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW + 15 * 60_000L },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1697,10 +1698,10 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = { manifest, fileBytes ->
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(IngestOutcome.Accepted("srv-a", IngestDescriptors.Absent))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1728,7 +1729,7 @@ class SegmentDrainerTest {
             reconcile = { manifests, day -> SegmentReconciler(fakeHttp).diff(manifests, day) },
             ingest = { manifest, fileBytes ->
                 secondIngestCount++
-                manifest.files.forEach { fileBytes(it) }
+                manifest.files.forEach { fileBytes(it).close() }
                 listOf(
                     IngestOutcome.Accepted(
                         "srv-a",
@@ -1738,7 +1739,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW + 15 * 60_000L },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1775,7 +1776,7 @@ class SegmentDrainerTest {
                     manifest.files.forEach { bytes(it) }
                     listOf(IngestOutcome.Accepted("accepted", descriptors))
                 },
-                readPayload = readBytes,
+                openPayload = openBytes,
                 now = { NOW },
                 log = fixture.store::log,
                 finisher = fixture.finisher,
@@ -1805,7 +1806,7 @@ class SegmentDrainerTest {
                 manifest.files.forEach { bytes(it) }
                 listOf(IngestOutcome.Accepted("accepted", IngestDescriptors.Absent))
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1849,7 +1850,7 @@ class SegmentDrainerTest {
                     manifest.files.forEach { bytes(it) }
                     listOf(IngestOutcome.Accepted("accepted", IngestDescriptors.Absent))
                 },
-                readPayload = readBytes,
+                openPayload = openBytes,
                 now = { NOW },
                 log = fixture.store::log,
                 finisher = fixture.finisher,
@@ -1906,7 +1907,7 @@ class SegmentDrainerTest {
                 store = fixture.store,
                 reconcile = { manifests, day -> SegmentReconciler(httpReturning(forceUpload)).diff(manifests, day) },
                 ingest = { manifest, fileBytes -> ingestClient.ingest(manifest, fileBytes) },
-                readPayload = readBytes,
+                openPayload = openBytes,
                 now = { NOW },
                 log = fixture.store::log,
                 finisher = fixture.finisher,
@@ -1946,7 +1947,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = { manifests, day -> SegmentReconciler(client).diff(manifests, day) },
             ingest = { _, _ -> error("exact current custody should skip upload") },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1974,7 +1975,7 @@ class SegmentDrainerTest {
                 uploadedSegments += manifest.key.segment
                 acceptedIngest("uploaded")(manifest, bytes)
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -1997,7 +1998,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = { manifests, day -> SegmentReconciler(httpReturning(emptyListing)).diff(manifests, day) },
             ingest = acceptedIngest("uploaded"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -2022,7 +2023,7 @@ class SegmentDrainerTest {
                     ),
                 )
             },
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -2064,7 +2065,7 @@ class SegmentDrainerTest {
             store = fixture.store,
             reconcile = uploadAll,
             ingest = acceptedIngest("srv-a"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = fixture.store::log,
             finisher = fixture.finisher,
@@ -2098,7 +2099,7 @@ class SegmentDrainerTest {
                 manifests.map { ReconcileVerdict(it.key, needsUpload = true) }
             },
             ingest = acceptedIngest("srv"),
-            readPayload = readBytes,
+            openPayload = openBytes,
             now = { NOW },
             log = store::log,
             finisher = dummyFinisher(),
@@ -2227,12 +2228,12 @@ class SegmentDrainerTest {
             manifests.map { ReconcileVerdict(it.key, needsUpload = true) }
         }
 
-        val readBytes: (SegmentRow, BundleFile) -> ByteArray = { _, _ -> byteArrayOf(1) }
+        val openBytes: (SegmentRow, BundleFile) -> InputStream = { _, _ -> byteArrayOf(1).inputStream() }
 
-        fun acceptedIngest(serverKey: String): (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome> =
+        fun acceptedIngest(serverKey: String): (BundleManifest, (BundleFile) -> InputStream) -> List<IngestOutcome> =
             { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (_, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     val descriptors = files.map { file ->
                         IngestFileDescriptor(
                             submitted = file.name,
@@ -2246,10 +2247,10 @@ class SegmentDrainerTest {
                 }
             }
 
-        fun rejectedIngest(status: Int, reasonCode: String = "rejected"): (BundleManifest, (BundleFile) -> ByteArray) -> List<IngestOutcome> =
+        fun rejectedIngest(status: Int, reasonCode: String = "rejected"): (BundleManifest, (BundleFile) -> InputStream) -> List<IngestOutcome> =
             { manifest, fileBytes ->
                 manifest.files.groupBy(BundleFile::sourceId).map { (_, files) ->
-                    files.forEach { fileBytes(it) }
+                    files.forEach { fileBytes(it).close() }
                     IngestOutcome.Rejected(status, reasonCode)
                 }
             }

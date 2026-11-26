@@ -291,14 +291,14 @@ class WatchComposedProofTest {
             ingest = { manifest, fileBytes ->
                 ObserverIngestClient(client) { "boundary123" }.ingest(
                     manifest = manifest,
-                    fileBytes = fileBytes,
+                    openFile = fileBytes,
                     host = "test-phone",
                     platform = "android",
                 )
             },
-            readPayload = { segment, file ->
+            openPayload = { segment, file ->
                 val dir = spoolDir.resolve(segment.day).resolve(segment.stream).resolve(segment.dirSegment)
-                Files.readAllBytes(dir.resolve(file.name))
+                Files.newInputStream(dir.resolve(file.name))
             },
             readStoredZone = { segment -> readStoredZoneFor(spoolDir.toFile(), segment) },
             now = { 2000L },
@@ -435,14 +435,14 @@ class WatchComposedProofTest {
             ingest = { manifest, fileBytes ->
                 ObserverIngestClient(client) { "boundary456" }.ingest(
                     manifest = manifest,
-                    fileBytes = fileBytes,
+                    openFile = fileBytes,
                     host = "test-phone",
                     platform = "android",
                 )
             },
-            readPayload = { segment, file ->
+            openPayload = { segment, file ->
                 val dir = spoolDir.resolve(segment.day).resolve(segment.stream).resolve(segment.dirSegment)
-                Files.readAllBytes(dir.resolve(file.name))
+                Files.newInputStream(dir.resolve(file.name))
             },
             readStoredZone = { segment -> readStoredZoneFor(spoolDir.toFile(), segment) },
             now = { 3000L },

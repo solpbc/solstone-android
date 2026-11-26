@@ -7,6 +7,11 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
 import app.solstone.core.model.SegmentKey
 import app.solstone.core.model.WireKeys
+import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.StreamingBody
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import java.io.InputStream
 import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
 import app.solstone.core.segment.wireKeys
@@ -39,7 +44,7 @@ class ObserverIngestClientTest {
 
         val outcomes = client.ingest(
             manifest = manifest,
-            fileBytes = { bytes.getValue(it.name) },
+            openFile = { bytes.getValue(it.name).inputStream() },
             host = "watch-one",
             platform = "rogbid",
         )
@@ -78,7 +83,7 @@ class ObserverIngestClientTest {
             "photo.jpg" to byteArrayOf(4, 5, 6),
         )
 
-        val outcomes = client.ingest(twoFileManifest(), { bytes.getValue(it.name) })
+        val outcomes = client.ingest(twoFileManifest(), { bytes.getValue(it.name).inputStream() })
 
         assertEquals(2, outcomes.size)
         assertTrue(outcomes.all { it is IngestOutcome.Accepted })
@@ -103,7 +108,7 @@ class ObserverIngestClientTest {
         val http = RecordingPlHttpClient(HttpResponse(500, emptyMap(), "server error".toByteArray()))
         val client = ObserverIngestClient(http) { "fixed-boundary" }
         val manifest = twoFileManifest()
-        val fileBytes: (BundleFile) -> ByteArray = { it.name.toByteArray() }
+        val fileBytes: (BundleFile) -> InputStream = { ByteArray(it.byteSize.toInt()).inputStream() }
 
         val outcomes = client.ingest(manifest, fileBytes)
         assertEquals(2, outcomes.size)
@@ -127,7 +132,7 @@ class ObserverIngestClientTest {
             listOf(BundleFile("mic", "audio.wav", "sha-audio", 3, "audio/wav", 1, 2)),
             emptyList(),
         )
-        val fileBytes: (BundleFile) -> ByteArray = { byteArrayOf(1, 2, 3) }
+        val fileBytes: (BundleFile) -> InputStream = { byteArrayOf(1, 2, 3).inputStream() }
 
         http.response = HttpResponse(200, emptyMap(), """{"status":"ok","segment":"seg","file_descriptors":null}""".toByteArray())
         assertEquals(IngestDescriptors.Absent, (client.ingest(manifest, fileBytes).single() as IngestOutcome.Accepted).descriptors)
@@ -169,13 +174,71 @@ class ObserverIngestClientTest {
             emptyList(),
         )
 
-        ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { byteArrayOf(7) })
+        ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { byteArrayOf(7).inputStream() })
 
         val envelope = parseJson(
             parseMultipart(requireNotNull(http.lastRequest.body), "fixed-boundary").first().body.toString(Charsets.UTF_8),
         ) as Map<*, *>
         assertEquals(setOf("day", "segment", "files"), envelope.keys)
         assertEquals(listOf(mapOf("submitted" to "audio.wav")), envelope["files"])
+    }
+
+    @Test
+    fun earlyReplyClosesTheCurrentFileWithoutReadingAheadOrOpeningTheNextFile() {
+        val response = HttpResponse(409, emptyMap(), byteArrayOf())
+        val fallback = RecordingPlHttpClient(response)
+        var opened = 0
+        var closed = 0
+        var payloadBytesRead = 0
+        val http = object : PlHttpClient by fallback {
+            override fun requestStreaming(
+                method: String, path: String, headers: Map<String, String>,
+                body: StreamingBody, maxResponseBytes: Int,
+            ): HttpResponse {
+                assertEquals(0, opened)
+                val smallBuffer = ByteArray(71)
+                while (payloadBytesRead == 0) assertTrue(body.readChunk(smallBuffer, 0, smallBuffer.size) > 0)
+                return response
+            }
+        }
+        val files = listOf("a.bin", "b.bin").map {
+            BundleFile("mic", it, "sha", 4096, "application/octet-stream", 0, 1)
+        }
+        val manifest = BundleManifest(SegmentKey("20260616", "093000_60"), files, emptyList())
+        val result = ObserverIngestClient(http) { "boundary" }.ingest(manifest, { file ->
+            assertEquals("a.bin", file.name)
+            opened++
+            object : ByteArrayInputStream(ByteArray(4096)) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int =
+                    super.read(b, off, len).also { payloadBytesRead += it }
+                override fun close() { closed++ }
+            }
+        })
+        assertEquals(409, assertIs<IngestOutcome.Rejected>(result.single()).status)
+        assertEquals(71, payloadBytesRead)
+        assertEquals(1, opened)
+        assertEquals(1, closed)
+        assertTrue(fallback.requests.isEmpty())
+    }
+
+    @Test
+    fun eachSealedFileMustMatchItsLengthEvenWhenTheTotalWouldMatch() {
+        val files = listOf("a", "b").map { BundleFile("mic", it, "sha", 3, "", 0, 1) }
+        val manifest = BundleManifest(SegmentKey("20260616", "093000_60"), files, emptyList())
+        for (actual in listOf(2, 4)) {
+            val http = RecordingPlHttpClient(okResponse("unused"))
+            var closed = 0
+            assertFailsWith<IOException> {
+                ObserverIngestClient(http) { "fixed" }.ingest(manifest, { file ->
+                    val available = if (file.name == "a") actual else 6 - actual
+                    object : ByteArrayInputStream(ByteArray(available)) {
+                        override fun close() { closed++ }
+                    }
+                })
+            }
+            assertEquals(1, closed)
+            assertTrue(http.requests.isEmpty())
+        }
     }
 
     @Test
@@ -189,7 +252,7 @@ class ObserverIngestClientTest {
             emptyList(),
         )
 
-        ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { payload })
+        ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { payload.inputStream() })
 
         val part = parseMultipart(requireNotNull(http.lastRequest.body), "fixed-boundary")[1]
         assertEquals(filename, part.filename)
@@ -207,7 +270,7 @@ class ObserverIngestClientTest {
             )
 
             assertFailsWith<IllegalArgumentException> {
-                ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { byteArrayOf(1) })
+                ObserverIngestClient(http) { "fixed-boundary" }.ingest(manifest, { ByteArray(it.byteSize.toInt()) { 1 }.inputStream() })
             }
         }
     }
@@ -217,7 +280,7 @@ class ObserverIngestClientTest {
         val http = RecordingPlHttpClient(okResponse("server-segment"))
         val client = ObserverIngestClient(http) { "fixed-boundary" }
         val manifest = twoFileManifest()
-        val fileBytes: (BundleFile) -> ByteArray = { it.name.toByteArray() }
+        val fileBytes: (BundleFile) -> InputStream = { ByteArray(it.byteSize.toInt()).inputStream() }
 
         assertEquals(
             listOf(IngestOutcome.Accepted("server-segment", IngestDescriptors.Absent), IngestOutcome.Accepted("server-segment", IngestDescriptors.Absent)),
@@ -292,7 +355,7 @@ class ObserverIngestClientTest {
 
             val outcomes = client.ingest(
                 manifest = manifest,
-                fileBytes = { byteArrayOf(1, 2, 3) },
+                openFile = { byteArrayOf(1, 2, 3).inputStream() },
                 host = "phone",
                 platform = "android",
             )
@@ -340,7 +403,7 @@ class ObserverIngestClientTest {
 
         val outcomes = client.ingest(
             manifest = manifest,
-            fileBytes = { byteArrayOf(1, 2, 3) },
+            openFile = { byteArrayOf(1, 2, 3).inputStream() },
             host = "phone",
             platform = "android",
         )
@@ -377,7 +440,7 @@ class ObserverIngestClientTest {
 
         val outcomes = client.ingest(
             manifest = manifest,
-            fileBytes = { byteArrayOf(1, 2, 3) },
+            openFile = { byteArrayOf(1, 2, 3).inputStream() },
         )
 
         assertEquals(1, outcomes.size)
@@ -407,7 +470,7 @@ class ObserverIngestClientTest {
             gaps = emptyList(),
         )
 
-        val outcomes = client.ingest(manifest, { byteArrayOf(1) })
+        val outcomes = client.ingest(manifest, { ByteArray(it.byteSize.toInt()) { 1 }.inputStream() })
 
         assertEquals(3, outcomes.size)
         assertEquals(3, http.requests.size)

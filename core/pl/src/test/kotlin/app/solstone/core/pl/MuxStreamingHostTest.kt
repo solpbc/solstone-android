@@ -460,33 +460,28 @@ class MuxStreamingHostTest {
     }
 
     @Test
-    fun httpResponseChunkedFinalResponseThrows() {
-        val (client, server) = pairedDuplexes()
-        val serverDone = CountDownLatch(1)
-        val peerThread = thread(start = true) {
-            server.use { duplex ->
-                readFrame(duplex.input) // open
-                readFrame(duplex.input) // close
-                val resp = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n".toByteArray(Charsets.US_ASCII)
-                sendFrame(duplex, 1, FLAG_DATA or FLAG_CLOSE, resp)
-                serverDone.countDown()
+    fun httpResponseChunkedReceiptRequiresCompleteFraming() {
+        fun receive(wireBody: String): HttpResponse {
+            val (client, server) = pairedDuplexes()
+            val peer = thread {
+                server.use { duplex ->
+                    readFrame(duplex.input) // open
+                    readFrame(duplex.input) // close
+                    val bytes = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n$wireBody"
+                    sendFrame(duplex, 1, FLAG_DATA or FLAG_CLOSE, bytes.toByteArray(Charsets.US_ASCII))
+                }
+            }
+            try {
+                return client.use { duplex ->
+                    MuxSession(duplex).requestStreaming("GET", "/chunked-resp", emptyList(), 0L, { _, _, _ -> -1 })
+                }
+            } finally {
+                peer.join(5000)
             }
         }
-
-        client.use { duplex ->
-            val session = MuxSession(duplex)
-            assertFailsWith<IOException> {
-                session.requestStreaming(
-                    method = "GET",
-                    path = "/chunked-resp",
-                    headers = emptyList(),
-                    contentLength = 0L,
-                    readChunk = { _, _, _ -> -1 },
-                )
-            }
-        }
-        assertTrue(serverDone.await(5, TimeUnit.SECONDS))
-        peerThread.join(5000)
+        assertEquals("ok", receive("2\r\nok\r\n0\r\n\r\n").bodyText())
+        assertFailsWith<IOException> { receive("2\r\nok\r\n") }
+        assertFailsWith<IOException> { receive("2\r\nok\r\n0\r\n") }
     }
 
     @Test

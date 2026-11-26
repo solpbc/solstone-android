@@ -31,6 +31,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -46,7 +47,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { openClient() },
             store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a")))),
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
@@ -56,6 +57,25 @@ class SyncWithTransportTest {
             onAuthorized = { signals.authorized++ },
         )
         return outcome to signals
+    }
+
+    @Test
+    fun stoppedWorkerReleasesFileAndRefusesToOpenTheNextPayload() {
+        val root = Files.createTempDirectory("stopped-worker").toFile()
+        val row = segment("row")
+        val file = BundleFile("audio", "audio.m4a", "sha", 1, "audio/mp4", 0, 1)
+        try {
+            val dir = root.resolve(row.day).resolve(row.stream).resolve(row.dirSegment)
+            dir.mkdirs()
+            dir.resolve(file.name).writeBytes(byteArrayOf(1))
+            val payloads = WorkerPayloads()
+            val stream = payloads.open(root, row, file)
+            payloads.close()
+            assertFailsWith<java.io.IOException> { stream.read() }
+            assertFailsWith<java.io.IOException> { payloads.open(root, row, file) }
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test
@@ -116,7 +136,7 @@ class SyncWithTransportTest {
                     }
                 },
                 store = FakeDrainStore(segment("a"), files = mapOf("a" to listOf(file("a")))),
-                readPayload = { _, _ -> byteArrayOf(1) },
+                openPayload = { _, _ -> byteArrayOf(1).inputStream() },
                 host = "test-device",
                 now = { NOW },
                 log = { _, _ -> },
@@ -259,7 +279,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { throw javax.net.ssl.SSLPeerUnverifiedException("bad cert") },
             store = store,
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
@@ -274,7 +294,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { throw java.net.ConnectException("connection refused") },
             store = store,
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
@@ -293,7 +313,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { client },
             store = store,
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
@@ -316,7 +336,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { client },
             store = store,
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },
@@ -360,7 +380,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { client },
             store = store,
-            readPayload = { _, _ -> byteArrayOf(1) },
+            openPayload = { _, _ -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = store::log,
@@ -388,10 +408,10 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { client },
             store = store,
-            readPayload = { _, _ ->
+            openPayload = { _, _ ->
                 store.add(segment(calendarId).copy(stream = CALENDAR_STREAM, segment = "cal", dirSegment = "cal"),
                     listOf(file(calendarId).copy(sourceId = CALENDAR_STREAM, name = "note.ndjson")))
-                byteArrayOf(1)
+                byteArrayOf(1).inputStream()
             },
             host = "test-device",
             now = { NOW },
@@ -494,7 +514,7 @@ class SyncWithTransportTest {
             transport = DIRECT,
             openClient = { client },
             store = store,
-            readPayload = { segment, file -> readPayloadFor(spool.toFile(), segment, file) },
+            openPayload = { segment, file -> openPayloadFor(spool.toFile(), segment, file) },
             spoolDir = spool.toFile(),
             host = "test-device",
             now = { NOW },
@@ -595,7 +615,7 @@ class SyncWithTransportTest {
                 client
             },
             store = store,
-            readPayload = { _: SegmentRow, _: BundleFile -> byteArrayOf(1) },
+            openPayload = { _: SegmentRow, _: BundleFile -> byteArrayOf(1).inputStream() },
             host = "test-device",
             now = { NOW },
             log = { _, _ -> },

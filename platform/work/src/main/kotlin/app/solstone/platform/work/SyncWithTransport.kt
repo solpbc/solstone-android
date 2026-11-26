@@ -6,14 +6,15 @@ package app.solstone.platform.work
 import app.solstone.core.model.BundleFile
 import app.solstone.core.observer.ObserverIngestClient
 import app.solstone.core.observer.SegmentReconciler
-import app.solstone.core.pl.PlHttpClient
 import app.solstone.platform.persistence.room.ConfirmedCopyFinisher
 import app.solstone.platform.persistence.room.SegmentRow
 import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedException
+import java.io.IOException
+import java.io.InputStream
 import java.io.Closeable
 import java.io.File
-import java.io.IOException
 import app.solstone.core.identity.PairingGeneration
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.CalendarCapabilityRead
 import app.solstone.core.pl.JournalAttempt
 import app.solstone.core.pl.LegOutcome
@@ -29,7 +30,7 @@ internal fun <C> syncWithTransport(
     transport: SyncTransport,
     openClient: (SyncTransport) -> C,
     store: DrainStore,
-    readPayload: (SegmentRow, BundleFile) -> ByteArray,
+    openPayload: (SegmentRow, BundleFile) -> InputStream,
     host: String,
     now: () -> Long,
     log: (String, Throwable?) -> Unit,
@@ -128,12 +129,12 @@ internal fun <C> syncWithTransport(
                     ingest = { manifest, fileBytes ->
                         ObserverIngestClient(c) { "solstoneSync${System.nanoTime()}" }.ingest(
                             manifest = manifest,
-                            fileBytes = fileBytes,
+                            openFile = fileBytes,
                             host = host,
                             platform = "android",
                         )
                     },
-                    readPayload = readPayload,
+                    openPayload = openPayload,
                     now = now,
                     log = log,
                     finisher = finisher,

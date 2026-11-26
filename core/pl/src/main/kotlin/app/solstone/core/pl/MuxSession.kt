@@ -243,8 +243,11 @@ class MuxSession(
             if (contentLengthCount > 1) {
                 throw IOException("Multiple Content-Length headers in HTTP response")
             }
-            if (transferEncoding != null && transferEncoding.contains("chunked")) {
-                throw IOException("Chunked Transfer-Encoding is not supported")
+            if (transferEncoding != null && transferEncoding != "chunked" && "chunked" in transferEncoding) {
+                throw IOException("Unsupported HTTP response transfer encoding")
+            }
+            if (transferEncoding == "chunked" && contentLengthVal != null) {
+                throw IOException("Conflicting HTTP response framing")
             }
 
             if (contentLengthVal != null) {
@@ -278,7 +281,13 @@ class MuxSession(
                     throw IOException("Premature response body termination: expected $cl bytes, received ${bodyStream.size()}")
                 }
             }
-            return HttpResponse(status, headers, bodyStream.toByteArray())
+            val wireBody = bodyStream.toByteArray()
+            val body = if (headers["transfer-encoding"].equals("chunked", ignoreCase = true)) {
+                dechunk(wireBody)
+            } else {
+                wireBody
+            }
+            return HttpResponse(status, headers, body)
         }
     }
 

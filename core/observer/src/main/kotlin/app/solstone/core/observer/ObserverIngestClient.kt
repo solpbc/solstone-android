@@ -5,14 +5,16 @@ package app.solstone.core.observer
 
 import app.solstone.core.model.BundleFile
 import app.solstone.core.model.BundleManifest
-import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.PlHttpClient
+import app.solstone.core.pl.StreamingBody
+import app.solstone.core.pl.HttpResponse
 import app.solstone.core.pl.parseJson
 import app.solstone.core.pl.toJson
 import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
 import app.solstone.core.sources.SCREENSHOTS_STREAM
-import app.solstone.core.sources.DELIVERY_STREAMS
+import java.io.IOException
+import java.io.InputStream
 import java.io.ByteArrayOutputStream
 
 class ObserverIngestClient(
@@ -21,7 +23,7 @@ class ObserverIngestClient(
 ) {
     fun ingest(
         manifest: BundleManifest,
-        fileBytes: (BundleFile) -> ByteArray,
+        openFile: (BundleFile) -> InputStream,
         host: String? = null,
         platform: String? = null,
     ): List<IngestOutcome> {
@@ -36,16 +38,23 @@ class ObserverIngestClient(
             for (batch in batches) {
                 val sourceManifest = manifest.copy(files = batch)
                 val boundary = boundaryProvider()
-                val body = buildMultipartBody(boundary, sourceManifest, sourceId, fileBytes, host, platform)
-                val outcome = http.request(
-                    method = "POST",
-                    path = INGEST_PATH,
-                    headers = mapOf(
-                        "Content-Type" to "multipart/form-data; boundary=$boundary",
-                        PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
-                    ),
-                    body = body,
-                ).toIngestOutcome()
+                val body = buildMultipartBody(boundary, sourceManifest, sourceId, openFile, host, platform)
+                val outcome = try {
+                    body.use {
+                        http.requestStreaming(
+                            method = "POST",
+                            path = INGEST_PATH,
+                            headers = mapOf(
+                                "Content-Type" to "multipart/form-data; boundary=$boundary",
+                                PROTOCOL_VERSION_HEADER to INGEST_PROTOCOL_VERSION.toString(),
+                            ),
+                            body = it,
+                        ).toIngestOutcome()
+                    }
+                } catch (error: IOException) {
+                    // The mux wraps a source's argument error when it resets its stream.
+                    throw body.invalidSource ?: error
+                }
                 outcomes += outcome
                 if (outcome is IngestOutcome.Rejected && (outcome.status == 401 || outcome.status == 403)) {
                     return outcomes
@@ -59,26 +68,24 @@ class ObserverIngestClient(
         boundary: String,
         manifest: BundleManifest,
         sourceId: String,
-        fileBytes: (BundleFile) -> ByteArray,
+        openFile: (BundleFile) -> InputStream,
         host: String?,
         platform: String?,
-    ): ByteArray {
-        val envelope = buildEnvelope(manifest, sourceId, host, platform)
-        // Reserve payloads and framing together. Otherwise the final CRLF can double a
-        // video-sized backing buffer, which also coexists with toByteArray's copy.
-        val framingBytes = 1024L + envelope.toByteArray(Charsets.UTF_8).size +
-            2L * boundary.toByteArray(Charsets.UTF_8).size + manifest.files.sumOf {
-                256L + quoteFilename(it.name).toByteArray(Charsets.UTF_8).size +
-                    it.mediaType.toByteArray(Charsets.UTF_8).size + boundary.toByteArray(Charsets.UTF_8).size
-            }
-        val capacity = Math.toIntExact(manifest.files.sumOf { it.byteSize } + framingBytes)
-        val out = ByteArrayOutputStream(capacity)
-        out.writeJsonPart(boundary, "envelope", envelope)
-        for (file in manifest.files) {
-            out.writeFilePart(boundary, "files", file.name, file.mediaType, fileBytes(file))
+    ): MultipartBody {
+        val parts = mutableListOf<MultipartPart>()
+        fun framing(write: ByteArrayOutputStream.() -> Unit) {
+            val bytes = ByteArrayOutputStream().apply(write).toByteArray()
+            parts += MultipartPart(bytes.size.toLong(), bytes::inputStream)
         }
-        out.writeAscii("--$boundary--\r\n")
-        return out.toByteArray()
+        framing { writeJsonPart(boundary, "envelope", buildEnvelope(manifest, sourceId, host, platform)) }
+        for (file in manifest.files) {
+            require(file.byteSize >= 0) { "negative sealed file length" }
+            framing { writeFileHead(boundary, "files", file.name, file.mediaType) }
+            parts += MultipartPart(file.byteSize) { openFile(file) }
+            framing { writeAscii("\r\n") }
+        }
+        framing { writeAscii("--$boundary--\r\n") }
+        return MultipartBody(parts)
     }
 
     private fun buildEnvelope(
@@ -132,12 +139,11 @@ class ObserverIngestClient(
         writeAscii("\r\n")
     }
 
-    private fun ByteArrayOutputStream.writeFilePart(
+    private fun ByteArrayOutputStream.writeFileHead(
         boundary: String,
         name: String,
         filename: String,
         mediaType: String,
-        bytes: ByteArray,
     ) {
         writeAscii("--$boundary\r\n")
         writeAscii("Content-Disposition: form-data; name=\"$name\"; filename=\"")
@@ -146,8 +152,6 @@ class ObserverIngestClient(
         if (mediaType.isNotEmpty()) {
             writeAscii("Content-Type: $mediaType\r\n")
         }
-        writeAscii("\r\n")
-        write(bytes)
         writeAscii("\r\n")
     }
 
@@ -167,6 +171,50 @@ class ObserverIngestClient(
             if (char == '\\' || char == '"') append('\\')
             append(char)
         }
+    }
+}
+
+private data class MultipartPart(val length: Long, val open: () -> InputStream)
+
+/** Only the current part is open. Each sealed file must still match its own recorded length. */
+private class MultipartBody(private val parts: List<MultipartPart>) : StreamingBody {
+    override val contentLength = parts.fold(0L) { sum, part -> Math.addExact(sum, part.length) }
+    private var index = 0
+    private var current: InputStream? = null
+    var invalidSource: IllegalArgumentException? = null
+        private set
+    private var consumed = 0L
+
+    override fun readChunk(target: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        while (index < parts.size) {
+            val part = parts[index]
+            val stream = current ?: try {
+                part.open().also { current = it }
+            } catch (error: IllegalArgumentException) {
+                invalidSource = error
+                throw error
+            }
+            val count = stream.read(target, offset, length)
+            if (count >= 0) {
+                consumed += count
+                if (consumed > part.length) throw IOException("sealed file grew during upload")
+                return count
+            }
+            if (consumed != part.length) throw IOException("sealed file ended before its recorded length")
+            current = null
+            stream.close()
+            consumed = 0
+            index++
+        }
+        return -1
+    }
+
+    override fun close() {
+        index = parts.size
+        val stream = current
+        current = null
+        stream?.close()
     }
 }
 

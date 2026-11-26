@@ -13,6 +13,7 @@ import app.solstone.core.model.BundleFile
 import app.solstone.core.observer.MobileImportClient
 import app.solstone.core.observer.ResumableAbortOutcome
 import app.solstone.core.observer.abortUpload
+import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.ClientReportedDescription
 import app.solstone.core.identity.IdentityMutator
 import app.solstone.core.identity.PairingGeneration
@@ -20,7 +21,6 @@ import app.solstone.core.model.PairedHome
 import app.solstone.core.pl.JournalAttempt
 import app.solstone.core.pl.JournalVerdictListener
 import app.solstone.core.pl.JournalVersionRefreshCoordinator
-import app.solstone.core.pl.PlHttpClient
 import app.solstone.core.pl.RelayAccessRefreshCoordinator
 import app.solstone.core.pl.clientAppVersion
 import app.solstone.core.spool.parseManifest
@@ -34,8 +34,9 @@ import app.solstone.platform.pl.transport.conscrypt.RelayWebSocketClosedExceptio
 import app.solstone.platform.pl.transport.conscrypt.defaultHttpsPoster
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedClient
 import app.solstone.platform.pl.transport.conscrypt.openRelaySyncClient
-import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -130,6 +131,7 @@ internal fun executeSyncRun(
     context: Context? = null,
     db: SolstonePersistenceDatabase? = null,
     spoolDir: File? = null,
+    openSealedFile: (File, SegmentRow, BundleFile) -> InputStream = ::openPayloadFor,
     deviceLabel: String = "android",
     drainStore: DrainStore? = null,
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
@@ -175,6 +177,7 @@ internal fun executeSyncRun(
                     context = context,
                     persistenceDb = db,
                     customSpoolDir = spoolDir,
+                    openSealedFile = openSealedFile,
                     deviceLabel = deviceLabel,
                     drainStore = drainStore,
                     customOpenClient = openClient,
@@ -239,6 +242,7 @@ internal fun completeSyncRunDetailed(
     context: Context? = null,
     db: SolstonePersistenceDatabase? = null,
     spoolDir: File? = null,
+    openSealedFile: (File, SegmentRow, BundleFile) -> InputStream = ::openPayloadFor,
     deviceLabel: String = "android",
     drainStore: DrainStore? = null,
     openClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
@@ -259,6 +263,7 @@ internal fun completeSyncRunDetailed(
             context = context,
             db = db,
             spoolDir = spoolDir,
+            openSealedFile = openSealedFile,
             deviceLabel = deviceLabel,
             drainStore = drainStore,
             openClient = openClient,
@@ -325,9 +330,15 @@ class SyncWorker(
 
     override suspend fun doWork(): Result = coroutineScope {
         val phase = AtomicReference("opening sync stores")
-        val slowRun = launch {
-            delay(LONG_SYNC_MS)
-            workerLog("w", "sync still running after ${LONG_SYNC_MS}ms: ${phase.get()}", null)
+        val payloads = WorkerPayloads()
+        val slowRun = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            try {
+                delay(LONG_SYNC_MS)
+                workerLog("w", "sync still running after ${LONG_SYNC_MS}ms: ${phase.get()}", null)
+                kotlinx.coroutines.awaitCancellation()
+            } finally {
+                payloads.close()
+            }
         }
         try {
             withContext(Dispatchers.IO) {
@@ -336,6 +347,7 @@ class SyncWorker(
                     openStores = testOpenStores ?: { syncStores(applicationContext) },
                     context = if (testOpenStores != null) null else applicationContext,
                     spoolDir = testSpoolDir,
+                    openSealedFile = payloads::open,
                     deviceLabel = testDeviceLabel ?: deviceLabel(),
                     drainStore = testDrainStore,
                     openClient = testOpenClient,
@@ -401,6 +413,7 @@ private fun sync(
     context: Context? = null,
     persistenceDb: SolstonePersistenceDatabase? = null,
     customSpoolDir: File? = null,
+    openSealedFile: (File, SegmentRow, BundleFile) -> InputStream = ::openPayloadFor,
     deviceLabel: String = "android",
     drainStore: DrainStore? = null,
     customOpenClient: ((SyncTransport, ClientCredential) -> PlHttpClient)? = null,
@@ -532,7 +545,7 @@ private fun sync(
                 },
                 store = store,
                 finisher = finisher,
-                readPayload = { segment, file -> readPayloadFor(spoolDir, segment, file) },
+                openPayload = { segment, file -> openSealedFile(spoolDir, segment, file) },
                 spoolDir = spoolDir,
                 host = deviceLabel,
                 now = now,
@@ -1094,13 +1107,32 @@ fun currentPhoneDeviceDescription(context: Context): ClientReportedDescription {
     )
 }
 
-internal fun readPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): ByteArray {
+/** A stopped worker releases its current file even while the mux is waiting for send credit. */
+internal class WorkerPayloads : java.io.Closeable {
+    private var stopped = false
+    private var current: InputStream? = null
+
+    @Synchronized
+    fun open(root: File, segment: SegmentRow, file: BundleFile): InputStream {
+        if (stopped) throw IOException("sync stopped")
+        return openPayloadFor(root, segment, file).also { current = it }
+    }
+
+    @Synchronized
+    override fun close() {
+        stopped = true
+        current?.close()
+        current = null
+    }
+}
+
+internal fun openPayloadFor(spoolDir: File, segment: SegmentRow, file: BundleFile): InputStream {
     val segmentDir = File(File(File(spoolDir, segment.day), segment.stream), segment.dirSegment)
     val payload = File(segmentDir, file.name)
     require(payload.canonicalFile.parentFile == segmentDir.canonicalFile) {
         "payload name must not contain path separators: ${file.name}"
     }
-    return payload.readBytes()
+    return payload.inputStream()
 }
 
 internal data class StoredSegmentZone(

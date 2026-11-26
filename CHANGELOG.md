@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- sending audio and screen recordings to your journal uses less memory on your phone.
+
 ## [2.1.56] - 2026-11-26
 
 ### Added

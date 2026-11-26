@@ -262,7 +262,7 @@ class ConfirmedSegmentIdentityTest {
                 env.postedManifests.add(manifest)
                 listOf(IngestOutcome.Accepted("srv-a", IngestDescriptors.Listed(receipt(manifest))))
             },
-            readPayload = { _, _ -> byteArrayOf(1, 2, 3) },
+            openPayload = { _, _ -> byteArrayOf(1, 2, 3).inputStream() },
             now = { 1_000_000L },
             log = { _, _ -> },
             finisher = env.finisher,
@@ -296,7 +296,7 @@ class ConfirmedSegmentIdentityTest {
                 env.postedManifests.add(manifest)
                 listOf(IngestOutcome.Accepted("srv-b", IngestDescriptors.Listed(receipt(manifest))))
             },
-            readPayload = { _, _ -> byteArrayOf(1, 2, 3) },
+            openPayload = { _, _ -> byteArrayOf(1, 2, 3).inputStream() },
             now = { 2_000_000L },
             log = { _, _ -> },
             finisher = env.finisher,
