@@ -43,12 +43,14 @@ class JournalExportHostTest {
         override val supportsRandomWrite: Boolean = true,
         private val allowReadBack: Boolean = true,
         private val availableSpaceBytes: Long? = 500_000_000L,
+        private val failOnFlushMessage: String? = null,
         private val failOnClose: Boolean = false,
         private val truncateStoredOnCloseTo: Long? = null,
     ) : ExportDestination {
         var deleted = false
         var sizeReads = 0
         var hashReads = 0
+        var closeCalls = 0
         override val uriString: String = file.toURI().toString()
 
         override fun currentSizeBytes(): Long {
@@ -76,7 +78,14 @@ class JournalExportHostTest {
                     raf.write(b, off, len)
                 }
 
+                override fun flush() {
+                    if (failOnFlushMessage != null) {
+                        throw IOException(failOnFlushMessage)
+                    }
+                }
+
                 override fun close() {
+                    closeCalls += 1
                     try {
                         truncateStoredOnCloseTo?.let { raf.setLength(it) }
                     } finally {
@@ -667,6 +676,59 @@ class JournalExportHostTest {
             assertEquals("error", manager.currentSnapshot().phase)
             assertEquals("dest_write_failed", manager.currentSnapshot().errorCode)
             assertFalse(manager.currentSnapshot().verified)
+            assertEquals(1, dest.closeCalls)
+            assertTrue(dest.deleted)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failingFlushAlwaysClosesWriterAndPreservesOriginalFlushFailure() {
+        val dir = createTempDir("android-export-flush-fail")
+        try {
+            val payload = ByteArray(64 * 1024 + 17) { ((it * 29) and 0xff).toByte() }
+            val sha = sha256Hex(payload)
+            val etag = "\"sha256-$sha\""
+            // Flush throws ENOSPC AND close also throws a generic IOException:
+            // close() must still be called once AND the original ENOSPC error must be preserved.
+            val destFile = File(dir, "flush-enospc.zip")
+            val dest = FileExportDestination(
+                file = destFile,
+                allowReadBack = false,
+                failOnFlushMessage = "write failed: ENOSPC (No space left on device)",
+                failOnClose = true,
+            )
+            val manager = JournalExportTransferManager(
+                upstreamOpener = { OpenedExportUpstream(ScriptedExportUpstream(payload, etag), "local") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> dest },
+                stateStore = ExportStateStore(File(dir, "state.json")),
+                drainClosed = { false },
+                schedulerFactory = { m ->
+                    object : ExportExecutionScheduler {
+                        override fun scheduleRun(estimatedRemainingBytes: Long) {
+                            m.runTransferAttemptBlocking()
+                        }
+                        override fun onProgressUpdated(snapshot: JournalExportStatusSnapshot, filename: String) {}
+                        override fun onEnded(snapshot: JournalExportStatusSnapshot) {}
+                    }
+                },
+            )
+            val req = JournalExportStartRequest(
+                exportId = "exp_flush_fail",
+                downloadPath = "/app/export/api/ready/exp_flush_fail/download",
+                filename = "flush-enospc.zip",
+                sizeBytes = payload.size.toLong(),
+                sha256 = sha,
+                etag = etag,
+                mode = "full",
+            )
+            manager.start(req, { _, cb -> cb(dest) }) {}
+            assertEquals("error", manager.currentSnapshot().phase)
+            assertEquals("insufficient_device_space", manager.currentSnapshot().errorCode)
+            assertFalse(manager.currentSnapshot().verified)
+            assertEquals(1, dest.closeCalls, "writer.close() must always run even when flush() throws")
             assertTrue(dest.deleted)
         } finally {
             dir.deleteRecursively()

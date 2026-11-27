@@ -734,11 +734,12 @@ internal class JournalExportTransferManager(
                     },
                 )
 
-                // Flush, sync, and close the destination writer INSIDE the try block so any
-                // provider commit/close error fails the transfer instead of being swallowed.
+                // Flush, sync, and ALWAYS close the destination writer INSIDE the try block so
+                // any provider flush/sync/close error fails the transfer AND no descriptor leaks.
                 val activeWriter = writer
                 writer = null
                 if (activeWriter != null) {
+                    var primaryError: Throwable? = null
                     try {
                         activeWriter.flush()
                         if (activeWriter is FileOutputStream) {
@@ -751,9 +752,21 @@ internal class JournalExportTransferManager(
                                 }
                             }
                         }
-                        activeWriter.close()
                     } catch (e: Throwable) {
-                        throw DestinationWriteException(e)
+                        primaryError = e
+                    } finally {
+                        try {
+                            activeWriter.close()
+                        } catch (closeErr: Throwable) {
+                            if (primaryError == null) {
+                                primaryError = closeErr
+                            } else {
+                                primaryError.addSuppressed(closeErr)
+                            }
+                        }
+                    }
+                    if (primaryError != null) {
+                        throw DestinationWriteException(primaryError)
                     }
                 }
             } catch (_: ExportInterruptedException) {
