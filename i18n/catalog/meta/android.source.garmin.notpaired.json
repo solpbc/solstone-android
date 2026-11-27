@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "Watch source page for a Garmin watch: a notice naming the one next step when delivery from the watch is blocked.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "f39e9bf0d4b1454973647795a77ef0a833ec4eceda13e5d1e53665c19136d7a0",
+  "risk": "routine",
+  "auto_merge": true
+}

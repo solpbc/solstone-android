@@ -1773,3 +1773,18 @@ android.export.notify.starting = preparing to save…
 android.export.notify.pause = pause
 
 android.export.notify.resume = resume
+android.source.garmin.hop = audio goes from your watch through Garmin Connect on this phone, then to your journal.
+android.source.garmin.connectmissing = solstone reaches your Garmin watch through the Garmin Connect app. install it and sign in to continue delivery.
+android.source.garmin.getconnect = get Garmin Connect
+android.source.garmin.connectold = update Garmin Connect to continue delivery.
+android.source.garmin.updateconnect = update Garmin Connect
+android.source.garmin.notpaired = sign in to Garmin Connect and pair your watch there to continue delivery.
+android.source.garmin.openconnect = open Garmin Connect
+android.source.garmin.appmissing = solstone isn't on your watch anymore. install it from the Connect IQ Store to use it again.
+android.source.garmin.watchfull = your watch's storage is full. keep your watch near this phone so saved audio can move.
+android.source.garmin.norecent = no recent contact. keep your watch near this phone with Garmin Connect running, and open solstone on your watch. held material stays on your devices.
+android.source.garmin.heldminutes =
+    { $count ->
+        [one] about { $count } min at last check
+       *[other] about { $count } min at last check
+    }

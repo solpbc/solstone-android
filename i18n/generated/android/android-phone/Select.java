@@ -589,6 +589,17 @@ public final class Select {
             case "android.source.device.not.processed.until.connect": return "m616e64726f69642e736f757263652e6465766963652e6e6f742e70726f6365737365642e756e74696c2e636f6e6e656374";
             case "android.source.device.restarted.intake.didn.t": return "m616e64726f69642e736f757263652e6465766963652e7265737461727465642e696e74616b652e6469646e2e74";
             case "android.source.firstreceived": return "m616e64726f69642e736f757263652e66697273747265636569766564";
+            case "android.source.garmin.appmissing": return "m616e64726f69642e736f757263652e6761726d696e2e6170706d697373696e67";
+            case "android.source.garmin.connectmissing": return "m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746d697373696e67";
+            case "android.source.garmin.connectold": return "m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746f6c64";
+            case "android.source.garmin.getconnect": return "m616e64726f69642e736f757263652e6761726d696e2e676574636f6e6e656374";
+            case "android.source.garmin.heldminutes": return "m616e64726f69642e736f757263652e6761726d696e2e68656c646d696e75746573";
+            case "android.source.garmin.hop": return "m616e64726f69642e736f757263652e6761726d696e2e686f70";
+            case "android.source.garmin.norecent": return "m616e64726f69642e736f757263652e6761726d696e2e6e6f726563656e74";
+            case "android.source.garmin.notpaired": return "m616e64726f69642e736f757263652e6761726d696e2e6e6f74706169726564";
+            case "android.source.garmin.openconnect": return "m616e64726f69642e736f757263652e6761726d696e2e6f70656e636f6e6e656374";
+            case "android.source.garmin.updateconnect": return "m616e64726f69642e736f757263652e6761726d696e2e757064617465636f6e6e656374";
+            case "android.source.garmin.watchfull": return "m616e64726f69642e736f757263652e6761726d696e2e776174636866756c6c";
             case "android.source.getting.ready": return "m616e64726f69642e736f757263652e67657474696e672e7265616479";
             case "android.source.getting.ready.connecting.journal": return "m616e64726f69642e736f757263652e67657474696e672e72656164792e636f6e6e656374696e672e6a6f75726e616c";
             case "android.source.give.tile.home": return "m616e64726f69642e736f757263652e676976652e74696c652e686f6d65";

@@ -273,9 +273,9 @@ private fun WatchSourceDetailTemplate(
             Text(phoneText("android.shelf.connect.journal"))
         }
     }
-    if (paired && pageModel.actionLabel != null) {
+    if (pageModel.actionLabel != null && (paired || pageModel.onAction != null)) {
         Spacer(Modifier.height(ShellMetrics.sectionSpacing))
-        Button(onClick = onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        Button(onClick = pageModel.onAction ?: onConnectJournal, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text(requireNotNull(pageModel.actionLabel))
         }
     }
@@ -286,7 +286,7 @@ private fun WatchSourceDetailTemplate(
 
     Spacer(Modifier.height(ShellMetrics.sectionSpacing))
     PaneNote(pageModel.relayNoticeShort)
-    PaneNote(pageModel.relayNoticeFull)
+    pageModel.relayNoticeFull?.let { PaneNote(it) }
 
     PaneSectionTitle(phoneText("android.source.details"))
     PaneCard(modifier = Modifier.testTag(FACTS_TEST_TAG)) {
@@ -302,7 +302,8 @@ private fun WatchSourceDetailTemplate(
         PaneRowDivider()
         PaneFactRow(label = phoneText("android.source.heldphone"), value = pageModel.waitingCount?.toString() ?: phoneText("android.gap.unknown"))
         PaneRowDivider()
-        PaneFactRow(label = phoneText("android.source.heldwatch"), value = pageModel.watchWaitingCount?.let { phoneText("android.source.lastcheck2" , "it" to (it)) } ?: phoneText("android.gap.unknown"))
+        PaneFactRow(label = phoneText("android.source.heldwatch"), value = pageModel.watchWaitingText
+            ?: pageModel.watchWaitingCount?.let { phoneText("android.source.lastcheck2" , "it" to (it)) } ?: phoneText("android.gap.unknown"))
     }
 }
 

@@ -1,0 +1,26 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "Watch source page, the value beside \"held on your watch\": about how many minutes of audio wait on the Garmin watch, as it last reported.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "count",
+      "type": "cardinal",
+      "numeric_style": "ungrouped"
+    }
+  ],
+  "format_intent": "cardinal",
+  "max_length": 80,
+  "source_revision": "988a3fbc805f30e02b09bcc7353b226389c92b8c6b34b6ab8de2c70270345d43",
+  "risk": "routine",
+  "auto_merge": true,
+  "selector": {
+    "name": "count",
+    "type": "cardinal"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "The watch source page for a Garmin watch: where audio travels. Says only the route, nothing about what Garmin can see.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 200,
+  "source_revision": "fcf00f2348fd9efe7bcdc8d1c232a34e5ced3a54b3d2df619b3d1b6a847a69a8",
+  "risk": "routine",
+  "auto_merge": true
+}

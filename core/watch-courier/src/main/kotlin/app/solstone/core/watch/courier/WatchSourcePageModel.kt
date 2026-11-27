@@ -18,12 +18,17 @@ data class WatchSourcePageModel(
     /** The tile's short form of the same time, or null when the watch has never checked in. */
     val lastContactShortText: String? = null,
     val relayNoticeShort: String = phoneText("android.wear.relay.notice.short"),
-    val relayNoticeFull: String = phoneText("android.wear.relay.notice.full"),
+    /** The second relay line. A Garmin watch has one hop line instead, so this is null there. */
+    val relayNoticeFull: String? = phoneText("android.wear.relay.notice.full"),
     val actionLabel: String? = null,
+    /** The action behind actionLabel when it is not reconnecting the journal (a Garmin dead end). */
+    val onAction: (() -> Unit)? = null,
     val oldPlayServicesNotice: String? = null,
     val waitingCount: Int? = null,
     val isSilenceStale: Boolean = true,
     val watchWaitingCount: Int? = null,
+    /** The held-on-your-watch value as text, for a watch that reports time rather than a count. */
+    val watchWaitingText: String? = null,
     val notice: String? = null,
     val storageLow: Boolean = false,
 ) {

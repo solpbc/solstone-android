@@ -846,7 +846,15 @@ class PhoneShellActivity : ComponentActivity() {
                             val contact = PhoneWatchContactStore(this@PhoneShellActivity).read()
                             val dao = container.persistenceDatabase().watchSourceDao()
                             val first = dao.firstReceiptEpochMs()
-                            if (contact == null && first == null) null else {
+                            // One watch per phone: a Garmin contact takes the watch page.
+                            if (contact?.isGarmin == true) app.solstone.observer.phone.garmin.GarminWatchPage.build(
+                                context = this@PhoneShellActivity,
+                                contact = contact,
+                                firstReceiptEpochMs = first,
+                                heldOnPhone = dao.heldOnPhone(),
+                                storageLow = filesDir.usableSpace < WatchCourierProtocol.STORAGE_FLOOR_BYTES,
+                                nowMs = System.currentTimeMillis(),
+                            ) else if (contact == null && first == null) null else {
                                 val now = System.currentTimeMillis()
                                 val stale = contact == null || now - contact.at !in 0L..WatchSourcePageModel.STALE_CONTACT_THRESHOLD_MS
                                 WatchSourcePageModel(
@@ -1399,9 +1407,9 @@ class PhoneShellActivity : ComponentActivity() {
                 LocalPhoneSharedSources provides PhoneSharedSourceInfo(visibleSources) { shared.refresh(detail = true) },
                 LocalPhoneWatchSource provides watchPage?.let { page ->
                     when {
-                        snapshot?.status?.refused == true -> page.copy(notice = phoneText("android.shellactivity.journalnolongeraccepts"), actionLabel = phoneText("android.shellactivity.connectagain"))
-                        currentPairing != null && !journalConfirmed -> page.copy(notice = phoneText("android.shellactivity.confirmjournalsmark"), actionLabel = phoneText("android.shellactivity.openjournal"))
-                        currentPairing != null && snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = phoneText("android.shellactivity.journaldeliverywaitingcheck"), actionLabel = phoneText("android.shellactivity.openjournal"))
+                        snapshot?.status?.refused == true -> page.copy(notice = phoneText("android.shellactivity.journalnolongeraccepts"), actionLabel = phoneText("android.shellactivity.connectagain"), onAction = null)
+                        currentPairing != null && !journalConfirmed -> page.copy(notice = phoneText("android.shellactivity.confirmjournalsmark"), actionLabel = phoneText("android.shellactivity.openjournal"), onAction = null)
+                        currentPairing != null && snapshot?.status?.online == false && (page.waitingCount ?: 0) > 0 -> page.copy(notice = phoneText("android.shellactivity.journaldeliverywaitingcheck"), actionLabel = phoneText("android.shellactivity.openjournal"), onAction = null)
                         else -> page
                     }
                 },

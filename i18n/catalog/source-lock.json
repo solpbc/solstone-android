@@ -16557,6 +16557,83 @@
       ]
     },
     {
+      "id": "android.source.garmin.appmissing",
+      "source": "9bfa01daa5df7652c70e14d00c8fc6dd2131938c0f9924cea5327eb9796c863e",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.connectmissing",
+      "source": "5693fbd61105e10723d959b26805ca377fac4fd54760bf88a554652d54ff2561",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.connectold",
+      "source": "2db377b04471fd63739510bbac0696885833ddb5eb90ae11cd8efb35d1f52a29",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.getconnect",
+      "source": "d505a9435d165862a01101217e6f95a9486f3c2668ccc977f6d76c5e5b8744f3",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.heldminutes",
+      "source": "988a3fbc805f30e02b09bcc7353b226389c92b8c6b34b6ab8de2c70270345d43",
+      "contract": "4c46bfd5732d6dee32bdd05ca4ec9190d22e4b112f00f75559385b492b83fba1",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.hop",
+      "source": "fcf00f2348fd9efe7bcdc8d1c232a34e5ced3a54b3d2df619b3d1b6a847a69a8",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.norecent",
+      "source": "c5452ed677886b95ebc81c7994e7a324e3068b94ab05137bd7245f3f55b41ae1",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.notpaired",
+      "source": "f39e9bf0d4b1454973647795a77ef0a833ec4eceda13e5d1e53665c19136d7a0",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.openconnect",
+      "source": "b9034c5333b50333427f308311d9b0ffb73813ddc6acf401cd2ccb09ef593aac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.updateconnect",
+      "source": "7a478c78023b827412361fca7393bd424ba30a0fcedb44564952e1ee07b8cccf",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
+      "id": "android.source.garmin.watchfull",
+      "source": "931ccf7b89ab631aca26a34556e46fff33c09ba61b5e187a23d6ab032f1a10ac",
+      "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",
+      "protected": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "locales": []
+    },
+    {
       "id": "android.source.getting.ready",
       "source": "bd14b6e4a7384f68f15a6ba92f47b68e931bcda799d44478d301e66603842c26",
       "contract": "8a5ccf516e1ddd1e6845a51578bf3090e7732eef71f84117434e952b20202586",

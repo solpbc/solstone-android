@@ -655,6 +655,20 @@
   <string name="m616e64726f69642e736f757263652e6465766963652e6e6f742e70726f6365737365642e756e74696c2e636f6e6e656374">"on this device and not processed until you connect a journal."</string>
   <string name="m616e64726f69642e736f757263652e6465766963652e7265737461727465642e696e74616b652e6469646e2e74">"this device restarted and intake didn't resume on its own"</string>
   <string name="m616e64726f69642e736f757263652e66697273747265636569766564">"first received"</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e6170706d697373696e67">"solstone isn't on your watch anymore. install it from the Connect IQ Store to use it again."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746d697373696e67">"solstone reaches your Garmin watch through the Garmin Connect app. install it and sign in to continue delivery."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746f6c64">"update Garmin Connect to continue delivery."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e676574636f6e6e656374">"get Garmin Connect"</string>
+  <plurals name="m616e64726f69642e736f757263652e6761726d696e2e68656c646d696e75746573">
+    <item quantity="one">"about %1$s min at last check"</item>
+    <item quantity="other">"about %1$s min at last check"</item>
+  </plurals>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e686f70">"audio goes from your watch through Garmin Connect on this phone, then to your journal."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e6e6f726563656e74">"no recent contact. keep your watch near this phone with Garmin Connect running, and open solstone on your watch. held material stays on your devices."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e6e6f74706169726564">"sign in to Garmin Connect and pair your watch there to continue delivery."</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e6f70656e636f6e6e656374">"open Garmin Connect"</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e757064617465636f6e6e656374">"update Garmin Connect"</string>
+  <string name="m616e64726f69642e736f757263652e6761726d696e2e776174636866756c6c">"your watch's storage is full. keep your watch near this phone so saved audio can move."</string>
   <string name="m616e64726f69642e736f757263652e67657474696e672e7265616479">"getting ready…"</string>
   <string name="m616e64726f69642e736f757263652e67657474696e672e72656164792e636f6e6e656374696e672e6a6f75726e616c">"getting ready. connecting to your journal."</string>
   <string name="m616e64726f69642e736f757263652e676976652e74696c652e686f6d65">"give this a tile on home"</string>

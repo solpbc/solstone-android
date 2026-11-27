@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "Button that opens the store page for Garmin Connect, Garmin's phone app.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "d505a9435d165862a01101217e6f95a9486f3c2668ccc977f6d76c5e5b8744f3",
+  "risk": "routine",
+  "auto_merge": true
+}

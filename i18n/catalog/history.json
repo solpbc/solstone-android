@@ -9056,6 +9056,151 @@
       "selector": null
     },
     {
+      "id": "android.source.garmin.appmissing",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e6170706d697373696e67",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.connectmissing",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746d697373696e67",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.connectold",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746f6c64",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.getconnect",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e676574636f6e6e656374",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.heldminutes",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e68656c646d696e75746573",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "cardinal",
+      "arguments": [
+        {
+          "name": "count",
+          "type": "cardinal",
+          "numeric_style": "ungrouped",
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": {
+        "name": "count",
+        "type": "cardinal",
+        "enum_values": [],
+        "enum_default": null
+      }
+    },
+    {
+      "id": "android.source.garmin.hop",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e686f70",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.norecent",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e6e6f726563656e74",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.notpaired",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e6e6f74706169726564",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.openconnect",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e6f70656e636f6e6e656374",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.updateconnect",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e757064617465636f6e6e656374",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.source.garmin.watchfull",
+      "resource": "m616e64726f69642e736f757263652e6761726d696e2e776174636866756c6c",
+      "namespace": "android.source.garmin",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
       "id": "android.source.getting.ready",
       "resource": "m616e64726f69642e736f757263652e67657474696e672e7265616479",
       "namespace": "android.source.getting",
