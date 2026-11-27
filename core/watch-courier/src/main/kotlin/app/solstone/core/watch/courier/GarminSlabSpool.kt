@@ -58,11 +58,24 @@ class GarminSlabSpool(
         val state = readState(devDir)
 
         // First slab ever seen from this device (or watch Storage reset back to seq 0)
+        var committed = 0
         if (state.contiguousAckSeq < 0L) {
             state.contiguousAckSeq = parsed.seq - 1L
         } else if (parsed.seq == 0L && state.contiguousAckSeq > 0L) {
             // Watch Storage was wiped cleanly after a prior session; seal any leftover open segment first
-            sealOpenSegmentsBefore(devDir, state, nextSegKey = segmentKey(parsed.segId, parsed.segEpochSec))
+            val (resetCommitted, allSealed) = sealAllOpenSegments(devDir, deviceId, state)
+            committed += resetCommitted
+            if (!allSealed) {
+                return@synchronized SlabAction(
+                    ackSeq = state.contiguousAckSeq,
+                    shouldAck = false,
+                    isBgOrigin = parsed.isBgOrigin,
+                    isMorePending = parsed.isMorePending,
+                    watchProtoVer = parsed.protoVer,
+                    segmentsCommitted = committed,
+                    rejectedReason = "prior_segment_commit_failed",
+                )
+            }
             state.contiguousAckSeq = -1L
         }
 
@@ -87,11 +100,8 @@ class GarminSlabSpool(
             writeAtomic(slabFile, rawSlab)
         }
 
-        // If a newer segment has begun while an older segment had unsealed slabs (watch crash/reboot),
-        // recover and commit the older segment's contiguous prefix as partial before advancing.
-        var committed = sealOpenSegmentsBefore(devDir, state, nextSegKey = segKey)
-
-        // Advance contiguous watermark across all durably stored slabs (stopping before any uncommitted seal)
+        // Advance contiguous watermark strictly in seq order, recovering orphaned pre-crash segments
+        // only once the contiguous cursor reaches a newer segment without gaps.
         val (newAck, newlyCommitted) = advanceContiguousAndSeal(devDir, deviceId, state)
         committed += newlyCommitted
         state.contiguousAckSeq = newAck
@@ -133,6 +143,32 @@ class GarminSlabSpool(
             val nextSeq = cursor + 1L
             val entry = slabIndex[nextSeq] ?: break
             val (segDir, slab) = entry
+
+            // If nextSeq begins or continues a newer segment while older unsealed segment directories
+            // contain only slabs <= cursor (proving zero gaps before nextSeq — e.g. watch rebooted
+            // mid-segment before FLAG_SEG_END), recover and commit those older segments oldest-first
+            // BEFORE advancing cursor into the newer segment.
+            val orphanDirs = devDir.listFiles { f -> f.isDirectory && f.name.startsWith("seg_") && f.name != segDir.name }
+                .orEmpty()
+                .sortedBy { it.name }
+            var orphanCommitFailed = false
+            for (oldDir in orphanDirs) {
+                val oldSlabs = loadSortedSlabs(oldDir)
+                if (oldSlabs.isEmpty()) {
+                    oldDir.deleteRecursively()
+                    continue
+                }
+                if (oldSlabs.all { it.seq <= cursor }) {
+                    val ok = commitSegmentDir(devDir, oldDir, deviceId, maxSeq = cursor, forcedPartial = true)
+                    if (!ok) {
+                        orphanCommitFailed = true
+                        break
+                    }
+                    committed++
+                }
+            }
+            if (orphanCommitFailed) break
+
             if (slab.isSegEnd) {
                 // Segment closes on nextSeq: commit complete segment BEFORE advancing ACK past nextSeq!
                 val ok = commitSegmentDir(devDir, segDir, deviceId, maxSeq = nextSeq, forcedPartial = slab.isSegPartial)
@@ -147,29 +183,27 @@ class GarminSlabSpool(
         return cursor to committed
     }
 
-    private fun sealOpenSegmentsBefore(devDir: File, state: DeviceState, nextSegKey: String): Int {
+    private fun sealAllOpenSegments(devDir: File, deviceId: Long, state: DeviceState): Pair<Int, Boolean> {
         var committed = 0
-        val segDirs = devDir.listFiles { f -> f.isDirectory && f.name.startsWith("seg_") && f.name != nextSegKey }
+        val segDirs = devDir.listFiles { f -> f.isDirectory && f.name.startsWith("seg_") }
             .orEmpty()
             .sortedBy { it.name }
-        val deviceId = devDir.name.removePrefix("dev_").toLongOrNull() ?: 0L
         for (segDir in segDirs) {
-            // Only seal segments whose slabs are already strictly <= contiguousAckSeq (or all present if orphaned)
             val slabs = loadSortedSlabs(segDir)
             if (slabs.isEmpty()) {
                 segDir.deleteRecursively()
                 continue
             }
             val highestInSeg = slabs.last().seq
-            // Recover prefix as partial (watch crashed or rebooted before FLAG_SEG_END)
-            if (commitSegmentDir(devDir, segDir, deviceId, maxSeq = highestInSeg, forcedPartial = true)) {
-                committed++
-                if (highestInSeg > state.contiguousAckSeq) {
-                    state.contiguousAckSeq = highestInSeg
-                }
+            if (!commitSegmentDir(devDir, segDir, deviceId, maxSeq = highestInSeg, forcedPartial = true)) {
+                return committed to false
+            }
+            committed++
+            if (highestInSeg > state.contiguousAckSeq) {
+                state.contiguousAckSeq = highestInSeg
             }
         }
-        return committed
+        return committed to true
     }
 
     private fun commitSegmentDir(

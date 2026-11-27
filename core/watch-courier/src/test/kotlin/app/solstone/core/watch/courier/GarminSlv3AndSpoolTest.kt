@@ -198,4 +198,42 @@ class GarminSlv3AndSpoolTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun outOfOrderNextSegmentDoesNotPrematurelySealPriorSegmentWithMissingSlab() {
+        val dir = Files.createTempDirectory("garmin-spool-ooo-seg").toFile()
+        try {
+            val committed = mutableListOf<DecodedBundle>()
+            val spool = GarminSlabSpool(dir) { bundle ->
+                committed += bundle
+                GarminSlabSpool.CommitOutcome.Committed
+            }
+            val devId = 77L
+            val segEpoch1 = 1795850000L
+            val segEpoch2 = 1795850300L
+
+            val s0 = GarminSlv3Protocol.encodeSlv3(GarminSlv3Protocol.FLAG_SEG_START, 1, 0L, segEpoch1, -420, 0L, byteArrayOf(10, 11))
+            val s1 = GarminSlv3Protocol.encodeSlv3(GarminSlv3Protocol.FLAG_SEG_END, 1, 1L, segEpoch1, -420, 300_000L, byteArrayOf(12, 13))
+            val s2 = GarminSlv3Protocol.encodeSlv3(
+                GarminSlv3Protocol.FLAG_SEG_START or GarminSlv3Protocol.FLAG_SEG_END or GarminSlv3Protocol.FLAG_ACK_REQ,
+                2, 2L, segEpoch2, -420, 10_000L, byteArrayOf(20, 21),
+            )
+
+            assertEquals(0L, spool.onSlab(devId, s0).ackSeq)
+            // Seg 2 slab arrives BEFORE seg 1 closing slab (seq 1 missing): seg 1 MUST stay open!
+            val early = spool.onSlab(devId, s2)
+            assertEquals(0L, early.ackSeq)
+            assertTrue(committed.isEmpty())
+
+            // Missing seg 1 closing slab arrives -> both seg 1 (full 300s) and seg 2 commit oldest-first!
+            val bridged = spool.onSlab(devId, s1)
+            assertEquals(2L, bridged.ackSeq)
+            assertEquals(2, committed.size)
+            assertTrue(committed[0].header.segment.endsWith("_300"))
+            assertContentEquals(byteArrayOf(10, 11, 12, 13), committed[0].files[0].bytes)
+            assertContentEquals(byteArrayOf(20, 21), committed[1].files[0].bytes)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

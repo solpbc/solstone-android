@@ -12,7 +12,6 @@ import app.solstone.observer.phone.AgeSignalGate
 import com.garmin.android.connectiq.ConnectIQ
 import com.garmin.android.connectiq.IQApp
 import com.garmin.android.connectiq.IQDevice
-import com.garmin.android.connectiq.IQMessageHelper
 import com.garmin.monkeybrains.serialization.Serializer
 
 /**
@@ -44,8 +43,8 @@ class GarminIncomingMessageReceiver : BroadcastReceiver() {
         if (!GarminSlv3Protocol.matchesSolstoneAppId(app.applicationId)) return
 
         val payloadBytes = intent.getByteArrayExtra(ConnectIQ.EXTRA_PAYLOAD) ?: return
-        val decodedObjects = runCatching {
-            Serializer.deserialize(payloadBytes).map { IQMessageHelper.INSTANCE.convertToJava(it) }
+        val decodedObjects: List<Any?> = runCatching {
+            Serializer.deserialize(payloadBytes).map { it.toJava() }
         }.getOrNull() ?: return
 
         val pending = goAsync()
