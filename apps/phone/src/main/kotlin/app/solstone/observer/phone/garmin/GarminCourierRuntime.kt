@@ -10,7 +10,9 @@ import app.solstone.core.sources.MAIN_STREAM
 import app.solstone.core.watch.courier.DecodedBundle
 import app.solstone.core.watch.courier.GarminSlabSpool
 import app.solstone.core.watch.courier.GarminSlv3Protocol
+import app.solstone.core.watch.courier.SunZonePointLookup
 import app.solstone.observer.phone.AgeSignalGate
+import app.solstone.observer.phone.wear.PhoneWatchContactStore
 import app.solstone.platform.persistence.room.openSolstonePersistenceDatabase
 import app.solstone.platform.work.PublishBundleResult
 import app.solstone.platform.work.SyncScheduler
@@ -24,18 +26,43 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+
+enum class GarminDeviceStatus {
+    CONNECTED,
+    NOT_CONNECTED,
+    NOT_PAIRED,
+    UNKNOWN,
+}
+
+sealed interface GarminWatchAppStatus {
+    data class Installed(val version: Int) : GarminWatchAppStatus
+    data object NotInstalled : GarminWatchAppStatus
+    data object Unknown : GarminWatchAppStatus
+}
+
+data class GarminStatusSnapshot(
+    val connectAppStatus: GarminEnvironmentProbe.ConnectAppStatus,
+    val deviceStatus: GarminDeviceStatus,
+    val deviceName: String?,
+    val watchAppStatus: GarminWatchAppStatus,
+)
 
 /**
  * Lazy-initialized Garmin Connect IQ companion courier for the solstone phone app.
  *
  * Invariants:
- * - Zero Garmin SDK calls ever occur on a phone until `GarminWatchContactStore.isActivated()` is true.
+ * - Zero Garmin SDK calls ever occur on a phone until `PhoneWatchContactStore.isGarminActivated()` is true.
  * - All slab writes and Room custody commits run on a dedicated single-threaded IO executor, never
  *   blocking the main thread, and strictly before sending any half-duplex cumulative ACK.
+ * - ACKs carry `"a"`, `"v"`, and optional `"z": [lat100, lon100]` from the phone's static tzdb lookup
+ *   (zero location APIs) for the watch sun arc.
  * - Background-origin (`FLAG_BG_ORIGIN`) ACKs are delayed by 2.5 seconds so the watch background VM
  *   exits cleanly before the phone's wake doorbell arrives.
  */
 object GarminCourierRuntime {
+    private const val APP_INFO_REFRESH_MIN_MS = 15_000L
+
     private val ioExecutor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "solstone-garmin-courier").apply { isDaemon = true }
     }
@@ -45,12 +72,16 @@ object GarminCourierRuntime {
     private val sdkInitRequested = AtomicBoolean(false)
     private val pendingDoorbells = ConcurrentHashMap<Long, ScheduledFuture<*>>()
     private val pendingColdAcks = ConcurrentHashMap<Long, PendingAck>()
+    private val lastAppInfoProbeMs = AtomicLong(0L)
 
     @Volatile
     private var connectIQ: ConnectIQ? = null
 
     @Volatile
     private var appContextRef: Context? = null
+
+    @Volatile
+    private var cachedAppStatus: GarminWatchAppStatus = GarminWatchAppStatus.Unknown
 
     private data class PendingAck(
         val device: IQDevice,
@@ -69,19 +100,84 @@ object GarminCourierRuntime {
     fun ensureStartedIfActivated(context: Context) {
         val appCtx = context.applicationContext
         if (AgeSignalGate.closed()) return
-        if (!GarminWatchContactStore(appCtx).isActivated()) return
+        if (!PhoneWatchContactStore(appCtx).isGarminActivated()) return
         startSdkOnMain(appCtx)
     }
 
     /**
-     * Explicit first-contact activation (invoked when the owner opens the companion activation link
-     * from the watch or the Garmin setup flow).
+     * Explicit first-contact activation (invoked only on owner tap of `https://go.solstone.app/garmin`).
      */
     fun activateAndConnect(context: Context) {
         val appCtx = context.applicationContext
         if (AgeSignalGate.closed()) return
-        GarminWatchContactStore(appCtx).markActivated()
+        PhoneWatchContactStore(appCtx).recordGarminActivated()
         startSdkOnMain(appCtx)
+    }
+
+    /**
+     * Read-only Garmin status probe for the watch source page (dead-end detection).
+     * Strictly gated by GW.19: returns `null` with zero PackageManager or Garmin SDK calls
+     * on any phone that has never activated or heard from a solstone Garmin watch.
+     */
+    fun probeStatusIfActivated(context: Context): GarminStatusSnapshot? {
+        val appCtx = context.applicationContext
+        val contact = PhoneWatchContactStore(appCtx).read()
+        if (contact == null || !contact.isGarmin) return null
+
+        val gcmStatus = GarminEnvironmentProbe.garminConnectStatus(appCtx)
+        if (gcmStatus != GarminEnvironmentProbe.ConnectAppStatus.READY) {
+            return GarminStatusSnapshot(
+                connectAppStatus = gcmStatus,
+                deviceStatus = GarminDeviceStatus.NOT_PAIRED,
+                deviceName = contact.deviceName,
+                watchAppStatus = GarminWatchAppStatus.Unknown,
+            )
+        }
+
+        if (!sdkInitialized.get()) {
+            startSdkOnMain(appCtx)
+            return GarminStatusSnapshot(
+                connectAppStatus = gcmStatus,
+                deviceStatus = GarminDeviceStatus.UNKNOWN,
+                deviceName = contact.deviceName,
+                watchAppStatus = cachedAppStatus,
+            )
+        }
+
+        val ciq = connectIQ ?: return GarminStatusSnapshot(
+            connectAppStatus = gcmStatus,
+            deviceStatus = GarminDeviceStatus.UNKNOWN,
+            deviceName = contact.deviceName,
+            watchAppStatus = cachedAppStatus,
+        )
+
+        val known = runCatching { ciq.knownDevices.orEmpty() }.getOrElse { emptyList() }
+        if (known.isEmpty()) {
+            return GarminStatusSnapshot(
+                connectAppStatus = gcmStatus,
+                deviceStatus = GarminDeviceStatus.NOT_PAIRED,
+                deviceName = contact.deviceName,
+                watchAppStatus = GarminWatchAppStatus.Unknown,
+            )
+        }
+
+        val connected = runCatching { ciq.connectedDevices.orEmpty() }.getOrElse { emptyList() }
+        val preferred = connected.firstOrNull { it.deviceIdentifier == contact.deviceId }
+            ?: connected.firstOrNull()
+            ?: known.firstOrNull { it.deviceIdentifier == contact.deviceId }
+            ?: known.first()
+
+        val isConnected = connected.any { it.deviceIdentifier == preferred.deviceIdentifier }
+        if (isConnected) {
+            maybeRefreshWatchAppInfo(ciq, preferred)
+        }
+
+        return GarminStatusSnapshot(
+            connectAppStatus = gcmStatus,
+            deviceStatus = if (isConnected) GarminDeviceStatus.CONNECTED else GarminDeviceStatus.NOT_CONNECTED,
+            deviceName = preferred.friendlyName?.takeIf { it.isNotBlank() } ?: contact.deviceName,
+            watchAppStatus = cachedAppStatus,
+        )
     }
 
     /**
@@ -128,11 +224,11 @@ object GarminCourierRuntime {
         rawBytes: ByteArray,
     ) {
         val nowMs = System.currentTimeMillis()
-        val contactStore = GarminWatchContactStore(appCtx)
+        val contactStore = PhoneWatchContactStore(appCtx)
 
         if (GarminSlv3Protocol.isSlvs(rawBytes)) {
             val status = GarminSlv3Protocol.parseSlvs(rawBytes) ?: return
-            contactStore.recordContact(
+            contactStore.recordGarminContact(
                 epochMs = nowMs,
                 version = status.protoVer,
                 waitingSlabs = status.pendingSlabs,
@@ -152,7 +248,7 @@ object GarminCourierRuntime {
         }
         val action = spool.onSlab(device.deviceIdentifier, rawBytes)
         if (action.rejectedReason == "version_mismatch" && action.watchProtoVer >= 0) {
-            contactStore.recordContact(
+            contactStore.recordGarminContact(
                 epochMs = nowMs,
                 version = action.watchProtoVer,
                 deviceId = device.deviceIdentifier,
@@ -162,7 +258,7 @@ object GarminCourierRuntime {
         }
         if (action.rejectedReason != null) return
 
-        contactStore.recordContact(
+        contactStore.recordGarminContact(
             epochMs = nowMs,
             version = action.watchProtoVer,
             deviceId = device.deviceIdentifier,
@@ -206,7 +302,6 @@ object GarminCourierRuntime {
         isBgOrigin: Boolean,
     ) {
         if (!sdkInitialized.get() || connectIQ == null) {
-            // Cold-woke from static BroadcastReceiver before ConnectIQ bound: queue ACK & start SDK
             pendingColdAcks[device.deviceIdentifier] = PendingAck(device, app, ackSeq, isBgOrigin)
             startSdkOnMain(appCtx)
             return
@@ -231,7 +326,8 @@ object GarminCourierRuntime {
     private fun sendAckNow(device: IQDevice, app: IQApp, ackSeq: Long) {
         val ciq = connectIQ ?: return
         if (!sdkInitialized.get()) return
-        val payload = GarminSlv3Protocol.buildAckPayload(ackSeq)
+        val tzPoint = SunZonePointLookup.systemDefaultLatLon100()
+        val payload = GarminSlv3Protocol.buildAckPayload(ackSeq, tzPoint)
         mainHandler.post {
             try {
                 ciq.sendMessage(device, app, payload) { _, _, _ -> }
@@ -296,11 +392,42 @@ object GarminCourierRuntime {
                 ciq.registerForDeviceEvents(dev) { d, st ->
                     if (st == IQDevice.IQDeviceStatus.CONNECTED) {
                         bindWatchApp(ciq, appCtx, d, watchApp)
+                        maybeRefreshWatchAppInfo(ciq, d, force = true)
                     }
                 }
                 bindWatchApp(ciq, appCtx, dev, watchApp)
+                maybeRefreshWatchAppInfo(ciq, dev, force = false)
             }
         } catch (_: Throwable) {
+        }
+    }
+
+    private fun maybeRefreshWatchAppInfo(ciq: ConnectIQ, device: IQDevice, force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val prev = lastAppInfoProbeMs.get()
+        if (!force && now - prev < APP_INFO_REFRESH_MIN_MS) return
+        if (!lastAppInfoProbeMs.compareAndSet(prev, now)) return
+        mainHandler.post {
+            try {
+                ciq.getApplicationInfo(
+                    GarminSlv3Protocol.SOLSTONE_GARMIN_APP_ID,
+                    device,
+                    object : ConnectIQ.IQApplicationInfoListener {
+                        override fun onApplicationInfoReceived(app: IQApp?) {
+                            cachedAppStatus = if (app != null && app.status == IQApp.IQAppStatus.INSTALLED) {
+                                GarminWatchAppStatus.Installed(app.version())
+                            } else {
+                                GarminWatchAppStatus.NotInstalled
+                            }
+                        }
+
+                        override fun onApplicationNotInstalled(applicationId: String?) {
+                            cachedAppStatus = GarminWatchAppStatus.NotInstalled
+                        }
+                    },
+                )
+            } catch (_: Throwable) {
+            }
         }
     }
 

@@ -265,10 +265,15 @@ object GarminSlv3Protocol {
         )
     }
 
-    fun buildAckPayload(ackSeq: Long): Map<String, Any> = mapOf(
-        "a" to ackSeq.toInt(),
-        "v" to PROTO_VERSION,
-    )
+    fun buildAckPayload(ackSeq: Long, tzPointLatLon100: IntArray? = null): Map<String, Any> {
+        val out = LinkedHashMap<String, Any>(3)
+        out["a"] = ackSeq.toInt()
+        out["v"] = PROTO_VERSION
+        if (tzPointLatLon100 != null && tzPointLatLon100.size == 2) {
+            out["z"] = listOf(tzPointLatLon100[0], tzPointLatLon100[1])
+        }
+        return out
+    }
 
     /**
      * Stamps journal `day` (`YYYY-MM-DD`) and `segment` (`HHMMSS_LEN`) strictly from the watch's

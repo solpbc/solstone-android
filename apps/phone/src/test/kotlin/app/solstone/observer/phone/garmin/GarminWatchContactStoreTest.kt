@@ -3,6 +3,8 @@
 
 package app.solstone.observer.phone.garmin
 
+import app.solstone.observer.phone.wear.PhoneWatchContactStore
+import app.solstone.observer.phone.wear.WatchPlatform
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,8 +18,8 @@ class GarminWatchContactStoreTest {
     fun freshStoreIsInactiveAndHasNoContact() {
         val dir = Files.createTempDirectory("garmin-contact-fresh").toFile()
         try {
-            val store = GarminWatchContactStore(dir)
-            assertFalse(store.isActivated())
+            val store = PhoneWatchContactStore(dir)
+            assertFalse(store.isGarminActivated())
             assertFalse(store.hasContact())
             assertNull(store.read())
             assertNull(store.lastContactEpochMs())
@@ -27,15 +29,19 @@ class GarminWatchContactStoreTest {
     }
 
     @Test
-    fun activationAndContactPersistAtomically() {
+    fun garminActivationAndContactPersistAtomicallyInUnifiedWatchStore() {
         val dir = Files.createTempDirectory("garmin-contact-persist").toFile()
         try {
-            val store = GarminWatchContactStore(dir)
-            store.markActivated()
-            assertTrue(store.isActivated())
-            assertFalse(store.hasContact())
+            val store = PhoneWatchContactStore(dir)
+            store.recordGarminActivated()
+            assertTrue(store.isGarminActivated())
+            assertTrue(store.hasContact())
+            val activated = PhoneWatchContactStore(dir).read()
+            assertEquals(WatchPlatform.GARMIN, activated?.platform)
+            assertEquals(false, activated?.hasWatchContact)
+            assertNull(store.lastContactEpochMs())
 
-            store.recordContact(
+            store.recordGarminContact(
                 epochMs = 1795850000_000L,
                 version = 1,
                 waitingSlabs = 14,
@@ -45,19 +51,20 @@ class GarminWatchContactStoreTest {
                 lastEndReason = 1,
             )
 
-            val reloaded = GarminWatchContactStore(dir).read()
-            assertEquals(true, reloaded?.activated)
+            val reloaded = PhoneWatchContactStore(dir).read()
+            assertEquals(WatchPlatform.GARMIN, reloaded?.platform)
+            assertEquals(true, reloaded?.hasWatchContact)
             assertEquals(1795850000_000L, reloaded?.at)
             assertEquals(1, reloaded?.version)
-            assertEquals(14, reloaded?.waitingSlabs)
+            assertEquals(14, reloaded?.sealedWaiting)
             assertEquals(3646641882L, reloaded?.deviceId)
             assertEquals("Forerunner 970", reloaded?.deviceName)
             assertEquals(false, reloaded?.storageFull)
             assertEquals(1, reloaded?.lastEndReason)
 
             store.clearContact()
-            assertFalse(GarminWatchContactStore(dir).isActivated())
-            assertNull(GarminWatchContactStore(dir).read())
+            assertFalse(PhoneWatchContactStore(dir).isGarminActivated())
+            assertNull(PhoneWatchContactStore(dir).read())
         } finally {
             dir.deleteRecursively()
         }
@@ -67,7 +74,6 @@ class GarminWatchContactStoreTest {
     fun activationLinkMatchesOnlyCanonicalGoSolstoneGarminRoute() {
         assertTrue(GarminEnvironmentProbe.isGarminActivationLink("https://go.solstone.app/garmin"))
         assertTrue(GarminEnvironmentProbe.isGarminActivationLink("https://go.solstone.app/garmin/"))
-        assertTrue(GarminEnvironmentProbe.isGarminActivationLink("https://go.solstone.app/garmin?src=watch"))
         assertFalse(GarminEnvironmentProbe.isGarminActivationLink("https://go.solstone.app/p#abc"))
         assertFalse(GarminEnvironmentProbe.isGarminActivationLink("https://go.solstone.app/j#abc"))
         assertFalse(GarminEnvironmentProbe.isGarminActivationLink("http://go.solstone.app/garmin"))

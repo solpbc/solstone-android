@@ -63,22 +63,32 @@ class GarminCustodyComposedProofTest {
 
         override fun segmentById(id: String): SegmentRow? = segments[id]
         override fun duplicateBySha256(sha256: String): List<SegmentFileRow> = emptyList()
-        override fun filesForSegment(segmentId: String): List<SegmentFileRow> = files[segmentId].orEmpty()
-        override fun eventsForSegment(segmentId: String): List<EventRow> = emptyList()
-        override fun updateSegmentState(id: String, state: QueueState, lastError: String?, retryAfterEpochMs: Long?) = Unit
-        override fun incrementAttempts(id: String, attempts: Int, lastError: String?, retryAfterEpochMs: Long?) = Unit
-        override fun markUploaded(id: String, uploadedAt: Long) = Unit
-        override fun deleteSegment(id: String) {
-            segments.remove(id)
-            files.remove(id)
+        override fun filesBySegmentId(segmentId: String): List<SegmentFileRow> = files[segmentId].orEmpty()
+        override fun recordAttempt(id: String, attempts: Int, at: Long, homeInstanceId: String?): Int = 1
+        override fun recordUploaded(id: String): Int = 1
+        override fun recordFailure(id: String, code: Int?, error: String?): Int = 1
+        override fun upsertSyncState(row: SyncStateRow) = Unit
+        override fun syncState(): SyncStateRow? = null
+        override fun pendingCount(stream: String): Int =
+            segments.values.count {
+                it.stream == stream &&
+                    (it.state == QueueState.SEALED || it.state == QueueState.UPLOADING || it.state == QueueState.FAILED)
+            }
+        override fun pendingSourceIds(stream: String): List<String> = emptyList()
+        override fun segmentState(id: String): QueueState? = segments[id]?.state
+        override fun updateState(id: String, state: QueueState): Int {
+            val cur = segments[id] ?: return 0
+            segments[id] = cur.copy(state = state)
+            return 1
         }
-        override fun clearSegmentRetry(id: String) = Unit
-        override fun getSyncState(stream: String): SyncStateRow? = null
-        override fun upsertSyncState(state: SyncStateRow) = Unit
-        override fun countActiveBySource(sourceId: String): Int =
-            files.values.flatten().count { it.sourceId == sourceId }
-        override fun countByState(state: QueueState): Int = segments.values.count { it.state == state }
-        override fun totalActiveBytes(): Long = segments.values.sumOf { it.byteSize }
+        override fun deleteFilesBySegmentId(segmentId: String): Int {
+            files.remove(segmentId)
+            return 1
+        }
+        override fun deleteFilesBySegmentIds(segmentIds: List<String>): Int {
+            segmentIds.forEach { files.remove(it) }
+            return 1
+        }
     }
 
     @Test
@@ -144,7 +154,7 @@ class GarminCustodyComposedProofTest {
             assertNull(drainOrder[1].homeInstanceId)
 
             // Verify watch-audio source + audio.ogg bytes on disk match watch payload byte-for-byte
-            val files0 = dao.filesForSegment(drainOrder[0].id)
+            val files0 = dao.filesBySegmentId(drainOrder[0].id)
             assertEquals(1, files0.size)
             assertEquals(WatchCourierProtocol.SOURCE_ID_WATCH_AUDIO, files0[0].sourceId)
             assertEquals("audio.ogg", files0[0].name)

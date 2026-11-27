@@ -236,4 +236,27 @@ class GarminSlv3AndSpoolTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun sunZonePointLookupAndAckPayloadIncludeRepresentativeCoordinates() {
+        val denver = SunZonePointLookup.lookupLatLon100("America/Denver")
+        assertNotNull(denver)
+        assertContentEquals(intArrayOf(3974, -10498), denver)
+
+        val tokyo = SunZonePointLookup.lookupLatLon100("Asia/Tokyo")
+        assertNotNull(tokyo)
+        assertContentEquals(intArrayOf(3565, 13974), tokyo)
+
+        assertNull(SunZonePointLookup.lookupLatLon100("Etc/Unknown"))
+
+        val ackWithZone = GarminSlv3Protocol.buildAckPayload(42L, denver)
+        assertEquals(42, ackWithZone["a"])
+        assertEquals(1, ackWithZone["v"])
+        assertEquals(listOf(3974, -10498), ackWithZone["z"])
+
+        val ackNoZone = GarminSlv3Protocol.buildAckPayload(42L, null)
+        assertEquals(42, ackNoZone["a"])
+        assertEquals(1, ackNoZone["v"])
+        assertFalse(ackNoZone.containsKey("z"))
+    }
 }
