@@ -116,7 +116,7 @@ object GarminCourierRuntime {
 
     /**
      * Read-only Garmin status probe for the watch source page (dead-end detection).
-     * Strictly gated by GW.19: returns `null` with zero PackageManager or Garmin SDK calls
+     * Strictly gated on prior Garmin activation: returns `null` with zero PackageManager or Garmin SDK calls
      * on any phone that has never activated or heard from a solstone Garmin watch.
      */
     fun probeStatusIfActivated(context: Context): GarminStatusSnapshot? {
