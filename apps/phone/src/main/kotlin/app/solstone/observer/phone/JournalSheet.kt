@@ -247,10 +247,22 @@ private fun JournalBrowserPane(
         val pending = exportPickAnswer[0]
         exportPickAnswer[0] = null
         if (pending != null) {
-            val dest = uri?.let {
+            val dest = uri?.let { pickedUri ->
                 val app = context.applicationContext
-                val display = SafExportDestination.queryDisplayName(app, it, pending.first)
-                SafExportDestination(app, it, display)
+                val rwFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                runCatching {
+                    app.contentResolver.takePersistableUriPermission(pickedUri, rwFlags)
+                }.onFailure {
+                    runCatching {
+                        app.contentResolver.takePersistableUriPermission(
+                            pickedUri,
+                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                    }
+                }
+                val display = SafExportDestination.queryDisplayName(app, pickedUri, pending.first)
+                SafExportDestination(app, pickedUri, display)
             }
             pending.second(dest)
         }
