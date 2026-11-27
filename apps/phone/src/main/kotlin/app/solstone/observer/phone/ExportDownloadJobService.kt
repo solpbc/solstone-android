@@ -48,8 +48,10 @@ class ExportDownloadJobService : JobService() {
             try {
                 reschedule = manager.runTransferAttemptBlocking()
             } finally {
-                activeService.compareAndSet(this, null)
-                currentParams = null
+                if (currentParams === params) {
+                    activeService.compareAndSet(this, null)
+                    currentParams = null
+                }
                 runCatching {
                     jobFinished(params, reschedule)
                     finishedJobCountForTests.incrementAndGet()
@@ -68,9 +70,12 @@ class ExportDownloadJobService : JobService() {
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
+        if (currentParams !== params || activeService.get() !== this) {
+            return false
+        }
         val app = applicationContext
         val manager = JournalExportTransferManager.get(app)
-        // Preserve partial SAF document and persisted offset when the OS stops the job.
+        // Preserve partial SAF document and persisted offset when the OS stops the active job.
         manager.pauseForOsStop()
         activeService.compareAndSet(this, null)
         currentParams = null
