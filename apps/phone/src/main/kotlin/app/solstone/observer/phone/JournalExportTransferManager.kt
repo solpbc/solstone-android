@@ -618,7 +618,7 @@ internal class JournalExportTransferManager(
             var errorBody: ByteArrayOutputStream? = null
             var sinkFailureCode: String? = null
             var streamCompleted = false
-            var fullPartialProbeMode = isFullDocumentRecovery
+            val fullPartialProbeMode = isFullDocumentRecovery
             var fullPartialProbeConfirmed = false
             var fullPartialProbeBytes = 0
             val startNs = System.nanoTime()
@@ -645,24 +645,19 @@ internal class JournalExportTransferManager(
                                         val rawEtag = headers.firstOrNull {
                                             it.first.equals("etag", ignoreCase = true)
                                         }?.second?.trim()?.takeIf { it.isNotEmpty() }
-                                        val hasValidator = rawEtag != null
                                         val contentLength = headers.firstOrNull {
                                             it.first.equals("content-length", ignoreCase = true)
                                         }?.second?.trim()?.toLongOrNull()
                                         val lengthMatches = contentLength == null ||
                                             contentLength == transfer.request.sizeBytes
-                                        if (hasValidator || !lengthMatches) {
-                                            if (hasValidator &&
-                                                matchesStrongEtag(rawEtag, transfer.request.etag) &&
-                                                lengthMatches
-                                            ) {
-                                                throw FullPartialProbeConfirmedException()
-                                            }
-                                            throw ExportProtocolFailureException("export_copy_unconfirmed")
+                                        if (matchesStrongEtag(rawEtag, transfer.request.etag) && lengthMatches) {
+                                            throw FullPartialProbeConfirmedException()
                                         }
-                                        // Range-ignoring 200 with absent ETag and matching length:
-                                        // cannot confirm local copy from headers alone, so stream live 200 from 0.
-                                        fullPartialProbeMode = false
+                                        // SAF writes directly to the owner's document URI with no atomic
+                                        // staging rename: never open or truncate an already-complete file
+                                        // when live headers cannot strongly confirm the copy (changed,
+                                        // weak, mismatched length, or absent ETag).
+                                        throw ExportProtocolFailureException("export_copy_unconfirmed")
                                     }
                                     // Server returned full archive (first attempt or ETag changed under If-Range).
                                     resumeOffset = 0L

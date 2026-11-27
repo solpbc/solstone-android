@@ -50,6 +50,7 @@ class JournalExportHostTest {
         var deleted = false
         var sizeReads = 0
         var hashReads = 0
+        var writerOpens = 0
         var closeCalls = 0
         override val uriString: String = file.toURI().toString()
 
@@ -61,6 +62,7 @@ class JournalExportHostTest {
         override fun availableSpaceBytesOrNull(): Long? = availableSpaceBytes
 
         override fun openWriterAt(offset: Long, truncate: Boolean): OutputStream {
+            writerOpens += 1
             file.parentFile?.mkdirs()
             val raf = RandomAccessFile(file, "rw")
             if (truncate) {
@@ -1375,34 +1377,50 @@ class JournalExportHostTest {
                 assertTrue(f.readBytes().contentEquals(payload), label)
             }
 
-            // 6. Range-ignoring 200 with absent ETag and matching Content-Length -> streams live 200
-            //    from byte 0 and verifies SHA-256 -> saved/verified=true.
-            val absentEtagFile = File(dir, "absent-etag.zip").apply { writeBytes(corruptPayload) }
-            val absentEtagDest = FileExportDestination(absentEtagFile)
-            val absentEtagBodyChunks = AtomicInteger(0)
-            val absentEtagManager = JournalExportTransferManager(
-                upstreamOpener = {
-                    OpenedExportUpstream(
-                        raw200Upstream(
-                            listOf("Content-Length" to payload.size.toString()),
-                            body = payload,
-                            bodyChunksEmitted = absentEtagBodyChunks,
-                            seenHeaders = mutableListOf(),
-                        ),
-                        "local",
-                    )
-                },
-                spaceProbe = { 500_000_000L },
-                destinationReopener = { _, _ -> absentEtagDest },
-                stateStore = saveFullState(File(dir, "s-absent.json"), "exp_absent", absentEtagDest),
-                drainClosed = { false },
-                schedulerFactory = ::syncScheduler,
-            )
-            absentEtagManager.resume("exp_absent")
-            assertEquals("saved", absentEtagManager.currentSnapshot().phase)
-            assertTrue(absentEtagManager.currentSnapshot().verified)
-            assertEquals(1, absentEtagBodyChunks.get())
-            assertTrue(absentEtagFile.readBytes().contentEquals(payload))
+            // 6. Range-ignoring 200 with absent ETag (including a short/interrupted body, on BOTH
+            //    readable and write-only providers): SAF has no atomic staging rename, so recovery
+            //    MUST abort at headers with export_copy_unconfirmed, NEVER open/truncate the owner's
+            //    already-complete document, NEVER delete it, and preserve all original bytes intact.
+            for ((label, allowReadBack) in listOf("absent-etag-readable" to true, "absent-etag-write-only" to false)) {
+                val absentEtagFile = File(dir, "$label.zip").apply { writeBytes(payload) }
+                val absentEtagDest = FileExportDestination(absentEtagFile, allowReadBack = allowReadBack)
+                val absentEtagBodyChunks = AtomicInteger(0)
+                val shortInterruptedUpstream = object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                        error("streaming expected")
+
+                    override fun requestStreaming(
+                        method: String,
+                        path: String,
+                        headers: List<Pair<String, String>>,
+                        bodySource: BrowserRequestBodySource?,
+                        responseSink: BrowserResponseSink,
+                    ) {
+                        responseSink.onStatusAndHeaders(200, "OK", listOf("Content-Length" to payload.size.toString()))
+                        absentEtagBodyChunks.incrementAndGet()
+                        responseSink.onBodyChunk(payload, 0, 1024)
+                        throw IOException("short interrupted 200 body")
+                    }
+
+                    override fun close() {}
+                }
+                val absentEtagManager = JournalExportTransferManager(
+                    upstreamOpener = { OpenedExportUpstream(shortInterruptedUpstream, "local") },
+                    spaceProbe = { 500_000_000L },
+                    destinationReopener = { _, _ -> absentEtagDest },
+                    stateStore = saveFullState(File(dir, "s-$label.json"), "exp_$label", absentEtagDest, ownsCreatedDocument = true),
+                    drainClosed = { false },
+                    schedulerFactory = ::syncScheduler,
+                )
+                absentEtagManager.resume("exp_$label")
+                assertEquals("error", absentEtagManager.currentSnapshot().phase, label)
+                assertEquals("export_copy_unconfirmed", absentEtagManager.currentSnapshot().errorCode, label)
+                assertEquals(0, absentEtagBodyChunks.get(), "$label must abort before reading short 200 body")
+                assertEquals(0, absentEtagDest.writerOpens, "$label must never open or truncate an already-complete SAF document")
+                assertFalse(absentEtagDest.deleted, "$label must never delete already-owned document")
+                assertTrue(absentEtagFile.readBytes().contentEquals(payload), "$label must preserve original bytes intact")
+            }
 
             // 7. 416 on full-document recovery fails export_copy_unconfirmed and preserves document.
             val r416File = File(dir, "r416.zip").apply { writeBytes(payload) }
