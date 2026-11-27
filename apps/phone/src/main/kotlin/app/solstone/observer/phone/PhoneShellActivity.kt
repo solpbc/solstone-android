@@ -647,6 +647,13 @@ class PhoneShellActivity : ComponentActivity() {
                 JournalAuthCallbackBus.deliver(rawData)
                 return
             }
+            if (app.solstone.observer.phone.garmin.GarminEnvironmentProbe.isGarminActivationLink(rawData)) {
+                intent.data = null
+                if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+                initialPairingTask = false
+                app.solstone.observer.phone.garmin.GarminCourierRuntime.activateAndConnect(applicationContext)
+                return
+            }
             when (val link = phoneJournalLink(rawData)) {
                 PhoneJournalLink.Other -> invalidJournalLink = false
                 else -> {
@@ -751,6 +758,7 @@ class PhoneShellActivity : ComponentActivity() {
         initialPairingTask = restored?.getBoolean(STATE_INITIAL_PAIRING_TASK, false)
             ?: (isTaskRoot && intent?.action == Intent.ACTION_VIEW && intent?.data != null &&
                 !JournalAuthValidation.isOAuthCallbackUrl(intent?.data?.toString()) &&
+                !app.solstone.observer.phone.garmin.GarminEnvironmentProbe.isGarminActivationLink(intent?.data?.toString()) &&
                 phoneJournalLink(intent?.data?.toString()) is PhoneJournalLink.Other)
         val app = application as ObserverApplication
         val runtime = ObserverHarnessRuntime.runtime ?: app.runtime.also {

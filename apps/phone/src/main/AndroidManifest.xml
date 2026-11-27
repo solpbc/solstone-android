@@ -58,6 +58,7 @@
                     android:host="go.solstone.app"
                     android:path="/p" />
                 <data android:path="/j" />
+                <data android:path="/garmin" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -158,6 +159,13 @@
         </receiver>
         <receiver android:name=".PhoneLocaleReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.LOCALE_CHANGED" /></intent-filter>
+        </receiver>
+        <receiver
+            android:name=".garmin.GarminIncomingMessageReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.garmin.android.connectiq.INCOMING_MESSAGE" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>

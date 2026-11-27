@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!-- Remove Garmin SDK 2.4.0's unused exported binder service (deprecated/unapproved by Garmin docs).
+             Companion delivery uses the explicit INCOMING_MESSAGE broadcast path with zero extra permissions. -->
+        <service
+            android:name="com.garmin.android.connectiq.IQGarminBindingService"
+            tools:node="remove" />
+    </application>
+</manifest>

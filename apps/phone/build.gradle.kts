@@ -408,6 +408,7 @@ dependencies {
     implementation(project(":platform:wearable")) {
         exclude(group = "androidx.fragment", module = "fragment")
     }
+    implementation(project(":platform:garmin"))
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.browser:browser:1.9.0")
     implementation("androidx.webkit:webkit:1.18.0")

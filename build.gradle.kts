@@ -58,6 +58,9 @@ fun deniedPrivacyCoordinate(group: String, name: String): String? {
 
     val coordinate = "$group:$name"
     if (coordinate in exactCoordinates) return coordinate
+    if (group == "com.garmin" || group.startsWith("com.garmin.")) {
+        if (coordinate != "com.garmin.connectiq:ciq-companion-app-sdk") return coordinate
+    }
     if (deniedGroupPrefixes.any { group == it || group.startsWith("$it.") }) return coordinate
     if (name in deniedArtifacts || name.startsWith("firebase-")) return coordinate
     return null
@@ -2724,6 +2727,43 @@ fun Project.registerRealReleasePushManifestCheck() {
             if (scheme != "wear" || host != "*" || pathPrefix != "/solstone/courier/") {
                 throw GradleException("PhoneWatchCourierService data mismatch: scheme='$scheme', host='$host', pathPrefix='$pathPrefix'")
             }
+
+            // Verify GarminIncomingMessageReceiver filters and ensure unused IQGarminBindingService is stripped
+            for (i in 0 until serviceNodes.length) {
+                val el = serviceNodes.item(i) as? org.w3c.dom.Element ?: continue
+                val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                if (name == "com.garmin.android.connectiq.IQGarminBindingService") {
+                    throw GradleException("Unused IQGarminBindingService must be stripped from merged phone manifest")
+                }
+            }
+            val receiverNodes = doc.getElementsByTagName("receiver")
+            var garminReceiverElement: org.w3c.dom.Element? = null
+            for (i in 0 until receiverNodes.length) {
+                val el = receiverNodes.item(i) as? org.w3c.dom.Element ?: continue
+                val name = el.getAttribute("android:name").ifEmpty { el.getAttribute("name") }
+                if (name == "app.solstone.observer.phone.garmin.GarminIncomingMessageReceiver") {
+                    garminReceiverElement = el
+                    break
+                }
+            }
+            if (garminReceiverElement == null) {
+                throw GradleException("GarminIncomingMessageReceiver not found in merged manifest")
+            }
+            val garminFilters = garminReceiverElement.getElementsByTagName("intent-filter")
+            if (garminFilters.length != 1) {
+                throw GradleException("GarminIncomingMessageReceiver must have exactly 1 intent-filter, found ${garminFilters.length}")
+            }
+            val garminFilterEl = garminFilters.item(0) as org.w3c.dom.Element
+            val garminActionNodes = garminFilterEl.getElementsByTagName("action")
+            val garminActions = (0 until garminActionNodes.length).map {
+                (garminActionNodes.item(it) as org.w3c.dom.Element).getAttribute("android:name").ifEmpty {
+                    (garminActionNodes.item(it) as org.w3c.dom.Element).getAttribute("name")
+                }
+            }.toSet()
+            val expectedGarminActions = setOf("com.garmin.android.connectiq.INCOMING_MESSAGE")
+            if (garminActions != expectedGarminActions) {
+                throw GradleException("GarminIncomingMessageReceiver actions mismatch. Expected $expectedGarminActions, got $garminActions")
+            }
         }
     }
 }
@@ -2801,13 +2841,18 @@ fun Project.registerRealReleasePushDexCheck() {
             val approvedPlayCoordinates = setOf(
                 "com.google.android.play:age-signals:0.0.6",
             )
+            val approvedGarminCoordinates = setOf(
+                "com.garmin.connectiq:ciq-companion-app-sdk:2.4.0",
+            )
             val detachedConfig = configurations.detachedConfiguration(
                 dependencies.create("com.google.android.gms:play-services-wearable:20.0.1"),
                 *approvedPlayCoordinates.map { dependencies.create(it) }.toTypedArray(),
+                *approvedGarminCoordinates.map { dependencies.create(it) }.toTypedArray(),
             )
             val resolvedGmsArtifacts = detachedConfig.resolvedConfiguration.resolvedArtifacts
             val resolvedGmsCoords = mutableSetOf<String>()
             val resolvedPlayCoords = mutableSetOf<String>()
+            val resolvedGarminCoords = mutableSetOf<String>()
             val gmsArtifactFiles = mutableListOf<File>()
 
             for (artifact in resolvedGmsArtifacts) {
@@ -2817,6 +2862,16 @@ fun Project.registerRealReleasePushDexCheck() {
                     resolvedPlayCoords += coord
                     gmsArtifactFiles += artifact.file
                     continue
+                }
+                if (coord in approvedGarminCoordinates) {
+                    resolvedGarminCoords += coord
+                    gmsArtifactFiles += artifact.file
+                    continue
+                }
+                if (id.group.startsWith("com.garmin")) {
+                    throw GradleException(
+                        "Unapproved Garmin dependency resolved: $coord. Allowed coordinates: $approvedGarminCoordinates"
+                    )
                 }
                 if (id.group.startsWith("com.google.android.gms") || id.group.contains("gms") ||
                     id.group.startsWith("com.google.firebase") || id.group.contains("firebase") ||
@@ -2835,6 +2890,11 @@ fun Project.registerRealReleasePushDexCheck() {
             if (resolvedPlayCoords != approvedPlayCoordinates) {
                 throw GradleException(
                     "Resolved Play library coordinates did not match. Expected: $approvedPlayCoordinates, but resolved: $resolvedPlayCoords"
+                )
+            }
+            if (resolvedGarminCoords != approvedGarminCoordinates) {
+                throw GradleException(
+                    "Resolved Garmin library coordinates did not match. Expected: $approvedGarminCoordinates, but resolved: $resolvedGarminCoords"
                 )
             }
             if (resolvedGmsCoords != allowedGmsCoordinates) {
@@ -2894,21 +2954,27 @@ fun Project.registerRealReleasePushDexCheck() {
                 if (descriptor.contains("crashlytics")) {
                     return "Banned crashlytics descriptor found: $descriptor"
                 }
-                if (descriptor.startsWith("Lcom/google/android/gms/") || descriptor.contains("firebase")) {
+                if (descriptor.startsWith("Lcom/google/android/gms/") ||
+                    descriptor.startsWith("Lcom/garmin/") ||
+                    descriptor.contains("firebase")
+                ) {
                     for (banned in bannedTokens) {
                         if (descriptor.contains(banned)) {
                             return "Banned descriptor found: $descriptor (matches '$banned')"
                         }
                     }
                     if (descriptor !in inventory) {
-                        return "Unapproved GMS/Firebase descriptor found: $descriptor"
+                        return "Unapproved GMS/Firebase/Garmin descriptor found: $descriptor"
                     }
                 }
                 return null
             }
 
             // Self-test verifies fixture inventory behavior against required cases
-            val fixtureInventory = setOf("Lcom/google/android/gms/wearable/ChannelClient;")
+            val fixtureInventory = setOf(
+                "Lcom/google/android/gms/wearable/ChannelClient;",
+                "Lcom/garmin/android/connectiq/ConnectIQ;",
+            )
             check(classifyDescriptor("Lcom/google/android/gms/internal/measurement/zzfi;", fixtureInventory) != null) {
                 "Self-test failed: Lcom/google/android/gms/internal/measurement/zzfi; was allowed"
             }
@@ -2933,8 +2999,17 @@ fun Project.registerRealReleasePushDexCheck() {
             check(classifyDescriptor("Lcom/google/android/gms/common/api/NotInTheResolvedArtifact;", fixtureInventory) != null) {
                 "Self-test failed: NotInTheResolvedArtifact was allowed"
             }
+            check(classifyDescriptor("Lcom/garmin/android/analytics/Tracker;", fixtureInventory) != null) {
+                "Self-test failed: garmin/analytics descriptor was allowed"
+            }
+            check(classifyDescriptor("Lcom/garmin/android/connectiq/NotInTheResolvedArtifact;", fixtureInventory) != null) {
+                "Self-test failed: unapproved garmin descriptor was allowed"
+            }
             check(classifyDescriptor("Lcom/google/android/gms/wearable/ChannelClient;", fixtureInventory) == null) {
                 "Self-test failed: ChannelClient in fixture was rejected"
+            }
+            check(classifyDescriptor("Lcom/garmin/android/connectiq/ConnectIQ;", fixtureInventory) == null) {
+                "Self-test failed: ConnectIQ in fixture was rejected"
             }
 
             check(realInventory.isNotEmpty()) {

@@ -23,6 +23,7 @@ activity: app.solstone.observer.phone.ShareToJournalActivity [permission: (none)
 receiver: androidx.profileinstaller.ProfileInstallReceiver [permission: android.permission.DUMP]
 receiver: androidx.work.impl.diagnostics.DiagnosticsReceiver [permission: android.permission.DUMP]
 receiver: app.solstone.observer.phone.PhoneObserverWidgetReceiver [permission: (none)]
+receiver: app.solstone.observer.phone.garmin.GarminIncomingMessageReceiver [permission: (none)]
 receiver: org.unifiedpush.android.connector.internal.MessagingReceiverImpl [permission: (none)]
 receiver: org.unifiedpush.android.embedded_fcm_distributor.impl.FirebaseReceiver [permission: com.google.android.c2dm.permission.SEND]
 service: androidx.glance.appwidget.GlanceRemoteViewsService [permission: android.permission.BIND_REMOTEVIEWS]

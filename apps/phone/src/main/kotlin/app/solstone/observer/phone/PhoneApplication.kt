@@ -172,6 +172,7 @@ class PhoneApplication : ObserverApplication(
             pushPresentation = true,
         )
         super.onCreate()
+        app.solstone.observer.phone.garmin.GarminCourierRuntime.ensureStartedIfActivated(this)
         ObserverNotification.ensureChannel(this)
         JournalPushPoster(this).renameChannelIfPresent()
         ImportUploadNotification.renameChannelIfPresent(this)
@@ -691,10 +692,13 @@ class PhoneApplication : ObserverApplication(
                 runCatching {
                     // A heartbeat establishes contact only. A committed bundle establishes a configured courier.
                     val received = (container as? ObserverAppContainer)?.persistenceDatabase()?.watchSourceDao()?.firstReceiptEpochMs()
-                    val version = if (received != null) app.solstone.observer.phone.wear.PhoneWatchContactStore(this).read()?.version else null
+                    val wearContact = if (received != null) app.solstone.observer.phone.wear.PhoneWatchContactStore(this).read() else null
+                    val garminContact = if (received != null) app.solstone.observer.phone.garmin.GarminWatchContactStore(this).read() else null
+                    val wearMismatch = wearContact?.version != null && wearContact.version != app.solstone.core.watch.courier.WatchCourierProtocol.PROTOCOL_VERSION
+                    val garminMismatch = garminContact?.version != null && garminContact.version != app.solstone.core.watch.courier.GarminSlv3Protocol.PROTO_VERSION
                     val watchState = when {
                         received == null -> null
-                        version != null && version != app.solstone.core.watch.courier.WatchCourierProtocol.PROTOCOL_VERSION -> "needs_attention"
+                        wearMismatch || garminMismatch -> "needs_attention"
                         else -> "on"
                     }
                     declaration(it, watchState)
