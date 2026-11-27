@@ -45,9 +45,11 @@ internal fun journalImportHostScript(
     contract: ImportHostContract,
     origin: String,
     authContract: AuthHostContract? = null,
+    exportContract: ExportHostContract? = null,
 ): String =
     template.replace("__CONTRACT__", contract.json)
         .replace("__AUTH_CONTRACT__", authContract?.json ?: "null")
+        .replace("__EXPORT_CONTRACT__", exportContract?.json ?: "null")
         .replace("__ORIGIN__", toJson(origin))
         .replace("__BRIDGE__", toJson(JOURNAL_IMPORT_BRIDGE))
 
@@ -73,6 +75,7 @@ internal class JournalImportHost<P>(
     /** Runs store reads off the main thread. */
     private val background: (() -> Unit) -> Unit,
     internal val authHost: JournalAuthHost? = null,
+    internal val exportHost: JournalExportHost? = null,
 ) {
     @Volatile private var busy = false
     @Volatile private var document = 0L
@@ -81,11 +84,13 @@ internal class JournalImportHost<P>(
     fun documentStarted() {
         document++
         authHost?.tearDown()
+        exportHost?.detachEventSink()
     }
 
     /** Tears down any in-flight OAuth session when the WebView is released or crashes. */
     fun tearDown() {
         authHost?.tearDown()
+        exportHost?.detachEventSink()
     }
 
     /**
@@ -110,6 +115,7 @@ internal class JournalImportHost<P>(
             }
             type == contract.pick -> pick(message, packet["context"], answer)
             authHost != null && authHost.handles(type) -> authHost.handle(message, answer)
+            exportHost != null && exportHost.handles(type) -> exportHost.handle(message, answer)
             else -> answer(mapOf("type" to contract.unsupported, "id" to message["id"]))
         }
     }

@@ -105,6 +105,10 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
         <service
+            android:name=".ExportDownloadJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service
             android:name=".PhonePushService"
             android:exported="false">
             <intent-filter>
@@ -132,6 +136,9 @@
         </receiver>
         <receiver
             android:name=".ImportUploadCancelReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".ExportDownloadActionReceiver"
             android:exported="false" />
         <receiver
             android:name=".PhoneObserverStopReceiver"

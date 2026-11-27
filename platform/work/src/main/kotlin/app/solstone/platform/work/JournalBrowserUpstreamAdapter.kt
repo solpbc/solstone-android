@@ -43,6 +43,7 @@ class JournalBrowserUpstreamAdapter(
         ConscryptJournalBrowserUpstream(openRelaySyncClient(origin, instId, tok, cred, verdictListener = listener))
     },
     private val dialEvents: app.solstone.core.pl.DialEventLog? = DialDiagnostics.events,
+    private val onLegOpened: ((isRelay: Boolean) -> Unit)? = null,
 ) : JournalBrowserUpstreamFactory {
 
     constructor(
@@ -185,6 +186,7 @@ class JournalBrowserUpstreamAdapter(
             throw java.io.IOException("journal refused this device")
         }
         answeredLeg = dialed
+        onLegOpened?.invoke(dialed is PairingLease.Relay)
         return GuardedUpstream(opened, attempt)
     }
 

@@ -1,0 +1,25 @@
+{
+  "description": "the solstone app to the owner, in the journal export notification",
+  "context": "notification body when saving a journal copy is paused, showing confirmed bytes written and total size.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "saved",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "b9cc5b4ba21a2ccfbedcb6b53989e1a0ee4622c67347c15c4e2016b806753892",
+  "risk": "routine",
+  "auto_merge": true
+}

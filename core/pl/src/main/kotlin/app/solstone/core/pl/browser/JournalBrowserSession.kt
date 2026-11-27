@@ -102,6 +102,8 @@ fun reasonText(status: Int, rawReason: String? = null): String {
         404 -> "Not Found"
         405 -> "Method Not Allowed"
         408 -> "Request Timeout"
+        410 -> "Gone"
+        416 -> "Range Not Satisfiable"
         417 -> "Expectation Failed"
         431 -> "Request Header Fields Too Large"
         500 -> "Internal Server Error"

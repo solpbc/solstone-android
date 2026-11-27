@@ -2,6 +2,14 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
+    "android.shelf.gap.record" to PhoneMessage("m616e64726f69642e7368656c662e6761702e7265636f7264", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "gap record"))),
+    "android.shelf.get.help" to PhoneMessage("m616e64726f69642e7368656c662e6765742e68656c70", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "get help"))),
+    "android.shelf.get.ntfy" to PhoneMessage("m616e64726f69642e7368656c662e6765742e6e746679", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "get ntfy"))),
+    "android.shelf.haptics" to PhoneMessage("m616e64726f69642e7368656c662e68617074696373", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "haptics"))),
+    "android.shelf.journal.holds.what.share.with" to PhoneMessage("m616e64726f69642e7368656c662e6a6f75726e616c2e686f6c64732e776861742e73686172652e77697468", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal holds what you share with the solstone app on this device."))),
+    "android.shelf.manufacturer.model" to PhoneMessage("m616e64726f69642e7368656c662e6d616e7566616374757265722e6d6f64656c", listOf(PhoneArgument("manufacturer", "string", ""), PhoneArgument("model", "string", "")), "", "", "", setOf(), mapOf("" to mapOf("other" to "%1\$s %2\$s"))),
+    "android.shelf.microphone.location.camera.android.settings" to PhoneMessage("m616e64726f69642e7368656c662e6d6963726f70686f6e652e6c6f636174696f6e2e63616d6572612e616e64726f69642e73657474696e6773", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "microphone, location and camera, in android settings"))),
+    "android.shelf.more.than.one.app.phone" to PhoneMessage("m616e64726f69642e7368656c662e6d6f72652e7468616e2e6f6e652e6170702e70686f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "more than one app on this phone can deliver notifications"))),
     "android.shelf.name" to PhoneMessage("m616e64726f69642e7368656c662e6e616d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "name"))),
     "android.shelf.not.answered" to PhoneMessage("m616e64726f69642e7368656c662e6e6f742e616e737765726564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not answered"))),
     "android.shelf.not.reaching.phone" to PhoneMessage("m616e64726f69642e7368656c662e6e6f742e7265616368696e672e70686f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "not reaching this phone"))),
@@ -54,12 +62,4 @@ internal fun phoneMessages8(): Map<String, PhoneMessage> = mapOf(
     "android.source.device.not.processed.until.connect" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e6e6f742e70726f6365737365642e756e74696c2e636f6e6e656374", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "on this device and not processed until you connect a journal."))),
     "android.source.device.restarted.intake.didn.t" to PhoneMessage("m616e64726f69642e736f757263652e6465766963652e7265737461727465642e696e74616b652e6469646e2e74", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this device restarted and intake didn't resume on its own"))),
     "android.source.firstreceived" to PhoneMessage("m616e64726f69642e736f757263652e66697273747265636569766564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "first received"))),
-    "android.source.getting.ready.connecting.journal" to PhoneMessage("m616e64726f69642e736f757263652e67657474696e672e72656164792e636f6e6e656374696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "getting ready. connecting to your journal."))),
-    "android.source.getting.ready" to PhoneMessage("m616e64726f69642e736f757263652e67657474696e672e7265616479", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "getting ready…"))),
-    "android.source.give.tile.home" to PhoneMessage("m616e64726f69642e736f757263652e676976652e74696c652e686f6d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "give this a tile on home"))),
-    "android.source.grant.permissions" to PhoneMessage("m616e64726f69642e736f757263652e6772616e742e7065726d697373696f6e73", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "grant permissions"))),
-    "android.source.heardwatch" to PhoneMessage("m616e64726f69642e736f757263652e68656172647761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "heard from your watch"))),
-    "android.source.heldphone" to PhoneMessage("m616e64726f69642e736f757263652e68656c6470686f6e65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "held on this phone"))),
-    "android.source.heldwatch" to PhoneMessage("m616e64726f69642e736f757263652e68656c647761746368", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "held on your watch"))),
-    "android.source.home" to PhoneMessage("m616e64726f69642e736f757263652e686f6d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "on home"))),
 )

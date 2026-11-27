@@ -2,6 +2,14 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
+    "android.phone.calendar" to PhoneMessage("m616e64726f69642e70686f6e652e63616c656e646172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "calendar"))),
+    "android.phone.cancel" to PhoneMessage("m616e64726f69642e70686f6e652e63616e63656c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "cancel"))),
+    "android.phone.event.log.couldn.t.be" to PhoneMessage("m616e64726f69642e70686f6e652e6576656e742e6c6f672e636f756c646e2e742e6265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the event log couldn't be read."))),
+    "android.phone.file" to PhoneMessage("m616e64726f69642e70686f6e652e66696c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "file"))),
+    "android.phone.from.journal" to PhoneMessage("m616e64726f69642e70686f6e652e66726f6d2e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "from your journal"))),
+    "android.phone.google.play.services" to PhoneMessage("m616e64726f69642e70686f6e652e676f6f676c652e706c61792e7365727669636573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Google Play services"))),
+    "android.phone.help" to PhoneMessage("m616e64726f69642e70686f6e652e68656c70", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "help"))),
+    "android.phone.image" to PhoneMessage("m616e64726f69642e70686f6e652e696d616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "image"))),
     "android.phone.import.saved" to PhoneMessage("m616e64726f69642e70686f6e652e696d706f72742e7361766564", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "saved on this device: %1\$s", "other" to "saved on this device: %1\$s"))),
     "android.phone.item" to PhoneMessage("m616e64726f69642e70686f6e652e6974656d", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "item"))),
     "android.phone.keep.both" to PhoneMessage("m616e64726f69642e70686f6e652e6b6565702e626f7468", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "keep both"))),
@@ -54,12 +62,4 @@ internal fun phoneMessages6(): Map<String, PhoneMessage> = mapOf(
     "android.screenshots.lastyear" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c61737479656172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the last year"))),
     "android.screenshots.llseehowmany" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6c6c736565686f776d616e79", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you'll see how many screenshots there are before any come in."))),
     "android.screenshots.nothingbeforetoday" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6e6f7468696e676265666f7265746f646179", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing from before today"))),
-    "android.screenshots.onlywhatsolstoneapp" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e6f6e6c7977686174736f6c73746f6e65617070", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "only what the solstone app can tell is a screenshot comes in."))),
-    "android.screenshots.pause" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e7061757365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "pause"))),
-    "android.screenshots.pausedscreenshotstakewhile" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e70617573656473637265656e73686f747374616b657768696c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "you paused this. screenshots you take while it's paused don't come in."))),
-    "android.screenshots.resume" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e726573756d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "resume"))),
-    "android.screenshots.screenshotalreadyjournalstays" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e73637265656e73686f74616c72656164796a6f75726e616c7374617973", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "a screenshot already in your journal stays there if you delete it from the folder."))),
-    "android.screenshots.screenshotcouldntcome" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e73637265656e73686f74636f756c646e74636f6d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this screenshot couldn't come in, so it stays in the folder."))),
-    "android.screenshots.screenshotcouldntread" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e73637265656e73686f74636f756c646e7472656164", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "this screenshot couldn't be read."))),
-    "android.screenshots.screenshots" to PhoneMessage("m616e64726f69642e73637265656e73686f74732e73637265656e73686f7473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "screenshots"))),
 )

@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- once your journal is updated too, exporting a copy from your journal saves straight to the file you pick on your phone and checks the saved file. a notification shows progress with pause, resume and cancel controls, and you can resume where it left off after a pause or connection drop.
+
 ### Changed
 
 - sending audio and screen recordings to your journal uses less memory on your phone.

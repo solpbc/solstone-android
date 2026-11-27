@@ -1219,6 +1219,147 @@
       "selector": null
     },
     {
+      "id": "android.export.notify.channel",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e6368616e6e656c",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.checking",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e636865636b696e67",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "filename",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.pause",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e7061757365",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.paused",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e706175736564",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "saved",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "total",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.resume",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e726573756d65",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.saving",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e736176696e67",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [
+        {
+          "name": "filename",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "saved",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        },
+        {
+          "name": "total",
+          "type": "string",
+          "numeric_style": null,
+          "min": null,
+          "max": null
+        }
+      ],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.starting",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e7374617274696e67",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
+      "id": "android.export.notify.title",
+      "resource": "m616e64726f69642e6578706f72742e6e6f746966792e7469746c65",
+      "namespace": "android.export.notify",
+      "owner": "solstone-android",
+      "tombstone": false,
+      "replacement": null,
+      "format_intent": "text",
+      "arguments": [],
+      "protected_slots": [],
+      "selector": null
+    },
+    {
       "id": "android.gap.camera",
       "resource": "m616e64726f69642e6761702e63616d657261",
       "namespace": "android.gap",

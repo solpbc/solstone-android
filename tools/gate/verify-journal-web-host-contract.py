@@ -11,6 +11,7 @@ from pathlib import Path
 PINS = (
     ("apps/phone/host-contract.provenance.json", "apps/phone/src/main/assets/journal-web-host/host-contract.json"),
     ("apps/phone/import-host-contract.provenance.json", "apps/phone/src/main/assets/journal-web-host/import-host-contract.json"),
+    ("apps/phone/export-host-contract.provenance.json", "apps/phone/src/main/assets/journal-web-host/export-host-contract.json"),
 )
 
 

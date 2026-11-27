@@ -77,6 +77,14 @@
   <string name="m616e64726f69642e63616c656e6461722e7369782e6d6f6e746873">"six months"</string>
   <string name="m616e64726f69642e63616c656e6461722e776861742e732e616c72656164792e6a6f75726e616c2e7374617973">"what's already in your journal stays when you pause or switch a calendar off."</string>
   <string name="m616e64726f69642e63616c656e6461722e7768696c652e63616c656e6461722e736f6c73746f6e652e6170702e636865636b73">"while calendar is on, the solstone app checks it in the background. android may delay those checks."</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e6368616e6e656c">"saving journal copy"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e636865636b696e67">"%1$s · checking file"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e7061757365">"pause"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e706175736564">"paused at %1$s of %2$s"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e726573756d65">"resume"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e736176696e67">"%1$s · %2$s of %3$s"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e7374617274696e67">"preparing to save…"</string>
+  <string name="m616e64726f69642e6578706f72742e6e6f746966792e7469746c65">"saving journal copy"</string>
   <string name="m616e64726f69642e6761702e63616d657261">"camera"</string>
   <plurals name="m616e64726f69642e6761702e636f6d706c6574652e636f6e76657273696f6e2e636f756e74">
     <item quantity="one">"complete %1$s"</item>

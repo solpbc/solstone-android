@@ -1,0 +1,29 @@
+{
+  "description": "the solstone app to the owner, in the journal export notification",
+  "context": "notification body while saving a journal copy, showing filename and confirmed byte progress.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "filename",
+      "type": "string"
+    },
+    {
+      "name": "saved",
+      "type": "string"
+    },
+    {
+      "name": "total",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 120,
+  "source_revision": "a3abe23069a381c07857230c9065e584722bb6c6f82a81fda90ab6e99df68706",
+  "risk": "routine",
+  "auto_merge": true
+}

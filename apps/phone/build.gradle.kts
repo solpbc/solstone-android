@@ -259,13 +259,18 @@ tasks.register("verifyJournalWebHostContractAsset") {
             .file("outputs/apk/real/debug/phone-real-debug.apk")
             .get()
             .asFile
-        val source = file("src/main/assets/journal-web-host/host-contract.json").readBytes()
+        val expectedAssets = listOf(
+            "assets/journal-web-host/host-contract.json" to file("src/main/assets/journal-web-host/host-contract.json").readBytes(),
+            "assets/journal-web-host/export-host-contract.json" to file("src/main/assets/journal-web-host/export-host-contract.json").readBytes(),
+        )
         ZipFile(apk).use { zip ->
-            val entry = requireNotNull(zip.getEntry("assets/journal-web-host/host-contract.json")) {
-                "missing journal web host contract asset in $apk"
+            for ((assetPath, source) in expectedAssets) {
+                val entry = requireNotNull(zip.getEntry(assetPath)) {
+                    "missing journal web host contract asset $assetPath in $apk"
+                }
+                val actual = zip.getInputStream(entry).use { it.readBytes() }
+                check(actual.contentEquals(source)) { "journal web host contract asset mismatch ($assetPath) in $apk" }
             }
-            val actual = zip.getInputStream(entry).use { it.readBytes() }
-            check(actual.contentEquals(source)) { "journal web host contract asset mismatch in $apk" }
         }
     }
 }

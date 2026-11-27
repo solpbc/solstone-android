@@ -73,6 +73,14 @@ public final class Select {
             case "android.calendar.six.months": return "m616e64726f69642e63616c656e6461722e7369782e6d6f6e746873";
             case "android.calendar.what.s.already.journal.stays": return "m616e64726f69642e63616c656e6461722e776861742e732e616c72656164792e6a6f75726e616c2e7374617973";
             case "android.calendar.while.calendar.solstone.app.checks": return "m616e64726f69642e63616c656e6461722e7768696c652e63616c656e6461722e736f6c73746f6e652e6170702e636865636b73";
+            case "android.export.notify.channel": return "m616e64726f69642e6578706f72742e6e6f746966792e6368616e6e656c";
+            case "android.export.notify.checking": return "m616e64726f69642e6578706f72742e6e6f746966792e636865636b696e67";
+            case "android.export.notify.pause": return "m616e64726f69642e6578706f72742e6e6f746966792e7061757365";
+            case "android.export.notify.paused": return "m616e64726f69642e6578706f72742e6e6f746966792e706175736564";
+            case "android.export.notify.resume": return "m616e64726f69642e6578706f72742e6e6f746966792e726573756d65";
+            case "android.export.notify.saving": return "m616e64726f69642e6578706f72742e6e6f746966792e736176696e67";
+            case "android.export.notify.starting": return "m616e64726f69642e6578706f72742e6e6f746966792e7374617274696e67";
+            case "android.export.notify.title": return "m616e64726f69642e6578706f72742e6e6f746966792e7469746c65";
             case "android.gap.camera": return "m616e64726f69642e6761702e63616d657261";
             case "android.gap.complete.conversion.count": return "m616e64726f69642e6761702e636f6d706c6574652e636f6e76657273696f6e2e636f756e74";
             case "android.gap.failed.conversion.reason": return "m616e64726f69642e6761702e6661696c65642e636f6e76657273696f6e2e726561736f6e";

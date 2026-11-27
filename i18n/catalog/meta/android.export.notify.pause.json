@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the journal export notification",
+  "context": "notification action button label to pause an active journal export save.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 24,
+  "source_revision": "cd1ef0bb5f547aa6f4c366af08d82b1801ca8eb1a9c32b4de5bbd91dbad7f42a",
+  "risk": "routine",
+  "auto_merge": true
+}

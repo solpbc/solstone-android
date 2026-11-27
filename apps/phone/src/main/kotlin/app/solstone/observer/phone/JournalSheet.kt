@@ -6,6 +6,9 @@ package app.solstone.observer.phone
 import app.solstone.core.i18n.JOURNAL_LOCALE_HEADER
 import app.solstone.core.i18n.journalLocaleHeaderValue
 import app.solstone.core.i18n.phoneText
+import app.solstone.core.pl.browser.BrowserResponseSink
+import app.solstone.platform.work.JournalBrowserUpstreamAdapter
+import app.solstone.platform.work.syncStores
 
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -238,6 +241,65 @@ private fun JournalBrowserPane(
             throw e
         }
     }
+    // Native export save picks the destination document FIRST via Android SAF ACTION_CREATE_DOCUMENT.
+    val exportPickAnswer = remember { arrayOfNulls<Pair<String, (ExportDestination?) -> Unit>>(1) }
+    val createExportDoc = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val pending = exportPickAnswer[0]
+        exportPickAnswer[0] = null
+        if (pending != null) {
+            val dest = uri?.let {
+                val app = context.applicationContext
+                val display = SafExportDestination.queryDisplayName(app, it, pending.first)
+                SafExportDestination(app, it, display)
+            }
+            pending.second(dest)
+        }
+    }
+    val pickExportDestination = { suggestedFilename: String, onPicked: (ExportDestination?) -> Unit ->
+        exportPickAnswer[0] = suggestedFilename to onPicked
+        try {
+            createExportDoc.launch(suggestedFilename)
+        } catch (_: RuntimeException) {
+            exportPickAnswer[0] = null
+            onPicked(null)
+        }
+    }
+    // Same-origin WebView downloads (media/attachments with Content-Disposition: attachment) save via SAF.
+    val webDownloadPending = remember { arrayOfNulls<Pair<String, String>>(1) }
+    val createDownloadDoc = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val pending = webDownloadPending[0]
+        webDownloadPending[0] = null
+        if (pending != null && uri != null) {
+            val (requestPath, _) = pending
+            val app = context.applicationContext
+            importHostReads.execute {
+                val ok = streamSameOriginDownloadToSaf(app, requestPath, uri)
+                if (!ok) {
+                    runCatching { android.provider.DocumentsContract.deleteDocument(app.contentResolver, uri) }
+                    hostView.post {
+                        if (alive.get()) notice = SAVE_FAILURE
+                    }
+                }
+            }
+        }
+    }
+    val onSameOriginDownload: (String, String?, String?) -> Unit = { downloadUrl, contentDisposition, mimeType ->
+        val parsed = runCatching { java.net.URI(downloadUrl) }.getOrNull()
+        val rawPath = parsed?.rawPath
+        if (rawPath.isNullOrBlank()) {
+            if (alive.get()) notice = SAVE_FAILURE
+        } else {
+            val fullPath = if (parsed.rawQuery != null) "$rawPath?${parsed.rawQuery}" else rawPath
+            val suggested = android.webkit.URLUtil.guessFileName(downloadUrl, contentDisposition, mimeType)
+            webDownloadPending[0] = fullPath to suggested
+            try {
+                createDownloadDoc.launch(suggested)
+            } catch (_: RuntimeException) {
+                webDownloadPending[0] = null
+                if (alive.get()) notice = SAVE_FAILURE
+            }
+        }
+    }
 
     DisposableEffect(session) {
         alive.set(true)
@@ -376,6 +438,8 @@ private fun JournalBrowserPane(
                             if (alive.get()) notice = LINK_UNAVAILABLE
                         },
                         openPicker = openPicker,
+                        pickExportDestination = pickExportDestination,
+                        onSameOriginDownload = onSameOriginDownload,
                         openAuthBrowser = openAuthBrowser,
                         onImportHost = { host ->
                             liveImportHost?.let { prev ->
@@ -474,6 +538,8 @@ internal fun createJournalWebView(
     onUnsupportedFileSelection: () -> Unit,
     onUnsupportedNavigation: () -> Unit,
     openPicker: ((Boolean, (List<Uri>?) -> Unit) -> Unit)? = null,
+    pickExportDestination: ((String, (ExportDestination?) -> Unit) -> Unit)? = null,
+    onSameOriginDownload: ((url: String, contentDisposition: String?, mimeType: String?) -> Unit)? = null,
     openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
     onImportHost: ((JournalImportHost<Uri>?) -> Unit)? = null,
     localeTagProvider: () -> String? = { journalLocaleHeaderValue() },
@@ -670,9 +736,17 @@ internal fun createJournalWebView(
                 resultMsg: Message,
             ): Boolean = false
         }
-        setDownloadListener { _, _, _, _, _ -> onUnsupportedTransfer() }
+        setDownloadListener { downloadUrl, _, contentDisposition, mimeType, _ ->
+            if (onSameOriginDownload != null && policy.allows(downloadUrl)) {
+                onSameOriginDownload(downloadUrl, contentDisposition, mimeType)
+            } else {
+                onUnsupportedTransfer()
+            }
+        }
         applyJournalWebHostUserAgent(context, settings)
-        importHost = openPicker?.let { installJournalImportHost(context, this, origin, it, openAuthBrowser) }
+        importHost = openPicker?.let {
+            installJournalImportHost(context, this, origin, it, pickExportDestination, openAuthBrowser)
+        }
         onImportHost?.invoke(importHost)
         PhoneJournalTestHooks.onLoadUrl?.invoke(loadTarget)
         loadJournalUrl(loadTarget, localeTagProvider())
@@ -741,6 +815,7 @@ private fun installJournalImportHost(
     view: WebView,
     url: String,
     openPicker: (Boolean, (List<Uri>?) -> Unit) -> Unit,
+    pickExportDestination: ((String, (ExportDestination?) -> Unit) -> Unit)? = null,
     openAuthBrowser: ((authorizeUrl: String, callbackScheme: String) -> Boolean)? = null,
 ): JournalImportHost<Uri>? {
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
@@ -755,6 +830,9 @@ private fun installJournalImportHost(
     }.getOrNull()
     val authContract = runCatching {
         context.assets.open("journal-web-host/auth-host-contract.json").use { parseAuthHostContract(it.readBytes()) }
+    }.getOrNull()?.takeIf { it.capability == contract?.capability }
+    val exportContract = runCatching {
+        context.assets.open("journal-web-host/export-host-contract.json").use { parseExportHostContract(it.readBytes()) }
     }.getOrNull()?.takeIf { it.capability == contract?.capability }
     val template = runCatching {
         context.assets.open("journal-web-host/import-host.js").use { String(it.readBytes(), Charsets.UTF_8) }
@@ -778,6 +856,15 @@ private fun installJournalImportHost(
             openBrowser = openAuthBrowser ?: fallbackBrowserOpener,
         )
     }
+    val exportHost = if (exportContract != null && pickExportDestination != null) {
+        JournalExportHost(
+            contract = exportContract,
+            manager = JournalExportTransferManager.get(app),
+            pickDestination = pickExportDestination,
+        )
+    } else {
+        null
+    }
     val host = JournalImportHost(
         origin = origin,
         contract = contract,
@@ -787,17 +874,23 @@ private fun installJournalImportHost(
         status = { id -> intake.store.handoffStatus(id) },
         background = { work -> importHostReads.execute(work) },
         authHost = authHost,
+        exportHost = exportHost,
     )
     return try {
         val rules = setOf(origin)
         WebViewCompat.addWebMessageListener(view, JOURNAL_IMPORT_BRIDGE, rules) { _, message, sourceOrigin, isMainFrame, replyProxy ->
+            if (isMainFrame && sourceOrigin.toString().trimEnd('/') == origin) {
+                exportHost?.attachEventSink { eventJson ->
+                    main.post { runCatching { replyProxy.postMessage(eventJson) } }
+                }
+            }
             host.onMessage(message.data, sourceOrigin.toString(), isMainFrame) { text ->
                 main.post { runCatching { replyProxy.postMessage(text) } }
             }
         }
         WebViewCompat.addDocumentStartJavaScript(
             view,
-            journalImportHostScript(template, contract, origin, authContract),
+            journalImportHostScript(template, contract, origin, authContract, exportContract),
             rules,
         )
         host
@@ -805,6 +898,58 @@ private fun installJournalImportHost(
         PhoneDiagLog.emit(DiagEvent.JournalBrowser(eventClass = "import-host", outcome = "refused"))
         null
     }
+}
+
+private fun streamSameOriginDownloadToSaf(
+    appContext: android.content.Context,
+    requestPath: String,
+    destinationUri: Uri,
+): Boolean {
+    return runCatching {
+        val stores = syncStores(appContext)
+        val adapter = JournalBrowserUpstreamAdapter(
+            publisher = stores.publisher,
+            guard = stores.handshakeGuard,
+        )
+        val upstream = adapter.open()
+        var writer: java.io.OutputStream? = null
+        var okStatus = false
+        try {
+            upstream.requestStreaming(
+                method = "GET",
+                path = requestPath,
+                headers = emptyList(),
+                bodySource = null,
+                responseSink = object : BrowserResponseSink {
+                    override fun onStatusAndHeaders(status: Int, reason: String, headers: List<Pair<String, String>>) {
+                        if (status !in 200..299) {
+                            throw java.io.IOException("download returned HTTP $status")
+                        }
+                        okStatus = true
+                        val pfd = appContext.contentResolver.openFileDescriptor(destinationUri, "wt")
+                            ?: appContext.contentResolver.openFileDescriptor(destinationUri, "w")
+                            ?: throw java.io.IOException("could not open SAF destination")
+                        writer = android.os.ParcelFileDescriptor.AutoCloseOutputStream(pfd)
+                    }
+
+                    override fun onBodyChunk(chunk: ByteArray, offset: Int, length: Int) {
+                        if (okStatus && length > 0) {
+                            writer?.write(chunk, offset, length)
+                        }
+                    }
+
+                    override fun onComplete() {
+                        writer?.flush()
+                    }
+                },
+            )
+            okStatus
+        } finally {
+            runCatching { writer?.flush() }
+            runCatching { writer?.close() }
+            runCatching { upstream.close() }
+        }
+    }.getOrDefault(false)
 }
 
 private fun emitInvalidJournalWebHostContract() {

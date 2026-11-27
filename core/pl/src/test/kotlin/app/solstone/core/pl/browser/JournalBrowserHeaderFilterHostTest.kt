@@ -223,6 +223,148 @@ class JournalBrowserHeaderFilterHostTest {
         assertTrue(observed[0].none { it.first.equals("x-solstone-locale", ignoreCase = true) })
     }
 
+    @Test
+    fun forwardsContentDispositionForExportsExistingMediaAndAttachmentsAndHandlesLargeHead410And416() {
+        val observedRequests = mutableListOf<Triple<String, String, List<Pair<String, String>>>>()
+        val session = JournalBrowserSession(
+            pairing = { pairingGen },
+            accessStillCurrent = { true },
+            upstreamFactory = {
+                object : JournalBrowserUpstream {
+                    override val isPoisoned: Boolean get() = false
+                    override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                        error("streaming path expected")
+
+                    override fun requestStreaming(
+                        method: String,
+                        path: String,
+                        headers: List<Pair<String, String>>,
+                        bodySource: BrowserRequestBodySource?,
+                        responseSink: BrowserResponseSink,
+                    ) {
+                        observedRequests.add(Triple(method, path, headers))
+                        when {
+                            method == "HEAD" && path.startsWith("/app/export/api/ready/") -> {
+                                responseSink.onStatusAndHeaders(
+                                    200,
+                                    "OK",
+                                    listOf(
+                                        "Content-Type" to "application/zip",
+                                        "Content-Disposition" to "attachment; filename=\"solstone-journal-2026-11-26.zip\"",
+                                        "Accept-Ranges" to "bytes",
+                                        "ETag" to "\"sha256-deadbeef\"",
+                                        "Content-Length" to "300000000000",
+                                    ),
+                                )
+                                responseSink.onComplete()
+                            }
+                            path == "/app/export/api/ready/exp1/download" &&
+                                headers.any { it.first == "range" && it.second == "bytes=999999999999-" } -> {
+                                responseSink.onStatusAndHeaders(
+                                    416,
+                                    "",
+                                    listOf(
+                                        "Content-Range" to "bytes */300000000000",
+                                        "Content-Length" to "0",
+                                    ),
+                                )
+                                responseSink.onComplete()
+                            }
+                            path == "/app/export/api/ready/erased/download" -> {
+                                val body = "{\"code\":\"export_invalidated_by_erasure\"}".encodeToByteArray()
+                                responseSink.onStatusAndHeaders(
+                                    410,
+                                    "",
+                                    listOf(
+                                        "Content-Type" to "application/json",
+                                        "Content-Length" to body.size.toString(),
+                                    ),
+                                )
+                                responseSink.onBodyChunk(body, 0, body.size)
+                                responseSink.onComplete()
+                            }
+                            path == "/media/20261126/photo.jpg" -> {
+                                val body = byteArrayOf(1, 2, 3, 4)
+                                responseSink.onStatusAndHeaders(
+                                    200,
+                                    "OK",
+                                    listOf(
+                                        "Content-Type" to "image/jpeg",
+                                        "Content-Disposition" to "inline; filename=\"photo.jpg\"",
+                                        "Accept-Ranges" to "bytes",
+                                        "Content-Length" to body.size.toString(),
+                                    ),
+                                )
+                                responseSink.onBodyChunk(body, 0, body.size)
+                                responseSink.onComplete()
+                            }
+                            path == "/attachments/recording.flac" -> {
+                                val body = byteArrayOf(5, 6, 7, 8)
+                                responseSink.onStatusAndHeaders(
+                                    200,
+                                    "OK",
+                                    listOf(
+                                        "Content-Type" to "audio/flac",
+                                        "Content-Disposition" to "attachment; filename=\"recording.flac\"",
+                                        "Content-Length" to body.size.toString(),
+                                    ),
+                                )
+                                responseSink.onBodyChunk(body, 0, body.size)
+                                responseSink.onComplete()
+                            }
+                            else -> error("unexpected $method $path")
+                        }
+                    }
+
+                    override fun close() {}
+                }
+            },
+            diag = { diagEvents.add(it) },
+        )
+
+        val origin = session.start()
+        val uri = URI(origin.url)
+        try {
+            val exportHead = sendRawHttpRequest(
+                uri.port,
+                "HEAD /app/export/api/ready/exp1/download HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n",
+            )
+            assertTrue(exportHead.startsWith("HTTP/1.1 200 OK"), exportHead)
+            assertTrue(exportHead.contains("Content-Disposition: attachment; filename=\"solstone-journal-2026-11-26.zip\""), exportHead)
+            assertTrue(exportHead.contains("Content-Length: 300000000000"), exportHead)
+            assertTrue(exportHead.contains("Accept-Ranges: bytes"), exportHead)
+
+            val outOfBounds = sendRawHttpRequest(
+                uri.port,
+                "GET /app/export/api/ready/exp1/download HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\nRange: bytes=999999999999-\r\nIf-Range: \"sha256-deadbeef\"\r\n\r\n",
+            )
+            assertTrue(outOfBounds.startsWith("HTTP/1.1 416 Range Not Satisfiable"), outOfBounds)
+            assertTrue(outOfBounds.contains("Content-Range: bytes */300000000000"), outOfBounds)
+
+            val erased = sendRawHttpRequest(
+                uri.port,
+                "GET /app/export/api/ready/erased/download HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n",
+            )
+            assertTrue(erased.startsWith("HTTP/1.1 410 Gone"), erased)
+
+            val inlineMedia = sendRawHttpRequest(
+                uri.port,
+                "GET /media/20261126/photo.jpg HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n",
+            )
+            assertTrue(inlineMedia.startsWith("HTTP/1.1 200 OK"), inlineMedia)
+            assertTrue(inlineMedia.contains("Content-Disposition: inline; filename=\"photo.jpg\""), inlineMedia)
+
+            val attachment = sendRawHttpRequest(
+                uri.port,
+                "GET /attachments/recording.flac HTTP/1.1\r\nHost: ${uri.host}:${uri.port}\r\n\r\n",
+            )
+            assertTrue(attachment.startsWith("HTTP/1.1 200 OK"), attachment)
+            assertTrue(attachment.contains("Content-Disposition: attachment; filename=\"recording.flac\""), attachment)
+        } finally {
+            session.stop()
+        }
+    }
+
     private fun sendRawHttpRequest(port: Int, rawHttp: String): String {
         Socket("127.0.0.1", port).use { socket ->
             val out = BufferedOutputStream(socket.getOutputStream())

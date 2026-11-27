@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the journal export notification",
+  "context": "notification title while saving a journal copy to device storage.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 50,
+  "source_revision": "6a34b32cb247b2d454e69a3088d3b71383eaba9266ffce9658ac92aa10c3e80c",
+  "risk": "routine",
+  "auto_merge": true
+}

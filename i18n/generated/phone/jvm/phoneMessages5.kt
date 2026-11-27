@@ -2,6 +2,14 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
+    "android.obsidian.bringingnotes" to PhoneMessage("m616e64726f69642e6f6273696469616e2e6272696e67696e676e6f746573", listOf(PhoneArgument("done", "cardinal", "ungrouped"), PhoneArgument("total", "cardinal", "ungrouped")), "done", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "bringing in %1\$s of %2\$s notes", "other" to "bringing in %1\$s of %2\$s notes"))),
+    "android.obsidian.changes" to PhoneMessage("m616e64726f69642e6f6273696469616e2e6368616e676573", listOf(PhoneArgument("count", "cardinal", "locale-formatted")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "%1\$s change", "other" to "%1\$s changes"))),
+    "android.obsidian.checkscontinuechangeswait" to PhoneMessage("m616e64726f69642e6f6273696469616e2e636865636b73636f6e74696e75656368616e67657377616974", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "checks continue. changes wait on this phone until you resume."))),
+    "android.obsidian.choicecouldntsaved" to PhoneMessage("m616e64726f69642e6f6273696469616e2e63686f696365636f756c646e747361766564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your choice couldn't be saved. try again."))),
+    "android.obsidian.chooseanotherfolder" to PhoneMessage("m616e64726f69642e6f6273696469616e2e63686f6f7365616e6f74686572666f6c646572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose another folder"))),
+    "android.obsidian.choosefolder" to PhoneMessage("m616e64726f69642e6f6273696469616e2e63686f6f7365666f6c646572", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose a folder"))),
+    "android.obsidian.choosevaultagain" to PhoneMessage("m616e64726f69642e6f6273696469616e2e63686f6f73657661756c74616761696e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose the vault again"))),
+    "android.obsidian.choosevaultdevicestorage" to PhoneMessage("m616e64726f69642e6f6273696469616e2e63686f6f73657661756c7464657669636573746f72616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "choose a vault in device storage. vaults kept only inside Obsidian aren't available here."))),
     "android.obsidian.continue" to PhoneMessage("m616e64726f69642e6f6273696469616e2e636f6e74696e7565", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "continue"))),
     "android.obsidian.earlierdate" to PhoneMessage("m616e64726f69642e6f6273696469616e2e6561726c69657264617465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "an earlier date"))),
     "android.obsidian.firstsync" to PhoneMessage("m616e64726f69642e6f6273696469616e2e666972737473796e63", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "first sync"))),
@@ -54,12 +62,4 @@ internal fun phoneMessages5(): Map<String, PhoneMessage> = mapOf(
     "android.phone.about" to PhoneMessage("m616e64726f69642e70686f6e652e61626f7574", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "about"))),
     "android.phone.already.home" to PhoneMessage("m616e64726f69642e70686f6e652e616c72656164792e686f6d65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "already on home"))),
     "android.phone.audio" to PhoneMessage("m616e64726f69642e70686f6e652e617564696f", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "audio"))),
-    "android.phone.calendar" to PhoneMessage("m616e64726f69642e70686f6e652e63616c656e646172", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "calendar"))),
-    "android.phone.cancel" to PhoneMessage("m616e64726f69642e70686f6e652e63616e63656c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "cancel"))),
-    "android.phone.event.log.couldn.t.be" to PhoneMessage("m616e64726f69642e70686f6e652e6576656e742e6c6f672e636f756c646e2e742e6265", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "the event log couldn't be read."))),
-    "android.phone.file" to PhoneMessage("m616e64726f69642e70686f6e652e66696c65", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "file"))),
-    "android.phone.from.journal" to PhoneMessage("m616e64726f69642e70686f6e652e66726f6d2e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "from your journal"))),
-    "android.phone.google.play.services" to PhoneMessage("m616e64726f69642e70686f6e652e676f6f676c652e706c61792e7365727669636573", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "Google Play services"))),
-    "android.phone.help" to PhoneMessage("m616e64726f69642e70686f6e652e68656c70", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "help"))),
-    "android.phone.image" to PhoneMessage("m616e64726f69642e70686f6e652e696d616765", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "image"))),
 )

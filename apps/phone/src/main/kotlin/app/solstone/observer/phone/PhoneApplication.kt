@@ -136,6 +136,7 @@ class PhoneApplication : ObserverApplication(
         ObserverNotification.ensureChannel(this)
         JournalPushPoster(this).renameChannelIfPresent()
         ImportUploadNotification.renameChannelIfPresent(this)
+        ExportDownloadNotification.renameChannelIfPresent(this)
         ObserverNotification.stopAction?.let { action ->
             ObserverNotification.stopAction = Notification.Action.Builder(0, ObserverNotification.TEXT_STOP, action.actionIntent).build()
         }
@@ -173,6 +174,7 @@ class PhoneApplication : ObserverApplication(
         ObserverNotification.ensureChannel(this)
         JournalPushPoster(this).renameChannelIfPresent()
         ImportUploadNotification.renameChannelIfPresent(this)
+        ExportDownloadNotification.renameChannelIfPresent(this)
         ObserverForegroundService.captureWishTypes = {
             val store = FileSourceWishStore(filesDir.resolve("source-wishes"))
             val base = when (val read = store.read()) {

@@ -2,6 +2,14 @@
 package app.solstone.core.i18n
 
 internal fun phoneMessages10(): Map<String, PhoneMessage> = mapOf(
+    "android.status.confirm.mark.model.pendingcount.waiting" to PhoneMessage("m616e64726f69642e7374617475732e636f6e6669726d2e6d61726b2e6d6f64656c2e70656e64696e67636f756e742e77616974696e67", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "confirm the mark · %1\$s waiting", "other" to "confirm the mark · %1\$s waiting"))),
+    "android.status.everything.journal" to PhoneMessage("m616e64726f69642e7374617475732e65766572797468696e672e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "everything is in your journal"))),
+    "android.status.how.phone.connects" to PhoneMessage("m616e64726f69642e7374617475732e686f772e70686f6e652e636f6e6e65637473", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "how your phone connects"))),
+    "android.status.imports.need" to PhoneMessage("m616e64726f69642e7374617475732e696d706f7274732e6e656564", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "imports need you"))),
+    "android.status.journal.needs.update" to PhoneMessage("m616e64726f69642e7374617475732e6a6f75726e616c2e6e656564732e757064617465", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "journal needs an update"))),
+    "android.status.journal.version" to PhoneMessage("m616e64726f69642e7374617475732e6a6f75726e616c2e76657273696f6e", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "journal version"))),
+    "android.status.journalstoppedacceptingdevice" to PhoneMessage("m616e64726f69642e7374617475732e6a6f75726e616c73746f70706564616363657074696e67646576696365", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "your journal stopped accepting this device"))),
+    "android.status.model.pendingcount.syncing" to PhoneMessage("m616e64726f69642e7374617475732e6d6f64656c2e70656e64696e67636f756e742e73796e63696e67", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "%1\$s syncing", "other" to "%1\$s syncing"))),
     "android.status.n0.syncing" to PhoneMessage("m616e64726f69642e7374617475732e6e302e73796e63696e67", listOf(PhoneArgument("count", "cardinal", "ungrouped")), "count", "cardinal", "", setOf(), mapOf("" to mapOf("one" to "%1\$s syncing", "other" to "%1\$s syncing"))),
     "android.status.nothing.waiting.goes.into.journal" to PhoneMessage("m616e64726f69642e7374617475732e6e6f7468696e672e77616974696e672e676f65732e696e746f2e6a6f75726e616c", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing waiting goes into your journal until you do."))),
     "android.status.nothing.waiting.sync" to PhoneMessage("m616e64726f69642e7374617475732e6e6f7468696e672e77616974696e672e73796e63", listOf(), "", "", "", setOf(), mapOf("" to mapOf("other" to "nothing waiting to sync"))),

@@ -1,0 +1,16 @@
+{
+  "description": "the solstone app to the owner, in the journal export notification",
+  "context": "notification body right before the first export bytes arrive.",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [],
+  "format_intent": "text",
+  "max_length": 80,
+  "source_revision": "ab02576c80f9d5abdc4bcab19d7b63715eba261d4c2d2530366b0b9e11cbb8f3",
+  "risk": "routine",
+  "auto_merge": true
+}

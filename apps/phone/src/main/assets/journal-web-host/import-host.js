@@ -2,8 +2,8 @@
 // Copyright (c) 2026 sol pbc
 
 // Installed at document start in frames on the journal's origin. Only the top journal document
-// gets the import host; the app also refuses any message that does not come from the main frame.
-((contract, auth, origin, bridgeName) => {
+// gets the host; the app also refuses any message that does not come from the main frame.
+((contract, auth, exportContract, origin, bridgeName) => {
   if (window !== window.top || location.origin !== origin) return;
   const bridge = window[bridgeName];
   if (!bridge) return;
@@ -12,6 +12,10 @@
   bridge.onmessage = event => {
     let answer;
     try { answer = JSON.parse(event.data); } catch (_) { return; }
+    if (answer && typeof answer.event === 'string' && answer.detail) {
+      window.dispatchEvent(new CustomEvent(answer.event, {detail: answer.detail}));
+      return;
+    }
     const waiting = pending.get(answer?.seq);
     if (!waiting) return;
     pending.delete(answer.seq);
@@ -24,6 +28,17 @@
   });
   const authTypes = auth && auth.version === contract.version && auth.capability === contract.capability
     ? [auth.prepare, auth.authorize, auth.cancel]
+    : [];
+  const exportTypes = exportContract && exportContract.version === contract.version && exportContract.capability === contract.capability
+    ? [
+        exportContract.start,
+        exportContract.status,
+        exportContract.pause,
+        exportContract.resume,
+        exportContract.cancel,
+        exportContract.reveal,
+        exportContract.deviceSpace,
+      ]
     : [];
   const items = new Map();
   let timer;
@@ -54,10 +69,10 @@
   }
   const isObject = value => typeof value === 'object' && value !== null && !Array.isArray(value);
   Object.defineProperty(window, contract.capability, {value:Object.freeze({
-    version:contract.version, types:Object.freeze([contract.pick, ...authTypes]),
+    version:contract.version, types:Object.freeze([contract.pick, ...authTypes, ...exportTypes]),
     async send(message) {
       if (!message || typeof message.id !== 'string' || typeof message.type !== 'string') throw new TypeError();
-      if (authTypes.includes(message.type)) return await post(message, null);
+      if (authTypes.includes(message.type) || exportTypes.includes(message.type)) return await post(message, null);
       if (message.type !== contract.pick) return {type:contract.unsupported, id:message.id};
       const request = {type:message.type, id:message.id, area:message.area, multiple:message.multiple,
         accept:Array.isArray(message.accept) ? message.accept.filter(entry => typeof entry === 'string') : null};
@@ -67,4 +82,4 @@
       return reply;
     }
   })});
-})(__CONTRACT__, __AUTH_CONTRACT__, __ORIGIN__, __BRIDGE__);
+})(__CONTRACT__, __AUTH_CONTRACT__, __EXPORT_CONTRACT__, __ORIGIN__, __BRIDGE__);

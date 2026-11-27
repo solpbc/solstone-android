@@ -77,6 +77,7 @@ val REQUEST_ALLOWED_HEADERS: Set<String> = setOf(
 
 val RESPONSE_ALLOWED_HEADERS: Set<String> = setOf(
     "content-type",
+    "content-disposition",
     "content-encoding",
     "content-range",
     "accept-ranges",
@@ -376,6 +377,7 @@ fun filterAndFormatResponseHeaders(
                 out.add("Location" to locationRebased)
             }
             "content-type" -> out.add("Content-Type" to value)
+            "content-disposition" -> out.add("Content-Disposition" to value)
             "content-encoding" -> out.add("Content-Encoding" to value)
             "content-range" -> out.add("Content-Range" to value)
             "accept-ranges" -> out.add("Accept-Ranges" to value)

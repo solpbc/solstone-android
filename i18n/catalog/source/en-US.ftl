@@ -1757,3 +1757,19 @@ android.agesignal.parentapproval = a parent or guardian needs to approve this ve
 android.agesignal.playverification = Google Play needs to confirm your age before you can use solstone.
 
 android.agesignal.openplay = open Google Play
+
+android.export.notify.channel = saving journal copy
+
+android.export.notify.title = saving journal copy
+
+android.export.notify.saving = { $filename } · { $saved } of { $total }
+
+android.export.notify.checking = { $filename } · checking file
+
+android.export.notify.paused = paused at { $saved } of { $total }
+
+android.export.notify.starting = preparing to save…
+
+android.export.notify.pause = pause
+
+android.export.notify.resume = resume
