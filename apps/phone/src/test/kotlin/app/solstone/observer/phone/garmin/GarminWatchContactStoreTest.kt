@@ -47,8 +47,8 @@ class GarminWatchContactStoreTest {
                 waitingSlabs = 14,
                 deviceId = 3646641882L,
                 deviceName = "Forerunner 970",
-                storageFull = false,
-                lastEndReason = 1,
+                storageFull = true,
+                lastEndReason = 4,
             )
 
             val reloaded = PhoneWatchContactStore(dir).read()
@@ -59,8 +59,23 @@ class GarminWatchContactStoreTest {
             assertEquals(14, reloaded?.sealedWaiting)
             assertEquals(3646641882L, reloaded?.deviceId)
             assertEquals("Forerunner 970", reloaded?.deviceName)
-            assertEquals(false, reloaded?.storageFull)
-            assertEquals(1, reloaded?.lastEndReason)
+            assertEquals(true, reloaded?.storageFull)
+            assertEquals(4, reloaded?.lastEndReason)
+
+            // Pure background drain completion clears storageFull and waitingSlabs while preserving device + end reason
+            store.recordGarminContact(
+                epochMs = 1795850060_000L,
+                version = 1,
+                waitingSlabs = 0,
+                deviceId = 3646641882L,
+                deviceName = "Forerunner 970",
+                storageFull = false,
+            )
+            val drained = PhoneWatchContactStore(dir).read()
+            assertEquals(0, drained?.sealedWaiting)
+            assertEquals(false, drained?.storageFull)
+            assertEquals(4, drained?.lastEndReason)
+            assertEquals("Forerunner 970", drained?.deviceName)
 
             store.clearContact()
             assertFalse(PhoneWatchContactStore(dir).isGarminActivated())

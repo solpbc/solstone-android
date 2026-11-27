@@ -62,6 +62,7 @@ data class GarminStatusSnapshot(
  */
 object GarminCourierRuntime {
     private const val APP_INFO_REFRESH_MIN_MS = 15_000L
+    private const val COLD_WAKE_HOLD_MAX_MS = 6_000L
 
     private val ioExecutor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "solstone-garmin-courier").apply { isDaemon = true }
@@ -70,7 +71,7 @@ object GarminCourierRuntime {
 
     private val sdkInitialized = AtomicBoolean(false)
     private val sdkInitRequested = AtomicBoolean(false)
-    private val pendingDoorbells = ConcurrentHashMap<Long, ScheduledFuture<*>>()
+    private val pendingDoorbells = ConcurrentHashMap<Long, PendingDoorbell>()
     private val pendingColdAcks = ConcurrentHashMap<Long, PendingAck>()
     private val lastAppInfoProbeMs = AtomicLong(0L)
 
@@ -83,11 +84,37 @@ object GarminCourierRuntime {
     @Volatile
     private var cachedAppStatus: GarminWatchAppStatus = GarminWatchAppStatus.Unknown
 
+    private class OnceCompletion(
+        private val callback: () -> Unit,
+    ) {
+        private val done = AtomicBoolean(false)
+
+        @Volatile
+        private var timeoutTask: ScheduledFuture<*>? = null
+
+        fun armTimeout(delayMs: Long) {
+            timeoutTask = ioExecutor.schedule({ complete() }, delayMs, TimeUnit.MILLISECONDS)
+        }
+
+        fun complete() {
+            if (done.compareAndSet(false, true)) {
+                timeoutTask?.cancel(false)
+                runCatching { callback() }
+            }
+        }
+    }
+
     private data class PendingAck(
         val device: IQDevice,
         val app: IQApp,
         val ackSeq: Long,
         val isBgOrigin: Boolean,
+        val completion: OnceCompletion?,
+    )
+
+    private data class PendingDoorbell(
+        val future: ScheduledFuture<*>,
+        val completion: OnceCompletion?,
     )
 
     fun isSdkRegistered(): Boolean = sdkInitialized.get()
@@ -183,36 +210,46 @@ object GarminCourierRuntime {
     /**
      * Handles an incoming watch message decoded either by the live SDK callback or by
      * `GarminIncomingMessageReceiver` on a cold-started process wake.
+     *
+     * When [onComplete] is supplied (from `BroadcastReceiver.goAsync()`), it is held until any
+     * required ACK has been handed off to Garmin Connect Mobile (or bounded by
+     * [COLD_WAKE_HOLD_MAX_MS]) so Android's cached-app freezer cannot suspend the process mid-ACK.
      */
     fun handleIncomingMessage(
         context: Context,
         device: IQDevice,
         app: IQApp,
         messageData: List<Any?>?,
-        onComplete: () -> Unit = {},
+        onComplete: (() -> Unit)? = null,
     ) {
+        val completion = onComplete?.let { cb ->
+            OnceCompletion(cb).apply { armTimeout(COLD_WAKE_HOLD_MAX_MS) }
+        }
         val appCtx = context.applicationContext
         if (AgeSignalGate.closed()) {
-            onComplete()
+            completion?.complete()
             return
         }
         if (!GarminSlv3Protocol.matchesSolstoneAppId(app.applicationId)) {
-            onComplete()
+            completion?.complete()
             return
         }
         val rawBytes = GarminSlv3Protocol.extractBinaryPayload(messageData)
         if (rawBytes == null) {
-            onComplete()
+            completion?.complete()
             return
         }
 
         ioExecutor.execute {
+            var handedOffToAck = false
             try {
-                processPayloadOnIo(appCtx, device, app, rawBytes)
+                handedOffToAck = processPayloadOnIo(appCtx, device, app, rawBytes, completion)
             } catch (_: Throwable) {
                 // Watch retains unacknowledged slabs and retries cleanly.
             } finally {
-                onComplete()
+                if (!handedOffToAck) {
+                    completion?.complete()
+                }
             }
         }
     }
@@ -222,12 +259,13 @@ object GarminCourierRuntime {
         device: IQDevice,
         app: IQApp,
         rawBytes: ByteArray,
-    ) {
+        completion: OnceCompletion?,
+    ): Boolean {
         val nowMs = System.currentTimeMillis()
         val contactStore = PhoneWatchContactStore(appCtx)
 
         if (GarminSlv3Protocol.isSlvs(rawBytes)) {
-            val status = GarminSlv3Protocol.parseSlvs(rawBytes) ?: return
+            val status = GarminSlv3Protocol.parseSlvs(rawBytes) ?: return false
             contactStore.recordGarminContact(
                 epochMs = nowMs,
                 version = status.protoVer,
@@ -237,10 +275,10 @@ object GarminCourierRuntime {
                 storageFull = status.storageFull,
                 lastEndReason = status.lastEndReason,
             )
-            return
+            return false
         }
 
-        if (!GarminSlv3Protocol.isSlv3(rawBytes)) return
+        if (!GarminSlv3Protocol.isSlv3(rawBytes)) return false
 
         val spoolDir = File(appCtx.noBackupFilesDir, "garmin_slabs")
         val spool = GarminSlabSpool(spoolDir) { bundle ->
@@ -254,20 +292,24 @@ object GarminCourierRuntime {
                 deviceId = device.deviceIdentifier,
                 deviceName = device.friendlyName,
             )
-            return
+            return false
         }
-        if (action.rejectedReason != null) return
+        if (action.rejectedReason != null) return false
 
         contactStore.recordGarminContact(
             epochMs = nowMs,
             version = action.watchProtoVer,
+            waitingSlabs = if (action.queueDrained) 0 else null,
             deviceId = device.deviceIdentifier,
             deviceName = device.friendlyName,
+            storageFull = if (action.queueDrained) false else null,
         )
 
         if (action.shouldAck && action.ackSeq >= 0L) {
-            dispatchAckOrQueue(appCtx, device, app, action.ackSeq, action.isBgOrigin)
+            dispatchAckOrQueue(appCtx, device, app, action.ackSeq, action.isBgOrigin, completion)
+            return true
         }
+        return false
     }
 
     private fun commitToWatchCustody(appCtx: Context, bundle: DecodedBundle): GarminSlabSpool.CommitOutcome {
@@ -300,47 +342,87 @@ object GarminCourierRuntime {
         app: IQApp,
         ackSeq: Long,
         isBgOrigin: Boolean,
+        completion: OnceCompletion?,
     ) {
         if (!sdkInitialized.get() || connectIQ == null) {
-            pendingColdAcks[device.deviceIdentifier] = PendingAck(device, app, ackSeq, isBgOrigin)
+            val prev = pendingColdAcks.put(
+                device.deviceIdentifier,
+                PendingAck(device, app, ackSeq, isBgOrigin, completion),
+            )
+            prev?.completion?.complete()
             startSdkOnMain(appCtx)
             return
         }
         if (isBgOrigin) {
-            scheduleDoorbellAck(device, app, ackSeq)
+            scheduleDoorbellAck(device, app, ackSeq, completion)
         } else {
-            sendAckNow(device, app, ackSeq)
+            sendAckNow(device, app, ackSeq, completion)
         }
     }
 
-    private fun scheduleDoorbellAck(device: IQDevice, app: IQApp, ackSeq: Long) {
-        pendingDoorbells.remove(device.deviceIdentifier)?.cancel(false)
+    private fun scheduleDoorbellAck(
+        device: IQDevice,
+        app: IQApp,
+        ackSeq: Long,
+        completion: OnceCompletion?,
+    ) {
+        pendingDoorbells.remove(device.deviceIdentifier)?.let { prev ->
+            prev.future.cancel(false)
+            prev.completion?.complete()
+        }
+        val entryRef = java.util.concurrent.atomic.AtomicReference<PendingDoorbell?>(null)
         val future = ioExecutor.schedule(
-            { sendAckNow(device, app, ackSeq) },
+            {
+                entryRef.get()?.let { pendingDoorbells.remove(device.deviceIdentifier, it) }
+                sendAckNow(device, app, ackSeq, completion)
+            },
             GarminSlv3Protocol.BG_DOORBELL_DELAY_MS,
             TimeUnit.MILLISECONDS,
         )
-        pendingDoorbells[device.deviceIdentifier] = future
+        val entry = PendingDoorbell(future, completion)
+        entryRef.set(entry)
+        val displaced = pendingDoorbells.put(device.deviceIdentifier, entry)
+        if (displaced != null) {
+            displaced.future.cancel(false)
+            displaced.completion?.complete()
+        }
     }
 
-    private fun sendAckNow(device: IQDevice, app: IQApp, ackSeq: Long) {
-        val ciq = connectIQ ?: return
-        if (!sdkInitialized.get()) return
+    private fun sendAckNow(
+        device: IQDevice,
+        app: IQApp,
+        ackSeq: Long,
+        completion: OnceCompletion?,
+    ) {
+        val ciq = connectIQ
+        if (ciq == null || !sdkInitialized.get()) {
+            completion?.complete()
+            return
+        }
         val tzPoint = SunZonePointLookup.systemDefaultLatLon100()
         val payload = GarminSlv3Protocol.buildAckPayload(ackSeq, tzPoint)
-        mainHandler.post {
+        val posted = mainHandler.post {
             try {
-                ciq.sendMessage(device, app, payload) { _, _, _ -> }
+                ciq.sendMessage(device, app, payload) { _, _, _ ->
+                    completion?.complete()
+                }
             } catch (_: Throwable) {
                 // Watch half-duplex timeout rewinds and retries if ACK fails.
+                completion?.complete()
             }
+        }
+        if (!posted) {
+            completion?.complete()
         }
     }
 
     private fun startSdkOnMain(appCtx: Context) {
         appContextRef = appCtx
         if (sdkInitialized.get()) {
-            mainHandler.post { registerAllKnownDevices() }
+            mainHandler.post {
+                registerAllKnownDevices()
+                flushPendingColdAcks()
+            }
             return
         }
         if (!sdkInitRequested.compareAndSet(false, true)) return
@@ -349,6 +431,7 @@ object GarminCourierRuntime {
             try {
                 if (GarminEnvironmentProbe.garminConnectStatus(appCtx) != GarminEnvironmentProbe.ConnectAppStatus.READY) {
                     sdkInitRequested.set(false)
+                    failPendingColdAcks()
                     return@post
                 }
                 val ciq = ConnectIQ.getInstance(appCtx, ConnectIQ.IQConnectType.WIRELESS)
@@ -366,17 +449,20 @@ object GarminCourierRuntime {
                         override fun onInitializeError(status: ConnectIQ.IQSdkErrorStatus?) {
                             sdkInitialized.set(false)
                             sdkInitRequested.set(false)
+                            failPendingColdAcks()
                         }
 
                         override fun onSdkShutDown() {
                             sdkInitialized.set(false)
                             sdkInitRequested.set(false)
+                            failPendingColdAcks()
                         }
                     },
                 )
             } catch (_: Throwable) {
                 sdkInitialized.set(false)
                 sdkInitRequested.set(false)
+                failPendingColdAcks()
             }
         }
     }
@@ -443,14 +529,21 @@ object GarminCourierRuntime {
     }
 
     private fun flushPendingColdAcks() {
-        val snapshot = pendingColdAcks.values.toList()
-        pendingColdAcks.clear()
-        for (pending in snapshot) {
+        val keys = pendingColdAcks.keys.toList()
+        for (key in keys) {
+            val pending = pendingColdAcks.remove(key) ?: continue
             if (pending.isBgOrigin) {
-                scheduleDoorbellAck(pending.device, pending.app, pending.ackSeq)
+                scheduleDoorbellAck(pending.device, pending.app, pending.ackSeq, pending.completion)
             } else {
-                sendAckNow(pending.device, pending.app, pending.ackSeq)
+                sendAckNow(pending.device, pending.app, pending.ackSeq, pending.completion)
             }
+        }
+    }
+
+    private fun failPendingColdAcks() {
+        val keys = pendingColdAcks.keys.toList()
+        for (key in keys) {
+            pendingColdAcks.remove(key)?.completion?.complete()
         }
     }
 }

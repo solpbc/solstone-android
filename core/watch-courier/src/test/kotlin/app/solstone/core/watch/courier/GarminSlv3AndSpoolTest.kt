@@ -133,6 +133,7 @@ class GarminSlv3AndSpoolTest {
             val r2Early = spool1.onSlab(devId, s2)
             assertEquals(0L, r2Early.ackSeq)
             assertEquals(0, r2Early.segmentsCommitted)
+            assertFalse(r2Early.queueDrained)
             assertTrue(committed.isEmpty())
 
             // Simulate phone process kill & cold restart -> fresh GarminSlabSpool on same disk dir!
@@ -144,6 +145,7 @@ class GarminSlv3AndSpoolTest {
             val r1 = spool2.onSlab(devId, s1)
             assertEquals(2L, r1.ackSeq)
             assertEquals(1, r1.segmentsCommitted)
+            assertFalse(r1.queueDrained)
             assertEquals(1, committed.size)
 
             val bundle = committed.single()
@@ -155,10 +157,11 @@ class GarminSlv3AndSpoolTest {
             assertEquals("audio/ogg", bundle.files[0].mediaType)
             assertContentEquals(p0 + p1 + p2, bundle.files[0].bytes)
 
-            // Lost-ACK retransmission of slab 2: idempotent ACK=2, zero duplicate commits!
+            // Lost-ACK retransmission of slab 2: idempotent ACK=2, zero duplicate commits, queue drained!
             val r2Dup = spool2.onSlab(devId, s2)
             assertEquals(2L, r2Dup.ackSeq)
             assertTrue(r2Dup.shouldAck)
+            assertTrue(r2Dup.queueDrained)
             assertEquals(0, r2Dup.segmentsCommitted)
             assertEquals(1, committed.size)
         } finally {

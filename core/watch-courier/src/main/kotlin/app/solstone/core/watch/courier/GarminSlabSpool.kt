@@ -39,6 +39,7 @@ class GarminSlabSpool(
         val watchProtoVer: Int,
         val segmentsCommitted: Int,
         val rejectedReason: String? = null,
+        val queueDrained: Boolean = false,
     )
 
     private val lock = Any()
@@ -88,6 +89,7 @@ class GarminSlabSpool(
                 isMorePending = parsed.isMorePending,
                 watchProtoVer = parsed.protoVer,
                 segmentsCommitted = 0,
+                queueDrained = parsed.isAckReq && !parsed.isMorePending && state.contiguousAckSeq >= parsed.seq,
             )
         }
 
@@ -114,6 +116,7 @@ class GarminSlabSpool(
             isMorePending = parsed.isMorePending,
             watchProtoVer = parsed.protoVer,
             segmentsCommitted = committed,
+            queueDrained = parsed.isAckReq && !parsed.isMorePending && state.contiguousAckSeq >= parsed.seq,
         )
     }
 
