@@ -949,8 +949,9 @@ class JournalExportHostTest {
             // 1. Construction must NOT block on currentSizeBytes() or computeSha256AndSizeOrNull().
             val uidtScheduled = AtomicInteger(0)
             val fallbackRuns = AtomicInteger(0)
+            val probeUpstream = ScriptedExportUpstream(payload, "\"sha256-$sha\"")
             val api31Manager = JournalExportTransferManager(
-                upstreamOpener = { error("must verify complete disk copy without network") },
+                upstreamOpener = { OpenedExportUpstream(probeUpstream, "local") },
                 spaceProbe = { 500_000_000L },
                 destinationReopener = { _, _ -> dest },
                 stateStore = stateStore,
@@ -977,10 +978,20 @@ class JournalExportHostTest {
             assertEquals(0, dest.hashReads, "init must not hash SAF destination synchronously")
             assertEquals("paused", api31Manager.currentSnapshot().phase)
 
-            // Resuming on API 31 routes through fallback (zero UIDT) and verifies the complete file on the worker.
+            // Resuming on API 31 routes through fallback (zero UIDT), probes the live journal
+            // for eligibility via 1-byte Range + If-Range, and verifies the complete file on the worker.
             api31Manager.resume("exp_restore")
             assertEquals(0, uidtScheduled.get())
             assertEquals(1, fallbackRuns.get())
+            assertEquals(1, probeUpstream.seenHeaders.size)
+            assertEquals(
+                "bytes=${payload.size - 1}-${payload.size - 1}",
+                probeUpstream.seenHeaders[0].firstOrNull { it.first.equals("range", ignoreCase = true) }?.second,
+            )
+            assertEquals(
+                "\"sha256-$sha\"",
+                probeUpstream.seenHeaders[0].firstOrNull { it.first.equals("if-range", ignoreCase = true) }?.second,
+            )
             assertEquals("saved", api31Manager.currentSnapshot().phase)
             assertTrue(api31Manager.currentSnapshot().verified)
 
@@ -1150,6 +1161,386 @@ class JournalExportHostTest {
             assertEquals("disconnected", offlineManager.currentSnapshot().pauseReason)
             assertEquals(0L, offlineManager.currentSnapshot().bytesWritten)
             assertTrue("paused" in disconnectedNotices, "expected paused notification on disconnect")
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun resumedFullDocumentChecksLiveEligibilityHonorsOwnershipAndKeepsWriteOnlyHandoffHonest() {
+        val dir = createTempDir("exp-full-recovery")
+        try {
+            val payload = ByteArray(64 * 1024 + 29) { i -> ((i * 37 + 11) and 0xff).toByte() }
+            val sha = sha256Hex(payload)
+            val etag = "\"sha256-$sha\""
+            val lastByte = payload.size - 1
+
+            fun syncScheduler(m: JournalExportTransferManager): ExportExecutionScheduler =
+                object : ExportExecutionScheduler {
+                    override fun scheduleRun(estimatedRemainingBytes: Long) {
+                        m.runTransferAttemptBlocking()
+                    }
+                    override fun onProgressUpdated(snapshot: JournalExportStatusSnapshot, filename: String) {}
+                    override fun onEnded(snapshot: JournalExportStatusSnapshot) {}
+                }
+
+            fun saveFullState(
+                stateFile: File,
+                exportId: String,
+                dest: FileExportDestination,
+                ownsCreatedDocument: Boolean = false,
+            ): ExportStateStore {
+                val store = ExportStateStore(stateFile)
+                store.save(
+                    PersistedExportState(
+                        exportId = exportId,
+                        downloadPath = "/app/export/api/ready/$exportId/download",
+                        filename = dest.displayName,
+                        sizeBytes = payload.size.toLong(),
+                        sha256 = sha,
+                        etag = etag,
+                        mode = "full",
+                        uriString = dest.uriString,
+                        displayName = dest.displayName,
+                        bytesWritten = payload.size.toLong(),
+                        initialTransport = "local",
+                        pauseReason = "paused",
+                        ownsCreatedDocument = ownsCreatedDocument,
+                    ),
+                )
+                return store
+            }
+
+            fun raw200Upstream(
+                responseHeaders: List<Pair<String, String>>,
+                body: ByteArray = payload,
+                bodyChunksEmitted: AtomicInteger,
+                seenHeaders: MutableList<List<Pair<String, String>>>,
+            ): JournalBrowserUpstream = object : JournalBrowserUpstream {
+                override val isPoisoned: Boolean get() = false
+                override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                    error("streaming expected")
+
+                override fun requestStreaming(
+                    method: String,
+                    path: String,
+                    headers: List<Pair<String, String>>,
+                    bodySource: BrowserRequestBodySource?,
+                    responseSink: BrowserResponseSink,
+                ) {
+                    seenHeaders += headers
+                    responseSink.onStatusAndHeaders(200, "OK", responseHeaders)
+                    bodyChunksEmitted.incrementAndGet()
+                    responseSink.onBodyChunk(body, 0, body.size)
+                    responseSink.onComplete()
+                }
+
+                override fun close() {}
+            }
+
+            // 1. Offline resume on a full document must stay paused/disconnected (never confirm offline)
+            //    and preserve the already-owned document.
+            val offlineFile = File(dir, "offline-full.zip").apply { writeBytes(payload) }
+            val offlineDest = FileExportDestination(offlineFile)
+            val offlineManager = JournalExportTransferManager(
+                upstreamOpener = { throw IOException("journal unreachable") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> offlineDest },
+                stateStore = saveFullState(File(dir, "s-offline.json"), "exp_off_full", offlineDest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            offlineManager.resume("exp_off_full")
+            assertEquals("paused", offlineManager.currentSnapshot().phase)
+            assertEquals("disconnected", offlineManager.currentSnapshot().pauseReason)
+            assertFalse(offlineDest.deleted)
+            assertTrue(offlineFile.readBytes().contentEquals(payload))
+
+            // 2. 410 erasure on a resumed full document fails export_invalidated_by_erasure and
+            //    NEVER deletes the already-owned document (even if ownsCreatedDocument was true).
+            val erasedFile = File(dir, "erased-full.zip").apply { writeBytes(payload) }
+            val erasedDest = FileExportDestination(erasedFile)
+            val erasedUpstream = ScriptedExportUpstream(
+                payload = ByteArray(0),
+                etag = etag,
+                fixedStatus = 410,
+                fixedBody = """{"code":"export_invalidated_by_erasure"}""".toByteArray(),
+            )
+            val erasedManager = JournalExportTransferManager(
+                upstreamOpener = { OpenedExportUpstream(erasedUpstream, "local") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> erasedDest },
+                stateStore = saveFullState(File(dir, "s-erased.json"), "exp_erased_full", erasedDest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            erasedManager.resume("exp_erased_full")
+            assertEquals("error", erasedManager.currentSnapshot().phase)
+            assertEquals("export_invalidated_by_erasure", erasedManager.currentSnapshot().errorCode)
+            assertFalse(erasedDest.deleted, "must not delete already-owned complete document on 410 recovery")
+            assertTrue(erasedFile.readBytes().contentEquals(payload))
+            assertEquals(
+                "bytes=$lastByte-$lastByte",
+                erasedUpstream.seenHeaders[0].firstOrNull { it.first.equals("range", ignoreCase = true) }?.second,
+            )
+
+            // 3. Range-ignoring 200 with matching strong ETag & Content-Length: reads 0 body bytes,
+            //    verifies disk copy -> saved/verified=true.
+            val ok200File = File(dir, "ok200-full.zip").apply { writeBytes(payload) }
+            val ok200Dest = FileExportDestination(ok200File)
+            val ok200BodyChunks = AtomicInteger(0)
+            val ok200Headers = mutableListOf<List<Pair<String, String>>>()
+            val ok200Manager = JournalExportTransferManager(
+                upstreamOpener = {
+                    OpenedExportUpstream(
+                        raw200Upstream(
+                            listOf("Content-Length" to payload.size.toString(), "ETag" to etag),
+                            bodyChunksEmitted = ok200BodyChunks,
+                            seenHeaders = ok200Headers,
+                        ),
+                        "local",
+                    )
+                },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> ok200Dest },
+                stateStore = saveFullState(File(dir, "s-ok200.json"), "exp_ok200", ok200Dest),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            ok200Manager.resume("exp_ok200")
+            assertEquals("saved", ok200Manager.currentSnapshot().phase)
+            assertTrue(ok200Manager.currentSnapshot().verified)
+            assertEquals(0, ok200BodyChunks.get(), "matching strong-ETag 200 must avoid a second full transfer")
+            assertFalse(ok200Dest.deleted)
+
+            // 4. Range-ignoring 200 matching strong ETag with 1 flipped byte on disk -> checksum_mismatch
+            //    with 0 body bytes transferred and already-owned document preserved.
+            val corruptPayload = payload.copyOf().also { it[0] = (it[0].toInt() xor 0x01).toByte() }
+            val corruptFile = File(dir, "corrupt-full.zip").apply { writeBytes(corruptPayload) }
+            val corruptDest = FileExportDestination(corruptFile)
+            val corruptBodyChunks = AtomicInteger(0)
+            val corruptManager = JournalExportTransferManager(
+                upstreamOpener = {
+                    OpenedExportUpstream(
+                        raw200Upstream(
+                            listOf("Content-Length" to payload.size.toString(), "ETag" to etag),
+                            bodyChunksEmitted = corruptBodyChunks,
+                            seenHeaders = mutableListOf(),
+                        ),
+                        "local",
+                    )
+                },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> corruptDest },
+                stateStore = saveFullState(File(dir, "s-corrupt.json"), "exp_corrupt", corruptDest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            corruptManager.resume("exp_corrupt")
+            assertEquals("error", corruptManager.currentSnapshot().phase)
+            assertEquals("checksum_mismatch", corruptManager.currentSnapshot().errorCode)
+            assertEquals(0, corruptBodyChunks.get())
+            assertFalse(corruptDest.deleted, "must preserve already-owned file on recovery checksum mismatch")
+            assertTrue(corruptFile.readBytes().contentEquals(corruptPayload))
+
+            // 5. Range-ignoring 200 with changed ETag, weak ETag, or mismatched Content-Length ->
+            //    0 body bytes transferred, export_copy_unconfirmed, already-owned file preserved.
+            val unconfirmedCases = listOf(
+                "changed-etag" to listOf("Content-Length" to payload.size.toString(), "ETag" to "\"sha256-other\""),
+                "weak-etag" to listOf("Content-Length" to payload.size.toString(), "ETag" to "W/$etag"),
+                "bad-length" to listOf("Content-Length" to (payload.size + 7).toString(), "ETag" to etag),
+            )
+            for ((label, respHeaders) in unconfirmedCases) {
+                val f = File(dir, "$label.zip").apply { writeBytes(payload) }
+                val d = FileExportDestination(f)
+                val bodyChunks = AtomicInteger(0)
+                val mgr = JournalExportTransferManager(
+                    upstreamOpener = {
+                        OpenedExportUpstream(
+                            raw200Upstream(respHeaders, bodyChunksEmitted = bodyChunks, seenHeaders = mutableListOf()),
+                            "local",
+                        )
+                    },
+                    spaceProbe = { 500_000_000L },
+                    destinationReopener = { _, _ -> d },
+                    stateStore = saveFullState(File(dir, "s-$label.json"), "exp_$label", d, ownsCreatedDocument = true),
+                    drainClosed = { false },
+                    schedulerFactory = ::syncScheduler,
+                )
+                mgr.resume("exp_$label")
+                assertEquals("error", mgr.currentSnapshot().phase, label)
+                assertEquals("export_copy_unconfirmed", mgr.currentSnapshot().errorCode, label)
+                assertEquals(0, bodyChunks.get(), "$label must abort before reading full body")
+                assertFalse(d.deleted, "$label must preserve already-owned document")
+                assertTrue(f.readBytes().contentEquals(payload), label)
+            }
+
+            // 6. Range-ignoring 200 with absent ETag and matching Content-Length -> streams live 200
+            //    from byte 0 and verifies SHA-256 -> saved/verified=true.
+            val absentEtagFile = File(dir, "absent-etag.zip").apply { writeBytes(corruptPayload) }
+            val absentEtagDest = FileExportDestination(absentEtagFile)
+            val absentEtagBodyChunks = AtomicInteger(0)
+            val absentEtagManager = JournalExportTransferManager(
+                upstreamOpener = {
+                    OpenedExportUpstream(
+                        raw200Upstream(
+                            listOf("Content-Length" to payload.size.toString()),
+                            body = payload,
+                            bodyChunksEmitted = absentEtagBodyChunks,
+                            seenHeaders = mutableListOf(),
+                        ),
+                        "local",
+                    )
+                },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> absentEtagDest },
+                stateStore = saveFullState(File(dir, "s-absent.json"), "exp_absent", absentEtagDest),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            absentEtagManager.resume("exp_absent")
+            assertEquals("saved", absentEtagManager.currentSnapshot().phase)
+            assertTrue(absentEtagManager.currentSnapshot().verified)
+            assertEquals(1, absentEtagBodyChunks.get())
+            assertTrue(absentEtagFile.readBytes().contentEquals(payload))
+
+            // 7. 416 on full-document recovery fails export_copy_unconfirmed and preserves document.
+            val r416File = File(dir, "r416.zip").apply { writeBytes(payload) }
+            val r416Dest = FileExportDestination(r416File)
+            val r416Manager = JournalExportTransferManager(
+                upstreamOpener = {
+                    OpenedExportUpstream(
+                        ScriptedExportUpstream(ByteArray(0), etag, fixedStatus = 416),
+                        "local",
+                    )
+                },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> r416Dest },
+                stateStore = saveFullState(File(dir, "s-416.json"), "exp_416", r416Dest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            r416Manager.resume("exp_416")
+            assertEquals("error", r416Manager.currentSnapshot().phase)
+            assertEquals("export_copy_unconfirmed", r416Manager.currentSnapshot().errorCode)
+            assertFalse(r416Dest.deleted)
+            assertTrue(r416File.readBytes().contentEquals(payload))
+
+            // 8. Write-only provider on a resumed full document: even after a valid 1-byte 206 probe,
+            //    cannot read back stored bytes and did not stream them in this pass, so MUST fail
+            //    checksum_mismatch (never fake saved or handed_off) and MUST NOT delete the file.
+            val woFile = File(dir, "wo-resumed.zip").apply { writeBytes(payload) }
+            val woDest = FileExportDestination(woFile, allowReadBack = false)
+            val woProbeUpstream = ScriptedExportUpstream(payload, etag)
+            val woManager = JournalExportTransferManager(
+                upstreamOpener = { OpenedExportUpstream(woProbeUpstream, "local") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> woDest },
+                stateStore = saveFullState(File(dir, "s-wo.json"), "exp_wo_resumed", woDest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            woManager.resume("exp_wo_resumed")
+            assertEquals("error", woManager.currentSnapshot().phase)
+            assertEquals("checksum_mismatch", woManager.currentSnapshot().errorCode)
+            assertFalse(woManager.currentSnapshot().verified)
+            assertFalse(woDest.deleted, "must preserve write-only provider document on recovery failure")
+            assertEquals(1, woProbeUpstream.seenHeaders.size)
+
+            // 9. Pre-existing non-empty destination picked at start() is owned by the provider/owner:
+            //    insufficient space or 410 must NEVER delete it.
+            val existingBytes = "owner-existing-file".toByteArray()
+            val existingFile = File(dir, "preexisting.zip").apply { writeBytes(existingBytes) }
+            val existingDest = FileExportDestination(existingFile, availableSpaceBytes = 1024L)
+            val existingManager = JournalExportTransferManager(
+                upstreamOpener = { error("must fail space check before upstream") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> existingDest },
+                stateStore = ExportStateStore(File(dir, "s-existing.json")),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            val existingReq = JournalExportStartRequest(
+                exportId = "exp_existing",
+                downloadPath = "/app/export/api/ready/exp_existing/download",
+                filename = "preexisting.zip",
+                sizeBytes = 10_000_000L,
+                sha256 = sha,
+                etag = etag,
+                mode = "full",
+            )
+            existingManager.start(existingReq, { _, cb -> cb(existingDest) }) {}
+            assertEquals("error", existingManager.currentSnapshot().phase)
+            assertEquals("insufficient_device_space", existingManager.currentSnapshot().errorCode)
+            assertFalse(existingDest.deleted, "must never delete a pre-existing non-empty document")
+            assertTrue(existingFile.readBytes().contentEquals(existingBytes))
+
+            // 10. Interrupted 1-byte eligibility probe pauses disconnected while preserving the
+            //     full document and progress, then retries the same last byte and verifies.
+            val dropProbeFile = File(dir, "drop-probe.zip").apply { writeBytes(payload) }
+            val dropProbeDest = FileExportDestination(dropProbeFile)
+            val dropProbeAttempts = AtomicInteger(0)
+            val dropProbeHeaders = mutableListOf<List<Pair<String, String>>>()
+            val dropProbeUpstream = object : JournalBrowserUpstream {
+                override val isPoisoned: Boolean get() = false
+                override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?): BrowserHttpResponse =
+                    error("streaming expected")
+
+                override fun requestStreaming(
+                    method: String,
+                    path: String,
+                    headers: List<Pair<String, String>>,
+                    bodySource: BrowserRequestBodySource?,
+                    responseSink: BrowserResponseSink,
+                ) {
+                    dropProbeHeaders += headers
+                    val n = dropProbeAttempts.incrementAndGet()
+                    responseSink.onStatusAndHeaders(
+                        206,
+                        "Partial Content",
+                        listOf(
+                            "Content-Type" to "application/zip",
+                            "Content-Length" to "1",
+                            "Content-Range" to "bytes $lastByte-$lastByte/${payload.size}",
+                            "ETag" to etag,
+                        ),
+                    )
+                    if (n == 1) {
+                        throw IOException("probe stream interrupted")
+                    }
+                    responseSink.onBodyChunk(payload, lastByte, 1)
+                    responseSink.onComplete()
+                }
+
+                override fun close() {}
+            }
+            val dropProbeManager = JournalExportTransferManager(
+                upstreamOpener = { OpenedExportUpstream(dropProbeUpstream, "local") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> dropProbeDest },
+                stateStore = saveFullState(File(dir, "s-drop-probe.json"), "exp_drop_probe", dropProbeDest, ownsCreatedDocument = true),
+                drainClosed = { false },
+                schedulerFactory = ::syncScheduler,
+            )
+            dropProbeManager.resume("exp_drop_probe")
+            assertEquals("paused", dropProbeManager.currentSnapshot().phase)
+            assertEquals("disconnected", dropProbeManager.currentSnapshot().pauseReason)
+            assertEquals(payload.size.toLong(), dropProbeManager.currentSnapshot().bytesWritten)
+            assertFalse(dropProbeDest.deleted)
+            assertTrue(dropProbeFile.readBytes().contentEquals(payload))
+
+            dropProbeManager.resume("exp_drop_probe")
+            assertEquals("saved", dropProbeManager.currentSnapshot().phase)
+            assertTrue(dropProbeManager.currentSnapshot().verified)
+            assertEquals(2, dropProbeHeaders.size)
+            assertEquals(
+                "bytes=$lastByte-$lastByte",
+                dropProbeHeaders[0].firstOrNull { it.first.equals("range", ignoreCase = true) }?.second,
+            )
+            assertEquals(
+                "bytes=$lastByte-$lastByte",
+                dropProbeHeaders[1].firstOrNull { it.first.equals("range", ignoreCase = true) }?.second,
+            )
         } finally {
             dir.deleteRecursively()
         }

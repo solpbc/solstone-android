@@ -83,6 +83,7 @@ internal data class PersistedExportState(
     val bytesWritten: Long,
     val initialTransport: String?,
     val pauseReason: String,
+    val ownsCreatedDocument: Boolean = false,
 )
 
 internal class ExportStateStore(private val file: File) {
@@ -103,6 +104,7 @@ internal class ExportStateStore(private val file: File) {
                     "bytes_written" to state.bytesWritten,
                     "initial_transport" to state.initialTransport,
                     "pause_reason" to state.pauseReason,
+                    "owns_created_document" to state.ownsCreatedDocument,
                 ),
             )
             val tmp = File(file.parentFile, "${file.name}.tmp")
@@ -129,6 +131,7 @@ internal class ExportStateStore(private val file: File) {
         val mode = map["mode"] as? String
         val initialTransport = map["initial_transport"] as? String
         val pauseReason = (map["pause_reason"] as? String) ?: "paused"
+        val ownsCreatedDocument = (map["owns_created_document"] as? Boolean) ?: false
         PersistedExportState(
             exportId = exportId,
             downloadPath = downloadPath,
@@ -142,6 +145,7 @@ internal class ExportStateStore(private val file: File) {
             bytesWritten = bytesWritten.coerceIn(0L, sizeBytes),
             initialTransport = initialTransport,
             pauseReason = pauseReason,
+            ownsCreatedDocument = ownsCreatedDocument,
         )
     }.getOrNull()
 
@@ -280,6 +284,7 @@ internal class JournalExportTransferManager(
         var initialTransport: String?,
         var bytesWritten: Long,
         var hasher: ResumableSha256,
+        val ownsCreatedDocument: Boolean,
         var userPaused: Boolean = false,
         var userCancelled: Boolean = false,
         var activeUpstream: JournalBrowserUpstream? = null,
@@ -365,12 +370,15 @@ internal class JournalExportTransferManager(
                 return@pickDestination
             }
 
+            val ownsCreatedDocument = destination.currentSizeBytes() == 0L
             val required = requiredDeviceBytes(request.sizeBytes)
             // Check the picked destination volume's capacity when the provider reports it.
             // Never reject an external SD/USB or cloud provider using internal app-sandbox free space.
             val free = destination.availableSpaceBytesOrNull()
             if (free != null && free < required) {
-                destination.deleteCreatedDocument()
+                if (ownsCreatedDocument) {
+                    destination.deleteCreatedDocument()
+                }
                 val failed = lock.withLock {
                     publishLocked(
                         JournalExportStatusSnapshot(
@@ -398,6 +406,7 @@ internal class JournalExportTransferManager(
                     initialTransport = null,
                     bytesWritten = 0L,
                     hasher = ResumableSha256(),
+                    ownsCreatedDocument = ownsCreatedDocument,
                 )
                 active = transfer
                 val transferring = JournalExportStatusSnapshot(
@@ -516,43 +525,21 @@ internal class JournalExportTransferManager(
                 return false
             }
 
-            // If a restored destination already holds the full byte count on disk, verify on this
-            // worker thread before opening a network request.
+            // Measure existing disk bytes on this worker thread (never during init) and ALWAYS
+            // consult the live journal before confirming a recovered/resumed full document.
             val existingDiskOffset = transfer.destination.currentSizeBytes()
-            if (existingDiskOffset == transfer.request.sizeBytes) {
-                val readBack = transfer.destination.computeSha256AndSizeOrNull()
-                if (readBack != null &&
-                    readBack.second == transfer.request.sizeBytes &&
-                    readBack.first.equals(transfer.request.sha256, ignoreCase = true)
-                ) {
-                    val savedSnap = lock.withLock {
-                        if (active !== transfer || transfer.userCancelled) return false
-                        active = null
-                        stateStore.clear()
-                        publishLocked(
-                            JournalExportStatusSnapshot(
-                                exportId = transfer.request.exportId,
-                                phase = "saved",
-                                bytesWritten = transfer.request.sizeBytes,
-                                totalBytes = transfer.request.sizeBytes,
-                                transport = snapshot.transport,
-                                destinationDisplay = transfer.destination.displayName,
-                                canReveal = false,
-                                verified = true,
-                                mode = transfer.request.mode,
-                            ),
-                        )
-                        snapshot
-                    }
-                    scheduler.onEnded(savedSnap)
-                    return false
-                }
-            }
+            val isFullDocumentRecovery = existingDiskOffset == transfer.request.sizeBytes &&
+                transfer.request.sizeBytes > 0L
+            val preserveExistingDocumentOnFailure = isFullDocumentRecovery || !transfer.ownsCreatedDocument
 
             val opened = try {
                 upstreamOpener.open()
             } catch (_: JournalBrowserIdentityException) {
-                finishFailure(transfer.request.exportId, "export_requester_revoked")
+                finishFailure(
+                    transfer.request.exportId,
+                    "export_requester_revoked",
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             } catch (_: Throwable) {
                 markDisconnectedPause(transfer.request.exportId, transfer.bytesWritten)
@@ -588,7 +575,11 @@ internal class JournalExportTransferManager(
             val canResume = transfer.destination.supportsRandomWrite &&
                 diskOffset > 0L &&
                 diskOffset < transfer.request.sizeBytes
-            var resumeOffset = if (canResume) diskOffset else 0L
+            var resumeOffset = when {
+                isFullDocumentRecovery -> transfer.request.sizeBytes - 1L
+                canResume -> diskOffset
+                else -> 0L
+            }
 
             lock.withLock {
                 val cur = active
@@ -597,12 +588,12 @@ internal class JournalExportTransferManager(
                     return false
                 }
                 cur.activeUpstream = upstream
-                cur.bytesWritten = resumeOffset
+                cur.bytesWritten = if (isFullDocumentRecovery) diskOffset else resumeOffset
                 publishLocked(
                     JournalExportStatusSnapshot(
                         exportId = cur.request.exportId,
                         phase = "transferring",
-                        bytesWritten = resumeOffset,
+                        bytesWritten = cur.bytesWritten,
                         totalBytes = cur.request.sizeBytes,
                         transport = transport,
                         destinationDisplay = cur.destination.displayName,
@@ -612,21 +603,28 @@ internal class JournalExportTransferManager(
             }
 
             val headers = mutableListOf<Pair<String, String>>()
-            if (resumeOffset > 0L) {
+            if (isFullDocumentRecovery) {
+                val lastByte = transfer.request.sizeBytes - 1L
+                headers.add("Range" to "bytes=$lastByte-$lastByte")
+                headers.add("If-Range" to transfer.request.etag)
+            } else if (resumeOffset > 0L) {
                 headers.add("Range" to "bytes=$resumeOffset-")
                 headers.add("If-Range" to transfer.request.etag)
             }
 
             var writer: OutputStream? = null
             var responseStatus = 0
-            var bytesWritten = resumeOffset
+            var bytesWritten = if (isFullDocumentRecovery) diskOffset else resumeOffset
             var errorBody: ByteArrayOutputStream? = null
             var sinkFailureCode: String? = null
             var streamCompleted = false
+            var fullPartialProbeMode = isFullDocumentRecovery
+            var fullPartialProbeConfirmed = false
+            var fullPartialProbeBytes = 0
             val startNs = System.nanoTime()
             var sessionBytes = 0L
             var lastEmitMs = 0L
-            var lastPersistBytes = resumeOffset
+            var lastPersistBytes = bytesWritten
 
             try {
                 upstream.requestStreaming(
@@ -643,6 +641,29 @@ internal class JournalExportTransferManager(
                             responseStatus = status
                             when (status) {
                                 200 -> {
+                                    if (fullPartialProbeMode) {
+                                        val rawEtag = headers.firstOrNull {
+                                            it.first.equals("etag", ignoreCase = true)
+                                        }?.second?.trim()?.takeIf { it.isNotEmpty() }
+                                        val hasValidator = rawEtag != null
+                                        val contentLength = headers.firstOrNull {
+                                            it.first.equals("content-length", ignoreCase = true)
+                                        }?.second?.trim()?.toLongOrNull()
+                                        val lengthMatches = contentLength == null ||
+                                            contentLength == transfer.request.sizeBytes
+                                        if (hasValidator || !lengthMatches) {
+                                            if (hasValidator &&
+                                                matchesStrongEtag(rawEtag, transfer.request.etag) &&
+                                                lengthMatches
+                                            ) {
+                                                throw FullPartialProbeConfirmedException()
+                                            }
+                                            throw ExportProtocolFailureException("export_copy_unconfirmed")
+                                        }
+                                        // Range-ignoring 200 with absent ETag and matching length:
+                                        // cannot confirm local copy from headers alone, so stream live 200 from 0.
+                                        fullPartialProbeMode = false
+                                    }
                                     // Server returned full archive (first attempt or ETag changed under If-Range).
                                     resumeOffset = 0L
                                     bytesWritten = 0L
@@ -660,6 +681,16 @@ internal class JournalExportTransferManager(
                                     val responseEtag = headers.firstOrNull {
                                         it.first.equals("etag", ignoreCase = true)
                                     }?.second
+                                    if (fullPartialProbeMode) {
+                                        val lastByte = transfer.request.sizeBytes - 1L
+                                        if (!matchesContentRange(contentRange, lastByte, transfer.request.sizeBytes) ||
+                                            !matchesStrongEtag(responseEtag, transfer.request.etag)
+                                        ) {
+                                            throw ExportProtocolFailureException("export_copy_unconfirmed")
+                                        }
+                                        // Do not open a writer: drain the 1-byte eligibility probe only.
+                                        return
+                                    }
                                     if (!matchesContentRange(contentRange, resumeOffset, transfer.request.sizeBytes) ||
                                         !matchesStrongEtag(responseEtag, transfer.request.etag)
                                     ) {
@@ -672,9 +703,13 @@ internal class JournalExportTransferManager(
                                     }
                                 }
                                 416 -> {
-                                    // Offset out of range; fail cleanly so a fresh start can retry.
-                                    bytesWritten = 0L
-                                    sinkFailureCode = "save_failed"
+                                    if (fullPartialProbeMode) {
+                                        sinkFailureCode = "export_copy_unconfirmed"
+                                    } else {
+                                        // Offset out of range; fail cleanly so a fresh start can retry.
+                                        bytesWritten = 0L
+                                        sinkFailureCode = "save_failed"
+                                    }
                                 }
                                 401, 403 -> {
                                     sinkFailureCode = "export_requester_revoked"
@@ -703,6 +738,13 @@ internal class JournalExportTransferManager(
                                 return
                             }
                             if (sinkFailureCode != null) return
+                            if (fullPartialProbeMode && responseStatus == 206) {
+                                fullPartialProbeBytes += length
+                                if (fullPartialProbeBytes > 1) {
+                                    throw ExportProtocolFailureException("export_copy_unconfirmed")
+                                }
+                                return
+                            }
                             val out = writer ?: return
                             try {
                                 out.write(chunk, offset, length)
@@ -745,7 +787,15 @@ internal class JournalExportTransferManager(
                         }
 
                         override fun onComplete() {
-                            streamCompleted = true
+                            if (fullPartialProbeMode && responseStatus == 206) {
+                                if (fullPartialProbeBytes == 1) {
+                                    fullPartialProbeConfirmed = true
+                                    bytesWritten = transfer.request.sizeBytes
+                                    streamCompleted = true
+                                }
+                            } else {
+                                streamCompleted = true
+                            }
                         }
                     },
                 )
@@ -785,6 +835,10 @@ internal class JournalExportTransferManager(
                         throw DestinationWriteException(primaryError)
                     }
                 }
+            } catch (_: FullPartialProbeConfirmedException) {
+                fullPartialProbeConfirmed = true
+                bytesWritten = transfer.request.sizeBytes
+                streamCompleted = true
             } catch (_: ExportInterruptedException) {
                 runCatching { writer?.flush() }
                 runCatching { writer?.close() }
@@ -811,7 +865,11 @@ internal class JournalExportTransferManager(
                     }
                 }
                 if (transfer.userCancelled) return false
-                finishFailure(transfer.request.exportId, e.code)
+                finishFailure(
+                    transfer.request.exportId,
+                    e.code,
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             } catch (e: DestinationWriteException) {
                 runCatching { writer?.close() }
@@ -823,7 +881,11 @@ internal class JournalExportTransferManager(
                 }
                 if (transfer.userCancelled) return false
                 val code = if (isDiskSpaceError(e)) "insufficient_device_space" else "dest_write_failed"
-                finishFailure(transfer.request.exportId, code)
+                finishFailure(
+                    transfer.request.exportId,
+                    code,
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             } catch (e: Throwable) {
                 runCatching { writer?.flush() }
@@ -837,11 +899,19 @@ internal class JournalExportTransferManager(
                 }
                 if (transfer.userPaused || transfer.userCancelled) return false
                 if (e is JournalBrowserIdentityException) {
-                    finishFailure(transfer.request.exportId, "export_requester_revoked")
+                    finishFailure(
+                        transfer.request.exportId,
+                        "export_requester_revoked",
+                        deleteDocument = !preserveExistingDocumentOnFailure,
+                    )
                     return false
                 }
                 if (isDiskSpaceError(e)) {
-                    finishFailure(transfer.request.exportId, "insufficient_device_space")
+                    finishFailure(
+                        transfer.request.exportId,
+                        "insufficient_device_space",
+                        deleteDocument = !preserveExistingDocumentOnFailure,
+                    )
                     return false
                 }
                 markDisconnectedPause(transfer.request.exportId, bytesWritten)
@@ -860,11 +930,19 @@ internal class JournalExportTransferManager(
 
             if (responseStatus == 410) {
                 val parsed = errorBody?.toByteArray()?.let(::extractErrorCode)
-                finishFailure(transfer.request.exportId, parsed ?: "export_invalidated_by_erasure")
+                finishFailure(
+                    transfer.request.exportId,
+                    parsed ?: "export_invalidated_by_erasure",
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             }
             if (sinkFailureCode != null) {
-                finishFailure(transfer.request.exportId, sinkFailureCode!!)
+                finishFailure(
+                    transfer.request.exportId,
+                    sinkFailureCode!!,
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             }
             if (!streamCompleted || bytesWritten != transfer.request.sizeBytes) {
@@ -897,7 +975,11 @@ internal class JournalExportTransferManager(
                 if (actualSize != transfer.request.sizeBytes ||
                     !actualSha.equals(transfer.request.sha256, ignoreCase = true)
                 ) {
-                    finishFailure(transfer.request.exportId, "checksum_mismatch")
+                    finishFailure(
+                        transfer.request.exportId,
+                        "checksum_mismatch",
+                        deleteDocument = !preserveExistingDocumentOnFailure,
+                    )
                     return false
                 }
 
@@ -926,10 +1008,18 @@ internal class JournalExportTransferManager(
 
             // Write-only provider refused read-back: never claim verified=true without reading the
             // stored document back. Report an honest unverified handoff only when a complete
-            // single-pass write+flush+close succeeded with a matching incoming SHA-256.
-            val streamSha = if (resumeOffset == 0L) transfer.hasher.digestHex() else null
+            // single-pass write+flush+close succeeded in this attempt with a matching incoming SHA-256.
+            val streamSha = if (!fullPartialProbeConfirmed && resumeOffset == 0L) {
+                transfer.hasher.digestHex()
+            } else {
+                null
+            }
             if (streamSha == null || !streamSha.equals(transfer.request.sha256, ignoreCase = true)) {
-                finishFailure(transfer.request.exportId, "checksum_mismatch")
+                finishFailure(
+                    transfer.request.exportId,
+                    "checksum_mismatch",
+                    deleteDocument = !preserveExistingDocumentOnFailure,
+                )
                 return false
             }
 
@@ -983,11 +1073,17 @@ internal class JournalExportTransferManager(
         scheduler.onProgressUpdated(snap, activeFilename() ?: "")
     }
 
-    private fun finishFailure(exportId: String, errorCode: String) {
+    private fun finishFailure(
+        exportId: String,
+        errorCode: String,
+        deleteDocument: Boolean = true,
+    ) {
         val snap = lock.withLock {
             val cur = active ?: return
             if (cur.request.exportId != exportId || cur.userCancelled) return
-            cur.destination.deleteCreatedDocument()
+            if (deleteDocument && cur.ownsCreatedDocument) {
+                cur.destination.deleteCreatedDocument()
+            }
             active = null
             stateStore.clear()
             publishLocked(
@@ -1011,7 +1107,7 @@ internal class JournalExportTransferManager(
         transfer.userCancelled = true
         runCatching { transfer.activeUpstream?.close() }
         transfer.activeUpstream = null
-        if (deleteDocument) {
+        if (deleteDocument && transfer.ownsCreatedDocument && transfer.bytesWritten < transfer.request.sizeBytes) {
             transfer.destination.deleteCreatedDocument()
         }
     }
@@ -1031,6 +1127,7 @@ internal class JournalExportTransferManager(
                 bytesWritten = transfer.bytesWritten,
                 initialTransport = transfer.initialTransport,
                 pauseReason = pauseReason,
+                ownsCreatedDocument = transfer.ownsCreatedDocument,
             ),
         )
     }
@@ -1060,6 +1157,7 @@ internal class JournalExportTransferManager(
             initialTransport = persisted.initialTransport,
             bytesWritten = restoredBytes,
             hasher = ResumableSha256(),
+            ownsCreatedDocument = persisted.ownsCreatedDocument,
             userPaused = true,
         )
         lock.withLock {
@@ -1086,6 +1184,7 @@ internal class JournalExportTransferManager(
     private class ExportInterruptedException : RuntimeException()
     private class DestinationWriteException(cause: Throwable) : IOException(cause.message, cause)
     private class ExportProtocolFailureException(val code: String) : IOException(code)
+    private class FullPartialProbeConfirmedException : IOException("full_partial_probe_confirmed")
 
     companion object {
         private val singleton = AtomicReference<JournalExportTransferManager?>(null)
