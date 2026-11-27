@@ -64,14 +64,38 @@ class GarminSlv3AndSpoolTest {
     fun watchLocalClockStampsDayAndMidnightFromWatchOffset() {
         // 2026-11-28T06:58:00Z at UTC-07:00 (-420 min) = 2026-11-27 23:58:00 local (before midnight!)
         val epochBeforeMidnight = 1795849080L
-        val clockMdt = GarminSlv3Protocol.watchLocalSegmentClock(epochBeforeMidnight, -420, 300)
+        val clockMdt = GarminSlv3Protocol.watchLocalSegmentClock(
+            epochBeforeMidnight,
+            -420,
+            300,
+            referenceZoneId = java.time.ZoneId.of("America/Denver"),
+        )
         assertEquals("2026-11-27", clockMdt.day)
         assertEquals("235800_300", clockMdt.segment)
-        assertEquals("-07:00", clockMdt.zoneId)
+        assertEquals("America/Denver", clockMdt.zoneId)
+        assertTrue(clockMdt.zoneId in java.time.ZoneId.getAvailableZoneIds())
         assertEquals(-25_200, clockMdt.utcOffsetSeconds)
 
+        // When phone zone differs from watch offset, falls back to IANA Etc/GMT+7 (exact -07:00)
+        val clockMismatch = GarminSlv3Protocol.watchLocalSegmentClock(
+            epochBeforeMidnight,
+            -420,
+            300,
+            referenceZoneId = java.time.ZoneId.of("America/New_York"),
+        )
+        assertEquals("2026-11-27", clockMismatch.day)
+        assertEquals("235800_300", clockMismatch.segment)
+        assertEquals("Etc/GMT+7", clockMismatch.zoneId)
+        assertTrue(clockMismatch.zoneId in java.time.ZoneId.getAvailableZoneIds())
+        assertEquals(-25_200, java.time.ZoneId.of(clockMismatch.zoneId).rules.getOffset(java.time.Instant.ofEpochSecond(epochBeforeMidnight)).totalSeconds)
+
         // Same instant at UTC+05:45 (+345 min, Nepal) = 2026-11-28 12:43:00 local
-        val clockNepal = GarminSlv3Protocol.watchLocalSegmentClock(epochBeforeMidnight, 345, 125)
+        val clockNepal = GarminSlv3Protocol.watchLocalSegmentClock(
+            epochBeforeMidnight,
+            345,
+            125,
+            referenceZoneId = java.time.ZoneId.of("America/Denver"),
+        )
         assertEquals("2026-11-28", clockNepal.day)
         assertEquals("124300_125", clockNepal.segment)
         assertEquals("+05:45", clockNepal.zoneId)

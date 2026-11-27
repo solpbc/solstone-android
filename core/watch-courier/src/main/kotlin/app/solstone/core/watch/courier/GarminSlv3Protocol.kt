@@ -6,6 +6,7 @@ package app.solstone.core.watch.courier
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -278,11 +279,17 @@ object GarminSlv3Protocol {
     /**
      * Stamps journal `day` (`YYYY-MM-DD`) and `segment` (`HHMMSS_LEN`) strictly from the watch's
      * recording clock and local UTC offset (never phone receipt time or phone timezone).
+     *
+     * Resolves an IANA `zoneId` accepted by `ObserverIngestClient` (`ZoneId.getAvailableZoneIds()`)
+     * when possible: uses `referenceZoneId` if its offset at `segEpochSec` equals the watch's
+     * offset, otherwise falls back to the POSIX-inverted `Etc/GMT±H` zone for whole-hour offsets
+     * (and `zoneOffset.id` for non-hour offsets, always carrying exact `utcOffsetSeconds`).
      */
     fun watchLocalSegmentClock(
         segEpochSec: Long,
         tzOffsetMin: Int,
         durationSec: Int,
+        referenceZoneId: ZoneId = ZoneId.systemDefault(),
     ): WatchSegmentClock {
         val clampedOffsetMin = tzOffsetMin.coerceIn(-12 * 60, 14 * 60)
         val offsetSeconds = clampedOffsetMin * 60
@@ -293,12 +300,25 @@ object GarminSlv3Protocol {
         val day = DAY_FMT.format(localStart)
         val hhmmss = TIME_FMT.format(localStart)
         val startMs = segEpochSec * 1000L
+        val availableZones = ZoneId.getAvailableZoneIds()
+        val resolvedZoneId = when {
+            referenceZoneId.id in availableZones &&
+                referenceZoneId.rules.getOffset(startInstant).totalSeconds == offsetSeconds -> referenceZoneId.id
+            offsetSeconds == 0 -> "UTC"
+            offsetSeconds % 3600 == 0 -> {
+                val hours = offsetSeconds / 3600
+                // POSIX Etc/GMT sign is inverted: UTC-7 is Etc/GMT+7, UTC+2 is Etc/GMT-2.
+                val candidate = if (hours > 0) "Etc/GMT-$hours" else "Etc/GMT+${-hours}"
+                if (candidate in availableZones) candidate else zoneOffset.id
+            }
+            else -> zoneOffset.id
+        }
         return WatchSegmentClock(
             day = day,
             segment = "${hhmmss}_${dur}",
             startEpochMs = startMs,
             endEpochMs = startMs + dur * 1000L,
-            zoneId = zoneOffset.id,
+            zoneId = resolvedZoneId,
             utcOffsetSeconds = offsetSeconds,
         )
     }
