@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.57] - 2026-11-27
+
 ### Added
 
 - once your journal is updated too, exporting a copy from your journal saves straight to the file you pick on your phone and checks the saved file. a notification shows progress with pause, resume and cancel controls, and you can resume where it left off after a pause or connection drop.
@@ -17,6 +19,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - large file imports can now get moving again on a slow connection after a transfer stalls.
+- imports now go to your journal over a wi-fi network that reaches it but has no internet connection. before, they waited for the internet to come back.
 
 ## [2.1.56] - 2026-11-26
 
