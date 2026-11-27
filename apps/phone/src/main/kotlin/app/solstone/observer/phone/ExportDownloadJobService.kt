@@ -9,6 +9,8 @@ import android.app.job.JobScheduler
 import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -27,11 +29,16 @@ class ExportDownloadJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val app = applicationContext
+        val manager = JournalExportTransferManager.get(app)
+        if (manager.isLoopRunning()) {
+            // Another runner (such as the direct-LAN fallback) already owns this export transfer.
+            runCatching { jobFinished(params, false) }
+            return false
+        }
         currentParams = params
         activeService.set(this)
         startedJobCountForTests.incrementAndGet()
 
-        val manager = JournalExportTransferManager.get(app)
         val initial = manager.currentSnapshot()
         // Post mandatory UIDT notification synchronously on main thread with zero blocking I/O.
         postJobNotification(params, initial, manager.activeFilename() ?: "")
@@ -46,6 +53,9 @@ class ExportDownloadJobService : JobService() {
                 runCatching {
                     jobFinished(params, reschedule)
                     finishedJobCountForTests.incrementAndGet()
+                }
+                if (!reschedule && !manager.isLoopRunning()) {
+                    manager.rescheduleIfTransferring()
                 }
                 // UIDT jobs use JOB_END_NOTIFICATION_POLICY_REMOVE, so keep a paused notification
                 // with Resume and Cancel controls visible on a separate notification ID.
@@ -143,6 +153,38 @@ class ExportDownloadJobService : JobService() {
 
 internal object ExportDownloadScheduler {
     const val JOB_ID = 7402
+
+    /**
+     * Returns true only when Android reports an active network satisfying JobScheduler's
+     * `NETWORK_TYPE_ANY` UIDT connectivity constraint (`INTERNET` + `TRUSTED` + `VALIDATED`,
+     * plus `NOT_BANDWIDTH_CONSTRAINED` on API 35+).
+     *
+     * On local Wi-Fi / LAN networks without validated internet (or isolated networks),
+     * UIDT jobs stay queued with unsatisfied `CONNECTIVITY` even when a direct journal is
+     * reachable; callers fall back to in-process execution so local saves succeed and genuine
+     * disconnects pause honestly instead of hanging at 0 B.
+     */
+    internal fun hasValidatedNetwork(context: Context): Boolean {
+        val cm = context.applicationContext.getSystemService(ConnectivityManager::class.java)
+            ?: return false
+        val activeNetwork = cm.activeNetwork ?: return false
+        val caps = runCatching { cm.getNetworkCapabilities(activeNetwork) }.getOrNull()
+        return capsSatisfyUidtNetwork(caps, Build.VERSION.SDK_INT)
+    }
+
+    internal fun capsSatisfyUidtNetwork(
+        caps: NetworkCapabilities?,
+        sdkInt: Int = Build.VERSION.SDK_INT,
+    ): Boolean {
+        if (caps == null) return false
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)) return false
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return false
+        if (sdkInt >= 35 && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)) {
+            return false
+        }
+        return true
+    }
 
     internal fun scheduleUidtJob(context: Context, estimatedDownloadBytes: Long): Boolean {
         if (Build.VERSION.SDK_INT < 34) return false

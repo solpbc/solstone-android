@@ -22,6 +22,7 @@ import java.util.Locale
 internal object ImportUploadNotification {
     const val CHANNEL_ID = "solstone_import_upload"
     const val NOTIFICATION_ID = 104
+    const val STANDALONE_NOTIFICATION_ID = 107
     private const val OPEN_IMPORT_REQUEST_CODE = 204
     private const val CANCEL_IMPORT_REQUEST_CODE = 205
     private const val PROGRESS_MAX = 1000
@@ -132,12 +133,39 @@ internal object ImportUploadNotification {
             .setContentTitle(TITLE)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setOngoing(true)
+            .setOngoing(phase != RESUMABLE_UPLOAD_PHASE_PAUSED)
             .setOnlyAlertOnce(true)
             .setProgress(PROGRESS_MAX, progress, indeterminate)
             .setContentIntent(openPending)
             .addAction(cancelAction)
             .build()
+    }
+
+    fun postStandalone(
+        context: Context,
+        filename: String?,
+        bytesSent: Long,
+        bytesTotal: Long,
+        phase: String?,
+        itemId: String?,
+    ) {
+        val manager = context.applicationContext.getSystemService(NotificationManager::class.java) ?: return
+        runCatching {
+            val notification = build(
+                context = context.applicationContext,
+                filename = filename,
+                bytesSent = bytesSent,
+                bytesTotal = bytesTotal,
+                phase = phase,
+                itemId = itemId,
+            )
+            manager.notify(STANDALONE_NOTIFICATION_ID, notification)
+        }
+    }
+
+    fun cancelStandalone(context: Context) {
+        val manager = context.applicationContext.getSystemService(NotificationManager::class.java) ?: return
+        runCatching { manager.cancel(STANDALONE_NOTIFICATION_ID) }
     }
 }
 

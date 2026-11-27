@@ -211,7 +211,8 @@ class JournalExportRuntimeTest {
         )
         previousSingleton = JournalExportTransferManager.setSingletonForTests(manager)
 
-        val scenario = if (Build.VERSION.SDK_INT >= 34) {
+        val expectUidt = Build.VERSION.SDK_INT >= 34 && ExportDownloadScheduler.hasValidatedNetwork(context)
+        val scenario = if (expectUidt) {
             ActivityScenario.launch(PhoneShellActivity::class.java)
         } else {
             null
@@ -239,22 +240,24 @@ class JournalExportRuntimeTest {
             assertEquals("disconnected", paused.pauseReason)
             assertEquals(split.toLong(), paused.bytesWritten)
 
-            if (Build.VERSION.SDK_INT >= 34) {
+            if (expectUidt) {
                 awaitCondition(description = "UIDT JobService first run finishes") {
                     ExportDownloadJobService.finishedJobCountForTests.get() >= 1
                 }
                 assertTrue(
-                    "UIDT JobService must run onStartJob on API 34+",
+                    "UIDT JobService must run onStartJob on API 34+ validated networks",
                     ExportDownloadJobService.startedJobCountForTests.get() >= 1,
                 )
                 assertTrue(
-                    "UIDT JobService must post mandatory setNotification on API 34+",
+                    "UIDT JobService must post mandatory setNotification on API 34+ validated networks",
                     ExportDownloadJobService.uidtNotificationsPostedForTests.get() >= 1,
                 )
             } else {
                 assertEquals(0, ExportDownloadJobService.startedJobCountForTests.get())
+                val js = context.getSystemService(JobScheduler::class.java)
+                assertNull("unvalidated/fallback path must leave zero pending UIDT job", js?.getPendingJob(ExportDownloadScheduler.JOB_ID))
             }
-            // Both UIDT (post-job repost) and API 26–33 fallback keep the paused notification visible.
+            // Both UIDT (post-job repost) and fallback keep the paused notification visible.
             awaitCondition(description = "paused standalone notification visible") {
                 ExportDownloadNotification.STANDALONE_NOTIFICATION_ID in activeNotificationIds()
             }
@@ -269,7 +272,7 @@ class JournalExportRuntimeTest {
             assertEquals(2, upstream.seenRanges.size)
             assertEquals("bytes=$split-" to etag, upstream.seenRanges[1])
 
-            if (Build.VERSION.SDK_INT >= 34) {
+            if (expectUidt) {
                 awaitCondition(description = "UIDT JobService resumed run finishes") {
                     ExportDownloadJobService.finishedJobCountForTests.get() >= 2
                 }
@@ -330,7 +333,8 @@ class JournalExportRuntimeTest {
             schedulerFactory = { mgr -> AndroidExportExecutionScheduler(context, mgr) },
         )
         previousSingleton = JournalExportTransferManager.setSingletonForTests(manager)
-        val scenario = if (Build.VERSION.SDK_INT >= 34) {
+        val expectUidt = Build.VERSION.SDK_INT >= 34 && ExportDownloadScheduler.hasValidatedNetwork(context)
+        val scenario = if (expectUidt) {
             ActivityScenario.launch(PhoneShellActivity::class.java)
         } else {
             null
@@ -379,5 +383,115 @@ class JournalExportRuntimeTest {
             assertFalse("API < 34 must not schedule UIDT job", scheduled)
             assertNull(scheduler!!.getPendingJob(ExportDownloadScheduler.JOB_ID))
         }
+    }
+
+    @Test
+    fun unvalidatedNetworkAllowsDirectLocalSaveResumeAndHonestDisconnectedPause() {
+        val payload = buildZipPayload(256 * 1024)
+        val sha = sha256Hex(payload)
+        val etag = "\"$sha\""
+        val split = payload.size / 2
+
+        // 1. Direct local journal reachable without validated internet:
+        //    must complete save + pause/resume + Range/If-Range + ZIP reopen without hanging on UIDT.
+        val docId = "seekable/solstone-journal-unvalidated.zip"
+        val uri = TestExportDocumentsProvider.documentUri(docId)
+        val destination = SafExportDestination(context, uri, "solstone-journal-unvalidated.zip")
+        val upstream = ScriptedRuntimeUpstream(
+            payload = payload,
+            etag = etag,
+            interruptFirstAttemptAt = split,
+        )
+        val stateFile = File(context.cacheDir, "export-runtime-unvalidated.json").apply { delete() }
+        val localManager = JournalExportTransferManager(
+            upstreamOpener = ExportUpstreamOpener { OpenedExportUpstream(upstream, "local") },
+            spaceProbe = { 500_000_000L },
+            destinationReopener = { u, name -> SafExportDestination(context, android.net.Uri.parse(u), name) },
+            stateStore = ExportStateStore(stateFile),
+            schedulerFactory = { mgr ->
+                AndroidExportExecutionScheduler(
+                    manager = mgr,
+                    sdkIntProvider = { Build.VERSION.SDK_INT },
+                    hasValidatedNetwork = { false },
+                    scheduleUidt = { bytes -> ExportDownloadScheduler.scheduleUidtJob(context, bytes) },
+                    cancelUidt = { ExportDownloadScheduler.cancelJob(context) },
+                    postFallbackNotification = { snap, name -> ExportDownloadNotification.postStandalone(context, snap, name) },
+                    cancelFallbackNotification = { ExportDownloadNotification.cancelStandalone(context) },
+                )
+            },
+        )
+        val req = JournalExportStartRequest(
+            exportId = "exp_rt_unvalidated",
+            downloadPath = "/app/export/api/ready/exp_rt_unvalidated/download",
+            filename = "solstone-journal-unvalidated.zip",
+            sizeBytes = payload.size.toLong(),
+            sha256 = sha,
+            etag = etag,
+            mode = "full",
+        )
+        localManager.start(req, pickDestination = { _, cb -> cb(destination) }, onStarted = {})
+        val paused = waitForPhase(localManager, "paused", timeoutMs = 15_000L)
+        assertEquals("disconnected", paused.pauseReason)
+        assertEquals(split.toLong(), paused.bytesWritten)
+        val js = context.getSystemService(JobScheduler::class.java)
+        assertNull("unvalidated local transfer must not queue unsatisfied UIDT job", js?.getPendingJob(ExportDownloadScheduler.JOB_ID))
+        awaitCondition(description = "paused standalone notification visible on unvalidated network") {
+            ExportDownloadNotification.STANDALONE_NOTIFICATION_ID in activeNotificationIds()
+        }
+
+        localManager.resume("exp_rt_unvalidated")
+        val saved = waitForPhase(localManager, "saved", timeoutMs = 15_000L)
+        assertTrue(saved.verified)
+        assertEquals("bytes=$split-" to etag, upstream.seenRanges[1])
+        assertArrayEquals(payload, readCapturedBytes(docId))
+        awaitCondition(description = "notifications cleared after unvalidated save") {
+            ExportDownloadNotification.STANDALONE_NOTIFICATION_ID !in activeNotificationIds()
+        }
+        stateFile.delete()
+
+        // 2. Disconnected without validated internet (unreachable direct journal):
+        //    must transition honestly to paused/disconnected rather than hanging transferring at 0 B.
+        val offDocId = "seekable/solstone-journal-offline.zip"
+        val offDest = SafExportDestination(context, TestExportDocumentsProvider.documentUri(offDocId), "solstone-journal-offline.zip")
+        val offStateFile = File(context.cacheDir, "export-runtime-offline.json").apply { delete() }
+        val offlineManager = JournalExportTransferManager(
+            upstreamOpener = ExportUpstreamOpener { throw java.io.IOException("journal unreachable") },
+            spaceProbe = { 500_000_000L },
+            destinationReopener = { u, name -> SafExportDestination(context, android.net.Uri.parse(u), name) },
+            stateStore = ExportStateStore(offStateFile),
+            schedulerFactory = { mgr ->
+                AndroidExportExecutionScheduler(
+                    manager = mgr,
+                    sdkIntProvider = { Build.VERSION.SDK_INT },
+                    hasValidatedNetwork = { false },
+                    scheduleUidt = { bytes -> ExportDownloadScheduler.scheduleUidtJob(context, bytes) },
+                    cancelUidt = { ExportDownloadScheduler.cancelJob(context) },
+                    postFallbackNotification = { snap, name -> ExportDownloadNotification.postStandalone(context, snap, name) },
+                    cancelFallbackNotification = { ExportDownloadNotification.cancelStandalone(context) },
+                )
+            },
+        )
+        val offReq = JournalExportStartRequest(
+            exportId = "exp_rt_offline",
+            downloadPath = "/app/export/api/ready/exp_rt_offline/download",
+            filename = "solstone-journal-offline.zip",
+            sizeBytes = payload.size.toLong(),
+            sha256 = sha,
+            etag = etag,
+            mode = "full",
+        )
+        offlineManager.start(offReq, pickDestination = { _, cb -> cb(offDest) }, onStarted = {})
+        val offlinePaused = waitForPhase(offlineManager, "paused", timeoutMs = 15_000L)
+        assertEquals("disconnected", offlinePaused.pauseReason)
+        assertEquals(0L, offlinePaused.bytesWritten)
+        assertNull(js?.getPendingJob(ExportDownloadScheduler.JOB_ID))
+        awaitCondition(description = "disconnected pause notification visible") {
+            ExportDownloadNotification.STANDALONE_NOTIFICATION_ID in activeNotificationIds()
+        }
+        offlineManager.cancel("exp_rt_offline")
+        awaitCondition(description = "disconnected pause notification cleared on cancel") {
+            ExportDownloadNotification.STANDALONE_NOTIFICATION_ID !in activeNotificationIds()
+        }
+        offStateFile.delete()
     }
 }

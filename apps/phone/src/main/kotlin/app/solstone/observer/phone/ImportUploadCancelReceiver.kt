@@ -65,6 +65,7 @@ class ImportUploadCancelReceiver : BroadcastReceiver() {
                     }
                     if (store.items(null, null).none { it.uploadResumable || it.inFlight }) {
                         ImportUploadScheduler.cancelJob(app)
+                        ImportUploadNotification.cancelStandalone(app)
                     }
                 }
                 ImportCancelResult.Gone,

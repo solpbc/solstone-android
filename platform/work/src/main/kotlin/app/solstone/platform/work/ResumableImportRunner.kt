@@ -122,6 +122,7 @@ fun runResumableImportUploadLoop(
     now: () -> Long = System::currentTimeMillis,
     jitterUnit: () -> Double = { Random.nextDouble() },
     waitRetry: (Long) -> Unit = { control.awaitRetryDelay(it) },
+    onRetryWaiting: ((attempt: Int) -> Boolean)? = null,
     diag: (String) -> Unit = { line ->
         SyncWorker.syncDiag?.invoke(line)
         workerLog("w", line, null)
@@ -222,6 +223,10 @@ fun runResumableImportUploadLoop(
                     continue
                 }
                 retryAttempt++
+                if (onRetryWaiting != null && !onRetryWaiting(retryAttempt)) {
+                    importStore.clearRetrySchedule()
+                    return ResumableImportRunOutcome.RESCHEDULE
+                }
                 val delayMs = resumableChunkRetryDelayMs(retryAttempt, jitterUnit())
                 waitRetry(delayMs)
                 if (control.consumeNetworkReset()) {

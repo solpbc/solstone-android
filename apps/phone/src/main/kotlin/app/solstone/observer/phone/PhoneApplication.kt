@@ -162,6 +162,7 @@ class PhoneApplication : ObserverApplication(
         DialDiagnostics.sink = { PhoneDiagLog.appendRaw(it) }
         app.solstone.platform.work.ImportUploadWake.onNetworkRecovery = {
             ImportUploadJobService.wakeOnNetworkRecovery()
+            ImportUploadScheduler.resumePendingLargeImports(applicationContext)
         }
         installPushRegistration(
             port = UnifiedPushDistributorPort(this),

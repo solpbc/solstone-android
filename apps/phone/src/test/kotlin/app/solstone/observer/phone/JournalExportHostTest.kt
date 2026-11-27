@@ -984,7 +984,7 @@ class JournalExportHostTest {
             assertEquals("saved", api31Manager.currentSnapshot().phase)
             assertTrue(api31Manager.currentSnapshot().verified)
 
-            // 2. API 34+ routes directly through UIDT scheduling without using fallback executor.
+            // 2. API 34+ on a validated network routes directly through UIDT scheduling without fallback.
             val uidt34Count = AtomicInteger(0)
             val fallback34Count = AtomicInteger(0)
             val api34Manager = JournalExportTransferManager(
@@ -997,6 +997,7 @@ class JournalExportHostTest {
                     AndroidExportExecutionScheduler(
                         manager = m,
                         sdkIntProvider = { 34 },
+                        hasValidatedNetwork = { true },
                         scheduleUidt = {
                             uidt34Count.incrementAndGet()
                             true
@@ -1021,6 +1022,134 @@ class JournalExportHostTest {
             assertEquals(1, uidt34Count.get())
             assertEquals(0, fallback34Count.get())
             assertEquals("transferring", api34Manager.currentSnapshot().phase)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun api35WithoutValidatedNetworkAllowsLocalSaveResumeAndPausesHonestlyWhenDisconnected() {
+        val dir = createTempDir("exp-unvalidated")
+        try {
+            val payload = ByteArray(128 * 1024) { i -> ((i * 19 + 5) and 0xff).toByte() }
+            val sha = sha256Hex(payload)
+            val etag = "\"sha256-$sha\""
+            val split = 48 * 1024
+
+            // 1. Reachable direct journal on local Wi-Fi without validated internet:
+            //    skips UIDT (cancels any stale job), streams via fallback, pauses on drop,
+            //    resumes via Range + If-Range, and verifies SHA-256.
+            val uidtScheduled = AtomicInteger(0)
+            val uidtCancelled = AtomicInteger(0)
+            val fallbackRuns = AtomicInteger(0)
+            val upstream = ScriptedExportUpstream(
+                payload = payload,
+                etag = etag,
+                truncateFirstAttemptAt = split,
+            )
+            val outFile = File(dir, "local-lan.zip")
+            val dest = FileExportDestination(outFile)
+            val localManager = JournalExportTransferManager(
+                upstreamOpener = { OpenedExportUpstream(upstream, "local") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> dest },
+                stateStore = ExportStateStore(File(dir, "local-state.json")),
+                drainClosed = { false },
+                schedulerFactory = { m ->
+                    AndroidExportExecutionScheduler(
+                        manager = m,
+                        sdkIntProvider = { 35 },
+                        hasValidatedNetwork = { false },
+                        scheduleUidt = {
+                            uidtScheduled.incrementAndGet()
+                            true
+                        },
+                        cancelUidt = { uidtCancelled.incrementAndGet() },
+                        postFallbackNotification = { _, _ -> },
+                        cancelFallbackNotification = {},
+                        runFallback = { r ->
+                            fallbackRuns.incrementAndGet()
+                            r.run()
+                        },
+                    )
+                },
+            )
+            val req = JournalExportStartRequest(
+                exportId = "exp_lan_only",
+                downloadPath = "/app/export/api/ready/exp_lan_only/download",
+                filename = "local-lan.zip",
+                sizeBytes = payload.size.toLong(),
+                sha256 = sha,
+                etag = etag,
+                mode = "full",
+            )
+            localManager.start(req, { _, cb -> cb(dest) }) {}
+            assertEquals(0, uidtScheduled.get())
+            assertTrue(uidtCancelled.get() >= 1)
+            assertEquals(1, fallbackRuns.get())
+            assertEquals("paused", localManager.currentSnapshot().phase)
+            assertEquals("disconnected", localManager.currentSnapshot().pauseReason)
+            assertEquals(split.toLong(), localManager.currentSnapshot().bytesWritten)
+
+            localManager.resume("exp_lan_only")
+            assertEquals(0, uidtScheduled.get())
+            assertEquals(2, fallbackRuns.get())
+            assertEquals("saved", localManager.currentSnapshot().phase)
+            assertTrue(localManager.currentSnapshot().verified)
+            assertTrue(payload.contentEquals(outFile.readBytes()))
+            assertEquals(2, upstream.seenHeaders.size)
+            assertEquals(
+                "bytes=$split-",
+                upstream.seenHeaders[1].firstOrNull { it.first.equals("range", ignoreCase = true) }?.second,
+            )
+            assertEquals(
+                etag,
+                upstream.seenHeaders[1].firstOrNull { it.first.equals("if-range", ignoreCase = true) }?.second,
+            )
+
+            // 2. Truly disconnected without validated internet (unreachable direct journal):
+            //    never stalls transferring at 0 B; transitions honestly to paused/disconnected
+            //    and posts paused notification.
+            val disconnectedNotices = mutableListOf<String>()
+            val disconnectedUidt = AtomicInteger(0)
+            val offlineDest = FileExportDestination(File(dir, "offline.zip"))
+            val offlineManager = JournalExportTransferManager(
+                upstreamOpener = { throw java.io.IOException("journal unreachable") },
+                spaceProbe = { 500_000_000L },
+                destinationReopener = { _, _ -> offlineDest },
+                stateStore = ExportStateStore(File(dir, "offline-state.json")),
+                drainClosed = { false },
+                schedulerFactory = { m ->
+                    AndroidExportExecutionScheduler(
+                        manager = m,
+                        sdkIntProvider = { 35 },
+                        hasValidatedNetwork = { false },
+                        scheduleUidt = {
+                            disconnectedUidt.incrementAndGet()
+                            true
+                        },
+                        cancelUidt = {},
+                        postFallbackNotification = { snap, _ -> disconnectedNotices += snap.phase },
+                        cancelFallbackNotification = {},
+                        runFallback = { r -> r.run() },
+                    )
+                },
+            )
+            val offlineReq = JournalExportStartRequest(
+                exportId = "exp_offline",
+                downloadPath = "/app/export/api/ready/exp_offline/download",
+                filename = "offline.zip",
+                sizeBytes = payload.size.toLong(),
+                sha256 = sha,
+                etag = etag,
+                mode = "full",
+            )
+            offlineManager.start(offlineReq, { _, cb -> cb(offlineDest) }) {}
+            assertEquals(0, disconnectedUidt.get())
+            assertEquals("paused", offlineManager.currentSnapshot().phase)
+            assertEquals("disconnected", offlineManager.currentSnapshot().pauseReason)
+            assertEquals(0L, offlineManager.currentSnapshot().bytesWritten)
+            assertTrue("paused" in disconnectedNotices, "expected paused notification on disconnect")
         } finally {
             dir.deleteRecursively()
         }
