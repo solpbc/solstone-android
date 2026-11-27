@@ -660,8 +660,8 @@
   <string name="m616e64726f69642e736f757263652e6761726d696e2e636f6e6e6563746f6c64">"update Garmin Connect to continue delivery."</string>
   <string name="m616e64726f69642e736f757263652e6761726d696e2e676574636f6e6e656374">"get Garmin Connect"</string>
   <plurals name="m616e64726f69642e736f757263652e6761726d696e2e68656c646d696e75746573">
-    <item quantity="one">"about %1$s min at last check"</item>
-    <item quantity="other">"about %1$s min at last check"</item>
+    <item quantity="one">"about %1$s min at last check-in"</item>
+    <item quantity="other">"about %1$s min at last check-in"</item>
   </plurals>
   <string name="m616e64726f69642e736f757263652e6761726d696e2e686f70">"audio goes from your watch through Garmin Connect on this phone, then to your journal."</string>
   <string name="m616e64726f69642e736f757263652e6761726d696e2e6e6f726563656e74">"no recent contact. keep your watch near this phone with Garmin Connect running, and open solstone on your watch. held material stays on your devices."</string>

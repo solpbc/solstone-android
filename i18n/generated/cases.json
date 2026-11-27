@@ -17272,13 +17272,13 @@
       },
       "cardinal": "en",
       "expectation_kind": "resource-golden",
-      "expected": "about ⁨0⁩ min at last check",
+      "expected": "about ⁨0⁩ min at last check-in",
       "folder": "en-rUS",
       "inputs": {
         "count": 0
       },
       "locale": "en-US",
-      "logical_expected": "about ⁨0⁩ min at last check",
+      "logical_expected": "about ⁨0⁩ min at last check-in",
       "message_id": "android.source.garmin.heldminutes",
       "own_reader": "android-xml",
       "own_reader_call": "getQuantityString(R.plurals.m616e64726f69642e736f757263652e6761726d696e2e68656c646d696e75746573, 0, 0)",

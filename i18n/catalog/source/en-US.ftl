@@ -1785,6 +1785,6 @@ android.source.garmin.watchfull = your watch's storage is full. keep your watch 
 android.source.garmin.norecent = no recent contact. keep your watch near this phone with Garmin Connect running, and open solstone on your watch. held material stays on your devices.
 android.source.garmin.heldminutes =
     { $count ->
-        [one] about { $count } min at last check
-       *[other] about { $count } min at last check
+        [one] about { $count } min at last check-in
+       *[other] about { $count } min at last check-in
     }

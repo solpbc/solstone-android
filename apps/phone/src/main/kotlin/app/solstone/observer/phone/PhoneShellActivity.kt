@@ -87,6 +87,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import app.solstone.core.watch.courier.WatchCourierStrings
 import app.solstone.observer.phone.wear.PhoneWatchContactStore
+import app.solstone.observer.phone.garmin.GarminWatchPage
 import app.solstone.observer.formfactor.phone.EXTRA_PHONE_ROUTE
 import app.solstone.observer.formfactor.phone.PhoneObserverScreen
 import app.solstone.observer.formfactor.phone.PhoneRoute
@@ -847,7 +848,7 @@ class PhoneShellActivity : ComponentActivity() {
                             val dao = container.persistenceDatabase().watchSourceDao()
                             val first = dao.firstReceiptEpochMs()
                             // One watch per phone: a Garmin contact takes the watch page.
-                            if (contact?.isGarmin == true) app.solstone.observer.phone.garmin.GarminWatchPage.build(
+                            if (contact?.isGarmin == true) GarminWatchPage.build(
                                 context = this@PhoneShellActivity,
                                 contact = contact,
                                 firstReceiptEpochMs = first,
