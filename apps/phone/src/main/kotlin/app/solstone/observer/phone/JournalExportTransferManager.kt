@@ -1214,6 +1214,8 @@ internal class AndroidExportExecutionScheduler(
     private val cancelFallbackNotification: () -> Unit,
     private val runFallback: (Runnable) -> Unit = { fallbackExecutor.execute(it) },
 ) : ExportExecutionScheduler {
+    private val notificationLock = Any()
+
     constructor(app: Context, manager: JournalExportTransferManager) : this(
         manager = manager,
         sdkIntProvider = { Build.VERSION.SDK_INT },
@@ -1226,7 +1228,9 @@ internal class AndroidExportExecutionScheduler(
 
     override fun scheduleRun(estimatedRemainingBytes: Long) {
         if (sdkIntProvider() >= 34 && hasValidatedNetwork() && scheduleUidt(estimatedRemainingBytes)) {
-            cancelFallbackNotification()
+            synchronized(notificationLock) {
+                cancelFallbackNotification()
+            }
             return
         }
         // API 26–33, unvalidated local Wi-Fi/LAN, or UIDT unavailable: clear any queued
@@ -1240,9 +1244,11 @@ internal class AndroidExportExecutionScheduler(
         cancelUidt()
         runFallback(
             Runnable {
-                val snap = manager.currentSnapshot()
-                if (snap.phase == "transferring" || snap.phase == "verifying" || snap.phase == "paused") {
-                    postFallbackNotification(snap, manager.activeFilename() ?: "")
+                synchronized(notificationLock) {
+                    val snap = manager.currentSnapshot()
+                    if (snap.phase == "transferring" || snap.phase == "verifying" || snap.phase == "paused") {
+                        postFallbackNotification(snap, manager.activeFilename() ?: "")
+                    }
                 }
                 manager.runTransferAttemptBlocking()
             },
@@ -1250,20 +1256,24 @@ internal class AndroidExportExecutionScheduler(
     }
 
     override fun onProgressUpdated(snapshot: JournalExportStatusSnapshot, filename: String) {
-        val current = manager.currentSnapshot()
-        if (current.exportId != snapshot.exportId || current.phase in setOf("idle", "cancelled", "saved", "handed_off", "error")) {
-            return
-        }
-        if (sdkIntProvider() >= 34 && ExportDownloadJobService.isActive()) {
-            ExportDownloadJobService.updateNotificationIfActive(snapshot, filename)
-        } else if (snapshot.phase == "transferring" || snapshot.phase == "verifying" || snapshot.phase == "paused") {
-            postFallbackNotification(snapshot, filename)
+        synchronized(notificationLock) {
+            val current = manager.currentSnapshot()
+            if (current.exportId != snapshot.exportId || current.phase in setOf("idle", "cancelled", "saved", "handed_off", "error")) {
+                return
+            }
+            if (sdkIntProvider() >= 34 && ExportDownloadJobService.isActive()) {
+                ExportDownloadJobService.updateNotificationIfActive(snapshot, filename)
+            } else if (snapshot.phase == "transferring" || snapshot.phase == "verifying" || snapshot.phase == "paused") {
+                postFallbackNotification(snapshot, filename)
+            }
         }
     }
 
     override fun onEnded(snapshot: JournalExportStatusSnapshot) {
         cancelUidt()
-        cancelFallbackNotification()
+        synchronized(notificationLock) {
+            cancelFallbackNotification()
+        }
     }
 
     companion object {
