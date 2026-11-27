@@ -1073,6 +1073,10 @@ internal class JournalExportTransferManager(
     companion object {
         private val singleton = AtomicReference<JournalExportTransferManager?>(null)
 
+        internal fun setSingletonForTests(
+            override: JournalExportTransferManager?,
+        ): JournalExportTransferManager? = singleton.getAndSet(override)
+
         fun get(context: Context): JournalExportTransferManager {
             val existing = singleton.get()
             if (existing != null) return existing

@@ -11,6 +11,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Build
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -28,6 +29,7 @@ class ExportDownloadJobService : JobService() {
         val app = applicationContext
         currentParams = params
         activeService.set(this)
+        startedJobCountForTests.incrementAndGet()
 
         val manager = JournalExportTransferManager.get(app)
         val initial = manager.currentSnapshot()
@@ -41,7 +43,10 @@ class ExportDownloadJobService : JobService() {
             } finally {
                 activeService.compareAndSet(this, null)
                 currentParams = null
-                runCatching { jobFinished(params, reschedule) }
+                runCatching {
+                    jobFinished(params, reschedule)
+                    finishedJobCountForTests.incrementAndGet()
+                }
                 // UIDT jobs use JOB_END_NOTIFICATION_POLICY_REMOVE, so keep a paused notification
                 // with Resume and Cancel controls visible on a separate notification ID.
                 repostPausedNotificationIfNeeded(manager) { snap, name ->
@@ -86,6 +91,7 @@ class ExportDownloadJobService : JobService() {
                 notification,
                 JOB_END_NOTIFICATION_POLICY_REMOVE,
             )
+            uidtNotificationsPostedForTests.incrementAndGet()
         }
     }
 
@@ -99,6 +105,15 @@ class ExportDownloadJobService : JobService() {
         private val activeService = AtomicReference<ExportDownloadJobService?>(null)
         private val lastNotifyAtMs = AtomicLong(0L)
         private val lastPhase = AtomicReference<String?>(null)
+        internal val startedJobCountForTests = AtomicInteger(0)
+        internal val uidtNotificationsPostedForTests = AtomicInteger(0)
+        internal val finishedJobCountForTests = AtomicInteger(0)
+
+        internal fun resetTestCounters() {
+            startedJobCountForTests.set(0)
+            uidtNotificationsPostedForTests.set(0)
+            finishedJobCountForTests.set(0)
+        }
 
         internal fun isActive(): Boolean = activeService.get() != null
 
