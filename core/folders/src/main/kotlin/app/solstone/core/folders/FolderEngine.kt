@@ -157,7 +157,7 @@ class FolderEngine(
             .toHashSet()
 
         val nowStamp = clock.now()
-        val fromMs = spanStartMs(span, nowStamp.epochMs, nowStamp.offsetSeconds)
+        val fromMs = spanStartMs(span, nowStamp.epochMs, clock.zoneAt(nowStamp.epochMs))
         val walk = fs.walk(folder.treeUri)
         if (walk !is WalkOutcome.Ok) {
             val failed = PreviewSummary(span = span, failed = true)
@@ -302,7 +302,7 @@ class FolderEngine(
         if (!folder.kinds.anySelected()) return ConfirmResult.NoKindsSelected
 
         val nowStamp = clock.now()
-        val fromMs = spanStartMs(span, nowStamp.epochMs, nowStamp.offsetSeconds)
+        val fromMs = spanStartMs(span, nowStamp.epochMs, clock.zoneAt(nowStamp.epochMs))
         val walk = fs.walk(folder.treeUri)
         if (walk !is WalkOutcome.Ok) {
             val att = when (walk) {

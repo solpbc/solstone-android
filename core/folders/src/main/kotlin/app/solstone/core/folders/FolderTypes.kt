@@ -5,10 +5,8 @@ package app.solstone.core.folders
 
 import app.solstone.core.pl.parseJson
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -202,6 +200,8 @@ interface FolderClock {
     fun nowMs(): Long
     fun offsetSecondsAt(epochMs: Long): Int
 
+    fun zoneAt(epochMs: Long): ZoneId = ZoneOffset.ofTotalSeconds(offsetSecondsAt(epochMs))
+
     fun now(): FolderStamp {
         val ms = nowMs()
         return FolderStamp(ms, offsetSecondsAt(ms))
@@ -211,20 +211,20 @@ interface FolderClock {
 }
 
 object SystemFolderClock : FolderClock {
+    override fun zoneAt(epochMs: Long): ZoneId = ZoneId.systemDefault()
     override fun nowMs(): Long = System.currentTimeMillis()
     override fun offsetSecondsAt(epochMs: Long): Int =
         ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(epochMs)).totalSeconds
 }
 
-fun spanStartMs(span: FolderSpan, nowMs: Long, offsetSeconds: Int): Long = when (span) {
+fun spanStartMs(span: FolderSpan, nowMs: Long, zone: ZoneId): Long = when (span) {
     FolderSpan.LAST_30_DAYS -> nowMs - 30L * DAY_MS
     FolderSpan.LAST_6_MONTHS -> nowMs - 183L * DAY_MS
     FolderSpan.LAST_YEAR -> nowMs - 365L * DAY_MS
     FolderSpan.ALL -> Long.MIN_VALUE
     FolderSpan.TODAY -> {
-        val zone = ZoneOffset.ofTotalSeconds(offsetSeconds)
-        val localDate: LocalDate = Instant.ofEpochMilli(nowMs).atOffset(zone).toLocalDate()
-        ZonedDateTime.of(localDate.atStartOfDay(), zone).toInstant().toEpochMilli()
+        val localDate = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        localDate.atStartOfDay(zone).toInstant().toEpochMilli()
     }
 }
 

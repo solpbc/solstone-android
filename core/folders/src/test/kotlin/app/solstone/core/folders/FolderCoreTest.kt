@@ -239,6 +239,18 @@ class FolderCoreTest {
     }
 
     @Test
+    fun todayStartsAtMidnightBeforeTheOffsetChange() {
+        val zone = java.time.ZoneId.of("America/Denver")
+        for ((now, expected) in listOf(
+            "2026-03-08T19:00:00Z" to "2026-03-08T07:00:00Z",
+            "2026-11-01T19:00:00Z" to "2026-11-01T06:00:00Z",
+        )) {
+            assertEquals(java.time.Instant.parse(expected).toEpochMilli(),
+                spanStartMs(FolderSpan.TODAY, java.time.Instant.parse(now).toEpochMilli(), zone))
+        }
+    }
+
+    @Test
     fun previewSendsNothingBeforeConfirmAndFiveMinuteWindowsGroupFiles() {
         val tBase = 1_795_689_600_000L // 2026-11-26T10:40:00Z
         val clock = TestClock(tBase + 360_000L, 0) // 10:46:00Z
