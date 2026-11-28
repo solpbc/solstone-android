@@ -35,6 +35,7 @@ fun sourceGlyph(sourceId: String): Int = when (sourceId) {
     WatchCourierStrings.WATCH -> R.drawable.phone_source_watch
     "obsidian" -> R.drawable.phone_source_obsidian
     "screenshots" -> R.drawable.phone_source_screenshots
+    "folders" -> R.drawable.phone_source_folders
     else -> R.drawable.phone_add_more
 }
 

@@ -1,0 +1,29 @@
+{
+  "description": "the solstone app, to the owner",
+  "context": "the solstone app, to the owner",
+  "surfaces": [
+    "phone"
+  ],
+  "bundles": [
+    "android-phone"
+  ],
+  "arguments": [
+    {
+      "name": "segments",
+      "type": "string"
+    },
+    {
+      "name": "days",
+      "type": "string"
+    },
+    {
+      "name": "thoughts",
+      "type": "string"
+    }
+  ],
+  "format_intent": "text",
+  "max_length": 140,
+  "source_revision": "6a50b24e8cac8627ac1dde8672bf302342ebf536b17ddbb3184330c534190a8c",
+  "risk": "routine",
+  "auto_merge": true
+}

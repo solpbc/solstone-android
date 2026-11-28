@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- once your journal is updated too, you can choose folders on your phone to bring notes, documents, transcripts, screenshots, photos, and file details into your journal. you choose what comes in and preview it first, and pausing holds changes on your phone until you resume.
+
 ## [2.1.57] - 2026-11-27
 
 ### Added

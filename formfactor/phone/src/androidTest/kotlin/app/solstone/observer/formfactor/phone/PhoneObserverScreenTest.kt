@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -971,10 +972,10 @@ class PhoneObserverScreenTest {
             )
         }
         composeRule.onNodeWithTag("statusPill").performClick()
-        composeRule.onNodeWithText("how your phone connects").assertIsDisplayed()
+        composeRule.onNodeWithText("how your phone connects").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("how it connects").assertDoesNotExist()
 
-        composeRule.onNodeWithTag("statusTechnicalDetails").performClick()
+        composeRule.onNodeWithTag("statusTechnicalDetails").performScrollTo().performClick()
         composeRule.onNodeWithText("how your phone connects").assertDoesNotExist()
     }
 

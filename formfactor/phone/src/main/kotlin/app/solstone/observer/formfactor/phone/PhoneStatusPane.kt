@@ -114,11 +114,10 @@ fun PhoneStatusPane(
             shadowElevation = 8.dp,
         ) {
             // The popup is its own window, and the platform clips that window to the
-            // screen instead of scrolling it. A full source list at large text is
-            // taller than the room under the status pill, so the rows at the bottom
-            // (the journal facts, technical details) never arrive. Cap the column
-            // and scroll inside it. The cap sits above the pane's height at normal
-            // text, so that size still shows the whole list.
+            // screen instead of scrolling it. The full source list is taller than the
+            // room under the status pill on compact phones and at large text, so cap
+            // the column and scroll inside it to keep journal facts and technical
+            // details reachable.
             Column(
                 Modifier
                     .heightIn(max = statusPaneMaxHeight)
@@ -345,7 +344,7 @@ private fun PaneSubLine(text: String) {
  * grow over the anchor. § 2.3 wants the pane to come from where its control is and
  * expand downward, which is a position, not an alignment.
  */
-/** Above the full list at normal text; inside the room under the pill at large text. */
+/** Keeps the popup inside the room under the status pill; rows scroll inside. */
 private val statusPaneMaxHeight = 640.dp
 
 private class AnchoredBelowPositionProvider(

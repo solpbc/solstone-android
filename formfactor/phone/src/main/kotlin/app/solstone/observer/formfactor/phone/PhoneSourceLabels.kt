@@ -19,6 +19,7 @@ internal val phoneSourceLabels: Map<String, String> get() = mapOf(
     "calendar" to phoneText("android.phone.calendar"),
     "obsidian" to phoneText("android.phone.source.obsidian"),
     "screenshots" to phoneText("android.screenshots.screenshots"),
+    "folders" to phoneText("android.folders.source.label"),
 )
 
 fun sourceLabel(sourceId: String): String = when (sourceId) {
@@ -42,6 +43,7 @@ fun sourceWishCopy(wish: SourceWish): String = when (wish) {
 
 fun headingText(surface: PhoneSurface): String? = when (surface) {
     is PhoneRoute.SourceDetail -> sourceLabel(surface.sourceId)
+    is PhoneRoute.FolderDetail -> phoneText("android.folders.source.label")
     else -> when (surface.headingKey) {
         "heading.pane_status" -> phoneText("android.shelf.status")
         "heading.about_solstone" -> phoneText("android.source.about.solstone")

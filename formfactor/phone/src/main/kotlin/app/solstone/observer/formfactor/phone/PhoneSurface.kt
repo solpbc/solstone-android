@@ -23,6 +23,7 @@ fun phoneSurfaces(): List<PhoneSurface> = listOf(
     PhoneRoute.RouteC,
     PhoneRoute.RouteCChild,
     PhoneRoute.SourceDetail("audio"),
+    PhoneRoute.FolderDetail("folder"),
     PhoneRoute.UnknownJournal(null),
     PhoneRoute.AboutSolstone,
     PhoneRoute.Licences,

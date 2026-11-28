@@ -11,7 +11,10 @@ import app.solstone.core.model.SourceState
 import app.solstone.core.pl.*
 import app.solstone.observer.harness.SourceWish
 import app.solstone.observer.harness.SourcesReadModel
+import app.solstone.core.folders.FolderMode
 import app.solstone.platform.calendar.CalendarRuntimes
+import app.solstone.platform.folders.FoldersRuntimes
+import app.solstone.platform.folders.FoldersUi
 import app.solstone.platform.obsidian.ObsidianRuntimes
 import app.solstone.platform.screenshots.ScreenshotsRuntimes
 import app.solstone.platform.pl.transport.conscrypt.openAuthenticatedLeaseClient
@@ -20,14 +23,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.IOException
 import java.util.concurrent.Executors
 
+private const val MAX_DECLARATION_ENTRIES = 64
+
 internal fun declaration(
     model: SourcesReadModel,
     watchState: String?,
     obsidian: app.solstone.platform.obsidian.ObsidianUi? = ObsidianRuntimes.current?.ui,
     calendar: app.solstone.platform.calendar.CalendarUiState? = CalendarRuntimes.current?.ui,
     shots: app.solstone.platform.screenshots.ScreenshotUi? = ScreenshotsRuntimes.current?.ui,
+    folders: FoldersUi? = FoldersRuntimes.current?.ui,
 ): String {
-    val rows = model.sources.mapNotNull { source ->
+    val nonFolderRows = model.sources.mapNotNull { source ->
         if (source.wish != SourceWish.On) return@mapNotNull null
         when (source.sourceId) {
             "obsidian" -> if (obsidian?.configured != true || obsidian.settingUp || obsidian.warning != null) return@mapNotNull null
@@ -48,8 +54,39 @@ internal fun declaration(
             if (source.sourceId == "obsidian") obsidian?.vault?.let { put("detail", it) }
         }
     }.toMutableList()
-    if (watchState != null) rows += mapOf("source" to "watch", "state" to watchState)
-    return toJson(rows.sortedBy { it["source"] })
+    if (watchState != null) nonFolderRows += mapOf("source" to "watch", "state" to watchState)
+
+    val folderRows = if (folders != null && folders.capability != false) {
+        val slotsLeft = (MAX_DECLARATION_ENTRIES - nonFolderRows.size).coerceAtLeast(0)
+        val candidates = folders.folders
+            .filter { it.mode == FolderMode.ON || it.mode == FolderMode.PAUSED }
+            .map { f ->
+                val state = when {
+                    f.attention != null -> "needs_attention"
+                    f.mode == FolderMode.PAUSED || f.pausedByApp -> "paused"
+                    else -> "on"
+                }
+                val rank = when (state) {
+                    "needs_attention" -> 0
+                    "paused" -> 1
+                    else -> 2
+                }
+                Triple(rank, f.id, state)
+            }
+            .distinctBy { it.second }
+            .sortedWith(compareBy<Triple<Int, String, String>>({ it.first }, { it.second }))
+            .take(slotsLeft)
+        candidates.map { (_, id, state) ->
+            linkedMapOf("source" to "folder", "state" to state, "detail" to id)
+        }
+    } else {
+        emptyList()
+    }
+
+    val combined = (nonFolderRows + folderRows)
+        .distinctBy { it["source"] to it["detail"] }
+        .sortedWith(compareBy<Map<String, String>>({ it["source"].orEmpty() }, { it["detail"].orEmpty() }))
+    return toJson(combined)
 }
 
 /** Only edge events queue network work. A single writer samples the latest complete declaration. */
@@ -72,6 +109,7 @@ internal class PhoneSharedSources(
     private var retryAt: Long? = null
     private var retryDelay = 5_000L
     private var supported: Boolean? = null
+    private var folderSupported: Boolean? = null
     private var fetched = 0L
     private var discover = false
     private var forceList = false
@@ -91,6 +129,7 @@ internal class PhoneSharedSources(
             known.value = null
             acknowledged = null
             supported = null
+            folderSupported = null
             rejected = null
             clearRetry()
             fetched = 0L
@@ -202,7 +241,12 @@ internal class PhoneSharedSources(
             }
             return status in 200..299 && current()
         }
-        if (!current() || synchronized(this) { !w.status && (supported == false || acknowledged == w.body || rejected == w.body) }) return
+        val preBody = if (synchronized(this) { folderSupported == false }) {
+            stripFolderDeclarations(w.body)
+        } else {
+            w.body
+        }
+        if (!current() || synchronized(this) { !w.status && (supported == false || acknowledged == preBody || rejected == preBody) }) return
         val client = open(w.pairing)
         try {
             if (!current()) return
@@ -210,22 +254,46 @@ internal class PhoneSharedSources(
             if (w.status) {
                 val status = readSystemStatus(client, w.pairing.clientCertFingerprint)
                 if (!handle(status.status)) return
-                when (parseJournalCapability(status.status, status.bodyText(), "shared_sources")) {
+                val statusBody = status.bodyText()
+                when (parseJournalCapability(status.status, statusBody, "shared_sources")) {
                     false -> { accept { unsupported() }; return }
                     null -> { defer(w); return }
                     true -> accept { supported = true }
                 }
-                revision = (parseJson(status.bodyText()) as Map<*, *>)["sources_rev"] as? String
+                val folderCap = parseJournalCapability(status.status, statusBody, "folder")
+                accept { folderSupported = (folderCap == true) }
+                revision = (parseJson(statusBody) as Map<*, *>)["sources_rev"] as? String
             }
             if (!current()) return
-            if (synchronized(this) { acknowledged != w.body && rejected != w.body }) {
-                val put = client.request("PUT", "/app/network/api/clients/self/sources", mapOf("Content-Type" to "application/json"), w.body.encodeToByteArray())
+            val effectiveBody = if (synchronized(this) { folderSupported == false }) {
+                stripFolderDeclarations(w.body)
+            } else {
+                w.body
+            }
+            if (synchronized(this) { acknowledged != effectiveBody && rejected != effectiveBody }) {
+                val put = client.request("PUT", "/app/network/api/clients/self/sources", mapOf("Content-Type" to "application/json"), effectiveBody.encodeToByteArray())
                 if (put.status == 400) {
-                    handle(put.status)
-                    accept { rejected = w.body }
+                    val stripped = stripFolderDeclarations(effectiveBody)
+                    if (stripped != effectiveBody) {
+                        val fallback = client.request("PUT", "/app/network/api/clients/self/sources", mapOf("Content-Type" to "application/json"), stripped.encodeToByteArray())
+                        if (fallback.status in 200..299 && current()) {
+                            accept {
+                                folderSupported = false
+                                acknowledged = stripped
+                            }
+                        } else if (fallback.status == 400) {
+                            handle(fallback.status)
+                            accept { rejected = effectiveBody }
+                        } else {
+                            if (!handle(fallback.status)) return
+                        }
+                    } else {
+                        handle(put.status)
+                        accept { rejected = effectiveBody }
+                    }
                 } else {
                     if (!handle(put.status)) return
-                    accept { acknowledged = w.body }
+                    accept { acknowledged = effectiveBody }
                 }
             }
             if (!w.status || !current() || (!w.force && revision != null && known.value?.second?.revision == revision)) {
@@ -252,11 +320,18 @@ internal class PhoneSharedSources(
     private fun unsupported() {
         clearRetry()
         supported = false
+        folderSupported = null
         acknowledged = null
         known.value = null
         fetched = 0
         disk.delete()
     }
+}
+
+internal fun stripFolderDeclarations(body: String): String {
+    val list = runCatching { parseJson(body) as? List<*> }.getOrNull() ?: return body
+    val filtered = list.filter { item -> (item as? Map<*, *>)?.get("source") != "folder" }
+    return if (filtered.size == list.size) body else toJson(filtered)
 }
 
 /** A refused or unconfirmed credential cannot open a connection or restore a cached snapshot. */

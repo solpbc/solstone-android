@@ -75,15 +75,17 @@ fun PhoneSourceTile(
     paired: Boolean = false,
 ) {
     val label = sourceLabel(status.sourceId)
-    val others = otherDevices(status.sourceId, status.state)
+    val effectiveState = if (status.sourceId == "folders") foldersTileState(LocalPhoneFolders.current.state) else status.state
+    val others = otherDevices(status.sourceId, effectiveState)
     val remote = others.firstOrNull()
     val now = LocalPhoneStatusNow.current.nowEpochMs()
-    val stateCopy = if (remote == null) sourceStateCopy(status.state) else sharedHeading(others.size)
-    val earnsSwitch = sourceEarnsSwitch(status.sourceId) && !(sharedKind(status.sourceId) && status.state == SourceState.READY_TO_SET_UP)
+    val stateCopy = if (remote == null) sourceStateCopy(effectiveState) else sharedHeading(others.size)
+    val earnsSwitch = sourceEarnsSwitch(status.sourceId) && !(sharedKind(status.sourceId) && effectiveState == SourceState.READY_TO_SET_UP)
     val wishOn = status.wish == SourceWish.On
     val overrideLine = when (status.sourceId) {
         "obsidian" -> obsidianSourceSubLine(LocalPhoneObsidian.current.state)
         "screenshots" -> screenshotsSourceSubLine(LocalPhoneScreenshots.current.state, paired)
+        "folders" -> foldersSourceSubLine(LocalPhoneFolders.current.state, paired)
         else -> null
     }
     val subLine = overrideLine ?: sourceSubLine(status, paired)
@@ -109,7 +111,8 @@ fun PhoneSourceTile(
                 // off the deck.
                 contentDescription = label
                 stateDescription = if (remote != null) phoneText("android.source.statecopysubline", "statecopy" to stateCopy, "subline" to remote.rows.first().line(remote.label, now, spoken = true))
-                    else if (overrideLine != null && status.state in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) phoneText("android.source.statecopysubline" , "statecopy" to (stateCopy), "subline" to (subLine)) else sourceStateDescription(status, paired)
+                    else if (overrideLine != null && effectiveState in setOf(SourceState.NEEDS_ATTENTION, SourceState.PAUSED)) phoneText("android.source.statecopysubline" , "statecopy" to (stateCopy), "subline" to (subLine))
+                    else if (status.sourceId == "folders") stateCopy else sourceStateDescription(status, paired)
                 role = Role.Button
                 collectionItemInfo = CollectionItemInfo(index, count, 0, 1)
                 customActions = buildList {
@@ -145,7 +148,7 @@ fun PhoneSourceTile(
                 // running, the error ink when it needs attention, quiet otherwise. The
                 // approved mock does the same, and it means the tile reads on/off from
                 // across the room before any word is read.
-                tint = when (status.state) {
+                tint = when (effectiveState) {
                     SourceState.ON -> MaterialTheme.colorScheme.onSurfaceVariant
                     SourceState.NEEDS_ATTENTION -> MaterialTheme.colorScheme.error
                     else -> shellSecondaryInk
@@ -183,13 +186,13 @@ fun PhoneSourceTile(
                 .testTag("sourceLabel-${status.sourceId}"),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (remote == null) PhoneTileDot(status.state) else SharedMarker()
+            if (remote == null) PhoneTileDot(effectiveState) else SharedMarker()
             Spacer(Modifier.width(8.dp))
             // The state word wraps at its spaces (`ready to / set up`), never inside a word.
             WholeWordText(
                 text = stateCopy,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (remote != null) shellSecondaryInk else if (status.state == SourceState.NEEDS_ATTENTION) {
+                color = if (remote != null) shellSecondaryInk else if (effectiveState == SourceState.NEEDS_ATTENTION) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurface

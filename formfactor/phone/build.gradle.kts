@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":harness"))
     implementation(project(":core:model"))
     implementation(project(":core:screenshots"))
+    implementation(project(":core:folders"))
     implementation(project(":core:pl"))
     implementation(project(":core:identity"))
     implementation(project(":core:spool"))

@@ -390,7 +390,12 @@ internal fun PhoneObserverScreen(
     CompositionLocalProvider(LocalPhoneJournalSheetOpen provides journalSheetOpen) {
         PhoneShell(
         title = {
-            val text = top?.let(::headingText)
+            val text = when (val current = top) {
+                is PhoneRoute.FolderDetail -> LocalPhoneFolders.current.state.folders
+                    .firstOrNull { it.id == current.folderId }?.name ?: headingText(current)
+                null -> null
+                else -> headingText(current)
+            }
             if (text != null) {
                 // A page title never breaks inside a word (`scre/ens/hots` at the largest sizes).
                 WholeWordText(
@@ -647,6 +652,10 @@ internal fun PhoneObserverScreen(
                                 onOpenSource = { id ->
                                     detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                                 },
+                                onOpenFolder = { id ->
+                                    detailStack = detailStack.pushInDetail(PhoneRoute.FolderDetail(id))
+                                },
+                                onPopDetail = popDetail,
                                 onConfirmMark = onConfirmMark,
                                 onOpenImport = { detailStack = detailStack.showInDetail(PhoneRoute.Import) },
                                 defaultDetailStatus = defaultDetailStatus,
@@ -735,6 +744,10 @@ internal fun PhoneObserverScreen(
                     onOpenSource = { id ->
                         detailStack = detailStack.showInDetail(PhoneRoute.SourceDetail(id))
                     },
+                    onOpenFolder = { id ->
+                        detailStack = detailStack.pushInDetail(PhoneRoute.FolderDetail(id))
+                    },
+                    onPopDetail = popDetail,
                     onConfirmMark = onConfirmMark,
                     defaultDetailStatus = defaultDetailStatus,
                     onOpenImport = { detailStack = detailStack.showInDetail(PhoneRoute.Import) },

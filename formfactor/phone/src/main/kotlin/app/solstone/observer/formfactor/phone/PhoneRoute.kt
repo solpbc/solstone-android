@@ -31,6 +31,11 @@ sealed interface PhoneRoute : PhoneSurface {
         override val headingKey: String get() = "heading.source_detail"
     }
 
+    data class FolderDetail(val folderId: String) : PhoneRoute {
+        override val paneTitle: String get() = "surface_folder_detail"
+        override val headingKey: String get() = "heading.folder_detail"
+    }
+
     /** One unknown-journal sighting; [address] is null for the one seen through the relay. */
     data class UnknownJournal(val address: String?) : PhoneRoute {
         override val paneTitle: String get() = "surface_unknown_journal"
@@ -109,6 +114,7 @@ fun encodePhoneRoute(route: PhoneRoute): String = when (route) {
     PhoneRoute.RouteC -> "route-c"
     PhoneRoute.RouteCChild -> "route-c-child"
     is PhoneRoute.SourceDetail -> "sd/${route.sourceId}"
+    is PhoneRoute.FolderDetail -> "fd/${route.folderId}"
     is PhoneRoute.UnknownJournal -> route.address?.let { "uj/$it" } ?: "uj-relay"
     PhoneRoute.AboutSolstone -> "about-solstone"
     PhoneRoute.Licences -> "licences"
@@ -129,6 +135,9 @@ fun decodePhoneRoute(key: String): PhoneRoute? {
     val parts = key.split("/", limit = 2)
     if (parts.size == 2 && parts[0] == "sd" && parts[1].isNotEmpty()) {
         return PhoneRoute.SourceDetail(parts[1])
+    }
+    if (parts.size == 2 && parts[0] == "fd" && parts[1].isNotEmpty()) {
+        return PhoneRoute.FolderDetail(parts[1])
     }
     if (parts.size == 2 && parts[0] == "uj" && parts[1].isNotEmpty()) {
         return PhoneRoute.UnknownJournal(parts[1])

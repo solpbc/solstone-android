@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (c) 2026 sol pbc
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M3,6a2,2 0,0 1,2 -2h4.2a2,2 0,0 1,1.6 0.8L12,6.4h7a2,2 0,0 1,2 2V18a2,2 0,0 1,-2 2H5a2,2 0,0 1,-2 -2V6z"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+</vector>

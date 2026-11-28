@@ -26,6 +26,7 @@ class PhoneSharedSourcesTest {
     private var putStatus = 204
     private var listStatus = 200
     private var capability = true
+    private var folderCapability = false
     private val calls = mutableListOf<String>()
     private val bodies = mutableListOf<String>()
     private val queue = ArrayDeque<Runnable>()
@@ -34,7 +35,10 @@ class PhoneSharedSourcesTest {
         override fun request(method: String, path: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Int): HttpResponse {
             calls += "$method $path"
             val (status, text) = when (path) {
-                "/api/system/status" -> 200 to if (capability) """{"capabilities":["shared_sources"],"sources_rev":"rev"}""" else "{}"
+                "/api/system/status" -> 200 to if (capability) {
+                    val caps = if (folderCapability) """["shared_sources","folder"]""" else """["shared_sources"]"""
+                    """{"capabilities":$caps,"sources_rev":"rev"}"""
+                } else "{}"
                 "/app/network/api/clients/self/sources" -> {
                     assertEquals("application/json", headers["Content-Type"])
                     bodies += body!!.decodeToString()
@@ -168,6 +172,118 @@ class PhoneSharedSourcesTest {
         })
         assertEquals("[]", declaration(probing, null, ObsidianUi(settingUp = true),
             CalendarUiState(countStatus = "running"), ScreenshotUi(reconfirm = true)))
+    }
+
+    @Test fun folderDeclarationsFollowSeverityCapAndCapabilityRules() {
+        fun folder(
+            id: String,
+            mode: app.solstone.core.folders.FolderMode,
+            attention: app.solstone.core.folders.FolderAttention? = null,
+            pausedByApp: Boolean = false,
+        ) = app.solstone.core.folders.FolderSummary(
+            id = id,
+            treeUri = "content://tree/$id",
+            name = id,
+            label = id,
+            mode = mode,
+            returning = true,
+            kinds = app.solstone.core.folders.FolderKinds(),
+            facet = null,
+            overlap = null,
+            attention = attention,
+            selectedSpan = app.solstone.core.folders.FolderSpan.LAST_30_DAYS,
+            preview = null,
+            backfillDone = 0L,
+            backfillTotal = 0L,
+            waiting = 0,
+            itemsTakenIn = 0L,
+            lastTakenInMs = null,
+            lastCheckedMs = null,
+            cantRead = 0L,
+            fallbackToDetails = 0L,
+            pausedByApp = pausedByApp,
+        )
+        val model = SourcesReadModel(
+            ObserverStatus(SourceState.ON, ReasonCode.NONE),
+            listOf(SourceStatus("audio", SourceWish.On, SourceState.ON, ReasonCode.NONE)),
+        )
+        val foldersUi = app.solstone.platform.folders.FoldersUi(
+            folders = listOf(
+                folder("work-a1", app.solstone.core.folders.FolderMode.ON),
+                folder("docs-b2", app.solstone.core.folders.FolderMode.PAUSED),
+                folder("lost-c3", app.solstone.core.folders.FolderMode.ON, attention = app.solstone.core.folders.FolderAttention.PERMISSION_LOST),
+                folder("setup-d4", app.solstone.core.folders.FolderMode.SETTING_UP),
+                folder("off-e5", app.solstone.core.folders.FolderMode.OFF),
+            ),
+            capability = true,
+        )
+        val parsed = parseJson(declaration(model, null, null, null, null, foldersUi)) as List<*>
+        val folderEntries = parsed.map { it as Map<*, *> }.filter { it["source"] == "folder" }
+        assertEquals(3, folderEntries.size)
+        val byDetail = folderEntries.associateBy { it["detail"] }
+        assertEquals("on", byDetail["work-a1"]?.get("state"))
+        assertEquals("paused", byDetail["docs-b2"]?.get("state"))
+        assertEquals("needs_attention", byDetail["lost-c3"]?.get("state"))
+
+        // Omit folder entries when journal omits folder capability.
+        val noCap = parseJson(declaration(model, null, null, null, null, foldersUi.copy(capability = false))) as List<*>
+        assertTrue(noCap.none { (it as Map<*, *>)["source"] == "folder" })
+
+        // Cap at 64 entries total: audio stays, needs_attention & paused come before on.
+        val many = (1..70).map { i ->
+            folder("on-%02d".format(i), app.solstone.core.folders.FolderMode.ON)
+        } + listOf(
+            folder("zz-attn", app.solstone.core.folders.FolderMode.ON, attention = app.solstone.core.folders.FolderAttention.MISSING),
+            folder("zz-pause", app.solstone.core.folders.FolderMode.PAUSED),
+        )
+        val capped = parseJson(declaration(model, null, null, null, null, app.solstone.platform.folders.FoldersUi(folders = many, capability = true))) as List<*>
+        assertEquals(64, capped.size)
+        val cappedMaps = capped.map { it as Map<*, *> }
+        assertTrue(cappedMaps.any { it["source"] == "audio" })
+        assertTrue(cappedMaps.any { it["source"] == "folder" && it["detail"] == "zz-attn" && it["state"] == "needs_attention" })
+        assertTrue(cappedMaps.any { it["source"] == "folder" && it["detail"] == "zz-pause" && it["state"] == "paused" })
+    }
+
+    @Test fun putStripsFolderEntriesWhenStatusOmitsFolderCapability() {
+        start()
+        val withFolder = """[{"source":"audio","state":"on"},{"source":"folder","state":"on","detail":"work-a1"}]"""
+        registry.update(true, withFolder)
+        drain()
+        assertEquals(1, bodies.size)
+        val sent = parseJson(bodies.single()) as List<*>
+        assertEquals(1, sent.size)
+        assertEquals("audio", (sent.single() as Map<*, *>)["source"])
+
+        folderCapability = true
+        registry.update(false, withFolder)
+        drain()
+        registry.update(true, withFolder)
+        drain()
+        assertEquals(2, bodies.size)
+        val resent = parseJson(bodies.last()) as List<*>
+        assertEquals(2, resent.size)
+        assertTrue(resent.any { (it as Map<*, *>)["source"] == "folder" && it["detail"] == "work-a1" })
+    }
+
+    @Test fun putFallsBackToNonFolderEntriesIfJournalRejectsFolderDeclarationWith400() {
+        folderCapability = true
+        start()
+        var first = true
+        onPut = {
+            if (first) {
+                first = false
+                putStatus = 400
+            } else {
+                putStatus = 204
+            }
+        }
+        val withFolder = """[{"source":"audio","state":"on"},{"source":"folder","state":"on","detail":"work-a1"}]"""
+        registry.update(true, withFolder)
+        drain()
+        assertEquals(2, bodies.size)
+        val retried = parseJson(bodies.last()) as List<*>
+        assertEquals(1, retried.size)
+        assertEquals("audio", (retried.single() as Map<*, *>)["source"])
     }
 
     @Test fun transientFailureRetriesOnExistingStatusEventsWithoutPollingOnSuccess() {

@@ -38,6 +38,7 @@ android {
 dependencies {
     implementation(project(":platform:obsidian"))
     implementation(project(":platform:screenshots"))
+    implementation(project(":platform:folders"))
     api("androidx.work:work-runtime:2.9.1")
     api(project(":core:push"))
     implementation(project(":platform:persistence-room"))

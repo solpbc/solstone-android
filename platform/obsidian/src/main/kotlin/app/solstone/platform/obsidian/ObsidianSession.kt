@@ -43,6 +43,7 @@ data class ObsidianUi(
     val pending: Int = 0, val initialDone: Int = 0, val initialTotal: Int = 0,
     val tooLarge: Int = 0, val unavailable: Int = 0, val fault: String? = null,
     val capability: Boolean? = null, val warning: ObsidianWarning? = null,
+    val treeUri: String? = null,
 )
 
 /** One actor owns the private ledger, provider scans and the handoff to the normal spool. */
@@ -306,6 +307,7 @@ class ObsidianSession(
             initialDone = meta("initial_sent")?.toInt() ?: 0, initialTotal = meta("initial_total")?.toInt() ?: 0,
             tooLarge = meta("too_large")?.toInt() ?: 0, unavailable = meta("unavailable")?.toInt() ?: 0,
             fault = fault ?: if (invalid) "invalid_note" else null, capability = capability, warning = warning,
+            treeUri = meta("uri"),
 )
         changed()
     }

@@ -38,6 +38,7 @@ fun buildObserverFlavor(
     spoolDir: Path,
     visibleCaptureAuthority: VisibleCaptureAuthority,
     pendingObsidian: () -> Int = { 0 },
+    pendingFolders: () -> Int = { 0 },
 ): SharedObserverFlavor {
     val stores = syncStores(context)
     val external = (context.getExternalFilesDir(null) ?: context.filesDir.resolve("exports-external")).toPath()
@@ -183,6 +184,7 @@ fun buildObserverFlavor(
         },
         pendingCalendarImports = { database.calendarDao().pendingImportCount() },
         pendingObsidian = pendingObsidian,
+        pendingFolders = pendingFolders,
         present = controller::presentConnection,
     )
     return SharedObserverFlavor(

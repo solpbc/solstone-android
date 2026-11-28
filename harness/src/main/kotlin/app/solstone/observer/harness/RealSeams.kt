@@ -570,6 +570,7 @@ class RealBacklogStatusReader(
     private val calendarCapability: (String, String) -> Int? = { _, _ -> null },
     private val pendingCalendarImports: () -> Int = { 0 },
     private val pendingObsidian: () -> Int = { 0 },
+    private val pendingFolders: () -> Int = { 0 },
     private val present: ((Int) -> PresentedStatus)? = null,
 ) : BacklogStatusReader {
     override fun read(): HarnessBacklogStatus {
@@ -587,7 +588,8 @@ class RealBacklogStatusReader(
             calendarPending > 0
         val obsidianPending = dao.pendingCount(OBSIDIAN_STREAM) + pendingObsidian()
         val screenshotsPending = dao.pendingCount(SCREENSHOTS_STREAM)
-        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + obsidianPending + screenshotsPending + dao.pendingCount(WATCH_STREAM) + (importBacklog?.pendingCount ?: 0)
+        val foldersPending = pendingFolders()
+        val pendingCount = dao.pendingCount(MAIN_STREAM) + calendarPending + obsidianPending + screenshotsPending + foldersPending + dao.pendingCount(WATCH_STREAM) + (importBacklog?.pendingCount ?: 0)
         val presented = present?.invoke(pendingCount)
         val backlog = HarnessBacklogStatus(
             plStatus = status,
@@ -595,7 +597,8 @@ class RealBacklogStatusReader(
             pendingSourceIds = (DELIVERY_STREAMS.flatMap(dao::pendingSourceIds) +
                 (if (calendarPending > 0) listOf(CALENDAR_STREAM) else emptyList()) +
                 (if (obsidianPending > 0) listOf(OBSIDIAN_STREAM) else emptyList()) +
-                (if (screenshotsPending > 0) listOf(SCREENSHOTS_STREAM) else emptyList())).distinct(),
+                (if (screenshotsPending > 0) listOf(SCREENSHOTS_STREAM) else emptyList()) +
+                (if (foldersPending > 0) listOf(app.solstone.core.sources.FOLDERS_SOURCE_ID) else emptyList())).distinct(),
             journalVersion = journalVersion,
             imports = importBacklog,
             calendarHeldForJournal = calendarHeldForJournal,

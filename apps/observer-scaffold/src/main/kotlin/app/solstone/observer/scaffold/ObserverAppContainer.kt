@@ -96,6 +96,10 @@ class ObserverAppContainer(
     @Volatile var obsidianPending: () -> Int = { 0 }
     @Volatile var screenshotsHasAccess: () -> Boolean = { false }
     @Volatile var screenshotsPaused: () -> Boolean = { false }
+    @Volatile var foldersNeedsAttention: () -> Boolean = { false }
+    @Volatile var foldersHasAccess: () -> Boolean = { true }
+    @Volatile var foldersPaused: () -> Boolean = { false }
+    @Volatile var foldersPending: () -> Int = { 0 }
     internal val captureSetup = createCaptureSetup(
         context,
         cameraLock,
@@ -109,6 +113,10 @@ class ObserverAppContainer(
         registerScreenshotsSource = spec.registerScreenshotsSource,
         screenshotsHasAccess = { screenshotsHasAccess() },
         screenshotsPaused = { screenshotsPaused() },
+        registerFoldersSource = spec.registerFoldersSource,
+        foldersNeedsAttention = { foldersNeedsAttention() },
+        foldersHasAccess = { foldersHasAccess() },
+        foldersPaused = { foldersPaused() },
         gapListener = gapListener,
     )
     private val database: SolstonePersistenceDatabase = openSolstonePersistenceDatabase(context)
@@ -198,6 +206,7 @@ class ObserverAppContainer(
         spoolDir = spoolDir,
         visibleCaptureAuthority = captureAuthority,
         pendingObsidian = { obsidianPending() },
+        pendingFolders = { foldersPending() },
     )
 
     override val controller: HarnessController = flavor.controller
@@ -210,6 +219,7 @@ class ObserverAppContainer(
             },
             pendingCalendarImports = { database.calendarDao().pendingImportCount() },
             pendingObsidian = { obsidianPending() },
+            pendingFolders = { foldersPending() },
             present = controller::presentConnection,
         )
     override val sources = SourceRegistry(

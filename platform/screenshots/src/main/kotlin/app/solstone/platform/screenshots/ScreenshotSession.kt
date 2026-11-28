@@ -169,6 +169,7 @@ class ScreenshotSession internal constructor(
 
     fun setListener(next: () -> Unit) { listener = next }
     fun hasAccess(): Boolean = book.treeUri != null && !accessLost && grantHeld()
+    fun grantedTreeUri(): String? = book.treeUri
     fun isPaused(): Boolean = pausedNow() || book.pauses.any { it.endExclusiveMs == null }
     private fun pausedNow(): Boolean = ownerStopped() || book.sourcePaused
 

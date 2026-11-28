@@ -64,4 +64,6 @@ data class SourceCondition(
 
 const val OBSIDIAN_STREAM = "obsidian"
 const val SCREENSHOTS_STREAM = "screenshots"
+const val FOLDERS_SOURCE_ID = "folders"
+const val FOLDER_WIRE_SOURCE = "folder"
 val DELIVERY_STREAMS = listOf(MAIN_STREAM, CALENDAR_STREAM, OBSIDIAN_STREAM, SCREENSHOTS_STREAM, WATCH_STREAM)

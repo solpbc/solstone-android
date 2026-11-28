@@ -1788,3 +1788,135 @@ android.source.garmin.heldminutes =
         [one] about { $count } min at last check-in
        *[other] about { $count } min at last check-in
     }
+
+android.folders.source.label = folders
+android.folders.add = add a folder
+android.folders.choose = choose a folder
+android.folders.choose.this = choose the folder
+android.folders.choose.another = choose another folder
+android.folders.intro = while this is on, the solstone app takes in changes from the folders you choose and adds them to your journal in five-minute segments.
+android.folders.detail.intro = while this is on, the solstone app takes in changes from { $folder } and adds them to your journal in five-minute segments.
+android.folders.tile.two = { $first }, { $second }
+android.folders.tile.many =
+    { $count ->
+        [one] 1 folder
+       *[other] { $count } folders
+    }
+android.folders.tile.split = { $on } on · { $paused } paused
+android.folders.tile.backfill = { $folder } · { $done } of { $total } in your journal
+android.folders.page.backfill = { $done } of { $total } items in your journal
+android.folders.tile.waiting = { $count } waiting to sync
+android.folders.unpaired = changes wait on this device until you connect a journal.
+android.folders.journal.update = waiting for a journal update. changes wait on this device.
+android.folders.finish.setup = finish setting up { $folder }.
+android.folders.paused.reason = you paused syncing for this folder. changes wait on this device until you resume.
+android.folders.off.reason = this folder is off. what's already in your journal stays.
+android.folders.fact.stays = what's already in your journal stays if you delete a file from the folder, pause, or turn this off.
+android.folders.fact.other.on = with other files on, kinds you turned off and files over 64 MB come in as names and details only.
+android.folders.fact.other.off = only files of the kinds you chose under 64 MB come in.
+android.folders.items.count =
+    { $count ->
+        [one] 1 item
+       *[other] { $count } items
+    }
+android.folders.tile.attention.many = { $count } folders need attention
+android.folders.already.added = { $folder } is already added.
+android.folders.open.folder = open { $folder }
+android.folders.remove = remove folder
+android.folders.remove.title = remove { $folder } from the solstone app?
+android.folders.remove.body = nothing more from this folder will go into your journal. what's already in your journal stays, and nothing in { $folder } changes.
+android.folders.overlap.heading = this folder overlaps with { $other }.
+android.folders.overlap.body = files in both places may come into your journal twice. you can pick another folder or use this one anyway.
+android.folders.overlap.override = use this folder anyway
+android.folders.overlap.fact = overlaps with { $other }.
+android.folders.overlap.obsidian = your Obsidian vault ({ $name })
+android.folders.overlap.screenshots = your screenshots folder ({ $name })
+android.folders.overlap.folder = your { $name } folder
+android.folders.kinds.heading = what comes in
+android.folders.kind.notes = notes
+android.folders.kind.notes.desc = markdown and text notes. changes come in as you edit them.
+android.folders.kind.documents = documents
+android.folders.kind.documents.desc = PDFs and longer documents. revisions come in after an hour without saves.
+android.folders.kind.transcripts = transcripts
+android.folders.kind.transcripts.desc = subtitles and saved transcripts.
+android.folders.kind.screenshots = screenshots
+android.folders.kind.screenshots.desc = screenshots saved in this folder.
+android.folders.kind.photos = photos
+android.folders.kind.photos.desc = photos and other images.
+android.folders.kind.other = other files (names and details only)
+android.folders.kind.other.desc = installers, audio, video, and other files. only names, sizes, and file details come in, never the file contents.
+android.folders.kinds.validation = choose at least one kind to bring in.
+android.folders.kinds.edit.note = changes to these kinds apply going forward. what's already in your journal stays.
+android.folders.facet.heading = facet (optional)
+android.folders.facet.none = none
+android.folders.facet.none.help = choose a facet to add it to every segment from this folder.
+android.folders.facet.setup.help = every segment from this folder goes into { $facet }.
+android.folders.facet.active.help = new segments from this folder go into { $facet }.
+android.folders.facet.unpaired = connect a journal to choose a facet.
+android.folders.facet.offline = facets unavailable while your journal is offline.
+android.folders.preview.heading = preview
+android.folders.preview.checking = checking this folder…
+android.folders.preview.header.range = { $items } · { $start } to { $end }
+android.folders.preview.both = { $content } · { $meta }
+android.folders.preview.content.only =
+    { $count ->
+        [one] 1 file with content ({ $size })
+       *[other] { $count } files with content ({ $size })
+    }
+android.folders.preview.meta.only =
+    { $count ->
+        [one] 1 other file (details only)
+       *[other] { $count } other files (details only)
+    }
+android.folders.preview.work.label = estimated work in your journal
+android.folders.preview.segments =
+    { $count ->
+        [one] ~1 segment
+       *[other] ~{ $count } segments
+    }
+android.folders.preview.days =
+    { $count ->
+        [one] 1 day
+       *[other] { $count } days
+    }
+android.folders.preview.thoughts =
+    { $count ->
+        [one] ~1 thought
+       *[other] ~{ $count } thoughts
+    }
+android.folders.preview.estimate.line = { $segments } · { $days } · { $thoughts }
+android.folders.preview.gloss = files touched within 5 minutes share one segment. details-only files take no thoughts.
+android.folders.preview.unpaired = connect a journal to see an estimate. you can still confirm and files will wait on this device.
+android.folders.preview.offline = journal estimate unavailable while your journal is offline. you can still confirm and files will wait on this device.
+android.folders.preview.scope = includes subfolders. unfinished downloads wait until they finish; hidden files are skipped.
+android.folders.preview.before.confirm = nothing from this folder comes in until you confirm.
+android.folders.preview.already.note = items already in your journal aren't brought in again.
+android.folders.confirm.bring.in =
+    { $count ->
+        [one] bring in 1 item
+       *[other] bring in { $count } items
+    }
+android.folders.confirm.start.today = start from today
+android.folders.preview.failed = couldn't read this folder to count what's inside.
+android.folders.bring.older = bring in older files
+android.folders.backfill.note = older days are processed behind recent days. follow progress on status in your journal.
+android.folders.error.cant.read.files =
+    { $count ->
+        [one] couldn't read 1 file.
+       *[other] couldn't read { $count } files.
+    }
+android.folders.error.fallback.details =
+    { $count ->
+        [one] 1 file's contents couldn't be added, so only its details came in.
+       *[other] { $count } files' contents couldn't be added, so only their details came in.
+    }
+android.folders.error.cant.open = the solstone app can't open this folder. choose another folder.
+android.folders.error.storage.refused = that storage app won't let the solstone app open this folder. choose a folder on this device.
+android.folders.android.download.helper = android doesn't allow picking the main Download folder itself, so pick a subfolder instead.
+android.folders.android.bg.proven = the solstone app looks for changes when you open it and from time to time in the background, so changes can take a while to reach your journal. after force-stopping the app, open it to start checking again.
+android.folders.android.bg.default = the solstone app looks for changes when you open it, so changes can take a while to reach your journal.
+android.folders.android.cant.read.tile = can't read { $folder }.
+android.folders.android.cant.read.page = the solstone app can't read { $folder } anymore. it may have moved. choose it again to keep changes coming in.
+android.folders.check.now = check now
+android.folders.turn.off = turn off
+android.folders.turn.on = turn on

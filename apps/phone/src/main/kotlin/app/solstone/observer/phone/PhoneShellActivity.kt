@@ -19,10 +19,17 @@ import app.solstone.core.watch.courier.WatchCourierProtocol
 import app.solstone.observer.formfactor.phone.LocalPhoneCalendar
 import app.solstone.observer.formfactor.phone.LocalPhoneObsidian
 import app.solstone.observer.formfactor.phone.LocalPhoneScreenshots
+import app.solstone.observer.formfactor.phone.LocalPhoneFolders
+import app.solstone.observer.formfactor.phone.PhoneFoldersBinding
+import app.solstone.observer.formfactor.phone.PhoneFoldersPickerNotice
+import app.solstone.observer.formfactor.phone.PhoneFoldersState
 import app.solstone.observer.formfactor.phone.PhoneObsidianBinding
 import app.solstone.observer.formfactor.phone.PhoneObsidianState
 import app.solstone.observer.formfactor.phone.PhoneScreenshotsBinding
 import app.solstone.observer.formfactor.phone.PhoneScreenshotsState
+import app.solstone.platform.folders.FolderPickerNotice
+import app.solstone.platform.folders.FoldersRuntimes
+import app.solstone.platform.folders.FoldersUi
 import app.solstone.platform.obsidian.ObsidianRuntimes
 import app.solstone.platform.screenshots.ScreenshotUi
 import app.solstone.platform.screenshots.ScreenshotsRuntimes
@@ -241,6 +248,56 @@ class PhoneShellActivity : ComponentActivity() {
     private var calendarPaneState by mutableStateOf(PhoneCalendarPaneState())
     private var obsidianPaneState by mutableStateOf(PhoneObsidianState())
     private var screenshotsPaneState by mutableStateOf(PhoneScreenshotsState())
+    private var foldersPaneState by mutableStateOf(PhoneFoldersState())
+    private var pendingRegrantFolderId: String? = null
+    private val foldersPickerLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val regrantId = pendingRegrantFolderId
+        pendingRegrantFolderId = null
+        if (result.resultCode == RESULT_OK) {
+            result.data?.data?.let { uri ->
+                if (regrantId != null) {
+                    FoldersRuntimes.current?.regrantFolder(regrantId, uri)
+                } else {
+                    FoldersRuntimes.current?.addFolder(uri)
+                }
+            }
+        }
+    }
+    private fun launchFoldersPicker(regrantFolderId: String? = null) {
+        pendingRegrantFolderId = regrantFolderId
+        foldersPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+            putExtra(
+                android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADocuments"),
+            )
+        })
+    }
+    private fun attachFoldersUi() {
+        val source = FoldersRuntimes.current ?: return
+        fun publish() {
+            foldersPaneState = source.ui.toPane()
+            refreshIntake()
+        }
+        publish()
+        source.setListener { mainHandler.post { publish() } }
+    }
+    private fun FoldersUi.toPane() = PhoneFoldersState(
+        folders = folders,
+        facets = facets,
+        facetsState = facetsState,
+        capability = capability,
+        pickerNotice = when (val n = pickerNotice) {
+            FolderPickerNotice.None -> PhoneFoldersPickerNotice.None
+            is FolderPickerNotice.AlreadyAdded -> PhoneFoldersPickerNotice.AlreadyAdded(n.folderId, n.folderName)
+            is FolderPickerNotice.ProviderRefused -> PhoneFoldersPickerNotice.ProviderRefused(n.folderName)
+        },
+        checking = checking,
+        pendingCount = pendingCount,
+        newlyAddedFolderId = newlyAddedFolderId,
+    )
     private val screenshotsFolderLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -499,9 +556,18 @@ class PhoneShellActivity : ComponentActivity() {
             val rows = runCatching {
                 container.persistenceDatabase().segmentDao().allIntake()
             }.getOrDefault(emptyList())
-            val next = PhoneIntakeSnapshot(
-                rows.associate { it.sourceId to PhoneIntakeReading(it.total, it.startedAt, it.lastAt) },
-            )
+            val map = rows.associateTo(LinkedHashMap()) {
+                it.sourceId to PhoneIntakeReading(it.total, it.startedAt, it.lastAt)
+            }
+            val folderSummaries = FoldersRuntimes.current?.ui?.folders.orEmpty()
+            val folderTotal = folderSummaries.sumOf { it.itemsTakenIn }
+            val folderLast = folderSummaries.mapNotNull { it.lastTakenInMs }.maxOrNull()
+            val folderStarted = folderSummaries.mapNotNull { it.lastTakenInMs }.minOrNull()
+            if (folderTotal > 0L && folderLast != null && folderStarted != null) {
+                map[app.solstone.core.sources.FOLDERS_SOURCE_ID] =
+                    PhoneIntakeReading(folderTotal, folderStarted, folderLast)
+            }
+            val next = PhoneIntakeSnapshot(map)
             runOnUiThread { intakeSnapshot = next }
         }
     }
@@ -769,8 +835,10 @@ class PhoneShellActivity : ComponentActivity() {
         attachCalendarUi()
         attachObsidianUi()
         attachScreenshotsUi()
+        attachFoldersUi()
         ObsidianRuntimes.current?.onForeground(true)
         ScreenshotsRuntimes.current?.onForeground(true)
+        FoldersRuntimes.current?.onForeground(true)
         stores = syncStores(applicationContext)
         pairingViewModel = ViewModelProvider(this)[PhonePairingViewModel::class.java]
         hasCameraPermission = hasCamera()
@@ -1432,6 +1500,28 @@ class PhoneShellActivity : ComponentActivity() {
                     onRetry = { ScreenshotsRuntimes.current?.retryUnread() },
                     onPause = { ScreenshotsRuntimes.current?.pause() },
                     onResume = { ScreenshotsRuntimes.current?.resume() },
+                ),
+                LocalPhoneFolders provides PhoneFoldersBinding(
+                    state = foldersPaneState.copy(
+                        paired = pairingSnapshot is PairingGraphSnapshot.Committed && journalConfirmed,
+                        offline = snapshot?.status?.online == false,
+                        backgroundCheckProven = true,
+                    ),
+                    onAddFolder = { launchFoldersPicker(regrantFolderId = null) },
+                    onRegrantFolder = { id -> launchFoldersPicker(regrantFolderId = id) },
+                    onSelectSpan = { id, span -> FoldersRuntimes.current?.selectSpan(id, span) },
+                    onRefreshPreview = { id, span -> FoldersRuntimes.current?.refreshPreview(id, span) },
+                    onSetKinds = { id, kinds -> FoldersRuntimes.current?.setKinds(id, kinds) },
+                    onSetFacet = { id, facet -> FoldersRuntimes.current?.setFacet(id, facet) },
+                    onConfirm = { id, span -> FoldersRuntimes.current?.confirm(id, span) },
+                    onPause = { id -> FoldersRuntimes.current?.pause(id) },
+                    onResume = { id -> FoldersRuntimes.current?.resume(id) },
+                    onTurnOff = { id -> FoldersRuntimes.current?.turnOff(id) },
+                    onTurnOn = { id -> FoldersRuntimes.current?.turnOn(id) },
+                    onRemove = { id -> FoldersRuntimes.current?.remove(id) },
+                    onCheckNow = { id -> FoldersRuntimes.current?.checkNow(id) },
+                    onClearPickerNotice = { FoldersRuntimes.current?.clearPickerNotice() },
+                    onConsumeNewlyAdded = { FoldersRuntimes.current?.consumeNewlyAddedFolderId() },
                 ),
                 LocalPhoneStatusNow provides PhoneStatusNow { statusNow },
                 LocalPhoneIntake provides intakeSnapshot,
@@ -2273,8 +2363,10 @@ class PhoneShellActivity : ComponentActivity() {
         attachCalendarUi()
         attachObsidianUi()
         attachScreenshotsUi()
+        attachFoldersUi()
         ObsidianRuntimes.current?.onForeground(true)
         ScreenshotsRuntimes.current?.onForeground(true)
+        FoldersRuntimes.current?.onForeground(true)
         armMidnight()
     }
 
@@ -2340,8 +2432,10 @@ class PhoneShellActivity : ComponentActivity() {
         CalendarRuntimes.current?.setOnChanged {}
         ObsidianRuntimes.current?.setListener {}
         ScreenshotsRuntimes.current?.setListener {}
+        FoldersRuntimes.current?.setListener {}
         if (!isChangingConfigurations) ObsidianRuntimes.current?.onForeground(false)
         if (!isChangingConfigurations) ScreenshotsRuntimes.current?.onForeground(false)
+        if (!isChangingConfigurations) FoldersRuntimes.current?.onForeground(false)
         connectionCheck = null
         mainHandler.removeCallbacks(startWhenReady)
         if (!container.captureAuthority.isCurrent(captureOwnerToken)) return

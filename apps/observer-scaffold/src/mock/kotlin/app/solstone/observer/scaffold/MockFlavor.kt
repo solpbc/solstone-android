@@ -49,6 +49,7 @@ fun buildObserverFlavor(
     spoolDir: Path,
     visibleCaptureAuthority: VisibleCaptureAuthority,
     pendingObsidian: () -> Int = { 0 },
+    pendingFolders: () -> Int = { 0 },
 ): SharedObserverFlavor {
     val endpointStore = MemoryEndpointStore()
     val credentialStore = MemoryCredentialStore()

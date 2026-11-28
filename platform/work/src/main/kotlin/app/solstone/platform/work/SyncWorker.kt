@@ -658,6 +658,12 @@ private fun sync(
                         ?: (context?.applicationContext as? app.solstone.platform.screenshots.ScreenshotsWorkerHost)?.screenshotsSessionForWork()
                     source?.prepareDelivery(connected, pairingNow, credentials.identity.clientCertFingerprint) == true
                 },
+                foldersStage = { connected, pairingNow ->
+                    val source = app.solstone.platform.folders.FoldersRuntimes.current
+                        ?: (context?.applicationContext as? app.solstone.platform.folders.FoldersWorkerHost)?.foldersSessionForWork()
+                    source?.deliverStage(connected, pairingNow, credentials.identity.clientCertFingerprint)
+                        ?: app.solstone.platform.folders.FolderStageResult.CLEAN
+                },
                 onCalendarCapability = capabilityDb?.let { calendarDb ->
                     { notes ->
                         calendarDb.calendarDao().recordCapability(

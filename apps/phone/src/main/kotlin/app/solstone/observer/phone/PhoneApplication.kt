@@ -85,7 +85,7 @@ class PhoneApplication : ObserverApplication(
     gapListener = { kind, source, reason, material ->
         PhoneDiagLog.emit(DiagEvent.GapRow(kind, source, reason, material))
     },
-), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost, app.solstone.platform.screenshots.ScreenshotsWorkerHost {
+), app.solstone.platform.calendar.CalendarWorkerHost, app.solstone.platform.obsidian.ObsidianWorkerHost, app.solstone.platform.screenshots.ScreenshotsWorkerHost, app.solstone.platform.folders.FoldersWorkerHost {
     internal val sharedSources by lazy { phoneSharedSources(this) }
 
     // ⚠ A source check the system starts in a fresh process brings the whole runtime up, so a closed
@@ -104,6 +104,11 @@ class PhoneApplication : ObserverApplication(
         if (AgeSignalGate.closed()) return null
         runtime.container()
         return app.solstone.platform.screenshots.ScreenshotsRuntimes.current
+    }
+    override fun foldersSessionForWork(): app.solstone.platform.folders.FoldersSession? {
+        if (AgeSignalGate.closed()) return null
+        runtime.container()
+        return app.solstone.platform.folders.FoldersRuntimes.current
     }
 
     private lateinit var widgetCoordinator: PhoneWidgetCoordinator
@@ -390,7 +395,8 @@ class PhoneApplication : ObserverApplication(
         if (plan.endSession) {
             if (ownerTurnedSourceOff && container.sources.snapshot().sources.none {
                     (it.sourceId == CALENDAR_STREAM || it.sourceId == app.solstone.core.sources.OBSIDIAN_STREAM ||
-                        it.sourceId == app.solstone.core.sources.SCREENSHOTS_STREAM) && it.wish == SourceWish.On
+                        it.sourceId == app.solstone.core.sources.SCREENSHOTS_STREAM ||
+                        it.sourceId == app.solstone.core.sources.FOLDERS_SOURCE_ID) && it.wish == SourceWish.On
                 }) {
                 OwnerStoppedStore(this).recordStopped()
             }
@@ -455,6 +461,7 @@ class PhoneApplication : ObserverApplication(
         CalendarRuntimes.current?.onOwnerStopped()
         app.solstone.platform.obsidian.ObsidianRuntimes.current?.onOwnerStopRequested(stopSaved)
         app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.onOwnerStopRequested()
+        app.solstone.platform.folders.FoldersRuntimes.current?.onOwnerStopRequested()
         ObserverForegroundService.clearScreenConsent()
         runtime.containerIfInitialized?.controller?.stop()
     }
@@ -475,8 +482,12 @@ class PhoneApplication : ObserverApplication(
         screenshotsSessionForWork()?.let { session ->
             if (!session.restartFirstSetup()) PhoneDiagLog.appendRaw("kind=source reason=restart_not_saved source=screenshots")
         }
+        foldersSessionForWork()?.let { session ->
+            if (!session.restartFirstSetup()) PhoneDiagLog.appendRaw("kind=source reason=restart_not_saved source=folders")
+        }
         container.sources.clearExpressedWish(CALENDAR_STREAM)
         container.sources.clearExpressedWish(app.solstone.core.sources.SCREENSHOTS_STREAM)
+        container.sources.clearExpressedWish(app.solstone.core.sources.FOLDERS_SOURCE_ID)
     }
 
     private var obsidianStopObservation: AutoCloseable? = null
@@ -532,6 +543,95 @@ class PhoneApplication : ObserverApplication(
         screenshotsStopObservation?.close()
         screenshotsStopObservation = OwnerStoppedStore(this).observeStop {
             app.solstone.platform.screenshots.ScreenshotsRuntimes.current?.onPauseChanged()
+        }
+    }
+
+    private var foldersStopObservation: AutoCloseable? = null
+    private fun startFoldersSession(container: ObserverAppContainer) {
+        if (app.solstone.platform.folders.FoldersRuntimes.current != null) return
+        container.foldersNeedsAttention = {
+            app.solstone.platform.folders.FoldersRuntimes.current?.registryStatus()?.anyNeedsAttention == true
+        }
+        container.foldersHasAccess = {
+            app.solstone.platform.folders.FoldersRuntimes.current?.registryStatus()?.allAccessOk != false
+        }
+        container.foldersPaused = {
+            app.solstone.platform.folders.FoldersRuntimes.current?.registryStatus()?.allPaused == true
+        }
+        container.foldersPending = {
+            app.solstone.platform.folders.FoldersRuntimes.current?.pendingCount() ?: 0
+        }
+        val stores = syncStores(this)
+        app.solstone.platform.folders.FoldersSession(
+            context = this,
+            wishOn = {
+                container.sources.snapshot().sources.any {
+                    it.sourceId == app.solstone.core.sources.FOLDERS_SOURCE_ID && it.wish == SourceWish.On
+                }
+            },
+            setEnabled = { on ->
+                val result = container.sources.setWish(
+                    app.solstone.core.sources.FOLDERS_SOURCE_ID,
+                    if (on) SourceWish.On else SourceWish.Off,
+                )
+                result is SourceToggleResult.Applied || result is SourceToggleResult.AwaitingObserver
+            },
+            clearWish = { container.sources.clearExpressedWish(app.solstone.core.sources.FOLDERS_SOURCE_ID) },
+            ownerStopped = { OwnerStoppedStore(this).ownerStopped() },
+            onQueued = { SyncScheduler.enqueueFollowUp(this, phoneSpec.stream) },
+            onChanged = {
+                container.sources.refreshSubscribers()
+                refreshWidgetAndUpdate()
+            },
+            openLiveClient = {
+                val snapshot = stores.publisher.currentSnapshot() as? app.solstone.core.identity.PairingGraphSnapshot.Committed
+                    ?: return@FoldersSession null
+                val pairing = snapshot.pairing
+                val confirmed = app.solstone.core.identity.confirmedFor(
+                    app.solstone.core.identity.JournalConfirmationPolicy.consults,
+                    stores.journalConfirmationStore,
+                    pairing.clientCertFingerprint,
+                )
+                val refused = stores.pairingRefusalStore?.refusedFor(pairing) == true
+                if (snapshot.home.state != app.solstone.core.model.IdentityState.PAIRED || !confirmed || refused) {
+                    return@FoldersSession null
+                }
+                runCatching {
+                    app.solstone.core.pl.openPairingClient(stores.publisher) { lease ->
+                        app.solstone.platform.pl.transport.conscrypt.openAuthenticatedLeaseClient(lease)
+                    }
+                }.getOrNull()
+            },
+            obsidianIdentity = {
+                val obs = app.solstone.platform.obsidian.ObsidianRuntimes.current?.ui
+                val uri = obs?.treeUri?.takeIf { obs.configured }
+                if (uri != null) {
+                    val parsed = android.net.Uri.parse(uri)
+                    app.solstone.core.folders.FolderIdentity(
+                        id = "obsidian",
+                        treeUri = uri,
+                        canonicalPath = app.solstone.platform.folders.AndroidFolderFileSystem.canonicalPathFor(parsed),
+                        name = obs.vault ?: "Obsidian",
+                    )
+                } else null
+            },
+            screenshotsIdentity = {
+                val sess = app.solstone.platform.screenshots.ScreenshotsRuntimes.current
+                val uri = sess?.grantedTreeUri()?.takeIf { sess.ui.accessGranted }
+                if (uri != null) {
+                    val parsed = android.net.Uri.parse(uri)
+                    app.solstone.core.folders.FolderIdentity(
+                        id = "screenshots",
+                        treeUri = uri,
+                        canonicalPath = app.solstone.platform.folders.AndroidFolderFileSystem.canonicalPathFor(parsed),
+                        name = sess.ui.folderName,
+                    )
+                } else null
+            },
+        ).onProcessStart()
+        foldersStopObservation?.close()
+        foldersStopObservation = OwnerStoppedStore(this).observeStop {
+            app.solstone.platform.folders.FoldersRuntimes.current?.onPauseChanged()
         }
     }
 
@@ -615,6 +715,7 @@ class PhoneApplication : ObserverApplication(
             startCalendarSession(app)
             startObsidianSession(app)
             startScreenshotsSession(app)
+            startFoldersSession(app)
         }
         container.controller.onEffectiveCaptureEmpty = {
             applyEffectiveCapture(ownerTurnedSourceOff = false)

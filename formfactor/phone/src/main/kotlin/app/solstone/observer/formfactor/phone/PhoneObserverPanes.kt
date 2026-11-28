@@ -83,6 +83,8 @@ internal fun PhoneDetailPane(
     onOpenProblemReports: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
+    onOpenFolder: (String) -> Unit = {},
+    onPopDetail: () -> Unit = {},
     onConfirmMark: () -> Unit,
     onOpenImport: () -> Unit = {},
     defaultDetailStatus: PhoneDefaultDetailStatus,
@@ -146,6 +148,8 @@ internal fun PhoneDetailPane(
             onOpenProblemReports = onOpenProblemReports,
             onOpenLicences = onOpenLicences,
             onOpenSource = onOpenSource,
+            onOpenFolder = onOpenFolder,
+            onPopDetail = onPopDetail,
             onConfirmMark = onConfirmMark,
             onOpenImport = onOpenImport,
             defaultDetailStatus = defaultDetailStatus,
@@ -209,6 +213,8 @@ private fun PhoneDetailContent(
     onOpenProblemReports: () -> Unit,
     onOpenLicences: () -> Unit,
     onOpenSource: (String) -> Unit,
+    onOpenFolder: (String) -> Unit = {},
+    onPopDetail: () -> Unit = {},
     onConfirmMark: () -> Unit,
     onOpenImport: () -> Unit = {},
     defaultDetailStatus: PhoneDefaultDetailStatus,
@@ -352,7 +358,12 @@ private fun PhoneDetailContent(
                     .semantics { paneTitle = spokenPaneTitle(top) },
             )
         }
-        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier, sourceStateIn(loadState, "calendar")) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier, sourceStateIn(loadState, "obsidian")) else if (top.sourceId == "screenshots") PhoneScreenshotsPane(modifier, sourceStateIn(loadState, "screenshots")) else Box(
+        is PhoneRoute.FolderDetail -> PhoneFolderDetailPane(
+            folderId = top.folderId,
+            onBack = onPopDetail,
+            modifier = modifier,
+        )
+        is PhoneRoute.SourceDetail -> if (top.sourceId == "calendar") PhoneCalendarPane(modifier, sourceStateIn(loadState, "calendar")) else if (top.sourceId == "obsidian") PhoneObsidianPane(modifier, sourceStateIn(loadState, "obsidian")) else if (top.sourceId == "screenshots") PhoneScreenshotsPane(modifier, sourceStateIn(loadState, "screenshots")) else if (top.sourceId == "folders") PhoneFoldersListPane(onOpenFolder = onOpenFolder, modifier = modifier) else Box(
             modifier
                 .fillMaxSize()
                 .semantics { paneTitle = spokenPaneTitle(top) },

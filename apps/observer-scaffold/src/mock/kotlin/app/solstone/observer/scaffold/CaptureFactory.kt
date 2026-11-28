@@ -42,6 +42,10 @@ fun createCaptureSetup(
     registerScreenshotsSource: Boolean = false,
     screenshotsHasAccess: () -> Boolean = { false },
     screenshotsPaused: () -> Boolean = { false },
+    registerFoldersSource: Boolean = false,
+    foldersNeedsAttention: () -> Boolean = { false },
+    foldersHasAccess: () -> Boolean = { true },
+    foldersPaused: () -> Boolean = { false },
     gapListener: (String, String, String, String) -> Unit = { _, _, _, _ -> },
 ): CaptureSetup {
     val audio = FakeContinuousSource(
@@ -106,6 +110,19 @@ fun createCaptureSetup(
                     captureForegroundType = null,
                     reasonWhenOff = shots::reasonWhenOff,
                     runsWithoutObserver = true,
+                )
+            } else null,
+        ) + listOfNotNull(
+            if (registerFoldersSource) {
+                val folders = PassiveSourceEngine(calendarStorage::isStorageOk, foldersNeedsAttention, foldersPaused)
+                SourceRegistration(
+                    sourceId = app.solstone.core.sources.FOLDERS_SOURCE_ID,
+                    engine = folders,
+                    requiredPermissionsGranted = { foldersHasAccess() },
+                    captureForegroundType = null,
+                    reasonWhenOff = folders::reasonWhenOff,
+                    runsWithoutObserver = true,
+                    pauseWithObserver = false,
                 )
             } else null,
         ),

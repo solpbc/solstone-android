@@ -25,6 +25,7 @@ import app.solstone.core.sources.CALENDAR_STREAM
 import app.solstone.core.sources.OBSIDIAN_STREAM
 import app.solstone.core.sources.SCREENSHOTS_STREAM
 import app.solstone.core.sources.DELIVERY_STREAMS
+import app.solstone.platform.folders.FolderStageResult
 
 internal fun <C> syncWithTransport(
     transport: SyncTransport,
@@ -48,6 +49,7 @@ internal fun <C> syncWithTransport(
     prepareObsidian: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
     obsidianCurrent: () -> Boolean = { true },
     prepareScreenshots: ((PlHttpClient, () -> Boolean) -> Boolean)? = null,
+    foldersStage: ((PlHttpClient, () -> Boolean) -> FolderStageResult)? = null,
     onImportOnlyRetry: () -> Unit = {},
 ): SyncOutcome where C : PlHttpClient, C : Closeable {
     val legs = attempt ?: JournalAttempt.untracked(PairingGeneration("", ""))
@@ -146,9 +148,22 @@ internal fun <C> syncWithTransport(
                     postScreenshots = postScreenshots,
                     obsidianCurrent = obsidianCurrent,
                 )
+                val foldersResult = foldersStage?.invoke(c, pairingCurrent)
+                when (foldersResult) {
+                    FolderStageResult.AUTH_STOP -> {
+                        onRefused()
+                        return@use SyncOutcome.FAILURE
+                    }
+                    FolderStageResult.PAIRING_LEFT -> return@use SyncOutcome.RETRY
+                    else -> Unit
+                }
                 if (report.halted) onRefused()
-                if (imports == ImportStageResult.RETRY && report.workOutcome == SyncOutcome.SUCCESS) {
-                    onImportOnlyRetry()
+                if ((imports == ImportStageResult.RETRY || foldersResult == FolderStageResult.RETRY) &&
+                    report.workOutcome == SyncOutcome.SUCCESS
+                ) {
+                    if (imports == ImportStageResult.RETRY && foldersResult != FolderStageResult.RETRY) {
+                        onImportOnlyRetry()
+                    }
                     SyncOutcome.RETRY
                 } else {
                     report.workOutcome

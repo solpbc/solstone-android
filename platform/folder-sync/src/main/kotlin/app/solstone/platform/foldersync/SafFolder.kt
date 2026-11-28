@@ -20,7 +20,13 @@ import java.io.IOException
 class IncompleteFolderListing : IOException("incomplete_listing")
 
 data class FolderFile(val documentId: String, val size: Long?, val modifiedMs: Long?)
-data class FolderDocument(val file: FolderFile, val name: String, val directory: Boolean, val flags: Int)
+data class FolderDocument(
+    val file: FolderFile,
+    val name: String,
+    val directory: Boolean,
+    val flags: Int,
+    val mimeType: String? = null,
+)
 
 sealed interface FolderRead {
     data class Stable(val bytes: ByteArray, val fileId: String?) : FolderRead
@@ -47,6 +53,58 @@ class SafFolder(
 
     fun root(tree: Uri, signal: CancellationSignal? = null): FolderDocument? =
         metadata(tree, DocumentsContract.getTreeDocumentId(tree), signal)
+
+    fun documentMetadata(tree: Uri, id: String, signal: CancellationSignal? = null): FolderDocument? =
+        metadata(tree, id, signal)
+
+    /**
+     * Streams a document's bytes to [sink] with the same pre/post metadata and fstat stability
+     * verification as [read], avoiding loading large files (up to 64 MiB) into JVM heap memory.
+     */
+    fun streamBounded(
+        tree: Uri,
+        documentId: String,
+        signal: CancellationSignal?,
+        maxBytes: Long,
+        sink: (ByteArray, Int) -> Unit,
+    ): Boolean {
+        try {
+            signal?.throwIfCanceled()
+            val before = metadata(tree, documentId, signal) ?: return false
+            if (before.directory || before.flags and Document.FLAG_VIRTUAL_DOCUMENT != 0) return false
+            if (before.file.size != null && before.file.size > maxBytes) return false
+
+            val document = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
+            val descriptor = resolver.openFileDescriptor(document, "r", signal) ?: return false
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                val first = Os.fstat(descriptor.fileDescriptor).takeIf { OsConstants.S_ISREG(it.st_mode) }
+                val buffer = ByteArray(32 * 1024)
+                var total = 0L
+                while (true) {
+                    signal?.throwIfCanceled()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count.toLong()
+                    if (total > maxBytes) return false
+                    if (count > 0) sink(buffer, count)
+                }
+                val last = first?.let { Os.fstat(descriptor.fileDescriptor) }
+                val after = metadata(tree, documentId, signal)
+                if (before != after || first?.st_size != last?.st_size || first?.st_mtime != last?.st_mtime ||
+                    first?.st_ino != last?.st_ino || first?.st_dev != last?.st_dev ||
+                    (before.file.size != null && before.file.size != total) ||
+                    (first != null && first.st_size != total)
+                ) return false
+                return true
+            }
+        } catch (_: IOException) {
+            return false
+        } catch (_: ErrnoException) {
+            return false
+        } catch (_: SecurityException) {
+            return false
+        }
+    }
 
     fun children(tree: Uri, id: String, signal: CancellationSignal? = null): List<FolderDocument> =
         query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, id), signal) { cursor ->
@@ -181,16 +239,20 @@ class SafFolder(
         ) throw IncompleteFolderListing()
     }
 
-    private fun row(cursor: Cursor) = FolderDocument(
-        file = FolderFile(
-            documentId = cursor.getString(0) ?: throw IncompleteFolderListing(),
-            size = if (cursor.isNull(4)) null else cursor.getLong(4),
-            modifiedMs = if (cursor.isNull(3)) null else cursor.getLong(3),
-        ),
-        name = cursor.getString(1).orEmpty(),
-        directory = cursor.getString(2) == Document.MIME_TYPE_DIR,
-        flags = cursor.getInt(5),
-    )
+    private fun row(cursor: Cursor): FolderDocument {
+        val mime = cursor.getString(2)
+        return FolderDocument(
+            file = FolderFile(
+                documentId = cursor.getString(0) ?: throw IncompleteFolderListing(),
+                size = if (cursor.isNull(4)) null else cursor.getLong(4),
+                modifiedMs = if (cursor.isNull(3)) null else cursor.getLong(3),
+            ),
+            name = cursor.getString(1).orEmpty(),
+            directory = mime == Document.MIME_TYPE_DIR,
+            flags = cursor.getInt(5),
+            mimeType = mime,
+        )
+    }
 
     private companion object {
         val columns = arrayOf(

@@ -71,8 +71,9 @@ class PhoneShellActivityRuntimeTest {
             composeRule.onNodeWithTag("sourceTile-calendar").assertIsDisplayed()
             composeRule.onNodeWithTag("sourceTile-obsidian").assertIsDisplayed()
             composeRule.onNodeWithTag("sourceTile-screenshots").assertExists()
+            composeRule.onNodeWithTag("sourceTile-folders").assertExists()
             composeRule.onNodeWithTag("sourceTile-watch").assertDoesNotExist()
-            assertEquals(5, composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().size)
+            assertEquals(6, composeRule.onAllNodes(sourceTileMatcher()).fetchSemanticsNodes().size)
         }
     }
 

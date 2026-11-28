@@ -71,6 +71,7 @@ class PhoneDeckSourceCheckTest {
                 "calendar" to "calendar",
                 "obsidian" to "Obsidian",
                 "screenshots" to "screenshots",
+                "folders" to "folders",
             ),
             phoneSourceLabels,
         )
