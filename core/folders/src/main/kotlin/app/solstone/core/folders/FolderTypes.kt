@@ -280,10 +280,7 @@ data class SupportedList(
             // Documents/transcripts advertise text extensions too; keep non-note dedicated extensions distinct
             // while still checking text thresholds for note candidates.
             val docExts = stringSet(docsObj, "extensions", defaults.documentExtensions) - noteExts
-            val transcriptExts = (stringSet(transcriptsObj, "extensions", defaults.transcriptExtensions) - noteExts)
-                .filterNot { it in setOf("json", "csv", "tsv", "html") }
-                .toSet()
-                .ifEmpty { defaults.transcriptExtensions }
+            val transcriptExts = stringSet(transcriptsObj, "extensions", defaults.transcriptExtensions)
             val acceptedImages = stringSet(screenshotsObj, "extensions", defaults.acceptedImageExtensions) +
                 stringSet(photosObj, "extensions", emptySet())
             val convertibleImages = stringSet(screenshotsObj, "convert_to_png_on_device", defaults.convertibleImageExtensions) +

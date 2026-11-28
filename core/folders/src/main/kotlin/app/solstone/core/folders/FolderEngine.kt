@@ -186,7 +186,7 @@ class FolderEngine(
             if (file.metadata.modifiedMs < fromMs) continue
             if (file.relPath in alreadyDelivered) continue
 
-            val noteBytes = if (isNoteCandidate(file.metadata.extension, supported) &&
+            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
                 file.sizeBytes <= supported.maxNoteBytes
             ) {
                 fs.readBytes(folder.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
@@ -350,7 +350,7 @@ class FolderEngine(
                 continue
             }
 
-            val noteBytes = if (isNoteCandidate(file.metadata.extension, supported) &&
+            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
                 file.sizeBytes <= supported.maxNoteBytes
             ) {
                 fs.readBytes(updated.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
@@ -717,7 +717,7 @@ class FolderEngine(
 
         // Newly appeared files
         for (file in remainingNew) {
-            val noteBytes = if (isNoteCandidate(file.metadata.extension, supported) &&
+            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
                 file.sizeBytes <= supported.maxNoteBytes
             ) {
                 fs.readBytes(current.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
@@ -781,7 +781,7 @@ class FolderEngine(
 
         // Modified files
         for (file in modifiedCandidates) {
-            val noteBytes = if (isNoteCandidate(file.metadata.extension, supported) &&
+            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
                 file.sizeBytes <= supported.maxNoteBytes
             ) {
                 fs.readBytes(current.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)

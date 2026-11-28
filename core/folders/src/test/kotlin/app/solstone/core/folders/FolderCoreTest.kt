@@ -749,3 +749,18 @@ class FolderCoreTest {
         assertTrue(seenHeaders.all { (_, h) -> h["X-Solstone-Protocol-Version"] == "3" })
     }
 }
+
+class FolderExportTest {
+    @Test
+    fun requiresAnAdvertisedConversationLayoutForGenericFileTypes() {
+        val list = SupportedList(transcriptExtensions = setOf("json", "tsv"))
+        for ((ext, text, kind) in listOf(
+            Triple("tsv", "start\tend\ttext\n0\t1000\tHello\n", FileKind.TRANSCRIPT),
+            Triple("tsv", "id\tvalue\n1\twidget\n", FileKind.OTHER),
+            Triple("json", """{"text":"Hi","language":"en","segments":[{"start":0,"end":1,"text":"Hi"}]}""", FileKind.TRANSCRIPT),
+            Triple("json", """{"name":"Hi","values":[1]}""", FileKind.OTHER),
+        )) {
+            assertEquals(kind, classifyFile(ext, text.length.toLong(), false, text.toByteArray(), FolderKinds(), list).first)
+        }
+    }
+}

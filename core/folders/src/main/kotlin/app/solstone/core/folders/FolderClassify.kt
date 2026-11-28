@@ -147,13 +147,13 @@ fun classifyFile(
 
     val fileKind = when {
         isScreenshot && isImage -> FileKind.SCREENSHOT
+        ext in supported.transcriptExtensions && transcriptLayout(ext, noteBytes) -> FileKind.TRANSCRIPT
         ext in supported.noteExtensions -> when {
             sizeBytes > supported.maxNoteBytes -> FileKind.DOCUMENT
             noteBytes != null -> classifyTextFile(noteBytes, supported)
             else -> FileKind.NOTE
         }
         ext in supported.documentExtensions -> FileKind.DOCUMENT
-        ext in supported.transcriptExtensions -> FileKind.TRANSCRIPT
         isImage -> FileKind.PHOTO
         else -> FileKind.OTHER
     }
@@ -168,9 +168,9 @@ fun classifyFile(
     return fileKind to delivery
 }
 
-fun isNoteCandidate(extension: String?, supported: SupportedList): Boolean {
+fun needsClassificationBytes(extension: String?, supported: SupportedList): Boolean {
     val ext = extension?.lowercase(Locale.ROOT) ?: return false
-    return ext in supported.noteExtensions
+    return ext in supported.noteExtensions || (ext in supported.transcriptExtensions && ext != "vtt" && ext != "srt")
 }
 
 fun sha256Hex(bytes: ByteArray): String {
