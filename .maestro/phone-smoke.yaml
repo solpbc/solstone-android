@@ -31,6 +31,12 @@ appId: app.solstone.observer.phone
 - extendedWaitUntil:
     visible: "import"
     timeout: 15000
+# The folders tile (2.1.58) pushes import into the deck's last row beside `add more`, so on the A36
+# the tile opens under the navigation bar. Scroll to it the way an owner would, as for `add more` below.
+- scrollUntilVisible:
+    element:
+      text: "photos and files"
+    direction: DOWN
 - assertVisible: "photos and files"
 # The deck opens at its top, the owner's own sources first and `add more` last. With audio,
 # location and camera on, `add more` sits below the fold on this phone, so the gate scrolls to it
