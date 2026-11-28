@@ -76,7 +76,7 @@ class AndroidFolderFileSystem(
                 tree = uri,
                 signal = signal,
                 include = { doc ->
-                    if (doc.flags and Document.FLAG_VIRTUAL_DOCUMENT != 0) {
+                    if (doc.flags and (Document.FLAG_VIRTUAL_DOCUMENT or Document.FLAG_PARTIAL) != 0) {
                         false
                     } else if (isJunkEntry(doc.name)) {
                         false
@@ -231,7 +231,11 @@ class AndroidFolderFileSystem(
         if (!rootOk) return FileExistence.Unknown
         return try {
             val doc = saf.documentMetadata(uri, docId, signal)
-            if (doc != null && !doc.directory) FileExistence.Present else FileExistence.Missing
+            when {
+                doc == null || doc.directory -> FileExistence.Missing
+                doc.flags and (Document.FLAG_VIRTUAL_DOCUMENT or Document.FLAG_PARTIAL) != 0 -> FileExistence.Unknown
+                else -> FileExistence.Present
+            }
         } catch (_: Exception) {
             FileExistence.Unknown
         }

@@ -71,7 +71,7 @@ class SafFolder(
         try {
             signal?.throwIfCanceled()
             val before = metadata(tree, documentId, signal) ?: return false
-            if (before.directory || before.flags and Document.FLAG_VIRTUAL_DOCUMENT != 0) return false
+            if (before.directory || before.flags and (Document.FLAG_VIRTUAL_DOCUMENT or Document.FLAG_PARTIAL) != 0) return false
             if (before.file.size != null && before.file.size > maxBytes) return false
 
             val document = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
@@ -168,7 +168,7 @@ class SafFolder(
             signal.throwIfCanceled()
             val before = metadata(tree, file.documentId, signal) ?: return FolderRead.Unavailable
             if (before.file != file || before.directory ||
-                before.flags and Document.FLAG_VIRTUAL_DOCUMENT != 0
+                before.flags and (Document.FLAG_VIRTUAL_DOCUMENT or Document.FLAG_PARTIAL) != 0
             ) return FolderRead.Unavailable
             if (head == 0 && file.size != null && file.size > cap) return FolderRead.TooLarge(byteArrayOf())
 

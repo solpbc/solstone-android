@@ -73,6 +73,7 @@ object FolderLedgerStore {
         "canonical_path" to f.canonicalPath,
         "mode" to f.mode.wire,
         "returning" to f.returning,
+        "pause_during_setup" to f.pauseDuringSetup,
         "kinds" to linkedMapOf(
             "notes" to f.kinds.notes,
             "documents" to f.kinds.documents,
@@ -205,6 +206,7 @@ object FolderLedgerStore {
             canonicalPath = map["canonical_path"] as? String,
             mode = FolderMode.fromWire(map["mode"] as? String),
             returning = map["returning"] as? Boolean ?: false,
+            pauseDuringSetup = map["pause_during_setup"] as? Boolean ?: false,
             kinds = kinds,
             facet = facet,
             overlap = overlap,

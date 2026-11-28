@@ -401,6 +401,7 @@ data class FolderRecord(
     val canonicalPath: String?,
     val mode: FolderMode = FolderMode.SETTING_UP,
     val returning: Boolean = false,
+    val pauseDuringSetup: Boolean = false,
     val kinds: FolderKinds = FolderKinds(),
     val facet: FacetOption? = null,
     val overlap: OverlapTarget? = null,

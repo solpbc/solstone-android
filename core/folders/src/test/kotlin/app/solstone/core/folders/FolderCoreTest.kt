@@ -338,6 +338,13 @@ class FolderCoreTest {
         assertEquals("proposal.pdf", revSeg.events[0].relPath)
         assertEquals(ActivityVerb.REVISED, revSeg.events[0].verb)
         assertTrue(revSeg.events[0].isRevision)
+        // A save back to the last acknowledged document cancels a waiting revision.
+        fs.put(tree, "proposal.pdf", "%PDF-1.4 v1".toByteArray(), clock.nowMs())
+        clock.advanceMs(5_000L)
+        engine.scanAll()
+        clock.advanceMs(61L * 60_000L)
+        engine.scanAll()
+        assertNull(engine.nextDelivery(false))
     }
 
     @Test
@@ -352,12 +359,17 @@ class FolderCoreTest {
 
         fs.put(tree, "kept.md", "stay".toByteArray(), t0 + 1_000L)
         fs.put(tree, "temp.md", "gone before send".toByteArray(), t0 + 2_000L)
+        fs.put(tree, "temp.bin", byteArrayOf(3), t0 + 2_000L)
         engine.scanAll()
 
         // Delete temp.md before the 5-minute window sends!
         fs.remove(tree, "temp.md")
+        fs.remove(tree, "temp.bin")
         clock.advanceMs(300_000L)
-        engine.scanAll()
+        fs.walkOverrides[tree] = WalkOutcome.Unreadable
+        assertNull(engine.nextDelivery(false))
+        fs.walkOverrides.remove(tree)
+        clock.advanceMs(60_000L)
 
         val seg = engine.nextDelivery(false)!!
         assertEquals(1, seg.events.size)
@@ -460,13 +472,23 @@ class FolderCoreTest {
         assertFalse(rawLedger.contains("instance_id"))
         assertFalse(rawLedger.contains("fingerprint"))
 
-        // Pairing Principle 9: restartSetup returns folder to SETTING_UP, keeps facet & kinds, clears queue.
+        // Setup restarts, but previously confirmed material survives the new range choice.
         assertTrue(engine.restartSetup())
         val rec = engine.folderById(id)!!
         assertEquals(FolderMode.SETTING_UP, rec.mode)
         assertTrue(rec.returning)
         assertEquals("work", rec.facet?.name)
-        assertNull(engine.nextDelivery(false))
+        assertEquals(seg.events, engine.nextDelivery(false)!!.events)
+        clock.advanceMs(2L * 86_400_000L)
+        val reopened = FolderEngine(ledger, fs, clock)
+        fs.put(tree, "new.md", "after pairing".toByteArray(), clock.nowMs() - 310_000L)
+        reopened.scanAll()
+        val waiting = reopened.nextDelivery(false)!!
+        assertEquals("during-pause.md", waiting.events.single().relPath)
+        reopened.recordOutcome(waiting, DeliveryOutcome.Delivered)
+        assertNull(reopened.nextDelivery(false))
+        assertEquals(ConfirmResult.Ok, reopened.confirmFolder(id, FolderSpan.TODAY))
+        assertEquals("new.md", reopened.nextDelivery(false)!!.events.single().relPath)
     }
 
     @Test

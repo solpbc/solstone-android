@@ -144,6 +144,7 @@ class FoldersSession(
     @Volatile private var checking: Boolean = false
     @Volatile private var newlyAddedFolderId: String? = null
     @Volatile private var lastBackgroundCheckMs: Long? = null
+    @Volatile private var supportedRefreshAtMs = 0L
     @Volatile private var supportedLoadedForPairing: String? = null
 
     private val checks = FolderChecks(
@@ -496,10 +497,11 @@ class FoldersSession(
         }
 
         // 2. Refresh `/supported` and `/facets` once per pairing (or on first sync)
-        if (supportedLoadedForPairing != clientCertFingerprint) {
+        if (supportedLoadedForPairing != clientCertFingerprint || android.os.SystemClock.elapsedRealtime() >= supportedRefreshAtMs) {
             when (val sup = runCatching { fetchFolderSupported(client) }.getOrNull()) {
                 SupportedFetchResult.AuthStop -> return FolderStageResult.AUTH_STOP
                 is SupportedFetchResult.Loaded -> {
+                    supportedRefreshAtMs = android.os.SystemClock.elapsedRealtime() + 5L * 60_000L
                     supportedLoadedForPairing = clientCertFingerprint
                     checks.blocking(10) { engine.updateSupported(sup.supported) }
                 }
@@ -542,6 +544,7 @@ class FoldersSession(
             val reply = try {
                 stageDir.mkdirs()
                 val parts = stageCompanionParts(delivery, stageDir)
+                if (!pairingCurrent()) return FolderStageResult.PAIRING_LEFT
                 val prepared = prepareFolderUpload(delivery, parts)
                 uploadPreparedFolderSegment(client, prepared)
             } catch (e: IOException) {
@@ -615,7 +618,10 @@ class FoldersSession(
             } else if (item.needsImageConvert) {
                 val rawFile = File(stageDir, "raw_$nextIndex.${origExt ?: "img"}")
                 val copiedHash = fs.copyToFileAndHash(delivery.treeUri, item.documentId, rawFile, maxContentBytes)
-                if (copiedHash != null) {
+                if (copiedHash == null || (item.contentHash != null && item.contentHash != copiedHash)) {
+                    throw IOException("folder item changed before staging")
+                }
+                run {
                     val outExt = if (item.kind == FileKind.SCREENSHOT) "png" else "jpg"
                     val partName = String.format(Locale.ROOT, "c_%02d.%s", nextIndex, outExt)
                     val converted = File(stageDir, partName)
@@ -649,7 +655,10 @@ class FoldersSession(
                 val partName = String.format(Locale.ROOT, "c_%02d.%s", nextIndex, ext)
                 val staged = File(stageDir, partName)
                 val hash = fs.copyToFileAndHash(delivery.treeUri, item.documentId, staged, maxContentBytes)
-                if (hash != null && staged.isFile) {
+                if (hash == null || (item.contentHash != null && item.contentHash != hash)) {
+                    throw IOException("folder item changed before staging")
+                }
+                run {
                     out.add(
                         StagedPartPayload(
                             eventId = item.eventId,

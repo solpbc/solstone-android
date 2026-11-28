@@ -268,6 +268,7 @@ class PhoneShellActivity : ComponentActivity() {
     private fun launchFoldersPicker(regrantFolderId: String? = null) {
         pendingRegrantFolderId = regrantFolderId
         foldersPickerLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
             putExtra(
                 android.provider.DocumentsContract.EXTRA_INITIAL_URI,

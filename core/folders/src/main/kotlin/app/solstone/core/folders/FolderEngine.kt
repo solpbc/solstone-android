@@ -35,7 +35,7 @@ sealed class ConfirmResult {
  * - 63-part chunking per segment upload
  * - `refused_files` fallback to details-only (`part: null`)
  * - pause without skipping (changes queue while paused and deliver on resume)
- * - Pairing Principle 9 (`restartSetup()` preserves grants/kinds/facet without crossing pairings)
+ * - A new pairing keeps the granted folder and its waiting changes, and restarts setup.
  */
 class FolderEngine(
     private val ledgerFile: File,
@@ -316,7 +316,8 @@ class FolderEngine(
         }
 
         val updated = folder.copy(
-            mode = FolderMode.ON,
+            mode = if (folder.pauseDuringSetup) FolderMode.PAUSED else FolderMode.ON,
+            pauseDuringSetup = false,
             returning = true,
             attention = null,
             selectedSpan = span,
@@ -325,8 +326,10 @@ class FolderEngine(
             spanFromMs = folder.spanFromMs?.let { minOf(it, fromMs) } ?: fromMs,
         )
 
+        val waitingPaths = updated.pending.mapTo(HashSet()) { it.relPath }
         var queuedNow = 0L
         for (file in walk.files) {
+            if (file.relPath in waitingPaths) continue
             val existing = updated.files[file.relPath]
             if (existing?.deliveredToJournal == true) continue
 
@@ -453,6 +456,7 @@ class FolderEngine(
         current.pending.clear()
         folders[idx] = current.copy(
             mode = FolderMode.OFF,
+            pauseDuringSetup = false,
             backfillTotal = 0L,
             backfillDone = 0L,
             attention = null,
@@ -480,8 +484,7 @@ class FolderEngine(
 
     /**
      * Pairing Principle 9: a new journal pairing returns active/paused folders to setup while
-     * preserving the owner's granted folders, kind switches, and facet choices. Pending items
-     * never cross pairings.
+     * preserving granted folders, switches, and already queued changes.
      */
     fun restartSetup(): Boolean {
         for (i in folders.indices) {
@@ -491,7 +494,6 @@ class FolderEngine(
             } else {
                 f.mode
             }
-            f.pending.clear()
             val resetFiles = LinkedHashMap<String, TrackedFile>(f.files.size)
             for ((path, tracked) in f.files) {
                 resetFiles[path] = tracked.copy(
@@ -504,6 +506,7 @@ class FolderEngine(
             }
             folders[i] = f.copy(
                 mode = nextMode,
+                pauseDuringSetup = f.mode == FolderMode.PAUSED || f.pauseDuringSetup,
                 returning = if (nextMode == FolderMode.SETTING_UP) true else f.returning,
                 backfillDone = 0L,
                 backfillTotal = 0L,
@@ -513,7 +516,6 @@ class FolderEngine(
                 lastTakenInMs = null,
                 fallbackToDetails = 0L,
                 files = resetFiles,
-                pending = ArrayList(),
             )
         }
         return save()
@@ -682,9 +684,9 @@ class FolderEngine(
             for (oldRel in disappearedPaths) {
                 if (oldRel in matchedDisappeared) continue
                 val old = current.files.remove(oldRel) ?: continue
+                current.pending.removeAll { it.relPath == oldRel }
                 if (!old.deliveredToJournal) {
                     // Delete before send: drop any waiting events cleanly; zero trace sent.
-                    current.pending.removeAll { it.relPath == oldRel }
                     changed = true
                 } else if (!old.excludedBeforeSpan) {
                     val evStamp = clock.stampAt(nowMs)
@@ -858,12 +860,12 @@ class FolderEngine(
                 }
                 (kind == FileKind.DOCUMENT || kind == FileKind.TRANSCRIPT) &&
                     delivery == DeliveryMode.CONTENT && oldTracked.deliveredToJournal -> {
-                    if (newHash != oldTracked.lastSentHash) {
-                        updatedTracked = updatedTracked.copy(
-                            pendingRevisionSaveMs = evMs,
-                            pendingRevisionHash = newHash,
-                        )
-                    }
+                    // A return to the acknowledged bytes cancels the outstanding revision.
+                    updatedTracked = updatedTracked.copy(
+                        pendingRevisionSaveMs = evMs.takeIf { newHash != null && newHash != oldTracked.lastSentHash },
+                        pendingRevisionHash = newHash.takeIf { it != oldTracked.lastSentHash },
+                    )
+                    current.pending.removeAll { it.relPath == file.relPath && it.isRevision }
                     current.files[file.relPath] = updatedTracked
                     changed = true
                 }
@@ -967,7 +969,7 @@ class FolderEngine(
 
         for (idx in folders.indices) {
             val folder = folders[idx]
-            if (folder.mode != FolderMode.ON || folder.attention != null) continue
+            if (!folder.canDeliverPending() || folder.attention != null) continue
             for (ev in folder.pending) {
                 if (ev.windowEndMs > nowMs) continue
                 if (ev.retryAtMs != null && ev.retryAtMs > nowMs) continue
@@ -994,22 +996,26 @@ class FolderEngine(
 
         for (ev in candidates) {
             if (selectedEvents.size >= MAX_ACTIVITY_LINES) break
+            if (ev.verb != ActivityVerb.REMOVED) {
+                when (fs.checkExists(folder.treeUri, ev.documentId, ev.relPath)) {
+                    FileExistence.Present -> Unit
+                    FileExistence.Unknown -> {
+                        val index = folder.pending.indexOfFirst { it.id == ev.id }
+                        if (index >= 0) folder.pending[index] = ev.copy(retryAtMs = nowMs + RETRY_MS.first())
+                        continue
+                    }
+                    FileExistence.Missing -> {
+                        droppedIds.add(ev.id)
+                        // The next complete walk owns deletion reconciliation and the removed line.
+                        continue
+                    }
+                }
+            }
             if (ev.delivery != DeliveryMode.CONTENT) {
                 selectedEvents.add(ev)
                 continue
             }
             if (stagedFiles.size >= MAX_UPLOAD_CONTENT_PARTS) continue
-
-            // Pre-send delete-before-send guard: only drop when file is clearly missing
-            // (never on FileExistence.Unknown / transient provider error).
-            if (fs.checkExists(folder.treeUri, ev.documentId, ev.relPath) == FileExistence.Missing) {
-                val delivered = folder.files[ev.relPath]?.deliveredToJournal == true
-                if (!delivered) {
-                    droppedIds.add(ev.id)
-                    folder.files.remove(ev.relPath)
-                    continue
-                }
-            }
 
             val ext = ev.metadata.extension.orEmpty()
             val needsImageConvert = (ev.kind == FileKind.SCREENSHOT || ev.kind == FileKind.PHOTO) &&
@@ -1032,8 +1038,8 @@ class FolderEngine(
         if (droppedIds.isNotEmpty()) {
             folder.pending.removeAll { it.id in droppedIds }
             save()
-            if (selectedEvents.isEmpty()) return null
         }
+        if (selectedEvents.isEmpty()) return null
 
         return SegmentDelivery(
             folderId = folder.id,
@@ -1155,15 +1161,18 @@ class FolderEngine(
         save()
     }
 
+    private fun FolderRecord.canDeliverPending(): Boolean =
+        mode == FolderMode.ON || (mode == FolderMode.SETTING_UP && !pauseDuringSetup)
+
     fun pendingCount(): Int = folders.sumOf { f ->
-        if (f.mode == FolderMode.ON || f.mode == FolderMode.PAUSED) f.pending.size else 0
+        f.pending.size
     }
 
     fun hasReadyDelivery(appPaused: Boolean): Boolean {
         if (appPaused) return false
         val nowMs = clock.nowMs()
         return folders.any { folder ->
-            folder.mode == FolderMode.ON && folder.attention == null && folder.pending.any { ev ->
+            folder.canDeliverPending() && folder.attention == null && folder.pending.any { ev ->
                 ev.windowEndMs <= nowMs && (ev.retryAtMs == null || ev.retryAtMs <= nowMs)
             }
         }
