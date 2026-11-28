@@ -508,7 +508,13 @@ class FolderCoreTest {
         reopened.scanAll()
         val waiting = reopened.nextDelivery(false)!!
         assertEquals("during-pause.md", waiting.events.single().relPath)
-        reopened.recordOutcome(waiting, DeliveryOutcome.Delivered)
+        reopened.setKinds(id, FolderKinds(notes = false))
+        val limited = reopened.nextDelivery(false)!!
+        assertTrue(limited.contentFiles.isEmpty())
+        assertEquals(DeliveryMode.METADATA_ONLY, limited.events.single().delivery)
+        reopened.setKinds(id, FolderKinds(notes = false, other = false))
+        assertNull(reopened.nextDelivery(false))
+        reopened.setKinds(id, FolderKinds())
         assertNull(reopened.nextDelivery(false))
         assertEquals(ConfirmResult.Ok, reopened.confirmFolder(id, FolderSpan.TODAY))
         assertEquals("new.md", reopened.nextDelivery(false)!!.events.single().relPath)

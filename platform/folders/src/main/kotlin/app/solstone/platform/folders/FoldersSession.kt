@@ -548,6 +548,9 @@ class FoldersSession(
                 val parts = stageCompanionParts(delivery, stageDir)
                 if (!pairingCurrent()) return FolderStageResult.PAIRING_LEFT
                 val prepared = prepareFolderUpload(delivery, parts)
+                val current = checks.blocking(10) { engine.folderById(delivery.folderId) }
+                if (current == null || current.kinds != delivery.kinds || current.mode == FolderMode.OFF ||
+                    current.mode == FolderMode.PAUSED || current.pauseDuringSetup || ownerStopped()) return FolderStageResult.RETRY
                 if (delivery.events.any { event ->
                         event.verb != ActivityVerb.REMOVED &&
                             fs.checkExists(delivery.treeUri, event.documentId, event.relPath) != FileExistence.Present

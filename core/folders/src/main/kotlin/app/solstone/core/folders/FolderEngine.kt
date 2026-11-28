@@ -21,6 +21,19 @@ sealed class ConfirmResult {
     data object Unreadable : ConfirmResult()
 }
 
+private fun FolderRecord.applyKindChoices() {
+    val entries = pending.listIterator()
+    while (entries.hasNext()) {
+        val event = entries.next()
+        if (kinds.enabledFor(event.kind)) continue
+        if (kinds.other) entries.set(event.copy(delivery = DeliveryMode.METADATA_ONLY, contentHash = null, notePayload = null))
+        else entries.remove()
+    }
+    if (!kinds.other) files.replaceAll { _, file ->
+        if (kinds.enabledFor(file.kind)) file else file.copy(pendingRevisionSaveMs = null, pendingRevisionHash = null)
+    }
+}
+
 /**
  * Multi-folder state machine and durable ledger.
  *
@@ -42,7 +55,7 @@ class FolderEngine(
     private val fs: FolderFileSystem,
     private val clock: FolderClock = SystemFolderClock,
 ) {
-    private val folders: MutableList<FolderRecord> = FolderLedgerStore.load(ledgerFile).mapTo(ArrayList()) { it.copy(name = boundedFolderName(it.name)) }
+    private val folders: MutableList<FolderRecord> = FolderLedgerStore.load(ledgerFile).mapTo(ArrayList()) { it.copy(name = boundedFolderName(it.name)).also { record -> record.applyKindChoices() } }
     var supported: SupportedList = SupportedList()
         private set
 
@@ -105,7 +118,7 @@ class FolderEngine(
         if (!kinds.anySelected()) return false
         val idx = folders.indexOfFirst { it.id == folderId }
         if (idx < 0) return false
-        folders[idx] = folders[idx].copy(kinds = kinds)
+        folders[idx] = folders[idx].copy(kinds = kinds).also { it.applyKindChoices() }
         save()
         return true
     }
@@ -962,6 +975,7 @@ class FolderEngine(
             changed = true
         }
 
+        if (changed) current.applyKindChoices()
         return changed
     }
 
