@@ -185,6 +185,8 @@ class FolderCoreTest {
             classifyFile("pdf", supported.maxContentBytes + 1L, false, null, allOn, supported),
         )
         // Disabled documents with `other` on falls back to metadata only.
+        assertEquals(FileKind.DOCUMENT to DeliveryMode.METADATA_ONLY,
+            classifyFile("pdf", supported.maxContentBytes + 1L, false, null, allOn.copy(other = false), supported))
         val noDocs = allOn.copy(documents = false)
         assertEquals(
             FileKind.DOCUMENT to DeliveryMode.METADATA_ONLY,

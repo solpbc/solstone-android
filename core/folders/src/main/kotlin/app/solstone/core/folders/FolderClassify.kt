@@ -162,7 +162,7 @@ fun classifyFile(
     val delivery = when {
         fileKind == FileKind.OTHER -> if (kinds.other) DeliveryMode.METADATA_ONLY else DeliveryMode.IGNORE
         kinds.enabledFor(fileKind) && withinSize -> DeliveryMode.CONTENT
-        kinds.other -> DeliveryMode.METADATA_ONLY
+        kinds.enabledFor(fileKind) || kinds.other -> DeliveryMode.METADATA_ONLY
         else -> DeliveryMode.IGNORE
     }
     return fileKind to delivery
