@@ -794,6 +794,18 @@ class FolderExportTest {
     }
 
     @Test
+    fun textConversationLayouts() {
+        val bar = "=".repeat(62)
+        for ((text, expected) in listOf(
+            "--- Log opened Tue Sep 3 00:00:00 2024\n00:00 -!- lio has joined\n00:01 <@lio> Ready.\n00:01 < val> Over here.\n00:02 <@lio> Coming.\n" to true,
+            "${bar}\nGuild: Potters\nChannel: firing\n${bar}\n\n[4/7/2025 10:02 AM] lio\nReady.\n\n[4/7/2025 10:03 AM] val\nComing.\n\n${bar}\nExported 2 message(s)\n${bar}\n" to true,
+            "Unknown Speaker  0:04\nThe wind is picking up.\nUnknown Speaker  2:13\nThe smaller boats have tied up.\nTranscribed by https://otter.ai\n" to true,
+            "---\ntitle: Kiln\n---\n\n# First firing\n\n#### You:\nIs the glaze dry?\n\n#### ChatGPT:\nIt takes a day.\n" to true,
+            "I meant to find this later.\nTranscribed by https://otter.ai\n" to false,
+        )) assertEquals(expected, transcriptLayout("txt", text.toByteArray()))
+    }
+
+    @Test
     fun requiresAnAdvertisedConversationLayoutForGenericFileTypes() {
         val list = SupportedList(transcriptExtensions = setOf("json", "tsv"))
         for ((ext, text, kind) in listOf(

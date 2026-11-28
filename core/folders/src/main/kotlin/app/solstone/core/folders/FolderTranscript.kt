@@ -6,7 +6,7 @@ package app.solstone.core.folders
 import app.solstone.core.pl.parseJson
 
 private val telegramTypes = setOf("personal_chat", "bot_chat", "private_group", "private_supergroup", "public_supergroup", "private_channel", "public_channel", "saved_messages")
-private val roles = setOf("user", "assistant", "human", "system", "chatgpt", "claude", "gemini")
+private val roles = setOf("you", "user", "assistant", "human", "system", "chatgpt", "claude", "gemini")
 private val slackTime = Regex("[0-9]{1,10}\\.[0-9]{1,6}")
 private val podcastVersion = Regex("[0-9]+(?:\\.[0-9]+)+")
 private val clockField = Regex("(?:[0-9]+:)?[0-5]?[0-9]:[0-5][0-9](?:[.,][0-9]{1,3})?")
@@ -71,6 +71,54 @@ private fun jsonTranscript(text: String): Boolean {
     }
 }
 
+private val ircRow = Regex("""^[0-9]{2}:[0-5][0-9](?::[0-5][0-9])?\s+<[ @+%~&]?([^>\s]{1,40})>\s+\S.*$""")
+private val ircEvent = Regex("""^[0-9]{2}:[0-5][0-9](?::[0-5][0-9])?\s+-!- .+$""")
+private val otterHeader = Regex("""(?:[^:]{1,60}?\s{2,})?[0-9]{1,3}:[0-5][0-9](?::[0-5][0-9])?""")
+
+private fun textExportLayout(text: String): Boolean {
+    val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(257).toList()
+    val speakers = mutableSetOf<String>()
+    val ircSpeakers = mutableSetOf<String>()
+    var ircTurns = 0
+    var ircContext = 0
+    for ((idx, line) in lines.take(256).withIndex()) {
+        val roleLine = line.trimStart('#').trimStart()
+        val role = roleLine.substringBefore(':').trim('*').lowercase()
+        val hasBody = roleLine.substringAfter(':', "").trim('*', ' ').isNotEmpty() ||
+            line.startsWith('#') && lines.getOrNull(idx + 1)?.startsWith('#') == false
+        if (':' in roleLine && role in roles && hasBody) speakers.add(role)
+        val irc = ircRow.matchEntire(line)
+        if (irc != null) {
+            ircTurns++
+            ircSpeakers.add(irc.groupValues[1])
+        } else if (line.startsWith("--- Log ") || line.startsWith("--- Day changed ") || ircEvent.matches(line)) {
+            ircContext++
+        }
+    }
+    if (speakers.size >= 2 || (ircTurns >= 3 && ircSpeakers.size >= 2 && (ircTurns + ircContext) * 3 >= lines.size * 2)) return true
+    val tail = text.trimEnd().takeLast(2048).lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList().takeLast(3)
+    val border = "=".repeat(62)
+    if (lines.size >= 9 && lines.first() == border && lines[1].startsWith("Guild: ") &&
+        lines[2].startsWith("Channel: ") && tail.size == 3 && tail.last() == border && tail.first() == border &&
+        tail[1].startsWith("Exported ") && tail[1].endsWith(" message(s)") &&
+        lines.drop(3).any { it.startsWith('[') && "] " in it }) return true
+    if (tail.lastOrNull() != "Transcribed by https://otter.ai") return false
+    var turns = 0
+    var hasBody = false
+    for (line in lines.takeWhile { it != "Transcribed by https://otter.ai" }) {
+        if (otterHeader.matches(line)) {
+            if (turns > 0 && !hasBody) return false
+            turns++
+            hasBody = false
+        } else if (turns == 0) {
+            return false
+        } else {
+            hasBody = true
+        }
+    }
+    return turns >= 2 && hasBody
+}
+
 internal fun transcriptLayout(ext: String, bytes: ByteArray?): Boolean {
     if (ext == "vtt" || ext == "srt") return true
     val text = bytes?.let(::decodeStrictUtf8)?.removePrefix("\uFEFF") ?: return false
@@ -92,10 +140,7 @@ internal fun transcriptLayout(ext: String, bytes: ByteArray?): Boolean {
         "html" -> listOf("page_body chat_page", "history", "message default", "text").all {
             text.contains("class=\"$it\"") || text.contains("class='$it'")
         }
-        "txt", "md", "markdown", "log" -> lines.take(256).mapNotNull {
-            val role = it.substringBefore(':').trim().trim('*').lowercase()
-            if (role in roles && it.substringAfter(':', "").trim('*', ' ').isNotEmpty()) role else null
-        }.distinct().take(2).count() == 2
+        "txt", "md", "markdown", "log" -> textExportLayout(text)
         else -> false
     }
 }
