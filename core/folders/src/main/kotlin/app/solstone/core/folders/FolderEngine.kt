@@ -42,7 +42,7 @@ class FolderEngine(
     private val fs: FolderFileSystem,
     private val clock: FolderClock = SystemFolderClock,
 ) {
-    private val folders: MutableList<FolderRecord> = FolderLedgerStore.load(ledgerFile)
+    private val folders: MutableList<FolderRecord> = FolderLedgerStore.load(ledgerFile).mapTo(ArrayList()) { it.copy(name = boundedFolderName(it.name)) }
     var supported: SupportedList = SupportedList()
         private set
 
@@ -86,7 +86,7 @@ class FolderEngine(
         val record = FolderRecord(
             id = candidateId,
             treeUri = treeUri,
-            name = displayName.trim().ifBlank { "folder" }.take(128),
+            name = boundedFolderName(displayName),
             label = label.trim().ifBlank { displayName },
             canonicalPath = normalizePathForOverlap(canonicalPath),
             mode = FolderMode.SETTING_UP,

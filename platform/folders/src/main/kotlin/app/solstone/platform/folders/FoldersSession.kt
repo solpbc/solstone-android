@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.CancellationSignal
 import android.util.Log
 import androidx.work.WorkerParameters
+import app.solstone.core.folders.ActivityVerb
+import app.solstone.core.folders.FileExistence
 import app.solstone.core.folders.BeginSetupResult
 import app.solstone.core.folders.ConfirmResult
 import app.solstone.core.folders.DeliveryOutcome
@@ -546,6 +548,10 @@ class FoldersSession(
                 val parts = stageCompanionParts(delivery, stageDir)
                 if (!pairingCurrent()) return FolderStageResult.PAIRING_LEFT
                 val prepared = prepareFolderUpload(delivery, parts)
+                if (delivery.events.any { event ->
+                        event.verb != ActivityVerb.REMOVED &&
+                            fs.checkExists(delivery.treeUri, event.documentId, event.relPath) != FileExistence.Present
+                    }) return FolderStageResult.RETRY
                 uploadPreparedFolderSegment(client, prepared)
             } catch (e: IOException) {
                 throw e

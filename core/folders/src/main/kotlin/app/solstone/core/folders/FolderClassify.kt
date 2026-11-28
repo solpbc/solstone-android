@@ -258,3 +258,18 @@ fun detectOverlap(
     }
     return OverlapOutcome.None
 }
+
+internal fun boundedFolderName(raw: String): String {
+    val out = StringBuilder()
+    var bytes = 0
+    val points = raw.trim().codePoints().iterator()
+    while (points.hasNext()) {
+        val point = points.nextInt()
+        if (Character.isISOControl(point)) continue
+        val text = String(Character.toChars(point))
+        bytes += text.toByteArray(Charsets.UTF_8).size
+        if (bytes > 128) break
+        out.append(text)
+    }
+    return out.toString().ifBlank { "folder" }
+}
