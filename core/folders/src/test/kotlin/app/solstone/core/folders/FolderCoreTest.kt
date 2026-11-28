@@ -371,6 +371,20 @@ class FolderCoreTest {
     }
 
     @Test
+    fun newlyAdvertisedOfficeTypeAppliesToWaitingMaterial() {
+        val now = 1_795_689_600_000L
+        val fs = FakeFolderFs()
+        val tree = "content://tree/primary:Drop"
+        fs.put(tree, "presentation.pptx", "content".toByteArray(), now - 310_000L)
+        val engine = FolderEngine(tempLedger(), fs, TestClock(now))
+        val id = (engine.beginSetup(tree, "Drop", "Drop", "primary:Drop") as BeginSetupResult.Started).folderId
+        engine.confirmFolder(id, FolderSpan.TODAY)
+        assertTrue(engine.nextDelivery(false)!!.contentFiles.isEmpty())
+        engine.updateSupported(SupportedList(documentExtensions = setOf("pdf", "pptx")))
+        assertEquals(FileKind.DOCUMENT, engine.nextDelivery(false)!!.contentFiles.single().kind)
+    }
+
+    @Test
     fun deleteBeforeSendDropsUnsentFileAndEmitsRemovedAfterDelivery() {
         val t0 = 1_795_689_600_000L
         val clock = TestClock(t0 + 10_000L, 0)

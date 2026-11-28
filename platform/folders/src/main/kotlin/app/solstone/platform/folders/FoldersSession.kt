@@ -507,7 +507,7 @@ class FoldersSession(
                     supportedLoadedForPairing = clientCertFingerprint
                     checks.blocking(10) { engine.updateSupported(sup.supported) }
                 }
-                else -> Unit
+                else -> if (supportedLoadedForPairing != clientCertFingerprint) return FolderStageResult.RETRY else Unit
             }
             when (val fac = runCatching { fetchFolderFacets(client) }.getOrNull()) {
                 FacetsFetchResult.AuthStop -> return FolderStageResult.AUTH_STOP

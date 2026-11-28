@@ -60,7 +60,30 @@ class FolderEngine(
         private set
 
     fun updateSupported(list: SupportedList) {
+        if (supported == list) return
         supported = list
+        var changed = false
+        for (folder in folders) {
+            val entries = folder.pending.listIterator()
+            while (entries.hasNext()) {
+                val event = entries.next()
+                if (event.kind != FileKind.OTHER || (event.verb != ActivityVerb.ADDED && event.verb != ActivityVerb.EDITED)) continue
+                val ext = event.metadata.extension ?: continue
+                if (ext !in list.documentExtensions && ext !in list.transcriptExtensions) continue
+                val meta = fs.stat(folder.treeUri, event.documentId, event.relPath) ?: continue
+                if (meta.sizeBytes != event.metadata.sizeBytes || meta.modifiedMs != event.metadata.modifiedMs) continue
+                val bytes = if (ext in list.transcriptExtensions && meta.sizeBytes <= list.maxNoteBytes) {
+                    fs.readBytes(folder.treeUri, event.documentId, event.relPath, list.maxNoteBytes)
+                } else null
+                val (kind, delivery) = classifyFile(ext, meta.sizeBytes, false, bytes, folder.kinds, list)
+                if (delivery != DeliveryMode.CONTENT) continue
+                val hash = bytes?.let(::sha256Hex) ?: fs.sha256Hex(folder.treeUri, event.documentId, event.relPath, list.maxContentBytes) ?: continue
+                entries.set(event.copy(kind = kind, delivery = delivery, contentHash = hash))
+                folder.files[event.relPath]?.let { folder.files[event.relPath] = it.copy(kind = kind, delivery = delivery, contentHash = hash) }
+                changed = true
+            }
+        }
+        if (changed) save()
     }
 
     fun folderRecords(): List<FolderRecord> = folders.toList()
