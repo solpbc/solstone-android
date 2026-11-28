@@ -357,6 +357,15 @@ class FolderCoreTest {
         clock.advanceMs(61L * 60_000L)
         engine.scanAll()
         assertNull(engine.nextDelivery(false))
+        fs.put(tree, "proposal.pdf", "%PDF-1.4 v3".toByteArray(), clock.nowMs())
+        clock.advanceMs(5_000L)
+        engine.scanAll()
+        engine.restartSetup()
+        assertNull(engine.nextDelivery(false))
+        clock.advanceMs(60L * 60_000L)
+        engine.scanAll()
+        assertEquals(ActivityVerb.REVISED, engine.nextDelivery(false)!!.events.first().verb)
+
     }
 
     @Test
@@ -751,6 +760,17 @@ class FolderCoreTest {
 }
 
 class FolderExportTest {
+    @Test
+    fun calendarRangesClampMonthEndsAndLeapYears() {
+        val zone = java.time.ZoneId.of("UTC")
+        fun ms(s: String) = java.time.Instant.parse(s).toEpochMilli()
+        for ((span, now, first) in listOf(
+            Triple(FolderSpan.LAST_6_MONTHS, "2024-08-31T18:00:00Z", "2024-02-29T00:00:00Z"),
+            Triple(FolderSpan.LAST_YEAR, "2024-02-29T18:00:00Z", "2023-02-28T00:00:00Z"),
+            Triple(FolderSpan.LAST_30_DAYS, "2024-03-01T18:00:00Z", "2024-01-31T00:00:00Z"),
+        )) assertEquals(ms(first), spanStartMs(span, ms(now), zone))
+    }
+
     @Test
     fun requiresAnAdvertisedConversationLayoutForGenericFileTypes() {
         val list = SupportedList(transcriptExtensions = setOf("json", "tsv"))

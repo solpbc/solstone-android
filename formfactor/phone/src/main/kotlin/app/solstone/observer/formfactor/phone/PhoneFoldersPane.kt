@@ -8,6 +8,7 @@ import app.solstone.core.folders.FacetsAvailability
 import app.solstone.core.folders.FileKind
 import app.solstone.core.folders.FolderKinds
 import app.solstone.core.folders.FolderMode
+import app.solstone.core.folders.spanStartMs
 import app.solstone.core.folders.FolderSpan
 import app.solstone.core.folders.FolderSummary
 import app.solstone.core.folders.OverlapTarget
@@ -913,9 +914,9 @@ private fun FolderPreviewCard(
                 }
             } else {
                 val itemsText = phoneText("android.folders.items.count", "count" to preview.totalItems)
-                val oldestMs = preview.oldestMs
-                val newestMs = preview.newestMs
-                val header = if (oldestMs != null && newestMs != null && preview.totalItems > 0L) {
+                val oldestMs = if (preview.span == FolderSpan.ALL) preview.oldestMs else spanStartMs(preview.span, nowEpochMs, zone)
+                val newestMs = if (preview.span == FolderSpan.ALL) preview.newestMs else nowEpochMs
+                val header = if (oldestMs != null && newestMs != null) {
                     phoneText(
                         "android.folders.preview.header.range",
                         "items" to itemsText,
@@ -961,7 +962,7 @@ private fun FolderPreviewCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = shellSecondaryInk,
                     )
-                } else if (est != null && preview.totalItems > 0L) {
+                } else if (est != null) {
                     Text(
                         text = phoneText("android.folders.preview.work.label"),
                         style = MaterialTheme.typography.labelMedium,

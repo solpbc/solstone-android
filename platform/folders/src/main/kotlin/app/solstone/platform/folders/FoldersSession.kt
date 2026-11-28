@@ -757,7 +757,10 @@ class FoldersSession(
     }
 
     private fun hasTrackedFolders(): Boolean =
-        engine.folderRecords().any { it.mode == FolderMode.ON || it.mode == FolderMode.PAUSED }
+        engine.folderRecords().any {
+            it.mode == FolderMode.ON || it.mode == FolderMode.PAUSED ||
+                (it.mode == FolderMode.SETTING_UP && (it.pending.isNotEmpty() || it.files.values.any { file -> file.pendingRevisionSaveMs != null }))
+        }
 
     private fun syncRegistryWishLocked() {
         val records = engine.folderRecords()

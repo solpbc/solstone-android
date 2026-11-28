@@ -331,7 +331,7 @@ class FolderEngine(
         for (file in walk.files) {
             if (file.relPath in waitingPaths) continue
             val existing = updated.files[file.relPath]
-            if (existing?.deliveredToJournal == true) continue
+            if (existing?.deliveredToJournal == true || (existing?.pendingRevisionSaveMs != null && existing.sizeBytes == file.sizeBytes && existing.modifiedMs == file.modifiedMs)) continue
 
             if (file.metadata.modifiedMs < fromMs) {
                 if (existing == null) {
@@ -454,6 +454,7 @@ class FolderEngine(
         if (idx < 0) return false
         val current = folders[idx]
         current.pending.clear()
+        current.files.replaceAll { _, file -> file.copy(pendingRevisionSaveMs = null, pendingRevisionHash = null) }
         folders[idx] = current.copy(
             mode = FolderMode.OFF,
             pauseDuringSetup = false,
@@ -500,8 +501,6 @@ class FolderEngine(
                     deliveredToJournal = false,
                     lastSentHash = null,
                     lastNoteText = null,
-                    pendingRevisionSaveMs = null,
-                    pendingRevisionHash = null,
                 )
             }
             folders[i] = f.copy(
@@ -531,6 +530,10 @@ class FolderEngine(
         for (idx in folders.indices) {
             val f = folders[idx]
             if (onlyFolderId != null && f.id != onlyFolderId) continue
+            if (f.mode == FolderMode.SETTING_UP) {
+                if (releaseDueRevisions(f, nowMs)) dirty = true
+                continue
+            }
             if (f.mode != FolderMode.ON && f.mode != FolderMode.PAUSED) continue
             if (scanOne(idx, nowMs)) dirty = true
         }
@@ -919,7 +922,11 @@ class FolderEngine(
             }
         }
 
-        // Check one-hour document/transcript revision cool-downs.
+        return releaseDueRevisions(current, nowMs) || changed
+    }
+
+    private fun releaseDueRevisions(current: FolderRecord, nowMs: Long): Boolean {
+        var changed = false
         val revWaitMs = supported.documentRevisionCooldownMs
         val dueRevisions = current.files.values.filter { t ->
             val saveMs = t.pendingRevisionSaveMs
@@ -928,6 +935,7 @@ class FolderEngine(
         for (tracked in dueRevisions) {
             val saveMs = tracked.pendingRevisionSaveMs ?: continue
             val metadata = fs.stat(current.treeUri, tracked.documentId, tracked.relPath) ?: continue
+            if (metadata.sizeBytes != tracked.sizeBytes || metadata.modifiedMs != tracked.modifiedMs) continue
             val evStamp = clock.stampAt(saveMs)
             current.pending.add(
                 PendingEvent(

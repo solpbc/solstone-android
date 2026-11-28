@@ -217,15 +217,16 @@ object SystemFolderClock : FolderClock {
         ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(epochMs)).totalSeconds
 }
 
-fun spanStartMs(span: FolderSpan, nowMs: Long, zone: ZoneId): Long = when (span) {
-    FolderSpan.LAST_30_DAYS -> nowMs - 30L * DAY_MS
-    FolderSpan.LAST_6_MONTHS -> nowMs - 183L * DAY_MS
-    FolderSpan.LAST_YEAR -> nowMs - 365L * DAY_MS
-    FolderSpan.ALL -> Long.MIN_VALUE
-    FolderSpan.TODAY -> {
-        val localDate = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
-        localDate.atStartOfDay(zone).toInstant().toEpochMilli()
+fun spanStartMs(span: FolderSpan, nowMs: Long, zone: ZoneId): Long {
+    val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+    val start = when (span) {
+        FolderSpan.LAST_30_DAYS -> today.minusDays(30)
+        FolderSpan.LAST_6_MONTHS -> today.minusMonths(6)
+        FolderSpan.LAST_YEAR -> today.minusYears(1)
+        FolderSpan.TODAY -> today
+        FolderSpan.ALL -> return Long.MIN_VALUE
     }
+    return start.atStartOfDay(zone).toInstant().toEpochMilli()
 }
 
 data class PlatformMetadata(
