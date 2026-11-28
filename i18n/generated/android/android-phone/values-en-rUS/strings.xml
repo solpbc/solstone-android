@@ -121,8 +121,8 @@
   <string name="m616e64726f69642e666f6c646572732e66616365742e6f66666c696e65">"facets unavailable while your journal is offline."</string>
   <string name="m616e64726f69642e666f6c646572732e66616365742e73657475702e68656c70">"every segment from this folder goes into %1$s."</string>
   <string name="m616e64726f69642e666f6c646572732e66616365742e756e706169726564">"connect a journal to choose a facet."</string>
-  <string name="m616e64726f69642e666f6c646572732e666163742e6f746865722e6f6666">"only files of the kinds you chose under 64 MB come in."</string>
-  <string name="m616e64726f69642e666f6c646572732e666163742e6f746865722e6f6e">"with other files on, kinds you turned off and files over 64 MB come in as names and details only."</string>
+  <string name="m616e64726f69642e666f6c646572732e666163742e6f746865722e6f6666">"only the kinds you choose go into your journal. if one of those files is too large or can't be read, only its name and details go in."</string>
+  <string name="m616e64726f69642e666f6c646572732e666163742e6f746865722e6f6e">"for files outside the kinds you choose, including unrecognized file types, only names and details go into your journal. files of the kinds you choose that are too large or can't be read also come in as names and details."</string>
   <string name="m616e64726f69642e666f6c646572732e666163742e7374617973">"what's already in your journal stays if you delete a file from the folder, pause, or turn this off."</string>
   <string name="m616e64726f69642e666f6c646572732e66696e6973682e7365747570">"finish setting up %1$s."</string>
   <string name="m616e64726f69642e666f6c646572732e696e74726f">"while this is on, the solstone app takes in changes from the folders you choose and adds them to your journal in five-minute segments."</string>

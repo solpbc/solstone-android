@@ -168,9 +168,16 @@ fun classifyFile(
     return fileKind to delivery
 }
 
-fun needsClassificationBytes(extension: String?, supported: SupportedList): Boolean {
-    val ext = extension?.lowercase(Locale.ROOT) ?: return false
-    return ext in supported.noteExtensions || (ext in supported.transcriptExtensions && ext != "vtt" && ext != "srt")
+internal const val MAX_STRUCTURED_EXPORT_BYTES = 32L * 1024 * 1024
+private val structuredExtensions = setOf("json", "html", "csv", "tsv")
+
+internal fun classificationLimit(extension: String?, supported: SupportedList): Long? {
+    val ext = extension?.lowercase(Locale.ROOT) ?: return null
+    return when {
+        ext in supported.transcriptExtensions && ext in structuredExtensions -> MAX_STRUCTURED_EXPORT_BYTES
+        ext in supported.noteExtensions || (ext in supported.transcriptExtensions && ext != "vtt" && ext != "srt") -> supported.maxNoteBytes
+        else -> null
+    }?.coerceAtMost(supported.maxContentBytes)
 }
 
 fun sha256Hex(bytes: ByteArray): String {

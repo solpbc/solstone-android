@@ -1812,8 +1812,8 @@ android.folders.finish.setup = finish setting up { $folder }.
 android.folders.paused.reason = you paused syncing for this folder. changes wait on this device until you resume.
 android.folders.off.reason = this folder is off. what's already in your journal stays.
 android.folders.fact.stays = what's already in your journal stays if you delete a file from the folder, pause, or turn this off.
-android.folders.fact.other.on = with other files on, kinds you turned off and files over 64 MB come in as names and details only.
-android.folders.fact.other.off = only files of the kinds you chose under 64 MB come in.
+android.folders.fact.other.on = for files outside the kinds you choose, including unrecognized file types, only names and details go into your journal. files of the kinds you choose that are too large or can't be read also come in as names and details.
+android.folders.fact.other.off = only the kinds you choose go into your journal. if one of those files is too large or can't be read, only its name and details go in.
 android.folders.items.count =
     { $count ->
         [one] 1 item

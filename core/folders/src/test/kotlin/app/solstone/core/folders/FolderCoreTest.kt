@@ -371,6 +371,25 @@ class FolderCoreTest {
     }
 
     @Test
+    fun structuredExportsAboveTheNoteLimitUseTheirOwnProbeBound() {
+        val now = 1_795_689_600_000L
+        val fs = FakeFolderFs()
+        val tree = "content://tree/primary:Drop"
+        val padding = " ".repeat(5 * 1024 * 1024)
+        fs.put(tree, "positive.json", """{"text":"hello","language":"en","segments":[${padding}{"start":0,"end":1,"text":"hello"}]}""".toByteArray(), now - 310_000L)
+        fs.put(tree, "ordinary.json", """{"values":[${padding}1]}""".toByteArray(), now - 310_000L)
+        val engine = FolderEngine(tempLedger(), fs, TestClock(now))
+        val rules = SupportedList(transcriptExtensions = setOf("json"))
+        engine.updateSupported(rules)
+        val id = (engine.beginSetup(tree, "Drop", "Drop", "primary:Drop") as BeginSetupResult.Started).folderId
+        engine.confirmFolder(id, FolderSpan.TODAY)
+        val events = engine.nextDelivery(false)!!.events.associate { it.relPath to it.kind }
+        assertEquals(mapOf("positive.json" to FileKind.TRANSCRIPT, "ordinary.json" to FileKind.OTHER), events)
+        assertEquals(32L * 1024 * 1024, classificationLimit("json", rules))
+        assertEquals(4L * 1024 * 1024, classificationLimit("txt", rules))
+    }
+
+    @Test
     fun newlyAdvertisedOfficeAndTextTypesApplyToWaitingMaterial() {
         val now = 1_795_689_600_000L
         val fs = FakeFolderFs()

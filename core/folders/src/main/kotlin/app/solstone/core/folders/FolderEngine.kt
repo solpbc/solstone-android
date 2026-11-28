@@ -59,6 +59,11 @@ class FolderEngine(
     var supported: SupportedList = SupportedList()
         private set
 
+    private fun readClassification(tree: String, id: String?, path: String, ext: String?, size: Long): ByteArray? {
+        val limit = classificationLimit(ext, supported) ?: return null
+        return if (size <= limit) fs.readBytes(tree, id, path, limit) else null
+    }
+
     fun updateSupported(list: SupportedList) {
         if (supported == list) return
         supported = list
@@ -72,9 +77,7 @@ class FolderEngine(
                 if (ext !in list.documentExtensions && ext !in list.transcriptExtensions) continue
                 val meta = fs.stat(folder.treeUri, event.documentId, event.relPath) ?: continue
                 if (meta.sizeBytes != event.metadata.sizeBytes || meta.modifiedMs != event.metadata.modifiedMs) continue
-                val bytes = if (ext in list.transcriptExtensions && meta.sizeBytes <= list.maxNoteBytes) {
-                    fs.readBytes(folder.treeUri, event.documentId, event.relPath, list.maxNoteBytes)
-                } else null
+                val bytes = readClassification(folder.treeUri, event.documentId, event.relPath, ext, meta.sizeBytes)
                 val (kind, delivery) = classifyFile(ext, meta.sizeBytes, false, bytes, folder.kinds, list)
                 if (kind == event.kind || (kind != FileKind.DOCUMENT && kind != FileKind.TRANSCRIPT)) continue
                 val hash = if (delivery == DeliveryMode.CONTENT) {
@@ -225,13 +228,7 @@ class FolderEngine(
             if (file.metadata.modifiedMs < fromMs) continue
             if (file.relPath in alreadyDelivered) continue
 
-            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
-                file.sizeBytes <= supported.maxNoteBytes
-            ) {
-                fs.readBytes(folder.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
-            } else {
-                null
-            }
+            val noteBytes = readClassification(folder.treeUri, file.documentId, file.relPath, file.metadata.extension, file.sizeBytes)
             val (kind, delivery) = classifyFile(
                 extension = file.metadata.extension,
                 sizeBytes = file.sizeBytes,
@@ -389,13 +386,7 @@ class FolderEngine(
                 continue
             }
 
-            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
-                file.sizeBytes <= supported.maxNoteBytes
-            ) {
-                fs.readBytes(updated.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
-            } else {
-                null
-            }
+            val noteBytes = readClassification(updated.treeUri, file.documentId, file.relPath, file.metadata.extension, file.sizeBytes)
             val (kind, delivery) = classifyFile(
                 extension = file.metadata.extension,
                 sizeBytes = file.sizeBytes,
@@ -759,13 +750,7 @@ class FolderEngine(
 
         // Newly appeared files
         for (file in remainingNew) {
-            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
-                file.sizeBytes <= supported.maxNoteBytes
-            ) {
-                fs.readBytes(current.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
-            } else {
-                null
-            }
+            val noteBytes = readClassification(current.treeUri, file.documentId, file.relPath, file.metadata.extension, file.sizeBytes)
             val (kind, delivery) = classifyFile(
                 extension = file.metadata.extension,
                 sizeBytes = file.sizeBytes,
@@ -823,13 +808,7 @@ class FolderEngine(
 
         // Modified files
         for (file in modifiedCandidates) {
-            val noteBytes = if (needsClassificationBytes(file.metadata.extension, supported) &&
-                file.sizeBytes <= supported.maxNoteBytes
-            ) {
-                fs.readBytes(current.treeUri, file.documentId, file.relPath, supported.maxNoteBytes)
-            } else {
-                null
-            }
+            val noteBytes = readClassification(current.treeUri, file.documentId, file.relPath, file.metadata.extension, file.sizeBytes)
             val (kind, delivery) = classifyFile(
                 extension = file.metadata.extension,
                 sizeBytes = file.sizeBytes,

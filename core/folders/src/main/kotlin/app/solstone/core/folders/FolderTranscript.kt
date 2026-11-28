@@ -30,6 +30,7 @@ private fun jsonDepthAllowed(text: String): Boolean {
 }
 
 private fun jsonTranscript(text: String): Boolean {
+    if (!text.contains("\"messages\"") && !text.contains("\"segments\"") && !text.contains("\"ts\"")) return false
     if (!jsonDepthAllowed(text)) return false
     val root = try { parseJson(text) } catch (_: IllegalArgumentException) { return false }
     if (root is List<*>) {
@@ -150,7 +151,8 @@ private fun textExportLayout(text: String): Boolean {
 
 internal fun transcriptLayout(ext: String, bytes: ByteArray?): Boolean {
     if (ext == "vtt" || ext == "srt") return true
-    val text = bytes?.let(::decodeStrictUtf8)?.removePrefix("\uFEFF") ?: return false
+    if (bytes == null || bytes.size > MAX_STRUCTURED_EXPORT_BYTES) return false
+    val text = decodeStrictUtf8(bytes)?.removePrefix("\uFEFF") ?: return false
     val lines = text.lineSequence().filter { it.isNotBlank() }
     return when (ext) {
         "json" -> jsonTranscript(text)
