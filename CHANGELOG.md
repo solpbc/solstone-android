@@ -6,13 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-
-- when you confirm your journal's mark while pairing, folder changes waiting to sync go into that journal unless the folder is paused. when you set up the folder for this journal, you choose how much older history to add.
+## [2.1.58] - 2026-11-28
 
 ### Added
 
-- once your journal is updated too, you can choose folders on your phone to bring notes, documents, transcripts, screenshots, photos, and file details into your journal. you choose what comes in and preview it first, and pausing holds changes on your phone until you resume.
+- once your journal is updated too, you can choose folders on your phone to bring notes, documents, transcripts, screenshots, photos, and file details into your journal. you choose what comes in, preview it first, and decide whether to bring in older files or start from today. pausing a folder holds its changes on your phone until you resume.
 
 ## [2.1.57] - 2026-11-27
 
