@@ -67,7 +67,7 @@ class FolderEngine(
             val entries = folder.pending.listIterator()
             while (entries.hasNext()) {
                 val event = entries.next()
-                if (event.kind != FileKind.OTHER || (event.verb != ActivityVerb.ADDED && event.verb != ActivityVerb.EDITED)) continue
+                if ((event.kind != FileKind.OTHER && event.kind != FileKind.NOTE) || (event.verb != ActivityVerb.ADDED && event.verb != ActivityVerb.EDITED)) continue
                 val ext = event.metadata.extension ?: continue
                 if (ext !in list.documentExtensions && ext !in list.transcriptExtensions) continue
                 val meta = fs.stat(folder.treeUri, event.documentId, event.relPath) ?: continue
@@ -76,9 +76,12 @@ class FolderEngine(
                     fs.readBytes(folder.treeUri, event.documentId, event.relPath, list.maxNoteBytes)
                 } else null
                 val (kind, delivery) = classifyFile(ext, meta.sizeBytes, false, bytes, folder.kinds, list)
-                if (delivery != DeliveryMode.CONTENT) continue
-                val hash = bytes?.let(::sha256Hex) ?: fs.sha256Hex(folder.treeUri, event.documentId, event.relPath, list.maxContentBytes) ?: continue
-                entries.set(event.copy(kind = kind, delivery = delivery, contentHash = hash))
+                if (kind == event.kind || (kind != FileKind.DOCUMENT && kind != FileKind.TRANSCRIPT)) continue
+                val hash = if (delivery == DeliveryMode.CONTENT) {
+                    bytes?.let(::sha256Hex) ?: fs.sha256Hex(folder.treeUri, event.documentId, event.relPath, list.maxContentBytes) ?: continue
+                } else null
+                if (delivery == DeliveryMode.IGNORE) entries.remove()
+                else entries.set(event.copy(kind = kind, delivery = delivery, contentHash = hash, notePayload = null))
                 folder.files[event.relPath]?.let { folder.files[event.relPath] = it.copy(kind = kind, delivery = delivery, contentHash = hash) }
                 changed = true
             }
