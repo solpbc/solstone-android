@@ -795,6 +795,16 @@ class FolderExportTest {
     }
 
     @Test
+    fun telegramExportsAcceptServiceRowsAndJoinedMessageClasses() {
+        val messages = """{"type":"personal_chat","messages":[{"type":"service","date":"2026-04-01"},{"type":"message","date":"2026-04-01","from_id":"user101","text":"Ready?"}]}"""
+        assertTrue(transcriptLayout("json", messages.toByteArray()))
+        assertFalse(transcriptLayout("json", """{"type":"personal_chat","messages":[{"type":"service","date":"2026-04-01"}]}""".toByteArray()))
+        val html = """<html><body><div class="page_body chat_page"><div class="history"><div class="message default clearfix"><div class="body"><div class="pull_right date details" title="01.04.2026 11:05:00 UTC+03:00">11:05</div><div class="text">Ready?</div></div></div></div></div></body></html>"""
+        assertTrue(transcriptLayout("html", html.toByteArray()))
+        assertFalse(transcriptLayout("html", html.replace("01.04.2026", "next week").toByteArray()))
+    }
+
+    @Test
     fun textConversationLayouts() {
         val bar = "=".repeat(62)
         for ((text, expected) in listOf(

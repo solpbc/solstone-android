@@ -43,12 +43,19 @@ private fun jsonTranscript(text: String): Boolean {
     val obj = root as? Map<*, *> ?: return false
     val messages = obj["messages"] as? List<*>
     if (messages != null && obj["type"] in telegramTypes && "chats" !in obj && "personal_information" !in obj) {
-        return messages.isNotEmpty() && messages.all {
-            val message = it as? Map<*, *> ?: return@all false
-            message["type"] == "message" && message["id"] is Number &&
-                (message["date"] is String || message["date_unixtime"] is String) &&
-                (message["text"] is String || message["text"] is List<*>)
+        var spoken = false
+        for (item in messages) {
+            val message = item as? Map<*, *> ?: return false
+            if (message["date"] !is String && message["date_unixtime"] !is String && message["date_unixtime"] !is Number) return false
+            if (message["type"] == "service") continue
+            if (message["type"] != "message" || ("from" !in message && "from_id" !in message)) return false
+            when (val body = message["text"]) {
+                is String -> if (body.isNotBlank()) spoken = true
+                is List<*> -> if (body.any { it is String && it.isNotBlank() || (it as? Map<*, *>)?.get("text") is String }) spoken = true
+                else -> return false
+            }
         }
+        return spoken
     }
     val segments = obj["segments"] as? List<*> ?: return false
     if (segments.isEmpty()) return false
@@ -69,6 +76,28 @@ private fun jsonTranscript(text: String): Boolean {
         val end = row["endTime"]?.toString()?.toDoubleOrNull() ?: return@all false
         row["body"] is String && start >= 0 && end >= start && end.isFinite()
     }
+}
+
+private val divTag = Regex("""(?i)<div\s+([^<>]{1,2048})>""")
+private val classAttribute = Regex("""(?i)(?:^|\s)class\s*=\s*["']([^"']{1,128})["']""")
+private val telegramDate = Regex("""(?i)(?:^|\s)title\s*=\s*["'][0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4}\s+[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\s+UTC[+-][0-9]{2}:[0-9]{2})?["']""")
+
+private fun telegramHtml(text: String): Boolean {
+    if (!text.trimEnd().endsWith("</html>", ignoreCase = true)) return false
+    var stage = 0
+    for (tag in divTag.findAll(text)) {
+        val attrs = tag.groupValues[1]
+        val classes = classAttribute.find(attrs)?.groupValues?.get(1)?.split(' ') ?: continue
+        when (stage) {
+            0 -> if ("page_body" in classes && "chat_page" in classes) stage++
+            1 -> if ("history" in classes) stage++
+            2 -> if ("message" in classes && "default" in classes) stage++
+            3 -> if ("body" in classes) stage++
+            4 -> if ("date" in classes && "details" in classes && telegramDate.containsMatchIn(attrs)) stage++
+            5 -> if ("text" in classes) return true
+        }
+    }
+    return false
 }
 
 private val ircRow = Regex("""^[0-9]{2}:[0-5][0-9](?::[0-5][0-9])?\s+<[ @+%~&]?([^>\s]{1,40})>\s+\S.*$""")
@@ -137,9 +166,7 @@ internal fun transcriptLayout(ext: String, bytes: ByteArray?): Boolean {
                 fields.size == 4 && clockField.matches(fields[1].trim().trim('"')) &&
                     clockField.matches(fields[2].trim().trim('"')) && fields[3].isNotBlank()
             }
-        "html" -> listOf("page_body chat_page", "history", "message default", "text").all {
-            text.contains("class=\"$it\"") || text.contains("class='$it'")
-        }
+        "html" -> telegramHtml(text)
         "txt", "md", "markdown", "log" -> textExportLayout(text)
         else -> false
     }
